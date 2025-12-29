@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
+import { useWebSocket } from '../../hooks/useWebSocket';
 
 interface MediaPost {
   id: string;
@@ -19,11 +20,21 @@ export const MediaFeed = ({ sessionId }: MediaFeedProps) => {
   const [posts, setPosts] = useState<MediaPost[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Subscribe to real-time media post updates via WebSocket
+  useWebSocket({
+    sessionId,
+    eventTypes: ['media_post'],
+    onEvent: (event) => {
+      if (event.type === 'media_post' && event.data && event.data.media_id) {
+        // Reload media when new post is created
+        loadMedia();
+      }
+    },
+  });
+
   useEffect(() => {
+    // Load initial media
     loadMedia();
-    // Auto-refresh every 10 seconds
-    const interval = setInterval(loadMedia, 10000);
-    return () => clearInterval(interval);
   }, [sessionId]);
 
   const loadMedia = async () => {

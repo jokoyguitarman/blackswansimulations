@@ -102,14 +102,9 @@ export const SessionView = () => {
   }, [id, user?.id]);
 
   useEffect(() => {
-    // Only load objectives for trainers
+    // Only load objectives for trainers (load once, no polling)
     if (id && session?.status === 'in_progress' && isTrainer) {
       loadObjectives();
-      // Reload objectives every 10 seconds to show updates
-      const interval = setInterval(() => {
-        loadObjectives();
-      }, 10000);
-      return () => clearInterval(interval);
     }
   }, [id, session?.status, isTrainer]);
 

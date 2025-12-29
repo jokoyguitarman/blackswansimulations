@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { BriefingView } from './BriefingView';
 import { ParticipantManagement } from './ParticipantManagement';
@@ -47,7 +47,6 @@ export const SessionLobby = ({
   const [loading, setLoading] = useState(false);
   const [myTeams] = useState<Array<{ team_name: string; team_role?: string }>>([]);
   const [wsConnected, setWsConnected] = useState(false);
-  const pollingFallbackRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
@@ -91,10 +90,10 @@ export const SessionLobby = ({
           }
         });
       } catch (error) {
-        console.error('Failed to setup WebSocket, falling back to polling:', error);
+        console.error('Failed to setup WebSocket:', error);
         setWsConnected(false);
-        // Fallback to polling if WebSocket fails
-        pollingFallbackRef.current = setInterval(loadReadyStatus, 5000);
+        // No polling fallback - WebSocket is required for real-time updates
+        // User will need to refresh if WebSocket fails
       }
     };
 
@@ -106,10 +105,6 @@ export const SessionLobby = ({
         unsubscribe();
       }
       websocketClient.leaveSession(sessionId);
-      if (pollingFallbackRef.current) {
-        clearInterval(pollingFallbackRef.current);
-        pollingFallbackRef.current = null;
-      }
     };
   }, [sessionId, isTrainer, user?.id]);
 
