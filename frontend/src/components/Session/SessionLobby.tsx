@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../../lib/api';
 import { BriefingView } from './BriefingView';
 import { ParticipantManagement } from './ParticipantManagement';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { useAuth } from '../../contexts/AuthContext';
+import { websocketClient } from '../../lib/websocketClient';
 
 interface SessionLobbyProps {
   sessionId: string;
@@ -45,13 +46,72 @@ export const SessionLobby = ({
   } | null>(null);
   const [loading, setLoading] = useState(false);
   const [myTeams] = useState<Array<{ team_name: string; team_role?: string }>>([]);
+  const [wsConnected, setWsConnected] = useState(false);
+  const pollingFallbackRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    loadReadyStatus();
-    // Poll ready status every 3 seconds
-    const interval = setInterval(loadReadyStatus, 3000);
-    return () => clearInterval(interval);
-  }, [sessionId, isTrainer]);
+    let unsubscribe: (() => void) | null = null;
+    let isMounted = true;
+
+    const setupWebSocket = async () => {
+      try {
+        // Load initial status
+        await loadReadyStatus();
+
+        // Connect to WebSocket and join session room
+        await websocketClient.connect();
+        await websocketClient.joinSession(sessionId);
+        setWsConnected(true);
+
+        // Subscribe to ready status updates
+        unsubscribe = websocketClient.on('participant.ready_status_updated', (event) => {
+          if (!isMounted) return;
+
+          if (event.data) {
+            setReadyStatus({
+              total: event.data.total as number,
+              ready: event.data.ready as number,
+              all_ready: event.data.all_ready as boolean,
+              participants: (event.data.participants || []) as Array<{
+                user_id: string;
+                is_ready: boolean;
+                user?: { full_name: string };
+              }>,
+            });
+
+            // Update current user's ready status from participants
+            if (user?.id && Array.isArray(event.data.participants)) {
+              const currentParticipant = event.data.participants.find(
+                (p: { user_id: string; is_ready: boolean }) => p.user_id === user.id,
+              );
+              if (currentParticipant) {
+                setIsReady(currentParticipant.is_ready || false);
+              }
+            }
+          }
+        });
+      } catch (error) {
+        console.error('Failed to setup WebSocket, falling back to polling:', error);
+        setWsConnected(false);
+        // Fallback to polling if WebSocket fails
+        pollingFallbackRef.current = setInterval(loadReadyStatus, 5000);
+      }
+    };
+
+    setupWebSocket();
+
+    return () => {
+      isMounted = false;
+      if (unsubscribe) {
+        unsubscribe();
+      }
+      websocketClient.leaveSession(sessionId);
+      if (pollingFallbackRef.current) {
+        clearInterval(pollingFallbackRef.current);
+        pollingFallbackRef.current = null;
+      }
+    };
+  }, [sessionId, isTrainer, user?.id]);
 
   const loadReadyStatus = async () => {
     try {
@@ -84,11 +144,17 @@ export const SessionLobby = ({
     setLoading(true);
     try {
       await api.sessions.markReady(sessionId, !isReady);
+      // WebSocket will update the status automatically, but update local state optimistically
       setIsReady(!isReady);
-      await loadReadyStatus();
+      // If WebSocket is not connected, manually reload status
+      if (!wsConnected) {
+        await loadReadyStatus();
+      }
     } catch (error) {
       console.error('Failed to update ready status:', error);
       alert('Failed to update ready status');
+      // Revert optimistic update on error
+      setIsReady(!isReady);
     } finally {
       setLoading(false);
     }

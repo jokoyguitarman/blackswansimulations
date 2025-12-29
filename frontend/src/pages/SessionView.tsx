@@ -102,7 +102,8 @@ export const SessionView = () => {
   }, [id, user?.id]);
 
   useEffect(() => {
-    if (id && session?.status === 'in_progress') {
+    // Only load objectives for trainers
+    if (id && session?.status === 'in_progress' && isTrainer) {
       loadObjectives();
       // Reload objectives every 10 seconds to show updates
       const interval = setInterval(() => {
@@ -110,7 +111,7 @@ export const SessionView = () => {
       }, 10000);
       return () => clearInterval(interval);
     }
-  }, [id, session?.status]);
+  }, [id, session?.status, isTrainer]);
 
   useEffect(() => {
     // Check if there's a hash fragment in the URL and set the active tab accordingly
@@ -513,8 +514,8 @@ export const SessionView = () => {
         </div>
       )}
 
-      {/* Objectives Progress Panel - Show during active session */}
-      {session.status === 'in_progress' && objectives.length > 0 && (
+      {/* Objectives Progress Panel - Show during active session (trainer only) */}
+      {session.status === 'in_progress' && isTrainer && objectives.length > 0 && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="military-border p-4 bg-robotic-gray-200">
             <h3 className="text-sm terminal-text uppercase text-robotic-yellow mb-3">

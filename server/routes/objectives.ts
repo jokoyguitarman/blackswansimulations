@@ -6,18 +6,21 @@ import {
   getObjectiveProgress,
   calculateSessionScore,
   updateObjectiveProgress,
-  addObjectivePenalty,
-  addObjectiveBonus,
   initializeSessionObjectives,
 } from '../services/objectiveTrackingService.js';
 
 const router = Router();
 
-// Get objective progress for a session
+// Get objective progress for a session (trainer only)
 router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
     const user = req.user!;
+
+    // Only trainers can view objectives
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only trainers can view objectives' });
+    }
 
     // Verify session access
     const { data: session } = await supabaseAdmin
@@ -31,16 +34,7 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
     }
 
     if (session.trainer_id !== user.id && user.role !== 'admin') {
-      const { data: participant } = await supabaseAdmin
-        .from('session_participants')
-        .select('*')
-        .eq('session_id', sessionId)
-        .eq('user_id', user.id)
-        .single();
-
-      if (!participant) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     const progress = await getObjectiveProgress(sessionId);
@@ -51,11 +45,16 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
   }
 });
 
-// Get session score
+// Get session score (trainer only)
 router.get('/session/:sessionId/score', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
     const user = req.user!;
+
+    // Only trainers can view session scores
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only trainers can view session scores' });
+    }
 
     // Verify session access
     const { data: session } = await supabaseAdmin
@@ -69,16 +68,7 @@ router.get('/session/:sessionId/score', requireAuth, async (req: AuthenticatedRe
     }
 
     if (session.trainer_id !== user.id && user.role !== 'admin') {
-      const { data: participant } = await supabaseAdmin
-        .from('session_participants')
-        .select('*')
-        .eq('session_id', sessionId)
-        .eq('user_id', user.id)
-        .single();
-
-      if (!participant) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
+      return res.status(403).json({ error: 'Access denied' });
     }
 
     const score = await calculateSessionScore(sessionId);

@@ -7,6 +7,7 @@ import { validate, schemas } from '../lib/validation.js';
 import { createDefaultChannels } from '../services/channelService.js';
 import { sendInvitationEmail, sendPendingInvitationEmail } from '../services/emailService.js';
 import { initializeSessionObjectives } from '../services/objectiveTrackingService.js';
+import { getWebSocketService } from '../services/websocketService.js';
 
 const router = Router();
 
@@ -1177,6 +1178,37 @@ router.post(
       }
 
       logger.info({ sessionId: id, userId: user.id, is_ready }, 'Participant ready status updated');
+
+      // Broadcast ready status update to all session participants via WebSocket
+      try {
+        const { data: allParticipants } = await supabaseAdmin
+          .from('session_participants')
+          .select('user_id, is_ready, user:user_profiles(full_name)')
+          .eq('session_id', id);
+
+        const totalParticipants = allParticipants?.length || 0;
+        const readyParticipants = allParticipants?.filter((p) => p.is_ready).length || 0;
+        const allReady = totalParticipants > 0 && readyParticipants === totalParticipants;
+
+        getWebSocketService().readyStatusUpdated(id, {
+          total: totalParticipants,
+          ready: readyParticipants,
+          all_ready: allReady,
+          participants: allParticipants || [],
+        });
+
+        logger.debug(
+          { sessionId: id, total: totalParticipants, ready: readyParticipants },
+          'Ready status broadcasted',
+        );
+      } catch (broadcastError) {
+        // Don't fail the request if broadcast fails - it's non-critical
+        logger.error(
+          { error: broadcastError, sessionId: id },
+          'Failed to broadcast ready status update',
+        );
+      }
+
       res.json({ data });
     } catch (err) {
       logger.error({ error: err }, 'Error in POST /sessions/:id/ready');

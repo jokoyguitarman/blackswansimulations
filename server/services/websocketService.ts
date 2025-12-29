@@ -182,6 +182,29 @@ export class WebSocketService {
   }
 
   /**
+   * Participant ready status events
+   */
+  readyStatusUpdated(
+    sessionId: string,
+    statusData: {
+      total: number;
+      ready: number;
+      all_ready: boolean;
+      participants: Array<{ user_id: string; is_ready: boolean; user?: { full_name: string } }>;
+    },
+  ): void {
+    this.broadcastToSession(sessionId, {
+      type: 'participant.ready_status_updated',
+      data: statusData,
+      timestamp: new Date().toISOString(),
+    });
+    logger.debug(
+      { sessionId, total: statusData.total, ready: statusData.ready },
+      'Ready status updated event broadcasted',
+    );
+  }
+
+  /**
    * State update events
    */
   stateUpdated(sessionId: string, stateUpdate: Record<string, unknown>): void {
