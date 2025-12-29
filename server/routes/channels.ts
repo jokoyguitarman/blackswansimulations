@@ -325,10 +325,18 @@ router.get(
       }
 
       // Add trainer to participants list if not already there
-      const allSessionParticipants = (participants || []).map((p: Record<string, unknown>) => ({
-        id: p.user_id,
-        ...p.user,
-      }));
+      const allSessionParticipants = (participants || []).map((p: Record<string, unknown>) => {
+        const user = p.user as {
+          id: string;
+          full_name: string;
+          role: string;
+          agency_name?: string;
+        } | null;
+        return {
+          id: p.user_id,
+          ...(user || {}),
+        };
+      });
 
       if (session.trainer_id) {
         const { data: trainerProfile } = await supabaseAdmin
