@@ -121,13 +121,15 @@ export const NotificationProvider = ({ children, sessionId }: NotificationProvid
     [sessionId],
   );
 
-  // Initial load
+  // Initial load - only depend on user and sessionId, not the callbacks
+  // The callbacks are stable and only change when user/sessionId changes anyway
   useEffect(() => {
     if (user) {
       loadNotifications();
       refreshUnreadCount();
     }
-  }, [user, loadNotifications, refreshUnreadCount]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, sessionId]);
 
   // Listen for new notifications via WebSocket
   useWebSocket({
