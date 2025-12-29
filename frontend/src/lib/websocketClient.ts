@@ -66,8 +66,17 @@ class WebSocketClient {
         this.connectionPromise = null;
       });
 
-      this.socket.on('error', (error: Error) => {
-        console.error('[WEBSOCKET] Error:', error);
+      this.socket.on('error', (error: Error | { message?: string }) => {
+        // Filter out noisy "Channel not found" errors - these are expected during channel switching
+        // Chat messages are handled by Supabase Realtime, so WebSocket channel joins are optional
+        const errorMessage =
+          typeof error === 'object' && 'message' in error ? error.message : String(error);
+        if (errorMessage === 'Channel not found') {
+          // Only log at debug level - this is expected behavior when channels don't exist yet
+          console.debug('[WEBSOCKET] Channel not found (expected during channel loading):', error);
+        } else {
+          console.error('[WEBSOCKET] Error:', error);
+        }
       });
 
       // Listen for all events and route to handlers
@@ -114,6 +123,10 @@ class WebSocketClient {
    * Join a channel room
    */
   async joinChannel(channelId: string): Promise<void> {
+    if (!channelId) {
+      console.warn('[WEBSOCKET] Cannot join channel: channelId is empty');
+      return;
+    }
     const socket = await this.connect();
     socket.emit('join_channel', channelId);
   }
