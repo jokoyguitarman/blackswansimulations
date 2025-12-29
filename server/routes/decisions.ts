@@ -659,6 +659,19 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
     const { id } = req.params;
     const user = req.user!;
 
+    // ═══════════════════════════════════════════════════════
+    // CRITICAL: Use both logger AND console.log to ensure visibility
+    // ═══════════════════════════════════════════════════════
+    console.log('🔵 EXECUTE ENDPOINT CALLED', {
+      decisionId: id,
+      userId: user.id,
+      timestamp: new Date().toISOString(),
+    });
+    logger.info(
+      { decisionId: id, userId: user.id },
+      'EXECUTE_ENDPOINT: Decision execute endpoint called',
+    );
+
     // Get decision to verify it exists
     const { data: decision } = await supabaseAdmin
       .from('decisions')
@@ -667,8 +680,11 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       .single();
 
     if (!decision) {
+      console.log('🔴 DECISION NOT FOUND', { decisionId: id });
       return res.status(404).json({ error: 'Decision not found' });
     }
+
+    console.log('🟡 DECISION FOUND', { decisionId: id, status: decision.status });
 
     // Atomic update: Only update if status is 'approved'
     // This prevents race conditions by checking and updating in a single database operation
@@ -731,13 +747,42 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       );
     }
 
+    // After the state update section, before AI block:
+    console.log('🟡 BEFORE AI BLOCK', { decisionId: id, hasOpenAiKey: !!env.openAiApiKey });
+    logger.info(
+      { decisionId: id, hasOpenAiKey: !!env.openAiApiKey },
+      'BEFORE_AI_BLOCK: About to start AI processing',
+    );
+
     // AI classifies decision and generates fresh injects
     try {
+      console.log('🟡 INSIDE AI TRY', {
+        decisionId: id,
+        hasOpenAiKey: !!env.openAiApiKey,
+        keyLength: env.openAiApiKey?.length || 0,
+      });
+      logger.info(
+        { decisionId: id, hasOpenAiKey: !!env.openAiApiKey },
+        'INSIDE_AI_TRY: Entered AI processing try-catch block',
+      );
+
       if (env.openAiApiKey) {
+        console.log('🟢 OPENAI KEY EXISTS', { decisionId: id, keyLength: env.openAiApiKey.length });
+        logger.info({ decisionId: id }, 'OPENAI_KEY_FOUND: Proceeding with classification');
+
         // AI classifies decision
         const aiClassification = await classifyDecision(
           { title: decision.title, description: decision.description },
           env.openAiApiKey,
+        );
+
+        console.log('🟢 CLASSIFICATION COMPLETE', {
+          decisionId: id,
+          classification: aiClassification.primary_category,
+        });
+        logger.info(
+          { decisionId: id, classification: aiClassification.primary_category },
+          'CLASSIFICATION_SUCCESS: Decision classified',
         );
 
         // Store classification
@@ -767,15 +812,28 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
           'Decision classified and fresh inject generated',
         );
       } else {
-        logger.warn('OpenAI API key not configured, skipping decision classification');
+        console.log('🔴 OPENAI KEY MISSING', { decisionId: id, envKey: env.openAiApiKey });
+        logger.warn(
+          { decisionId: id, hasKey: !!env.openAiApiKey },
+          'OPENAI_KEY_MISSING: OpenAI API key not configured',
+        );
       }
     } catch (classificationError) {
-      // Don't block decision execution if classification fails
+      console.error('🔴 AI ERROR', {
+        decisionId: id,
+        error:
+          classificationError instanceof Error
+            ? classificationError.message
+            : String(classificationError),
+      });
       logger.error(
         { error: classificationError, decisionId: id },
-        'Error in AI classification or inject generation, continuing with decision execution',
+        'AI_ERROR: Error in AI classification or inject generation',
       );
     }
+
+    console.log('🟢 AFTER AI BLOCK', { decisionId: id });
+    logger.info({ decisionId: id }, 'AFTER_AI_BLOCK: Completed AI processing');
 
     // Track decision impact on objectives
     try {
@@ -856,9 +914,11 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       logger.error({ error: eventError, decisionId: id }, 'Error logging event');
     }
 
+    console.log('🟢 EXECUTE COMPLETE', { decisionId: id });
     logger.info({ decisionId: id, userId: user.id }, 'Decision executed');
     res.json({ data: mappedDecision });
   } catch (err) {
+    console.error('🔴 EXECUTE ERROR', { error: err instanceof Error ? err.message : String(err) });
     logger.error({ error: err }, 'Error in POST /decisions/:id/execute');
     res.status(500).json({ error: 'Internal server error' });
   }
