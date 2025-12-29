@@ -84,19 +84,21 @@ export const CreateInjectForm = ({
     }
   };
 
-  const toggleTeam = (team: string) => {
-    if (formData.target_teams.includes(team)) {
-      setFormData({
-        ...formData,
-        target_teams: formData.target_teams.filter((t) => t !== team),
-      });
-    } else {
-      setFormData({
-        ...formData,
-        target_teams: [...formData.target_teams, team],
-      });
-    }
-  };
+  // const toggleTeam = (team: string) => { // Unused - keeping for potential future use
+  // Function commented out as it's currently unused
+  // const toggleTeam = (team: string) => {
+  //   if (formData.target_teams.includes(team)) {
+  //     setFormData({
+  //       ...formData,
+  //       target_teams: formData.target_teams.filter((t) => t !== team),
+  //     });
+  //   } else {
+  //     setFormData({
+  //       ...formData,
+  //       target_teams: [...formData.target_teams, team],
+  //     });
+  //   }
+  // };
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">

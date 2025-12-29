@@ -155,9 +155,9 @@ export const ParticipantManagement = ({
       const result = await api.sessions.processAllInvitations(sessionId);
       let message = `Processed ${result.data.processed} invitations. ${result.data.totalInvitations} total invitations found.`;
 
-      if (result.data.skipped && result.data.skipped.length > 0) {
-        message += `\n\nSkipped ${result.data.skipped.length} invitations:\n`;
-        result.data.skipped.forEach((skip: { email: string; reason: string }) => {
+      if ((result.data as any).skipped && (result.data as any).skipped.length > 0) {
+        message += `\n\nSkipped ${(result.data as any).skipped.length} invitations:\n`;
+        (result.data as any).skipped.forEach((skip: { email: string; reason: string }) => {
           message += `- ${skip.email}: ${skip.reason}\n`;
         });
       }

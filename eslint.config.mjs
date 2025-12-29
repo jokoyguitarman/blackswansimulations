@@ -8,7 +8,7 @@ export default tseslint.config(
   prettier,
   {
     files: ['**/*.{ts,tsx}'],
-    ignores: ['dist', 'node_modules'],
+    ignores: ['dist', 'node_modules', 'frontend/**'],
     languageOptions: {
       parserOptions: {
         project: './tsconfig.json',

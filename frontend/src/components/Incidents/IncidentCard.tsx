@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
 
 /**
@@ -30,10 +29,15 @@ interface Incident {
     role: string;
   };
   assignments?: Array<{
-    assignment_type?: 'agency_role';
+    assignment_type?: string;
+    user_id?: string;
     agency_role?: string;
     assigned_at: string;
     notes?: string;
+    assigned_user?: {
+      id: string;
+      full_name: string;
+    };
   }>;
 }
 
@@ -52,7 +56,7 @@ export const IncidentCard = ({
   isSelected,
   onSelect,
 }: IncidentCardProps) => {
-  const { user } = useAuth();
+  // const { user } = useAuth(); // Unused - keeping for potential future use
   const [updating, setUpdating] = useState(false);
 
   const getSeverityColor = (severity: string) => {
@@ -145,8 +149,8 @@ export const IncidentCard = ({
             <div className="mt-2 flex flex-wrap gap-2">
               {incident.assignments.map((assignment, idx) => {
                 const displayValue =
-                  assignment.assigned_user?.full_name ||
-                  assignment.user_id ||
+                  (assignment as any).assigned_user?.full_name ||
+                  (assignment as any).user_id ||
                   assignment.agency_role ||
                   'Unknown';
 

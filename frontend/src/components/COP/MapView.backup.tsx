@@ -531,15 +531,13 @@ const MapInitializer = ({
 // Component to handle map updates and centering
 const MapUpdater = ({
   incidents,
-  resources,
-  evacuationZones,
+  // resources, // Unused - keeping for potential future use
+  // evacuationZones, // Unused - keeping for potential future use
   selectedIncidentId,
   initialCenter,
   initialZoom,
 }: {
   incidents?: Incident[];
-  resources?: Resource[];
-  evacuationZones?: EvacuationZoneData[];
   selectedIncidentId?: string | null;
   initialCenter?: LatLngExpression;
   initialZoom?: number;
@@ -1027,8 +1025,6 @@ export const MapView = ({
 
         <MapUpdater
           incidents={incidents}
-          resources={resources}
-          evacuationZones={evacuationZones}
           selectedIncidentId={selectedIncidentId}
           initialCenter={initialCenter}
           initialZoom={initialZoom}

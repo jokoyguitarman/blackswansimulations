@@ -38,6 +38,7 @@ interface Message {
   content: string;
   message_type: string;
   created_at: string;
+  channel_id?: string;
   sender_id?: string; // Store sender_id for side placement when sender is undefined
   sender?: {
     id: string;
@@ -65,9 +66,9 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const optimisticMessageIdRef = useRef<string | null>(null);
   const optimisticMessageContentRef = useRef<string | null>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Queue messages for channels that aren't currently selected
-  const [queuedMessages, setQueuedMessages] = useState<Map<string, Message[]>>(new Map());
+  const [_queuedMessages, setQueuedMessages] = useState<Map<string, Message[]>>(new Map());
 
   useEffect(() => {
     // Load participants FIRST to ensure they're available when Realtime messages arrive
@@ -150,7 +151,7 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
         if (payload.sender_id === user?.id && user) {
           senderInfo = {
             id: user.id,
-            full_name: user.full_name || 'You',
+            full_name: user.displayName || 'You',
             role: user.role || 'unknown',
           };
         } else {
@@ -282,7 +283,7 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
         if (payload.sender_id === user?.id && user) {
           senderInfo = {
             id: user.id,
-            full_name: user.full_name || 'You',
+            full_name: user.displayName || 'You',
             role: user.role || 'unknown',
           };
         } else {
@@ -1094,7 +1095,7 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
       sender: user
         ? {
             id: user.id,
-            full_name: user.full_name || 'You',
+            full_name: user.displayName || 'You',
             role: user.role || 'unknown',
           }
         : undefined,
@@ -1106,7 +1107,7 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
     try {
       const result = await api.channels.sendMessage(channelId, messageContent);
       console.log('[ChatInterface] Message sent successfully, waiting for Realtime:', {
-        messageId: result.data?.id,
+        messageId: (result.data as { id?: string })?.id,
         tempId,
         content: messageContent,
       });

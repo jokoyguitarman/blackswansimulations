@@ -11,10 +11,15 @@ interface Incident {
   title: string;
   session_id?: string;
   assignments?: Array<{
-    assignment_type?: 'agency_role';
+    assignment_type?: string;
+    user_id?: string;
     agency_role?: string;
     assigned_at: string;
     notes?: string;
+    assigned_user?: {
+      id: string;
+      full_name: string;
+    };
   }>;
 }
 
@@ -64,8 +69,9 @@ export const AssignIncidentModal = ({
   // Get existing assignments (user IDs)
   const existingUserIds =
     incident.assignments
-      ?.filter((a) => a.assignment_type === 'user' || (!a.assignment_type && (a as any).user_id))
-      .map((a) => (a as any).user_id || '') || [];
+      ?.filter((a) => !a.assignment_type || (a as any).user_id) // Filter for user assignments
+      .map((a) => (a as any).user_id || '')
+      .filter((id: string) => !!id) || [];
 
   const availableParticipants = participants.filter((p) => !existingUserIds.includes(p.id));
 
@@ -108,9 +114,7 @@ export const AssignIncidentModal = ({
             </p>
             <div className="flex flex-wrap gap-2">
               {incident.assignments
-                ?.filter(
-                  (a) => a.assignment_type === 'user' || (!a.assignment_type && (a as any).user_id),
-                )
+                ?.filter((a) => !a.assignment_type || (a as any).user_id) // Filter for user assignments
                 .map((a, idx) => {
                   const assignment = a as any;
                   const userName =

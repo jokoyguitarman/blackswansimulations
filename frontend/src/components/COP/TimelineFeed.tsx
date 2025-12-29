@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../../lib/api';
-import { useWebSocket, type WebSocketEvent } from '../../hooks/useWebSocket';
+import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRealtime } from '../../hooks/useRealtime';
 import { supabase } from '../../lib/supabase';
 
@@ -103,7 +103,7 @@ export const TimelineFeed = ({ sessionId }: TimelineFeedProps) => {
       'resource.transferred',
       'message.sent',
     ],
-    onEvent: async (event: WebSocketEvent) => {
+    onEvent: async () => {
       // Reload events when non-inject events occur (these may not be in session_events yet)
       await loadEvents();
     },

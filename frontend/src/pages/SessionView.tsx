@@ -44,8 +44,11 @@ interface Session {
     role: string;
     is_ready?: boolean;
     user?: {
+      id: string;
       full_name: string;
+      email?: string;
       role: string;
+      agency_name?: string;
     };
   }>;
 }
@@ -62,7 +65,7 @@ export const SessionView = () => {
     'cop' | 'chat' | 'decisions' | 'injects' | 'media' | 'aar' | 'participants'
   >('cop');
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
-  const [incidents, setIncidents] = useState<
+  const [_incidents, setIncidents] = useState<
     Array<{
       id: string;
       title: string;
@@ -227,26 +230,27 @@ export const SessionView = () => {
     }
   };
 
-  const handleIncidentClick = (incident: {
-    id: string;
-    title: string;
-    description: string;
-    location_lat?: number | null;
-    location_lng?: number | null;
-    severity: string;
-    status: string;
-    type: string;
-    casualty_count?: number;
-  }) => {
-    setSelectedIncidentId(incident.id);
-    // Scroll to incidents panel if it exists
-    setTimeout(() => {
-      const incidentsPanel = document.getElementById('incidents-panel');
-      if (incidentsPanel) {
-        incidentsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }, 100);
-  };
+  // Function commented out as it's currently unused
+  // const handleIncidentClick = (incident: {
+  //   id: string;
+  //   title: string;
+  //   description: string;
+  //   location_lat?: number | null;
+  //   location_lng?: number | null;
+  //   severity: string;
+  //   status: string;
+  //   type: string;
+  //   casualty_count?: number;
+  // }) => {
+  //   setSelectedIncidentId(incident.id);
+  //   // Scroll to incidents panel if it exists
+  //   setTimeout(() => {
+  //     const incidentsPanel = document.getElementById('incidents-panel');
+  //     if (incidentsPanel) {
+  //       incidentsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  //     }
+  //   }, 100);
+  // };
 
   // WebSocket subscription for notifications
   useWebSocket({
@@ -601,16 +605,6 @@ export const SessionView = () => {
           </div>
         </div>
       </div>
-
-      {/* Auto-select AAR tab for completed sessions if no tab selected */}
-      {session.status === 'completed' && !activeTab && (
-        <script>
-          {() => {
-            setActiveTab('aar');
-            return null;
-          }}
-        </script>
-      )}
 
       {/* Content */}
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">

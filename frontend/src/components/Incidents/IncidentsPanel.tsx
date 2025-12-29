@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
-import { useWebSocket, type WebSocketEvent } from '../../hooks/useWebSocket';
+import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRealtime } from '../../hooks/useRealtime';
 import { supabase } from '../../lib/supabase';
 import { CreateIncidentForm } from '../Forms/CreateIncidentForm';
@@ -59,7 +58,7 @@ export const IncidentsPanel = ({
   selectedIncidentId,
   onIncidentSelect,
 }: IncidentsPanelProps) => {
-  const { user } = useAuth();
+  // const { user } = useAuth(); // Unused - keeping for potential future use
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -314,8 +313,8 @@ export const IncidentsPanel = ({
             const newAssignment = {
               agency_role: payload.agency_role || '',
               assigned_at: payload.assigned_at,
-              notes: payload.notes,
-            };
+              notes: payload.notes || undefined,
+            } as Incident['assignments'] extends (infer U)[] ? U : never;
             return {
               ...incident,
               assignments: [...(incident.assignments || []), newAssignment],
@@ -348,18 +347,18 @@ export const IncidentsPanel = ({
               return {
                 ...incident,
                 assignments: assignments?.map((a: any) => ({
-                  assignment_type: a.assignment_type,
-                  user_id: a.user_id,
-                  agency_role: a.agency_role,
-                  assigned_at: a.assigned_at,
-                  notes: a.notes,
+                  assignment_type: a.assignment_type as string | undefined,
+                  user_id: a.user_id as string | undefined,
+                  agency_role: a.agency_role as string | undefined,
+                  assigned_at: a.assigned_at as string,
+                  notes: (a.notes || undefined) as string | undefined,
                   assigned_user: a.assigned_user
                     ? {
                         id: a.assigned_user.id,
                         full_name: a.assigned_user.full_name,
                       }
                     : undefined,
-                })),
+                })) as Incident['assignments'],
               };
             }
             return incident;
@@ -376,7 +375,7 @@ export const IncidentsPanel = ({
   useWebSocket({
     sessionId,
     eventTypes: ['incident.created', 'incident.updated'],
-    onEvent: async (event: WebSocketEvent) => {
+    onEvent: async () => {
       // Fallback: reload if Realtime didn't catch it
       await loadIncidents();
     },

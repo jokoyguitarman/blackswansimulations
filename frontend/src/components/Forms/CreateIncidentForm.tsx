@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
 
 /**
@@ -14,7 +13,7 @@ interface CreateIncidentFormProps {
 }
 
 export const CreateIncidentForm = ({ sessionId, onClose, onSuccess }: CreateIncidentFormProps) => {
-  const { user } = useAuth();
+  // const { user } = useAuth(); // Unused - keeping for potential future use
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     title: '',

@@ -44,7 +44,7 @@ export const SessionLobby = ({
     participants: Array<{ user_id: string; is_ready: boolean; user?: { full_name: string } }>;
   } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [myTeams, setMyTeams] = useState<Array<{ team_name: string; team_role?: string }>>([]);
+  const [myTeams] = useState<Array<{ team_name: string; team_role?: string }>>([]);
 
   useEffect(() => {
     loadReadyStatus();

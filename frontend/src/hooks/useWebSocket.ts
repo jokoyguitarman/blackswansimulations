@@ -1,10 +1,13 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { websocketClient, type WebSocketEvent } from '../lib/websocketClient';
 
 /**
  * React Hook for WebSocket subscriptions - Client-side only
  * Separation of concerns: React-specific WebSocket integration
  */
+
+// Re-export WebSocketEvent for convenience
+export type { WebSocketEvent };
 
 export interface UseWebSocketOptions {
   sessionId?: string;

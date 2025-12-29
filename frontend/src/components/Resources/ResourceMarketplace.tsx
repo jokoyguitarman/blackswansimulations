@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
 import { CreateResourceRequestForm } from '../Forms/CreateResourceRequestForm';
-import { useWebSocket, type WebSocketEvent } from '../../hooks/useWebSocket';
+import { useWebSocket } from '../../hooks/useWebSocket';
 
 interface ResourceRequest {
   id: string;
@@ -52,7 +52,7 @@ export const ResourceMarketplace = ({ sessionId }: ResourceMarketplaceProps) => 
       'resource.rejected',
       'resource.transferred',
     ],
-    onEvent: async (event: WebSocketEvent) => {
+    onEvent: async () => {
       // Reload resources when any resource event occurs
       await loadResources();
     },

@@ -34,7 +34,7 @@
     "*.{ts,tsx,js,jsx,json,md}": [
       "prettier --write"
     ],
-    "*.{ts,tsx}": [
+    "{src,server,shared,api}/**/*.{ts,tsx}": [
       "eslint --max-warnings=0"
     ]
   },

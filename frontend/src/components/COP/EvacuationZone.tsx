@@ -13,11 +13,6 @@ interface EvacuationZoneProps {
 }
 
 export const EvacuationZone = ({ center, radius, title }: EvacuationZoneProps) => {
-  // Convert radius from meters to degrees (approximate)
-  // This is a rough conversion - for more accuracy, use proper projection
-  // 1 degree latitude ≈ 111,000 meters
-  const radiusInDegrees = radius / 111000;
-
   return (
     <>
       <Circle

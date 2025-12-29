@@ -47,7 +47,7 @@ export const TeamAssignmentModal = ({
     'medical',
     'security',
   ]);
-  const [newTeamName, setNewTeamName] = useState('');
+  // const [newTeamName, setNewTeamName] = useState(''); // Unused - keeping for potential future use
   const [selectedParticipant, setSelectedParticipant] = useState<string | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<string>('');
 

@@ -175,7 +175,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
                 [KEY_METRICS]
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {metrics.decision_latency && (
+                {metrics.decision_latency ? (
                   <div className="military-border p-4">
                     <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
                       [DECISION_LATENCY]
@@ -188,8 +188,8 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
                       min
                     </div>
                   </div>
-                )}
-                {metrics.coordination && (
+                ) : null}
+                {metrics.coordination ? (
                   <div className="military-border p-4">
                     <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
                       [COORDINATION_SCORE]
@@ -198,8 +198,8 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
                       {(metrics.coordination as { overall_score?: number }).overall_score || 0}/100
                     </div>
                   </div>
-                )}
-                {metrics.compliance && (
+                ) : null}
+                {metrics.compliance ? (
                   <div className="military-border p-4">
                     <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
                       [COMPLIANCE_RATE]
@@ -208,8 +208,8 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
                       {((metrics.compliance as { rate?: number }).rate || 0).toFixed(1)}%
                     </div>
                   </div>
-                )}
-                {metrics.objectives && (
+                ) : null}
+                {metrics.objectives ? (
                   <div className="military-border p-4">
                     <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
                       [OBJECTIVES_SCORE]
@@ -218,7 +218,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
                       {(metrics.objectives as { overall_score?: number }).overall_score || 0}/100
                     </div>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           )}
@@ -230,14 +230,16 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
                 [AI_INSIGHTS]
               </h4>
               <div className="space-y-2">
-                {aarData.aar.ai_insights.map((insight, idx) => (
-                  <div key={idx} className="military-border p-3">
-                    <div className="text-xs terminal-text text-robotic-green mb-1">
-                      [{insight.type || 'INSIGHT'}]
+                {aarData.aar.ai_insights.map(
+                  (insight: { type?: string; content?: string }, idx) => (
+                    <div key={idx} className="military-border p-3">
+                      <div className="text-xs terminal-text text-robotic-green mb-1">
+                        [{insight.type || 'INSIGHT'}]
+                      </div>
+                      <p className="text-sm terminal-text">{insight.content || ''}</p>
                     </div>
-                    <p className="text-sm terminal-text">{insight.content as string}</p>
-                  </div>
-                ))}
+                  ),
+                )}
               </div>
             </div>
           )}

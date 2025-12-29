@@ -1,5 +1,5 @@
 import { Marker, Popup } from 'react-leaflet';
-import { Icon, DivIcon } from 'leaflet';
+import { DivIcon } from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
 
 /**
