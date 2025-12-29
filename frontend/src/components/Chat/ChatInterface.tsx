@@ -1011,6 +1011,12 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
   };
 
   const handleStartDM = async (recipientId: string) => {
+    // Prevent creating DM with yourself
+    if (user?.id === recipientId) {
+      alert('Cannot create a direct message with yourself');
+      return;
+    }
+
     try {
       const result = await api.channels.createDM(sessionId, recipientId);
       await loadDMs();
@@ -1248,16 +1254,18 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
           <div className="mt-3 p-3 bg-robotic-gray-200 border border-green-400/50 max-h-40 overflow-y-auto">
             <p className="text-xs terminal-text text-green-400 mb-2 uppercase">[SELECT_USER]</p>
             <div className="space-y-1">
-              {participants.map((participant) => (
-                <button
-                  key={participant.id}
-                  onClick={() => handleStartDM(participant.id)}
-                  className="w-full text-left px-2 py-1 text-xs terminal-text hover:bg-green-400/10 border border-transparent hover:border-green-400/30"
-                >
-                  {participant.full_name} [{participant.role}]
-                </button>
-              ))}
-              {participants.length === 0 && (
+              {participants
+                .filter((participant) => participant.id !== user?.id)
+                .map((participant) => (
+                  <button
+                    key={participant.id}
+                    onClick={() => handleStartDM(participant.id)}
+                    className="w-full text-left px-2 py-1 text-xs terminal-text hover:bg-green-400/10 border border-transparent hover:border-green-400/30"
+                  >
+                    {participant.full_name} [{participant.role}]
+                  </button>
+                ))}
+              {participants.filter((p) => p.id !== user?.id).length === 0 && (
                 <p className="text-xs terminal-text text-robotic-yellow/50">
                   No other participants
                 </p>
