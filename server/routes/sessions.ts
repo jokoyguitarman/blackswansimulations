@@ -1186,15 +1186,33 @@ router.post(
           .select('user_id, is_ready, user:user_profiles(full_name)')
           .eq('session_id', id);
 
-        const totalParticipants = allParticipants?.length || 0;
-        const readyParticipants = allParticipants?.filter((p) => p.is_ready).length || 0;
+        // Transform participants to match expected type (user can be array from Supabase join)
+        const transformedParticipants = (allParticipants || []).map(
+          (p: {
+            user_id: string;
+            is_ready: boolean;
+            user?: { full_name: string } | Array<{ full_name: string }>;
+          }) => ({
+            user_id: p.user_id,
+            is_ready: p.is_ready,
+            user:
+              Array.isArray(p.user) && p.user.length > 0
+                ? { full_name: p.user[0].full_name }
+                : p.user && typeof p.user === 'object' && 'full_name' in p.user
+                  ? { full_name: (p.user as { full_name: string }).full_name }
+                  : undefined,
+          }),
+        );
+
+        const totalParticipants = transformedParticipants.length;
+        const readyParticipants = transformedParticipants.filter((p) => p.is_ready).length;
         const allReady = totalParticipants > 0 && readyParticipants === totalParticipants;
 
         getWebSocketService().readyStatusUpdated(id, {
           total: totalParticipants,
           ready: readyParticipants,
           all_ready: allReady,
-          participants: allParticipants || [],
+          participants: transformedParticipants,
         });
 
         logger.debug(
