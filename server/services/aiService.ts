@@ -270,3 +270,160 @@ Provide a detailed classification with high confidence.`;
     throw err;
   }
 };
+
+/**
+ * Objective Completion Evaluation Result
+ */
+export interface ObjectiveCompletionEvaluation {
+  isComplete: boolean;
+  confidence: number;
+  reasoning: string;
+  progressPercentage: number;
+}
+
+/**
+ * Evaluate if an objective has been completed based on executed decisions
+ * Analyzes all decisions against objective success criteria
+ */
+export const evaluateObjectiveCompletion = async (
+  objective: {
+    objective_id: string;
+    objective_name: string;
+    description: string;
+    success_criteria: Record<string, unknown>;
+  },
+  decisions: Array<{
+    id: string;
+    title: string;
+    description: string;
+    type: string;
+    executed_at: string;
+  }>,
+  sessionStartTime: string,
+  openAiApiKey: string,
+): Promise<ObjectiveCompletionEvaluation> => {
+  try {
+    const systemPrompt = `You are an expert crisis management evaluator. Your task is to determine if a scenario objective has been successfully completed based on the decisions made during the session.
+
+Analyze all executed decisions and evaluate them against the objective's success criteria. Consider:
+- Positive indicators: Decisions that satisfy or progress toward the objective
+- Negative indicators: Decisions that violate criteria or create penalties
+- Time-based criteria: Whether time thresholds are met
+- Threshold requirements: Whether quantitative targets are achieved
+- Quality indicators: Whether decisions demonstrate proper execution
+
+Return ONLY valid JSON in this exact format:
+{
+  "isComplete": true,
+  "confidence": 0.85,
+  "reasoning": "Brief explanation of why the objective is or isn't complete based on the decisions",
+  "progressPercentage": 95
+}
+
+Confidence should be between 0 and 1. Only mark isComplete as true if confidence >= 0.75.
+Progress percentage should reflect current completion status (0-100).`;
+
+    // Format decisions for context
+    const decisionsContext = decisions
+      .map((d, idx) => {
+        const timeFromStart = d.executed_at
+          ? Math.round(
+              (new Date(d.executed_at).getTime() - new Date(sessionStartTime).getTime()) / 60000,
+            )
+          : null;
+        return `Decision ${idx + 1} (${timeFromStart !== null ? `${timeFromStart} min` : 'time unknown'}):
+Title: ${d.title}
+Description: ${d.description}
+Type: ${d.type}
+Executed: ${d.executed_at}`;
+      })
+      .join('\n\n');
+
+    const userPrompt = `Evaluate if this objective has been completed:
+
+Objective: ${objective.objective_name}
+Description: ${objective.description}
+Success Criteria: ${JSON.stringify(objective.success_criteria, null, 2)}
+
+Executed Decisions (${decisions.length} total):
+${decisions.length > 0 ? decisionsContext : 'No decisions have been executed yet.'}
+
+Session Start Time: ${sessionStartTime}
+
+Based on the decisions made, determine:
+1. Has the objective been successfully completed?
+2. What is your confidence level (0-1)?
+3. What is the current progress percentage (0-100)?
+4. Provide brief reasoning for your evaluation.`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.3, // Lower temperature for consistent evaluation
+        max_tokens: 500,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+      const status = response.status;
+      const errorMessage = error.error?.message || error.message || 'Unknown error';
+
+      logger.error(
+        { error: errorMessage, status, objectiveId: objective.objective_id },
+        'OpenAI API error in objective completion evaluation',
+      );
+
+      const apiError = new Error(errorMessage) as Error & { statusCode?: number };
+      apiError.statusCode = status;
+
+      if (status === 429) {
+        apiError.message = 'Rate limit exceeded. Please wait a moment and try again.';
+      } else if (status === 401) {
+        apiError.message = 'OpenAI API key is invalid or expired.';
+      } else if (status === 503) {
+        apiError.message = 'OpenAI service is temporarily unavailable. Please try again later.';
+      }
+
+      throw apiError;
+    }
+
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content;
+
+    if (!content) {
+      throw new Error('No content received from OpenAI');
+    }
+
+    // Parse JSON response
+    const parsed = JSON.parse(content) as ObjectiveCompletionEvaluation;
+
+    // Validate and normalize
+    return {
+      isComplete: parsed.isComplete === true && parsed.confidence >= 0.75,
+      confidence:
+        typeof parsed.confidence === 'number' ? Math.max(0, Math.min(1, parsed.confidence)) : 0.5,
+      reasoning: parsed.reasoning || 'No reasoning provided',
+      progressPercentage:
+        typeof parsed.progressPercentage === 'number'
+          ? Math.max(0, Math.min(100, parsed.progressPercentage))
+          : 0,
+    };
+  } catch (err) {
+    logger.error(
+      { error: err, objectiveId: objective.objective_id },
+      'Error evaluating objective completion with AI',
+    );
+    throw err;
+  }
+};

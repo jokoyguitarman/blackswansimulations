@@ -3,15 +3,17 @@ import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
-import { validate, schemas } from '../lib/validation.js';
+import { validate } from '../lib/validation.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { logAndBroadcastEvent } from '../services/eventService.js';
 import { updateStateOnDecisionExecution } from '../services/scenarioStateService.js';
 import { classifyDecision } from '../services/aiService.js';
 import { evaluateDecisionBasedTriggers } from '../services/injectTriggerService.js';
-import { trackDecisionImpactOnObjectives } from '../services/objectiveTrackingService.js';
 import {
-  createNotificationsForRoles,
+  trackDecisionImpactOnObjectives,
+  evaluateAllObjectivesForSession,
+} from '../services/objectiveTrackingService.js';
+import {
   createNotification,
   createNotificationsForUsers,
 } from '../services/notificationService.js';
@@ -100,7 +102,7 @@ router.get(
 
       // Format: [{ id: '...', name: 'John Doe', role: 'police_commander' }]
       const users = participants
-        .map((p: any) => {
+        .map((p: Record<string, unknown>) => {
           const user = p.user as { id: string; full_name: string } | null;
           if (!user || !user.id) return null;
 
@@ -114,7 +116,7 @@ router.get(
             role: role,
           };
         })
-        .filter((u: any): u is { id: string; name: string; role: string } => u !== null)
+        .filter((u): u is { id: string; name: string; role: string } => u !== null)
         .sort((a, b) => {
           // Sort by role first, then by name
           const roleCompare = a.role.localeCompare(b.role);
@@ -189,7 +191,7 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
 
     if (!isTrainerOrAdmin) {
       // For regular participants, only show decisions they created or are assigned to approve
-      const decisionIds = (allDecisions || []).map((d: any) => d.id);
+      const decisionIds = (allDecisions || []).map((d: Record<string, unknown>) => d.id as string);
 
       if (decisionIds.length === 0) {
         relevantDecisions = [];
@@ -226,16 +228,16 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
             userDecisionIds: Array.from(userDecisionIds),
             totalDecisions: decisionIds.length,
             decisionsCreatedByUser: (allDecisions || []).filter(
-              (d: any) => d.proposed_by === user.id,
+              (d: Record<string, unknown>) => d.proposed_by === user.id,
             ).length,
           },
           'Filtering decisions for user',
         );
 
         // Filter decisions: user can see if they created it OR have a step in it
-        relevantDecisions = (allDecisions || []).filter((decision: any) => {
+        relevantDecisions = (allDecisions || []).filter((decision: Record<string, unknown>) => {
           const isCreator = decision.proposed_by === user.id;
-          const hasStep = userDecisionIds.has(decision.id);
+          const hasStep = userDecisionIds.has(decision.id as string);
           return isCreator || hasStep;
         });
 
@@ -288,14 +290,7 @@ router.post(
   async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      const {
-        session_id,
-        title,
-        description,
-        decision_type,
-        required_approvers,
-        resources_needed,
-      } = req.body;
+      const { session_id, title, description, decision_type, required_approvers } = req.body;
 
       // Verify session access
       const { data: session } = await supabaseAdmin
@@ -372,7 +367,7 @@ router.post(
         logger.info(
           {
             decisionId: data.id,
-            stepsToCreate: steps.map((s: any) => ({
+            stepsToCreate: steps.map((s: Record<string, unknown>) => ({
               user_id: s.user_id,
               role: s.role,
               step_order: s.step_order,
@@ -399,7 +394,7 @@ router.post(
           {
             decisionId: data.id,
             insertedStepsCount: insertedSteps?.length || 0,
-            insertedSteps: insertedSteps?.map((s: any) => ({
+            insertedSteps: insertedSteps?.map((s: Record<string, unknown>) => ({
               id: s.id,
               user_id: s.user_id,
               decision_id: s.decision_id,
@@ -767,6 +762,24 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       logger.error(
         { error: objectiveError, decisionId: id },
         'Error tracking decision impact on objectives, continuing with decision execution',
+      );
+    }
+
+    // Evaluate objectives with AI to determine if any are complete (non-blocking)
+    try {
+      // Run in background - don't await to avoid blocking decision execution
+      evaluateAllObjectivesForSession(decision.session_id, env.openAiApiKey).catch((evalError) => {
+        // Log but don't throw - this is a background process
+        logger.error(
+          { error: evalError, decisionId: id, sessionId: decision.session_id },
+          'Error in AI objective evaluation, continuing without blocking',
+        );
+      });
+    } catch (evalError) {
+      // Log but don't block decision execution
+      logger.error(
+        { error: evalError, decisionId: id },
+        'Error initiating AI objective evaluation, continuing with decision execution',
       );
     }
 

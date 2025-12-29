@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { evaluateAllObjectivesForSession as evaluateAllObjectivesWithAI } from './objectiveEvaluationService.js';
 
 /**
  * Objective Tracking Service
@@ -412,6 +413,27 @@ export async function trackDecisionImpactOnObjectives(
     logger.error(
       { error: err, sessionId, decisionId: decision.id },
       'Error tracking decision impact on objectives',
+    );
+  }
+}
+
+/**
+ * Evaluate all objectives for a session using AI
+ * Called after decision execution to determine if objectives are complete
+ * This is a non-blocking operation that runs in the background
+ */
+export async function evaluateAllObjectivesForSession(
+  sessionId: string,
+  openAiApiKey: string | undefined,
+): Promise<void> {
+  try {
+    // Call the AI evaluation service
+    await evaluateAllObjectivesWithAI(sessionId, openAiApiKey);
+  } catch (err) {
+    // Don't throw - this is a background process
+    logger.error(
+      { error: err, sessionId },
+      'Error in evaluateAllObjectivesForSession - continuing without blocking',
     );
   }
 }
