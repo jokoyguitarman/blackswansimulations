@@ -1,4 +1,12 @@
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+  type ReactNode,
+  useRef,
+} from 'react';
 import { api } from '../lib/api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { type WebSocketEvent } from '../lib/websocketClient';
@@ -121,15 +129,21 @@ export const NotificationProvider = ({ children, sessionId }: NotificationProvid
     [sessionId],
   );
 
-  // Initial load - only depend on user and sessionId, not the callbacks
-  // The callbacks are stable and only change when user/sessionId changes anyway
+  // Add a ref to track if we've already loaded
+  const hasLoadedRef = useRef(false);
+
   useEffect(() => {
-    if (user) {
+    if (user && !hasLoadedRef.current) {
+      hasLoadedRef.current = true;
       loadNotifications();
       refreshUnreadCount();
     }
+    // Reset when user changes
+    if (!user) {
+      hasLoadedRef.current = false;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, sessionId]);
+  }, [user]); // Only depend on user, not sessionId
 
   // Listen for new notifications via WebSocket
   useWebSocket({

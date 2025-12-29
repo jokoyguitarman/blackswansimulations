@@ -277,15 +277,14 @@ export const SessionView = () => {
   const loadSession = async () => {
     if (!id) return;
     try {
-      // For non-trainers, process invitations first to ensure they're added as participants
-      if (!isTrainer) {
-        try {
-          await api.sessions.processInvitations();
-        } catch (err) {
-          console.debug('Failed to process invitations:', err);
-          // Continue anyway - might have already been processed
-        }
-      }
+      // Remove this - it's already called in Sessions page
+      // if (!isTrainer) {
+      //   try {
+      //     await api.sessions.processInvitations();
+      //   } catch (err) {
+      //     console.debug('Failed to process invitations:', err);
+      //   }
+      // }
 
       const result = await api.sessions.get(id);
       const sessionData = result.data as Session;
