@@ -659,7 +659,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
     const { id } = req.params;
     const user = req.user!;
 
-    // Get decision
+    // Get decision to verify it exists
     const { data: decision } = await supabaseAdmin
       .from('decisions')
       .select('*')
@@ -670,11 +670,8 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       return res.status(404).json({ error: 'Decision not found' });
     }
 
-    if (decision.status !== 'approved') {
-      return res.status(400).json({ error: 'Only approved decisions can be executed' });
-    }
-
-    // Update decision status to executed
+    // Atomic update: Only update if status is 'approved'
+    // This prevents race conditions by checking and updating in a single database operation
     const { data: updatedDecision, error } = await supabaseAdmin
       .from('decisions')
       .update({
@@ -682,6 +679,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         executed_at: new Date().toISOString(),
       })
       .eq('id', id)
+      .eq('status', 'approved') // Atomic check: only update if status is 'approved'
       .select('*, creator:user_profiles!decisions_proposed_by_fkey(id, full_name, role)')
       .single();
 
@@ -690,22 +688,41 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       return res.status(500).json({ error: 'Failed to execute decision' });
     }
 
+    // If no rows were updated, it means the status wasn't 'approved'
+    if (!updatedDecision) {
+      // Get current status for better error message
+      const { data: currentDecision } = await supabaseAdmin
+        .from('decisions')
+        .select('status')
+        .eq('id', id)
+        .single();
+
+      logger.warn(
+        {
+          decisionId: id,
+          currentStatus: currentDecision?.status,
+          attemptedBy: user.id,
+        },
+        'Attempted to execute decision that is not approved',
+      );
+
+      return res.status(400).json({
+        error: 'Only approved decisions can be executed',
+        currentStatus: currentDecision?.status || 'unknown',
+      });
+    }
+
     // Map database fields to frontend expected fields
-    const mappedDecision = updatedDecision
-      ? {
-          ...updatedDecision,
-          decision_type: updatedDecision.type,
-        }
-      : {
-          ...decision,
-          decision_type: decision.type,
-        };
+    const mappedDecision = {
+      ...updatedDecision,
+      decision_type: updatedDecision.type,
+    };
 
     // Update scenario state based on decision execution
     try {
       await updateStateOnDecisionExecution(decision.session_id, {
-        ...decision,
-        decision_type: decision.type || 'operational_action', // Map type to decision_type
+        ...updatedDecision,
+        decision_type: updatedDecision.type || 'operational_action',
       });
     } catch (stateError) {
       logger.error(
