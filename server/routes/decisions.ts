@@ -8,7 +8,7 @@ import { getWebSocketService } from '../services/websocketService.js';
 import { logAndBroadcastEvent } from '../services/eventService.js';
 import { updateStateOnDecisionExecution } from '../services/scenarioStateService.js';
 import { classifyDecision } from '../services/aiService.js';
-import { evaluateDecisionBasedTriggers } from '../services/injectTriggerService.js';
+import { generateAndPublishInjectFromDecision } from '../services/injectTriggerService.js';
 import {
   trackDecisionImpactOnObjectives,
   evaluateAllObjectivesForSession,
@@ -731,7 +731,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       );
     }
 
-    // AI classifies decision and triggers matching injects
+    // AI classifies decision and generates fresh injects
     try {
       if (env.openAiApiKey) {
         // AI classifies decision
@@ -749,13 +749,14 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
           })
           .eq('id', id);
 
-        // Check for decision-based inject triggers
-        await evaluateDecisionBasedTriggers(
+        // Generate and publish a fresh inject based on the decision
+        await generateAndPublishInjectFromDecision(
           decision.session_id,
           {
             id: decision.id,
             title: decision.title,
             description: decision.description,
+            type: decision.type || aiClassification.primary_category,
           },
           aiClassification,
           io,
@@ -763,7 +764,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
 
         logger.info(
           { decisionId: id, classification: aiClassification.primary_category },
-          'Decision classified and triggers evaluated',
+          'Decision classified and fresh inject generated',
         );
       } else {
         logger.warn('OpenAI API key not configured, skipping decision classification');
@@ -772,7 +773,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       // Don't block decision execution if classification fails
       logger.error(
         { error: classificationError, decisionId: id },
-        'Error in AI classification or trigger evaluation, continuing with decision execution',
+        'Error in AI classification or inject generation, continuing with decision execution',
       );
     }
 

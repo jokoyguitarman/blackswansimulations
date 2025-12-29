@@ -427,3 +427,196 @@ Based on the decisions made, determine:
     throw err;
   }
 };
+
+/**
+ * Generated Inject from AI
+ */
+export interface GeneratedInject {
+  type:
+    | 'media_report'
+    | 'field_update'
+    | 'citizen_call'
+    | 'intel_brief'
+    | 'resource_shortage'
+    | 'weather_change'
+    | 'political_pressure';
+  title: string;
+  content: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  affected_roles: string[];
+  inject_scope?: 'universal' | 'role_specific' | 'team_specific';
+  requires_response?: boolean;
+  requires_coordination?: boolean;
+}
+
+/**
+ * Generate an inject based on a decision that was just executed
+ * Creates realistic consequences, reactions, or developments that would naturally follow from the decision
+ */
+export const generateInjectFromDecision = async (
+  decision: {
+    title: string;
+    description: string;
+    type: string;
+  },
+  sessionContext: {
+    scenarioDescription?: string;
+    recentDecisions?: Array<{ title: string; description: string }>;
+    sessionDurationMinutes?: number;
+  },
+  openAiApiKey: string,
+): Promise<GeneratedInject | null> => {
+  try {
+    const systemPrompt = `You are an expert crisis management scenario designer. Your task is to generate realistic injects (events, updates, or developments) that would naturally occur as consequences or reactions to decisions made during emergency response scenarios.
+
+An inject should:
+1. Be a realistic consequence, reaction, or development that follows from the decision
+2. Challenge players with new information or complications
+3. Be appropriate for the scenario context
+4. Have appropriate severity based on the decision's impact
+5. Target relevant roles that would be affected
+
+Available inject types:
+- media_report: News reports, press coverage, social media reactions
+- field_update: On-the-ground situation updates, operational reports
+- citizen_call: Reports from citizens, complaints, requests for help
+- intel_brief: Intelligence updates, security information
+- resource_shortage: Resource availability issues, supply problems
+- weather_change: Environmental conditions, weather updates
+- political_pressure: Political demands, official pressure, policy concerns
+
+Return ONLY valid JSON in this exact format:
+{
+  "type": "media_report",
+  "title": "Short, descriptive title (max 200 chars)",
+  "content": "Detailed, realistic content describing the inject. Should be 2-4 sentences, written as if it's a real update or report.",
+  "severity": "medium",
+  "affected_roles": ["public_information_officer", "police_commander"],
+  "inject_scope": "universal",
+  "requires_response": false,
+  "requires_coordination": false
+}
+
+Important:
+- Only generate an inject if the decision warrants a meaningful consequence or reaction
+- Make the inject feel natural and realistic, not forced
+- Severity should match the decision's impact (low for minor decisions, critical for major emergency declarations)
+- affected_roles should include roles that would realistically need to know about or respond to this inject
+- If the decision doesn't warrant an inject, return null`;
+
+    // Build context about recent decisions
+    const recentDecisionsContext =
+      sessionContext.recentDecisions && sessionContext.recentDecisions.length > 0
+        ? `\n\nRecent decisions made in this session:\n${sessionContext.recentDecisions
+            .slice(-5) // Last 5 decisions
+            .map((d, idx) => `${idx + 1}. ${d.title}: ${d.description}`)
+            .join('\n')}`
+        : '';
+
+    const scenarioContext = sessionContext.scenarioDescription
+      ? `\n\nScenario context: ${sessionContext.scenarioDescription}`
+      : '';
+
+    const userPrompt = `Generate an inject based on this decision:
+
+Decision Title: ${decision.title}
+Decision Description: ${decision.description}
+Decision Type: ${decision.type}${scenarioContext}${recentDecisionsContext}
+
+Generate a realistic inject that would naturally follow from this decision. Consider:
+- What would be the immediate consequences or reactions?
+- Who would be affected or need to know?
+- What new information or complications might arise?
+- How severe would the impact be?
+
+If this decision doesn't warrant a meaningful inject, return null. Otherwise, return a well-crafted inject.`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.7, // Creative but consistent
+        max_tokens: 800,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+      const status = response.status;
+      const errorMessage = error.error?.message || error.message || 'Unknown error';
+
+      logger.error({ error: errorMessage, status }, 'OpenAI API error in inject generation');
+
+      const apiError = new Error(errorMessage) as Error & { statusCode?: number };
+      apiError.statusCode = status;
+
+      if (status === 429) {
+        apiError.message = 'Rate limit exceeded. Please wait a moment and try again.';
+      } else if (status === 401) {
+        apiError.message = 'OpenAI API key is invalid or expired.';
+      } else if (status === 503) {
+        apiError.message = 'OpenAI service is temporarily unavailable. Please try again later.';
+      }
+
+      throw apiError;
+    }
+
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content;
+
+    if (!content) {
+      throw new Error('No content received from OpenAI');
+    }
+
+    // Parse JSON response
+    const parsed = JSON.parse(content);
+
+    // If AI returned null, don't generate an inject
+    if (parsed === null || (typeof parsed === 'object' && Object.keys(parsed).length === 0)) {
+      logger.debug(
+        { decisionTitle: decision.title },
+        'AI determined no inject needed for decision',
+      );
+      return null;
+    }
+
+    // Validate and normalize
+    const validTypes = [
+      'media_report',
+      'field_update',
+      'citizen_call',
+      'intel_brief',
+      'resource_shortage',
+      'weather_change',
+      'political_pressure',
+    ];
+    const validSeverities = ['low', 'medium', 'high', 'critical'];
+    const validScopes = ['universal', 'role_specific', 'team_specific'];
+
+    return {
+      type: validTypes.includes(parsed.type) ? parsed.type : 'field_update',
+      title: parsed.title || 'Update',
+      content: parsed.content || 'No content provided',
+      severity: validSeverities.includes(parsed.severity) ? parsed.severity : 'medium',
+      affected_roles: Array.isArray(parsed.affected_roles) ? parsed.affected_roles : [],
+      inject_scope: validScopes.includes(parsed.inject_scope) ? parsed.inject_scope : 'universal',
+      requires_response: parsed.requires_response === true,
+      requires_coordination: parsed.requires_coordination === true,
+    };
+  } catch (err) {
+    logger.error(
+      { error: err, decisionTitle: decision.title },
+      'Error generating inject from decision',
+    );
+    return null; // Return null on error to not block decision execution
+  }
+};

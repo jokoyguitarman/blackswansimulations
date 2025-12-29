@@ -2,6 +2,8 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import type { Server as SocketServer } from 'socket.io';
+import { generateInjectFromDecision } from './aiService.js';
+import { env } from '../env.js';
 
 /**
  * Decision Classification from AI
@@ -128,7 +130,44 @@ export function matchesTriggerCondition(
 }
 
 /**
+ * Get list of inject IDs that have already been published to a session
+ */
+async function getPublishedInjectIds(sessionId: string): Promise<Set<string>> {
+  try {
+    const { data: events, error } = await supabaseAdmin
+      .from('session_events')
+      .select('metadata')
+      .eq('session_id', sessionId)
+      .eq('event_type', 'inject');
+
+    if (error) {
+      logger.error({ error, sessionId }, 'Failed to fetch published injects');
+      return new Set(); // Return empty set on error to be safe
+    }
+
+    if (!events || events.length === 0) {
+      return new Set();
+    }
+
+    // Extract inject IDs from metadata
+    const publishedIds = new Set<string>();
+    for (const event of events) {
+      const metadata = event.metadata as { inject_id?: string } | null;
+      if (metadata?.inject_id) {
+        publishedIds.add(metadata.inject_id);
+      }
+    }
+
+    return publishedIds;
+  } catch (err) {
+    logger.error({ error: err, sessionId }, 'Error getting published inject IDs');
+    return new Set(); // Return empty set on error to be safe
+  }
+}
+
+/**
  * Find injects that should be triggered based on decision classification
+ * Only returns injects that haven't been published yet (one-time use)
  */
 export async function findMatchingInjects(
   sessionId: string,
@@ -164,10 +203,22 @@ export async function findMatchingInjects(
       return [];
     }
 
-    // Filter injects that match the classification
+    // Get list of injects that have already been published (one-time use limit)
+    const publishedInjectIds = await getPublishedInjectIds(sessionId);
+
+    // Filter injects that match the classification AND haven't been published yet
     const matchingInjects: Array<{ id: string; trigger_condition: string }> = [];
 
     for (const inject of injects) {
+      // Skip if inject has already been published (one-time use)
+      if (publishedInjectIds.has(inject.id)) {
+        logger.debug(
+          { sessionId, injectId: inject.id },
+          'Skipping inject that has already been published (one-time use limit)',
+        );
+        continue;
+      }
+
       const condition = parseTriggerCondition(inject.trigger_condition);
       if (condition && matchesTriggerCondition(condition, classification)) {
         matchingInjects.push({
@@ -186,37 +237,40 @@ export async function findMatchingInjects(
 
 /**
  * Check if inject has already been published to session
+ * This is a secondary check to ensure one-time use limit is enforced
  */
 export async function shouldTriggerInject(injectId: string, sessionId: string): Promise<boolean> {
   try {
     // Check if inject has been published (via session_events)
+    // Note: inject_id is stored in metadata, not event_data
     const { data: events, error } = await supabaseAdmin
       .from('session_events')
-      .select('event_data')
+      .select('metadata')
       .eq('session_id', sessionId)
       .eq('event_type', 'inject');
 
     if (error) {
       logger.error({ error, sessionId, injectId }, 'Failed to check published injects');
-      return true; // Default to allowing trigger if we can't check
+      return false; // Default to blocking trigger if we can't check (safer)
     }
 
     if (!events || events.length === 0) {
       return true; // No injects published yet, allow trigger
     }
 
-    // Check if this inject ID is in the published events
+    // Check if this inject ID is in the published events (stored in metadata)
     for (const event of events) {
-      const eventData = event.event_data as { inject_id?: string };
-      if (eventData?.inject_id === injectId) {
-        return false; // Already published
+      const metadata = event.metadata as { inject_id?: string } | null;
+      if (metadata?.inject_id === injectId) {
+        logger.debug({ sessionId, injectId }, 'Inject already published, blocking trigger');
+        return false; // Already published - enforce one-time use
       }
     }
 
     return true; // Not published yet, allow trigger
   } catch (err) {
     logger.error({ error: err, sessionId, injectId }, 'Error checking if inject should trigger');
-    return true; // Default to allowing trigger on error
+    return false; // Default to blocking trigger on error (safer for one-time use)
   }
 }
 
@@ -317,6 +371,132 @@ export async function evaluateDecisionBasedTriggers(
     logger.error(
       { error: err, sessionId, decisionId: decision.id },
       'Error evaluating decision-based triggers',
+    );
+    // Don't throw - we don't want to block decision execution
+  }
+}
+
+/**
+ * Generate and publish a fresh inject based on a decision
+ * This creates a new inject dynamically rather than matching against pre-defined ones
+ */
+export async function generateAndPublishInjectFromDecision(
+  sessionId: string,
+  decision: { id: string; title: string; description: string; type: string },
+  classification: DecisionClassification,
+  io?: SocketServer,
+): Promise<void> {
+  try {
+    logger.info(
+      { sessionId, decisionId: decision.id, classification: classification.primary_category },
+      'Generating fresh inject from decision',
+    );
+
+    // Get session and scenario context
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('scenario_id, trainer_id, started_at')
+      .eq('id', sessionId)
+      .single();
+
+    if (!session) {
+      logger.warn({ sessionId }, 'Session not found for inject generation');
+      return;
+    }
+
+    // Get scenario description for context
+    const { data: scenario } = await supabaseAdmin
+      .from('scenarios')
+      .select('description')
+      .eq('id', session.scenario_id)
+      .single();
+
+    // Get recent decisions for context (last 5)
+    const { data: recentDecisions } = await supabaseAdmin
+      .from('decisions')
+      .select('title, description')
+      .eq('session_id', sessionId)
+      .eq('status', 'executed')
+      .order('executed_at', { ascending: false })
+      .limit(5);
+
+    // Calculate session duration
+    const sessionDurationMinutes = session.started_at
+      ? Math.round((new Date().getTime() - new Date(session.started_at).getTime()) / 60000)
+      : undefined;
+
+    // Generate inject using AI
+    if (!env.openAiApiKey) {
+      logger.warn('OpenAI API key not configured, skipping inject generation');
+      return;
+    }
+
+    const generatedInject = await generateInjectFromDecision(
+      decision,
+      {
+        scenarioDescription: scenario?.description,
+        recentDecisions: recentDecisions || [],
+        sessionDurationMinutes,
+      },
+      env.openAiApiKey,
+    );
+
+    if (!generatedInject) {
+      logger.debug({ sessionId, decisionId: decision.id }, 'AI determined no inject needed');
+      return;
+    }
+
+    // Create the inject in the database
+    const { data: createdInject, error: createError } = await supabaseAdmin
+      .from('scenario_injects')
+      .insert({
+        scenario_id: session.scenario_id,
+        trigger_time_minutes: null, // Not time-based
+        trigger_condition: null, // Not condition-based (fresh generation)
+        type: generatedInject.type,
+        title: generatedInject.title,
+        content: generatedInject.content,
+        severity: generatedInject.severity,
+        affected_roles: generatedInject.affected_roles || [],
+        inject_scope: generatedInject.inject_scope || 'universal',
+        requires_response: generatedInject.requires_response ?? false,
+        requires_coordination: generatedInject.requires_coordination ?? false,
+        ai_generated: true, // Mark as AI-generated
+      })
+      .select()
+      .single();
+
+    if (createError) {
+      logger.error(
+        { error: createError, sessionId, decisionId: decision.id },
+        'Failed to create AI-generated inject',
+      );
+      return;
+    }
+
+    if (!createdInject) {
+      logger.error({ sessionId, decisionId: decision.id }, 'Inject creation returned no data');
+      return;
+    }
+
+    // Get io instance if not provided
+    let socketIo = io;
+    if (!socketIo) {
+      const { io: importedIo } = await import('../index.js');
+      socketIo = importedIo;
+    }
+
+    // Immediately publish the inject
+    await publishInjectToSession(createdInject.id, sessionId, session.trainer_id, socketIo);
+
+    logger.info(
+      { sessionId, decisionId: decision.id, injectId: createdInject.id },
+      'AI-generated inject created and published',
+    );
+  } catch (err) {
+    logger.error(
+      { error: err, sessionId, decisionId: decision.id },
+      'Error generating and publishing inject from decision',
     );
     // Don't throw - we don't want to block decision execution
   }
