@@ -27,6 +27,7 @@ import { notificationsRouter } from './routes/notifications.js';
 import { setupWebSocket } from './websocket/index.js';
 import { initializeWebSocketService } from './services/websocketService.js';
 import { initializeInjectScheduler } from './services/injectSchedulerService.js';
+import jwt from 'jsonwebtoken';
 
 const app = express();
 const server = http.createServer(app);
@@ -76,15 +77,35 @@ app.use(
   }),
 );
 
-// Increase rate limit for production
+// Per-user rate limiting - significantly increased limits
+// Each authenticated user gets their own limit, preventing one user from affecting others
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: env.nodeEnv === 'production' ? 500 : 1000, // Increased from 100 to 500
-  message: 'Too many requests from this IP, please try again later.',
+  max: env.nodeEnv === 'production' ? 10000 : 20000, // 10k per user in prod, 20k in dev
+  message: 'Too many requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  // Use user ID for authenticated requests, IP for anonymous
+  keyGenerator: (req) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (authHeader) {
+        const [, token] = authHeader.split(' ');
+        if (token) {
+          // Decode JWT without verification (lightweight)
+          // The token will be verified later by requireAuth middleware
+          const decoded = jwt.decode(token) as { sub?: string } | null;
+          if (decoded?.sub) {
+            return `user:${decoded.sub}`;
+          }
+        }
+      }
+    } catch {
+      // Fall back to IP if token parsing fails
+    }
+    return req.ip || req.socket.remoteAddress || 'unknown';
+  },
   skip: (req) => {
-    // Skip rate limiting for health checks
     return req.path === '/health';
   },
 });
