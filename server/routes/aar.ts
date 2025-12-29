@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
-import { validate, schemas } from '../lib/validation.js';
 import {
   calculateDecisionLatency,
   calculateCommunicationMetrics,
@@ -68,12 +67,12 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
           .from('participant_scores')
           .select('*, participant:user_profiles!participant_scores_participant_id_fkey(*)')
           .eq('aar_report_id', aar.id)
-      : { data: null, error: null };
+      : { data: null };
 
     // Get AAR metrics
     const { data: metrics } = aar
       ? await supabaseAdmin.from('aar_metrics').select('*').eq('aar_report_id', aar.id)
-      : { data: null, error: null };
+      : { data: null };
 
     // Get all events for timeline
     const { data: events } = await supabaseAdmin

@@ -189,14 +189,14 @@ router.get('/session/:sessionId/dms', requireAuth, async (req: AuthenticatedRequ
     }
 
     // Filter channels where user is a member (members is JSONB array)
-    const dmChannels = (allDmChannels || []).filter((channel: any) => {
+    const dmChannels = (allDmChannels || []).filter((channel: Record<string, unknown>) => {
       const members = (channel.members as string[]) || [];
       return Array.isArray(members) && members.includes(user.id);
     });
 
     // Enrich with recipient info (resilient - one failure doesn't break all)
     const enrichedChannels = await Promise.all(
-      dmChannels.map(async (channel: any) => {
+      dmChannels.map(async (channel: Record<string, unknown>) => {
         try {
           const members = (channel.members as string[]) || [];
           const recipientId = members.find((id: string) => id !== user.id);
@@ -325,13 +325,13 @@ router.get(
       }
 
       // Add trainer to participants list if not already there
-      let allSessionParticipants = (participants || []).map((p: any) => ({
+      const allSessionParticipants = (participants || []).map((p: Record<string, unknown>) => ({
         id: p.user_id,
         ...p.user,
       }));
 
       if (session.trainer_id) {
-        const { data: trainerProfile, error: trainerError } = await supabaseAdmin
+        const { data: trainerProfile } = await supabaseAdmin
           .from('user_profiles')
           .select('id, full_name, role, agency_name')
           .eq('id', session.trainer_id)
@@ -412,7 +412,7 @@ router.post(
         .eq('session_id', sessionId)
         .eq('type', 'direct');
 
-      const existingChannel = (allDMChannels || []).find((channel: any) => {
+      const existingChannel = (allDMChannels || []).find((channel: Record<string, unknown>) => {
         const channelMembers = (channel.members as string[]) || [];
         if (channelMembers.length !== 2) return false;
         const sortedChannelMembers = [...channelMembers].sort();
@@ -651,7 +651,7 @@ router.post(
       // Verify channel access
       const { data: channel } = await supabaseAdmin
         .from('chat_channels')
-        .select('session_id, type, members')
+        .select('session_id, type, members, name')
         .eq('id', channelId)
         .single();
 
