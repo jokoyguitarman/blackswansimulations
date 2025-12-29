@@ -222,6 +222,7 @@ export async function shouldTriggerInject(injectId: string, sessionId: string): 
 
 /**
  * Evaluate decision-based triggers and auto-publish matching injects
+ * Limits the number of injects published per decision to prevent flooding
  */
 export async function evaluateDecisionBasedTriggers(
   sessionId: string,
@@ -260,8 +261,28 @@ export async function evaluateDecisionBasedTriggers(
       return;
     }
 
-    // Publish each matching inject
+    // Limit the number of injects published per decision (default: 2)
+    // This prevents flooding the screen with too many injects at once
+    const maxInjectsPerDecision = Number(process.env.MAX_DECISION_INJECTS_PER_TRIGGER) || 2;
+    let publishedCount = 0;
+
+    // Publish each matching inject (up to the limit)
     for (const inject of matchingInjects) {
+      // Stop if we've reached the limit
+      if (publishedCount >= maxInjectsPerDecision) {
+        logger.info(
+          {
+            sessionId,
+            decisionId: decision.id,
+            publishedCount,
+            totalMatches: matchingInjects.length,
+            limit: maxInjectsPerDecision,
+          },
+          'Reached decision-based inject limit, remaining injects will not be published',
+        );
+        break;
+      }
+
       // Check if already published
       const shouldTrigger = await shouldTriggerInject(inject.id, sessionId);
       if (!shouldTrigger) {
@@ -278,9 +299,10 @@ export async function evaluateDecisionBasedTriggers(
         }
 
         await publishInjectToSession(inject.id, sessionId, session.trainer_id, socketIo);
+        publishedCount++;
 
         logger.info(
-          { sessionId, decisionId: decision.id, injectId: inject.id },
+          { sessionId, decisionId: decision.id, injectId: inject.id, publishedCount },
           'Auto-published inject based on decision',
         );
       } catch (publishErr) {
