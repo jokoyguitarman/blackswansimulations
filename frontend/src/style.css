@@ -1,0 +1,214 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700;900&display=swap');
+@import 'leaflet/dist/leaflet.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 50%, #0f0f0f 100%);
+  background-attachment: fixed;
+  color: #FFB800;
+  overflow-x: hidden;
+}
+
+#app {
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* Futuristic Robotic Military aesthetic */
+@layer utilities {
+  .terminal-text {
+    font-family: 'JetBrains Mono', monospace;
+    color: #FFB800;
+    text-shadow: 
+      0 0 10px rgba(255, 184, 0, 0.6),
+      0 0 20px rgba(255, 184, 0, 0.3);
+  }
+  
+  .classified-stamp {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    color: #FF6B35;
+    text-shadow: 
+      0 0 10px rgba(255, 107, 53, 0.8),
+      0 0 20px rgba(255, 107, 53, 0.4);
+    letter-spacing: 0.2em;
+    transform: rotate(-15deg);
+  }
+  
+  .scanline {
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .scanline::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(
+      90deg, 
+      transparent, 
+      rgba(255, 184, 0, 0.4), 
+      rgba(255, 107, 53, 0.4),
+      transparent
+    );
+    animation: scan 4s linear infinite;
+    pointer-events: none;
+  }
+  
+  @keyframes scan {
+    0% { transform: translateY(0); opacity: 0.3; }
+    50% { opacity: 0.8; }
+    100% { transform: translateY(100vh); opacity: 0.3; }
+  }
+  
+  .military-border {
+    border: 1px solid;
+    border-image: linear-gradient(135deg, #FFB800, #FF6B35, #FFB800) 1;
+    background: linear-gradient(135deg, rgba(26, 26, 26, 0.95) 0%, rgba(45, 45, 45, 0.95) 100%);
+    box-shadow: 
+      0 0 20px rgba(255, 184, 0, 0.2),
+      inset 0 0 20px rgba(255, 184, 0, 0.05),
+      0 4px 6px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+  }
+  
+  .military-input {
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+    border: 1px solid rgba(255, 184, 0, 0.3);
+    color: #FFB800;
+    font-family: 'JetBrains Mono', monospace;
+    transition: all 0.3s ease;
+  }
+  
+  .military-input:focus {
+    outline: none;
+    border-color: #FFB800;
+    box-shadow: 
+      0 0 15px rgba(255, 184, 0, 0.4),
+      inset 0 0 10px rgba(255, 184, 0, 0.1);
+    background: linear-gradient(135deg, #2d2d2d 0%, #3a3a3a 100%);
+  }
+  
+  .military-input::placeholder {
+    color: rgba(255, 184, 0, 0.4);
+  }
+  
+  .military-button {
+    background: linear-gradient(135deg, #FFB800 0%, #FF6B35 100%);
+    border: 1px solid rgba(255, 184, 0, 0.5);
+    color: #0f0f0f;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    box-shadow: 
+      0 4px 15px rgba(255, 184, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    transition: all 0.3s ease;
+  }
+  
+  .military-button:hover {
+    background: linear-gradient(135deg, #FFD700 0%, #FF8C42 100%);
+    box-shadow: 
+      0 6px 25px rgba(255, 184, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+  }
+  
+  .military-button:active {
+    transform: translateY(0);
+    box-shadow: 
+      0 2px 10px rgba(255, 184, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+  
+  .military-button:disabled {
+    background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
+    border-color: rgba(255, 184, 0, 0.2);
+    color: rgba(255, 184, 0, 0.4);
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+}
+
+a {
+  font-weight: 500;
+  color: #FFB800;
+  text-decoration: inherit;
+  transition: color 0.3s ease;
+}
+a:hover {
+  color: #FFD700;
+}
+
+h1 {
+  font-size: 2em;
+  line-height: 1.2;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.vanilla:hover {
+  filter: drop-shadow(0 0 2em #3178c6aa);
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: #646cff;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+  a:hover {
+    color: #747bff;
+  }
+  button {
+    background-color: #f9f9f9;
+  }
+}

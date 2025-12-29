@@ -1,0 +1,238 @@
+C2E BOMBING SCENARIO - DECISION TREE FLOW
+============================================
+
+TIMELINE FLOW (Top to Bottom)
+==============================
+
+T+0: Initial Explosion
+    |
+    |
+T+5: Fragmented Early Reports
+    |
+    |
+T+6: Exit Congestion (E1) + Unclear Casualty Count (T1)
+    |
+    |
+    +---> TRIAGE DECISION (3A) - Available at T+6
+    |     |
+    |     +---> Option 3A: Prioritize Triage
+    |           |
+    |           +---> Consequence: Coordination Suffers (HIGH) [SUGGESTION]
+    |
+    |
+T+9: Fake Voice Note (M1)
+    |
+    |
+T+10: Emergency Services Delay + Viral Video Circulates
+    |
+    |
+    +---> CONTEXT ESTABLISHED: Media Narrative About Malays Exists
+    |     |
+    |     +---> EVACUATION DECISION - Available after T+10
+    |           |
+    |           +---> Option 1A: Evacuate Everyone Together
+    |           |     |
+    |           |     +---> Consequence: People Refuse Evacuation (CRITICAL)
+    |           |     |
+    |           |     +---> Consequence: Alternative Exit Routes (HIGH) [SUGGESTION]
+    |           |
+    |           +---> Option 1B: Segregate by Demographics
+    |           |     |
+    |           |     +---> Consequence: Discriminatory Backlash (CRITICAL)
+    |           |     |
+    |           |     +---> Consequence: Legal Violation Concerns (HIGH) [SUGGESTION]
+    |           |
+    |           +---> Option 1C: Delay Evacuation, Investigate First
+    |                 |
+    |                 +---> Consequence: Public Pressure Mounts (HIGH)
+    |                 |
+    |                 +---> Consequence: Secondary Threat Risk (CRITICAL) [SUGGESTION]
+    |
+    |
+T+11: Request to Segregate (E2) + Amplified Online Claims (M2)
+    |
+    |
+T+12: Journalist Arrives + Press Demand (M3) + On-Site Filming (T2)
+    |
+    |
+    +---> TRIAGE DECISION (3B) - Available at T+12
+    |     |
+    |     +---> Option 3B: Allow Filming of Casualty Zone
+    |           |
+    |           +---> Consequence: Privacy Violated (HIGH)
+    |
+    |
+    +---> CONTEXT: Journalist Arrived
+    |     |
+    |     +---> MEDIA/COMMUNICATION DECISION - Available after T+12
+    |           |
+    |           +---> Option 2A: Address Misinformation Directly
+    |           |     |
+    |           |     +---> Consequence: Statement Partially Effective (MEDIUM)
+    |           |     |
+    |           |     +---> Consequence: Statement Backfires (HIGH) [SUGGESTION]
+    |           |
+    |           +---> Option 2B: Issue Statement Without Addressing Misinformation
+    |           |     |
+    |           |     +---> Consequence: Fails to Counter Misinformation (CRITICAL)
+    |           |
+    |           +---> Option 2C: Refuse to Comment / No Statement
+    |                 |
+    |                 +---> Consequence: Media Vacuum Filled by Speculation (CRITICAL)
+    |
+    |
+T+14: Suspicious Individual (E3)
+    |
+    |
+    +---> CONTEXT: Suspicious Individual Reported
+    |     |
+    |     +---> SECURITY DECISION - Available after T+14
+    |           |
+    |           +---> Option 4A: Ignore/Dismiss Report
+    |           |     |
+    |           |     +---> Consequence: Missed Threat Opportunity (CRITICAL) [SUGGESTION]
+    |           |
+    |           +---> Option 4B: Coordinate Multi-Team Response
+    |                 |
+    |                 +---> Consequence: Coordinated Response Successful (MEDIUM) [SUGGESTION]
+    |
+    |
+T+15: Crowd Tension Escalation + Accusations from Patient (T3)
+    |
+    |
+    +---> COMBINED DECISION SCENARIO (5A)
+          |
+          +---> Condition: Branch 1A (Evacuate Together) AND Branch 2B (Statement Without Addressing)
+                |
+                +---> Consequence: Perfect Storm - Multiple Failures (CRITICAL) [SUGGESTION]
+
+
+DECISION BRANCH DETAILS
+========================
+
+BRANCH 1: EVACUATION DECISIONS
+-------------------------------
+Available: After T+10 (when media narrative exists)
+
+1A: Evacuate Everyone Together
+    ├─> People Refuse Evacuation (CRITICAL)
+    │   Type: field_update
+    │   Affected: evacuation, media
+    │   Requires Response: Yes
+    │
+    └─> Alternative Exit Routes Created (HIGH) [SUGGESTION]
+        Type: field_update
+        Affected: evacuation, triage
+        Requires Response: Yes
+
+1B: Segregate by Demographics
+    ├─> Discriminatory Evacuation Causes Backlash (CRITICAL)
+    │   Type: media_report
+    │   Affected: media, evacuation
+    │   Requires Response: Yes
+    │
+    └─> Legal/Policy Violation Concerns (HIGH) [SUGGESTION]
+        Type: political_pressure
+        Affected: media, evacuation
+        Requires Response: Yes
+
+1C: Delay Evacuation, Investigate First
+    ├─> Public Pressure Mounts (HIGH)
+    │   Type: political_pressure
+    │   Affected: media, evacuation
+    │   Requires Response: Yes
+    │
+    └─> Secondary Threat Risk Increases (CRITICAL) [SUGGESTION]
+        Type: intel_brief
+        Affected: evacuation, triage
+        Requires Response: Yes
+
+
+BRANCH 2: MEDIA/COMMUNICATION DECISIONS
+----------------------------------------
+Available: After T+10 (context established) and T+12 (journalist arrived for 2C)
+
+2A: Address Misinformation Directly
+    ├─> Statement Partially Effective (MEDIUM)
+    │   Type: media_report
+    │   Affected: media
+    │   Requires Response: No
+    │
+    └─> Statement Backfires (HIGH) [SUGGESTION]
+        Type: media_report
+        Affected: media
+        Requires Response: Yes
+
+2B: Issue Statement Without Addressing Misinformation
+    └─> Statement Fails to Counter Misinformation (CRITICAL)
+        Type: media_report
+        Affected: media, evacuation
+        Requires Response: Yes
+
+2C: Refuse to Comment / No Statement
+    └─> Media Vacuum Filled by Speculation (CRITICAL)
+        Type: media_report
+        Affected: media
+        Requires Response: Yes
+
+
+BRANCH 3: TRIAGE/MEDICAL DECISIONS
+-----------------------------------
+3A: Available at T+6
+    └─> Evacuation Coordination Suffers (HIGH) [SUGGESTION]
+        Type: field_update
+        Affected: triage, evacuation
+        Requires Response: Yes
+
+3B: Available at T+12 (when filming occurs)
+    └─> Victim Privacy Violated (HIGH)
+        Type: media_report
+        Affected: triage, media
+        Requires Response: Yes
+
+
+BRANCH 4: SECURITY/COORDINATION DECISIONS
+------------------------------------------
+Available: After T+14 (when suspicious individual reported)
+
+4A: Ignore/Dismiss Report
+    └─> Missed Threat Opportunity (CRITICAL) [SUGGESTION]
+        Type: intel_brief
+        Affected: evacuation, triage
+        Requires Response: Yes
+
+4B: Coordinate Multi-Team Response
+    └─> Coordinated Response Successful (MEDIUM) [SUGGESTION]
+        Type: field_update
+        Affected: evacuation, triage, media
+        Requires Response: No
+
+
+BRANCH 5: COMBINED DECISION SCENARIOS
+--------------------------------------
+5A: Perfect Storm - Requires BOTH:
+    - Branch 1A (Evacuate Together) AND
+    - Branch 2B (Statement Without Addressing Misinformation)
+    
+    └─> Perfect Storm - Multiple Failures Compound (CRITICAL) [SUGGESTION]
+        Type: field_update
+        Affected: evacuation, media, triage
+        Requires Response: Yes
+
+
+CONNECTION SUMMARY
+==================
+
+Main Timeline Flow:
+T+0 → T+5 → T+6 → T+9 → T+10 → T+11 → T+12 → T+14 → T+15
+
+Decision Points Branch Off:
+- T+6: Triage Decision 3A branches off
+- T+10: Context established, Evacuation Decision branches off
+- T+12: Triage Decision 3B branches off, Media Decision branches off
+- T+14: Security Decision branches off
+
+All decisions can be made in parallel once available - they don't block the timeline.
+Consequences occur after decisions are executed, but timeline continues regardless.
+
+
