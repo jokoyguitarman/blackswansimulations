@@ -5,6 +5,22 @@ import { supabase } from './supabase';
  * Separation of concerns: All API logic in one place
  */
 
+// Get API base URL from environment variable
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
+// Helper function to build API URLs
+const apiUrl = (path: string) => {
+  // Remove leading slash if present, then add it back
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  if (API_BASE_URL) {
+    // If API_BASE_URL is set, use it (remove trailing slash if present)
+    const base = API_BASE_URL.replace(/\/$/, '');
+    return `${base}${cleanPath}`;
+  }
+  // Otherwise use relative path (for local development with proxy)
+  return cleanPath;
+};
+
 const getAuthHeaders = async () => {
   const {
     data: { session },
@@ -60,16 +76,20 @@ export const api = {
   scenarios: {
     list: async () => {
       const headers = await getAuthHeaders();
-      return handleResponse<{ data: unknown[] }>(await fetch('/api/scenarios', { headers }));
+      return handleResponse<{ data: unknown[] }>(
+        await fetch(apiUrl('/api/scenarios'), { headers }),
+      );
     },
     get: async (id: string) => {
       const headers = await getAuthHeaders();
-      return handleResponse<{ data: unknown }>(await fetch(`/api/scenarios/${id}`, { headers }));
+      return handleResponse<{ data: unknown }>(
+        await fetch(apiUrl(`/api/scenarios/${id}`), { headers }),
+      );
     },
     create: async (data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch('/api/scenarios', {
+        await fetch(apiUrl('/api/scenarios'), {
           method: 'POST',
           headers,
           body: JSON.stringify(data),
@@ -79,7 +99,7 @@ export const api = {
     update: async (id: string, data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch(`/api/scenarios/${id}`, {
+        await fetch(apiUrl(`/api/scenarios/${id}`), {
           method: 'PATCH',
           headers,
           body: JSON.stringify(data),
@@ -88,7 +108,9 @@ export const api = {
     },
     delete: async (id: string) => {
       const headers = await getAuthHeaders();
-      return handleResponse(await fetch(`/api/scenarios/${id}`, { method: 'DELETE', headers }));
+      return handleResponse(
+        await fetch(apiUrl(`/api/scenarios/${id}`), { method: 'DELETE', headers }),
+      );
     },
   },
 
@@ -97,17 +119,19 @@ export const api = {
     list: async (page = 1, limit = 20) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown[]; count: number; page: number; limit: number }>(
-        await fetch(`/api/sessions?page=${page}&limit=${limit}`, { headers }),
+        await fetch(apiUrl(`/api/sessions?page=${page}&limit=${limit}`), { headers }),
       );
     },
     get: async (id: string) => {
       const headers = await getAuthHeaders();
-      return handleResponse<{ data: unknown }>(await fetch(`/api/sessions/${id}`, { headers }));
+      return handleResponse<{ data: unknown }>(
+        await fetch(apiUrl(`/api/sessions/${id}`), { headers }),
+      );
     },
     create: async (data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch('/api/sessions', {
+        await fetch(apiUrl('/api/sessions'), {
           method: 'POST',
           headers,
           body: JSON.stringify(data),
@@ -117,7 +141,7 @@ export const api = {
     update: async (id: string, data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch(`/api/sessions/${id}`, {
+        await fetch(apiUrl(`/api/sessions/${id}`), {
           method: 'PATCH',
           headers,
           body: JSON.stringify(data),
@@ -127,7 +151,7 @@ export const api = {
     join: async (id: string, role: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch(`/api/sessions/${id}/join`, {
+        await fetch(apiUrl(`/api/sessions/${id}/join`), {
           method: 'POST',
           headers,
           body: JSON.stringify({ role }),
@@ -137,7 +161,7 @@ export const api = {
     addParticipant: async (sessionId: string, userId: string, role: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch(`/api/sessions/${sessionId}/participants`, {
+        await fetch(apiUrl(`/api/sessions/${sessionId}/participants`), {
           method: 'POST',
           headers,
           body: JSON.stringify({ user_id: userId, role }),
@@ -147,7 +171,7 @@ export const api = {
     removeParticipant: async (sessionId: string, userId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ success: boolean }>(
-        await fetch(`/api/sessions/${sessionId}/participants/${userId}`, {
+        await fetch(apiUrl(`/api/sessions/${sessionId}/participants/${userId}`), {
           method: 'DELETE',
           headers,
         }),
@@ -156,13 +180,13 @@ export const api = {
     getAvailableUsers: async () => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown[] }>(
-        await fetch('/api/sessions/users/available', { headers }),
+        await fetch(apiUrl('/api/sessions/users/available'), { headers }),
       );
     },
     markReady: async (sessionId: string, isReady: boolean) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch(`/api/sessions/${sessionId}/ready`, {
+        await fetch(apiUrl(`/api/sessions/${sessionId}/ready`), {
           method: 'POST',
           headers,
           body: JSON.stringify({ is_ready: isReady }),
@@ -173,12 +197,12 @@ export const api = {
       const headers = await getAuthHeaders();
       return handleResponse<{
         data: { total: number; ready: number; all_ready: boolean; participants: unknown[] };
-      }>(await fetch(`/api/sessions/${sessionId}/ready-status`, { headers }));
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/ready-status`), { headers }));
     },
     inviteByEmail: async (sessionId: string, email: string, role: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown; isNewUser: boolean }>(
-        await fetch(`/api/sessions/${sessionId}/invite`, {
+        await fetch(apiUrl(`/api/sessions/${sessionId}/invite`), {
           method: 'POST',
           headers,
           body: JSON.stringify({ email, role }),
@@ -190,7 +214,7 @@ export const api = {
       return handleResponse<{
         data: { processed: number; totalInvitations: number; participants: unknown[] };
       }>(
-        await fetch('/api/sessions/process-invitations', {
+        await fetch(apiUrl('/api/sessions/process-invitations'), {
           method: 'POST',
           headers,
         }),
@@ -201,7 +225,7 @@ export const api = {
       return handleResponse<{
         data: { processed: number; totalInvitations: number; participants: unknown[] };
       }>(
-        await fetch(`/api/sessions/${sessionId}/process-all-invitations`, {
+        await fetch(apiUrl(`/api/sessions/${sessionId}/process-all-invitations`), {
           method: 'POST',
           headers,
         }),
@@ -220,7 +244,7 @@ export const api = {
           scenario_title: string;
           user_role: string | null;
         };
-      }>(await fetch(`/api/briefing/session/${sessionId}`, { headers }));
+      }>(await fetch(apiUrl(`/api/briefing/session/${sessionId}`), { headers }));
     },
   },
 
@@ -229,7 +253,7 @@ export const api = {
     list: async (sessionId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown[] }>(
-        await fetch(`/api/channels/session/${sessionId}`, { headers }),
+        await fetch(apiUrl(`/api/channels/session/${sessionId}`), { headers }),
       );
     },
     getDMs: async (sessionId: string) => {
@@ -240,20 +264,20 @@ export const api = {
           recipient: { id: string; full_name: string; role: string } | null;
           last_message: { content: string; created_at: string } | null;
         }>;
-      }>(await fetch(`/api/channels/session/${sessionId}/dms`, { headers }));
+      }>(await fetch(apiUrl(`/api/channels/session/${sessionId}/dms`), { headers }));
     },
     getParticipants: async (sessionId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{
         data: Array<{ id: string; full_name: string; role: string; agency_name?: string }>;
-      }>(await fetch(`/api/channels/session/${sessionId}/participants`, { headers }));
+      }>(await fetch(apiUrl(`/api/channels/session/${sessionId}/participants`), { headers }));
     },
     createDM: async (sessionId: string, recipientId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{
         data: { id: string; recipient: { id: string; full_name: string; role: string } | null };
       }>(
-        await fetch(`/api/channels/session/${sessionId}/dm`, {
+        await fetch(apiUrl(`/api/channels/session/${sessionId}/dm`), {
           method: 'POST',
           headers,
           body: JSON.stringify({ recipient_id: recipientId }),
@@ -263,13 +287,15 @@ export const api = {
     getMessages: async (channelId: string, page = 1, limit = 50) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown[]; count: number }>(
-        await fetch(`/api/channels/${channelId}/messages?page=${page}&limit=${limit}`, { headers }),
+        await fetch(apiUrl(`/api/channels/${channelId}/messages?page=${page}&limit=${limit}`), {
+          headers,
+        }),
       );
     },
     create: async (data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch('/api/channels', {
+        await fetch(apiUrl('/api/channels'), {
           method: 'POST',
           headers,
           body: JSON.stringify(data),
@@ -279,7 +305,7 @@ export const api = {
     sendMessage: async (channelId: string, content: string, messageType = 'text') => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch(`/api/channels/${channelId}/messages`, {
+        await fetch(apiUrl(`/api/channels/${channelId}/messages`), {
           method: 'POST',
           headers,
           body: JSON.stringify({ content, message_type: messageType }),
@@ -293,7 +319,7 @@ export const api = {
     list: async (sessionId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown[] }>(
-        await fetch(`/api/decisions/session/${sessionId}`, { headers }),
+        await fetch(apiUrl(`/api/decisions/session/${sessionId}`), { headers }),
       );
     },
     getAvailableParticipants: async (sessionId: string) => {
@@ -304,12 +330,16 @@ export const api = {
           name: string;
           role: string;
         }>;
-      }>(await fetch(`/api/decisions/session/${sessionId}/available-participants`, { headers }));
+      }>(
+        await fetch(apiUrl(`/api/decisions/session/${sessionId}/available-participants`), {
+          headers,
+        }),
+      );
     },
     create: async (data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch('/api/decisions', {
+        await fetch(apiUrl('/api/decisions'), {
           method: 'POST',
           headers,
           body: JSON.stringify(data),
@@ -319,7 +349,7 @@ export const api = {
     approve: async (id: string, approved: boolean, comment?: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ success: boolean }>(
-        await fetch(`/api/decisions/${id}/approve`, {
+        await fetch(apiUrl(`/api/decisions/${id}/approve`), {
           method: 'POST',
           headers,
           body: JSON.stringify({ approved, comment }),
@@ -329,7 +359,7 @@ export const api = {
     execute: async (id: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch(`/api/decisions/${id}/execute`, {
+        await fetch(apiUrl(`/api/decisions/${id}/execute`), {
           method: 'POST',
           headers,
         }),
@@ -342,17 +372,19 @@ export const api = {
     list: async (sessionId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown[] }>(
-        await fetch(`/api/incidents/session/${sessionId}`, { headers }),
+        await fetch(apiUrl(`/api/incidents/session/${sessionId}`), { headers }),
       );
     },
     get: async (id: string) => {
       const headers = await getAuthHeaders();
-      return handleResponse<{ data: unknown }>(await fetch(`/api/incidents/${id}`, { headers }));
+      return handleResponse<{ data: unknown }>(
+        await fetch(apiUrl(`/api/incidents/${id}`), { headers }),
+      );
     },
     create: async (data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch('/api/incidents', {
+        await fetch(apiUrl('/api/incidents'), {
           method: 'POST',
           headers,
           body: JSON.stringify(data),
@@ -362,7 +394,7 @@ export const api = {
     update: async (id: string, data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch(`/api/incidents/${id}`, {
+        await fetch(apiUrl(`/api/incidents/${id}`), {
           method: 'PATCH',
           headers,
           body: JSON.stringify(data),
@@ -372,7 +404,7 @@ export const api = {
     assign: async (id: string, userId: string, notes?: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch(`/api/incidents/${id}/assign`, {
+        await fetch(apiUrl(`/api/incidents/${id}/assign`), {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -385,7 +417,7 @@ export const api = {
     getAvailableTeams: async (sessionId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: Array<{ team_name: string }> }>(
-        await fetch(`/api/incidents/session/${sessionId}/teams`, { headers }),
+        await fetch(apiUrl(`/api/incidents/session/${sessionId}/teams`), { headers }),
       );
     },
     getParticipants: async (sessionId: string) => {
@@ -396,12 +428,12 @@ export const api = {
           name: string;
           role: string;
         }>;
-      }>(await fetch(`/api/incidents/session/${sessionId}/participants`, { headers }));
+      }>(await fetch(apiUrl(`/api/incidents/session/${sessionId}/participants`), { headers }));
     },
     allocateResources: async (id: string, resources: Record<string, number>) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ success: boolean; message: string }>(
-        await fetch(`/api/incidents/${id}/resources`, {
+        await fetch(apiUrl(`/api/incidents/${id}/resources`), {
           method: 'POST',
           headers,
           body: JSON.stringify({ resources }),
@@ -415,13 +447,13 @@ export const api = {
     get: async (sessionId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: { resources: unknown[]; requests: unknown[] } }>(
-        await fetch(`/api/resources/session/${sessionId}`, { headers }),
+        await fetch(apiUrl(`/api/resources/session/${sessionId}`), { headers }),
       );
     },
     request: async (data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch('/api/resources/request', {
+        await fetch(apiUrl('/api/resources/request'), {
           method: 'POST',
           headers,
           body: JSON.stringify(data),
@@ -431,7 +463,7 @@ export const api = {
     updateRequest: async (id: string, data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch(`/api/resources/request/${id}`, {
+        await fetch(apiUrl(`/api/resources/request/${id}`), {
           method: 'PATCH',
           headers,
           body: JSON.stringify(data),
@@ -448,13 +480,13 @@ export const api = {
       if (scenarioId) params.append('scenario_id', scenarioId);
       if (sessionId) params.append('session_id', sessionId);
       return handleResponse<{ data: unknown[] }>(
-        await fetch(`/api/injects?${params.toString()}`, { headers }),
+        await fetch(apiUrl(`/api/injects?${params.toString()}`), { headers }),
       );
     },
     create: async (data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch('/api/injects', {
+        await fetch(apiUrl('/api/injects'), {
           method: 'POST',
           headers,
           body: JSON.stringify(data),
@@ -464,7 +496,7 @@ export const api = {
     publish: async (id: string, sessionId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ success: boolean; message: string }>(
-        await fetch(`/api/injects/${id}/publish`, {
+        await fetch(apiUrl(`/api/injects/${id}/publish`), {
           method: 'POST',
           headers,
           body: JSON.stringify({ session_id: sessionId }),
@@ -478,7 +510,9 @@ export const api = {
     list: async (sessionId: string, page = 1, limit = 50) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown[]; count: number }>(
-        await fetch(`/api/events/session/${sessionId}?page=${page}&limit=${limit}`, { headers }),
+        await fetch(apiUrl(`/api/events/session/${sessionId}?page=${page}&limit=${limit}`), {
+          headers,
+        }),
       );
     },
   },
@@ -488,19 +522,21 @@ export const api = {
     list: async (sessionId: string, page = 1, limit = 20) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown[]; count: number }>(
-        await fetch(`/api/media/session/${sessionId}?page=${page}&limit=${limit}`, { headers }),
+        await fetch(apiUrl(`/api/media/session/${sessionId}?page=${page}&limit=${limit}`), {
+          headers,
+        }),
       );
     },
     getSentiment: async (sessionId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown[] }>(
-        await fetch(`/api/media/sentiment/session/${sessionId}`, { headers }),
+        await fetch(apiUrl(`/api/media/sentiment/session/${sessionId}`), { headers }),
       );
     },
     create: async (data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch('/api/media', {
+        await fetch(apiUrl('/api/media'), {
           method: 'POST',
           headers,
           body: JSON.stringify(data),
@@ -514,13 +550,13 @@ export const api = {
     get: async (sessionId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch(`/api/aar/session/${sessionId}`, { headers }),
+        await fetch(apiUrl(`/api/aar/session/${sessionId}`), { headers }),
       );
     },
     generate: async (sessionId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch(`/api/aar/session/${sessionId}/generate`, {
+        await fetch(apiUrl(`/api/aar/session/${sessionId}/generate`), {
           method: 'POST',
           headers,
         }),
@@ -529,7 +565,7 @@ export const api = {
     export: async (sessionId: string, format: 'pdf' | 'excel') => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: { url: string; fileName: string; format: string } }>(
-        await fetch(`/api/aar/session/${sessionId}/export?format=${format}`, {
+        await fetch(apiUrl(`/api/aar/session/${sessionId}/export?format=${format}`), {
           method: 'POST',
           headers,
         }),
@@ -553,7 +589,7 @@ export const api = {
           metrics: Record<string, unknown>;
           weight: number;
         }>;
-      }>(await fetch(`/api/objectives/session/${sessionId}`, { headers }));
+      }>(await fetch(apiUrl(`/api/objectives/session/${sessionId}`), { headers }));
     },
     getScore: async (sessionId: string) => {
       const headers = await getAuthHeaders();
@@ -569,7 +605,7 @@ export const api = {
           }>;
           success_level: 'Excellent' | 'Good' | 'Adequate' | 'Needs Improvement';
         };
-      }>(await fetch(`/api/objectives/session/${sessionId}/score`, { headers }));
+      }>(await fetch(apiUrl(`/api/objectives/session/${sessionId}/score`), { headers }));
     },
   },
 
@@ -585,14 +621,14 @@ export const api = {
           team_role?: string;
           user?: { id: string; full_name: string; role: string };
         }>;
-      }>(await fetch(`/api/teams/session/${sessionId}`, { headers }));
+      }>(await fetch(apiUrl(`/api/teams/session/${sessionId}`), { headers }));
     },
     assignTeam: async (sessionId: string, userId: string, teamName: string, teamRole?: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{
         data: { id: string; user_id: string; team_name: string; team_role?: string };
       }>(
-        await fetch(`/api/teams/session/${sessionId}/assign`, {
+        await fetch(apiUrl(`/api/teams/session/${sessionId}/assign`), {
           method: 'POST',
           headers,
           body: JSON.stringify({ user_id: userId, team_name: teamName, team_role: teamRole }),
@@ -602,7 +638,7 @@ export const api = {
     removeTeamAssignment: async (sessionId: string, userId: string, teamName: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ success: boolean; message: string }>(
-        await fetch(`/api/teams/session/${sessionId}/assign`, {
+        await fetch(apiUrl(`/api/teams/session/${sessionId}/assign`), {
           method: 'DELETE',
           headers,
           body: JSON.stringify({ user_id: userId, team_name: teamName }),
@@ -618,7 +654,7 @@ export const api = {
           team_description?: string;
           required_roles?: string[];
         }>;
-      }>(await fetch(`/api/teams/scenario/${scenarioId}`, { headers }));
+      }>(await fetch(apiUrl(`/api/teams/scenario/${scenarioId}`), { headers }));
     },
     createScenarioTeam: async (
       scenarioId: string,
@@ -630,7 +666,7 @@ export const api = {
     ) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: { id: string; team_name: string } }>(
-        await fetch(`/api/teams/scenario/${scenarioId}`, {
+        await fetch(apiUrl(`/api/teams/scenario/${scenarioId}`), {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -650,7 +686,7 @@ export const api = {
     generateScenario: async (data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
-        await fetch('/api/ai/scenarios/generate', {
+        await fetch(apiUrl('/api/ai/scenarios/generate'), {
           method: 'POST',
           headers,
           body: JSON.stringify(data),
@@ -682,19 +718,19 @@ export const api = {
           action_url: string | null;
           created_at: string;
         }>;
-      }>(await fetch(`/api/notifications?${params.toString()}`, { headers }));
+      }>(await fetch(apiUrl(`/api/notifications?${params.toString()}`), { headers }));
     },
     getUnreadCount: async (sessionId?: string) => {
       const headers = await getAuthHeaders();
       const params = sessionId ? `?session_id=${sessionId}` : '';
       return handleResponse<{ count: number }>(
-        await fetch(`/api/notifications/unread/count${params}`, { headers }),
+        await fetch(apiUrl(`/api/notifications/unread/count${params}`), { headers }),
       );
     },
     markAsRead: async (notificationId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ success: boolean }>(
-        await fetch(`/api/notifications/${notificationId}/read`, {
+        await fetch(apiUrl(`/api/notifications/${notificationId}/read`), {
           method: 'POST',
           headers,
         }),
@@ -703,7 +739,7 @@ export const api = {
     markAllAsRead: async (sessionId?: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ success: boolean }>(
-        await fetch('/api/notifications/read-all', {
+        await fetch(apiUrl('/api/notifications/read-all'), {
           method: 'POST',
           headers,
           body: JSON.stringify({ session_id: sessionId }),
