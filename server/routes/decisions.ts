@@ -702,7 +702,17 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         };
 
     // Update scenario state based on decision execution
-    await updateStateOnDecisionExecution(decision.session_id, decision);
+    try {
+      await updateStateOnDecisionExecution(decision.session_id, {
+        ...decision,
+        decision_type: decision.type || 'operational_action', // Map type to decision_type
+      });
+    } catch (stateError) {
+      logger.error(
+        { error: stateError, decisionId: id },
+        'Error updating scenario state, continuing with decision execution',
+      );
+    }
 
     // AI classifies decision and triggers matching injects
     try {
@@ -784,34 +794,49 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
     }
 
     // Broadcast decision executed event
-    getWebSocketService().decisionExecuted(decision.session_id, mappedDecision);
+    try {
+      getWebSocketService().decisionExecuted(decision.session_id, mappedDecision);
+    } catch (wsError) {
+      logger.error(
+        { error: wsError, decisionId: id },
+        'Error broadcasting decision executed event',
+      );
+    }
 
     // Notify decision creator that it was executed
-    await createNotification({
-      sessionId: decision.session_id,
-      userId: decision.proposed_by,
-      type: 'decision_executed',
-      title: 'Decision Executed',
-      message: `Your decision "${decision.title}" has been executed.`,
-      priority: 'medium',
-      metadata: {
-        decision_id: decision.id,
-      },
-      actionUrl: `/sessions/${decision.session_id}#decisions`,
-    });
+    try {
+      await createNotification({
+        sessionId: decision.session_id,
+        userId: decision.proposed_by,
+        type: 'decision_executed',
+        title: 'Decision Executed',
+        message: `Your decision "${decision.title}" has been executed.`,
+        priority: 'medium',
+        metadata: {
+          decision_id: decision.id,
+        },
+        actionUrl: `/sessions/${decision.session_id}#decisions`,
+      });
+    } catch (notifError) {
+      logger.error({ error: notifError, decisionId: id }, 'Error creating notification');
+    }
 
     // Log event
-    await logAndBroadcastEvent(
-      io,
-      decision.session_id,
-      'decision',
-      {
-        decision_id: id,
-        status: 'executed',
-        executed_by: { id: user.id, role: user.role },
-      },
-      user.id,
-    );
+    try {
+      await logAndBroadcastEvent(
+        io,
+        decision.session_id,
+        'decision',
+        {
+          decision_id: id,
+          status: 'executed',
+          executed_by: { id: user.id, role: user.role },
+        },
+        user.id,
+      );
+    } catch (eventError) {
+      logger.error({ error: eventError, decisionId: id }, 'Error logging event');
+    }
 
     logger.info({ decisionId: id, userId: user.id }, 'Decision executed');
     res.json({ data: mappedDecision });
