@@ -40,11 +40,11 @@ class WebSocketClient {
         throw new Error('Not authenticated');
       }
 
-      // Use same origin for WebSocket (works in both dev and production)
-      // In development, Vite proxy handles it. In production, WebSocket runs on same port
+      // Use environment variable for WebSocket URL (same as API)
+      // In development, Vite proxy handles it. In production, use VITE_API_URL
       const wsUrl = import.meta.env.DEV
         ? window.location.origin.replace(':3000', ':3001')
-        : window.location.origin;
+        : import.meta.env.VITE_API_URL || window.location.origin;
 
       this.socket = io(wsUrl, {
         auth: {
