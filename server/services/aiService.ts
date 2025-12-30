@@ -174,6 +174,12 @@ export const classifyDecision = async (
   openAiApiKey: string,
 ): Promise<DecisionClassification> => {
   try {
+    console.log('🟡 CLASSIFY_START: Starting classification', { decisionTitle: decision.title });
+    logger.info(
+      { decisionTitle: decision.title },
+      'CLASSIFY_START: Starting decision classification',
+    );
+
     const systemPrompt = `You are an expert crisis management analyst. Your task is to classify decisions made during emergency response scenarios.
 
 Analyze the decision and classify it into one or more of these categories:
@@ -206,6 +212,14 @@ Description: ${decision.description}
 
 Provide a detailed classification with high confidence.`;
 
+    console.log('🟡 CLASSIFY_API_CALL: Sending request to OpenAI', {
+      decisionTitle: decision.title,
+    });
+    logger.info(
+      { decisionTitle: decision.title },
+      'CLASSIFY_API_CALL: Sending request to OpenAI API',
+    );
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -224,11 +238,27 @@ Provide a detailed classification with high confidence.`;
       }),
     });
 
+    console.log('🟡 CLASSIFY_RESPONSE: Received response', {
+      decisionTitle: decision.title,
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+    });
+    logger.info(
+      { decisionTitle: decision.title, status: response.status, ok: response.ok },
+      'CLASSIFY_RESPONSE: Received response from OpenAI',
+    );
+
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
       const status = response.status;
       const errorMessage = error.error?.message || error.message || 'Unknown error';
 
+      console.error('🔴 CLASSIFY_ERROR: OpenAI API error', {
+        decisionTitle: decision.title,
+        status,
+        error: errorMessage,
+      });
       logger.error({ error: errorMessage, status }, 'OpenAI API error in decision classification');
 
       const apiError = new Error(errorMessage) as Error & { statusCode?: number };
@@ -248,12 +278,32 @@ Provide a detailed classification with high confidence.`;
     const data = await response.json();
     const content = data.choices[0]?.message?.content;
 
+    console.log('🟡 CLASSIFY_PARSE: Parsing response', {
+      decisionTitle: decision.title,
+      hasContent: !!content,
+      contentLength: content?.length || 0,
+    });
+    logger.info(
+      { decisionTitle: decision.title, hasContent: !!content },
+      'CLASSIFY_PARSE: Parsing OpenAI response',
+    );
+
     if (!content) {
+      console.error('🔴 CLASSIFY_ERROR: No content received', { decisionTitle: decision.title });
       throw new Error('No content received from OpenAI');
     }
 
     // Parse JSON response
     const parsed = JSON.parse(content) as DecisionClassification;
+
+    console.log('🟢 CLASSIFY_SUCCESS: Classification complete', {
+      decisionTitle: decision.title,
+      classification: parsed.primary_category,
+    });
+    logger.info(
+      { decisionTitle: decision.title, classification: parsed.primary_category },
+      'CLASSIFY_SUCCESS: Decision classified successfully',
+    );
 
     // Validate and normalize
     return {
@@ -266,6 +316,11 @@ Provide a detailed classification with high confidence.`;
       confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.8,
     };
   } catch (err) {
+    console.error('🔴 CLASSIFY_CATCH: Error in classifyDecision', {
+      decisionTitle: decision.title,
+      error: err instanceof Error ? err.message : String(err),
+      errorStack: err instanceof Error ? err.stack : undefined,
+    });
     logger.error({ error: err }, 'Error classifying decision with AI');
     throw err;
   }
