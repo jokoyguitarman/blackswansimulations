@@ -25,8 +25,6 @@ export const logger = pino({
           },
         }
       : undefined,
-  // Ensure logs are flushed immediately (important for serverless)
-  sync: isVercel,
   redact: {
     paths: [
       'req.headers.authorization',
