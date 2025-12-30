@@ -586,13 +586,13 @@ export const SessionView = () => {
       {/* Card-Based Content Grid */}
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Incidents Card */}
+          {/* Row 1: Incidents Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden flex flex-col max-h-[600px]"
               onClick={() => markCardViewed('incidents')}
             >
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 flex-shrink-0">
                 <h3 className="text-lg terminal-text uppercase">[INCIDENTS]</h3>
                 {cardNotifications['incidents'] === 'new' && (
                   <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
@@ -601,7 +601,7 @@ export const SessionView = () => {
                   <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
                 )}
               </div>
-              <div onClick={(e) => e.stopPropagation()}>
+              <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
                 <IncidentsPanel
                   sessionId={id}
                   selectedIncidentId={selectedIncidentId}
@@ -611,53 +611,13 @@ export const SessionView = () => {
             </div>
           )}
 
-          {/* Timeline Card */}
+          {/* Row 1: Decisions Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
-              onClick={() => markCardViewed('timeline')}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg terminal-text uppercase">[TIMELINE]</h3>
-                {cardNotifications['timeline'] === 'new' && (
-                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
-                )}
-                {cardNotifications['timeline'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
-                )}
-              </div>
-              <TimelineFeed sessionId={id} />
-            </div>
-          )}
-
-          {/* Chat Card */}
-          {id && (
-            <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
-              onClick={() => markCardViewed('chat')}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg terminal-text uppercase">[CHAT]</h3>
-                {cardNotifications['chat'] === 'new' && (
-                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
-                )}
-                {cardNotifications['chat'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
-                )}
-              </div>
-              <div onClick={(e) => e.stopPropagation()}>
-                <ChatInterface sessionId={id} />
-              </div>
-            </div>
-          )}
-
-          {/* Decisions Card */}
-          {id && (
-            <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden flex flex-col max-h-[600px]"
               onClick={() => markCardViewed('decisions')}
             >
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 flex-shrink-0">
                 <h3 className="text-lg terminal-text uppercase">[DECISIONS]</h3>
                 {cardNotifications['decisions'] === 'new' && (
                   <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
@@ -666,40 +626,61 @@ export const SessionView = () => {
                   <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
                 )}
               </div>
-              <div onClick={(e) => e.stopPropagation()}>
+              <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
                 <DecisionWorkflow sessionId={id} />
               </div>
             </div>
           )}
 
-          {/* Injects Card - Trainer only */}
-          {id && session.scenarios && session.scenarios.id && isTrainer && (
+          {/* Row 2: Timeline Card */}
+          {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
-              onClick={() => markCardViewed('injects')}
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden flex flex-col max-h-[600px]"
+              onClick={() => markCardViewed('timeline')}
             >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg terminal-text uppercase">[INJECTS]</h3>
-                {cardNotifications['injects'] === 'new' && (
+              <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                <h3 className="text-lg terminal-text uppercase">[TIMELINE]</h3>
+                {cardNotifications['timeline'] === 'new' && (
                   <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
                 )}
-                {cardNotifications['injects'] === 'viewed' && (
+                {cardNotifications['timeline'] === 'viewed' && (
                   <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
                 )}
               </div>
-              <div onClick={(e) => e.stopPropagation()}>
-                <AIInjectSystem sessionId={id} scenarioId={session.scenarios.id} />
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <TimelineFeed sessionId={id} />
               </div>
             </div>
           )}
 
-          {/* Media Card */}
+          {/* Row 2: Chat Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden flex flex-col max-h-[600px]"
+              onClick={() => markCardViewed('chat')}
+            >
+              <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                <h3 className="text-lg terminal-text uppercase">[CHAT]</h3>
+                {cardNotifications['chat'] === 'new' && (
+                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                )}
+                {cardNotifications['chat'] === 'viewed' && (
+                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                )}
+              </div>
+              <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
+                <ChatInterface sessionId={id} />
+              </div>
+            </div>
+          )}
+
+          {/* Row 3: Media Card */}
+          {id && (
+            <div
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden flex flex-col max-h-[600px]"
               onClick={() => markCardViewed('media')}
             >
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 flex-shrink-0">
                 <h3 className="text-lg terminal-text uppercase">[MEDIA]</h3>
                 {cardNotifications['media'] === 'new' && (
                   <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
@@ -708,19 +689,40 @@ export const SessionView = () => {
                   <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
                 )}
               </div>
-              <div onClick={(e) => e.stopPropagation()}>
+              <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
                 <MediaFeed sessionId={id} />
               </div>
             </div>
           )}
 
-          {/* AAR Card - Only show for completed sessions (Trainer only) */}
+          {/* Row 3+: Injects Card - Trainer only */}
+          {id && session.scenarios && session.scenarios.id && isTrainer && (
+            <div
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden flex flex-col max-h-[600px]"
+              onClick={() => markCardViewed('injects')}
+            >
+              <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                <h3 className="text-lg terminal-text uppercase">[INJECTS]</h3>
+                {cardNotifications['injects'] === 'new' && (
+                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                )}
+                {cardNotifications['injects'] === 'viewed' && (
+                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                )}
+              </div>
+              <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
+                <AIInjectSystem sessionId={id} scenarioId={session.scenarios.id} />
+              </div>
+            </div>
+          )}
+
+          {/* Row 3+: AAR Card - Only show for completed sessions (Trainer only) */}
           {id && session.status === 'completed' && isTrainer && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden flex flex-col max-h-[600px]"
               onClick={() => markCardViewed('aar')}
             >
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 flex-shrink-0">
                 <h3 className="text-lg terminal-text uppercase">[AAR] After Action Review</h3>
                 {cardNotifications['aar'] === 'new' && (
                   <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
@@ -729,19 +731,19 @@ export const SessionView = () => {
                   <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
                 )}
               </div>
-              <div onClick={(e) => e.stopPropagation()}>
+              <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
                 <AARDashboard sessionId={id} />
               </div>
             </div>
           )}
 
-          {/* Participants Card - Trainer only */}
+          {/* Row 3+: Participants Card - Trainer only */}
           {id && session && isTrainer && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden flex flex-col max-h-[600px]"
               onClick={() => markCardViewed('participants')}
             >
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 flex-shrink-0">
                 <h3 className="text-lg terminal-text uppercase">[PARTICIPANTS]</h3>
                 {cardNotifications['participants'] === 'new' && (
                   <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
@@ -750,7 +752,7 @@ export const SessionView = () => {
                   <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
                 )}
               </div>
-              <div onClick={(e) => e.stopPropagation()}>
+              <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
                 <div className="space-y-4">
                   {isTrainer && (
                     <div className="flex justify-between items-center">
