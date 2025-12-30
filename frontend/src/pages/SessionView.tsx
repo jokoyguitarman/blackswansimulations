@@ -647,7 +647,7 @@ export const SessionView = () => {
                   <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
                 )}
               </div>
-              <div className="flex-1 overflow-y-auto min-h-0">
+              <div className="flex-1 min-h-0">
                 <TimelineFeed sessionId={id} />
               </div>
             </div>

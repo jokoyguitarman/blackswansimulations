@@ -200,6 +200,49 @@ button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
+/* Custom Military Retro Scrollbar Styles */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 15, 15, 0.8);
+  border: 1px solid rgba(255, 0, 0, 0.3);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #dc2626 0%, #991b1b 50%, #7f1d1d 100%);
+  border: 1px solid rgba(255, 0, 0, 0.5);
+  box-shadow: 
+    0 0 10px rgba(220, 38, 38, 0.6),
+    inset 0 0 5px rgba(0, 0, 0, 0.3);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 50%, #991b1b 100%);
+  box-shadow: 
+    0 0 15px rgba(239, 68, 68, 0.8),
+    inset 0 0 5px rgba(0, 0, 0, 0.3);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(135deg, #b91c1c 0%, #7f1d1d 50%, #991b1b 100%);
+}
+
+::-webkit-scrollbar-corner {
+  background: rgba(15, 15, 15, 0.8);
+  border: 1px solid rgba(255, 0, 0, 0.3);
+}
+
+/* Firefox scrollbar styles */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #dc2626 rgba(15, 15, 15, 0.8);
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;
