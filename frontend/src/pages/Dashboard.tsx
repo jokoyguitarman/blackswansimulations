@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { TrainerDashboard } from '../components/dashboards/TrainerDashboard';
 import { AgencyDashboard } from '../components/dashboards/AgencyDashboard';
+import { NotificationBell } from '../components/Notifications/NotificationBell';
 
 export const Dashboard = () => {
   const { user, signOut } = useAuth();
@@ -54,6 +55,8 @@ export const Dashboard = () => {
                   [SESSIONS]
                 </a>
               </div>
+              {/* Notification Bell */}
+              <NotificationBell />
               <div className="text-right">
                 <div className="text-xs terminal-text text-robotic-yellow/70 uppercase">[USER]</div>
                 <div className="text-sm terminal-text">{user?.displayName || user?.email}</div>

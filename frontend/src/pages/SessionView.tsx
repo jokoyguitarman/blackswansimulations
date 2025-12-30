@@ -10,7 +10,7 @@ import { AARDashboard } from '../components/AAR/AARDashboard';
 import { ParticipantManagement } from '../components/Session/ParticipantManagement';
 import { TeamAssignmentModal } from '../components/Teams/TeamAssignmentModal';
 import { SessionLobby } from '../components/Session/SessionLobby';
-import { NotificationBanner } from '../components/Notifications/NotificationBanner';
+import { NotificationBell } from '../components/Notifications/NotificationBell';
 import { IncidentsPanel } from '../components/Incidents/IncidentsPanel';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { type WebSocketEvent } from '../lib/websocketClient';
@@ -61,10 +61,11 @@ export const SessionView = () => {
   // Notifications are now handled automatically by the backend notification system
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<
-    'cop' | 'chat' | 'decisions' | 'injects' | 'media' | 'aar' | 'participants'
-  >('cop');
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
+  // Card notification state: 'new' = green dot, 'viewed' = yellow dot, 'none' = no dot
+  const [cardNotifications, setCardNotifications] = useState<
+    Record<string, 'new' | 'viewed' | 'none'>
+  >({});
   const [_incidents, setIncidents] = useState<
     Array<{
       id: string;
@@ -108,35 +109,15 @@ export const SessionView = () => {
     }
   }, [id, session?.status, isTrainer]);
 
-  useEffect(() => {
-    // Check if there's a hash fragment in the URL and set the active tab accordingly
-    const hash = window.location.hash.slice(1); // Remove the '#'
-    const validTabs = ['cop', 'chat', 'decisions', 'injects', 'media', 'aar', 'participants'];
-    if (hash && validTabs.includes(hash)) {
-      setActiveTab(hash as typeof activeTab);
-    }
-  }, []);
-
-  // Auto-select AAR tab for completed sessions when they load (if no hash specified)
-  useEffect(() => {
-    if (session?.status === 'completed' && activeTab === 'cop' && !window.location.hash) {
-      setActiveTab('aar');
-    }
-  }, [session?.status]);
-
-  // Also listen for hash changes
-  useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash.slice(1);
-      const validTabs = ['cop', 'chat', 'decisions', 'injects', 'media', 'aar', 'participants'];
-      if (hash && validTabs.includes(hash)) {
-        setActiveTab(hash as typeof activeTab);
+  // Mark card as viewed (green → yellow dot)
+  const markCardViewed = (cardId: string) => {
+    setCardNotifications((prev) => {
+      if (prev[cardId] === 'new') {
+        return { ...prev, [cardId]: 'viewed' };
       }
-    };
-
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+      return prev;
+    });
+  };
 
   const loadMyTeams = async () => {
     if (!id || !user?.id) return;
@@ -248,7 +229,7 @@ export const SessionView = () => {
   //   }, 100);
   // };
 
-  // WebSocket subscription for notifications
+  // WebSocket subscription for notifications and card updates
   useWebSocket({
     sessionId: id || '',
     eventTypes: [
@@ -257,18 +238,55 @@ export const SessionView = () => {
       'decision.approved',
       'decision.executed',
       'resource.requested',
+      'resource.countered',
+      'resource.approved',
+      'resource.rejected',
+      'resource.transferred',
       'message.sent',
       'incident.created',
       'incident.updated',
+      'media_post',
     ],
     onEvent: (event: WebSocketEvent) => {
       // Handle event-specific UI updates
       // Note: Notifications are now automatically created by the backend notification system
-      if (event.type === 'incident.created' || event.type === 'incident.updated') {
+
+      // Update card notification dots based on event type
+      if (event.type === 'inject.published') {
+        setCardNotifications((prev) => ({ ...prev, injects: 'new' }));
+        // Also update timeline
+        setCardNotifications((prev) => ({ ...prev, timeline: 'new' }));
+      } else if (
+        event.type === 'decision.proposed' ||
+        event.type === 'decision.approved' ||
+        event.type === 'decision.executed'
+      ) {
+        setCardNotifications((prev) => ({ ...prev, decisions: 'new' }));
+        // Also update timeline
+        setCardNotifications((prev) => ({ ...prev, timeline: 'new' }));
+      } else if (event.type === 'message.sent') {
+        setCardNotifications((prev) => ({ ...prev, chat: 'new' }));
+        // Also update timeline
+        setCardNotifications((prev) => ({ ...prev, timeline: 'new' }));
+      } else if (event.type === 'incident.created' || event.type === 'incident.updated') {
+        setCardNotifications((prev) => ({ ...prev, incidents: 'new' }));
+        // Also update timeline
+        setCardNotifications((prev) => ({ ...prev, timeline: 'new' }));
         // Reload incidents to update map
         if (id) {
           loadIncidents(id);
         }
+      } else if (event.type === 'media_post') {
+        setCardNotifications((prev) => ({ ...prev, media: 'new' }));
+      } else if (
+        event.type === 'resource.requested' ||
+        event.type === 'resource.countered' ||
+        event.type === 'resource.approved' ||
+        event.type === 'resource.rejected' ||
+        event.type === 'resource.transferred'
+      ) {
+        // Resource events update timeline
+        setCardNotifications((prev) => ({ ...prev, timeline: 'new' }));
       }
     },
     enabled: !!id && session?.status === 'in_progress',
@@ -357,9 +375,6 @@ export const SessionView = () => {
   if (session.status === 'scheduled') {
     return (
       <div className="min-h-screen scanline">
-        {/* Notification Banner */}
-        <NotificationBanner />
-
         {/* Header */}
         <div className="military-border border-b-2 border-robotic-yellow bg-robotic-gray-300">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -372,12 +387,15 @@ export const SessionView = () => {
                   Status: {session.status.toUpperCase().replace('_', ' ')}
                 </p>
               </div>
-              <button
-                onClick={() => navigate('/sessions')}
-                className="px-4 py-2 text-xs terminal-text uppercase border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
-              >
-                [BACK]
-              </button>
+              <div className="flex items-center gap-4">
+                <NotificationBell />
+                <button
+                  onClick={() => navigate('/sessions')}
+                  className="px-4 py-2 text-xs terminal-text uppercase border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
+                >
+                  [BACK]
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -399,9 +417,6 @@ export const SessionView = () => {
 
   return (
     <div className="min-h-screen scanline">
-      {/* Notification Banner */}
-      <NotificationBanner />
-
       {/* Header */}
       <div className="military-border border-b-2 border-robotic-yellow bg-robotic-gray-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -456,6 +471,7 @@ export const SessionView = () => {
               )}
             </div>
             <div className="flex items-center gap-2">
+              <NotificationBell />
               {isTrainer && session.status === 'in_progress' && (
                 <button
                   onClick={handleCompleteSession}
@@ -567,140 +583,247 @@ export const SessionView = () => {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="military-border border-b border-robotic-yellow/30 bg-robotic-gray-300">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-4 flex-wrap">
-            {(
-              [
-                'cop',
-                'chat',
-                'decisions',
-                'injects',
-                'media',
-                'aar',
-                ...(isTrainer ? ['participants' as const] : []),
-              ] as const
-            ).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab as typeof activeTab)}
-                className={`px-4 py-2 text-xs terminal-text uppercase border-b-2 transition-all ${
-                  activeTab === tab
-                    ? 'border-robotic-yellow text-robotic-yellow'
-                    : 'border-transparent text-robotic-yellow/50 hover:text-robotic-yellow/70'
-                } ${session.status === 'completed' && tab === 'aar' ? 'bg-robotic-green/10' : ''}`}
-              >
-                [{tab.toUpperCase()}]
-                {session.status === 'completed' && tab === 'aar' && (
-                  <span className="ml-2 text-robotic-green">●</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
+      {/* Card-Based Content Grid */}
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        {activeTab === 'cop' && (
-          <div className="space-y-6">
-            <div className="military-border p-6">
-              <h2 className="text-xl terminal-text uppercase mb-4">
-                [COP] Common Operating Picture
-              </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Map Card */}
+          <div
+            className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer"
+            onClick={() => markCardViewed('map')}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg terminal-text uppercase">[MAP]</h3>
+              {cardNotifications['map'] === 'new' && (
+                <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+              )}
+              {cardNotifications['map'] === 'viewed' && (
+                <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+              )}
+            </div>
+            <div
+              className="military-border p-8 text-center"
+              style={{ height: '300px', minHeight: '300px' }}
+            >
+              <h3 className="text-lg terminal-text text-robotic-orange mb-4">[MAP_UNAVAILABLE]</h3>
               <p className="text-sm terminal-text text-robotic-yellow/70 mb-4">
-                Real-time situational awareness dashboard
+                The interactive map is temporarily disabled.
               </p>
-              {/* Interactive Map - Temporarily disabled */}
-              <div
-                className="mb-6 military-border p-8 text-center"
-                style={{ height: '400px', minHeight: '400px' }}
-              >
-                <h3 className="text-lg terminal-text text-robotic-orange mb-4">
-                  [MAP_UNAVAILABLE]
-                </h3>
-                <p className="text-sm terminal-text text-robotic-yellow/70 mb-4">
-                  The interactive map is temporarily disabled.
-                </p>
-                <p className="text-xs terminal-text text-robotic-yellow/50">
-                  Map functionality will be restored in a future update.
-                </p>
+              <p className="text-xs terminal-text text-robotic-yellow/50">
+                Map functionality will be restored in a future update.
+              </p>
+            </div>
+          </div>
+
+          {/* Incidents Card */}
+          {id && (
+            <div
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer"
+              onClick={() => markCardViewed('incidents')}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg terminal-text uppercase">[INCIDENTS]</h3>
+                {cardNotifications['incidents'] === 'new' && (
+                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                )}
+                {cardNotifications['incidents'] === 'viewed' && (
+                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                )}
+              </div>
+              <IncidentsPanel
+                sessionId={id}
+                selectedIncidentId={selectedIncidentId}
+                onIncidentSelect={(incidentId) => setSelectedIncidentId(incidentId)}
+              />
+            </div>
+          )}
+
+          {/* Timeline Card */}
+          {id && (
+            <div
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer"
+              onClick={() => markCardViewed('timeline')}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg terminal-text uppercase">[TIMELINE]</h3>
+                {cardNotifications['timeline'] === 'new' && (
+                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                )}
+                {cardNotifications['timeline'] === 'viewed' && (
+                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                )}
+              </div>
+              <TimelineFeed sessionId={id} />
+            </div>
+          )}
+
+          {/* Chat Card */}
+          {id && (
+            <div
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer"
+              onClick={() => markCardViewed('chat')}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg terminal-text uppercase">[CHAT]</h3>
+                {cardNotifications['chat'] === 'new' && (
+                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                )}
+                {cardNotifications['chat'] === 'viewed' && (
+                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                )}
+              </div>
+              <div onClick={(e) => e.stopPropagation()}>
+                <ChatInterface sessionId={id} />
               </div>
             </div>
+          )}
 
-            {/* Incidents Panel */}
-            {id && (
-              <div id="incidents-panel" className="military-border p-6">
-                <IncidentsPanel
-                  sessionId={id}
-                  selectedIncidentId={selectedIncidentId}
-                  onIncidentSelect={(incidentId) => setSelectedIncidentId(incidentId)}
-                />
+          {/* Decisions Card - Larger (spans 2 columns on desktop) */}
+          {id && (
+            <div
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer lg:col-span-2"
+              onClick={() => markCardViewed('decisions')}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg terminal-text uppercase">[DECISIONS]</h3>
+                {cardNotifications['decisions'] === 'new' && (
+                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                )}
+                {cardNotifications['decisions'] === 'viewed' && (
+                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                )}
               </div>
-            )}
-
-            {/* Timeline Feed */}
-            {id && (
-              <div className="military-border p-6">
-                <TimelineFeed sessionId={id} />
+              <div onClick={(e) => e.stopPropagation()}>
+                <DecisionWorkflow sessionId={id} />
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
-        {activeTab === 'chat' && id && <ChatInterface sessionId={id} />}
-
-        {activeTab === 'decisions' && id && <DecisionWorkflow sessionId={id} />}
-
-        {activeTab === 'injects' && id && session.scenarios && session.scenarios.id && (
-          <AIInjectSystem sessionId={id} scenarioId={session.scenarios.id} />
-        )}
-
-        {activeTab === 'media' && id && <MediaFeed sessionId={id} />}
-
-        {activeTab === 'aar' && id && <AARDashboard sessionId={id} />}
-
-        {activeTab === 'participants' && id && session && (
-          <div className="space-y-4">
-            {isTrainer && (
-              <div className="military-border p-4 flex justify-between items-center">
-                <h3 className="text-lg terminal-text uppercase">[PARTICIPANT_MANAGEMENT]</h3>
-                <button
-                  onClick={() => setShowTeamAssignmentModal(true)}
-                  className="military-button px-4 py-2 text-sm"
-                >
-                  [MANAGE_TEAMS]
-                </button>
+          {/* Injects Card */}
+          {id && session.scenarios && session.scenarios.id && (
+            <div
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer"
+              onClick={() => markCardViewed('injects')}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg terminal-text uppercase">[INJECTS]</h3>
+                {cardNotifications['injects'] === 'new' && (
+                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                )}
+                {cardNotifications['injects'] === 'viewed' && (
+                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                )}
               </div>
-            )}
-            <ParticipantManagement
-              sessionId={id}
-              participants={(session.participants || []).map((p) => ({
-                ...p,
-                user: p.user
-                  ? {
-                      id: p.user_id,
-                      full_name: p.user.full_name,
-                      email: '',
-                      role: p.user.role,
-                      agency_name: '',
-                    }
-                  : undefined,
-              }))}
-              onUpdate={loadSession}
-            />
-            {showTeamAssignmentModal && id && (
-              <TeamAssignmentModal
-                sessionId={id}
-                onClose={() => setShowTeamAssignmentModal(false)}
-                onSuccess={() => {
-                  loadSession();
-                }}
-              />
-            )}
-          </div>
-        )}
+              <div onClick={(e) => e.stopPropagation()}>
+                <AIInjectSystem sessionId={id} scenarioId={session.scenarios.id} />
+              </div>
+            </div>
+          )}
+
+          {/* Media Card */}
+          {id && (
+            <div
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer"
+              onClick={() => markCardViewed('media')}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg terminal-text uppercase">[MEDIA]</h3>
+                {cardNotifications['media'] === 'new' && (
+                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                )}
+                {cardNotifications['media'] === 'viewed' && (
+                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                )}
+              </div>
+              <div onClick={(e) => e.stopPropagation()}>
+                <MediaFeed sessionId={id} />
+              </div>
+            </div>
+          )}
+
+          {/* AAR Card - Only show for completed sessions */}
+          {id && session.status === 'completed' && (
+            <div
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer lg:col-span-2"
+              onClick={() => markCardViewed('aar')}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg terminal-text uppercase">[AAR] After Action Review</h3>
+                {cardNotifications['aar'] === 'new' && (
+                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                )}
+                {cardNotifications['aar'] === 'viewed' && (
+                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                )}
+              </div>
+              <div onClick={(e) => e.stopPropagation()}>
+                <AARDashboard sessionId={id} />
+              </div>
+            </div>
+          )}
+
+          {/* Participants Card - Trainer only */}
+          {id && session && isTrainer && (
+            <div
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer"
+              onClick={() => markCardViewed('participants')}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg terminal-text uppercase">[PARTICIPANTS]</h3>
+                {cardNotifications['participants'] === 'new' && (
+                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                )}
+                {cardNotifications['participants'] === 'viewed' && (
+                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                )}
+              </div>
+              <div onClick={(e) => e.stopPropagation()}>
+                <div className="space-y-4">
+                  {isTrainer && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm terminal-text text-robotic-yellow/70">
+                        [MANAGE_TEAMS]
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowTeamAssignmentModal(true);
+                        }}
+                        className="military-button px-4 py-2 text-sm"
+                      >
+                        [MANAGE]
+                      </button>
+                    </div>
+                  )}
+                  <ParticipantManagement
+                    sessionId={id}
+                    participants={(session.participants || []).map((p) => ({
+                      ...p,
+                      user: p.user
+                        ? {
+                            id: p.user_id,
+                            full_name: p.user.full_name,
+                            email: '',
+                            role: p.user.role,
+                            agency_name: '',
+                          }
+                        : undefined,
+                    }))}
+                    onUpdate={loadSession}
+                  />
+                  {showTeamAssignmentModal && id && (
+                    <TeamAssignmentModal
+                      sessionId={id}
+                      onClose={() => setShowTeamAssignmentModal(false)}
+                      onSuccess={() => {
+                        loadSession();
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
