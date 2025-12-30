@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useNavigate } from 'react-router-dom';
 
@@ -13,11 +14,42 @@ export const NotificationBell = () => {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, right: 0 });
+
+  // Calculate dropdown position when opening or scrolling
+  const updateDropdownPosition = () => {
+    if (buttonRef.current) {
+      const buttonRect = buttonRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: buttonRect.bottom + window.scrollY + 8, // 8px = mt-2 equivalent
+        right: window.innerWidth - buttonRect.right,
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      updateDropdownPosition();
+      // Update position on scroll and resize
+      window.addEventListener('scroll', updateDropdownPosition, true);
+      window.addEventListener('resize', updateDropdownPosition);
+      return () => {
+        window.removeEventListener('scroll', updateDropdownPosition, true);
+        window.removeEventListener('resize', updateDropdownPosition);
+      };
+    }
+  }, [isOpen]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(event.target as Node)
+      ) {
         setIsOpen(false);
       }
     };
@@ -134,10 +166,83 @@ export const NotificationBell = () => {
     setIsOpen(!isOpen);
   };
 
+  const dropdownContent = isOpen ? (
+    <div
+      ref={dropdownRef}
+      className="fixed w-96 max-h-[600px] overflow-y-auto military-border bg-robotic-gray-300 border-robotic-yellow shadow-lg z-[9999]"
+      style={{
+        top: `${dropdownPosition.top}px`,
+        right: `${dropdownPosition.right}px`,
+      }}
+    >
+      {/* Header */}
+      <div className="p-4 border-b border-robotic-yellow/30 flex items-center justify-between">
+        <h3 className="text-sm terminal-text uppercase text-robotic-yellow">[NOTIFICATIONS]</h3>
+        {unreadCount > 0 && (
+          <button
+            onClick={handleMarkAllRead}
+            className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow uppercase"
+          >
+            [MARK ALL READ]
+          </button>
+        )}
+      </div>
+
+      {/* Notifications List */}
+      <div className="max-h-[500px] overflow-y-auto">
+        {sortedNotifications.length === 0 ? (
+          <div className="p-6 text-center">
+            <p className="text-sm terminal-text text-robotic-yellow/50">[NO NOTIFICATIONS]</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-robotic-yellow/20">
+            {sortedNotifications.map((notification) => (
+              <div
+                key={notification.id}
+                className={`p-4 hover:bg-robotic-yellow/5 cursor-pointer transition-colors ${
+                  !notification.read ? getPriorityStyles(notification.priority) : ''
+                } ${notification.read ? 'opacity-70' : ''}`}
+                onClick={() => handleNotificationClick(notification)}
+              >
+                <div className="flex items-start gap-3">
+                  <span className="text-xl flex-shrink-0">{getIcon(notification.priority)}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="text-sm terminal-text font-semibold uppercase text-robotic-yellow">
+                        {notification.title}
+                      </h4>
+                      {!notification.read && (
+                        <span className="w-2 h-2 bg-robotic-orange rounded-full flex-shrink-0"></span>
+                      )}
+                    </div>
+                    <p className="text-xs terminal-text text-robotic-yellow/80 mb-2">
+                      {notification.message}
+                    </p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs terminal-text text-robotic-yellow/50 uppercase">
+                        {notification.priority}
+                      </span>
+                      {notification.action_url && (
+                        <span className="text-xs terminal-text text-robotic-yellow/70">
+                          [CLICK TO VIEW]
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  ) : null;
+
   return (
-    <div className="relative" ref={dropdownRef}>
+    <>
       {/* Bell Icon Button */}
       <button
+        ref={buttonRef}
         onClick={toggleDropdown}
         className="relative px-3 py-2 text-robotic-yellow hover:bg-robotic-yellow/10 transition-all border border-robotic-yellow/50 hover:border-robotic-yellow"
         aria-label="Notifications"
@@ -150,73 +255,8 @@ export const NotificationBell = () => {
         )}
       </button>
 
-      {/* Dropdown Panel */}
-      {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-96 max-h-[600px] overflow-y-auto military-border bg-robotic-gray-300 border-robotic-yellow shadow-lg z-[9999]">
-          {/* Header */}
-          <div className="p-4 border-b border-robotic-yellow/30 flex items-center justify-between">
-            <h3 className="text-sm terminal-text uppercase text-robotic-yellow">[NOTIFICATIONS]</h3>
-            {unreadCount > 0 && (
-              <button
-                onClick={handleMarkAllRead}
-                className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow uppercase"
-              >
-                [MARK ALL READ]
-              </button>
-            )}
-          </div>
-
-          {/* Notifications List */}
-          <div className="max-h-[500px] overflow-y-auto">
-            {sortedNotifications.length === 0 ? (
-              <div className="p-6 text-center">
-                <p className="text-sm terminal-text text-robotic-yellow/50">[NO NOTIFICATIONS]</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-robotic-yellow/20">
-                {sortedNotifications.map((notification) => (
-                  <div
-                    key={notification.id}
-                    className={`p-4 hover:bg-robotic-yellow/5 cursor-pointer transition-colors ${
-                      !notification.read ? getPriorityStyles(notification.priority) : ''
-                    } ${notification.read ? 'opacity-70' : ''}`}
-                    onClick={() => handleNotificationClick(notification)}
-                  >
-                    <div className="flex items-start gap-3">
-                      <span className="text-xl flex-shrink-0">
-                        {getIcon(notification.priority)}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h4 className="text-sm terminal-text font-semibold uppercase text-robotic-yellow">
-                            {notification.title}
-                          </h4>
-                          {!notification.read && (
-                            <span className="w-2 h-2 bg-robotic-orange rounded-full flex-shrink-0"></span>
-                          )}
-                        </div>
-                        <p className="text-xs terminal-text text-robotic-yellow/80 mb-2">
-                          {notification.message}
-                        </p>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs terminal-text text-robotic-yellow/50 uppercase">
-                            {notification.priority}
-                          </span>
-                          {notification.action_url && (
-                            <span className="text-xs terminal-text text-robotic-yellow/70">
-                              [CLICK TO VIEW]
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+      {/* Dropdown Panel - Rendered via Portal */}
+      {isOpen && createPortal(dropdownContent, document.body)}
+    </>
   );
 };

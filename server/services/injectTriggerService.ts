@@ -371,7 +371,7 @@ export async function evaluateDecisionBasedTriggers(
  */
 export async function generateAndPublishInjectFromDecision(
   sessionId: string,
-  decision: { id: string; title: string; description: string; type: string },
+  decision: { id: string; title: string; description: string; type: string; proposed_by?: string },
   classification: DecisionClassification,
   io?: SocketServer,
 ): Promise<void> {
@@ -531,6 +531,7 @@ export async function generateAndPublishInjectFromDecision(
     }
 
     // Create the inject in the database
+    // For AI-generated injects, store the decision maker so only they can see it
     const { data: createdInject, error: createError } = await supabaseAdmin
       .from('scenario_injects')
       .insert({
@@ -546,6 +547,7 @@ export async function generateAndPublishInjectFromDecision(
         requires_response: generatedInject.requires_response ?? false,
         requires_coordination: generatedInject.requires_coordination ?? false,
         ai_generated: true, // Mark as AI-generated
+        triggered_by_user_id: decision.proposed_by || null, // Store decision maker for visibility filtering
       })
       .select()
       .single();

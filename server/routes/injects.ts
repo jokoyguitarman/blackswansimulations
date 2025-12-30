@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
-import { validate, schemas } from '../lib/validation.js';
+import { validate } from '../lib/validation.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import {
   createNotificationsForRoles,
@@ -74,8 +74,8 @@ export async function publishInjectToSession(
         content: inject.content,
         severity: inject.severity,
         affected_roles: inject.affected_roles || [],
-        inject_scope: (inject as any).inject_scope || 'universal',
-        target_teams: (inject as any).target_teams || null,
+        inject_scope: ((inject as Record<string, unknown>).inject_scope as string) || 'universal',
+        target_teams: ((inject as Record<string, unknown>).target_teams as string[] | null) || null,
       },
     })
     .select()
@@ -112,8 +112,8 @@ export async function publishInjectToSession(
     content: inject.content,
     severity: inject.severity,
     affected_roles: inject.affected_roles || [],
-    inject_scope: (inject as any).inject_scope || 'universal',
-    target_teams: (inject as any).target_teams || null,
+    inject_scope: ((inject as Record<string, unknown>).inject_scope as string) || 'universal',
+    target_teams: ((inject as Record<string, unknown>).target_teams as string[] | null) || null,
   });
 
   // Broadcast generic event (the session_events insert was already done above)
@@ -144,9 +144,10 @@ export async function publishInjectToSession(
 
   // Create notifications for affected users
   try {
-    const injectScope = (inject as any).inject_scope || 'universal';
+    const injectScope = ((inject as Record<string, unknown>).inject_scope as string) || 'universal';
     const affectedRoles = inject.affected_roles || [];
-    const targetTeams = (inject as any).target_teams || null;
+    const targetTeams =
+      ((inject as Record<string, unknown>).target_teams as string[] | null) || null;
 
     // Determine priority based on severity
     const priorityMap: Record<string, 'low' | 'medium' | 'high' | 'critical'> = {
@@ -209,7 +210,7 @@ export async function publishInjectToSession(
         // Filter participants by team (assuming teams are roles for now)
         const userIds = participants
           .filter((p) => {
-            const role = (p.user_profiles as any)?.role;
+            const role = ((p.user_profiles as Record<string, unknown>)?.role as string) || '';
             return role && targetTeams.includes(role);
           })
           .map((p) => p.user_id)
@@ -393,7 +394,7 @@ export async function publishInjectToSession(
       const sentiment = 'neutral';
 
       // Check if inject has ai_generated field
-      const aiGenerated = (inject as any).ai_generated || false;
+      const aiGenerated = ((inject as Record<string, unknown>).ai_generated as boolean) || false;
 
       // Create media post
       const { data: mediaPost, error: mediaError } = await supabaseAdmin
@@ -553,8 +554,13 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 
         const userTeamNames = userTeams?.map((t) => t.team_name) || [];
 
-        filteredInjects = allInjects.filter((inject: any) => {
-          const scope = inject.inject_scope || 'universal';
+        filteredInjects = allInjects.filter((inject: Record<string, unknown>) => {
+          // AI-generated injects: only visible to the decision maker who triggered them
+          if (inject.ai_generated && inject.triggered_by_user_id) {
+            return inject.triggered_by_user_id === user.id;
+          }
+
+          const scope = (inject.inject_scope as string) || 'universal';
 
           // Universal injects: visible to all
           if (scope === 'universal') {
@@ -563,7 +569,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 
           // Role-specific injects: check if user's role is in affected_roles
           if (scope === 'role_specific') {
-            const affectedRoles = inject.affected_roles || [];
+            const affectedRoles = (inject.affected_roles as string[]) || [];
             if (Array.isArray(affectedRoles) && affectedRoles.length > 0) {
               return affectedRoles.includes(user.role);
             }
@@ -573,7 +579,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 
           // Team-specific injects: check if user is in one of the target teams
           if (scope === 'team_specific') {
-            const targetTeams = inject.target_teams || [];
+            const targetTeams = (inject.target_teams as string[]) || [];
             if (Array.isArray(targetTeams) && targetTeams.length > 0) {
               return targetTeams.some((team: string) => userTeamNames.includes(team));
             }

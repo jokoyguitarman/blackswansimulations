@@ -802,6 +802,13 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
             title: decision.title,
             description: decision.description,
             type: decision.type || aiClassification.primary_category,
+            proposed_by: decision.proposed_by, // Pass decision maker for inject visibility
+          } as {
+            id: string;
+            title: string;
+            description: string;
+            type: string;
+            proposed_by?: string;
           },
           aiClassification,
           io,

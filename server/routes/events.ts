@@ -79,23 +79,30 @@ router.get(
         // Get all inject IDs from inject events that are missing scope metadata (old events)
         const injectEventIdsMissingScope = (data || [])
           .filter(
-            (event: any) =>
+            (event: Record<string, unknown>) =>
               event.event_type === 'inject' &&
-              event.metadata?.inject_id &&
-              (!event.metadata?.inject_scope || event.metadata.inject_scope === 'universal'),
+              (event.metadata as Record<string, unknown>)?.inject_id &&
+              (!(event.metadata as Record<string, unknown>)?.inject_scope ||
+                (event.metadata as Record<string, unknown>).inject_scope === 'universal'),
           )
-          .map((event: any) => event.metadata.inject_id)
+          .map(
+            (event: Record<string, unknown>) =>
+              (event.metadata as Record<string, unknown>).inject_id,
+          )
           .filter((id: string | null) => id !== null && id !== undefined);
 
         // Get all inject IDs from incident events that were created from injects
         const incidentEventInjectIds = (data || [])
           .filter(
-            (event: any) =>
+            (event: Record<string, unknown>) =>
               event.event_type === 'incident' &&
-              event.metadata?.created_from_inject === true &&
-              event.metadata?.inject_id,
+              (event.metadata as Record<string, unknown>)?.created_from_inject === true &&
+              (event.metadata as Record<string, unknown>)?.inject_id,
           )
-          .map((event: any) => event.metadata.inject_id)
+          .map(
+            (event: Record<string, unknown>) =>
+              (event.metadata as Record<string, unknown>).inject_id,
+          )
           .filter((id: string | null) => id !== null && id !== undefined);
 
         // Combine all inject IDs we need to fetch
@@ -104,25 +111,46 @@ router.get(
         ];
 
         // Fetch injects for events that need scope information
-        let injectsMap = new Map();
+        const injectsMap = new Map();
         if (allInjectIds.length > 0) {
           const { data: injects } = await supabaseAdmin
             .from('scenario_injects')
-            .select('id, inject_scope, target_teams, affected_roles')
+            .select(
+              'id, inject_scope, target_teams, affected_roles, ai_generated, triggered_by_user_id',
+            )
             .in('id', allInjectIds);
 
           if (injects) {
-            injects.forEach((inject: any) => {
-              injectsMap.set(inject.id, inject);
+            injects.forEach((inject: Record<string, unknown>) => {
+              injectsMap.set(inject.id as string, inject);
             });
           }
         }
 
-        filteredEvents = (data || []).filter((event: any) => {
-          const metadata = event.metadata || {};
+        filteredEvents = (data || []).filter((event: Record<string, unknown>) => {
+          const metadata = (event.metadata as Record<string, unknown>) || {};
 
           // Handle inject events
           if (event.event_type === 'inject') {
+            // AI-generated injects: only visible to the decision maker who triggered them
+            if (metadata.inject_id) {
+              const inject = injectsMap.get(metadata.inject_id);
+              if (inject && inject.ai_generated && inject.triggered_by_user_id) {
+                const isVisible = inject.triggered_by_user_id === user.id;
+                logger.debug(
+                  {
+                    eventId: event.id,
+                    injectId: metadata.inject_id,
+                    isVisible,
+                    triggeredBy: inject.triggered_by_user_id,
+                    userId: user.id,
+                  },
+                  'AI-generated inject event visibility check',
+                );
+                return isVisible;
+              }
+            }
+
             // If metadata doesn't have inject_scope, fetch from database (for old events)
             let scope = metadata.inject_scope;
             let targetTeams = metadata.target_teams || [];
@@ -339,7 +367,7 @@ router.get(
       }
 
       // Transform events: map metadata to event_data and actor to creator for frontend compatibility
-      const transformedData = filteredEvents.map((event: any) => ({
+      const transformedData = filteredEvents.map((event: Record<string, unknown>) => ({
         ...event,
         event_data: event.metadata || {}, // Map metadata to event_data
         creator: event.actor || null, // Map actor to creator

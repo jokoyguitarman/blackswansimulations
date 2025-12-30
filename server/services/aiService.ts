@@ -580,16 +580,29 @@ Return ONLY valid JSON in this exact format:
   "content": "Detailed, realistic content describing the inject. Should be 2-4 sentences, written as if it's a real update or report.",
   "severity": "medium",
   "affected_roles": ["public_information_officer", "police_commander"],
-  "inject_scope": "universal",
+  "inject_scope": "role_specific",
   "requires_response": false,
   "requires_coordination": false
 }
+
+CRITICAL: inject_scope and affected_roles determine who sees this inject:
+- "universal": Use ONLY when the inject contains information that ALL participants need to know (e.g., major breaking news, system-wide alerts, critical public announcements). This should be RARE.
+- "role_specific": Use when the inject is relevant to specific roles. This should be the DEFAULT for most injects. Only include roles in affected_roles that would realistically receive, need to know about, or respond to this inject.
+- "team_specific": Use when the inject is relevant to specific teams (rare, typically for coordination scenarios).
+
+Examples:
+- Media report about police actions → inject_scope: "role_specific", affected_roles: ["public_information_officer", "police_commander"]
+- Citizen complaint about medical services → inject_scope: "role_specific", affected_roles: ["medical_director", "hospital_admin"]
+- Major breaking news affecting everyone → inject_scope: "universal", affected_roles: [] (all roles see it)
+- Intel brief about security threat → inject_scope: "role_specific", affected_roles: ["police_commander", "security_officer"]
 
 Important:
 - Only generate an inject if the decision warrants a meaningful consequence or reaction
 - Make the inject feel natural and realistic, not forced
 - Severity should match the decision's impact (low for minor decisions, critical for major emergency declarations)
-- affected_roles should include roles that would realistically need to know about or respond to this inject
+- DEFAULT to "role_specific" unless the inject truly needs to be seen by everyone
+- affected_roles should include ONLY roles that would realistically need to know about or respond to this inject
+- Use role names that match the active participants in the session
 - If the decision doesn't warrant an inject, return null`;
 
     // Build comprehensive context
@@ -676,6 +689,13 @@ Generate a realistic inject that:
 - Considers the full context of what has happened in the session so far
 - Creates appropriate challenges or complications that feel natural and realistic
 - Is appropriate for the scenario context
+
+CRITICAL: Role targeting:
+- Use ONLY role names from the ACTIVE PARTICIPANTS list above
+- DEFAULT to "role_specific" scope unless the inject truly needs universal visibility
+- Select affected_roles based on which participants would realistically receive or need to respond to this inject
+- If the inject is relevant to specific roles (most cases), use "role_specific" with those roles in affected_roles
+- Only use "universal" for injects that genuinely need to be seen by everyone (rare - major breaking news, system-wide alerts)
 
 Important considerations:
 - If upcoming injects mention specific events (e.g., "explosion at 3pm"), don't create an inject that contradicts this
