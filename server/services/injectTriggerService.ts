@@ -384,7 +384,7 @@ export async function generateAndPublishInjectFromDecision(
     // Get session and scenario context
     const { data: session, error: sessionError } = await supabaseAdmin
       .from('sessions')
-      .select('scenario_id, trainer_id, started_at, current_state')
+      .select('scenario_id, trainer_id, start_time, current_state')
       .eq('id', sessionId)
       .single();
 
@@ -418,8 +418,8 @@ export async function generateAndPublishInjectFromDecision(
     }
 
     // Calculate session duration
-    const sessionDurationMinutes = session.started_at
-      ? Math.round((new Date().getTime() - new Date(session.started_at).getTime()) / 60000)
+    const sessionDurationMinutes = session.start_time
+      ? Math.round((new Date().getTime() - new Date(session.start_time).getTime()) / 60000)
       : 0;
 
     // Gather all context in parallel for efficiency
