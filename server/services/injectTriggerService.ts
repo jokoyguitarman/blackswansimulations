@@ -2,19 +2,8 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import type { Server as SocketServer } from 'socket.io';
-import { generateInjectFromDecision } from './aiService.js';
+import { generateInjectFromDecision, type DecisionClassification } from './aiService.js';
 import { env } from '../env.js';
-
-/**
- * Decision Classification from AI
- */
-export interface DecisionClassification {
-  primary_category: string;
-  categories: string[];
-  keywords: string[];
-  semantic_tags: string[];
-  confidence: number;
-}
 
 /**
  * Trigger Condition Format
@@ -494,10 +483,10 @@ export async function generateAndPublishInjectFromDecision(
         title: d.title as string,
         description: d.description as string,
         type: d.type as string,
-        proposed_by: d.proposed_by as string,
+        proposed_by: d.proposed_by as string | undefined,
         proposed_by_name: (d.creator as { full_name?: string } | null)?.full_name,
-        executed_at: d.executed_at as string,
-        ai_classification: d.ai_classification as Record<string, unknown> | null,
+        executed_at: (d.executed_at as string) || undefined,
+        ai_classification: (d.ai_classification as DecisionClassification | null) || undefined,
       })) || [];
 
     // Process recent injects
