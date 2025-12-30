@@ -140,7 +140,24 @@ export class AIInjectSchedulerService {
       return;
     }
 
-    // Get injects published in the last 5 minutes
+    // TRIGGER CONDITION: Only generate injects if there are decisions executed in the last 5 minutes
+    if (!recentDecisions || recentDecisions.length === 0) {
+      logger.debug(
+        { sessionId: session.id },
+        'No decisions executed in last 5 minutes, skipping AI inject generation',
+      );
+      return;
+    }
+
+    logger.info(
+      {
+        sessionId: session.id,
+        recentDecisionsCount: recentDecisions.length,
+      },
+      'Found executed decisions in last 5 minutes, generating AI injects',
+    );
+
+    // CONTEXT: Get injects published in the last 5 minutes (for AI context, not for triggering)
     const { data: recentInjects, error: injectsError } = await supabaseAdmin
       .from('session_events')
       .select('metadata, created_at')
@@ -150,32 +167,20 @@ export class AIInjectSchedulerService {
       .order('created_at', { ascending: false });
 
     if (injectsError) {
-      logger.error(
+      logger.warn(
         { error: injectsError, sessionId: session.id },
-        'Failed to fetch recent injects for AI inject generation',
+        'Failed to fetch recent injects for context (continuing anyway)',
       );
-      return;
-    }
-
-    // If no recent activity, skip this session
-    if (
-      (!recentDecisions || recentDecisions.length === 0) &&
-      (!recentInjects || recentInjects.length === 0)
-    ) {
-      logger.debug(
-        { sessionId: session.id },
-        'No recent activity in last 5 minutes, skipping AI inject generation',
-      );
-      return;
+      // Don't return - we can still generate injects without this context
     }
 
     logger.info(
       {
         sessionId: session.id,
-        recentDecisionsCount: recentDecisions?.length || 0,
+        recentDecisionsCount: recentDecisions.length,
         recentInjectsCount: recentInjects?.length || 0,
       },
-      'Found recent activity, generating AI injects',
+      'Generating AI injects based on executed decisions (recent injects included for context)',
     );
 
     // Calculate session duration
