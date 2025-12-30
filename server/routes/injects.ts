@@ -556,8 +556,9 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
         const userTeamNames = userTeams?.map((t) => t.team_name) || [];
 
         filteredInjects = allInjects.filter((inject: Record<string, unknown>) => {
-          // AI-generated injects: only visible to the decision maker who triggered them
-          if (inject.ai_generated && inject.triggered_by_user_id) {
+          // Legacy AI-generated injects: only visible to the decision maker who triggered them
+          // (New AI injects use team_specific or universal scope instead)
+          if (inject.ai_generated && inject.triggered_by_user_id && !inject.inject_scope) {
             return inject.triggered_by_user_id === user.id;
           }
 

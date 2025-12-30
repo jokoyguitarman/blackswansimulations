@@ -27,6 +27,7 @@ import { notificationsRouter } from './routes/notifications.js';
 import { setupWebSocket } from './websocket/index.js';
 import { initializeWebSocketService } from './services/websocketService.js';
 import { initializeInjectScheduler } from './services/injectSchedulerService.js';
+import { initializeAIInjectScheduler } from './services/aiInjectSchedulerService.js';
 import jwt from 'jsonwebtoken';
 
 const app = express();
@@ -41,6 +42,10 @@ initializeWebSocketService(io);
 // Initialize and start inject scheduler
 const injectScheduler = initializeInjectScheduler(io);
 injectScheduler.start();
+
+// Initialize and start AI inject scheduler (runs every 5 minutes)
+const aiInjectScheduler = initializeAIInjectScheduler(io);
+aiInjectScheduler.start();
 
 // Security: Helmet for security headers
 app.use(
@@ -163,8 +168,9 @@ app.use((err: unknown, _req: express.Request, res: express.Response) => {
 const shutdown = async () => {
   logger.info('Shutdown signal received, closing server gracefully...');
 
-  // Stop inject scheduler
+  // Stop inject schedulers
   injectScheduler.stop();
+  aiInjectScheduler.stop();
 
   // Close HTTP server
   server.close(() => {

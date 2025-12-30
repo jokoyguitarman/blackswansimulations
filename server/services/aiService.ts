@@ -674,28 +674,48 @@ Important:
         ? `\n\nACTIVE PARTICIPANTS:\n${sessionContext.participants.map((p) => `- ${p.role}`).join('\n')}`
         : '';
 
+    // Add inject type context if provided
+    const injectTypeContext =
+      (
+        sessionContext as {
+          injectType?: string;
+          teamName?: string;
+          teamDecisions?: Array<Record<string, unknown>>;
+        }
+      ).injectType === 'team_specific'
+        ? `\n\nTEAM CONTEXT:\nThis inject is for team "${(sessionContext as { teamName?: string }).teamName}". Focus on the specific actions and decisions made by this team: ${JSON.stringify((sessionContext as { teamDecisions?: Array<Record<string, unknown>> }).teamDecisions || [], null, 2)}`
+        : (sessionContext as { injectType?: string }).injectType === 'universal'
+          ? `\n\nUNIVERSAL CONTEXT:\nThis inject should provide a general overview visible to all players, reflecting the overall state of play and all decisions made in the last 5 minutes.`
+          : '';
+
+    const instructions = (sessionContext as { instructions?: string }).instructions || '';
+
     const userPrompt = `Generate an inject based on this decision:
 
 CURRENT DECISION:
 Title: ${decision.title}
 Description: ${decision.description}
-Type: ${decision.type}${scenarioContext}${allDecisionsContext}${upcomingInjectsContext}${currentStateContext}${objectivesContext}${recentInjectsContext}${participantsContext}
+Type: ${decision.type}${scenarioContext}${allDecisionsContext}${upcomingInjectsContext}${currentStateContext}${objectivesContext}${recentInjectsContext}${participantsContext}${injectTypeContext}
+
+${instructions}
 
 Generate a realistic inject that:
-- Is a natural consequence of the current decision
-- Stays consistent with ALL previous decisions (not just the current one) - consider the cumulative effect
-- Doesn't contradict upcoming scheduled injects (avoid creating conflicts with events that are about to happen)
+- Is a natural consequence of the decision(s) and current state
+- Stays consistent with ALL previous decisions
+- Doesn't contradict upcoming scheduled injects
 - Fits the current game state and objectives
-- Considers the full context of what has happened in the session so far
-- Creates appropriate challenges or complications that feel natural and realistic
-- Is appropriate for the scenario context
+- Creates appropriate challenges or complications
 
-CRITICAL: Role targeting:
-- Use ONLY role names from the ACTIVE PARTICIPANTS list above
-- DEFAULT to "role_specific" scope unless the inject truly needs universal visibility
-- Select affected_roles based on which participants would realistically receive or need to respond to this inject
-- If the inject is relevant to specific roles (most cases), use "role_specific" with those roles in affected_roles
-- Only use "universal" for injects that genuinely need to be seen by everyone (rare - major breaking news, system-wide alerts)
+CRITICAL: Scope targeting:
+${
+  (sessionContext as { injectType?: string; teamName?: string }).injectType === 'team_specific'
+    ? `- MUST use "team_specific" scope with target_teams: ["${(sessionContext as { teamName?: string }).teamName}"]`
+    : (sessionContext as { injectType?: string }).injectType === 'universal'
+      ? `- MUST use "universal" scope (visible to all players)`
+      : `- Use "role_specific" for role-targeted injects
+- Use "universal" only for system-wide alerts
+- Use "team_specific" if targeting specific teams`
+}
 
 Important considerations:
 - If upcoming injects mention specific events (e.g., "explosion at 3pm"), don't create an inject that contradicts this
