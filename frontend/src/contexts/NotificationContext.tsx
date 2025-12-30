@@ -7,6 +7,7 @@ import {
   type ReactNode,
   useRef,
 } from 'react';
+import { useLocation } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { type WebSocketEvent } from '../lib/websocketClient';
@@ -59,43 +60,57 @@ interface NotificationProviderProps {
   sessionId?: string;
 }
 
-export const NotificationProvider = ({ children, sessionId }: NotificationProviderProps) => {
+export const NotificationProvider = ({
+  children,
+  sessionId: propSessionId,
+}: NotificationProviderProps) => {
   const { user } = useAuth();
+  const location = useLocation();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
+  // Extract session ID from route if we're in a session view
+  const routeSessionId = location.pathname.match(/^\/sessions\/([^/]+)/)?.[1];
+  const currentSessionId = propSessionId || routeSessionId;
+
   // Load notifications from backend
   const loadNotifications = useCallback(
-    async (currentSessionId?: string) => {
+    async (sessionIdOverride?: string) => {
       if (!user) return;
 
+      const targetSessionId = sessionIdOverride || currentSessionId;
       setLoading(true);
       try {
-        const result = await api.notifications.list(currentSessionId || sessionId, false, 50);
-        setNotifications(result.data || []);
+        const result = await api.notifications.list(targetSessionId, false, 50);
+        // Filter notifications to only show ones for the current session (if in a session)
+        const filteredNotifications = targetSessionId
+          ? (result.data || []).filter((n) => n.session_id === targetSessionId)
+          : result.data || [];
+        setNotifications(filteredNotifications);
       } catch (error) {
         console.error('Failed to load notifications:', error);
       } finally {
         setLoading(false);
       }
     },
-    [user, sessionId],
+    [user, currentSessionId],
   );
 
   // Load unread count
   const refreshUnreadCount = useCallback(
-    async (currentSessionId?: string) => {
+    async (sessionIdOverride?: string) => {
       if (!user) return;
 
       try {
-        const result = await api.notifications.getUnreadCount(currentSessionId || sessionId);
+        const targetSessionId = sessionIdOverride || currentSessionId;
+        const result = await api.notifications.getUnreadCount(targetSessionId);
         setUnreadCount(result.count || 0);
       } catch (error) {
         console.error('Failed to load unread count:', error);
       }
     },
-    [user, sessionId],
+    [user, currentSessionId],
   );
 
   // Mark notification as read
@@ -115,9 +130,10 @@ export const NotificationProvider = ({ children, sessionId }: NotificationProvid
 
   // Mark all notifications as read
   const markAllAsRead = useCallback(
-    async (currentSessionId?: string) => {
+    async (sessionIdOverride?: string) => {
       try {
-        await api.notifications.markAllAsRead(currentSessionId || sessionId);
+        const targetSessionId = sessionIdOverride || currentSessionId;
+        await api.notifications.markAllAsRead(targetSessionId);
         setNotifications((prev) =>
           prev.map((n) => ({ ...n, read: true, read_at: new Date().toISOString() })),
         );
@@ -126,35 +142,46 @@ export const NotificationProvider = ({ children, sessionId }: NotificationProvid
         console.error('Failed to mark all notifications as read:', error);
       }
     },
-    [sessionId],
+    [currentSessionId],
   );
 
-  // Add a ref to track if we've already loaded
-  const hasLoadedRef = useRef(false);
+  // Track previous session ID to detect changes
+  const prevSessionIdRef = useRef<string | undefined>(currentSessionId);
 
+  // Load notifications when user logs in
   useEffect(() => {
-    if (user && !hasLoadedRef.current) {
-      hasLoadedRef.current = true;
+    if (user) {
       loadNotifications();
       refreshUnreadCount();
     }
-    // Reset when user changes
-    if (!user) {
-      hasLoadedRef.current = false;
+  }, [user, loadNotifications, refreshUnreadCount]);
+
+  // Reload notifications when session changes
+  useEffect(() => {
+    if (user && prevSessionIdRef.current !== currentSessionId) {
+      prevSessionIdRef.current = currentSessionId;
+      // Clear old notifications and load new ones for the current session
+      setNotifications([]);
+      loadNotifications();
+      refreshUnreadCount();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]); // Only depend on user, not sessionId
+  }, [user, currentSessionId, loadNotifications, refreshUnreadCount]);
 
   // Listen for new notifications via WebSocket
   useWebSocket({
-    sessionId: sessionId || '',
+    sessionId: currentSessionId || '',
     eventTypes: ['notification.created'],
     onEvent: async (event: WebSocketEvent) => {
       if (event.type === 'notification.created' && event.data?.notification) {
         const newNotification = event.data.notification as Notification;
 
-        // Only add if it's for the current user
+        // Only add if it's for the current user and current session (if in a session)
         if (newNotification.user_id === user?.id) {
+          // If we're in a session view, only show notifications for that session
+          if (currentSessionId && newNotification.session_id !== currentSessionId) {
+            return;
+          }
+
           setNotifications((prev) => {
             // Check if notification already exists
             if (prev.some((n) => n.id === newNotification.id)) {
@@ -170,7 +197,7 @@ export const NotificationProvider = ({ children, sessionId }: NotificationProvid
         }
       }
     },
-    enabled: !!user && !!sessionId,
+    enabled: !!user,
   });
 
   return (
