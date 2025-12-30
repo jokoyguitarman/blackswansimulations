@@ -194,14 +194,16 @@ router.get(
       const users = participants
         .map(
           (p: {
-            user: { id: string; full_name: string } | null;
-            user_profiles: { role: string } | null;
+            user_id: string;
+            role: string;
+            user: { id: string; full_name: string }[] | null;
           }) => {
-            const user = p.user as { id: string; full_name: string } | null;
+            // Supabase returns user as an array for foreign key relationships, but it's a one-to-one so take first element
+            const user = Array.isArray(p.user) ? p.user[0] || null : p.user;
             if (!user || !user.id) return null;
 
             // Filter out trainer and admin roles
-            const role = p.role as string;
+            const role = p.role;
             if (!role || role === 'trainer' || role === 'admin') return null;
 
             return {
@@ -400,6 +402,7 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
               // Check role-based assignment
               if (
                 assignment.assignment_type === 'agency_role' &&
+                user.role &&
                 assignment.agency_role === user.role
               ) {
                 return true;
@@ -488,7 +491,7 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
 
           // Role-specific injects: check if user's role is in affected_roles
           if (scope === 'role_specific') {
-            if (Array.isArray(affectedRoles) && affectedRoles.length > 0) {
+            if (Array.isArray(affectedRoles) && affectedRoles.length > 0 && user.role) {
               const isVisible = affectedRoles.includes(user.role);
               logger.debug(
                 {
