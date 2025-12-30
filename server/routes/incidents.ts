@@ -3,14 +3,10 @@ import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
-import { validate, schemas } from '../lib/validation.js';
+import { validate } from '../lib/validation.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { logAndBroadcastEvent } from '../services/eventService.js';
-import {
-  createNotificationsForRoles,
-  createNotification,
-  createNotificationsForUsers,
-} from '../services/notificationService.js';
+import { createNotificationsForUsers } from '../services/notificationService.js';
 import { io } from '../index.js';
 
 /**
@@ -125,7 +121,9 @@ router.get('/session/:sessionId/teams', requireAuth, async (req: AuthenticatedRe
     }
 
     // Get unique team names that have at least one participant assigned
-    const uniqueTeamNames = [...new Set((teamAssignments || []).map((a: any) => a.team_name))];
+    const uniqueTeamNames = [
+      ...new Set((teamAssignments || []).map((a: { team_name: string }) => a.team_name)),
+    ];
 
     // Return teams as simple array, sorted alphabetically
     const teams = uniqueTeamNames.sort().map((teamName) => ({
@@ -194,21 +192,30 @@ router.get(
 
       // Format: [{ id: '...', name: 'John Doe', role: 'police_commander' }]
       const users = participants
-        .map((p: any) => {
-          const user = p.user as { id: string; full_name: string } | null;
-          if (!user || !user.id) return null;
+        .map(
+          (p: {
+            user: { id: string; full_name: string } | null;
+            user_profiles: { role: string } | null;
+          }) => {
+            const user = p.user as { id: string; full_name: string } | null;
+            if (!user || !user.id) return null;
 
-          // Filter out trainer and admin roles
-          const role = p.role as string;
-          if (!role || role === 'trainer' || role === 'admin') return null;
+            // Filter out trainer and admin roles
+            const role = p.role as string;
+            if (!role || role === 'trainer' || role === 'admin') return null;
 
-          return {
-            id: user.id,
-            name: user.full_name || 'Unknown',
-            role: role,
-          };
-        })
-        .filter((u: any): u is { id: string; name: string; role: string } => u !== null)
+            return {
+              id: user.id,
+              name: user.full_name || 'Unknown',
+              role: role,
+            };
+          },
+        )
+        .filter(
+          (
+            u: { id: string; name: string; role: string } | null,
+          ): u is { id: string; name: string; role: string } => u !== null,
+        )
         .sort((a, b) => {
           // Sort by role first, then by name
           const roleCompare = a.role.localeCompare(b.role);
@@ -293,29 +300,43 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
     if (user.role !== 'trainer' && user.role !== 'admin') {
       // Get all inject IDs from incidents that have inject_id
       const incidentInjectIds = (data || [])
-        .map((incident: any) => incident.inject_id)
-        .filter((id: string | null) => id !== null && id !== undefined);
+        .map((incident: { inject_id?: string | null }) => incident.inject_id)
+        .filter((id: string | null | undefined): id is string => id !== null && id !== undefined);
 
       logger.debug(
         {
           totalIncidents: (data || []).length,
           incidentsWithInjectId: incidentInjectIds.length,
           incidentInjectIds,
-          sampleIncidents: (data || []).slice(0, 3).map((inc: any) => ({
-            id: inc.id,
-            title: inc.title,
-            inject_id: inc.inject_id,
-          })),
+          sampleIncidents: (data || [])
+            .slice(0, 3)
+            .map((inc: { id: string; title: string; inject_id?: string | null }) => ({
+              id: inc.id,
+              title: inc.title,
+              inject_id: inc.inject_id,
+            })),
         },
         'Checking incidents for inject_id',
       );
 
       // Fetch injects for incidents that were created from injects
-      let injectsMap = new Map();
+      const injectsMap = new Map<
+        string,
+        {
+          id: string;
+          inject_scope?: string | null;
+          target_teams?: string[] | null;
+          affected_roles?: string[] | null;
+          ai_generated?: boolean | null;
+          triggered_by_user_id?: string | null;
+        }
+      >();
       if (incidentInjectIds.length > 0) {
         const { data: injects, error: injectsError } = await supabaseAdmin
           .from('scenario_injects')
-          .select('id, inject_scope, target_teams, affected_roles')
+          .select(
+            'id, inject_scope, target_teams, affected_roles, ai_generated, triggered_by_user_id',
+          )
           .in('id', incidentInjectIds);
 
         if (injectsError) {
@@ -326,13 +347,22 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
         }
 
         if (injects) {
-          injects.forEach((inject: any) => {
-            injectsMap.set(inject.id, inject);
-          });
+          injects.forEach(
+            (inject: {
+              id: string;
+              inject_scope?: string | null;
+              target_teams?: string[] | null;
+              affected_roles?: string[] | null;
+              ai_generated?: boolean | null;
+              triggered_by_user_id?: string | null;
+            }) => {
+              injectsMap.set(inject.id, inject);
+            },
+          );
           logger.debug(
             {
               fetchedInjects: injects.length,
-              injectsMap: Array.from(injectsMap.entries()).map(([id, inj]: [string, any]) => ({
+              injectsMap: Array.from(injectsMap.entries()).map(([id, inj]) => ({
                 id,
                 scope: inj.inject_scope,
                 targetTeams: inj.target_teams,
@@ -343,97 +373,147 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
         }
       }
 
-      filteredIncidents = (data || []).filter((incident: any) => {
-        // Check if incident is assigned to user's role
-        const assignments = incident.assignments || [];
-        const isAssignedToUserRole = assignments.some(
-          (assignment: any) =>
-            assignment.agency_role === user.role &&
-            assignment.assignment_type === 'agency_role' &&
-            !assignment.unassigned_at,
-        );
+      filteredIncidents = (data || []).filter(
+        (incident: {
+          id: string;
+          title: string;
+          inject_id?: string | null;
+          assignments?: Array<{
+            assignment_type?: string;
+            agency_role?: string;
+            user_id?: string;
+            unassigned_at?: string | null;
+          }> | null;
+        }) => {
+          // FIRST: Check if incident is assigned to user (by role OR by user_id)
+          // This takes precedence over all other visibility rules
+          const assignments = incident.assignments || [];
+          const isAssignedToUser = assignments.some(
+            (assignment: {
+              assignment_type?: string;
+              agency_role?: string;
+              user_id?: string;
+              unassigned_at?: string | null;
+            }) => {
+              if (assignment.unassigned_at) return false;
 
-        if (isAssignedToUserRole) {
-          logger.debug(
-            {
-              incidentId: incident.id,
-              title: incident.title,
-              userRole: user.role,
+              // Check role-based assignment
+              if (
+                assignment.assignment_type === 'agency_role' &&
+                assignment.agency_role === user.role
+              ) {
+                return true;
+              }
+
+              // Check user-specific assignment
+              if (assignment.assignment_type === 'user' && assignment.user_id === user.id) {
+                return true;
+              }
+
+              return false;
             },
-            'Incident included: assigned to user role',
           );
-          return true;
-        }
 
-        // Incidents without inject_id are always visible (manually created incidents)
-        if (!incident.inject_id) {
-          logger.debug(
-            { incidentId: incident.id, title: incident.title },
-            'Incident included: no inject_id (manually created)',
-          );
-          return true;
-        }
-
-        // Get the inject that created this incident
-        const inject = injectsMap.get(incident.inject_id);
-        if (!inject) {
-          // If inject not found, show incident (safe default for data integrity issues)
-          logger.warn(
-            { incidentId: incident.id, injectId: incident.inject_id },
-            'Inject not found for incident, showing incident',
-          );
-          return true;
-        }
-
-        const scope = inject.inject_scope || 'universal';
-        const targetTeams = inject.target_teams || [];
-        const affectedRoles = inject.affected_roles || [];
-
-        logger.debug(
-          {
-            incidentId: incident.id,
-            injectId: incident.inject_id,
-            scope,
-            targetTeams,
-            affectedRoles,
-            userRole: user.role,
-          },
-          'Filtering incident by inject scope',
-        );
-
-        // Universal injects: visible to all
-        if (scope === 'universal') {
-          logger.debug({ incidentId: incident.id }, 'Incident included: universal scope');
-          return true;
-        }
-
-        // Role-specific injects: check if user's role is in affected_roles
-        if (scope === 'role_specific') {
-          if (Array.isArray(affectedRoles) && affectedRoles.length > 0) {
-            const isVisible = affectedRoles.includes(user.role);
+          if (isAssignedToUser) {
             logger.debug(
               {
                 incidentId: incident.id,
-                isVisible,
+                title: incident.title,
+                userId: user.id,
                 userRole: user.role,
-                affectedRoles,
               },
-              'Incident role-specific check',
+              'Incident included: assigned to user',
+            );
+            return true;
+          }
+
+          // Incidents without inject_id are always visible (manually created incidents)
+          if (!incident.inject_id) {
+            logger.debug(
+              { incidentId: incident.id, title: incident.title },
+              'Incident included: no inject_id (manually created)',
+            );
+            return true;
+          }
+
+          // Get the inject that created this incident
+          const inject = injectsMap.get(incident.inject_id);
+          if (!inject) {
+            // If inject not found, show incident (safe default for data integrity issues)
+            logger.warn(
+              { incidentId: incident.id, injectId: incident.inject_id },
+              'Inject not found for incident, showing incident',
+            );
+            return true;
+          }
+
+          // AI-generated injects: show incidents to the decision maker who triggered them
+          // (Only if not assigned to someone else - assignment check already happened above)
+          if (inject.ai_generated && inject.triggered_by_user_id) {
+            const isVisible = inject.triggered_by_user_id === user.id;
+            logger.debug(
+              {
+                incidentId: incident.id,
+                injectId: incident.inject_id,
+                isVisible,
+                triggeredBy: inject.triggered_by_user_id,
+                userId: user.id,
+              },
+              'AI-generated inject incident visibility check',
             );
             return isVisible;
           }
-          // If no affected_roles specified, don't show (safe default)
-          logger.debug(
-            { incidentId: incident.id },
-            'Incident excluded: no affected_roles specified',
-          );
-          return false;
-        }
 
-        // Unknown scope, don't show (safe default)
-        logger.debug({ incidentId: incident.id, scope }, 'Incident excluded: unknown scope');
-        return false;
-      });
+          const scope = inject.inject_scope || 'universal';
+          const targetTeams = inject.target_teams || [];
+          const affectedRoles = inject.affected_roles || [];
+
+          logger.debug(
+            {
+              incidentId: incident.id,
+              injectId: incident.inject_id,
+              scope,
+              targetTeams,
+              affectedRoles,
+              userRole: user.role,
+            },
+            'Filtering incident by inject scope',
+          );
+
+          // Universal injects: visible to all
+          if (scope === 'universal') {
+            logger.debug({ incidentId: incident.id }, 'Incident included: universal scope');
+            return true;
+          }
+
+          // Role-specific injects: check if user's role is in affected_roles
+          if (scope === 'role_specific') {
+            if (Array.isArray(affectedRoles) && affectedRoles.length > 0) {
+              const isVisible = affectedRoles.includes(user.role);
+              logger.debug(
+                {
+                  incidentId: incident.id,
+                  isVisible,
+                  userRole: user.role,
+                  affectedRoles,
+                },
+                'Incident role-specific check',
+              );
+              return isVisible;
+            }
+            // If no affected_roles specified, don't show (safe default)
+            logger.debug(
+              { incidentId: incident.id },
+              'Incident excluded: no affected_roles specified',
+            );
+            return false;
+          }
+
+          // Unknown scope, don't show (safe default)
+          logger.debug({ incidentId: incident.id, scope }, 'Incident excluded: unknown scope');
+          return false;
+        },
+      );
 
       logger.debug(
         {
