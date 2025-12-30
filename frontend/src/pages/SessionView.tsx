@@ -586,34 +586,6 @@ export const SessionView = () => {
       {/* Card-Based Content Grid */}
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Map Card */}
-          <div
-            className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
-            onClick={() => markCardViewed('map')}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg terminal-text uppercase">[MAP]</h3>
-              {cardNotifications['map'] === 'new' && (
-                <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
-              )}
-              {cardNotifications['map'] === 'viewed' && (
-                <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
-              )}
-            </div>
-            <div
-              className="military-border p-8 text-center"
-              style={{ height: '300px', minHeight: '300px' }}
-            >
-              <h3 className="text-lg terminal-text text-robotic-orange mb-4">[MAP_UNAVAILABLE]</h3>
-              <p className="text-sm terminal-text text-robotic-yellow/70 mb-4">
-                The interactive map is temporarily disabled.
-              </p>
-              <p className="text-xs terminal-text text-robotic-yellow/50">
-                Map functionality will be restored in a future update.
-              </p>
-            </div>
-          </div>
-
           {/* Incidents Card */}
           {id && (
             <div
@@ -700,8 +672,8 @@ export const SessionView = () => {
             </div>
           )}
 
-          {/* Injects Card */}
-          {id && session.scenarios && session.scenarios.id && (
+          {/* Injects Card - Trainer only */}
+          {id && session.scenarios && session.scenarios.id && isTrainer && (
             <div
               className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
               onClick={() => markCardViewed('injects')}
@@ -742,8 +714,8 @@ export const SessionView = () => {
             </div>
           )}
 
-          {/* AAR Card - Only show for completed sessions */}
-          {id && session.status === 'completed' && (
+          {/* AAR Card - Only show for completed sessions (Trainer only) */}
+          {id && session.status === 'completed' && isTrainer && (
             <div
               className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
               onClick={() => markCardViewed('aar')}
