@@ -393,37 +393,136 @@ export async function generateAndPublishInjectFromDecision(
     );
 
     // Get session and scenario context
-    const { data: session } = await supabaseAdmin
+    const { data: session, error: sessionError } = await supabaseAdmin
       .from('sessions')
-      .select('scenario_id, trainer_id, started_at')
+      .select('scenario_id, trainer_id, started_at, current_state')
       .eq('id', sessionId)
       .single();
 
-    if (!session) {
-      logger.warn({ sessionId }, 'Session not found for inject generation');
+    if (sessionError) {
+      logger.error(
+        {
+          sessionId,
+          error: sessionError,
+          errorCode: sessionError.code,
+          errorMessage: sessionError.message,
+          errorDetails: sessionError.details,
+          errorHint: sessionError.hint,
+        },
+        'Error fetching session for inject generation',
+      );
       return;
     }
 
-    // Get scenario description for context
-    const { data: scenario } = await supabaseAdmin
-      .from('scenarios')
-      .select('description')
-      .eq('id', session.scenario_id)
-      .single();
-
-    // Get recent decisions for context (last 5)
-    const { data: recentDecisions } = await supabaseAdmin
-      .from('decisions')
-      .select('title, description')
-      .eq('session_id', sessionId)
-      .eq('status', 'executed')
-      .order('executed_at', { ascending: false })
-      .limit(5);
+    if (!session) {
+      logger.warn(
+        {
+          sessionId,
+          sessionIdLength: sessionId.length,
+          sessionIdFormat: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            sessionId,
+          ),
+        },
+        'Session not found for inject generation',
+      );
+      return;
+    }
 
     // Calculate session duration
     const sessionDurationMinutes = session.started_at
       ? Math.round((new Date().getTime() - new Date(session.started_at).getTime()) / 60000)
-      : undefined;
+      : 0;
+
+    // Gather all context in parallel for efficiency
+    const [
+      scenarioResult,
+      allDecisionsResult,
+      upcomingInjectsResult,
+      objectivesResult,
+      recentInjectsResult,
+      participantsResult,
+    ] = await Promise.all([
+      // Get scenario description
+      supabaseAdmin.from('scenarios').select('description').eq('id', session.scenario_id).single(),
+
+      // Get ALL executed decisions (not just last 5) with full context
+      supabaseAdmin
+        .from('decisions')
+        .select(
+          'id, title, description, type, proposed_by, executed_at, ai_classification, creator:user_profiles!decisions_proposed_by_fkey(full_name)',
+        )
+        .eq('session_id', sessionId)
+        .eq('status', 'executed')
+        .order('executed_at', { ascending: true }), // Chronological order
+
+      // Get upcoming time-based injects (next 10)
+      supabaseAdmin
+        .from('scenario_injects')
+        .select('trigger_time_minutes, type, title, content, severity')
+        .eq('scenario_id', session.scenario_id)
+        .not('trigger_time_minutes', 'is', null)
+        .gt('trigger_time_minutes', sessionDurationMinutes)
+        .order('trigger_time_minutes', { ascending: true })
+        .limit(10),
+
+      // Get objectives status
+      supabaseAdmin
+        .from('scenario_objective_progress')
+        .select('objective_id, objective_name, status, progress_percentage')
+        .eq('session_id', sessionId),
+
+      // Get recent injects (last 10 published)
+      supabaseAdmin
+        .from('session_events')
+        .select('metadata, created_at')
+        .eq('session_id', sessionId)
+        .eq('event_type', 'inject')
+        .order('created_at', { ascending: false })
+        .limit(10),
+
+      // Get participants
+      supabaseAdmin
+        .from('session_participants')
+        .select('user_id, role')
+        .eq('session_id', sessionId),
+    ]);
+
+    // Process decisions to include creator names
+    const allDecisions =
+      allDecisionsResult.data?.map((d: Record<string, unknown>) => ({
+        id: d.id as string,
+        title: d.title as string,
+        description: d.description as string,
+        type: d.type as string,
+        proposed_by: d.proposed_by as string,
+        proposed_by_name: (d.creator as { full_name?: string } | null)?.full_name,
+        executed_at: d.executed_at as string,
+        ai_classification: d.ai_classification as Record<string, unknown> | null,
+      })) || [];
+
+    // Process recent injects
+    const recentInjects =
+      recentInjectsResult.data?.map((e: Record<string, unknown>) => {
+        const metadata = e.metadata as Record<string, unknown> | null;
+        return {
+          type: (metadata?.type as string) || 'unknown',
+          title: (metadata?.title as string) || 'Unknown',
+          content: (metadata?.content as string) || '',
+          published_at: e.created_at as string,
+        };
+      }) || [];
+
+    // Enhanced context object
+    const enhancedContext = {
+      scenarioDescription: scenarioResult.data?.description,
+      recentDecisions: allDecisions, // ALL decisions now, not just last 5
+      sessionDurationMinutes,
+      upcomingInjects: upcomingInjectsResult.data || [],
+      currentState: (session.current_state as Record<string, unknown>) || {},
+      objectives: objectivesResult.data || [],
+      recentInjects,
+      participants: participantsResult.data || [],
+    };
 
     // Generate inject using AI
     if (!env.openAiApiKey) {
@@ -433,11 +532,7 @@ export async function generateAndPublishInjectFromDecision(
 
     const generatedInject = await generateInjectFromDecision(
       decision,
-      {
-        scenarioDescription: scenario?.description,
-        recentDecisions: recentDecisions || [],
-        sessionDurationMinutes,
-      },
+      enhancedContext,
       env.openAiApiKey,
     );
 
