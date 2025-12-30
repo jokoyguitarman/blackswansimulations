@@ -585,10 +585,10 @@ export const SessionView = () => {
 
       {/* Card-Based Content Grid */}
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Map Card */}
           <div
-            className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer"
+            className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
             onClick={() => markCardViewed('map')}
           >
             <div className="flex items-center justify-between mb-4">
@@ -617,7 +617,7 @@ export const SessionView = () => {
           {/* Incidents Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
               onClick={() => markCardViewed('incidents')}
             >
               <div className="flex items-center justify-between mb-4">
@@ -629,18 +629,20 @@ export const SessionView = () => {
                   <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
                 )}
               </div>
-              <IncidentsPanel
-                sessionId={id}
-                selectedIncidentId={selectedIncidentId}
-                onIncidentSelect={(incidentId) => setSelectedIncidentId(incidentId)}
-              />
+              <div onClick={(e) => e.stopPropagation()}>
+                <IncidentsPanel
+                  sessionId={id}
+                  selectedIncidentId={selectedIncidentId}
+                  onIncidentSelect={(incidentId) => setSelectedIncidentId(incidentId)}
+                />
+              </div>
             </div>
           )}
 
           {/* Timeline Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
               onClick={() => markCardViewed('timeline')}
             >
               <div className="flex items-center justify-between mb-4">
@@ -659,7 +661,7 @@ export const SessionView = () => {
           {/* Chat Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
               onClick={() => markCardViewed('chat')}
             >
               <div className="flex items-center justify-between mb-4">
@@ -677,10 +679,10 @@ export const SessionView = () => {
             </div>
           )}
 
-          {/* Decisions Card - Larger (spans 2 columns on desktop) */}
+          {/* Decisions Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer lg:col-span-2"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
               onClick={() => markCardViewed('decisions')}
             >
               <div className="flex items-center justify-between mb-4">
@@ -701,7 +703,7 @@ export const SessionView = () => {
           {/* Injects Card */}
           {id && session.scenarios && session.scenarios.id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
               onClick={() => markCardViewed('injects')}
             >
               <div className="flex items-center justify-between mb-4">
@@ -722,7 +724,7 @@ export const SessionView = () => {
           {/* Media Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
               onClick={() => markCardViewed('media')}
             >
               <div className="flex items-center justify-between mb-4">
@@ -743,7 +745,7 @@ export const SessionView = () => {
           {/* AAR Card - Only show for completed sessions */}
           {id && session.status === 'completed' && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer lg:col-span-2"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
               onClick={() => markCardViewed('aar')}
             >
               <div className="flex items-center justify-between mb-4">
@@ -764,7 +766,7 @@ export const SessionView = () => {
           {/* Participants Card - Trainer only */}
           {id && session && isTrainer && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden"
               onClick={() => markCardViewed('participants')}
             >
               <div className="flex items-center justify-between mb-4">

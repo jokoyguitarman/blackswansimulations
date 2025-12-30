@@ -28,6 +28,7 @@ export const AIInjectSystem = ({ sessionId, scenarioId }: AIInjectSystemProps) =
   const [injects, setInjects] = useState<Inject[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [expandedInjects, setExpandedInjects] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadInjects();
@@ -108,9 +109,9 @@ export const AIInjectSystem = ({ sessionId, scenarioId }: AIInjectSystemProps) =
 
       <div className="space-y-3">
         {injects.map((inject) => (
-          <div key={inject.id} className="military-border p-4">
-            <div className="flex justify-between items-start mb-2">
-              <div className="flex-1">
+          <div key={inject.id} className="military-border p-4 overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-2">
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <h4 className="text-sm terminal-text font-semibold">{inject.title}</h4>
                   {inject.ai_generated && (
@@ -119,9 +120,34 @@ export const AIInjectSystem = ({ sessionId, scenarioId }: AIInjectSystemProps) =
                     </span>
                   )}
                 </div>
-                <p className="text-xs terminal-text text-robotic-yellow/70 mb-2 line-clamp-2">
-                  {inject.content}
-                </p>
+                <div className="text-xs terminal-text text-robotic-yellow/70 mb-2">
+                  {inject.content.length > 150 ? (
+                    <>
+                      <p className={expandedInjects.has(inject.id) ? '' : 'line-clamp-2'}>
+                        {inject.content}
+                      </p>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedInjects((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(inject.id)) {
+                              next.delete(inject.id);
+                            } else {
+                              next.add(inject.id);
+                            }
+                            return next;
+                          });
+                        }}
+                        className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow mt-1 uppercase"
+                      >
+                        {expandedInjects.has(inject.id) ? '[SHOW LESS]' : '[SHOW MORE]'}
+                      </button>
+                    </>
+                  ) : (
+                    <p>{inject.content}</p>
+                  )}
+                </div>
                 <div className="flex flex-wrap gap-2 text-xs terminal-text text-robotic-yellow/50">
                   <span>[{inject.type}]</span>
                   <span className={`px-2 py-1 border ${getSeverityColor(inject.severity)}`}>
@@ -153,8 +179,11 @@ export const AIInjectSystem = ({ sessionId, scenarioId }: AIInjectSystemProps) =
                 </div>
               </div>
               <button
-                onClick={() => handlePublishInject(inject.id)}
-                className="military-button px-4 py-2 text-sm ml-4"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePublishInject(inject.id);
+                }}
+                className="military-button px-4 py-2 text-sm whitespace-nowrap flex-shrink-0"
               >
                 [PUBLISH]
               </button>

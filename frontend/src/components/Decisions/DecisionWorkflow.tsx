@@ -46,6 +46,7 @@ export const DecisionWorkflow = ({ sessionId }: DecisionWorkflowProps) => {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedDecision, setSelectedDecision] = useState<Decision | null>(null);
+  const [expandedDecisions, setExpandedDecisions] = useState<Set<string>>(new Set());
 
   // Initial load
   useEffect(() => {
@@ -178,15 +179,40 @@ export const DecisionWorkflow = ({ sessionId }: DecisionWorkflowProps) => {
                 {decision.status.toUpperCase()}
               </span>
             </div>
-            <p className="text-xs terminal-text text-robotic-yellow/70 mb-2 line-clamp-2">
-              {decision.description}
-            </p>
-            <div className="flex justify-between items-center">
+            <div className="text-xs terminal-text text-robotic-yellow/70 mb-2">
+              {decision.description.length > 150 ? (
+                <>
+                  <p className={expandedDecisions.has(decision.id) ? '' : 'line-clamp-2'}>
+                    {decision.description}
+                  </p>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedDecisions((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(decision.id)) {
+                          next.delete(decision.id);
+                        } else {
+                          next.add(decision.id);
+                        }
+                        return next;
+                      });
+                    }}
+                    className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow mt-1 uppercase"
+                  >
+                    {expandedDecisions.has(decision.id) ? '[SHOW LESS]' : '[SHOW MORE]'}
+                  </button>
+                </>
+              ) : (
+                <p>{decision.description}</p>
+              )}
+            </div>
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
               <div className="text-xs terminal-text text-robotic-yellow/50">
                 [{decision.decision_type}] • {decision.creator?.full_name || 'Unknown'}
               </div>
               {canApprove(decision) && (
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -327,16 +353,16 @@ export const DecisionWorkflow = ({ sessionId }: DecisionWorkflowProps) => {
                 </div>
               )}
               {canApprove(selectedDecision) && (
-                <div className="flex gap-4 pt-4 border-t border-robotic-yellow/30">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 pt-4 border-t border-robotic-yellow/30">
                   <button
                     onClick={() => handleApprove(selectedDecision.id, true)}
-                    className="military-button px-6 py-3 flex-1"
+                    className="military-button px-6 py-3 flex-1 whitespace-nowrap"
                   >
                     [APPROVE]
                   </button>
                   <button
                     onClick={() => handleApprove(selectedDecision.id, false)}
-                    className="military-button px-6 py-3 flex-1 border-robotic-orange text-robotic-orange"
+                    className="military-button px-6 py-3 flex-1 border-robotic-orange text-robotic-orange whitespace-nowrap"
                   >
                     [REJECT]
                   </button>

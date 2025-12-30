@@ -152,7 +152,7 @@ export const NotificationBell = () => {
 
       {/* Dropdown Panel */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-96 max-h-[600px] overflow-y-auto military-border bg-robotic-gray-300 border-robotic-yellow shadow-lg z-50">
+        <div className="absolute right-0 top-full mt-2 w-96 max-h-[600px] overflow-y-auto military-border bg-robotic-gray-300 border-robotic-yellow shadow-lg z-[9999]">
           {/* Header */}
           <div className="p-4 border-b border-robotic-yellow/30 flex items-center justify-between">
             <h3 className="text-sm terminal-text uppercase text-robotic-yellow">[NOTIFICATIONS]</h3>

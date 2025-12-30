@@ -58,6 +58,7 @@ export const IncidentCard = ({
 }: IncidentCardProps) => {
   // const { user } = useAuth(); // Unused - keeping for potential future use
   const [updating, setUpdating] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -123,9 +124,24 @@ export const IncidentCard = ({
               {incident.status.toUpperCase().replace('_', ' ')}
             </span>
           </div>
-          <p className="text-xs terminal-text text-robotic-yellow/70 mb-2 line-clamp-2">
-            {incident.description}
-          </p>
+          <div className="text-xs terminal-text text-robotic-yellow/70 mb-2">
+            {incident.description.length > 150 ? (
+              <>
+                <p className={isExpanded ? '' : 'line-clamp-2'}>{incident.description}</p>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsExpanded(!isExpanded);
+                  }}
+                  className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow mt-1 uppercase"
+                >
+                  {isExpanded ? '[SHOW LESS]' : '[SHOW MORE]'}
+                </button>
+              </>
+            ) : (
+              <p>{incident.description}</p>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2 text-xs terminal-text text-robotic-yellow/50">
             <span>[{incident.type}]</span>
             {incident.casualty_count !== undefined && incident.casualty_count > 0 && (
@@ -172,26 +188,35 @@ export const IncidentCard = ({
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2 mt-3 pt-3 border-t border-robotic-yellow/30">
+      <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-robotic-yellow/30">
         <button
-          onClick={onAssign}
-          className="px-3 py-1 text-xs terminal-text border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAssign();
+          }}
+          className="px-3 py-1 text-xs terminal-text border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 whitespace-nowrap"
         >
           [ASSIGN]
         </button>
         {incident.status === 'active' && (
           <>
             <button
-              onClick={() => handleStatusChange('under_control')}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleStatusChange('under_control');
+              }}
               disabled={updating}
-              className="px-3 py-1 text-xs terminal-text border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 disabled:opacity-50"
+              className="px-3 py-1 text-xs terminal-text border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 disabled:opacity-50 whitespace-nowrap"
             >
               [UNDER_CONTROL]
             </button>
             <button
-              onClick={() => handleStatusChange('contained')}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleStatusChange('contained');
+              }}
               disabled={updating}
-              className="px-3 py-1 text-xs terminal-text border border-green-400 text-green-400 hover:bg-green-400/10 disabled:opacity-50"
+              className="px-3 py-1 text-xs terminal-text border border-green-400 text-green-400 hover:bg-green-400/10 disabled:opacity-50 whitespace-nowrap"
             >
               [CONTAINED]
             </button>
@@ -199,9 +224,12 @@ export const IncidentCard = ({
         )}
         {incident.status === 'under_control' && (
           <button
-            onClick={() => handleStatusChange('resolved')}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleStatusChange('resolved');
+            }}
             disabled={updating}
-            className="px-3 py-1 text-xs terminal-text border border-green-400 text-green-400 hover:bg-green-400/10 disabled:opacity-50"
+            className="px-3 py-1 text-xs terminal-text border border-green-400 text-green-400 hover:bg-green-400/10 disabled:opacity-50 whitespace-nowrap"
           >
             [RESOLVE]
           </button>
