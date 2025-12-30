@@ -516,8 +516,41 @@ export const generateInjectFromDecision = async (
   },
   sessionContext: {
     scenarioDescription?: string;
-    recentDecisions?: Array<{ title: string; description: string }>;
+    recentDecisions?: Array<{
+      id: string;
+      title: string;
+      description: string;
+      type: string;
+      proposed_by?: string;
+      proposed_by_name?: string;
+      executed_at?: string;
+      ai_classification?: DecisionClassification;
+    }>;
     sessionDurationMinutes?: number;
+    upcomingInjects?: Array<{
+      trigger_time_minutes: number;
+      type: string;
+      title: string;
+      content: string;
+      severity: string;
+    }>;
+    currentState?: Record<string, unknown>;
+    objectives?: Array<{
+      objective_id: string;
+      objective_name: string;
+      status: string;
+      progress_percentage: number;
+    }>;
+    recentInjects?: Array<{
+      type: string;
+      title: string;
+      content: string;
+      published_at: string;
+    }>;
+    participants?: Array<{
+      user_id: string;
+      role: string;
+    }>;
   },
   openAiApiKey: string,
 ): Promise<GeneratedInject | null> => {
@@ -559,32 +592,98 @@ Important:
 - affected_roles should include roles that would realistically need to know about or respond to this inject
 - If the decision doesn't warrant an inject, return null`;
 
-    // Build context about recent decisions
-    const recentDecisionsContext =
-      sessionContext.recentDecisions && sessionContext.recentDecisions.length > 0
-        ? `\n\nRecent decisions made in this session:\n${sessionContext.recentDecisions
-            .slice(-5) // Last 5 decisions
-            .map((d, idx) => `${idx + 1}. ${d.title}: ${d.description}`)
-            .join('\n')}`
-        : '';
-
+    // Build comprehensive context
     const scenarioContext = sessionContext.scenarioDescription
-      ? `\n\nScenario context: ${sessionContext.scenarioDescription}`
+      ? `\n\nSCENARIO CONTEXT:\n${sessionContext.scenarioDescription}`
       : '';
+
+    // ALL decisions made in this session (chronological order)
+    const allDecisionsContext =
+      sessionContext.recentDecisions && sessionContext.recentDecisions.length > 0
+        ? `\n\nALL DECISIONS MADE IN THIS SESSION (chronological order):\n${sessionContext.recentDecisions
+            .map((d, idx) => {
+              const timeInfo = d.executed_at
+                ? ` (executed at ${new Date(d.executed_at).toLocaleTimeString()})`
+                : '';
+              const proposerInfo = d.proposed_by_name ? ` by ${d.proposed_by_name}` : '';
+              const classificationInfo = d.ai_classification
+                ? ` [${d.ai_classification.primary_category}]`
+                : '';
+              return `${idx + 1}.${classificationInfo} ${d.title}: ${d.description}${proposerInfo}${timeInfo}`;
+            })
+            .join('\n')}`
+        : '\n\nNo previous decisions have been made in this session.';
+
+    // Upcoming scheduled injects
+    const upcomingInjectsContext =
+      sessionContext.upcomingInjects && sessionContext.upcomingInjects.length > 0
+        ? `\n\nUPCOMING SCHEDULED INJECTS (to avoid contradictions - these will trigger soon):\n${sessionContext.upcomingInjects
+            .map((inj, idx) => {
+              const timeFromNow = sessionContext.sessionDurationMinutes
+                ? inj.trigger_time_minutes - sessionContext.sessionDurationMinutes
+                : inj.trigger_time_minutes;
+              return `${idx + 1}. T+${inj.trigger_time_minutes} (in ${timeFromNow} min): [${inj.type}] ${inj.title} - ${inj.content.substring(0, 150)}${inj.content.length > 150 ? '...' : ''}`;
+            })
+            .join('\n')}`
+        : '\n\nNo upcoming scheduled injects.';
+
+    // Current game state
+    const currentStateContext =
+      sessionContext.currentState && Object.keys(sessionContext.currentState).length > 0
+        ? `\n\nCURRENT GAME STATE:\n${JSON.stringify(sessionContext.currentState, null, 2)}`
+        : '\n\nCurrent game state: No state data available.';
+
+    // Objectives status
+    const objectivesContext =
+      sessionContext.objectives && sessionContext.objectives.length > 0
+        ? `\n\nOBJECTIVES STATUS:\n${sessionContext.objectives
+            .map(
+              (obj) =>
+                `${obj.objective_name}: ${obj.status} (${obj.progress_percentage}% complete)`,
+            )
+            .join('\n')}`
+        : '\n\nNo objectives defined for this scenario.';
+
+    // Recent injects
+    const recentInjectsContext =
+      sessionContext.recentInjects && sessionContext.recentInjects.length > 0
+        ? `\n\nRECENT INJECTS (last 10 published):\n${sessionContext.recentInjects
+            .map(
+              (inj, idx) =>
+                `${idx + 1}. [${inj.type}] ${inj.title} - ${inj.content.substring(0, 100)}${inj.content.length > 100 ? '...' : ''}`,
+            )
+            .join('\n')}`
+        : '\n\nNo recent injects have been published.';
+
+    // Participants context
+    const participantsContext =
+      sessionContext.participants && sessionContext.participants.length > 0
+        ? `\n\nACTIVE PARTICIPANTS:\n${sessionContext.participants.map((p) => `- ${p.role}`).join('\n')}`
+        : '';
 
     const userPrompt = `Generate an inject based on this decision:
 
-Decision Title: ${decision.title}
-Decision Description: ${decision.description}
-Decision Type: ${decision.type}${scenarioContext}${recentDecisionsContext}
+CURRENT DECISION:
+Title: ${decision.title}
+Description: ${decision.description}
+Type: ${decision.type}${scenarioContext}${allDecisionsContext}${upcomingInjectsContext}${currentStateContext}${objectivesContext}${recentInjectsContext}${participantsContext}
 
-Generate a realistic inject that would naturally follow from this decision. Consider:
-- What would be the immediate consequences or reactions?
-- Who would be affected or need to know?
-- What new information or complications might arise?
-- How severe would the impact be?
+Generate a realistic inject that:
+- Is a natural consequence of the current decision
+- Stays consistent with ALL previous decisions (not just the current one) - consider the cumulative effect
+- Doesn't contradict upcoming scheduled injects (avoid creating conflicts with events that are about to happen)
+- Fits the current game state and objectives
+- Considers the full context of what has happened in the session so far
+- Creates appropriate challenges or complications that feel natural and realistic
+- Is appropriate for the scenario context
 
-If this decision doesn't warrant a meaningful inject, return null. Otherwise, return a well-crafted inject.`;
+Important considerations:
+- If upcoming injects mention specific events (e.g., "explosion at 3pm"), don't create an inject that contradicts this
+- Consider how previous decisions might have set up conditions that affect this decision's consequences
+- The inject should feel like a natural progression of the story, not forced or disconnected
+- Severity should match the decision's impact and the overall situation
+
+If this decision doesn't warrant a meaningful inject, return null. Otherwise, return a well-crafted inject that fits seamlessly into the ongoing scenario.`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
