@@ -210,7 +210,8 @@ export async function publishInjectToSession(
         // Filter participants by team (assuming teams are roles for now)
         const userIds = participants
           .filter((p) => {
-            const role = ((p.user_profiles as Record<string, unknown>)?.role as string) || '';
+            const userProfile = p.user_profiles as { role?: string } | null | undefined;
+            const role = userProfile?.role;
             return role && targetTeams.includes(role);
           })
           .map((p) => p.user_id)
@@ -570,7 +571,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
           // Role-specific injects: check if user's role is in affected_roles
           if (scope === 'role_specific') {
             const affectedRoles = (inject.affected_roles as string[]) || [];
-            if (Array.isArray(affectedRoles) && affectedRoles.length > 0) {
+            if (Array.isArray(affectedRoles) && affectedRoles.length > 0 && user.role) {
               return affectedRoles.includes(user.role);
             }
             // If no affected_roles specified, don't show (safe default)

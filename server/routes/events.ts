@@ -87,9 +87,9 @@ router.get(
           )
           .map(
             (event: Record<string, unknown>) =>
-              (event.metadata as Record<string, unknown>).inject_id,
+              (event.metadata as Record<string, unknown>).inject_id as string | null | undefined,
           )
-          .filter((id: string | null) => id !== null && id !== undefined);
+          .filter((id): id is string => id !== null && id !== undefined);
 
         // Get all inject IDs from incident events that were created from injects
         const incidentEventInjectIds = (data || [])
@@ -101,9 +101,9 @@ router.get(
           )
           .map(
             (event: Record<string, unknown>) =>
-              (event.metadata as Record<string, unknown>).inject_id,
+              (event.metadata as Record<string, unknown>).inject_id as string | null | undefined,
           )
-          .filter((id: string | null) => id !== null && id !== undefined);
+          .filter((id): id is string => id !== null && id !== undefined);
 
         // Combine all inject IDs we need to fetch
         const allInjectIds = [
