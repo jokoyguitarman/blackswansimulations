@@ -590,7 +590,29 @@ CRITICAL: inject_scope and affected_roles determine who sees this inject:
 - "role_specific": Use when the inject is relevant to specific roles. This should be the DEFAULT for most injects. Only include roles in affected_roles that would realistically receive, need to know about, or respond to this inject.
 - "team_specific": Use when the inject is relevant to specific teams (rare, typically for coordination scenarios).
 
-Examples:
+CRITICAL: requires_response field determines if an incident is automatically created:
+- Set requires_response: true when the inject requires an active operational response, contains misinformation needing correction, creates public concern requiring official response, or represents a situation demanding immediate action.
+
+  Examples of requires_response: true:
+  - Media report spreading false information about casualties → needs debunking/response
+  - Media report creating panic about evacuation → needs official clarification
+  - Media report with negative narrative requiring counter-messaging → needs response
+  - Citizen call reporting an emergency or requesting help → needs response
+  - Intel brief about active security threat → needs investigation/response
+  - Resource shortage affecting operations → needs resource allocation
+  - Field update reporting an incident requiring response → needs response
+
+- Set requires_response: false when the inject is purely informational, neutral reporting, or provides context without requiring action.
+
+  Examples of requires_response: false:
+  - Media report: "Local news covers ongoing response efforts" → informational
+  - Media report: "Weather service issues forecast update" → informational
+  - Media report: "General coverage of response coordination" → informational
+  - Field update: "Team A has completed initial assessment" → status update
+  - Intel brief: "Background on suspect organization" → informational context
+  - Political pressure: "General policy discussion" → informational
+
+Examples of inject scope and affected_roles:
 - Media report about police actions → inject_scope: "role_specific", affected_roles: ["public_information_officer", "police_commander"]
 - Citizen complaint about medical services → inject_scope: "role_specific", affected_roles: ["medical_director", "hospital_admin"]
 - Major breaking news affecting everyone → inject_scope: "universal", affected_roles: [] (all roles see it)
@@ -603,6 +625,7 @@ Important:
 - DEFAULT to "role_specific" unless the inject truly needs to be seen by everyone
 - affected_roles should include ONLY roles that would realistically need to know about or respond to this inject
 - Use role names that match the active participants in the session
+- Carefully consider requires_response: media reports with false info, panic, or negative narratives need response; neutral informational reports do not
 - If the decision doesn't warrant an inject, return null`;
 
     // Build comprehensive context
