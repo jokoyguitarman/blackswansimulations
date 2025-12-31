@@ -430,24 +430,41 @@ export const SessionView = () => {
                   Status: {session.status.toUpperCase().replace('_', ' ')}
                 </p>
               </div>
-              {/* Team Assignments Badge */}
-              {myTeams.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs terminal-text text-robotic-yellow/70 uppercase">
-                    Teams:
-                  </span>
-                  <div className="flex gap-1">
-                    {myTeams.map((team, idx) => (
-                      <span
-                        key={idx}
-                        className="px-2 py-1 text-xs terminal-text military-border bg-robotic-green/20 border-robotic-green"
-                      >
-                        {team.team_name.toUpperCase()}
-                      </span>
-                    ))}
+              {/* Player Name and Team Assignments */}
+              <div className="flex items-center gap-4">
+                {/* Player Name */}
+                {user && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs terminal-text text-robotic-yellow/70 uppercase">
+                      Player:
+                    </span>
+                    <span className="px-2 py-1 text-xs terminal-text military-border bg-robotic-gray-200 border-robotic-yellow">
+                      {user.displayName || user.email || 'Unknown'}
+                    </span>
                   </div>
-                </div>
-              )}
+                )}
+                {/* Team Assignments Badge */}
+                {myTeams.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs terminal-text text-robotic-yellow/70 uppercase">
+                      Teams:
+                    </span>
+                    <div className="flex gap-1">
+                      {myTeams.map((team, idx) => (
+                        <span
+                          key={idx}
+                          className="px-2 py-1 text-xs terminal-text military-border bg-robotic-green/20 border-robotic-green"
+                        >
+                          {team.team_name.toUpperCase()}
+                          {team.team_role && (
+                            <span className="ml-1 text-robotic-yellow/70">({team.team_role})</span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               {elapsedTime && (
                 <div className="military-border px-4 py-2 bg-robotic-gray-200 border-robotic-yellow">
                   <div className="flex items-center gap-2">
