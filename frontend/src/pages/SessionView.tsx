@@ -589,7 +589,7 @@ export const SessionView = () => {
           {/* Row 1: Incidents Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden flex flex-col max-h-[600px]"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('incidents')}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
@@ -614,7 +614,7 @@ export const SessionView = () => {
           {/* Row 1: Decisions Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden flex flex-col max-h-[600px]"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('decisions')}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
@@ -635,7 +635,7 @@ export const SessionView = () => {
           {/* Row 2: Timeline Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden flex flex-col max-h-[600px]"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('timeline')}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
@@ -656,7 +656,7 @@ export const SessionView = () => {
           {/* Row 2: Chat Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden flex flex-col max-h-[600px]"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('chat')}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
@@ -677,7 +677,7 @@ export const SessionView = () => {
           {/* Row 3: Media Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden flex flex-col max-h-[600px]"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('media')}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
@@ -698,7 +698,7 @@ export const SessionView = () => {
           {/* Row 3+: Injects Card - Trainer only */}
           {id && session.scenarios && session.scenarios.id && isTrainer && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden flex flex-col max-h-[600px]"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('injects')}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
@@ -719,7 +719,7 @@ export const SessionView = () => {
           {/* Row 3+: AAR Card - Only show for completed sessions (Trainer only) */}
           {id && session.status === 'completed' && isTrainer && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden flex flex-col max-h-[600px]"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('aar')}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
@@ -740,7 +740,7 @@ export const SessionView = () => {
           {/* Row 3+: Participants Card - Trainer only */}
           {id && session && isTrainer && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-hidden flex flex-col max-h-[600px]"
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('participants')}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">

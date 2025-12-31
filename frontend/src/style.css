@@ -207,100 +207,110 @@ button:focus-visible {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 15, 15, 0.9);
-  border: 1px solid rgba(220, 38, 38, 0.4);
-  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+  background: #0f0f0f;
+  border: 1px solid rgba(220, 38, 38, 0.5);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.8);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: 
-    linear-gradient(135deg, #dc2626 0%, #991b1b 50%, #7f1d1d 100%),
-    repeating-linear-gradient(
-      to bottom,
-      transparent 0px,
-      transparent 3px,
-      rgba(255, 255, 255, 0.3) 3px,
-      rgba(255, 255, 255, 0.3) 4px,
-      transparent 4px,
-      transparent 7px
-    );
-  background-size: 100% 100%, 60% 100%;
-  background-position: center, center;
-  border: 1px solid rgba(255, 0, 0, 0.6);
+  background: #dc2626;
+  border: 1px solid rgba(255, 0, 0, 0.8);
   box-shadow: 
-    0 0 10px rgba(220, 38, 38, 0.6),
-    inset 0 0 5px rgba(0, 0, 0, 0.3);
+    0 0 8px rgba(220, 38, 38, 0.8),
+    inset 0 0 8px rgba(0, 0, 0, 0.4),
+    /* Grip lines - 3 horizontal white lines */
+    inset 0 -6px 0 -3px rgba(255, 255, 255, 0.6),
+    inset 0 0px 0 -3px rgba(255, 255, 255, 0.6),
+    inset 0 6px 0 -3px rgba(255, 255, 255, 0.6);
   border-radius: 0;
+  min-height: 30px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 50%, #991b1b 100%);
+  background: #ef4444;
   box-shadow: 
-    0 0 15px rgba(239, 68, 68, 0.8),
-    inset 0 0 5px rgba(0, 0, 0, 0.3);
+    0 0 12px rgba(239, 68, 68, 1),
+    inset 0 0 8px rgba(0, 0, 0, 0.4),
+    /* Grip lines - brighter on hover */
+    inset 0 -6px 0 -3px rgba(255, 255, 255, 0.8),
+    inset 0 0px 0 -3px rgba(255, 255, 255, 0.8),
+    inset 0 6px 0 -3px rgba(255, 255, 255, 0.8);
 }
 
 ::-webkit-scrollbar-thumb:active {
-  background: linear-gradient(135deg, #b91c1c 0%, #7f1d1d 50%, #991b1b 100%);
+  background: #b91c1c;
 }
 
 /* Scrollbar buttons (top and bottom) */
 ::-webkit-scrollbar-button {
-  height: 17px;
-  width: 17px;
-  background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 50%, #b91c1c 100%);
-  border: 1px solid rgba(220, 38, 38, 0.6);
+  display: block !important;
+  height: 17px !important;
+  width: 17px !important;
+  background: #dc2626;
+  border: 1px solid rgba(255, 0, 0, 0.8);
   box-shadow: 
-    0 0 5px rgba(220, 38, 38, 0.4),
-    inset 0 0 5px rgba(0, 0, 0, 0.3);
+    0 0 5px rgba(220, 38, 38, 0.6),
+    inset 0 0 5px rgba(0, 0, 0, 0.4);
   border-radius: 0;
 }
 
 ::-webkit-scrollbar-button:hover {
-  background: linear-gradient(135deg, #991b1b 0%, #b91c1c 50%, #dc2626 100%);
+  background: #ef4444;
   box-shadow: 
-    0 0 10px rgba(239, 68, 68, 0.6),
-    inset 0 0 5px rgba(0, 0, 0, 0.3);
+    0 0 8px rgba(239, 68, 68, 0.8),
+    inset 0 0 5px rgba(0, 0, 0, 0.4);
 }
 
 ::-webkit-scrollbar-button:active {
-  background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 50%, #b91c1c 100%);
+  background: #b91c1c;
 }
 
-/* Top button arrow (up) */
+/* Top button arrow (up) - red triangle pointing up */
+::-webkit-scrollbar-button:vertical:start:decrement,
 ::-webkit-scrollbar-button:single-button:vertical:decrement {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='white' d='M4 0l4 4H0z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 8px 8px;
+  display: block !important;
+  background-image: 
+    linear-gradient(135deg, #dc2626 0%, #991b1b 50%, #7f1d1d 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpolygon fill='white' points='5,2 8,7 2,7'/%3E%3C/svg%3E");
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
+  background-size: 100% 100%, 10px 10px;
 }
 
-/* Bottom button arrow (down) */
+/* Bottom button arrow (down) - red triangle pointing down */
+::-webkit-scrollbar-button:vertical:end:increment,
 ::-webkit-scrollbar-button:single-button:vertical:increment {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='white' d='M4 8L0 4h8z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 8px 8px;
+  display: block !important;
+  background-image: 
+    linear-gradient(135deg, #dc2626 0%, #991b1b 50%, #7f1d1d 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpolygon fill='white' points='5,8 8,3 2,3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
+  background-size: 100% 100%, 10px 10px;
 }
 
 /* Horizontal scrollbar buttons */
-::-webkit-scrollbar-button:single-button:horizontal:decrement {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='white' d='M0 4l4-4v8z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 8px 8px;
+::-webkit-scrollbar-button:horizontal:start:decrement {
+  background-image: 
+    linear-gradient(135deg, #dc2626 0%, #991b1b 50%, #7f1d1d 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpolygon fill='white' points='2,5 7,2 7,8'/%3E%3C/svg%3E");
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
+  background-size: 100% 100%, 10px 10px;
 }
 
-::-webkit-scrollbar-button:single-button:horizontal:increment {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='white' d='M8 4L4 0v8z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 8px 8px;
+::-webkit-scrollbar-button:horizontal:end:increment {
+  background-image: 
+    linear-gradient(135deg, #dc2626 0%, #991b1b 50%, #7f1d1d 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpolygon fill='white' points='8,5 3,2 3,8'/%3E%3C/svg%3E");
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
+  background-size: 100% 100%, 10px 10px;
 }
 
 ::-webkit-scrollbar-corner {
-  background: rgba(15, 15, 15, 0.9);
-  border: 1px solid rgba(220, 38, 38, 0.4);
+  background: #0f0f0f;
+  border: 1px solid rgba(220, 38, 38, 0.5);
 }
 
 /* Firefox scrollbar styles */
