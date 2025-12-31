@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { BriefingView } from './BriefingView';
 import { ParticipantManagement } from './ParticipantManagement';
+import { TeamAssignmentModal } from '../Teams/TeamAssignmentModal';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { useAuth } from '../../contexts/AuthContext';
 import { websocketClient } from '../../lib/websocketClient';
@@ -45,7 +46,8 @@ export const SessionLobby = ({
     participants: Array<{ user_id: string; is_ready: boolean; user?: { full_name: string } }>;
   } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [myTeams] = useState<Array<{ team_name: string; team_role?: string }>>([]);
+  const [myTeams, setMyTeams] = useState<Array<{ team_name: string; team_role?: string }>>([]);
+  const [showTeamAssignmentModal, setShowTeamAssignmentModal] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
 
   useEffect(() => {
@@ -108,6 +110,13 @@ export const SessionLobby = ({
     };
   }, [sessionId, isTrainer, user?.id]);
 
+  // Load team assignments for current user
+  useEffect(() => {
+    if (sessionId && user?.id) {
+      loadMyTeams();
+    }
+  }, [sessionId, user?.id]);
+
   const loadReadyStatus = async () => {
     try {
       // Get current user's ready status from session participants
@@ -132,6 +141,24 @@ export const SessionLobby = ({
       }
     } catch (error) {
       console.error('Failed to load ready status:', error);
+    }
+  };
+
+  const loadMyTeams = async () => {
+    if (!sessionId || !user?.id) return;
+    try {
+      const result = await api.teams.getSessionTeams(sessionId);
+      const myTeamAssignments = (result.data || []).filter(
+        (assignment: any) => assignment.user_id === user.id,
+      );
+      setMyTeams(
+        myTeamAssignments.map((a: any) => ({
+          team_name: a.team_name,
+          team_role: a.team_role,
+        })),
+      );
+    } catch (error) {
+      console.error('Failed to load team assignments:', error);
     }
   };
 
@@ -261,30 +288,51 @@ export const SessionLobby = ({
         )}
 
         {/* Team Assignments - Show to all participants */}
-        {myTeams.length > 0 && (
-          <div className="military-border p-4 bg-robotic-green/10 border-robotic-green mt-4">
-            <h3 className="text-sm terminal-text uppercase mb-2 text-robotic-green">
-              [YOUR_TEAM_ASSIGNMENTS]
+        <div className="mt-4">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-sm terminal-text uppercase text-robotic-green">
+              [TEAM_ASSIGNMENTS]
             </h3>
-            <div className="space-y-2">
-              {myTeams.map((team, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <span className="text-sm terminal-text font-semibold">
-                    {team.team_name.toUpperCase()}
-                  </span>
-                  {team.team_role && (
-                    <span className="text-xs terminal-text text-robotic-yellow/70">
-                      ({team.team_role})
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-            <p className="text-xs terminal-text text-robotic-yellow/70 mt-2">
-              You will receive team-specific information during the session.
-            </p>
+            {isTrainer && (
+              <button
+                onClick={() => setShowTeamAssignmentModal(true)}
+                className="military-button px-4 py-2 text-xs"
+              >
+                [MANAGE_TEAMS]
+              </button>
+            )}
           </div>
-        )}
+
+          {myTeams.length > 0 ? (
+            <div className="military-border p-4 bg-robotic-green/10 border-robotic-green">
+              <div className="space-y-2">
+                {myTeams.map((team, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <span className="text-sm terminal-text font-semibold">
+                      {team.team_name.toUpperCase()}
+                    </span>
+                    {team.team_role && (
+                      <span className="text-xs terminal-text text-robotic-yellow/70">
+                        ({team.team_role})
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs terminal-text text-robotic-yellow/70 mt-2">
+                You will receive team-specific information during the session.
+              </p>
+            </div>
+          ) : (
+            <div className="military-border p-4 bg-robotic-gray-200">
+              <p className="text-xs terminal-text text-robotic-yellow/50 text-center">
+                {isTrainer
+                  ? 'No team assignments yet. Click [MANAGE_TEAMS] to assign teams.'
+                  : 'No team assignments yet. Waiting for trainer to assign teams...'}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Briefing Materials */}
@@ -313,7 +361,23 @@ export const SessionLobby = ({
           onUpdate={() => {
             // Reload ready status when participants are updated
             loadReadyStatus();
+            // Reload team assignments
+            loadMyTeams();
             // Call parent update callback if provided
+            if (onSessionUpdate) {
+              onSessionUpdate();
+            }
+          }}
+        />
+      )}
+
+      {/* Team Assignment Modal */}
+      {showTeamAssignmentModal && (
+        <TeamAssignmentModal
+          sessionId={sessionId}
+          onClose={() => setShowTeamAssignmentModal(false)}
+          onSuccess={() => {
+            loadMyTeams();
             if (onSessionUpdate) {
               onSessionUpdate();
             }
