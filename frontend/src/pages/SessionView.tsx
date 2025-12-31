@@ -120,12 +120,20 @@ export const SessionView = () => {
   };
 
   const loadMyTeams = async () => {
-    if (!id || !user?.id) return;
+    if (!id || !user?.id) {
+      console.log('[SessionView] loadMyTeams: Missing id or user.id', { id, userId: user?.id });
+      return;
+    }
     try {
       const result = await api.teams.getSessionTeams(id);
+      console.log('[SessionView] loadMyTeams: API result', {
+        allAssignments: result.data,
+        userId: user.id,
+      });
       const myTeamAssignments = (result.data || []).filter(
         (assignment: any) => assignment.user_id === user.id,
       );
+      console.log('[SessionView] loadMyTeams: Filtered assignments', myTeamAssignments);
       setMyTeams(
         myTeamAssignments.map((a: any) => ({
           team_name: a.team_name,
@@ -133,7 +141,7 @@ export const SessionView = () => {
         })),
       );
     } catch (error) {
-      console.error('Failed to load team assignments:', error);
+      console.error('[SessionView] Failed to load team assignments:', error);
     }
   };
 
@@ -444,11 +452,11 @@ export const SessionView = () => {
                   </div>
                 )}
                 {/* Team Assignments Badge */}
-                {myTeams.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs terminal-text text-robotic-yellow/70 uppercase">
-                      Teams:
-                    </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs terminal-text text-robotic-yellow/70 uppercase">
+                    Teams:
+                  </span>
+                  {myTeams.length > 0 ? (
                     <div className="flex gap-1">
                       {myTeams.map((team, idx) => (
                         <span
@@ -462,8 +470,12 @@ export const SessionView = () => {
                         </span>
                       ))}
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <span className="px-2 py-1 text-xs terminal-text text-robotic-yellow/50 italic">
+                      [NO_TEAMS_ASSIGNED]
+                    </span>
+                  )}
+                </div>
               </div>
               {elapsedTime && (
                 <div className="military-border px-4 py-2 bg-robotic-gray-200 border-robotic-yellow">
