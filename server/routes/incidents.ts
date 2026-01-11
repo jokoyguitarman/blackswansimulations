@@ -375,6 +375,15 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
         }
       }
 
+      // Get user's teams for this session (needed for team_specific scope filtering)
+      const { data: userTeams } = await supabaseAdmin
+        .from('session_teams')
+        .select('team_name')
+        .eq('session_id', sessionId)
+        .eq('user_id', user.id);
+
+      const userTeamNames = userTeams?.map((t) => t.team_name) || [];
+
       filteredIncidents = (data || []).filter(
         (incident: {
           id: string;
@@ -508,6 +517,30 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
             logger.debug(
               { incidentId: incident.id },
               'Incident excluded: no affected_roles specified',
+            );
+            return false;
+          }
+
+          // Team-specific injects: check if user is in one of the target teams
+          if (scope === 'team_specific') {
+            if (Array.isArray(targetTeams) && targetTeams.length > 0) {
+              const isVisible = targetTeams.some((team: string) => userTeamNames.includes(team));
+              logger.debug(
+                {
+                  incidentId: incident.id,
+                  injectId: incident.inject_id,
+                  isVisible,
+                  userTeams: userTeamNames,
+                  targetTeams,
+                },
+                'Incident team-specific check',
+              );
+              return isVisible;
+            }
+            // If no target_teams specified, don't show (safe default)
+            logger.debug(
+              { incidentId: incident.id },
+              'Incident excluded: no target_teams specified',
             );
             return false;
           }
