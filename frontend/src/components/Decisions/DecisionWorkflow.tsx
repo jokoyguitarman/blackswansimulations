@@ -30,9 +30,11 @@ interface Decision {
   required_approvers?: string[]; // Optional, deprecated - use steps instead
   created_at: string;
   creator?: {
+    id: string;
     full_name: string;
     role: string;
   };
+  proposed_by?: string;
   steps?: DecisionStep[];
 }
 
@@ -368,7 +370,10 @@ export const DecisionWorkflow = ({ sessionId }: DecisionWorkflowProps) => {
                   </button>
                 </div>
               )}
-              {selectedDecision.status === 'approved' && (
+              {(selectedDecision.status === 'approved' ||
+                (selectedDecision.status === 'proposed' &&
+                  (selectedDecision.creator?.id === user?.id ||
+                    selectedDecision.proposed_by === user?.id))) && (
                 <div className="pt-4 border-t border-robotic-yellow/30">
                   <button
                     onClick={() => handleExecute(selectedDecision.id)}

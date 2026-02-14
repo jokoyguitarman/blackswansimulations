@@ -685,27 +685,12 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
 
     console.log('🟡 DECISION FOUND', { decisionId: id, status: decision.status });
 
-    // Atomic update: Only update if status is 'approved'
-    // This prevents race conditions by checking and updating in a single database operation
-    const { data: updatedDecision, error } = await supabaseAdmin
-      .from('decisions')
-      .update({
-        status: 'executed',
-        executed_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .eq('status', 'approved') // Atomic check: only update if status is 'approved'
-      .select('*, creator:user_profiles!decisions_proposed_by_fkey(id, full_name, role)')
-      .single();
+    // Allow execution if: status is 'approved' (legacy flow) OR status is 'proposed' and user is the creator (streamlined flow)
+    const canExecute =
+      decision.status === 'approved' ||
+      (decision.status === 'proposed' && decision.proposed_by === user.id);
 
-    if (error) {
-      logger.error({ error, decisionId: id }, 'Failed to execute decision');
-      return res.status(500).json({ error: 'Failed to execute decision' });
-    }
-
-    // If no rows were updated, it means the status wasn't 'approved'
-    if (!updatedDecision) {
-      // Get current status for better error message
+    if (!canExecute) {
       const { data: currentDecision } = await supabaseAdmin
         .from('decisions')
         .select('status')
@@ -718,12 +703,46 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
           currentStatus: currentDecision?.status,
           attemptedBy: user.id,
         },
-        'Attempted to execute decision that is not approved',
+        'Attempted to execute decision without permission',
       );
 
       return res.status(400).json({
-        error: 'Only approved decisions can be executed',
-        currentStatus: currentDecision?.status || 'unknown',
+        error:
+          decision.status === 'proposed'
+            ? 'Only the decision creator can execute this decision'
+            : 'Only approved decisions can be executed',
+        currentStatus: decision.status,
+      });
+    }
+
+    // Atomic update: only update if status matches (prevents race conditions)
+    const statusFilter = decision.status === 'approved' ? 'approved' : 'proposed';
+    let query = supabaseAdmin
+      .from('decisions')
+      .update({
+        status: 'executed',
+        executed_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('status', statusFilter);
+
+    if (statusFilter === 'proposed') {
+      query = query.eq('proposed_by', user.id);
+    }
+
+    const { data: updatedDecision, error } = await query
+      .select('*, creator:user_profiles!decisions_proposed_by_fkey(id, full_name, role)')
+      .single();
+
+    if (error) {
+      logger.error({ error, decisionId: id }, 'Failed to execute decision');
+      return res.status(500).json({ error: 'Failed to execute decision' });
+    }
+
+    if (!updatedDecision) {
+      return res.status(400).json({
+        error: 'Decision could not be executed (status may have changed)',
+        currentStatus: decision.status,
       });
     }
 
