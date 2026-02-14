@@ -285,6 +285,63 @@ export class InjectSchedulerService {
       type: d.type as string | null,
     }));
 
+    // Check future (not-yet-due) injects: allow AI to cancel them now so they never publish
+    if (env.openAiApiKey && decisionsForAi.length > 0) {
+      const { data: futureInjects } = await supabaseAdmin
+        .from('scenario_injects')
+        .select('id, trigger_time_minutes, title, content')
+        .eq('scenario_id', session.scenario_id)
+        .not('trigger_time_minutes', 'is', null)
+        .gt('trigger_time_minutes', elapsedMinutes)
+        .order('trigger_time_minutes', { ascending: true });
+
+      const futureToEvaluate = (futureInjects || []).filter(
+        (inject) => !cancelledInjectIds.has(inject.id),
+      );
+      for (const inject of futureToEvaluate) {
+        try {
+          const result = await shouldCancelScheduledInject(
+            {
+              title: inject.title ?? '',
+              content: (inject as { content?: string }).content ?? '',
+            },
+            decisionsForAi,
+            env.openAiApiKey,
+          );
+          if (result.cancel) {
+            await supabaseAdmin.from('session_events').insert({
+              session_id: session.id,
+              event_type: 'inject_cancelled',
+              description: `Inject cancelled (future): ${inject.title ?? inject.id} - ${result.reason ?? 'AI determined recent decisions made it obsolete'}`,
+              actor_id: null,
+              metadata: {
+                inject_id: inject.id,
+                reason: result.reason ?? null,
+                cancelled_at: new Date().toISOString(),
+                trigger_time_minutes: inject.trigger_time_minutes,
+              },
+            });
+            cancelledInjectIds.add(inject.id);
+            logger.info(
+              {
+                sessionId: session.id,
+                injectId: inject.id,
+                injectTitle: inject.title,
+                triggerTimeMinutes: inject.trigger_time_minutes,
+                reason: result.reason,
+              },
+              'Future scheduled inject cancelled by AI (will not publish when due)',
+            );
+          }
+        } catch (cancelErr) {
+          logger.warn(
+            { error: cancelErr, sessionId: session.id, injectId: inject.id },
+            'AI cancellation check failed for future inject, will re-evaluate when due',
+          );
+        }
+      }
+    }
+
     for (const inject of injectsToPublish) {
       try {
         // AI cancellation check: should this scheduled inject be suppressed due to recent decisions?

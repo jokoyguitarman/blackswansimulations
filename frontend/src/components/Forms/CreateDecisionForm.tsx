@@ -19,19 +19,25 @@ export const CreateDecisionForm = ({ sessionId, onClose, onSuccess }: CreateDeci
     setLoading(true);
 
     try {
-      await api.decisions.create({
+      const result = await api.decisions.create({
         session_id: sessionId,
         ...formData,
-        required_approvers: [], // Streamlined: no approvals; creator executes immediately
+        required_approvers: [], // No approval steps; creator executes from this form
       });
-
-      if (onSuccess) {
-        onSuccess();
+      const created = result?.data as { id: string } | undefined;
+      if (!created?.id) {
+        alert('Decision was created but could not execute. Please execute it from the list.');
+        onSuccess?.();
+        onClose();
+        return;
       }
+      await api.decisions.execute(created.id);
+
+      onSuccess?.();
       onClose();
     } catch (error) {
-      console.error('Failed to create decision:', error);
-      alert('Failed to create decision');
+      console.error('Failed to create or execute decision:', error);
+      alert('Failed to create or execute decision');
     } finally {
       setLoading(false);
     }
@@ -74,14 +80,15 @@ export const CreateDecisionForm = ({ sessionId, onClose, onSuccess }: CreateDeci
             <button
               type="submit"
               disabled={loading}
-              className="military-button px-6 py-3 flex-1 disabled:opacity-50"
+              className="military-button px-6 py-3 flex-1 border-green-400 text-green-400 hover:bg-green-400/10 disabled:opacity-50"
             >
-              {loading ? '[CREATING...]' : '[CREATE_DECISION]'}
+              {loading ? '[EXECUTING...]' : '[EXECUTE_DECISION]'}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="military-button px-6 py-3 flex-1 border-robotic-orange text-robotic-orange"
+              disabled={loading}
+              className="military-button px-6 py-3 flex-1 border-robotic-orange text-robotic-orange disabled:opacity-50"
             >
               [CANCEL]
             </button>
