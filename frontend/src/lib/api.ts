@@ -128,6 +128,20 @@ export const api = {
         await fetch(apiUrl(`/api/sessions/${id}`), { headers }),
       );
     },
+    getBackendActivity: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        activities: Array<{
+          type: string;
+          at: string;
+          title?: string;
+          reason?: string;
+          injectId?: string;
+          summary?: string;
+        }>;
+        sessionId: string;
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/backend-activity`), { headers }));
+    },
     create: async (data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(

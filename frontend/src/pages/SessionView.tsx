@@ -93,6 +93,9 @@ export const SessionView = () => {
       weight: number;
     }>
   >([]);
+  const [backendActivities, setBackendActivities] = useState<
+    Array<{ type: string; at: string; title?: string; reason?: string; summary?: string }>
+  >([]);
 
   useEffect(() => {
     if (id) {
@@ -108,6 +111,22 @@ export const SessionView = () => {
       loadObjectives();
     }
   }, [id, session?.status, isTrainer]);
+
+  // Backend/AI activity log for trainers (poll every 8s when session in progress)
+  useEffect(() => {
+    if (!id || !isTrainer || session?.status !== 'in_progress') return;
+    const loadBackendActivity = async () => {
+      try {
+        const res = await api.sessions.getBackendActivity(id);
+        setBackendActivities(res.activities || []);
+      } catch {
+        // Non-blocking; leave previous data
+      }
+    };
+    loadBackendActivity();
+    const interval = setInterval(loadBackendActivity, 8000);
+    return () => clearInterval(interval);
+  }, [id, isTrainer, session?.status]);
 
   // Mark card as viewed (green → yellow dot)
   const markCardViewed = (cardId: string) => {
@@ -741,6 +760,49 @@ export const SessionView = () => {
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
                 <AIInjectSystem sessionId={id} scenarioId={session.scenarios.id} />
+              </div>
+            </div>
+          )}
+
+          {/* Backend / AI activity - Trainer only, 2 columns wide */}
+          {id && isTrainer && session?.status === 'in_progress' && (
+            <div className="md:col-span-2 military-border p-6 bg-robotic-gray-300 flex flex-col max-h-[380px]">
+              <h3 className="text-lg terminal-text uppercase mb-3 flex-shrink-0">
+                [BACKEND / AI ACTIVITY]
+              </h3>
+              <div className="flex-1 overflow-y-auto min-h-0 space-y-2 text-sm">
+                {backendActivities.length === 0 ? (
+                  <p className="text-robotic-yellow/70">
+                    No activity yet. Injects and impact matrix will appear here.
+                  </p>
+                ) : (
+                  backendActivities.map((a, i) => (
+                    <div
+                      key={`${a.type}-${a.at}-${i}`}
+                      className="border border-robotic-yellow/30 p-2 bg-robotic-gray-300/80 font-mono text-xs"
+                    >
+                      <span className="text-robotic-yellow/90">
+                        {new Date(a.at).toLocaleTimeString()}
+                      </span>
+                      {' — '}
+                      {a.type === 'inject_published' && (
+                        <span className="text-robotic-green">
+                          Inject published: {a.title ?? '—'}
+                        </span>
+                      )}
+                      {a.type === 'inject_cancelled' && (
+                        <span className="text-robotic-yellow">
+                          Inject cancelled by AI. Reason: {a.reason ?? '—'}
+                        </span>
+                      )}
+                      {a.type === 'impact_matrix_computed' && (
+                        <span className="text-robotic-gold">
+                          Impact matrix computed ({a.summary ?? '—'})
+                        </span>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}

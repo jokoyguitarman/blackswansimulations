@@ -407,6 +407,95 @@ router.get('/users/available', requireAuth, async (req: AuthenticatedRequest, re
   }
 });
 
+// Get backend/AI activity for a session (trainer only) - inject published/cancelled, impact matrix
+router.get(
+  '/:id/backend-activity',
+  requireAuth,
+  validate(schemas.id),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id: sessionId } = req.params;
+      const user = req.user!;
+
+      const { data: session } = await supabaseAdmin
+        .from('sessions')
+        .select('trainer_id')
+        .eq('id', sessionId)
+        .single();
+
+      if (!session || (session.trainer_id !== user.id && user.role !== 'admin')) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const [eventsRes, matrixRes] = await Promise.all([
+        supabaseAdmin
+          .from('session_events')
+          .select('id, event_type, description, metadata, created_at')
+          .eq('session_id', sessionId)
+          .in('event_type', ['inject', 'inject_cancelled'])
+          .order('created_at', { ascending: false })
+          .limit(100),
+        supabaseAdmin
+          .from('session_impact_matrix')
+          .select('id, evaluated_at, matrix, robustness_by_decision')
+          .eq('session_id', sessionId)
+          .order('evaluated_at', { ascending: false })
+          .limit(50),
+      ]);
+
+      const activities: Array<{
+        type: string;
+        at: string;
+        title?: string;
+        reason?: string;
+        injectId?: string;
+        summary?: string;
+      }> = [];
+
+      const eventList = eventsRes.data || [];
+      for (const e of eventList) {
+        const meta = (e.metadata as Record<string, unknown>) || {};
+        if (e.event_type === 'inject') {
+          activities.push({
+            type: 'inject_published',
+            at: e.created_at,
+            title: (meta.title as string) || (meta.inject_id as string) || 'Inject',
+          });
+        } else if (e.event_type === 'inject_cancelled') {
+          activities.push({
+            type: 'inject_cancelled',
+            at: e.created_at,
+            reason: (meta.reason as string) || 'AI determined recent decisions made it obsolete',
+            injectId: meta.inject_id as string,
+          });
+        }
+      }
+
+      const matrixList = matrixRes.data || [];
+      for (const m of matrixList) {
+        const matrix = (m.matrix as Record<string, unknown>) || {};
+        const teamCount = Object.keys(matrix).length;
+        const decisionCount =
+          typeof m.robustness_by_decision === 'object' && m.robustness_by_decision !== null
+            ? Object.keys(m.robustness_by_decision as Record<string, unknown>).length
+            : 0;
+        activities.push({
+          type: 'impact_matrix_computed',
+          at: m.evaluated_at,
+          summary: `${teamCount} teams, ${decisionCount} decisions scored`,
+        });
+      }
+
+      activities.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+
+      res.json({ activities, sessionId });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in GET /sessions/:id/backend-activity');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
 // Get single session
 router.get('/:id', requireAuth, validate(schemas.id), async (req: AuthenticatedRequest, res) => {
   try {
