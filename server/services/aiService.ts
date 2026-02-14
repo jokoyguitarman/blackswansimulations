@@ -327,6 +327,240 @@ Provide a detailed classification with high confidence.`;
 };
 
 /**
+ * Result of AI check: should a scheduled inject be cancelled given recent player decisions?
+ */
+export interface ScheduledInjectCancellationResult {
+  cancel: boolean;
+  reason?: string;
+}
+
+/**
+ * Decide whether a pre-loaded (scheduled) scenario inject should be suppressed
+ * because player decisions in the last 5 minutes have already addressed, prevented,
+ * or made the event obsolete (e.g. "bomb explodes" cancelled by "bomb safely detonated").
+ */
+export const shouldCancelScheduledInject = async (
+  inject: { title: string; content: string },
+  recentDecisions: Array<{ title: string; description: string; type: string | null }>,
+  openAiApiKey: string,
+): Promise<ScheduledInjectCancellationResult> => {
+  try {
+    const systemPrompt = `You are an expert crisis simulation facilitator. Your task is to decide whether a scheduled scenario event (inject) should still be published to players, given the decisions they have already made in the last 5 minutes.
+
+Rules:
+- If player decisions have already addressed, prevented, or made this scheduled event obsolete or contradictory, return cancel: true.
+- Examples: scheduled "Bomb explodes" but players decided to "safely detonate the bomb" -> cancel. Scheduled "Evacuation chaos" but players already executed a full evacuation order -> consider cancelling if the inject would be redundant or contradictory.
+- If the inject is still relevant, adds new information, or is not contradicted by recent decisions, return cancel: false.
+- When in doubt, prefer cancel: false so the scenario continues as designed unless there is a clear contradiction.
+- Consider partial overlap: if players did something that partially addresses the inject, you may still cancel if the inject would now be misleading (e.g. "Secondary explosion" when the threat was already neutralized).
+
+Return ONLY valid JSON in this exact format:
+{
+  "cancel": true,
+  "reason": "Brief explanation of why this inject should or should not be published"
+}
+
+or
+
+{
+  "cancel": false,
+  "reason": "Brief explanation"
+}`;
+
+    const decisionsText =
+      recentDecisions.length > 0
+        ? recentDecisions
+            .map((d, i) => `${i + 1}. [${d.type || 'unknown'}] ${d.title}\n   ${d.description}`)
+            .join('\n\n')
+        : 'No decisions executed in the last 5 minutes.';
+
+    const userPrompt = `Scheduled inject that is about to be published:
+
+Title: ${inject.title}
+
+Content:
+${inject.content}
+
+---
+Decisions made by players in the last 5 minutes:
+
+${decisionsText}
+
+---
+Should this scheduled inject be CANCELLED (not published) because player actions have already addressed, prevented, or made it obsolete? Return JSON with "cancel" (boolean) and "reason" (string).`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 300,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+      logger.warn(
+        { status: response.status, injectTitle: inject.title, error },
+        'OpenAI API error in shouldCancelScheduledInject, defaulting to not cancel',
+      );
+      return { cancel: false, reason: 'AI check failed; inject will publish.' };
+    }
+
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content;
+    if (!content) {
+      return { cancel: false, reason: 'No AI response; inject will publish.' };
+    }
+
+    const parsed = JSON.parse(content) as { cancel?: boolean; reason?: string };
+    const cancel = parsed.cancel === true;
+    if (cancel) {
+      logger.info(
+        { injectTitle: inject.title, reason: parsed.reason },
+        'Scheduled inject cancelled by AI due to recent decisions',
+      );
+    }
+    return {
+      cancel,
+      reason: typeof parsed.reason === 'string' ? parsed.reason : undefined,
+    };
+  } catch (err) {
+    logger.warn(
+      { error: err, injectTitle: inject.title },
+      'Error in shouldCancelScheduledInject, defaulting to not cancel',
+    );
+    return { cancel: false, reason: 'Error during check; inject will publish.' };
+  }
+};
+
+/**
+ * Inter-team impact matrix result: acting_team -> affected_team -> score.
+ * Optional per-decision robustness (1-10).
+ */
+export interface ImpactMatrixResult {
+  matrix: Record<string, Record<string, number>>;
+  robustnessByDecisionId?: Record<string, number>;
+}
+
+/**
+ * Compute inter-team impact matrix and optional per-decision robustness from recent decisions.
+ * Uses AI to score how each team's decisions affect other teams (-2 to +2 or similar).
+ */
+export const computeInterTeamImpactMatrix = async (
+  teams: string[],
+  decisionsWithTeam: Array<{
+    decision_id: string;
+    title: string;
+    description: string;
+    type: string | null;
+    team: string | null;
+  }>,
+  openAiApiKey: string,
+  scenarioContext?: string,
+): Promise<ImpactMatrixResult> => {
+  const empty: ImpactMatrixResult = { matrix: {}, robustnessByDecisionId: {} };
+  try {
+    if (teams.length === 0 || decisionsWithTeam.length === 0) {
+      return empty;
+    }
+
+    const systemPrompt = `You are an expert crisis management analyst. Given a list of teams and decisions made by those teams in the last 5 minutes, produce:
+1. An inter-team impact matrix: for each acting_team (team that made decisions), for each other affected_team, output an impact score from -2 (negative impact, hinders or increases risk) to +2 (positive impact, helps or reduces risk). Use 0 for neutral or no clear impact. Do not include acting_team on itself.
+2. Optionally, for each decision_id, output a robustness score from 1 (weak, increases escalation) to 10 (strong, mitigates escalation).
+
+Return ONLY valid JSON in this exact format:
+{
+  "matrix": {
+    "TeamNameA": { "TeamNameB": 1, "TeamNameC": -1 },
+    "TeamNameB": { "TeamNameA": 0, "TeamNameC": 2 }
+  },
+  "robustness": {
+    "decision-uuid-1": 7,
+    "decision-uuid-2": 4
+  }
+}
+
+Team names must match exactly the input team list. Include all teams that appear as decision-makers.`;
+
+    const decisionsText = decisionsWithTeam
+      .map(
+        (d) =>
+          `[${d.decision_id}] team=${d.team ?? 'unknown'} | ${d.type ?? 'unknown'} | ${d.title}\n   ${d.description}`,
+      )
+      .join('\n\n');
+
+    const userPrompt = `Teams in this session: ${teams.join(', ')}
+
+${scenarioContext ? `Scenario context: ${scenarioContext.substring(0, 500)}\n\n` : ''}Decisions (last 5 minutes):
+
+${decisionsText}
+
+---
+Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and optional robustness per decision_id (1-10). Return JSON only.`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 800,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      logger.warn({ status: response.status }, 'OpenAI API error in computeInterTeamImpactMatrix');
+      return empty;
+    }
+
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content;
+    if (!content) {
+      return empty;
+    }
+
+    const parsed = JSON.parse(content) as {
+      matrix?: Record<string, Record<string, number>>;
+      robustness?: Record<string, number>;
+    };
+    const matrix = parsed.matrix && typeof parsed.matrix === 'object' ? parsed.matrix : {};
+    const robustnessByDecisionId =
+      parsed.robustness && typeof parsed.robustness === 'object' ? parsed.robustness : {};
+
+    logger.info(
+      {
+        teamCount: teams.length,
+        decisionCount: decisionsWithTeam.length,
+        matrixKeys: Object.keys(matrix).length,
+      },
+      'Inter-team impact matrix computed',
+    );
+    return { matrix, robustnessByDecisionId };
+  } catch (err) {
+    logger.warn({ error: err }, 'Error in computeInterTeamImpactMatrix, returning empty');
+    return empty;
+  }
+};
+
+/**
  * Objective Completion Evaluation Result
  */
 export interface ObjectiveCompletionEvaluation {

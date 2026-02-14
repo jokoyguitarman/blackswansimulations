@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
-import { generateInjectFromDecision } from './aiService.js';
+import { generateInjectFromDecision, computeInterTeamImpactMatrix } from './aiService.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { env } from '../env.js';
 import type { Server as SocketServer } from 'socket.io';
@@ -273,6 +273,45 @@ export class AIInjectSchedulerService {
       participants: participants || [],
       teams: Array.from(teamsWithMembers),
     };
+
+    // Inter-team impact matrix: AI scores how each team's decisions affect other teams (and optional robustness per decision)
+    if (env.openAiApiKey && formattedDecisions.length > 0 && teamsWithMembers.size > 0) {
+      try {
+        const teamsArray = Array.from(teamsWithMembers);
+        const decisionsWithTeam = formattedDecisions.map((d: Record<string, unknown>) => ({
+          decision_id: String(d.id),
+          title: String(d.title ?? ''),
+          description: String(d.description ?? ''),
+          type: (d.type as string) ?? null,
+          team: (d.team as string) ?? null,
+        }));
+        const impactResult = await computeInterTeamImpactMatrix(
+          teamsArray,
+          decisionsWithTeam,
+          env.openAiApiKey,
+          scenario?.description,
+        );
+        await supabaseAdmin.from('session_impact_matrix').insert({
+          session_id: session.id,
+          evaluated_at: new Date().toISOString(),
+          matrix: impactResult.matrix,
+          robustness_by_decision: impactResult.robustnessByDecisionId ?? {},
+        });
+        logger.info(
+          {
+            sessionId: session.id,
+            teamCount: teamsArray.length,
+            decisionCount: formattedDecisions.length,
+          },
+          'Inter-team impact matrix computed and saved',
+        );
+      } catch (matrixErr) {
+        logger.warn(
+          { error: matrixErr, sessionId: session.id },
+          'Failed to compute or save impact matrix, continuing with inject generation',
+        );
+      }
+    }
 
     // 1. Generate UNIVERSAL inject (based on all decisions and state)
     await this.generateUniversalInject(session, baseContext, formattedDecisions);

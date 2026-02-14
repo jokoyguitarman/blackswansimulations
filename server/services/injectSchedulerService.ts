@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { publishInjectToSession } from '../routes/injects.js';
+import { shouldCancelScheduledInject } from './aiService.js';
 import { env } from '../env.js';
 import type { Server as SocketServer } from 'socket.io';
 
@@ -139,10 +140,10 @@ export class InjectSchedulerService {
       'Processing session for inject triggers',
     );
 
-    // Get injects for this scenario that should be triggered
+    // Get injects for this scenario that should be triggered (include content for AI cancellation check)
     const { data: injects, error: injectsError } = await supabaseAdmin
       .from('scenario_injects')
-      .select('id, trigger_time_minutes, title')
+      .select('id, trigger_time_minutes, title, content')
       .eq('scenario_id', session.scenario_id)
       .not('trigger_time_minutes', 'is', null)
       .lte('trigger_time_minutes', elapsedMinutes);
@@ -214,17 +215,34 @@ export class InjectSchedulerService {
       }
     }
 
+    // Check which injects were cancelled by AI (do not publish)
+    const { data: cancelledEvents } = await supabaseAdmin
+      .from('session_events')
+      .select('metadata')
+      .eq('session_id', session.id)
+      .eq('event_type', 'inject_cancelled');
+
+    const cancelledInjectIds = new Set<string>();
+    if (cancelledEvents) {
+      for (const event of cancelledEvents) {
+        const injectId = (event.metadata as { inject_id?: string })?.inject_id;
+        if (injectId) cancelledInjectIds.add(injectId);
+      }
+    }
+
     logger.debug(
       {
         sessionId: session.id,
         publishedInjectCount: publishedInjectIds.size,
-        publishedInjectIds: Array.from(publishedInjectIds),
+        cancelledInjectCount: cancelledInjectIds.size,
       },
-      'Checked for already-published injects',
+      'Checked for already-published and cancelled injects',
     );
 
-    // Publish injects that haven't been published yet
-    const injectsToPublish = injects.filter((inject) => !publishedInjectIds.has(inject.id));
+    // Publish injects that haven't been published and weren't cancelled
+    const injectsToPublish = injects.filter(
+      (inject) => !publishedInjectIds.has(inject.id) && !cancelledInjectIds.has(inject.id),
+    );
 
     if (injectsToPublish.length === 0) {
       logger.info(
@@ -251,8 +269,67 @@ export class InjectSchedulerService {
       'Publishing injects that have not been published yet',
     );
 
+    // Decisions executed in the last 5 minutes (for AI cancellation check)
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data: recentDecisions } = await supabaseAdmin
+      .from('decisions')
+      .select('id, title, description, type')
+      .eq('session_id', session.id)
+      .eq('status', 'executed')
+      .gte('executed_at', fiveMinutesAgo)
+      .order('executed_at', { ascending: false });
+
+    const decisionsForAi = (recentDecisions || []).map((d) => ({
+      title: d.title ?? '',
+      description: d.description ?? '',
+      type: d.type as string | null,
+    }));
+
     for (const inject of injectsToPublish) {
       try {
+        // AI cancellation check: should this scheduled inject be suppressed due to recent decisions?
+        if (env.openAiApiKey) {
+          try {
+            const result = await shouldCancelScheduledInject(
+              {
+                title: inject.title ?? '',
+                content: (inject as { content?: string }).content ?? '',
+              },
+              decisionsForAi,
+              env.openAiApiKey,
+            );
+            if (result.cancel) {
+              await supabaseAdmin.from('session_events').insert({
+                session_id: session.id,
+                event_type: 'inject_cancelled',
+                description: `Inject cancelled: ${inject.title ?? inject.id} - ${result.reason ?? 'AI determined recent decisions made it obsolete'}`,
+                actor_id: null,
+                metadata: {
+                  inject_id: inject.id,
+                  reason: result.reason ?? null,
+                  cancelled_at: new Date().toISOString(),
+                },
+              });
+              logger.info(
+                {
+                  sessionId: session.id,
+                  injectId: inject.id,
+                  injectTitle: inject.title,
+                  reason: result.reason,
+                },
+                'Scheduled inject cancelled by AI, not publishing',
+              );
+              continue;
+            }
+          } catch (cancelErr) {
+            logger.warn(
+              { error: cancelErr, sessionId: session.id, injectId: inject.id },
+              'AI cancellation check failed, publishing inject anyway',
+            );
+            // Fall through to publish (fail-open)
+          }
+        }
+
         logger.info(
           {
             sessionId: session.id,
