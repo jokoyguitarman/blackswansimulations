@@ -469,7 +469,10 @@ export const SessionView = () => {
                       Player:
                     </span>
                     <span className="px-2 py-1 text-xs terminal-text military-border bg-robotic-gray-200 border-robotic-yellow">
-                      {user.displayName || user.email || 'Unknown'}
+                      {session?.participants?.find((p) => p.user_id === user.id)?.user?.full_name ||
+                        user.displayName ||
+                        user.email ||
+                        'Unknown'}
                     </span>
                   </div>
                 )}
