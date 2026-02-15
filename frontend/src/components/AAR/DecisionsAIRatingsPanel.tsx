@@ -31,6 +31,7 @@ interface DecisionsAIRatingsPanelProps {
 export const DecisionsAIRatingsPanel = ({ sessionId }: DecisionsAIRatingsPanelProps) => {
   const [data, setData] = useState<DecisionsAIRatingsPanelData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const load = async () => {
@@ -94,6 +95,18 @@ export const DecisionsAIRatingsPanel = ({ sessionId }: DecisionsAIRatingsPanelPr
       new Date(b.executed_at || b.created_at).getTime(),
   );
 
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Section 1: All decisions with AI robustness rating */}
@@ -107,15 +120,36 @@ export const DecisionsAIRatingsPanel = ({ sessionId }: DecisionsAIRatingsPanelPr
           ) : (
             decisionsSorted.map((d) => {
               const robustness = robustnessByDecisionId[d.id];
+              const isExpanded = expandedIds.has(d.id);
               return (
                 <div
                   key={d.id}
-                  className="border border-robotic-yellow/30 p-3 bg-robotic-gray-300/80 font-mono text-xs"
+                  className="border border-robotic-yellow/30 bg-robotic-gray-300/80 font-mono text-xs cursor-pointer hover:border-robotic-yellow/50 transition-colors"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => toggleExpanded(d.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      toggleExpanded(d.id);
+                    }
+                  }}
+                  aria-expanded={isExpanded}
                 >
-                  <div className="flex justify-between items-start gap-2">
+                  <div className="p-3 flex justify-between items-start gap-2">
                     <div className="flex-1 min-w-0">
-                      <div className="text-robotic-green font-semibold">{d.title}</div>
-                      <div className="text-robotic-yellow/70 mt-1 truncate">{d.description}</div>
+                      <div
+                        className={`text-robotic-green font-semibold ${!isExpanded ? 'truncate' : ''}`}
+                        title={!isExpanded ? d.title : undefined}
+                      >
+                        {d.title}
+                      </div>
+                      <div
+                        className={`text-robotic-yellow/70 mt-1 whitespace-pre-wrap break-words ${!isExpanded ? 'truncate' : ''}`}
+                        title={!isExpanded ? d.description : undefined}
+                      >
+                        {d.description}
+                      </div>
                       <div className="text-robotic-yellow/50 mt-1">
                         Type: {d.type || '—'} | Status: {d.status} |{' '}
                         {d.executed_at
@@ -123,14 +157,20 @@ export const DecisionsAIRatingsPanel = ({ sessionId }: DecisionsAIRatingsPanelPr
                           : `Created: ${new Date(d.created_at).toLocaleString()}`}
                       </div>
                     </div>
-                    {robustness !== undefined && (
-                      <span
-                        className="flex-shrink-0 px-2 py-0.5 rounded bg-robotic-gold/20 text-robotic-gold"
-                        title="AI robustness score 1–10"
-                      >
-                        Robustness: {robustness}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {robustness !== undefined && (
+                        <span
+                          className="px-2 py-0.5 rounded bg-robotic-gold/20 text-robotic-gold"
+                          title="AI robustness score 1–10"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Robustness: {robustness}
+                        </span>
+                      )}
+                      <span className="text-robotic-yellow/70 text-xs" aria-hidden>
+                        {isExpanded ? '▼' : '▶'}
                       </span>
-                    )}
+                    </div>
                   </div>
                 </div>
               );
