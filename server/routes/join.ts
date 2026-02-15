@@ -175,11 +175,40 @@ router.post(
         return res.json({ sessionId: session.id });
       }
 
-      // 7. Update user_profiles.full_name
-      await supabaseAdmin
+      // 7. Ensure user_profiles row exists (handle_new_user may not have run yet or may have failed)
+      const { data: existingProfile } = await supabaseAdmin
         .from('user_profiles')
-        .update({ full_name: display_name })
-        .eq('id', user.id);
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (!existingProfile) {
+        const { error: profileError } = await supabaseAdmin.from('user_profiles').upsert(
+          {
+            id: user.id,
+            username: user.email ?? `anon_${user.id.slice(0, 8)}`,
+            full_name: display_name,
+            role: 'participant',
+            agency_name: 'Unknown',
+            email: user.email ?? null,
+          },
+          { onConflict: 'id' },
+        );
+
+        if (profileError) {
+          logger.error(
+            { error: profileError, userId: user.id },
+            'Failed to ensure user profile for join',
+          );
+          return res.status(500).json({ error: 'Failed to join session' });
+        }
+      } else {
+        // Profile exists - update display name
+        await supabaseAdmin
+          .from('user_profiles')
+          .update({ full_name: display_name })
+          .eq('id', user.id);
+      }
 
       // 8. Insert into session_participants
       const { error: participantError } = await supabaseAdmin.from('session_participants').upsert(
