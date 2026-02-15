@@ -7,6 +7,7 @@ import { DecisionWorkflow } from '../components/Decisions/DecisionWorkflow';
 import { AIInjectSystem } from '../components/Injects/AIInjectSystem';
 import { MediaFeed } from '../components/Media/MediaFeed';
 import { AARDashboard } from '../components/AAR/AARDashboard';
+import { DecisionsAIRatingsPanel } from '../components/AAR/DecisionsAIRatingsPanel';
 import { ParticipantManagement } from '../components/Session/ParticipantManagement';
 import { TeamAssignmentModal } from '../components/Teams/TeamAssignmentModal';
 import { SessionLobby } from '../components/Session/SessionLobby';
@@ -97,7 +98,15 @@ export const SessionView = () => {
     }>
   >([]);
   const [backendActivities, setBackendActivities] = useState<
-    Array<{ type: string; at: string; title?: string; reason?: string; summary?: string }>
+    Array<{
+      type: string;
+      at: string;
+      title?: string;
+      reason?: string;
+      summary?: string;
+      matrix?: Record<string, Record<string, number>>;
+      robustness_by_decision?: Record<string, number>;
+    }>
   >([]);
 
   useEffect(() => {
@@ -115,9 +124,10 @@ export const SessionView = () => {
     }
   }, [id, session?.status, isTrainer]);
 
-  // Backend/AI activity log for trainers (poll every 8s when session in progress)
+  // Backend/AI activity log for trainers (poll every 8s when in progress, load once when completed)
   useEffect(() => {
-    if (!id || !isTrainer || session?.status !== 'in_progress') return;
+    if (!id || !isTrainer || !session) return;
+    if (session.status !== 'in_progress' && session.status !== 'completed') return;
     const loadBackendActivity = async () => {
       try {
         const res = await api.sessions.getBackendActivity(id);
@@ -127,8 +137,9 @@ export const SessionView = () => {
       }
     };
     loadBackendActivity();
-    const interval = setInterval(loadBackendActivity, 8000);
-    return () => clearInterval(interval);
+    const interval =
+      session.status === 'in_progress' ? setInterval(loadBackendActivity, 8000) : undefined;
+    return () => (interval ? clearInterval(interval) : undefined);
   }, [id, isTrainer, session?.status]);
 
   // Mark card as viewed (green → yellow dot)
@@ -770,48 +781,90 @@ export const SessionView = () => {
             </div>
           )}
 
-          {/* Backend / AI activity - Trainer only, 2 columns wide */}
-          {id && isTrainer && session?.status === 'in_progress' && (
-            <div className="md:col-span-2 military-border p-6 bg-robotic-gray-300 flex flex-col max-h-[380px]">
-              <h3 className="text-lg terminal-text uppercase mb-3 flex-shrink-0">
-                [BACKEND / AI ACTIVITY]
-              </h3>
-              <div className="flex-1 overflow-y-auto min-h-0 space-y-2 text-sm">
-                {backendActivities.length === 0 ? (
-                  <p className="text-robotic-yellow/70">
-                    No activity yet. Injects and impact matrix will appear here.
-                  </p>
-                ) : (
-                  backendActivities.map((a, i) => (
-                    <div
-                      key={`${a.type}-${a.at}-${i}`}
-                      className="border border-robotic-yellow/30 p-2 bg-robotic-gray-300/80 font-mono text-xs"
-                    >
-                      <span className="text-robotic-yellow/90">
-                        {new Date(a.at).toLocaleTimeString()}
-                      </span>
-                      {' — '}
-                      {a.type === 'inject_published' && (
-                        <span className="text-robotic-green">
-                          Inject published: {a.title ?? '—'}
+          {/* Backend / AI activity - Trainer only, during and post session, 2 columns wide, scrollable */}
+          {id &&
+            isTrainer &&
+            session &&
+            (session.status === 'in_progress' || session.status === 'completed') && (
+              <div className="md:col-span-2 military-border p-6 bg-robotic-gray-300 flex flex-col h-[750px]">
+                <h3 className="text-lg terminal-text uppercase mb-3 flex-shrink-0">
+                  [BACKEND / AI ACTIVITY]
+                </h3>
+                <div className="flex-1 overflow-y-auto min-h-0 space-y-2 text-sm">
+                  {backendActivities.length === 0 ? (
+                    <p className="text-robotic-yellow/70">
+                      No activity yet. Injects and impact matrix will appear here.
+                    </p>
+                  ) : (
+                    backendActivities.map((a, i) => (
+                      <div
+                        key={`${a.type}-${a.at}-${i}`}
+                        className="border border-robotic-yellow/30 p-2 bg-robotic-gray-300/80 font-mono text-xs"
+                      >
+                        <span className="text-robotic-yellow/90">
+                          {new Date(a.at).toLocaleTimeString()}
                         </span>
-                      )}
-                      {a.type === 'inject_cancelled' && (
-                        <span className="text-robotic-yellow">
-                          Inject cancelled by AI. Reason: {a.reason ?? '—'}
-                        </span>
-                      )}
-                      {a.type === 'impact_matrix_computed' && (
-                        <span className="text-robotic-gold">
-                          Impact matrix computed ({a.summary ?? '—'})
-                        </span>
-                      )}
-                    </div>
-                  ))
-                )}
+                        {' — '}
+                        {a.type === 'inject_published' && (
+                          <span className="text-robotic-green">
+                            Inject published: {a.title ?? '—'}
+                          </span>
+                        )}
+                        {a.type === 'inject_cancelled' && (
+                          <span className="text-robotic-yellow">
+                            Inject cancelled by AI. Reason: {a.reason ?? '—'}
+                          </span>
+                        )}
+                        {a.type === 'impact_matrix_computed' && (
+                          <div>
+                            <span className="text-robotic-gold">
+                              Impact matrix computed ({a.summary ?? '—'})
+                            </span>
+                            {a.matrix && Object.keys(a.matrix).length > 0 && (
+                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                                <div className="text-robotic-yellow/80 mb-1">
+                                  [INTER-TEAM IMPACT -2..+2]
+                                </div>
+                                <div className="overflow-x-auto">
+                                  {Object.entries(a.matrix).map(([acting, affected]) => (
+                                    <div key={acting} className="text-robotic-green/90">
+                                      {acting} →{' '}
+                                      {Object.entries(affected)
+                                        .map(([team, score]) => `${team}: ${score}`)
+                                        .join(', ')}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {a.robustness_by_decision &&
+                              Object.keys(a.robustness_by_decision).length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                                  <div className="text-robotic-yellow/80 mb-1">
+                                    [PER-DECISION ROBUSTNESS 1-10]
+                                  </div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {Object.entries(a.robustness_by_decision).map(
+                                      ([decId, score]) => (
+                                        <span
+                                          key={decId}
+                                          className="bg-robotic-gray-400 px-1 rounded"
+                                        >
+                                          {decId.slice(0, 8)}…:{score}
+                                        </span>
+                                      ),
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
           {/* Row 3+: AAR Card - Only show for completed sessions (Trainer only) */}
           {id && session.status === 'completed' && isTrainer && (
@@ -830,6 +883,27 @@ export const SessionView = () => {
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
                 <AARDashboard sessionId={id} />
+              </div>
+            </div>
+          )}
+
+          {/* Row 3+: Decisions & AI Ratings Card - Completed sessions (Trainer only) */}
+          {id && session.status === 'completed' && isTrainer && (
+            <div
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
+              onClick={() => markCardViewed('decisions_ai')}
+            >
+              <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                <h3 className="text-lg terminal-text uppercase">[DECISIONS & AI RATINGS]</h3>
+                {cardNotifications['decisions_ai'] === 'new' && (
+                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                )}
+                {cardNotifications['decisions_ai'] === 'viewed' && (
+                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                )}
+              </div>
+              <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
+                <DecisionsAIRatingsPanel sessionId={id} />
               </div>
             </div>
           )}

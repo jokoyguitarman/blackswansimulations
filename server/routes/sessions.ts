@@ -451,6 +451,8 @@ router.get(
         reason?: string;
         injectId?: string;
         summary?: string;
+        matrix?: Record<string, Record<string, number>>;
+        robustness_by_decision?: Record<string, number>;
       }> = [];
 
       const eventList = eventsRes.data || [];
@@ -474,20 +476,21 @@ router.get(
 
       const matrixList = matrixRes.data || [];
       for (const m of matrixList) {
-        const matrix = (m.matrix as Record<string, unknown>) || {};
+        const matrix = (m.matrix as Record<string, Record<string, number>>) || {};
+        const robustnessByDecision = (m.robustness_by_decision as Record<string, number>) || {};
         const teamCount = Object.keys(matrix).length;
-        const decisionCount =
-          typeof m.robustness_by_decision === 'object' && m.robustness_by_decision !== null
-            ? Object.keys(m.robustness_by_decision as Record<string, unknown>).length
-            : 0;
+        const decisionCount = Object.keys(robustnessByDecision).length;
         activities.push({
           type: 'impact_matrix_computed',
           at: m.evaluated_at,
           summary: `${teamCount} teams, ${decisionCount} decisions scored`,
+          matrix,
+          robustness_by_decision: robustnessByDecision,
         });
       }
 
-      activities.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+      // Sort ascending (oldest first) so scrolling shows chronological order from beginning to end
+      activities.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
       res.json({ activities, sessionId });
     } catch (err) {

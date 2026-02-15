@@ -87,6 +87,13 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
       .select('*')
       .eq('session_id', sessionId);
 
+    // Get impact matrix evaluations (AI ratings per decision / inter-team impact)
+    const { data: impactMatrices } = await supabaseAdmin
+      .from('session_impact_matrix')
+      .select('id, evaluated_at, matrix, robustness_by_decision')
+      .eq('session_id', sessionId)
+      .order('evaluated_at', { ascending: true });
+
     res.json({
       data: {
         aar: aar || null,
@@ -94,6 +101,7 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
         metrics: metrics || [],
         events: events || [],
         decisions: decisions || [],
+        impact_matrices: impactMatrices || [],
         session,
       },
     });
