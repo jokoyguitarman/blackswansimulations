@@ -9,6 +9,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Scenarios } from './pages/Scenarios';
 import { Sessions } from './pages/Sessions';
 import { SessionView } from './pages/SessionView';
+import { JoinSessionPage } from './pages/JoinSessionPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SupabaseConfigError } from './components/SupabaseConfigError';
 import './style.css';
@@ -45,6 +46,7 @@ const App = () => {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<SignUp />} />
+            <Route path="/join/:joinToken" element={<JoinSessionPage />} />
             <Route
               path="/dashboard"
               element={

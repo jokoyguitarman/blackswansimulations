@@ -24,6 +24,7 @@ import { incidentsRouter } from './routes/incidents.js';
 import { teamsRouter } from './routes/teams.js';
 import { objectivesRouter } from './routes/objectives.js';
 import { notificationsRouter } from './routes/notifications.js';
+import { joinRouter } from './routes/join.js';
 import { setupWebSocket } from './websocket/index.js';
 import { initializeWebSocketService } from './services/websocketService.js';
 import { initializeInjectScheduler } from './services/injectSchedulerService.js';
@@ -117,12 +118,26 @@ const limiter = rateLimit({
 
 app.use('/api/', limiter);
 
+// Stricter rate limiter for join endpoints (public, abuse-prone)
+const joinLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // 10 requests per minute per IP
+  message: 'Too many requests. Please try again in a moment.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip || req.socket.remoteAddress || 'unknown',
+});
+app.use('/api/join', joinLimiter);
+
 // Request logging (with sensitive data redaction)
 app.use(pinoHttp({ logger }));
 
 // Body parsing with size limits
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Smaller body limit for join endpoints (prevents abuse)
+app.use('/api/join', express.json({ limit: '1kb' }));
 
 // API routes
 app.use('/api/health', healthRouter);
@@ -143,6 +158,7 @@ app.use('/api/incidents', incidentsRouter);
 app.use('/api/teams', teamsRouter);
 app.use('/api/objectives', objectivesRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/join', joinRouter);
 
 // 404 handler
 app.use((req, res) => {

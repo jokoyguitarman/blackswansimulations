@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { nanoid } from 'nanoid';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
@@ -587,6 +588,12 @@ router.post(
         return res.status(404).json({ error: 'Scenario not found' });
       }
 
+      // Generate join token and compute expiry
+      const joinToken = nanoid(20);
+      const joinExpiresAt = scheduled_start_time
+        ? new Date(new Date(scheduled_start_time).getTime() + 2 * 60 * 60 * 1000).toISOString()
+        : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
       const { data, error } = await supabaseAdmin
         .from('sessions')
         .insert({
@@ -596,6 +603,9 @@ router.post(
           current_state: scenario.initial_state || {},
           scheduled_start_time: scheduled_start_time || null,
           trainer_instructions: trainer_instructions || null,
+          join_token: joinToken,
+          join_enabled: true,
+          join_expires_at: joinExpiresAt,
         })
         .select()
         .single();
@@ -1605,5 +1615,113 @@ router.post('/:id/process-all-invitations', requireAuth, async (req: Authenticat
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Regenerate join link token (trainer only)
+router.post(
+  '/:id/regenerate-join-token',
+  requireAuth,
+  validate(schemas.id),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const user = req.user!;
+
+      // Check if user is trainer of this session
+      const { data: session } = await supabaseAdmin
+        .from('sessions')
+        .select('trainer_id, scheduled_start_time')
+        .eq('id', id)
+        .single();
+
+      if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
+      }
+
+      if (session.trainer_id !== user.id && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const newToken = nanoid(20);
+      const joinExpiresAt = session.scheduled_start_time
+        ? new Date(
+            new Date(session.scheduled_start_time).getTime() + 2 * 60 * 60 * 1000,
+          ).toISOString()
+        : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+      const { data, error } = await supabaseAdmin
+        .from('sessions')
+        .update({
+          join_token: newToken,
+          join_enabled: true,
+          join_expires_at: joinExpiresAt,
+        })
+        .eq('id', id)
+        .select('join_token, join_enabled, join_expires_at')
+        .single();
+
+      if (error) {
+        logger.error({ error, sessionId: id }, 'Failed to regenerate join token');
+        return res.status(500).json({ error: 'Failed to regenerate join token' });
+      }
+
+      logger.info({ sessionId: id, userId: user.id }, 'Join token regenerated');
+      res.json({ data });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in POST /sessions/:id/regenerate-join-token');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// Toggle join link enabled/disabled (trainer only)
+router.patch(
+  '/:id/join-link',
+  requireAuth,
+  validate(
+    z.object({
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({ join_enabled: z.boolean() }),
+    }),
+  ),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const user = req.user!;
+      const { join_enabled } = req.body;
+
+      const { data: session } = await supabaseAdmin
+        .from('sessions')
+        .select('trainer_id')
+        .eq('id', id)
+        .single();
+
+      if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
+      }
+
+      if (session.trainer_id !== user.id && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from('sessions')
+        .update({ join_enabled })
+        .eq('id', id)
+        .select('join_token, join_enabled, join_expires_at')
+        .single();
+
+      if (error) {
+        logger.error({ error, sessionId: id }, 'Failed to update join link');
+        return res.status(500).json({ error: 'Failed to update join link' });
+      }
+
+      logger.info({ sessionId: id, userId: user.id, join_enabled }, 'Join link status updated');
+      res.json({ data });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in PATCH /sessions/:id/join-link');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
 
 export { router as sessionsRouter };

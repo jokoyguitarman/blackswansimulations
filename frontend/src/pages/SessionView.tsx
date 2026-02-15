@@ -34,6 +34,9 @@ interface Session {
   };
   trainer_instructions?: string | null;
   scheduled_start_time?: string | null;
+  join_token?: string | null;
+  join_enabled?: boolean;
+  join_expires_at?: string | null;
   scenarios?: {
     id?: string;
     title: string;

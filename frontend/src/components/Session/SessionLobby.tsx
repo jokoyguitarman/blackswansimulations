@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { BriefingView } from './BriefingView';
 import { ParticipantManagement } from './ParticipantManagement';
+import { JoinLinkPanel } from './JoinLinkPanel';
 import { TeamAssignmentModal } from '../Teams/TeamAssignmentModal';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { useAuth } from '../../contexts/AuthContext';
@@ -13,6 +14,9 @@ interface SessionLobbyProps {
     status: string;
     trainer_instructions?: string | null;
     scheduled_start_time?: string | null;
+    join_token?: string | null;
+    join_enabled?: boolean;
+    join_expires_at?: string | null;
     participants?: Array<{
       user_id: string;
       role: string;
@@ -266,6 +270,20 @@ export const SessionLobby = ({
             </button>
           </div>
         )}
+
+        {/* Join Link Panel - Trainer Only */}
+        {isTrainer &&
+          session.join_token &&
+          session.status !== 'completed' &&
+          session.status !== 'cancelled' && (
+            <JoinLinkPanel
+              sessionId={sessionId}
+              joinToken={session.join_token}
+              joinEnabled={session.join_enabled ?? true}
+              joinExpiresAt={session.join_expires_at}
+              onUpdate={onSessionUpdate}
+            />
+          )}
 
         {/* Ready Button for Participants */}
         {!isTrainer && (

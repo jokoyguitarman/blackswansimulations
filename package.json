@@ -67,6 +67,7 @@
     "express-rate-limit": "^8.2.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
+    "nanoid": "^5.1.6",
     "nodemailer": "^7.0.10",
     "pino": "^10.1.0",
     "pino-http": "^11.0.0",

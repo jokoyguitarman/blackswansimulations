@@ -709,6 +709,60 @@ export const api = {
     },
   },
 
+  // Join Link
+  join: {
+    getInfo: async (joinToken: string) => {
+      // Public endpoint - no auth required
+      return handleResponse<{
+        data: {
+          sessionTitle: string;
+          teams: Array<{ id: string; team_name: string; team_description?: string }>;
+        };
+      }>(
+        await fetch(apiUrl(`/api/join/${joinToken}`), {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    },
+    register: async (joinToken: string, displayName: string, teamName: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ sessionId: string }>(
+        await fetch(apiUrl('/api/join/register'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            join_token: joinToken,
+            display_name: displayName,
+            team_name: teamName,
+          }),
+        }),
+      );
+    },
+    regenerateToken: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: { join_token: string; join_enabled: boolean; join_expires_at: string };
+      }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/regenerate-join-token`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
+    toggleEnabled: async (sessionId: string, joinEnabled: boolean) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: { join_token: string; join_enabled: boolean; join_expires_at: string };
+      }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/join-link`), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ join_enabled: joinEnabled }),
+        }),
+      );
+    },
+  },
+
   // Notifications
   notifications: {
     list: async (sessionId?: string, read?: boolean, limit = 50) => {

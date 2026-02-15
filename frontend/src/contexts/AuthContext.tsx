@@ -97,11 +97,15 @@ function mapSupabaseUser(user: User): SessionUser {
   const metadata = user.user_metadata || {};
   const appMetadata = user.app_metadata || {};
 
+  // Anonymous users (join link flow) should default to 'participant', not 'trainer'
+  const isAnonymous = appMetadata.provider === 'anonymous' || !user.email;
+  const defaultRole = isAnonymous ? 'participant' : 'trainer';
+
   return {
     id: user.id,
     email: user.email,
-    role: (appMetadata.role || metadata.role || 'trainer') as SessionUser['role'],
+    role: (appMetadata.role || metadata.role || defaultRole) as SessionUser['role'],
     agency: (appMetadata.agency_name || metadata.agency_name) as string | undefined,
-    displayName: (metadata.full_name || user.email) as string | undefined,
+    displayName: (metadata.full_name || user.email || 'User') as string | undefined,
   };
 }

@@ -7,6 +7,7 @@ export type UserRole =
   | 'utility_manager'
   | 'intelligence_analyst'
   | 'ngo_liaison'
+  | 'participant'
   | 'trainer'
   | 'admin';
 
