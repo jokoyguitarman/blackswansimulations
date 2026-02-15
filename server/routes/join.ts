@@ -66,11 +66,13 @@ router.get('/:joinToken', async (req, res) => {
       .order('team_name', { ascending: true });
 
     // Return minimal info (session title + teams only, no scenario title for privacy)
-    const scenarioData = session.scenarios as { title: string } | null;
+    // Supabase may return scenarios as object or array depending on relation type
+    const scenarios = session.scenarios as { title: string } | { title: string }[] | null;
+    const scenarioData = Array.isArray(scenarios) ? scenarios[0] : scenarios;
 
     res.json({
       data: {
-        sessionTitle: scenarioData?.title || 'Simulation Session',
+        sessionTitle: scenarioData?.title ?? 'Simulation Session',
         teams: (teams || []).map((t) => ({
           id: t.id,
           team_name: t.team_name,

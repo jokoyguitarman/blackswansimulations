@@ -104,6 +104,37 @@ export const roleVisibility: Record<
     description: 'Full system visibility (no trainer notes)',
   },
 
+  // PARTICIPANT: Generic role for join-link users (limited visibility until assigned)
+  participant: {
+    visible: [
+      'incidents',
+      'media_reports',
+      'public_sentiment',
+      'weather_data',
+      'scenario_objectives',
+      'decisions',
+    ],
+    hidden: [
+      'incident_locations',
+      'casualties',
+      'health_capacity',
+      'defence_assets',
+      'police_operations',
+      'intelligence',
+      'utility_status',
+      'financial_data',
+      'political_pressure',
+      'ngo_activities',
+      'resources',
+      'decision_rationale',
+      'approval_chains',
+      'infrastructure_status',
+      'ai_injects',
+      'trainer_notes',
+    ],
+    description: 'Default participant view. Visibility expands when assigned a specific role.',
+  },
+
   // DEFENCE LIAISON: Military/defence perspective
   defence_liaison: {
     visible: [
