@@ -186,7 +186,7 @@ router.post(
         const { error: profileError } = await supabaseAdmin.from('user_profiles').upsert(
           {
             id: user.id,
-            username: user.email ?? `anon_${user.id.slice(0, 8)}`,
+            username: user.email?.trim() || `anon_${user.id.slice(0, 8)}`,
             full_name: display_name,
             role: 'participant',
             agency_name: 'Unknown',
