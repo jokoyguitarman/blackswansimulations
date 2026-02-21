@@ -288,7 +288,7 @@ export class AIInjectSchedulerService {
       teams: Array.from(teamsWithMembers),
     };
 
-    // Stage 2/3: Load latest escalation factors and pathways, or run Stage 2 + 3 if none (Checkpoint 6)
+    // Stage 2/3: Recompute escalation factors and pathways every 5-min cycle from current state and injects in last 5 minutes (Checkpoint 6)
     let escalationFactorsSnapshot: Array<{
       id: string;
       name: string;
@@ -302,84 +302,56 @@ export class AIInjectSchedulerService {
     }> = [];
     if (env.openAiApiKey) {
       try {
-        const [factorsRows, pathwaysRows] = await Promise.all([
-          supabaseAdmin
-            .from('session_escalation_factors')
-            .select('evaluated_at, factors')
-            .eq('session_id', session.id)
-            .order('evaluated_at', { ascending: false })
-            .limit(1),
-          supabaseAdmin
-            .from('session_escalation_pathways')
-            .select('evaluated_at, pathways')
-            .eq('session_id', session.id)
-            .order('evaluated_at', { ascending: false })
-            .limit(1),
-        ]);
-        const hasExistingFactors = (factorsRows.data?.length ?? 0) > 0;
-        const hasExistingPathways = (pathwaysRows.data?.length ?? 0) > 0;
+        const objectivesForFactors = (objectives || []).map(
+          (o: { objective_id?: string; objective_name?: string }) => ({
+            objective_id: o.objective_id,
+            objective_name: o.objective_name,
+          }),
+        );
+        const factorsResult = await identifyEscalationFactors(
+          scenario?.description ?? '',
+          session.current_state ?? {},
+          objectivesForFactors,
+          formattedInjects.map((i: { type?: string; title?: string; content?: string }) => ({
+            type: i.type,
+            title: i.title,
+            content: i.content,
+          })),
+          env.openAiApiKey,
+        );
+        escalationFactorsSnapshot = factorsResult.factors;
+        await supabaseAdmin.from('session_escalation_factors').insert({
+          session_id: session.id,
+          evaluated_at: new Date().toISOString(),
+          factors: factorsResult.factors,
+        });
+        logger.info(
+          { sessionId: session.id, factorCount: factorsResult.factors.length },
+          'Escalation factors computed and saved',
+        );
 
-        if (hasExistingFactors && hasExistingPathways) {
-          escalationFactorsSnapshot =
-            (factorsRows.data![0].factors as typeof escalationFactorsSnapshot) ?? [];
-          escalationPathwaysSnapshot =
-            (pathwaysRows.data![0].pathways as typeof escalationPathwaysSnapshot) ?? [];
-          logger.debug(
-            { sessionId: session.id },
-            'Using latest escalation factors and pathways from DB',
-          );
-        } else {
-          const objectivesForFactors = (objectives || []).map(
-            (o: { objective_id?: string; objective_name?: string }) => ({
-              objective_id: o.objective_id,
-              objective_name: o.objective_name,
-            }),
-          );
-          const factorsResult = await identifyEscalationFactors(
+        try {
+          const pathwaysResult = await generateEscalationPathways(
             scenario?.description ?? '',
             session.current_state ?? {},
-            objectivesForFactors,
-            formattedInjects.map((i: { type?: string; title?: string; content?: string }) => ({
-              type: i.type,
-              title: i.title,
-              content: i.content,
-            })),
+            factorsResult.factors,
             env.openAiApiKey,
           );
-          escalationFactorsSnapshot = factorsResult.factors;
-          await supabaseAdmin.from('session_escalation_factors').insert({
+          escalationPathwaysSnapshot = pathwaysResult.pathways;
+          await supabaseAdmin.from('session_escalation_pathways').insert({
             session_id: session.id,
             evaluated_at: new Date().toISOString(),
-            factors: factorsResult.factors,
+            pathways: pathwaysResult.pathways,
           });
           logger.info(
-            { sessionId: session.id, factorCount: factorsResult.factors.length },
-            'Escalation factors computed and saved',
+            { sessionId: session.id, pathwayCount: pathwaysResult.pathways.length },
+            'Escalation pathways computed and saved',
           );
-
-          try {
-            const pathwaysResult = await generateEscalationPathways(
-              scenario?.description ?? '',
-              session.current_state ?? {},
-              factorsResult.factors,
-              env.openAiApiKey,
-            );
-            escalationPathwaysSnapshot = pathwaysResult.pathways;
-            await supabaseAdmin.from('session_escalation_pathways').insert({
-              session_id: session.id,
-              evaluated_at: new Date().toISOString(),
-              pathways: pathwaysResult.pathways,
-            });
-            logger.info(
-              { sessionId: session.id, pathwayCount: pathwaysResult.pathways.length },
-              'Escalation pathways computed and saved',
-            );
-          } catch (pathwaysErr) {
-            logger.warn(
-              { error: pathwaysErr, sessionId: session.id },
-              'Failed to compute or save escalation pathways, continuing',
-            );
-          }
+        } catch (pathwaysErr) {
+          logger.warn(
+            { error: pathwaysErr, sessionId: session.id },
+            'Failed to compute or save escalation pathways, continuing',
+          );
         }
       } catch (factorsErr) {
         logger.warn(
