@@ -1254,7 +1254,13 @@ Important:
     const escalationContext =
       hasMatrix || hasFactors || hasPathways || hasAnalysis
         ? `\n\nINTER-TEAM IMPACT MATRIX AND ESCALATION CONTEXT (use this to shape the inject):
-Generate the next scenario state / inject based on the Inter-Team Impact Matrix and current escalation factors. Consider whether the situation is improving or worsening and what developments would align with the impact scores and escalation pathways.
+
+Two lenses for the current state of play:
+1. Robustness (per decision): How well each team's decisions mitigated escalation risks (1-10; higher = more mitigating). Use this to judge whether escalation is being contained or not.
+2. Inter-team impact matrix: Whether each team's decisions helped (+1, +2) or hurt (-1, -2) other teams. Use this to judge cross-team effects (e.g. one team's action making another team's job harder or easier).
+
+Use BOTH lenses to paint a new picture of the scene. Create fresh, varied injects that advance the scenario in new directions—e.g. consequences of inter-team cooperation or friction, resource or operational outcomes, political/media/trust reactions, new intel or threats. Avoid defaulting to the same themes (panic, delays, misinformation) every time; only use them when they are the direct consequence of the current matrix and robustness. Prefer diversity so the scene keeps evolving.
+
 ${hasMatrix ? `\nImpact matrix (acting_team -> affected_team -> score -2 to +2):\n${JSON.stringify(sessionContext.latestImpactMatrix, null, 2)}` : ''}
 ${sessionContext.latestRobustnessByDecision && Object.keys(sessionContext.latestRobustnessByDecision).length > 0 ? `\nRobustness by decision (1-10, higher = more mitigating):\n${JSON.stringify(sessionContext.latestRobustnessByDecision)}` : ''}
 ${hasAnalysis ? `\nAnalysis: ${[sessionContext.latestImpactAnalysis!.overall, sessionContext.latestImpactAnalysis!.matrix_reasoning, sessionContext.latestImpactAnalysis!.robustness_reasoning].filter(Boolean).join(' ')}` : ''}
@@ -1280,7 +1286,7 @@ Generate a realistic inject that:
 - Doesn't contradict upcoming scheduled injects
 - Fits the current game state and objectives
 - Creates appropriate challenges or complications
-- When escalation/impact context is provided, align inject content with the inter-team impact and escalation factors (e.g. reflect improving or worsening dynamics, or developments that match the matrix and pathways)
+- When escalation/impact context is provided: use both robustness (how well decisions mitigated escalation) and the inter-team impact matrix (how decisions helped or hurt other teams) to paint a new picture of the scene. Create fresh, varied developments (e.g. inter-team dynamics, resource outcomes, political or media reactions, new intel)—avoid repeatedly using the same themes (panic, delays, misinformation) unless they are the direct result of the current matrix and robustness
 
 CRITICAL: Scope targeting:
 ${
@@ -1298,6 +1304,7 @@ Important considerations:
 - Consider how previous decisions might have set up conditions that affect this decision's consequences
 - The inject should feel like a natural progression of the story, not forced or disconnected
 - Severity should match the decision's impact and the overall situation
+- Prefer injects that advance the scenario in new directions (e.g. inter-team friction or cooperation, resource reallocation, political fallout, new intel) rather than repeating the same type of development (e.g. yet another "panic spreads" or "misinformation" update) unless it is the direct consequence of the current robustness and matrix
 
 If this decision doesn't warrant a meaningful inject, return null. Otherwise, return a well-crafted inject that fits seamlessly into the ongoing scenario.`;
 
