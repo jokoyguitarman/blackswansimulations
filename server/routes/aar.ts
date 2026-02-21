@@ -298,6 +298,18 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
       // Don't fail the entire request if metrics storage fails
     }
 
+    // Fetch stored AAR metrics for AI prompt (same numbers as in exports)
+    let storedAarMetrics: Array<{ metric_type: string; metric_name: string; metric_value: unknown }> = [];
+    try {
+      const { data: aarMetricsRows } = await supabaseAdmin
+        .from('aar_metrics')
+        .select('metric_type, metric_name, metric_value')
+        .eq('aar_report_id', aar.id);
+      storedAarMetrics = aarMetricsRows ?? [];
+    } catch {
+      // Non-fatal; AI will use keyMetrics instead
+    }
+
     // Calculate and store participant scores
     try {
       const participantScores = await calculateParticipantScores(sessionId, aar.id);
@@ -399,12 +411,68 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
           },
         );
 
+        // Build chronological event timeline for AI (cap at 200 events to avoid token explosion)
+        const MAX_TIMELINE_EVENTS = 200;
+        const rawEvents = events ?? [];
+        const eventTimeline = rawEvents.slice(0, MAX_TIMELINE_EVENTS).map(
+          (e: {
+            created_at: string;
+            event_type: string;
+            description?: string | null;
+            actor_role?: string | null;
+            metadata?: Record<string, unknown> | null;
+          }) => {
+            const meta = e.metadata ?? {};
+            let payload: string | undefined;
+            if (e.event_type === 'inject') {
+              const title = (meta.title as string) ?? '';
+              const content = typeof meta.content === 'string' ? meta.content.slice(0, 150) : '';
+              payload = title ? (content ? `${title}: ${content}` : title) : content || undefined;
+            } else if (e.event_type === 'decision') {
+              payload = (meta.title as string) ?? (meta.decision_id as string) ?? undefined;
+            } else if (e.event_type === 'communication') {
+              payload = typeof meta.content === 'string' ? meta.content.slice(0, 100) : undefined;
+            } else {
+              payload = Object.keys(meta).length > 0 ? JSON.stringify(meta).slice(0, 120) : undefined;
+            }
+            return {
+              at: e.created_at,
+              type: e.event_type,
+              description: typeof e.description === 'string' ? e.description.slice(0, 200) : undefined,
+              actor_role: e.actor_role ?? undefined,
+              payload,
+            };
+          },
+        );
+
+        const messagesPerParticipant =
+          (keyMetrics.communication as { messages_per_participant?: Record<string, number> })
+            ?.messages_per_participant ?? {};
+        const participantSummary = (participants ?? []).map(
+          (p: {
+            user_id: string;
+            role: string;
+            user?: { full_name?: string } | null;
+          }) => ({
+            participantId: p.user_id,
+            displayName: (p.user?.full_name ?? 'Unknown').trim() || 'Unknown',
+            role: p.role,
+            messageCount: messagesPerParticipant[p.user_id] ?? 0,
+            decisionsProposed: (decisions ?? []).filter(
+              (d: { proposed_by?: string }) => d.proposed_by === p.user_id,
+            ).length,
+          }),
+        );
+
         const sessionDataForAI = {
           sessionId,
           durationMinutes,
           participantCount: participants?.length || 0,
           eventCount: events?.length || 0,
           decisionCount: decisions?.length || 0,
+          eventTimeline,
+          participantSummary,
+          storedAarMetrics,
           decisions: (decisions || []).map(
             (d: {
               title: string;

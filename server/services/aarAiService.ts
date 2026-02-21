@@ -18,12 +18,30 @@ interface EscalationPathway {
   trigger_behaviours: string[];
 }
 
+interface EventTimelineEntry {
+  at: string;
+  type: string;
+  description?: string;
+  actor_role?: string;
+  payload?: string;
+}
+
+interface ParticipantSummaryEntry {
+  participantId: string;
+  displayName: string;
+  role: string;
+  messageCount: number;
+  decisionsProposed: number;
+}
+
 interface SessionData {
   sessionId: string;
   durationMinutes: number;
   participantCount: number;
   eventCount: number;
   decisionCount: number;
+  eventTimeline?: EventTimelineEntry[];
+  participantSummary?: ParticipantSummaryEntry[];
   decisions: Array<{
     title: string;
     type: string;
@@ -46,6 +64,7 @@ interface SessionData {
     escalation_factors_snapshot?: unknown;
     analysis?: { overall?: string; matrix_reasoning?: string; robustness_reasoning?: string };
   }>;
+  storedAarMetrics?: Array<{ metric_type: string; metric_name: string; metric_value: unknown }>;
 }
 
 /**
@@ -66,6 +85,7 @@ How to evaluate:
 
 Guidelines:
 - Write in a clear, professional tone suitable for training exercise documentation. Be objective and constructive. Focus on actionable insights. Use specific metrics and numbers where available. Structure the summary with clear sections.
+- You must cite specific data: timestamps, metric values (e.g. latency in minutes, message counts, coordination score), decision titles and times, inject titles and times. Generic statements without supporting numbers or timeline references are not acceptable.
 
 The summary must include these six sections with the following focus:
 
@@ -91,8 +111,8 @@ ${sessionData.scenarioDescription ? `Description: ${sessionData.scenarioDescript
 Objectives:
 ${(sessionData.objectives ?? []).map((o) => `- ${o.objective_name ?? 'Objective'}: ${o.status ?? 'N/A'}${o.progress_percentage != null ? ` (${o.progress_percentage}%)` : ''}`).join('\n')}
 
-Injects that occurred (timeline):
-${(sessionData.injectsOccurred ?? []).map((i) => `- At ${i.at}: [${i.type ?? 'update'}] ${i.title ?? 'Untitled'}${i.content ? ` — ${i.content.slice(0, 200)}` : ''}`).join('\n')}
+Injects that occurred (timeline; reference specific inject text when assessing responses):
+${(sessionData.injectsOccurred ?? []).map((i) => `- At ${i.at}: [${i.type ?? 'update'}] ${i.title ?? 'Untitled'}${i.content ? ` — ${i.content.slice(0, 500)}` : ''}`).join('\n')}
 `
         : '\nNo scenario/objectives/injects data provided.\n';
 
@@ -103,19 +123,19 @@ ${(sessionData.injectsOccurred ?? []).map((i) => `- At ${i.at}: [${i.type ?? 'up
         ? `
 Escalation factors (AI-identified risks during session):
 ${(sessionData.escalationFactors ?? [])
-  .slice(0, 5)
+  .slice(0, 10)
   .map((r) => `Evaluated ${r.evaluated_at}: ${JSON.stringify(r.factors)}`)
   .join('\n')}
 
 Escalation pathways (how situation could escalate, trigger behaviours):
 ${(sessionData.escalationPathways ?? [])
-  .slice(0, 5)
+  .slice(0, 10)
   .map((r) => `Evaluated ${r.evaluated_at}: ${JSON.stringify(r.pathways)}`)
   .join('\n')}
 
 Impact matrices (inter-team impact, robustness by decision):
 ${(sessionData.impactMatrices ?? [])
-  .slice(0, 5)
+  .slice(0, 10)
   .map(
     (m) =>
       `Evaluated ${m.evaluated_at}: matrix=${JSON.stringify(m.matrix)} robustness_by_decision=${JSON.stringify(m.robustness_by_decision ?? {})}${m.analysis ? ` analysis=${JSON.stringify(m.analysis)}` : ''}`,
@@ -124,13 +144,42 @@ ${(sessionData.impactMatrices ?? [])
 `
         : '\nNo escalation/impact data provided.\n';
 
+    const DECISION_DESC_MAX = 500;
+    const DECISION_CAP = 50;
     const decisionsList = sessionData.decisions
-      .slice(0, 20)
+      .slice(0, DECISION_CAP)
       .map(
         (d, i) =>
-          `${i + 1}. ${d.title} (${d.type}) - ${d.status} at ${d.created_at}${d.description ? ` — ${String(d.description).slice(0, 150)}` : ''}`,
+          `${i + 1}. ${d.title} (${d.type}) - ${d.status} at ${d.created_at}${d.description ? ` — ${String(d.description).slice(0, DECISION_DESC_MAX)}` : ''}`,
       )
       .join('\n');
+
+    const timelineBlock =
+      (sessionData.eventTimeline?.length ?? 0) > 0
+        ? `
+Chronological event timeline (use this to describe what happened when and to relate decisions/injects to specific moments):
+${sessionData.eventTimeline!
+  .map(
+    (e) =>
+      `- ${e.at} [${e.type}]${e.actor_role ? ` (${e.actor_role})` : ''} ${e.description ?? ''}${e.payload ? ` | ${e.payload}` : ''}`.trim(),
+  )
+  .join('\n')}
+${(sessionData.eventTimeline?.length ?? 0) >= 200 ? '\n(First 200 events shown; use for timeline anchoring.)' : ''}
+`
+        : '';
+
+    const participantBlock =
+      (sessionData.participantSummary?.length ?? 0) > 0
+        ? `
+Participant summary (use for coordination/communication analysis; cite roles and numbers e.g. "Fire (12 messages, 2 decisions) responded later than Police (28 messages)"):
+${sessionData.participantSummary!
+  .map(
+    (p) =>
+      `- ${p.displayName} (${p.role}): ${p.messageCount} messages, ${p.decisionsProposed} decisions proposed`,
+  )
+  .join('\n')}
+`
+        : '';
 
     const userPrompt = `Generate an after-action review summary for the following training exercise session.
 
@@ -143,11 +192,16 @@ ${scenarioBlock}
 
 Full key metrics (use for coordination, communication, process adherence):
 ${keyMetricsJson}
+${(sessionData.storedAarMetrics?.length ?? 0) > 0 ? `\nStored AAR metrics (same as in exports; cite these where relevant):\n${sessionData.storedAarMetrics!.map((m) => `${m.metric_type}/${m.metric_name}: ${JSON.stringify(m.metric_value)}`).join('\n')}\n` : ''}
+${participantBlock}
+${timelineBlock}
 ${escalationBlock}
 
 Key Decisions Made:
 ${decisionsList}
-${sessionData.decisions.length > 20 ? `... and ${sessionData.decisions.length - 20} more decisions` : ''}
+${sessionData.decisions.length > DECISION_CAP ? `... and ${sessionData.decisions.length - DECISION_CAP} more decisions` : ''}
+
+In each section, cite specific times, metrics, and event/decision titles. Do not write only high-level summaries.
 
 Generate a comprehensive summary that analyzes the exercise performance, uses the escalation data (when provided) to judge whether the team avoided escalations or things turned for the worse, and provides actionable insights for future training.`;
 
@@ -164,7 +218,7 @@ Generate a comprehensive summary that analyzes the exercise performance, uses th
           { role: 'user', content: userPrompt },
         ],
         temperature: 0.7,
-        max_tokens: 3000,
+        max_tokens: 5000,
       }),
     });
 
@@ -221,7 +275,7 @@ Return your response as a JSON array of insight objects. Each insight should hav
 - content: A concise insight statement (2-3 sentences)
 - priority: "high", "medium", or "low"
 
-Focus on actionable, specific insights. Decisions are executed immediately by the maker (no approval workflow). When scenario/objectives/injects are provided, reflect how well recorded actions matched them. When escalation data is provided (impact matrix, robustness by decision, escalation factors, pathways), include insights on whether the team did well enough to avoid escalations or things turned for the worse—use robustness scores, inter-team impact, and pathway triggers vs actual decisions. For coordination/communication use inter_agency_messages and participation balance; for process adherence use decision latency and objective progress.`;
+Focus on actionable, specific insights. Cite roles and numbers when participant summary is provided (e.g. "Fire (12 messages) was slower to respond than Police (28 messages)"). Decisions are executed immediately by the maker (no approval workflow). When scenario/objectives/injects are provided, reflect how well recorded actions matched them. When escalation data is provided (impact matrix, robustness by decision, escalation factors, pathways), include insights on whether the team did well enough to avoid escalations or things turned for the worse—use robustness scores, inter-team impact, and pathway triggers vs actual decisions. For coordination/communication use inter_agency_messages and participation balance; for process adherence use decision latency and objective progress.`;
 
     const scenarioSummary = sessionData.scenarioDescription
       ? `Scenario: ${sessionData.scenarioTitle ?? 'N/A'}. Objectives: ${(sessionData.objectives ?? []).map((o) => `${o.objective_name ?? 'Objective'}=${o.status}`).join('; ')}. Injects: ${(sessionData.injectsOccurred ?? []).length} occurred.`
@@ -246,9 +300,13 @@ ${sessionData.impactMatrices?.length ? `Latest impact matrix robustness_by_decis
 
 Key Decisions:
 ${sessionData.decisions
-  .slice(0, 15)
-  .map((d) => `- ${d.title} (${d.type}): ${d.status}`)
+  .slice(0, 30)
+  .map(
+    (d) =>
+      `- ${d.title} (${d.type}): ${d.status}${d.description ? ` — ${String(d.description).slice(0, 200)}` : ''}`,
+  )
   .join('\n')}
+${(sessionData.participantSummary?.length ?? 0) > 0 ? `\nParticipant summary:\n${sessionData.participantSummary!.map((p) => `- ${p.displayName} (${p.role}): ${p.messageCount} msgs, ${p.decisionsProposed} decisions`).join('\n')}` : ''}
 
 Return a JSON array of 5-8 insight objects (use "insights" key or root array).`;
 
