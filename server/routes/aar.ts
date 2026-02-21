@@ -436,13 +436,22 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
           escalationFactors: escalationFactorsList.map(
             (r: { evaluated_at: string; factors: unknown }) => ({
               evaluated_at: r.evaluated_at,
-              factors: r.factors,
+              factors: (r.factors ?? []) as Array<{
+                id: string;
+                name: string;
+                description: string;
+                severity: string;
+              }>,
             }),
           ),
           escalationPathways: escalationPathwaysList.map(
             (r: { evaluated_at: string; pathways: unknown }) => ({
               evaluated_at: r.evaluated_at,
-              pathways: r.pathways,
+              pathways: (r.pathways ?? []) as Array<{
+                pathway_id: string;
+                trajectory: string;
+                trigger_behaviours: string[];
+              }>,
             }),
           ),
           impactMatrices: impactMatricesList.map(
@@ -455,10 +464,12 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
               response_taxonomy?: unknown;
             }) => ({
               evaluated_at: m.evaluated_at,
-              matrix: m.matrix,
-              robustness_by_decision: m.robustness_by_decision,
+              matrix: (m.matrix ?? {}) as Record<string, Record<string, number>>,
+              robustness_by_decision: (m.robustness_by_decision ?? {}) as Record<string, number>,
               escalation_factors_snapshot: m.escalation_factors_snapshot,
-              analysis: m.analysis,
+              analysis: m.analysis as
+                | { overall?: string; matrix_reasoning?: string; robustness_reasoning?: string }
+                | undefined,
               response_taxonomy: m.response_taxonomy,
             }),
           ),
