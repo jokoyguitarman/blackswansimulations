@@ -90,9 +90,25 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
     // Get impact matrix evaluations (AI ratings per decision / inter-team impact)
     const { data: impactMatrices } = await supabaseAdmin
       .from('session_impact_matrix')
-      .select('id, evaluated_at, matrix, robustness_by_decision')
+      .select(
+        'id, evaluated_at, matrix, robustness_by_decision, escalation_factors_snapshot, analysis, response_taxonomy',
+      )
       .eq('session_id', sessionId)
       .order('evaluated_at', { ascending: true });
+
+    // Get escalation factors and pathways (7-stage escalation system)
+    const [{ data: escalationFactors }, { data: escalationPathways }] = await Promise.all([
+      supabaseAdmin
+        .from('session_escalation_factors')
+        .select('id, evaluated_at, factors')
+        .eq('session_id', sessionId)
+        .order('evaluated_at', { ascending: true }),
+      supabaseAdmin
+        .from('session_escalation_pathways')
+        .select('id, evaluated_at, pathways')
+        .eq('session_id', sessionId)
+        .order('evaluated_at', { ascending: true }),
+    ]);
 
     res.json({
       data: {
@@ -102,6 +118,8 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
         events: events || [],
         decisions: decisions || [],
         impact_matrices: impactMatrices || [],
+        escalation_factors: escalationFactors || [],
+        escalation_pathways: escalationPathways || [],
         session,
       },
     });
@@ -299,10 +317,10 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
     // Generate AI summary if OpenAI API key is configured
     if (env.openAiApiKey) {
       try {
-        // Get session start/end times to calculate duration
+        // Get session start/end times and scenario_id
         const { data: sessionDetails } = await supabaseAdmin
           .from('sessions')
-          .select('start_time, end_time')
+          .select('start_time, end_time, scenario_id')
           .eq('id', sessionId)
           .single();
 
@@ -313,28 +331,140 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
               (1000 * 60)
             : 0;
 
-        const aiSummary = await generateAARSummary(
-          {
-            sessionId,
-            durationMinutes,
-            participantCount: participants?.length || 0,
-            eventCount: events?.length || 0,
-            decisionCount: decisions?.length || 0,
-            decisions: (decisions || []).map((d) => ({
+        // Fetch scenario, objectives, injects, and escalation data for AAR context
+        const scenarioId = sessionDetails?.scenario_id ?? null;
+        const [
+          scenarioRes,
+          objectivesRes,
+          injectEventsRes,
+          escalationFactorsRes,
+          escalationPathwaysRes,
+          impactMatricesRes,
+        ] = await Promise.all([
+          scenarioId
+            ? supabaseAdmin
+                .from('scenarios')
+                .select('id, title, description')
+                .eq('id', scenarioId)
+                .single()
+            : { data: null },
+          supabaseAdmin
+            .from('scenario_objective_progress')
+            .select('objective_id, objective_name, status, progress_percentage')
+            .eq('session_id', sessionId),
+          supabaseAdmin
+            .from('session_events')
+            .select('created_at, metadata')
+            .eq('session_id', sessionId)
+            .eq('event_type', 'inject')
+            .order('created_at', { ascending: true }),
+          supabaseAdmin
+            .from('session_escalation_factors')
+            .select('evaluated_at, factors')
+            .eq('session_id', sessionId)
+            .order('evaluated_at', { ascending: false })
+            .limit(20),
+          supabaseAdmin
+            .from('session_escalation_pathways')
+            .select('evaluated_at, pathways')
+            .eq('session_id', sessionId)
+            .order('evaluated_at', { ascending: false })
+            .limit(20),
+          supabaseAdmin
+            .from('session_impact_matrix')
+            .select(
+              'evaluated_at, matrix, robustness_by_decision, escalation_factors_snapshot, analysis, response_taxonomy',
+            )
+            .eq('session_id', sessionId)
+            .order('evaluated_at', { ascending: false })
+            .limit(20),
+        ]);
+
+        const scenario = scenarioRes.data;
+        const objectivesList = objectivesRes.data ?? [];
+        const injectEvents = injectEventsRes.data ?? [];
+        const escalationFactorsList = escalationFactorsRes.data ?? [];
+        const escalationPathwaysList = escalationPathwaysRes.data ?? [];
+        const impactMatricesList = impactMatricesRes.data ?? [];
+
+        const injectsOccurred = injectEvents.map(
+          (e: { created_at: string; metadata: Record<string, unknown> | null }) => {
+            const meta = e.metadata ?? {};
+            return {
+              at: e.created_at,
+              type: (meta.type as string) ?? undefined,
+              title: (meta.title as string) ?? undefined,
+              content: typeof meta.content === 'string' ? meta.content.slice(0, 500) : undefined,
+            };
+          },
+        );
+
+        const sessionDataForAI = {
+          sessionId,
+          durationMinutes,
+          participantCount: participants?.length || 0,
+          eventCount: events?.length || 0,
+          decisionCount: decisions?.length || 0,
+          decisions: (decisions || []).map(
+            (d: {
+              title: string;
+              type: string;
+              status: string;
+              created_at: string;
+              description?: string;
+              executed_at?: string;
+            }) => ({
               title: d.title,
               type: d.type,
               status: d.status,
               created_at: d.created_at,
-            })),
-            keyMetrics: keyMetrics as {
-              decisionLatency?: { avg_minutes: number };
-              coordination?: { overall_score: number };
-              compliance?: { rate: number };
-              objectives?: { overall_score: number; success_level: string };
-            },
-          },
-          env.openAiApiKey,
-        );
+              description: d.description,
+              executed_at: d.executed_at,
+            }),
+          ),
+          keyMetrics: keyMetrics as Record<string, unknown>,
+          scenarioDescription: scenario?.description ?? undefined,
+          scenarioTitle: scenario?.title ?? undefined,
+          objectives: objectivesList.map(
+            (o: { objective_name?: string; status?: string; progress_percentage?: number }) => ({
+              objective_name: o.objective_name,
+              status: o.status,
+              progress_percentage: o.progress_percentage,
+            }),
+          ),
+          injectsOccurred,
+          escalationFactors: escalationFactorsList.map(
+            (r: { evaluated_at: string; factors: unknown }) => ({
+              evaluated_at: r.evaluated_at,
+              factors: r.factors,
+            }),
+          ),
+          escalationPathways: escalationPathwaysList.map(
+            (r: { evaluated_at: string; pathways: unknown }) => ({
+              evaluated_at: r.evaluated_at,
+              pathways: r.pathways,
+            }),
+          ),
+          impactMatrices: impactMatricesList.map(
+            (m: {
+              evaluated_at: string;
+              matrix: unknown;
+              robustness_by_decision?: unknown;
+              escalation_factors_snapshot?: unknown;
+              analysis?: unknown;
+              response_taxonomy?: unknown;
+            }) => ({
+              evaluated_at: m.evaluated_at,
+              matrix: m.matrix,
+              robustness_by_decision: m.robustness_by_decision,
+              escalation_factors_snapshot: m.escalation_factors_snapshot,
+              analysis: m.analysis,
+              response_taxonomy: m.response_taxonomy,
+            }),
+          ),
+        };
+
+        const aiSummary = await generateAARSummary(sessionDataForAI, env.openAiApiKey);
 
         // Update AAR with AI summary
         await supabaseAdmin
@@ -346,28 +476,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
 
         // Generate structured insights
         try {
-          const aiInsights = await generateAARInsights(
-            {
-              sessionId,
-              durationMinutes,
-              participantCount: participants?.length || 0,
-              eventCount: events?.length || 0,
-              decisionCount: decisions?.length || 0,
-              decisions: (decisions || []).map((d) => ({
-                title: d.title,
-                type: d.type,
-                status: d.status,
-                created_at: d.created_at,
-              })),
-              keyMetrics: keyMetrics as {
-                decisionLatency?: { avg_minutes: number };
-                coordination?: { overall_score: number };
-                compliance?: { rate: number };
-                objectives?: { overall_score: number; success_level: string };
-              },
-            },
-            env.openAiApiKey,
-          );
+          const aiInsights = await generateAARInsights(sessionDataForAI, env.openAiApiKey);
 
           // Update AAR with AI insights
           await supabaseAdmin

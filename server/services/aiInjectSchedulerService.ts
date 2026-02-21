@@ -1,6 +1,11 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
-import { generateInjectFromDecision, computeInterTeamImpactMatrix } from './aiService.js';
+import {
+  generateInjectFromDecision,
+  computeInterTeamImpactMatrix,
+  identifyEscalationFactors,
+  generateEscalationPathways,
+} from './aiService.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { env } from '../env.js';
 import type { Server as SocketServer } from 'socket.io';
@@ -140,22 +145,19 @@ export class AIInjectSchedulerService {
       return;
     }
 
-    // TRIGGER CONDITION: Only generate injects if there are decisions executed in the last 5 minutes
-    if (!recentDecisions || recentDecisions.length === 0) {
+    // Checkpoint 6: Run full cycle even with zero decisions (matrix row every cycle; no-decision case = all absent)
+    const hasDecisions = (recentDecisions?.length ?? 0) > 0;
+    if (hasDecisions) {
+      logger.info(
+        { sessionId: session.id, recentDecisionsCount: recentDecisions!.length },
+        'Found executed decisions in last 5 minutes',
+      );
+    } else {
       logger.debug(
         { sessionId: session.id },
-        'No decisions executed in last 5 minutes, skipping AI inject generation',
+        'No decisions in last 5 minutes; running cycle for factors/pathways and matrix row (all absent)',
       );
-      return;
     }
-
-    logger.info(
-      {
-        sessionId: session.id,
-        recentDecisionsCount: recentDecisions.length,
-      },
-      'Found executed decisions in last 5 minutes, generating AI injects',
-    );
 
     // CONTEXT: Get injects published in the last 5 minutes (for AI context, not for triggering)
     const { data: recentInjects, error: injectsError } = await supabaseAdmin
@@ -174,14 +176,16 @@ export class AIInjectSchedulerService {
       // Don't return - we can still generate injects without this context
     }
 
-    logger.info(
-      {
-        sessionId: session.id,
-        recentDecisionsCount: recentDecisions.length,
-        recentInjectsCount: recentInjects?.length || 0,
-      },
-      'Generating AI injects based on executed decisions (recent injects included for context)',
-    );
+    if (hasDecisions) {
+      logger.info(
+        {
+          sessionId: session.id,
+          recentDecisionsCount: recentDecisions!.length,
+          recentInjectsCount: recentInjects?.length || 0,
+        },
+        'Generating AI injects (recent injects included for context)',
+      );
+    }
 
     // Calculate session duration
     const sessionStart = new Date(session.start_time);
@@ -256,10 +260,20 @@ export class AIInjectSchedulerService {
       };
     });
 
-    // Get unique teams that have members
+    // Get unique teams that have members (all teams in session for taxonomy)
     const teamsWithMembers = new Set(
       teamAssignments?.map((ta: { team_name: string }) => ta.team_name) || [],
     );
+    const allTeams = Array.from(teamsWithMembers);
+    // Response taxonomy: "textual" if team had executed decision in window, else "absent"
+    const responseTaxonomy: Record<string, 'textual' | 'absent'> = {};
+    for (const team of allTeams) {
+      responseTaxonomy[team] = formattedDecisions.some(
+        (d: { team: string | null }) => d.team === team,
+      )
+        ? 'textual'
+        : 'absent';
+    }
 
     // Build base context (used for both universal and team-specific injects)
     const baseContext = {
@@ -274,37 +288,177 @@ export class AIInjectSchedulerService {
       teams: Array.from(teamsWithMembers),
     };
 
-    // Inter-team impact matrix: AI scores how each team's decisions affect other teams (and optional robustness per decision)
-    if (env.openAiApiKey && formattedDecisions.length > 0 && teamsWithMembers.size > 0) {
+    // Stage 2/3: Load latest escalation factors and pathways, or run Stage 2 + 3 if none (Checkpoint 6)
+    let escalationFactorsSnapshot: Array<{
+      id: string;
+      name: string;
+      description: string;
+      severity: string;
+    }> = [];
+    let escalationPathwaysSnapshot: Array<{
+      pathway_id: string;
+      trajectory: string;
+      trigger_behaviours: string[];
+    }> = [];
+    if (env.openAiApiKey) {
       try {
-        const teamsArray = Array.from(teamsWithMembers);
-        const decisionsWithTeam = formattedDecisions.map((d: Record<string, unknown>) => ({
-          decision_id: String(d.id),
-          title: String(d.title ?? ''),
-          description: String(d.description ?? ''),
-          type: (d.type as string) ?? null,
-          team: (d.team as string) ?? null,
-        }));
-        const impactResult = await computeInterTeamImpactMatrix(
-          teamsArray,
-          decisionsWithTeam,
-          env.openAiApiKey,
-          scenario?.description,
+        const [factorsRows, pathwaysRows] = await Promise.all([
+          supabaseAdmin
+            .from('session_escalation_factors')
+            .select('evaluated_at, factors')
+            .eq('session_id', session.id)
+            .order('evaluated_at', { ascending: false })
+            .limit(1),
+          supabaseAdmin
+            .from('session_escalation_pathways')
+            .select('evaluated_at, pathways')
+            .eq('session_id', session.id)
+            .order('evaluated_at', { ascending: false })
+            .limit(1),
+        ]);
+        const hasExistingFactors = (factorsRows.data?.length ?? 0) > 0;
+        const hasExistingPathways = (pathwaysRows.data?.length ?? 0) > 0;
+
+        if (hasExistingFactors && hasExistingPathways) {
+          escalationFactorsSnapshot =
+            (factorsRows.data![0].factors as typeof escalationFactorsSnapshot) ?? [];
+          escalationPathwaysSnapshot =
+            (pathwaysRows.data![0].pathways as typeof escalationPathwaysSnapshot) ?? [];
+          logger.debug(
+            { sessionId: session.id },
+            'Using latest escalation factors and pathways from DB',
+          );
+        } else {
+          const objectivesForFactors = (objectives || []).map(
+            (o: { objective_id?: string; objective_name?: string }) => ({
+              objective_id: o.objective_id,
+              objective_name: o.objective_name,
+            }),
+          );
+          const factorsResult = await identifyEscalationFactors(
+            scenario?.description ?? '',
+            session.current_state ?? {},
+            objectivesForFactors,
+            formattedInjects.map((i: { type?: string; title?: string; content?: string }) => ({
+              type: i.type,
+              title: i.title,
+              content: i.content,
+            })),
+            env.openAiApiKey,
+          );
+          escalationFactorsSnapshot = factorsResult.factors;
+          await supabaseAdmin.from('session_escalation_factors').insert({
+            session_id: session.id,
+            evaluated_at: new Date().toISOString(),
+            factors: factorsResult.factors,
+          });
+          logger.info(
+            { sessionId: session.id, factorCount: factorsResult.factors.length },
+            'Escalation factors computed and saved',
+          );
+
+          try {
+            const pathwaysResult = await generateEscalationPathways(
+              scenario?.description ?? '',
+              session.current_state ?? {},
+              factorsResult.factors,
+              env.openAiApiKey,
+            );
+            escalationPathwaysSnapshot = pathwaysResult.pathways;
+            await supabaseAdmin.from('session_escalation_pathways').insert({
+              session_id: session.id,
+              evaluated_at: new Date().toISOString(),
+              pathways: pathwaysResult.pathways,
+            });
+            logger.info(
+              { sessionId: session.id, pathwayCount: pathwaysResult.pathways.length },
+              'Escalation pathways computed and saved',
+            );
+          } catch (pathwaysErr) {
+            logger.warn(
+              { error: pathwaysErr, sessionId: session.id },
+              'Failed to compute or save escalation pathways, continuing',
+            );
+          }
+        }
+      } catch (factorsErr) {
+        logger.warn(
+          { error: factorsErr, sessionId: session.id },
+          'Failed to load or compute escalation factors, continuing',
         );
-        await supabaseAdmin.from('session_impact_matrix').insert({
+      }
+    }
+
+    // Latest impact matrix/factors for inject generation (Checkpoint 8)
+    let latestImpactMatrix: Record<string, Record<string, number>> | null = null;
+    let latestImpactAnalysis: {
+      overall?: string;
+      matrix_reasoning?: string;
+      robustness_reasoning?: string;
+    } | null = null;
+    let latestRobustnessByDecision: Record<string, number> | null = null;
+
+    // Inter-team impact matrix: write a row every cycle (Checkpoint 6). With decisions: call AI; without: empty row + response_taxonomy
+    if (env.openAiApiKey) {
+      try {
+        const evaluatedAt = new Date().toISOString();
+        const baseInsert = {
           session_id: session.id,
-          evaluated_at: new Date().toISOString(),
-          matrix: impactResult.matrix,
-          robustness_by_decision: impactResult.robustnessByDecisionId ?? {},
-        });
-        logger.info(
-          {
-            sessionId: session.id,
-            teamCount: teamsArray.length,
-            decisionCount: formattedDecisions.length,
-          },
-          'Inter-team impact matrix computed and saved',
-        );
+          evaluated_at: evaluatedAt,
+          response_taxonomy: Object.keys(responseTaxonomy).length > 0 ? responseTaxonomy : null,
+        };
+
+        if (formattedDecisions.length > 0 && teamsWithMembers.size > 0) {
+          const teamsArray = Array.from(teamsWithMembers);
+          const decisionsWithTeam = formattedDecisions.map((d: Record<string, unknown>) => ({
+            decision_id: String(d.id),
+            title: String(d.title ?? ''),
+            description: String(d.description ?? ''),
+            type: (d.type as string) ?? null,
+            team: (d.team as string) ?? null,
+          }));
+          const impactResult = await computeInterTeamImpactMatrix(
+            teamsArray,
+            decisionsWithTeam,
+            env.openAiApiKey,
+            scenario?.description,
+            escalationFactorsSnapshot.length > 0 ? escalationFactorsSnapshot : undefined,
+            escalationPathwaysSnapshot.length > 0 ? escalationPathwaysSnapshot : undefined,
+            Object.keys(responseTaxonomy).length > 0 ? responseTaxonomy : undefined,
+          );
+          latestImpactMatrix = impactResult.matrix;
+          latestImpactAnalysis = impactResult.analysis ?? null;
+          latestRobustnessByDecision = impactResult.robustnessByDecisionId ?? null;
+          await supabaseAdmin.from('session_impact_matrix').insert({
+            ...baseInsert,
+            matrix: impactResult.matrix,
+            robustness_by_decision: impactResult.robustnessByDecisionId ?? {},
+            escalation_factors_snapshot:
+              escalationFactorsSnapshot.length > 0 ? escalationFactorsSnapshot : null,
+            analysis: impactResult.analysis ?? null,
+          });
+          logger.info(
+            {
+              sessionId: session.id,
+              teamCount: teamsArray.length,
+              decisionCount: formattedDecisions.length,
+            },
+            'Inter-team impact matrix computed and saved',
+          );
+        } else {
+          await supabaseAdmin.from('session_impact_matrix').insert({
+            ...baseInsert,
+            matrix: {},
+            robustness_by_decision: {},
+            escalation_factors_snapshot:
+              escalationFactorsSnapshot.length > 0 ? escalationFactorsSnapshot : null,
+            analysis: null,
+          });
+          logger.info(
+            { sessionId: session.id, taxonomy: responseTaxonomy },
+            'Impact matrix row written (no decisions in window)',
+          );
+        }
       } catch (matrixErr) {
         logger.warn(
           { error: matrixErr, sessionId: session.id },
@@ -313,16 +467,27 @@ export class AIInjectSchedulerService {
       }
     }
 
-    // 1. Generate UNIVERSAL inject (based on all decisions and state)
-    await this.generateUniversalInject(session, baseContext, formattedDecisions);
+    // Enrich context for inject generation with matrix and escalation data (Checkpoint 8)
+    Object.assign(baseContext, {
+      latestImpactMatrix: latestImpactMatrix ?? undefined,
+      latestImpactAnalysis: latestImpactAnalysis ?? undefined,
+      latestRobustnessByDecision: latestRobustnessByDecision ?? undefined,
+      escalationFactors:
+        escalationFactorsSnapshot.length > 0 ? escalationFactorsSnapshot : undefined,
+      escalationPathways:
+        escalationPathwaysSnapshot.length > 0 ? escalationPathwaysSnapshot : undefined,
+      responseTaxonomy: Object.keys(responseTaxonomy).length > 0 ? responseTaxonomy : undefined,
+    });
 
-    // 2. Generate TEAM-SPECIFIC injects (one per team with members who made decisions)
-    for (const teamName of teamsWithMembers) {
-      const teamDecisions = formattedDecisions.filter((d) => d.team === teamName);
+    // 1. Generate UNIVERSAL inject and 2. TEAM-SPECIFIC injects only when there are decisions (Checkpoint 6)
+    if (formattedDecisions.length > 0) {
+      await this.generateUniversalInject(session, baseContext, formattedDecisions);
 
-      // Only generate team-specific inject if there are decisions from that team
-      if (teamDecisions.length > 0) {
-        await this.generateTeamSpecificInject(session, baseContext, teamName, teamDecisions);
+      for (const teamName of teamsWithMembers) {
+        const teamDecisions = formattedDecisions.filter((d) => d.team === teamName);
+        if (teamDecisions.length > 0) {
+          await this.generateTeamSpecificInject(session, baseContext, teamName, teamDecisions);
+        }
       }
     }
   }

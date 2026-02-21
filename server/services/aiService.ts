@@ -444,69 +444,180 @@ Should this scheduled inject be CANCELLED (not published) because player actions
 };
 
 /**
- * Inter-team impact matrix result: acting_team -> affected_team -> score.
- * Optional per-decision robustness (1-10).
+ * Escalation factor (Stage 2: AI-identified from scenario state).
  */
-export interface ImpactMatrixResult {
-  matrix: Record<string, Record<string, number>>;
-  robustnessByDecisionId?: Record<string, number>;
+export interface EscalationFactor {
+  id: string;
+  name: string;
+  description: string;
+  severity: string;
+}
+
+export interface IdentifyEscalationFactorsResult {
+  factors: EscalationFactor[];
 }
 
 /**
- * Compute inter-team impact matrix and optional per-decision robustness from recent decisions.
- * Uses AI to score how each team's decisions affect other teams (-2 to +2 or similar).
+ * Stage 2: Identify escalation factors from current scenario state.
+ * AI analyses scenario + current state + recent injects to find factors that may lead to escalation.
  */
-export const computeInterTeamImpactMatrix = async (
-  teams: string[],
-  decisionsWithTeam: Array<{
-    decision_id: string;
-    title: string;
-    description: string;
-    type: string | null;
-    team: string | null;
-  }>,
+export const identifyEscalationFactors = async (
+  scenarioDescription: string,
+  currentState: Record<string, unknown>,
+  objectives: Array<{ objective_id?: string; objective_name?: string }>,
+  recentInjects: Array<{ type?: string; title?: string; content?: string }>,
   openAiApiKey: string,
-  scenarioContext?: string,
-): Promise<ImpactMatrixResult> => {
-  const empty: ImpactMatrixResult = { matrix: {}, robustnessByDecisionId: {} };
+): Promise<IdentifyEscalationFactorsResult> => {
+  const empty: IdentifyEscalationFactorsResult = { factors: [] };
   try {
-    if (teams.length === 0 || decisionsWithTeam.length === 0) {
-      return empty;
-    }
+    const systemPrompt = `You are an expert crisis management analyst. Analyse the scenario and current situation to identify factors that may lead to escalation. These are factors, not fixed outcomes.
 
-    const systemPrompt = `You are an expert crisis management analyst. Given a list of teams and decisions made by those teams in the last 5 minutes, produce:
-1. An inter-team impact matrix: for each acting_team (team that made decisions), for each other affected_team, output an impact score from -2 (negative impact, hinders or increases risk) to +2 (positive impact, helps or reduces risk). Use 0 for neutral or no clear impact. Do not include acting_team on itself.
-2. Optionally, for each decision_id, output a robustness score from 1 (weak, increases escalation) to 10 (strong, mitigates escalation).
+Consider factors such as: delayed evacuation, misinformation, poor coordination, medical response failures, social panic or fragmentation, resource shortages, communication gaps, or similar.
 
 Return ONLY valid JSON in this exact format:
 {
-  "matrix": {
-    "TeamNameA": { "TeamNameB": 1, "TeamNameC": -1 },
-    "TeamNameB": { "TeamNameA": 0, "TeamNameC": 2 }
-  },
-  "robustness": {
-    "decision-uuid-1": 7,
-    "decision-uuid-2": 4
-  }
+  "factors": [
+    { "id": "EF-1", "name": "Short name", "description": "One or two sentences.", "severity": "low" | "medium" | "high" | "critical" }
+  ]
 }
 
-Team names must match exactly the input team list. Include all teams that appear as decision-makers.`;
+Include 3 to 8 factors. Use id like EF-1, EF-2, etc. Severity must be one of: low, medium, high, critical.`;
 
-    const decisionsText = decisionsWithTeam
-      .map(
-        (d) =>
-          `[${d.decision_id}] team=${d.team ?? 'unknown'} | ${d.type ?? 'unknown'} | ${d.title}\n   ${d.description}`,
-      )
-      .join('\n\n');
+    const objectivesText =
+      objectives.length > 0
+        ? objectives.map((o) => `- ${o.objective_name ?? o.objective_id}`).join('\n')
+        : 'None specified';
+    const injectsText =
+      recentInjects.length > 0
+        ? recentInjects
+            .map(
+              (i) =>
+                `[${i.type ?? 'update'}] ${i.title ?? 'Untitled'}\n${(i.content ?? '').slice(0, 300)}`,
+            )
+            .join('\n\n')
+        : 'No recent injects';
 
-    const userPrompt = `Teams in this session: ${teams.join(', ')}
+    const userPrompt = `Scenario description:
+${scenarioDescription.slice(0, 1500)}
 
-${scenarioContext ? `Scenario context: ${scenarioContext.substring(0, 500)}\n\n` : ''}Decisions (last 5 minutes):
+Current state (summary): ${JSON.stringify(currentState).slice(0, 500)}
 
-${decisionsText}
+Objectives:
+${objectivesText}
+
+Recent injects (current situation):
+${injectsText}
 
 ---
-Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and optional robustness per decision_id (1-10). Return JSON only.`;
+Identify escalation factors. Return JSON only.`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 600,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      logger.warn({ status: response.status }, 'OpenAI API error in identifyEscalationFactors');
+      return empty;
+    }
+
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content;
+    if (!content) {
+      return empty;
+    }
+
+    const parsed = JSON.parse(content) as { factors?: EscalationFactor[] };
+    const factors = Array.isArray(parsed.factors) ? parsed.factors : [];
+    const normalized = factors
+      .filter((f) => f && typeof f.name === 'string')
+      .map((f, i) => ({
+        id: typeof f.id === 'string' ? f.id : `EF-${i + 1}`,
+        name: String(f.name),
+        description: String(f.description ?? ''),
+        severity: ['low', 'medium', 'high', 'critical'].includes(String(f.severity))
+          ? f.severity
+          : 'medium',
+      }));
+
+    logger.info({ factorCount: normalized.length }, 'Escalation factors identified');
+    return { factors: normalized };
+  } catch (err) {
+    logger.warn({ error: err }, 'Error in identifyEscalationFactors, returning empty');
+    return empty;
+  }
+};
+
+/**
+ * Escalation pathway (Stage 3: AI-generated from factors and context).
+ */
+export interface EscalationPathway {
+  pathway_id: string;
+  trajectory: string;
+  trigger_behaviours: string[];
+}
+
+export interface GenerateEscalationPathwaysResult {
+  pathways: EscalationPathway[];
+}
+
+/**
+ * Stage 3: Generate escalation pathways from current factors and scenario context.
+ * AI describes how the situation could escalate (trajectory) and what behaviours could trigger it.
+ */
+export const generateEscalationPathways = async (
+  scenarioDescription: string,
+  currentState: Record<string, unknown>,
+  escalationFactors: EscalationFactor[],
+  openAiApiKey: string,
+): Promise<GenerateEscalationPathwaysResult> => {
+  const empty: GenerateEscalationPathwaysResult = { pathways: [] };
+  try {
+    const systemPrompt = `You are an expert crisis management analyst. Given escalation factors already identified for a scenario, produce plausible escalation pathways: how the situation could get worse, and what trigger behaviours (actions or conditions) could lead there.
+
+Return ONLY valid JSON in this exact format:
+{
+  "pathways": [
+    {
+      "pathway_id": "EP-1",
+      "trajectory": "One or two sentences describing how the situation could escalate (e.g. delayed evacuation -> overcrowding at shelters -> disease outbreak).",
+      "trigger_behaviours": ["Behaviour or condition 1", "Behaviour or condition 2"]
+    }
+  ]
+}
+
+Include 2 to 6 pathways. Use pathway_id like EP-1, EP-2, etc. Each pathway should have 1 to 4 trigger_behaviours (short phrases).`;
+
+    const factorsText =
+      escalationFactors.length > 0
+        ? escalationFactors
+            .map((f) => `- ${f.id}: ${f.name} (${f.severity}): ${f.description}`)
+            .join('\n')
+        : 'None provided';
+
+    const userPrompt = `Scenario description:
+${scenarioDescription.slice(0, 1200)}
+
+Current state (summary): ${JSON.stringify(currentState).slice(0, 400)}
+
+Escalation factors (from Stage 2):
+${factorsText}
+
+---
+Generate escalation pathways (trajectory + trigger_behaviours). Return JSON only.`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -527,6 +638,157 @@ Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and o
     });
 
     if (!response.ok) {
+      logger.warn({ status: response.status }, 'OpenAI API error in generateEscalationPathways');
+      return empty;
+    }
+
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content;
+    if (!content) {
+      return empty;
+    }
+
+    const parsed = JSON.parse(content) as { pathways?: EscalationPathway[] };
+    const pathways = Array.isArray(parsed.pathways) ? parsed.pathways : [];
+    const normalized = pathways
+      .filter((p) => p && typeof p.trajectory === 'string')
+      .map((p, i) => ({
+        pathway_id: typeof p.pathway_id === 'string' ? p.pathway_id : `EP-${i + 1}`,
+        trajectory: String(p.trajectory),
+        trigger_behaviours: Array.isArray(p.trigger_behaviours)
+          ? p.trigger_behaviours.map((b) => String(b)).slice(0, 4)
+          : [],
+      }));
+
+    logger.info({ pathwayCount: normalized.length }, 'Escalation pathways generated');
+    return { pathways: normalized };
+  } catch (err) {
+    logger.warn({ error: err }, 'Error in generateEscalationPathways, returning empty');
+    return empty;
+  }
+};
+
+/**
+ * Optional AI reasoning for the impact matrix (audit trail).
+ */
+export interface ImpactMatrixAnalysis {
+  overall?: string;
+  matrix_reasoning?: string;
+  robustness_reasoning?: string;
+}
+
+/**
+ * Inter-team impact matrix result: acting_team -> affected_team -> score.
+ * Optional per-decision robustness (1-10) and optional analysis text.
+ */
+export interface ImpactMatrixResult {
+  matrix: Record<string, Record<string, number>>;
+  robustnessByDecisionId?: Record<string, number>;
+  analysis?: ImpactMatrixAnalysis;
+}
+
+/**
+ * Compute inter-team impact matrix and optional per-decision robustness from recent decisions.
+ * Uses AI to score how each team's decisions affect other teams (-2 to +2 or similar).
+ * Optional escalationFactors and escalationPathways inform the analysis reasoning.
+ * Optional responseTaxonomy: teams with "absent" had no decisions in the window—do not include them as actors in the matrix; treat their robustness as 0.
+ */
+export const computeInterTeamImpactMatrix = async (
+  teams: string[],
+  decisionsWithTeam: Array<{
+    decision_id: string;
+    title: string;
+    description: string;
+    type: string | null;
+    team: string | null;
+  }>,
+  openAiApiKey: string,
+  scenarioContext?: string,
+  escalationFactors?: EscalationFactor[],
+  escalationPathways?: EscalationPathway[],
+  responseTaxonomy?: Record<string, 'textual' | 'absent'>,
+): Promise<ImpactMatrixResult> => {
+  const empty: ImpactMatrixResult = { matrix: {}, robustnessByDecisionId: {} };
+  try {
+    if (teams.length === 0 || decisionsWithTeam.length === 0) {
+      return empty;
+    }
+
+    const absentTeams =
+      responseTaxonomy && Object.keys(responseTaxonomy).length > 0
+        ? Object.entries(responseTaxonomy)
+            .filter(([, v]) => v === 'absent')
+            .map(([t]) => t)
+        : [];
+    const absentInstruction =
+      absentTeams.length > 0
+        ? `\n\nResponse taxonomy: the following teams had no decisions in this window (treat as non-responders, robustness 0): ${absentTeams.join(', ')}. Do NOT include these teams as acting_team in the matrix (only teams that made decisions should appear as keys in matrix). You may include them as affected_team when other teams' decisions impact them.`
+        : '';
+
+    const systemPrompt = `You are an expert crisis management analyst. Given a list of teams and decisions made by those teams in the last 5 minutes, produce:
+1. An inter-team impact matrix: for each acting_team (team that made decisions), for each other affected_team, output an impact score from -2 (negative impact, hinders or increases risk) to +2 (positive impact, helps or reduces risk). Use 0 for neutral or no clear impact. Do not include acting_team on itself.
+2. Optionally, for each decision_id, output a robustness score from 1 (weak, increases escalation) to 10 (strong, mitigates escalation). Teams with no decisions in the window have robustness 0 (do not invent entries for them).
+3. Optionally, an "analysis" object with short reasoning: "overall" (1-2 sentences on overall inter-team dynamics), "matrix_reasoning" (brief note on key matrix scores), "robustness_reasoning" (brief note on decision robustness). When escalation factors or pathways are provided, reference them in your reasoning (e.g. whether decisions mitigate or worsen those factors, or align with pathway triggers).
+
+Return ONLY valid JSON in this exact format:
+{
+  "matrix": {
+    "TeamNameA": { "TeamNameB": 1, "TeamNameC": -1 },
+    "TeamNameB": { "TeamNameA": 0, "TeamNameC": 2 }
+  },
+  "robustness": {
+    "decision-uuid-1": 7,
+    "decision-uuid-2": 4
+  },
+  "analysis": {
+    "overall": "Optional 1-2 sentences.",
+    "matrix_reasoning": "Optional brief note.",
+    "robustness_reasoning": "Optional brief note."
+  }
+}
+
+Team names must match exactly the input team list. Include as matrix actors only teams that actually made decisions (appear in the decisions list).${absentInstruction}`;
+
+    const decisionsText = decisionsWithTeam
+      .map(
+        (d) =>
+          `[${d.decision_id}] team=${d.team ?? 'unknown'} | ${d.type ?? 'unknown'} | ${d.title}\n   ${d.description}`,
+      )
+      .join('\n\n');
+
+    const escalationContext =
+      (escalationFactors?.length ?? 0) > 0 || (escalationPathways?.length ?? 0) > 0
+        ? `\n\nCurrent escalation factors (evaluate decisions against these risks):\n${(escalationFactors ?? []).map((f) => `- ${f.id}: ${f.name} (${f.severity}): ${f.description}`).join('\n')}\n\nEscalation pathways (how situation could worsen; consider whether decisions avoid trigger behaviours):\n${(escalationPathways ?? []).map((p) => `- ${p.pathway_id}: ${p.trajectory}; triggers: ${(p.trigger_behaviours ?? []).join(', ')}`).join('\n')}\n`
+        : '';
+
+    const userPrompt = `Teams in this session: ${teams.join(', ')}
+
+${scenarioContext ? `Scenario context: ${scenarioContext.substring(0, 500)}\n\n` : ''}Decisions (last 5 minutes):
+
+${decisionsText}
+${escalationContext}
+---
+Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and optional robustness per decision_id (1-10). When escalation context is provided, reference it in your analysis reasoning. Return JSON only.`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 3000,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
       logger.warn({ status: response.status }, 'OpenAI API error in computeInterTeamImpactMatrix');
       return empty;
     }
@@ -540,10 +802,26 @@ Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and o
     const parsed = JSON.parse(content) as {
       matrix?: Record<string, Record<string, number>>;
       robustness?: Record<string, number>;
+      analysis?: ImpactMatrixAnalysis;
     };
     const matrix = parsed.matrix && typeof parsed.matrix === 'object' ? parsed.matrix : {};
     const robustnessByDecisionId =
       parsed.robustness && typeof parsed.robustness === 'object' ? parsed.robustness : {};
+    const analysis =
+      parsed.analysis && typeof parsed.analysis === 'object'
+        ? {
+            overall:
+              typeof parsed.analysis.overall === 'string' ? parsed.analysis.overall : undefined,
+            matrix_reasoning:
+              typeof parsed.analysis.matrix_reasoning === 'string'
+                ? parsed.analysis.matrix_reasoning
+                : undefined,
+            robustness_reasoning:
+              typeof parsed.analysis.robustness_reasoning === 'string'
+                ? parsed.analysis.robustness_reasoning
+                : undefined,
+          }
+        : undefined;
 
     logger.info(
       {
@@ -553,7 +831,7 @@ Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and o
       },
       'Inter-team impact matrix computed',
     );
-    return { matrix, robustnessByDecisionId };
+    return { matrix, robustnessByDecisionId, analysis };
   } catch (err) {
     logger.warn({ error: err }, 'Error in computeInterTeamImpactMatrix, returning empty');
     return empty;
@@ -785,6 +1063,21 @@ export const generateInjectFromDecision = async (
       user_id: string;
       role: string;
     }>;
+    /** Checkpoint 8: Inter-team impact matrix and escalation context for inject generation */
+    latestImpactMatrix?: Record<string, Record<string, number>>;
+    latestImpactAnalysis?: {
+      overall?: string;
+      matrix_reasoning?: string;
+      robustness_reasoning?: string;
+    };
+    latestRobustnessByDecision?: Record<string, number>;
+    escalationFactors?: Array<{ id: string; name: string; description: string; severity: string }>;
+    escalationPathways?: Array<{
+      pathway_id: string;
+      trajectory: string;
+      trigger_behaviours: string[];
+    }>;
+    responseTaxonomy?: Record<string, string>;
   },
   openAiApiKey: string,
 ): Promise<GeneratedInject | null> => {
@@ -945,6 +1238,31 @@ Important:
           ? `\n\nUNIVERSAL CONTEXT:\nThis inject should provide a general overview visible to all players, reflecting the overall state of play and all decisions made in the last 5 minutes.`
           : '';
 
+    // Checkpoint 8: Inter-team impact matrix and escalation context (influence inject content)
+    const hasMatrix =
+      sessionContext.latestImpactMatrix &&
+      Object.keys(sessionContext.latestImpactMatrix).length > 0;
+    const hasFactors =
+      sessionContext.escalationFactors && sessionContext.escalationFactors.length > 0;
+    const hasPathways =
+      sessionContext.escalationPathways && sessionContext.escalationPathways.length > 0;
+    const hasAnalysis =
+      sessionContext.latestImpactAnalysis &&
+      (sessionContext.latestImpactAnalysis.overall ||
+        sessionContext.latestImpactAnalysis.matrix_reasoning ||
+        sessionContext.latestImpactAnalysis.robustness_reasoning);
+    const escalationContext =
+      hasMatrix || hasFactors || hasPathways || hasAnalysis
+        ? `\n\nINTER-TEAM IMPACT MATRIX AND ESCALATION CONTEXT (use this to shape the inject):
+Generate the next scenario state / inject based on the Inter-Team Impact Matrix and current escalation factors. Consider whether the situation is improving or worsening and what developments would align with the impact scores and escalation pathways.
+${hasMatrix ? `\nImpact matrix (acting_team -> affected_team -> score -2 to +2):\n${JSON.stringify(sessionContext.latestImpactMatrix, null, 2)}` : ''}
+${sessionContext.latestRobustnessByDecision && Object.keys(sessionContext.latestRobustnessByDecision).length > 0 ? `\nRobustness by decision (1-10, higher = more mitigating):\n${JSON.stringify(sessionContext.latestRobustnessByDecision)}` : ''}
+${hasAnalysis ? `\nAnalysis: ${[sessionContext.latestImpactAnalysis!.overall, sessionContext.latestImpactAnalysis!.matrix_reasoning, sessionContext.latestImpactAnalysis!.robustness_reasoning].filter(Boolean).join(' ')}` : ''}
+${sessionContext.responseTaxonomy && Object.keys(sessionContext.responseTaxonomy).length > 0 ? `\nResponse taxonomy (which teams responded in this window): ${JSON.stringify(sessionContext.responseTaxonomy)}` : ''}
+${hasFactors ? `\nCurrent escalation factors (risks to consider):\n${sessionContext.escalationFactors!.map((f) => `- ${f.id}: ${f.name} (${f.severity}): ${f.description}`).join('\n')}` : ''}
+${hasPathways ? `\nEscalation pathways (how situation could worsen; avoid trigger behaviours in inject unless intended):\n${sessionContext.escalationPathways!.map((p) => `- ${p.pathway_id}: ${p.trajectory}; triggers: ${(p.trigger_behaviours ?? []).join(', ')}`).join('\n')}` : ''}`
+        : '';
+
     const instructions = (sessionContext as { instructions?: string }).instructions || '';
 
     const userPrompt = `Generate an inject based on this decision:
@@ -952,7 +1270,7 @@ Important:
 CURRENT DECISION:
 Title: ${decision.title}
 Description: ${decision.description}
-Type: ${decision.type}${scenarioContext}${allDecisionsContext}${upcomingInjectsContext}${currentStateContext}${objectivesContext}${recentInjectsContext}${participantsContext}${injectTypeContext}
+Type: ${decision.type}${scenarioContext}${allDecisionsContext}${upcomingInjectsContext}${currentStateContext}${objectivesContext}${recentInjectsContext}${participantsContext}${injectTypeContext}${escalationContext}
 
 ${instructions}
 
@@ -962,6 +1280,7 @@ Generate a realistic inject that:
 - Doesn't contradict upcoming scheduled injects
 - Fits the current game state and objectives
 - Creates appropriate challenges or complications
+- When escalation/impact context is provided, align inject content with the inter-team impact and escalation factors (e.g. reflect improving or worsening dynamics, or developments that match the matrix and pathways)
 
 CRITICAL: Scope targeting:
 ${

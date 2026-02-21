@@ -9,6 +9,8 @@ import { createDefaultChannels } from '../services/channelService.js';
 import { sendInvitationEmail, sendPendingInvitationEmail } from '../services/emailService.js';
 import { initializeSessionObjectives } from '../services/objectiveTrackingService.js';
 import { getWebSocketService } from '../services/websocketService.js';
+import { identifyEscalationFactors, generateEscalationPathways } from '../services/aiService.js';
+import { env } from '../env.js';
 
 const router = Router();
 
@@ -428,7 +430,7 @@ router.get(
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      const [eventsRes, matrixRes] = await Promise.all([
+      const [eventsRes, matrixRes, factorsRes, pathwaysRes] = await Promise.all([
         supabaseAdmin
           .from('session_events')
           .select('id, event_type, description, metadata, created_at')
@@ -438,7 +440,19 @@ router.get(
           .limit(100),
         supabaseAdmin
           .from('session_impact_matrix')
-          .select('id, evaluated_at, matrix, robustness_by_decision')
+          .select('id, evaluated_at, matrix, robustness_by_decision, analysis, response_taxonomy')
+          .eq('session_id', sessionId)
+          .order('evaluated_at', { ascending: false })
+          .limit(50),
+        supabaseAdmin
+          .from('session_escalation_factors')
+          .select('id, evaluated_at, factors')
+          .eq('session_id', sessionId)
+          .order('evaluated_at', { ascending: false })
+          .limit(50),
+        supabaseAdmin
+          .from('session_escalation_pathways')
+          .select('id, evaluated_at, pathways')
           .eq('session_id', sessionId)
           .order('evaluated_at', { ascending: false })
           .limit(50),
@@ -453,6 +467,14 @@ router.get(
         summary?: string;
         matrix?: Record<string, Record<string, number>>;
         robustness_by_decision?: Record<string, number>;
+        response_taxonomy?: Record<string, string>;
+        analysis?: { overall?: string; matrix_reasoning?: string; robustness_reasoning?: string };
+        factors?: Array<{ id: string; name: string; description: string; severity: string }>;
+        pathways?: Array<{
+          pathway_id: string;
+          trajectory: string;
+          trigger_behaviours: string[];
+        }>;
       }> = [];
 
       const eventList = eventsRes.data || [];
@@ -478,6 +500,13 @@ router.get(
       for (const m of matrixList) {
         const matrix = (m.matrix as Record<string, Record<string, number>>) || {};
         const robustnessByDecision = (m.robustness_by_decision as Record<string, number>) || {};
+        const responseTaxonomyRow = (m.response_taxonomy as Record<string, string>) || undefined;
+        const analysisRow =
+          (m.analysis as {
+            overall?: string;
+            matrix_reasoning?: string;
+            robustness_reasoning?: string;
+          }) || undefined;
         const teamCount = Object.keys(matrix).length;
         const decisionCount = Object.keys(robustnessByDecision).length;
         activities.push({
@@ -486,6 +515,44 @@ router.get(
           summary: `${teamCount} teams, ${decisionCount} decisions scored`,
           matrix,
           robustness_by_decision: robustnessByDecision,
+          ...(responseTaxonomyRow &&
+            Object.keys(responseTaxonomyRow).length > 0 && {
+              response_taxonomy: responseTaxonomyRow,
+            }),
+          ...(analysisRow && { analysis: analysisRow }),
+        });
+      }
+
+      const factorsList = factorsRes.data || [];
+      for (const f of factorsList) {
+        const factors =
+          (f.factors as Array<{
+            id: string;
+            name: string;
+            description: string;
+            severity: string;
+          }>) || [];
+        activities.push({
+          type: 'escalation_factors_computed',
+          at: f.evaluated_at,
+          summary: `${factors.length} escalation factors identified`,
+          factors,
+        });
+      }
+
+      const pathwaysList = pathwaysRes.data || [];
+      for (const p of pathwaysList) {
+        const pathways =
+          (p.pathways as Array<{
+            pathway_id: string;
+            trajectory: string;
+            trigger_behaviours: string[];
+          }>) || [];
+        activities.push({
+          type: 'escalation_pathways_computed',
+          at: p.evaluated_at,
+          summary: `${pathways.length} escalation pathways generated`,
+          pathways,
         });
       }
 
@@ -495,6 +562,76 @@ router.get(
       res.json({ activities, sessionId });
     } catch (err) {
       logger.error({ error: err }, 'Error in GET /sessions/:id/backend-activity');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// Get escalation data for a session (factors + pathways, trainer only)
+router.get(
+  '/:id/escalation',
+  requireAuth,
+  validate(schemas.id),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id: sessionId } = req.params;
+      const user = req.user!;
+
+      const { data: session } = await supabaseAdmin
+        .from('sessions')
+        .select('trainer_id')
+        .eq('id', sessionId)
+        .single();
+
+      if (!session || (session.trainer_id !== user.id && user.role !== 'admin')) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const [factorsRes, pathwaysRes] = await Promise.all([
+        supabaseAdmin
+          .from('session_escalation_factors')
+          .select('id, evaluated_at, factors')
+          .eq('session_id', sessionId)
+          .order('evaluated_at', { ascending: false })
+          .limit(1),
+        supabaseAdmin
+          .from('session_escalation_pathways')
+          .select('id, evaluated_at, pathways')
+          .eq('session_id', sessionId)
+          .order('evaluated_at', { ascending: false })
+          .limit(1),
+      ]);
+
+      const latestFactors = factorsRes.data?.[0] ?? null;
+      const latestPathways = pathwaysRes.data?.[0] ?? null;
+
+      res.json({
+        factors: latestFactors
+          ? {
+              id: latestFactors.id,
+              evaluated_at: latestFactors.evaluated_at,
+              factors: latestFactors.factors as Array<{
+                id: string;
+                name: string;
+                description: string;
+                severity: string;
+              }>,
+            }
+          : null,
+        pathways: latestPathways
+          ? {
+              id: latestPathways.id,
+              evaluated_at: latestPathways.evaluated_at,
+              pathways: latestPathways.pathways as Array<{
+                pathway_id: string;
+                trajectory: string;
+                trigger_behaviours: string[];
+              }>,
+            }
+          : null,
+      });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in GET /sessions/:id/escalation');
       res.status(500).json({ error: 'Internal server error' });
     }
   },
@@ -692,6 +829,68 @@ router.patch(
       if (error) {
         logger.error({ error, sessionId: id }, 'Failed to update session');
         return res.status(500).json({ error: 'Failed to update session' });
+      }
+
+      // Checkpoint 4: When session becomes in_progress (just started), persist initial escalation factors and pathways
+      if (status === 'in_progress' && !session.start_time && data && env.openAiApiKey) {
+        try {
+          const scenarioId = (data as { scenario_id?: string }).scenario_id;
+          const currentState = ((data as { current_state?: Record<string, unknown> })
+            .current_state ?? {}) as Record<string, unknown>;
+          const [scenarioRow, objectivesRow] = await Promise.all([
+            scenarioId
+              ? supabaseAdmin.from('scenarios').select('description').eq('id', scenarioId).single()
+              : { data: null },
+            supabaseAdmin
+              .from('scenario_objective_progress')
+              .select('objective_id, objective_name, status, progress_percentage')
+              .eq('session_id', id),
+          ]);
+          const scenarioDescription =
+            (scenarioRow.data as { description?: string } | null)?.description ?? '';
+          const objectives = (objectivesRow.data ?? []).map(
+            (o: { objective_id?: string; objective_name?: string }) => ({
+              objective_id: o.objective_id,
+              objective_name: o.objective_name,
+            }),
+          );
+          const factorsResult = await identifyEscalationFactors(
+            scenarioDescription,
+            currentState,
+            objectives,
+            [],
+            env.openAiApiKey,
+          );
+          await supabaseAdmin.from('session_escalation_factors').insert({
+            session_id: id,
+            evaluated_at: new Date().toISOString(),
+            factors: factorsResult.factors,
+          });
+          const pathwaysResult = await generateEscalationPathways(
+            scenarioDescription,
+            currentState,
+            factorsResult.factors,
+            env.openAiApiKey,
+          );
+          await supabaseAdmin.from('session_escalation_pathways').insert({
+            session_id: id,
+            evaluated_at: new Date().toISOString(),
+            pathways: pathwaysResult.pathways,
+          });
+          logger.info(
+            {
+              sessionId: id,
+              factorCount: factorsResult.factors.length,
+              pathwayCount: pathwaysResult.pathways.length,
+            },
+            'Initial escalation factors and pathways persisted at session start',
+          );
+        } catch (escalationErr) {
+          logger.warn(
+            { error: escalationErr, sessionId: id },
+            'Failed to persist initial escalation factors/pathways at session start, continuing',
+          );
+        }
       }
 
       logger.info({ sessionId: id, status, userId: user.id }, 'Session updated');
