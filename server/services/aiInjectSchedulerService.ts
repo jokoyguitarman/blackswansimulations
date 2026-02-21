@@ -4,7 +4,9 @@ import {
   generateInjectFromDecision,
   computeInterTeamImpactMatrix,
   identifyEscalationFactors,
+  identifyDeEscalationFactors,
   generateEscalationPathways,
+  generateDeEscalationPathways,
 } from './aiService.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { env } from '../env.js';
@@ -300,6 +302,17 @@ export class AIInjectSchedulerService {
       trajectory: string;
       trigger_behaviours: string[];
     }> = [];
+    let deEscalationFactorsSnapshot: Array<{
+      id: string;
+      name: string;
+      description: string;
+    }> = [];
+    let deEscalationPathwaysSnapshot: Array<{
+      pathway_id: string;
+      trajectory: string;
+      mitigating_behaviours: string[];
+      emerging_challenges?: string[];
+    }> = [];
     if (env.openAiApiKey) {
       try {
         const objectivesForFactors = (objectives || []).map(
@@ -320,10 +333,35 @@ export class AIInjectSchedulerService {
           env.openAiApiKey,
         );
         escalationFactorsSnapshot = factorsResult.factors;
+
+        let deEscalationFactors: Array<{ id: string; name: string; description: string }> = [];
+        try {
+          const deEscFactorsResult = await identifyDeEscalationFactors(
+            scenario?.description ?? '',
+            session.current_state ?? {},
+            objectivesForFactors,
+            formattedInjects.map((i: { type?: string; title?: string; content?: string }) => ({
+              type: i.type,
+              title: i.title,
+              content: i.content,
+            })),
+            factorsResult.factors,
+            env.openAiApiKey,
+          );
+          deEscalationFactors = deEscFactorsResult.factors;
+          deEscalationFactorsSnapshot = deEscFactorsResult.factors;
+        } catch (deEscFactorsErr) {
+          logger.warn(
+            { error: deEscFactorsErr, sessionId: session.id },
+            'Failed to compute de-escalation factors, continuing',
+          );
+        }
+
         await supabaseAdmin.from('session_escalation_factors').insert({
           session_id: session.id,
           evaluated_at: new Date().toISOString(),
           factors: factorsResult.factors,
+          de_escalation_factors: deEscalationFactors,
         });
         logger.info(
           { sessionId: session.id, factorCount: factorsResult.factors.length },
@@ -338,10 +376,35 @@ export class AIInjectSchedulerService {
             env.openAiApiKey,
           );
           escalationPathwaysSnapshot = pathwaysResult.pathways;
+
+          let deEscalationPathways: Array<{
+            pathway_id: string;
+            trajectory: string;
+            mitigating_behaviours: string[];
+            emerging_challenges?: string[];
+          }> = [];
+          try {
+            const deEscPathwaysResult = await generateDeEscalationPathways(
+              scenario?.description ?? '',
+              session.current_state ?? {},
+              pathwaysResult.pathways,
+              deEscalationFactorsSnapshot,
+              env.openAiApiKey,
+            );
+            deEscalationPathways = deEscPathwaysResult.pathways;
+            deEscalationPathwaysSnapshot = deEscPathwaysResult.pathways;
+          } catch (deEscPathwaysErr) {
+            logger.warn(
+              { error: deEscPathwaysErr, sessionId: session.id },
+              'Failed to compute de-escalation pathways, continuing',
+            );
+          }
+
           await supabaseAdmin.from('session_escalation_pathways').insert({
             session_id: session.id,
             evaluated_at: new Date().toISOString(),
             pathways: pathwaysResult.pathways,
+            de_escalation_pathways: deEscalationPathways,
           });
           logger.info(
             { sessionId: session.id, pathwayCount: pathwaysResult.pathways.length },
@@ -448,6 +511,10 @@ export class AIInjectSchedulerService {
         escalationFactorsSnapshot.length > 0 ? escalationFactorsSnapshot : undefined,
       escalationPathways:
         escalationPathwaysSnapshot.length > 0 ? escalationPathwaysSnapshot : undefined,
+      deEscalationFactors:
+        deEscalationFactorsSnapshot.length > 0 ? deEscalationFactorsSnapshot : undefined,
+      deEscalationPathways:
+        deEscalationPathwaysSnapshot.length > 0 ? deEscalationPathwaysSnapshot : undefined,
       responseTaxonomy: Object.keys(responseTaxonomy).length > 0 ? responseTaxonomy : undefined,
     });
 

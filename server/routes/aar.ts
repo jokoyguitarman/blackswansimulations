@@ -96,16 +96,16 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
       .eq('session_id', sessionId)
       .order('evaluated_at', { ascending: true });
 
-    // Get escalation factors and pathways (7-stage escalation system)
+    // Get escalation factors and pathways (7-stage escalation system; includes de-escalation columns)
     const [{ data: escalationFactors }, { data: escalationPathways }] = await Promise.all([
       supabaseAdmin
         .from('session_escalation_factors')
-        .select('id, evaluated_at, factors')
+        .select('id, evaluated_at, factors, de_escalation_factors')
         .eq('session_id', sessionId)
         .order('evaluated_at', { ascending: true }),
       supabaseAdmin
         .from('session_escalation_pathways')
-        .select('id, evaluated_at, pathways')
+        .select('id, evaluated_at, pathways, de_escalation_pathways')
         .eq('session_id', sessionId)
         .order('evaluated_at', { ascending: true }),
     ]);
@@ -372,13 +372,13 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
             .order('created_at', { ascending: true }),
           supabaseAdmin
             .from('session_escalation_factors')
-            .select('evaluated_at, factors')
+            .select('evaluated_at, factors, de_escalation_factors')
             .eq('session_id', sessionId)
             .order('evaluated_at', { ascending: false })
             .limit(20),
           supabaseAdmin
             .from('session_escalation_pathways')
-            .select('evaluated_at, pathways')
+            .select('evaluated_at, pathways, de_escalation_pathways')
             .eq('session_id', sessionId)
             .order('evaluated_at', { ascending: false })
             .limit(20),
@@ -502,7 +502,11 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
           ),
           injectsOccurred,
           escalationFactors: escalationFactorsList.map(
-            (r: { evaluated_at: string; factors: unknown }) => ({
+            (r: {
+              evaluated_at: string;
+              factors: unknown;
+              de_escalation_factors?: unknown;
+            }) => ({
               evaluated_at: r.evaluated_at,
               factors: (r.factors ?? []) as Array<{
                 id: string;
@@ -510,15 +514,30 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
                 description: string;
                 severity: string;
               }>,
+              de_escalation_factors: (r.de_escalation_factors ?? []) as Array<{
+                id: string;
+                name: string;
+                description: string;
+              }>,
             }),
           ),
           escalationPathways: escalationPathwaysList.map(
-            (r: { evaluated_at: string; pathways: unknown }) => ({
+            (r: {
+              evaluated_at: string;
+              pathways: unknown;
+              de_escalation_pathways?: unknown;
+            }) => ({
               evaluated_at: r.evaluated_at,
               pathways: (r.pathways ?? []) as Array<{
                 pathway_id: string;
                 trajectory: string;
                 trigger_behaviours: string[];
+              }>,
+              de_escalation_pathways: (r.de_escalation_pathways ?? []) as Array<{
+                pathway_id: string;
+                trajectory: string;
+                mitigating_behaviours: string[];
+                emerging_challenges?: string[];
               }>,
             }),
           ),

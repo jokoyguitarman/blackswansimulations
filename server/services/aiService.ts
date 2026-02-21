@@ -458,6 +458,130 @@ export interface IdentifyEscalationFactorsResult {
 }
 
 /**
+ * De-escalation factor: what helps mitigate escalation (no severity).
+ */
+export interface DeEscalationFactor {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface IdentifyDeEscalationFactorsResult {
+  factors: DeEscalationFactor[];
+}
+
+/**
+ * Stage 2b: Identify de-escalation factors (what helps mitigate) from scenario, state, injects, and escalation factors.
+ */
+export const identifyDeEscalationFactors = async (
+  scenarioDescription: string,
+  currentState: Record<string, unknown>,
+  objectives: Array<{ objective_id?: string; objective_name?: string }>,
+  recentInjects: Array<{ type?: string; title?: string; content?: string }>,
+  escalationFactors: EscalationFactor[],
+  openAiApiKey: string,
+): Promise<IdentifyDeEscalationFactorsResult> => {
+  const empty: IdentifyDeEscalationFactorsResult = { factors: [] };
+  try {
+    const systemPrompt = `You are an expert crisis management analyst. Identify factors or actions that help mitigate escalation (e.g. clear official messaging, controlled evacuation, resource reallocation, coordination protocols). Consider which escalation factors these counter. Return 3 to 8 items.
+
+Return ONLY valid JSON in this exact format:
+{
+  "factors": [
+    { "id": "DEF-1", "name": "Short name", "description": "One or two sentences on how this helps mitigate." }
+  ]
+}
+
+Use id like DEF-1, DEF-2, etc.`;
+
+    const objectivesText =
+      objectives.length > 0
+        ? objectives.map((o) => `- ${o.objective_name ?? o.objective_id}`).join('\n')
+        : 'None specified';
+    const injectsText =
+      recentInjects.length > 0
+        ? recentInjects
+            .map(
+              (i) =>
+                `[${i.type ?? 'update'}] ${i.title ?? 'Untitled'}\n${(i.content ?? '').slice(0, 300)}`,
+            )
+            .join('\n\n')
+        : 'No recent injects';
+    const escalationFactorsText =
+      escalationFactors.length > 0
+        ? escalationFactors
+            .map((f) => `- ${f.id}: ${f.name}: ${f.description}`)
+            .join('\n')
+        : 'None provided';
+
+    const userPrompt = `Scenario description:
+${scenarioDescription.slice(0, 1500)}
+
+Current state (summary): ${JSON.stringify(currentState).slice(0, 500)}
+
+Objectives:
+${objectivesText}
+
+Recent injects (current situation):
+${injectsText}
+
+Escalation factors (identify what would help counter these):
+${escalationFactorsText}
+
+---
+Identify de-escalation factors (what helps mitigate). Return JSON only.`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 600,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      logger.warn(
+        { status: response.status },
+        'OpenAI API error in identifyDeEscalationFactors',
+      );
+      return empty;
+    }
+
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content;
+    if (!content) {
+      return empty;
+    }
+
+    const parsed = JSON.parse(content) as { factors?: DeEscalationFactor[] };
+    const factors = Array.isArray(parsed.factors) ? parsed.factors : [];
+    const normalized = factors
+      .filter((f) => f && typeof f.name === 'string')
+      .map((f, i) => ({
+        id: typeof f.id === 'string' ? f.id : `DEF-${i + 1}`,
+        name: String(f.name),
+        description: String(f.description ?? ''),
+      }));
+
+    logger.info({ factorCount: normalized.length }, 'De-escalation factors identified');
+    return { factors: normalized };
+  } catch (err) {
+    logger.warn({ error: err }, 'Error in identifyDeEscalationFactors, returning empty');
+    return empty;
+  }
+};
+
+/**
  * Stage 2: Identify escalation factors from current scenario state.
  * AI analyses scenario + current state + recent injects to find factors that may lead to escalation.
  */
@@ -664,6 +788,135 @@ Generate escalation pathways (trajectory + trigger_behaviours). Return JSON only
     return { pathways: normalized };
   } catch (err) {
     logger.warn({ error: err }, 'Error in generateEscalationPathways, returning empty');
+    return empty;
+  }
+};
+
+/**
+ * De-escalation pathway: how situation improves when mitigated; optional emerging_challenges (new problems once mitigated).
+ */
+export interface DeEscalationPathway {
+  pathway_id: string;
+  trajectory: string;
+  mitigating_behaviours: string[];
+  emerging_challenges?: string[];
+}
+
+export interface GenerateDeEscalationPathwaysResult {
+  pathways: DeEscalationPathway[];
+}
+
+/**
+ * Stage 3b: Generate de-escalation pathways from escalation pathways and de-escalation factors.
+ * Optionally include emerging_challenges (0-2 per pathway) for new problems that can appear once mitigated.
+ */
+export const generateDeEscalationPathways = async (
+  scenarioDescription: string,
+  currentState: Record<string, unknown>,
+  escalationPathways: EscalationPathway[],
+  deEscalationFactors: DeEscalationFactor[],
+  openAiApiKey: string,
+): Promise<GenerateDeEscalationPathwaysResult> => {
+  const empty: GenerateDeEscalationPathwaysResult = { pathways: [] };
+  try {
+    const systemPrompt = `You are an expert crisis management analyst. Given escalation pathways (how things get worse) and de-escalation factors (what helps), produce de-escalation pathways: how the situation improves when mitigation happens. For each pathway include 0 to 2 emerging_challenges: new or secondary problems that can arise once this is mitigated (e.g. "Media pressure for casualty figures", "Resource tension between sites") so the scenario stays engaging.
+
+Return ONLY valid JSON in this exact format:
+{
+  "pathways": [
+    {
+      "pathway_id": "DEP-1",
+      "trajectory": "One or two sentences on how the situation improves (e.g. Effective messaging -> reduced panic -> orderly evacuation).",
+      "mitigating_behaviours": ["Action or condition 1", "Action or condition 2"],
+      "emerging_challenges": ["New problem that can appear once mitigated (optional)", "Another optional challenge"]
+    }
+  ]
+}
+
+Include 2 to 6 pathways. Use pathway_id like DEP-1, DEP-2. Each pathway: 1 to 4 mitigating_behaviours, 0 to 2 emerging_challenges.`;
+
+    const escalationPathwaysText =
+      escalationPathways.length > 0
+        ? escalationPathways
+            .map(
+              (p) =>
+                `- ${p.pathway_id}: ${p.trajectory}; triggers: ${(p.trigger_behaviours ?? []).join(', ')}`,
+            )
+            .join('\n')
+        : 'None provided';
+    const deEscalationFactorsText =
+      deEscalationFactors.length > 0
+        ? deEscalationFactors.map((f) => `- ${f.id}: ${f.name}: ${f.description}`).join('\n')
+        : 'None provided';
+
+    const userPrompt = `Scenario description:
+${scenarioDescription.slice(0, 1200)}
+
+Current state (summary): ${JSON.stringify(currentState).slice(0, 400)}
+
+Escalation pathways (how things get worse):
+${escalationPathwaysText}
+
+De-escalation factors (what helps mitigate):
+${deEscalationFactorsText}
+
+---
+Generate de-escalation pathways (trajectory + mitigating_behaviours + optional emerging_challenges). Return JSON only.`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 1000,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      logger.warn(
+        { status: response.status },
+        'OpenAI API error in generateDeEscalationPathways',
+      );
+      return empty;
+    }
+
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content;
+    if (!content) {
+      return empty;
+    }
+
+    const parsed = JSON.parse(content) as { pathways?: DeEscalationPathway[] };
+    const pathways = Array.isArray(parsed.pathways) ? parsed.pathways : [];
+    const normalized = pathways
+      .filter((p) => p && typeof p.trajectory === 'string')
+      .map((p, i) => ({
+        pathway_id: typeof p.pathway_id === 'string' ? p.pathway_id : `DEP-${i + 1}`,
+        trajectory: String(p.trajectory),
+        mitigating_behaviours: Array.isArray(p.mitigating_behaviours)
+          ? p.mitigating_behaviours.map((b) => String(b)).slice(0, 4)
+          : [],
+        emerging_challenges: Array.isArray(p.emerging_challenges)
+          ? p.emerging_challenges.map((c) => String(c)).slice(0, 2)
+          : undefined,
+      }));
+
+    logger.info({ pathwayCount: normalized.length }, 'De-escalation pathways generated');
+    return { pathways: normalized };
+  } catch (err) {
+    logger.warn(
+      { error: err },
+      'Error in generateDeEscalationPathways, returning empty',
+    );
     return empty;
   }
 };
@@ -1077,6 +1330,13 @@ export const generateInjectFromDecision = async (
       trajectory: string;
       trigger_behaviours: string[];
     }>;
+    deEscalationFactors?: Array<{ id: string; name: string; description: string }>;
+    deEscalationPathways?: Array<{
+      pathway_id: string;
+      trajectory: string;
+      mitigating_behaviours: string[];
+      emerging_challenges?: string[];
+    }>;
     responseTaxonomy?: Record<string, string>;
   },
   openAiApiKey: string,
@@ -1246,18 +1506,24 @@ Important:
       sessionContext.escalationFactors && sessionContext.escalationFactors.length > 0;
     const hasPathways =
       sessionContext.escalationPathways && sessionContext.escalationPathways.length > 0;
+    const hasDeEscalationFactors =
+      sessionContext.deEscalationFactors && sessionContext.deEscalationFactors.length > 0;
+    const hasDeEscalationPathways =
+      sessionContext.deEscalationPathways && sessionContext.deEscalationPathways.length > 0;
     const hasAnalysis =
       sessionContext.latestImpactAnalysis &&
       (sessionContext.latestImpactAnalysis.overall ||
         sessionContext.latestImpactAnalysis.matrix_reasoning ||
         sessionContext.latestImpactAnalysis.robustness_reasoning);
     const escalationContext =
-      hasMatrix || hasFactors || hasPathways || hasAnalysis
+      hasMatrix || hasFactors || hasPathways || hasAnalysis || hasDeEscalationFactors || hasDeEscalationPathways
         ? `\n\nINTER-TEAM IMPACT MATRIX AND ESCALATION CONTEXT (use this to shape the inject):
 
 Two lenses for the current state of play:
 1. Robustness (per decision): How well each team's decisions mitigated escalation risks (1-10; higher = more mitigating). Use this to judge whether escalation is being contained or not.
 2. Inter-team impact matrix: Whether each team's decisions helped (+1, +2) or hurt (-1, -2) other teams. Use this to judge cross-team effects (e.g. one team's action making another team's job harder or easier).
+
+When robustness is high (e.g. 7-10), prefer injects that reflect de-escalation pathways (things improving for the areas the team addressed). When robustness is low, injects can reflect escalation pathways (risks materialising). Always ensure the inject also introduces or highlights at least one new or remaining challenge (from escalation factors or from emerging_challenges on de-escalation pathways) so the scenario stays engaging and does not feel fully under control.
 
 Use BOTH lenses to paint a new picture of the scene. Create fresh, varied injects that advance the scenario in new directions—e.g. consequences of inter-team cooperation or friction, resource or operational outcomes, political/media/trust reactions, new intel or threats. Avoid defaulting to the same themes (panic, delays, misinformation) every time; only use them when they are the direct consequence of the current matrix and robustness. Prefer diversity so the scene keeps evolving.
 
@@ -1266,7 +1532,9 @@ ${sessionContext.latestRobustnessByDecision && Object.keys(sessionContext.latest
 ${hasAnalysis ? `\nAnalysis: ${[sessionContext.latestImpactAnalysis!.overall, sessionContext.latestImpactAnalysis!.matrix_reasoning, sessionContext.latestImpactAnalysis!.robustness_reasoning].filter(Boolean).join(' ')}` : ''}
 ${sessionContext.responseTaxonomy && Object.keys(sessionContext.responseTaxonomy).length > 0 ? `\nResponse taxonomy (which teams responded in this window): ${JSON.stringify(sessionContext.responseTaxonomy)}` : ''}
 ${hasFactors ? `\nCurrent escalation factors (risks to consider):\n${sessionContext.escalationFactors!.map((f) => `- ${f.id}: ${f.name} (${f.severity}): ${f.description}`).join('\n')}` : ''}
-${hasPathways ? `\nEscalation pathways (how situation could worsen; avoid trigger behaviours in inject unless intended):\n${sessionContext.escalationPathways!.map((p) => `- ${p.pathway_id}: ${p.trajectory}; triggers: ${(p.trigger_behaviours ?? []).join(', ')}`).join('\n')}` : ''}`
+${hasPathways ? `\nEscalation pathways (how situation could worsen; avoid trigger behaviours in inject unless intended):\n${sessionContext.escalationPathways!.map((p) => `- ${p.pathway_id}: ${p.trajectory}; triggers: ${(p.trigger_behaviours ?? []).join(', ')}`).join('\n')}` : ''}
+${hasDeEscalationFactors ? `\nDe-escalation factors (what helps mitigate):\n${sessionContext.deEscalationFactors!.map((f) => `- ${f.id}: ${f.name}: ${f.description}`).join('\n')}` : ''}
+${hasDeEscalationPathways ? `\nDe-escalation pathways (how situation improves when mitigated):\n${sessionContext.deEscalationPathways!.map((p) => `- ${p.pathway_id}: ${p.trajectory}; mitigating_behaviours: ${(p.mitigating_behaviours ?? []).join(', ')}${(p.emerging_challenges?.length ?? 0) > 0 ? `; emerging_challenges (new problems once mitigated): ${(p.emerging_challenges ?? []).join(', ')}` : ''}`).join('\n')}` : ''}`
         : '';
 
     const instructions = (sessionContext as { instructions?: string }).instructions || '';
@@ -1286,7 +1554,7 @@ Generate a realistic inject that:
 - Doesn't contradict upcoming scheduled injects
 - Fits the current game state and objectives
 - Creates appropriate challenges or complications
-- When escalation/impact context is provided: use both robustness (how well decisions mitigated escalation) and the inter-team impact matrix (how decisions helped or hurt other teams) to paint a new picture of the scene. Create fresh, varied developments (e.g. inter-team dynamics, resource outcomes, political or media reactions, new intel)—avoid repeatedly using the same themes (panic, delays, misinformation) unless they are the direct result of the current matrix and robustness
+- When escalation/impact context is provided: use both robustness (how well decisions mitigated escalation) and the inter-team impact matrix (how decisions helped or hurt other teams) to paint a new picture of the scene. When robustness is high, show improvement for mitigated areas (use de-escalation pathways) but always include at least one new or remaining problem (from escalation factors or emerging_challenges) so players still have something to address. Create fresh, varied developments (e.g. inter-team dynamics, resource outcomes, political or media reactions, new intel)—avoid repeatedly using the same themes (panic, delays, misinformation) unless they are the direct result of the current matrix and robustness
 
 CRITICAL: Scope targeting:
 ${
@@ -1305,6 +1573,7 @@ Important considerations:
 - The inject should feel like a natural progression of the story, not forced or disconnected
 - Severity should match the decision's impact and the overall situation
 - Prefer injects that advance the scenario in new directions (e.g. inter-team friction or cooperation, resource reallocation, political fallout, new intel) rather than repeating the same type of development (e.g. yet another "panic spreads" or "misinformation" update) unless it is the direct consequence of the current robustness and matrix
+- Do not produce a run of injects where everything is positive with no new complications; always leave at least one active problem area or emerging challenge so the scenario stays engaging
 
 If this decision doesn't warrant a meaningful inject, return null. Otherwise, return a well-crafted inject that fits seamlessly into the ongoing scenario.`;
 

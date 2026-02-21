@@ -446,13 +446,13 @@ router.get(
           .limit(50),
         supabaseAdmin
           .from('session_escalation_factors')
-          .select('id, evaluated_at, factors')
+          .select('id, evaluated_at, factors, de_escalation_factors')
           .eq('session_id', sessionId)
           .order('evaluated_at', { ascending: false })
           .limit(50),
         supabaseAdmin
           .from('session_escalation_pathways')
-          .select('id, evaluated_at, pathways')
+          .select('id, evaluated_at, pathways, de_escalation_pathways')
           .eq('session_id', sessionId)
           .order('evaluated_at', { ascending: false })
           .limit(50),
@@ -470,10 +470,17 @@ router.get(
         response_taxonomy?: Record<string, string>;
         analysis?: { overall?: string; matrix_reasoning?: string; robustness_reasoning?: string };
         factors?: Array<{ id: string; name: string; description: string; severity: string }>;
+        de_escalation_factors?: Array<{ id: string; name: string; description: string }>;
         pathways?: Array<{
           pathway_id: string;
           trajectory: string;
           trigger_behaviours: string[];
+        }>;
+        de_escalation_pathways?: Array<{
+          pathway_id: string;
+          trajectory: string;
+          mitigating_behaviours: string[];
+          emerging_challenges?: string[];
         }>;
       }> = [];
 
@@ -532,11 +539,18 @@ router.get(
             description: string;
             severity: string;
           }>) || [];
+        const deEscFactors =
+          ((f as { de_escalation_factors?: unknown }).de_escalation_factors as Array<{
+            id: string;
+            name: string;
+            description: string;
+          }>) || [];
         activities.push({
           type: 'escalation_factors_computed',
           at: f.evaluated_at,
           summary: `${factors.length} escalation factors identified`,
           factors,
+          ...(deEscFactors.length > 0 && { de_escalation_factors: deEscFactors }),
         });
       }
 
@@ -548,11 +562,19 @@ router.get(
             trajectory: string;
             trigger_behaviours: string[];
           }>) || [];
+        const deEscPathways =
+          ((p as { de_escalation_pathways?: unknown }).de_escalation_pathways as Array<{
+            pathway_id: string;
+            trajectory: string;
+            mitigating_behaviours: string[];
+            emerging_challenges?: string[];
+          }>) || [];
         activities.push({
           type: 'escalation_pathways_computed',
           at: p.evaluated_at,
           summary: `${pathways.length} escalation pathways generated`,
           pathways,
+          ...(deEscPathways.length > 0 && { de_escalation_pathways: deEscPathways }),
         });
       }
 
@@ -590,13 +612,13 @@ router.get(
       const [factorsRes, pathwaysRes] = await Promise.all([
         supabaseAdmin
           .from('session_escalation_factors')
-          .select('id, evaluated_at, factors')
+          .select('id, evaluated_at, factors, de_escalation_factors')
           .eq('session_id', sessionId)
           .order('evaluated_at', { ascending: false })
           .limit(1),
         supabaseAdmin
           .from('session_escalation_pathways')
-          .select('id, evaluated_at, pathways')
+          .select('id, evaluated_at, pathways, de_escalation_pathways')
           .eq('session_id', sessionId)
           .order('evaluated_at', { ascending: false })
           .limit(1),
@@ -616,6 +638,8 @@ router.get(
                 description: string;
                 severity: string;
               }>,
+              de_escalation_factors: (latestFactors as { de_escalation_factors?: unknown })
+                .de_escalation_factors as Array<{ id: string; name: string; description: string }> | undefined,
             }
           : null,
         pathways: latestPathways
@@ -627,6 +651,13 @@ router.get(
                 trajectory: string;
                 trigger_behaviours: string[];
               }>,
+              de_escalation_pathways: (latestPathways as { de_escalation_pathways?: unknown })
+                .de_escalation_pathways as Array<{
+                pathway_id: string;
+                trajectory: string;
+                mitigating_behaviours: string[];
+                emerging_challenges?: string[];
+              }> | undefined,
             }
           : null,
       });
