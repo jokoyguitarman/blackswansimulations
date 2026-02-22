@@ -300,6 +300,13 @@ export class InjectSchedulerService {
       );
       for (const inject of futureToEvaluate) {
         try {
+          await supabaseAdmin.from('session_events').insert({
+            session_id: session.id,
+            event_type: 'ai_step_start',
+            description: `AI: Evaluating whether to cancel scheduled inject: ${inject.title ?? inject.id}`,
+            actor_id: null,
+            metadata: { step: 'evaluating_inject_cancellation', inject_title: inject.title ?? null },
+          });
           const result = await shouldCancelScheduledInject(
             {
               title: inject.title ?? '',
@@ -308,6 +315,15 @@ export class InjectSchedulerService {
             decisionsForAi,
             env.openAiApiKey,
           );
+          await supabaseAdmin.from('session_events').insert({
+            session_id: session.id,
+            event_type: 'ai_step_end',
+            description: result.cancel
+              ? `AI: Cancelled scheduled inject: ${inject.title ?? inject.id}`
+              : `AI: Keeping scheduled inject: ${inject.title ?? inject.id}`,
+            actor_id: null,
+            metadata: { step: 'evaluating_inject_cancellation', cancel: result.cancel },
+          });
           if (result.cancel) {
             await supabaseAdmin.from('session_events').insert({
               session_id: session.id,
@@ -347,6 +363,13 @@ export class InjectSchedulerService {
         // AI cancellation check: should this scheduled inject be suppressed due to recent decisions?
         if (env.openAiApiKey) {
           try {
+            await supabaseAdmin.from('session_events').insert({
+              session_id: session.id,
+              event_type: 'ai_step_start',
+              description: `AI: Evaluating whether to cancel inject: ${inject.title ?? inject.id}`,
+              actor_id: null,
+              metadata: { step: 'evaluating_inject_cancellation', inject_title: inject.title ?? null },
+            });
             const result = await shouldCancelScheduledInject(
               {
                 title: inject.title ?? '',
@@ -355,6 +378,15 @@ export class InjectSchedulerService {
               decisionsForAi,
               env.openAiApiKey,
             );
+            await supabaseAdmin.from('session_events').insert({
+              session_id: session.id,
+              event_type: 'ai_step_end',
+              description: result.cancel
+                ? `AI: Cancelled inject: ${inject.title ?? inject.id}`
+                : `AI: Publishing inject: ${inject.title ?? inject.id}`,
+              actor_id: null,
+              metadata: { step: 'evaluating_inject_cancellation', cancel: result.cancel },
+            });
             if (result.cancel) {
               await supabaseAdmin.from('session_events').insert({
                 session_id: session.id,

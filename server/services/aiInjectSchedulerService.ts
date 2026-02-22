@@ -356,6 +356,13 @@ export class AIInjectSchedulerService {
     }> = [];
     if (env.openAiApiKey) {
       try {
+        await supabaseAdmin.from('session_events').insert({
+          session_id: session.id,
+          event_type: 'ai_step_start',
+          description: 'AI: Identifying escalation factors…',
+          actor_id: null,
+          metadata: { step: 'escalation_factors' },
+        });
         const objectivesForFactors = (objectives || []).map(
           (o: { objective_id?: string; objective_name?: string }) => ({
             objective_id: o.objective_id,
@@ -408,8 +415,22 @@ export class AIInjectSchedulerService {
           { sessionId: session.id, factorCount: factorsResult.factors.length },
           'Escalation factors computed and saved',
         );
+        await supabaseAdmin.from('session_events').insert({
+          session_id: session.id,
+          event_type: 'ai_step_end',
+          description: 'AI: Escalation factors identified',
+          actor_id: null,
+          metadata: { step: 'escalation_factors' },
+        });
 
         try {
+          await supabaseAdmin.from('session_events').insert({
+            session_id: session.id,
+            event_type: 'ai_step_start',
+            description: 'AI: Generating escalation pathways…',
+            actor_id: null,
+            metadata: { step: 'escalation_pathways' },
+          });
           const pathwaysResult = await generateEscalationPathways(
             scenario?.description ?? '',
             session.current_state ?? {},
@@ -451,6 +472,13 @@ export class AIInjectSchedulerService {
             { sessionId: session.id, pathwayCount: pathwaysResult.pathways.length },
             'Escalation pathways computed and saved',
           );
+          await supabaseAdmin.from('session_events').insert({
+            session_id: session.id,
+            event_type: 'ai_step_end',
+            description: 'AI: Escalation pathways generated',
+            actor_id: null,
+            metadata: { step: 'escalation_pathways' },
+          });
         } catch (pathwaysErr) {
           logger.warn(
             { error: pathwaysErr, sessionId: session.id },
@@ -477,6 +505,13 @@ export class AIInjectSchedulerService {
     // Inter-team impact matrix: write a row every cycle (Checkpoint 6). With decisions: call AI; without: empty row + response_taxonomy
     if (env.openAiApiKey) {
       try {
+        await supabaseAdmin.from('session_events').insert({
+          session_id: session.id,
+          event_type: 'ai_step_start',
+          description: 'AI: Computing inter-team impact matrix…',
+          actor_id: null,
+          metadata: { step: 'impact_matrix' },
+        });
         const evaluatedAt = new Date().toISOString();
         const baseInsert = {
           session_id: session.id,
@@ -535,6 +570,13 @@ export class AIInjectSchedulerService {
             'Impact matrix row written (no decisions in window)',
           );
         }
+        await supabaseAdmin.from('session_events').insert({
+          session_id: session.id,
+          event_type: 'ai_step_end',
+          description: 'AI: Impact matrix computed',
+          actor_id: null,
+          metadata: { step: 'impact_matrix' },
+        });
       } catch (matrixErr) {
         logger.warn(
           { error: matrixErr, sessionId: session.id },
@@ -561,6 +603,15 @@ export class AIInjectSchedulerService {
 
     // 1. Generate UNIVERSAL inject and 2. TEAM-SPECIFIC injects only when there are decisions (Checkpoint 6)
     if (formattedDecisions.length > 0) {
+      if (env.openAiApiKey) {
+        await supabaseAdmin.from('session_events').insert({
+          session_id: session.id,
+          event_type: 'ai_step_start',
+          description: 'AI: Generating injects from decisions…',
+          actor_id: null,
+          metadata: { step: 'inject_generation' },
+        });
+      }
       await this.generateUniversalInject(session, baseContext, formattedDecisions);
 
       for (const teamName of teamsWithMembers) {
@@ -568,6 +619,15 @@ export class AIInjectSchedulerService {
         if (teamDecisions.length > 0) {
           await this.generateTeamSpecificInject(session, baseContext, teamName, teamDecisions);
         }
+      }
+      if (env.openAiApiKey) {
+        await supabaseAdmin.from('session_events').insert({
+          session_id: session.id,
+          event_type: 'ai_step_end',
+          description: 'AI: Injects generated',
+          actor_id: null,
+          metadata: { step: 'inject_generation' },
+        });
       }
     }
   }

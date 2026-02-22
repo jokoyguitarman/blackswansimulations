@@ -136,8 +136,22 @@ export const api = {
           at: string;
           title?: string;
           reason?: string;
+          step?: string;
           injectId?: string;
           summary?: string;
+          matrix?: Record<string, Record<string, number>>;
+          robustness_by_decision?: Record<string, number>;
+          response_taxonomy?: Record<string, string>;
+          analysis?: { overall?: string; matrix_reasoning?: string; robustness_reasoning?: string };
+          factors?: Array<{ id: string; name: string; description: string; severity: string }>;
+          de_escalation_factors?: Array<{ id: string; name: string; description: string }>;
+          pathways?: Array<{ pathway_id: string; trajectory: string; trigger_behaviours: string[] }>;
+          de_escalation_pathways?: Array<{
+            pathway_id: string;
+            trajectory: string;
+            mitigating_behaviours: string[];
+            emerging_challenges?: string[];
+          }>;
         }>;
         sessionId: string;
       }>(await fetch(apiUrl(`/api/sessions/${sessionId}/backend-activity`), { headers }));

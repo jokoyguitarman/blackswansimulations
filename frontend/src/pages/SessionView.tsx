@@ -103,9 +103,25 @@ export const SessionView = () => {
       at: string;
       title?: string;
       reason?: string;
+      step?: string;
       summary?: string;
       matrix?: Record<string, Record<string, number>>;
       robustness_by_decision?: Record<string, number>;
+      response_taxonomy?: Record<string, string>;
+      analysis?: { overall?: string; matrix_reasoning?: string; robustness_reasoning?: string };
+      factors?: Array<{ id: string; name: string; description: string; severity: string }>;
+      de_escalation_factors?: Array<{ id: string; name: string; description: string }>;
+      pathways?: Array<{
+        pathway_id: string;
+        trajectory: string;
+        trigger_behaviours: string[];
+      }>;
+      de_escalation_pathways?: Array<{
+        pathway_id: string;
+        trajectory: string;
+        mitigating_behaviours: string[];
+        emerging_challenges?: string[];
+      }>;
     }>
   >([]);
 
@@ -798,7 +814,7 @@ export const SessionView = () => {
                   ) : (
                     backendActivities.map((a, i) => (
                       <div
-                        key={`${a.type}-${a.at}-${i}`}
+                        key={`${a.type}-${a.at}-${a.step ?? ''}-${i}`}
                         className="border border-robotic-yellow/30 p-2 bg-robotic-gray-300/80 font-mono text-xs"
                       >
                         <span className="text-robotic-yellow/90">
@@ -815,11 +831,123 @@ export const SessionView = () => {
                             Inject cancelled by AI. Reason: {a.reason ?? '—'}
                           </span>
                         )}
+                        {a.type === 'ai_step_start' && (
+                          <span className="text-robotic-cyan/90">
+                            {a.title ?? `AI: ${a.step ?? 'step'} started`}
+                          </span>
+                        )}
+                        {a.type === 'ai_step_end' && (
+                          <span className="text-robotic-green/90">
+                            {a.title ?? `AI: ${a.step ?? 'step'} completed`}
+                          </span>
+                        )}
+                        {a.type === 'escalation_factors_computed' && (
+                          <div>
+                            <span className="text-robotic-gold">
+                              Escalation factors computed ({a.summary ?? '—'})
+                            </span>
+                            {a.factors && a.factors.length > 0 && (
+                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                                <div className="text-robotic-yellow/80 mb-1">[ESCALATION FACTORS]</div>
+                                <ul className="list-disc pl-4 space-y-0.5 text-robotic-green/90">
+                                  {a.factors.slice(0, 6).map((f) => (
+                                    <li key={f.id}>
+                                      {f.name} ({f.severity}): {f.description.slice(0, 80)}
+                                      {f.description.length > 80 ? '…' : ''}
+                                    </li>
+                                  ))}
+                                  {a.factors.length > 6 && (
+                                    <li className="text-robotic-yellow/70">+{a.factors.length - 6} more</li>
+                                  )}
+                                </ul>
+                              </div>
+                            )}
+                            {a.de_escalation_factors && a.de_escalation_factors.length > 0 && (
+                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                                <div className="text-robotic-yellow/80 mb-1">[DE-ESCALATION FACTORS]</div>
+                                <ul className="list-disc pl-4 space-y-0.5 text-robotic-green/90">
+                                  {a.de_escalation_factors.slice(0, 4).map((f) => (
+                                    <li key={f.id}>
+                                      {f.name}: {f.description.slice(0, 60)}
+                                      {f.description.length > 60 ? '…' : ''}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {a.type === 'escalation_pathways_computed' && (
+                          <div>
+                            <span className="text-robotic-gold">
+                              Escalation pathways computed ({a.summary ?? '—'})
+                            </span>
+                            {a.pathways && a.pathways.length > 0 && (
+                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                                <div className="text-robotic-yellow/80 mb-1">[PATHWAYS]</div>
+                                <ul className="list-disc pl-4 space-y-0.5 text-robotic-green/90">
+                                  {a.pathways.slice(0, 4).map((p) => (
+                                    <li key={p.pathway_id}>
+                                      {p.trajectory}
+                                      {p.trigger_behaviours?.length
+                                        ? ` (triggers: ${p.trigger_behaviours.slice(0, 2).join(', ')})`
+                                        : ''}
+                                    </li>
+                                  ))}
+                                  {a.pathways.length > 4 && (
+                                    <li className="text-robotic-yellow/70">+{a.pathways.length - 4} more</li>
+                                  )}
+                                </ul>
+                              </div>
+                            )}
+                            {a.de_escalation_pathways && a.de_escalation_pathways.length > 0 && (
+                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                                <div className="text-robotic-yellow/80 mb-1">[DE-ESCALATION PATHWAYS]</div>
+                                <ul className="list-disc pl-4 space-y-0.5 text-robotic-green/90">
+                                  {a.de_escalation_pathways.slice(0, 3).map((p) => (
+                                    <li key={p.pathway_id}>{p.trajectory}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         {a.type === 'impact_matrix_computed' && (
                           <div>
                             <span className="text-robotic-gold">
                               Impact matrix computed ({a.summary ?? '—'})
                             </span>
+                            {a.analysis?.overall && (
+                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                                <div className="text-robotic-yellow/80 mb-1">[AI REASONING]</div>
+                                <p className="text-robotic-green/90 text-xs">{a.analysis.overall}</p>
+                                {a.analysis.matrix_reasoning && (
+                                  <p className="text-robotic-green/80 text-xs mt-1">
+                                    Matrix: {a.analysis.matrix_reasoning}
+                                  </p>
+                                )}
+                                {a.analysis.robustness_reasoning && (
+                                  <p className="text-robotic-green/80 text-xs mt-1">
+                                    Robustness: {a.analysis.robustness_reasoning}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            {a.response_taxonomy && Object.keys(a.response_taxonomy).length > 0 && (
+                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                                <div className="text-robotic-yellow/80 mb-1">[RESPONSE TAXONOMY]</div>
+                                <div className="flex flex-wrap gap-1">
+                                  {Object.entries(a.response_taxonomy).map(([team, cat]) => (
+                                    <span
+                                      key={team}
+                                      className="bg-robotic-gray-400 px-1 rounded text-robotic-green/90"
+                                    >
+                                      {team}: {cat}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                             {a.matrix && Object.keys(a.matrix).length > 0 && (
                               <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
                                 <div className="text-robotic-yellow/80 mb-1">

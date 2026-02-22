@@ -435,9 +435,9 @@ router.get(
           .from('session_events')
           .select('id, event_type, description, metadata, created_at')
           .eq('session_id', sessionId)
-          .in('event_type', ['inject', 'inject_cancelled'])
+          .in('event_type', ['inject', 'inject_cancelled', 'ai_step_start', 'ai_step_end'])
           .order('created_at', { ascending: false })
-          .limit(100),
+          .limit(200),
         supabaseAdmin
           .from('session_impact_matrix')
           .select('id, evaluated_at, matrix, robustness_by_decision, analysis, response_taxonomy')
@@ -465,6 +465,7 @@ router.get(
         reason?: string;
         injectId?: string;
         summary?: string;
+        step?: string;
         matrix?: Record<string, Record<string, number>>;
         robustness_by_decision?: Record<string, number>;
         response_taxonomy?: Record<string, string>;
@@ -499,6 +500,20 @@ router.get(
             at: e.created_at,
             reason: (meta.reason as string) || 'AI determined recent decisions made it obsolete',
             injectId: meta.inject_id as string,
+          });
+        } else if (e.event_type === 'ai_step_start') {
+          activities.push({
+            type: 'ai_step_start',
+            at: e.created_at,
+            title: e.description ?? undefined,
+            step: (meta.step as string) ?? undefined,
+          });
+        } else if (e.event_type === 'ai_step_end') {
+          activities.push({
+            type: 'ai_step_end',
+            at: e.created_at,
+            title: e.description ?? undefined,
+            step: (meta.step as string) ?? undefined,
           });
         }
       }

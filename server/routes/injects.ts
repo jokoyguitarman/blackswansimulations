@@ -528,14 +528,78 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       query = query.eq('scenario_id', finalScenarioId);
     }
 
-    // Fetch all injects first (we'll filter in code for complex logic)
-    const { data: allInjects, error } = await query.order('trigger_time_minutes', {
-      ascending: true,
-    });
+    // When listing for a session: only premade injects + injects published to this session (no other sessions' AI injects)
+    let allInjects: Record<string, unknown>[] | null = null;
 
-    if (error) {
-      logger.error({ error }, 'Failed to fetch injects');
-      return res.status(500).json({ error: 'Failed to fetch injects' });
+    if (session_id && finalScenarioId) {
+      // 1. Premade (template) injects only
+      const { data: premadeInjects, error: premadeError } = await supabaseAdmin
+        .from('scenario_injects')
+        .select('*')
+        .eq('scenario_id', finalScenarioId)
+        .or('ai_generated.is.null,ai_generated.eq.false')
+        .order('trigger_time_minutes', { ascending: true });
+
+      if (premadeError) {
+        logger.error({ error: premadeError }, 'Failed to fetch premade injects');
+        return res.status(500).json({ error: 'Failed to fetch injects' });
+      }
+
+      // 2. Injects published to this session (including AI-generated this session)
+      const { data: sessionEvents } = await supabaseAdmin
+        .from('session_events')
+        .select('metadata')
+        .eq('session_id', session_id as string)
+        .eq('event_type', 'inject');
+
+      const publishedInjectIds = new Set<string>();
+      for (const e of sessionEvents || []) {
+        const meta = e.metadata as Record<string, unknown> | null;
+        const id = meta?.inject_id;
+        if (id && typeof id === 'string') publishedInjectIds.add(id);
+      }
+
+      let sessionPublishedInjects: Record<string, unknown>[] = [];
+      if (publishedInjectIds.size > 0) {
+        const { data: published } = await supabaseAdmin
+          .from('scenario_injects')
+          .select('*')
+          .eq('scenario_id', finalScenarioId)
+          .in('id', Array.from(publishedInjectIds));
+        sessionPublishedInjects = (published || []) as Record<string, unknown>[];
+      }
+
+      // 3. Merge and dedupe (session-published not already in premade)
+      const premadeIds = new Set(
+        (premadeInjects || []).map((i: Record<string, unknown>) => i.id as string),
+      );
+      const combined = [...(premadeInjects || [])] as Record<string, unknown>[];
+      for (const inj of sessionPublishedInjects) {
+        const id = inj.id as string;
+        if (!premadeIds.has(id)) {
+          combined.push(inj);
+          premadeIds.add(id);
+        }
+      }
+      combined.sort((a, b) => {
+        const aMin = a.trigger_time_minutes as number | null | undefined;
+        const bMin = b.trigger_time_minutes as number | null | undefined;
+        if (aMin == null && bMin == null) return 0;
+        if (aMin == null) return 1;
+        if (bMin == null) return -1;
+        return aMin - bMin;
+      });
+      allInjects = combined;
+    } else {
+      // No session_id: all scenario injects (e.g. scenario editor)
+      const { data, error } = await query.order('trigger_time_minutes', {
+        ascending: true,
+      });
+      if (error) {
+        logger.error({ error }, 'Failed to fetch injects');
+        return res.status(500).json({ error: 'Failed to fetch injects' });
+      }
+      allInjects = data;
     }
 
     // Filter injects based on inject_scope and user's role/team
