@@ -9,6 +9,8 @@ import {
   generateDeEscalationPathways,
   aggregateThemeUsage,
   computeDecisionsSummaryLine,
+  type ThemeUsageByScope,
+  type ThemeUsageEntry,
 } from './aiService.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { env } from '../env.js';
@@ -265,8 +267,8 @@ export class AIInjectSchedulerService {
     });
 
     // Session-wide theme usage: all injects this session (no 5-min filter) for diversity guidance
-    let themeUsageThisSession: Record<string, { count: number; keywords: string[] }> = {};
-    let themeUsageByScope: Record<string, Record<string, { count: number; keywords: string[] }>> = {};
+    let themeUsageThisSession: Record<string, ThemeUsageEntry> = {};
+    let themeUsageByScope: ThemeUsageByScope = {};
     let decisionsSummaryLine = '';
     try {
       const { data: allSessionInjects } = await supabaseAdmin

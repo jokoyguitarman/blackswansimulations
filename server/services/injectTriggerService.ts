@@ -7,6 +7,8 @@ import {
   type DecisionClassification,
   aggregateThemeUsage,
   computeDecisionsSummaryLine,
+  type ThemeUsageByScope,
+  type ThemeUsageEntry,
 } from './aiService.js';
 import { env } from '../env.js';
 
@@ -516,8 +518,8 @@ export async function generateAndPublishInjectFromDecision(
       }) || [];
 
     // Session-wide theme usage and decision summary for inject diversity
-    let themeUsageThisSession: Record<string, { count: number; keywords: string[] }> = {};
-    let themeUsageByScope: Record<string, Record<string, { count: number; keywords: string[] }>> = {};
+    let themeUsageThisSession: Record<string, ThemeUsageEntry> = {};
+    let themeUsageByScope: ThemeUsageByScope = {};
     let decisionsSummaryLine = '';
     try {
       if (allSessionInjectsResult.data && allSessionInjectsResult.data.length > 0) {
