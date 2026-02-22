@@ -3,14 +3,11 @@ import { logger } from '../lib/logger.js';
 import {
   generateInjectFromDecision,
   computeInterTeamImpactMatrix,
-  identifyEscalationFactors,
-  identifyDeEscalationFactors,
-  generateEscalationPathways,
-  generateDeEscalationPathways,
   aggregateThemeUsage,
   computeDecisionsSummaryLine,
   type ThemeUsageByScope,
   type ThemeUsageEntry,
+  type PathwayOutcome,
 } from './aiService.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { env } from '../env.js';
@@ -22,6 +19,16 @@ import type { Server as SocketServer } from 'socket.io';
  * 1. Universal injects based on all recent decisions and state (visible to all)
  * 2. Team-specific injects based on decisions from each team (visible only to that team)
  */
+/** Map robustness scores (1-10) to band for pathway outcome selection. */
+function computeRobustnessBand(robustnessByDecision: Record<string, number> | null): 'low' | 'medium' | 'high' {
+  if (!robustnessByDecision || Object.keys(robustnessByDecision).length === 0) return 'medium';
+  const values = Object.values(robustnessByDecision);
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  if (mean <= 3) return 'low';
+  if (mean >= 7) return 'high';
+  return 'medium';
+}
+
 export class AIInjectSchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
@@ -331,7 +338,7 @@ export class AIInjectSchedulerService {
       decisionsSummaryLine: decisionsSummaryLine || undefined,
     };
 
-    // Stage 2/3: Recompute escalation factors and pathways every 5-min cycle from current state and injects in last 5 minutes (Checkpoint 6)
+    // Load latest escalation factors and pathways (written by pathwayOutcomesService on inject publish)
     let escalationFactorsSnapshot: Array<{
       id: string;
       name: string;
@@ -354,143 +361,31 @@ export class AIInjectSchedulerService {
       mitigating_behaviours: string[];
       emerging_challenges?: string[];
     }> = [];
-    if (env.openAiApiKey) {
-      try {
-        await supabaseAdmin.from('session_events').insert({
-          session_id: session.id,
-          event_type: 'ai_step_start',
-          description: 'AI: Identifying escalation factors…',
-          actor_id: null,
-          metadata: { step: 'escalation_factors' },
-        });
-        const objectivesForFactors = (objectives || []).map(
-          (o: { objective_id?: string; objective_name?: string }) => ({
-            objective_id: o.objective_id,
-            objective_name: o.objective_name,
-          }),
-        );
-        const factorsResult = await identifyEscalationFactors(
-          scenario?.description ?? '',
-          session.current_state ?? {},
-          objectivesForFactors,
-          formattedInjects.map((i: { type?: string; title?: string; content?: string }) => ({
-            type: i.type,
-            title: i.title,
-            content: i.content,
-          })),
-          env.openAiApiKey,
-        );
-        escalationFactorsSnapshot = factorsResult.factors;
-
-        let deEscalationFactors: Array<{ id: string; name: string; description: string }> = [];
-        try {
-          const deEscFactorsResult = await identifyDeEscalationFactors(
-            scenario?.description ?? '',
-            session.current_state ?? {},
-            objectivesForFactors,
-            formattedInjects.map((i: { type?: string; title?: string; content?: string }) => ({
-              type: i.type,
-              title: i.title,
-              content: i.content,
-            })),
-            factorsResult.factors,
-            env.openAiApiKey,
-          );
-          deEscalationFactors = deEscFactorsResult.factors;
-          deEscalationFactorsSnapshot = deEscFactorsResult.factors;
-        } catch (deEscFactorsErr) {
-          logger.warn(
-            { error: deEscFactorsErr, sessionId: session.id },
-            'Failed to compute de-escalation factors, continuing',
-          );
-        }
-
-        await supabaseAdmin.from('session_escalation_factors').insert({
-          session_id: session.id,
-          evaluated_at: new Date().toISOString(),
-          factors: factorsResult.factors,
-          de_escalation_factors: deEscalationFactors,
-        });
-        logger.info(
-          { sessionId: session.id, factorCount: factorsResult.factors.length },
-          'Escalation factors computed and saved',
-        );
-        await supabaseAdmin.from('session_events').insert({
-          session_id: session.id,
-          event_type: 'ai_step_end',
-          description: 'AI: Escalation factors identified',
-          actor_id: null,
-          metadata: { step: 'escalation_factors' },
-        });
-
-        try {
-          await supabaseAdmin.from('session_events').insert({
-            session_id: session.id,
-            event_type: 'ai_step_start',
-            description: 'AI: Generating escalation pathways…',
-            actor_id: null,
-            metadata: { step: 'escalation_pathways' },
-          });
-          const pathwaysResult = await generateEscalationPathways(
-            scenario?.description ?? '',
-            session.current_state ?? {},
-            factorsResult.factors,
-            env.openAiApiKey,
-          );
-          escalationPathwaysSnapshot = pathwaysResult.pathways;
-
-          let deEscalationPathways: Array<{
-            pathway_id: string;
-            trajectory: string;
-            mitigating_behaviours: string[];
-            emerging_challenges?: string[];
-          }> = [];
-          try {
-            const deEscPathwaysResult = await generateDeEscalationPathways(
-              scenario?.description ?? '',
-              session.current_state ?? {},
-              pathwaysResult.pathways,
-              deEscalationFactorsSnapshot,
-              env.openAiApiKey,
-            );
-            deEscalationPathways = deEscPathwaysResult.pathways;
-            deEscalationPathwaysSnapshot = deEscPathwaysResult.pathways;
-          } catch (deEscPathwaysErr) {
-            logger.warn(
-              { error: deEscPathwaysErr, sessionId: session.id },
-              'Failed to compute de-escalation pathways, continuing',
-            );
-          }
-
-          await supabaseAdmin.from('session_escalation_pathways').insert({
-            session_id: session.id,
-            evaluated_at: new Date().toISOString(),
-            pathways: pathwaysResult.pathways,
-            de_escalation_pathways: deEscalationPathways,
-          });
-          logger.info(
-            { sessionId: session.id, pathwayCount: pathwaysResult.pathways.length },
-            'Escalation pathways computed and saved',
-          );
-          await supabaseAdmin.from('session_events').insert({
-            session_id: session.id,
-            event_type: 'ai_step_end',
-            description: 'AI: Escalation pathways generated',
-            actor_id: null,
-            metadata: { step: 'escalation_pathways' },
-          });
-        } catch (pathwaysErr) {
-          logger.warn(
-            { error: pathwaysErr, sessionId: session.id },
-            'Failed to compute or save escalation pathways, continuing',
-          );
-        }
-      } catch (factorsErr) {
-        logger.warn(
-          { error: factorsErr, sessionId: session.id },
-          'Failed to load or compute escalation factors, continuing',
-        );
-      }
+    const { data: latestFactorsRow } = await supabaseAdmin
+      .from('session_escalation_factors')
+      .select('factors, de_escalation_factors')
+      .eq('session_id', session.id)
+      .order('evaluated_at', { ascending: false })
+      .limit(1)
+      .single();
+    if (latestFactorsRow) {
+      escalationFactorsSnapshot = Array.isArray(latestFactorsRow.factors) ? latestFactorsRow.factors : [];
+      deEscalationFactorsSnapshot = Array.isArray(latestFactorsRow.de_escalation_factors)
+        ? latestFactorsRow.de_escalation_factors
+        : [];
+    }
+    const { data: latestPathwaysRow } = await supabaseAdmin
+      .from('session_escalation_pathways')
+      .select('pathways, de_escalation_pathways')
+      .eq('session_id', session.id)
+      .order('evaluated_at', { ascending: false })
+      .limit(1)
+      .single();
+    if (latestPathwaysRow) {
+      escalationPathwaysSnapshot = Array.isArray(latestPathwaysRow.pathways) ? latestPathwaysRow.pathways : [];
+      deEscalationPathwaysSnapshot = Array.isArray(latestPathwaysRow.de_escalation_pathways)
+        ? latestPathwaysRow.de_escalation_pathways
+        : [];
     }
 
     // Latest impact matrix/factors for inject generation (Checkpoint 8)
@@ -601,33 +496,97 @@ export class AIInjectSchedulerService {
       responseTaxonomy: Object.keys(responseTaxonomy).length > 0 ? responseTaxonomy : undefined,
     });
 
-    // 1. Generate UNIVERSAL inject and 2. TEAM-SPECIFIC injects only when there are decisions (Checkpoint 6)
-    if (formattedDecisions.length > 0) {
-      if (env.openAiApiKey) {
-        await supabaseAdmin.from('session_events').insert({
-          session_id: session.id,
-          event_type: 'ai_step_start',
-          description: 'AI: Generating injects from decisions…',
-          actor_id: null,
-          metadata: { step: 'inject_generation' },
-        });
-      }
-      await this.generateUniversalInject(session, baseContext, formattedDecisions);
+    // Load latest pathway outcomes (from last inject publish) to match and publish one outcome inject
+    const { data: pathwayOutcomesRow } = await supabaseAdmin
+      .from('session_pathway_outcomes')
+      .select('id, outcomes')
+      .eq('session_id', session.id)
+      .order('evaluated_at', { ascending: false })
+      .limit(1)
+      .single();
 
-      for (const teamName of teamsWithMembers) {
-        const teamDecisions = formattedDecisions.filter((d) => d.team === teamName);
-        if (teamDecisions.length > 0) {
-          await this.generateTeamSpecificInject(session, baseContext, teamName, teamDecisions);
+    const outcomes = (pathwayOutcomesRow?.outcomes as PathwayOutcome[] | null) ?? [];
+    const hasPathwayOutcomes = outcomes.length > 0;
+
+    if (formattedDecisions.length > 0) {
+      if (hasPathwayOutcomes) {
+        // Match robustness to a band and publish the corresponding outcome inject
+        const robustnessBand = computeRobustnessBand(latestRobustnessByDecision);
+        const matching = outcomes.filter((o) => o.robustness_band === robustnessBand);
+        const toPublish = matching.length > 0 ? matching[0] : outcomes[Math.floor(Math.random() * outcomes.length)];
+
+        if (!this.io) {
+          const { io } = await import('../index.js');
+          this.io = io;
         }
-      }
-      if (env.openAiApiKey) {
-        await supabaseAdmin.from('session_events').insert({
-          session_id: session.id,
-          event_type: 'ai_step_end',
-          description: 'AI: Injects generated',
-          actor_id: null,
-          metadata: { step: 'inject_generation' },
-        });
+
+        const { data: createdInject, error: createError } = await supabaseAdmin
+          .from('scenario_injects')
+          .insert({
+            scenario_id: session.scenario_id,
+            trigger_time_minutes: null,
+            trigger_condition: null,
+            type: toPublish.inject_payload.type,
+            title: toPublish.inject_payload.title,
+            content: toPublish.inject_payload.content,
+            severity: toPublish.inject_payload.severity,
+            affected_roles: toPublish.inject_payload.affected_roles ?? [],
+            inject_scope: toPublish.inject_payload.inject_scope ?? 'universal',
+            target_teams: toPublish.inject_payload.target_teams ?? null,
+            requires_response: false,
+            requires_coordination: false,
+            ai_generated: true,
+            triggered_by_user_id: null,
+          })
+          .select()
+          .single();
+
+        if (!createError && createdInject) {
+          await publishInjectToSession(createdInject.id, session.id, session.trainer_id, this.io!);
+          logger.info(
+            { sessionId: session.id, injectId: createdInject.id, robustnessBand, outcomeId: toPublish.outcome_id },
+            'Pathway outcome inject published',
+          );
+        } else {
+          logger.warn(
+            { error: createError, sessionId: session.id },
+            'Failed to create outcome inject, falling back to generate-from-decision',
+          );
+          await this.generateUniversalInject(session, baseContext, formattedDecisions);
+          for (const teamName of teamsWithMembers) {
+            const teamDecisions = formattedDecisions.filter((d) => d.team === teamName);
+            if (teamDecisions.length > 0) {
+              await this.generateTeamSpecificInject(session, baseContext, teamName, teamDecisions);
+            }
+          }
+        }
+      } else {
+        // No pathway outcomes yet (e.g. first cycle before any inject published): fallback to generate from decision
+        if (env.openAiApiKey) {
+          await supabaseAdmin.from('session_events').insert({
+            session_id: session.id,
+            event_type: 'ai_step_start',
+            description: 'AI: Generating injects from decisions…',
+            actor_id: null,
+            metadata: { step: 'inject_generation' },
+          });
+        }
+        await this.generateUniversalInject(session, baseContext, formattedDecisions);
+        for (const teamName of teamsWithMembers) {
+          const teamDecisions = formattedDecisions.filter((d) => d.team === teamName);
+          if (teamDecisions.length > 0) {
+            await this.generateTeamSpecificInject(session, baseContext, teamName, teamDecisions);
+          }
+        }
+        if (env.openAiApiKey) {
+          await supabaseAdmin.from('session_events').insert({
+            session_id: session.id,
+            event_type: 'ai_step_end',
+            description: 'AI: Injects generated',
+            actor_id: null,
+            metadata: { step: 'inject_generation' },
+          });
+        }
       }
     }
   }

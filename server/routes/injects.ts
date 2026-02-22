@@ -10,6 +10,7 @@ import {
   createNotificationsForUsers,
 } from '../services/notificationService.js';
 import { logAndBroadcastEvent } from '../services/eventService.js';
+import { runPathwayOutcomesOnInjectPublished } from '../services/pathwayOutcomesService.js';
 import type { Server as SocketServer } from 'socket.io';
 
 const router = Router();
@@ -115,6 +116,11 @@ export async function publishInjectToSession(
     inject_scope: ((inject as Record<string, unknown>).inject_scope as string) || 'universal',
     target_teams: ((inject as Record<string, unknown>).target_teams as string[] | null) || null,
   });
+
+  // Fire-and-forget: generate pathway outcomes (factors + outcome injects) for next 5-min cycle
+  void runPathwayOutcomesOnInjectPublished(sessionId, injectId).catch((err) =>
+    logger.error({ err, sessionId, injectId }, 'Pathway outcomes on inject publish failed'),
+  );
 
   // Broadcast generic event (the session_events insert was already done above)
   // We just need to broadcast it, not log it again

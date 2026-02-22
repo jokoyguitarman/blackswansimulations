@@ -922,6 +922,197 @@ Generate de-escalation pathways (trajectory + mitigating_behaviours + optional e
 };
 
 /**
+ * Inject payload for a pathway outcome: used to create a scenario_inject and publish at cycle time.
+ */
+export interface PathwayOutcomeInjectPayload {
+  type: string;
+  title: string;
+  content: string;
+  severity: string;
+  inject_scope: string;
+  target_teams?: string[] | null;
+  affected_roles?: string[];
+}
+
+/**
+ * Single pathway outcome: one possible next inject keyed by robustness band.
+ */
+export interface PathwayOutcome {
+  outcome_id: string;
+  pathway_id: string;
+  direction: 'escalation' | 'de_escalation';
+  robustness_band: 'low' | 'medium' | 'high';
+  inject_payload: PathwayOutcomeInjectPayload;
+}
+
+export interface GeneratePathwayOutcomeInjectsResult {
+  outcomes: PathwayOutcome[];
+}
+
+/**
+ * Generate possible outcome injects (worst to best) from the just-published inject and pathways.
+ * Used by pathwayOutcomesService after an inject is published; the 5-min cycle then matches
+ * player robustness to a band and publishes the corresponding outcome inject.
+ */
+export const generatePathwayOutcomeInjects = async (
+  scenarioDescription: string,
+  justPublishedInject: { type?: string; title?: string; content?: string },
+  escalationPathways: EscalationPathway[],
+  deEscalationPathways: DeEscalationPathway[],
+  pathwayUsageSummary: string | undefined,
+  openAiApiKey: string,
+): Promise<GeneratePathwayOutcomeInjectsResult> => {
+  const empty: GeneratePathwayOutcomeInjectsResult = { outcomes: [] };
+  try {
+    const systemPrompt = `You are an expert crisis management scenario writer. Given a scenario, a just-published inject, and escalation/de-escalation pathways, produce 3 to 8 possible "outcome" injects that could happen next depending on how well players respond. Each outcome is a full inject (type, title, content, severity, scope) keyed by robustness_band: "low" (things get worse; use escalation pathways), "medium" (mixed), "high" (things improve; use de-escalation pathways).
+
+Return ONLY valid JSON in this exact format:
+{
+  "outcomes": [
+    {
+      "outcome_id": "EP-1-low",
+      "pathway_id": "EP-1",
+      "direction": "escalation",
+      "robustness_band": "low",
+      "inject_payload": {
+        "type": "media_report",
+        "title": "Short headline",
+        "content": "Full inject body (2-4 sentences).",
+        "severity": "high",
+        "inject_scope": "universal",
+        "target_teams": null,
+        "affected_roles": []
+      }
+    }
+  ]
+}
+
+Rules:
+- outcome_id: short unique id (e.g. "EP-1-low", "DEP-2-high").
+- pathway_id: must match an existing pathway (EP-1, EP-2, ... or DEP-1, DEP-2, ...).
+- direction: "escalation" or "de_escalation".
+- robustness_band: "low", "medium", or "high".
+- Include at least one outcome per band (low, medium, high). Prefer 1-2 low, 1-2 medium, 1-2 high.
+- inject_payload: type (e.g. media_report, field_update, intel_brief), title, content, severity (low/medium/high/critical), inject_scope ("universal" or "team"), target_teams (null for universal, or array of team names), affected_roles (array of role strings or empty).
+- Each outcome must be a plausible next development from the just-published inject, aligned with the pathway.`;
+
+    const escalationText =
+      escalationPathways.length > 0
+        ? escalationPathways
+            .map(
+              (p) =>
+                `- ${p.pathway_id}: ${p.trajectory}; triggers: ${(p.trigger_behaviours ?? []).join(', ')}`,
+            )
+            .join('\n')
+        : 'None';
+    const deEscalationText =
+      deEscalationPathways.length > 0
+        ? deEscalationPathways
+            .map(
+              (p) =>
+                `- ${p.pathway_id}: ${p.trajectory}; mitigating: ${(p.mitigating_behaviours ?? []).join(', ')}`,
+            )
+            .join('\n')
+        : 'None';
+
+    const diversityLine = pathwayUsageSummary
+      ? `\n\nPathway themes already used this session: ${pathwayUsageSummary}. Prefer outcome injects that explore different trajectory angles (different escalation or de-escalation angles) when possible.`
+      : '';
+
+    const userPrompt = `Scenario description:
+${scenarioDescription.slice(0, 1200)}
+
+Just-published inject (current situation):
+Type: ${justPublishedInject.type ?? 'unknown'}
+Title: ${justPublishedInject.title ?? 'Untitled'}
+Content: ${(justPublishedInject.content ?? '').slice(0, 500)}
+
+Escalation pathways (how things get worse):
+${escalationText}
+
+De-escalation pathways (how things improve):
+${deEscalationText}
+${diversityLine}
+
+---
+Generate 3 to 8 outcome injects (low/medium/high robustness bands). Return JSON only.`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 2000,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      logger.warn(
+        { status: response.status },
+        'OpenAI API error in generatePathwayOutcomeInjects',
+      );
+      return empty;
+    }
+
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content;
+    if (!content) {
+      return empty;
+    }
+
+    const parsed = JSON.parse(content) as { outcomes?: PathwayOutcome[] };
+    const raw = Array.isArray(parsed.outcomes) ? parsed.outcomes : [];
+    const outcomes: PathwayOutcome[] = [];
+    for (let i = 0; i < raw.length; i++) {
+      const o = raw[i];
+      if (!o || typeof o.outcome_id !== 'string' || !o.inject_payload) continue;
+      const p = o.inject_payload as unknown as Record<string, unknown>;
+      outcomes.push({
+        outcome_id: String(o.outcome_id),
+        pathway_id: String(o.pathway_id ?? `outcome-${i + 1}`),
+        direction:
+          o.direction === 'escalation' || o.direction === 'de_escalation'
+            ? o.direction
+            : 'escalation',
+        robustness_band:
+          o.robustness_band === 'low' || o.robustness_band === 'medium' || o.robustness_band === 'high'
+            ? o.robustness_band
+            : 'medium',
+        inject_payload: {
+          type: String(p.type ?? 'field_update'),
+          title: String(p.title ?? 'Update'),
+          content: String(p.content ?? ''),
+          severity: ['low', 'medium', 'high', 'critical'].includes(String(p.severity))
+            ? (p.severity as string)
+            : 'medium',
+          inject_scope: String(p.inject_scope ?? 'universal'),
+          target_teams: Array.isArray(p.target_teams) ? (p.target_teams as string[]) : null,
+          affected_roles: Array.isArray(p.affected_roles) ? (p.affected_roles as string[]) : [],
+        },
+      });
+    }
+
+    logger.info({ outcomeCount: outcomes.length }, 'Pathway outcome injects generated');
+    return { outcomes };
+  } catch (err) {
+    logger.warn(
+      { error: err },
+      'Error in generatePathwayOutcomeInjects, returning empty',
+    );
+    return empty;
+  }
+};
+
+/**
  * Optional AI reasoning for the impact matrix (audit trail).
  */
 export interface ImpactMatrixAnalysis {
