@@ -505,7 +505,18 @@ export class AIInjectSchedulerService {
       .limit(1)
       .single();
 
-    const outcomes = (pathwayOutcomesRow?.outcomes as PathwayOutcome[] | null) ?? [];
+    const rawOutcomes = pathwayOutcomesRow?.outcomes;
+    let outcomes: PathwayOutcome[] = [];
+    if (Array.isArray(rawOutcomes)) {
+      outcomes = rawOutcomes;
+    } else if (typeof rawOutcomes === 'string') {
+      try {
+        const parsed = JSON.parse(rawOutcomes) as PathwayOutcome[] | PathwayOutcome;
+        outcomes = Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        outcomes = [];
+      }
+    }
     const hasPathwayOutcomes = outcomes.length > 0;
 
     if (formattedDecisions.length > 0) {
