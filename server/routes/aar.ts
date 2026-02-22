@@ -682,7 +682,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
                 analysis: m.analysis as
                   | { overall?: string; matrix_reasoning?: string; robustness_reasoning?: string }
                   | undefined,
-                response_taxonomy: m.response_taxonomy,
+                response_taxonomy: m.response_taxonomy as Record<string, string> | undefined,
               }),
             ),
             injectsPublished,
