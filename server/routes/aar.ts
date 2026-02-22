@@ -15,6 +15,12 @@ import {
 } from '../services/participantScoreService.js';
 import { calculateSessionScore } from '../services/objectiveTrackingService.js';
 import { generateAARSummary, generateAARInsights } from '../services/aarAiService.js';
+import {
+  buildSectionsData,
+  generateSectionAnalysis,
+  AAR_SECTION_KEYS,
+  type SectionsMap,
+} from '../services/aarSectionService.js';
 import * as aarExportService from '../services/aarExportService.js';
 import { env } from '../env.js';
 
@@ -206,6 +212,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
       },
       communication: {
         total_messages: communication.total_messages,
+        messages_per_participant: communication.messages_per_participant,
         avg_response_time_minutes: communication.avg_response_time_minutes,
         inter_agency_message_count: communication.inter_agency_message_count,
         communication_delays: communication.communication_delays,
@@ -345,6 +352,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
 
         // Fetch scenario, objectives, injects, and escalation data for AAR context
         const scenarioId = sessionDetails?.scenario_id ?? null;
+        const impactMatrixLimit = env.aarReportFormat === 'sections' ? 50 : 20;
         const [
           scenarioRes,
           objectivesRes,
@@ -389,7 +397,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
             )
             .eq('session_id', sessionId)
             .order('evaluated_at', { ascending: false })
-            .limit(20),
+            .limit(impactMatrixLimit),
         ]);
 
         const scenario = scenarioRes.data;
@@ -562,35 +570,223 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
           ),
         };
 
-        const aiSummary = await generateAARSummary(sessionDataForAI, env.openAiApiKey);
+        if (env.aarReportFormat === 'sections') {
+          // Option B: section-based AAR (data + per-section AI analysis)
+          const decisionIds = (decisions ?? []).map((d: { id: string }) => d.id);
+          const [decisionStepsRes, injectCancelledRes] = await Promise.all([
+            decisionIds.length > 0
+              ? supabaseAdmin
+                  .from('decision_steps')
+                  .select('decision_id, role, status, timestamp, created_at')
+                  .in('decision_id', decisionIds)
+                  .order('created_at', { ascending: true })
+              : { data: [] as Array<{ decision_id: string; role: string; status: string; timestamp?: string; created_at?: string }> },
+            supabaseAdmin
+              .from('session_events')
+              .select('created_at, metadata')
+              .eq('session_id', sessionId)
+              .eq('event_type', 'inject_cancelled')
+              .order('created_at', { ascending: true }),
+          ]);
+          const decisionStepsList = decisionStepsRes.data ?? [];
+          const injectCancelledEvents = injectCancelledRes.data ?? [];
 
-        // Update AAR with AI summary
-        await supabaseAdmin
-          .from('aar_reports')
-          .update({
-            summary: aiSummary,
-          })
-          .eq('id', aar.id);
+          const robustnessHistoryByDecisionId: Record<string, Array<{ evaluated_at: string; score: number }>> = {};
+          for (const m of impactMatricesList) {
+            const robustness = (m.robustness_by_decision ?? {}) as Record<string, number>;
+            const evaluatedAt = m.evaluated_at as string;
+            for (const [decId, score] of Object.entries(robustness)) {
+              if (!robustnessHistoryByDecisionId[decId]) robustnessHistoryByDecisionId[decId] = [];
+              robustnessHistoryByDecisionId[decId].push({ evaluated_at: evaluatedAt, score });
+            }
+          }
 
-        // Generate structured insights
-        try {
-          const aiInsights = await generateAARInsights(sessionDataForAI, env.openAiApiKey);
+          const injectsPublished = injectEvents.map(
+            (e: { created_at: string; metadata: Record<string, unknown> | null }) => {
+              const meta = e.metadata ?? {};
+              return {
+                at: e.created_at,
+                type: (meta.type as string) ?? undefined,
+                title: (meta.title as string) ?? undefined,
+                content: typeof meta.content === 'string' ? meta.content : undefined,
+                severity: (meta.severity as string) ?? undefined,
+                inject_scope: (meta.inject_scope as string) ?? undefined,
+              };
+            },
+          );
+          const injectsCancelled = injectCancelledEvents.map(
+            (e: { created_at: string; metadata: Record<string, unknown> | null }) => {
+              const meta = e.metadata ?? {};
+              return {
+                at: e.created_at,
+                inject_id: (meta.inject_id as string) ?? undefined,
+                reason: (meta.reason as string) ?? undefined,
+              };
+            },
+          );
 
-          // Update AAR with AI insights
+          const sectionsInput = {
+            scenarioTitle: scenario?.title ?? undefined,
+            scenarioDescription: scenario?.description ?? undefined,
+            objectives: objectivesList.map(
+              (o: { objective_name?: string; status?: string; progress_percentage?: number }) => ({
+                objective_name: o.objective_name,
+                status: o.status,
+                progress_percentage: o.progress_percentage,
+              }),
+            ),
+            durationMinutes,
+            participantCount: participants?.length || 0,
+            decisions: (decisions ?? []).map(
+              (d: {
+                id: string;
+                title: string;
+                type: string;
+                status: string;
+                created_at: string;
+                executed_at?: string;
+                proposed_by?: string;
+                description?: string;
+              }) => ({
+                id: d.id,
+                title: d.title,
+                type: d.type,
+                status: d.status,
+                created_at: d.created_at,
+                executed_at: d.executed_at,
+                proposed_by: d.proposed_by,
+                description: d.description,
+              }),
+            ),
+            decisionSteps: decisionStepsList.map(
+              (s: { decision_id: string; role: string; status: string; timestamp?: string; created_at?: string }) => ({
+                decision_id: s.decision_id,
+                role: s.role,
+                status: s.status,
+                timestamp: s.timestamp,
+                created_at: s.created_at,
+              }),
+            ),
+            robustnessHistoryByDecisionId,
+            impactMatrices: impactMatricesList.map(
+              (m: {
+                evaluated_at: string;
+                matrix: unknown;
+                robustness_by_decision?: unknown;
+                analysis?: unknown;
+                response_taxonomy?: unknown;
+              }) => ({
+                evaluated_at: m.evaluated_at,
+                matrix: (m.matrix ?? {}) as Record<string, Record<string, number>>,
+                robustness_by_decision: (m.robustness_by_decision ?? {}) as Record<string, number>,
+                analysis: m.analysis as
+                  | { overall?: string; matrix_reasoning?: string; robustness_reasoning?: string }
+                  | undefined,
+                response_taxonomy: m.response_taxonomy,
+              }),
+            ),
+            injectsPublished,
+            injectsCancelled,
+            communication: keyMetrics.communication as Record<string, unknown>,
+            participantSummary,
+            escalationFactors: escalationFactorsList.map(
+              (r: {
+                evaluated_at: string;
+                factors: unknown;
+                de_escalation_factors?: unknown;
+              }) => ({
+                evaluated_at: r.evaluated_at,
+                factors: (r.factors ?? []) as unknown[],
+                de_escalation_factors: (r.de_escalation_factors ?? []) as unknown[],
+              }),
+            ),
+            escalationPathways: escalationPathwaysList.map(
+              (r: {
+                evaluated_at: string;
+                pathways: unknown;
+                de_escalation_pathways?: unknown;
+              }) => ({
+                evaluated_at: r.evaluated_at,
+                pathways: (r.pathways ?? []) as unknown[],
+                de_escalation_pathways: (r.de_escalation_pathways ?? []) as unknown[],
+              }),
+            ),
+          };
+
+          let sections: SectionsMap = buildSectionsData(sectionsInput);
           await supabaseAdmin
             .from('aar_reports')
             .update({
-              ai_insights: aiInsights,
+              report_format: 'sections',
+              sections,
             })
             .eq('id', aar.id);
-        } catch (insightsError) {
-          logger.warn(
-            { error: insightsError, sessionId },
-            'Failed to generate AI insights, continuing with summary only',
-          );
-        }
 
-        logger.info({ sessionId }, 'AI summary and insights generated');
+          const sectionContext = { sessionId, scenarioTitle: scenario?.title ?? undefined };
+          for (const key of AAR_SECTION_KEYS) {
+            const entry = sections[key];
+            if (!entry?.data) continue;
+            try {
+              const analysis = await generateSectionAnalysis(
+                key,
+                entry.data,
+                sectionContext,
+                env.openAiApiKey,
+              );
+              sections = { ...sections, [key]: { ...entry, analysis } };
+              await supabaseAdmin
+                .from('aar_reports')
+                .update({ sections })
+                .eq('id', aar.id);
+            } catch (sectionErr) {
+              logger.warn(
+                { error: sectionErr, sessionId, sectionKey: key },
+                'Failed to generate section analysis, leaving null',
+              );
+            }
+          }
+
+          const executiveAnalysis = sections.executive?.analysis;
+          const summaryText =
+            executiveAnalysis && executiveAnalysis.trim()
+              ? executiveAnalysis
+              : 'Section-based AAR generated. See sections for full analysis.';
+          await supabaseAdmin
+            .from('aar_reports')
+            .update({ summary: summaryText })
+            .eq('id', aar.id);
+
+          logger.info({ sessionId }, 'AAR section-based report generated');
+        } else {
+          // Legacy: single summary + insights
+          const aiSummary = await generateAARSummary(sessionDataForAI, env.openAiApiKey);
+
+          await supabaseAdmin
+            .from('aar_reports')
+            .update({
+              summary: aiSummary,
+              report_format: 'legacy',
+              sections: null,
+            })
+            .eq('id', aar.id);
+
+          try {
+            const aiInsights = await generateAARInsights(sessionDataForAI, env.openAiApiKey);
+            await supabaseAdmin
+              .from('aar_reports')
+              .update({
+                ai_insights: aiInsights,
+              })
+              .eq('id', aar.id);
+          } catch (insightsError) {
+            logger.warn(
+              { error: insightsError, sessionId },
+              'Failed to generate AI insights, continuing with summary only',
+            );
+          }
+
+          logger.info({ sessionId }, 'AI summary and insights generated');
+        }
       } catch (aiError) {
         logger.warn(
           { error: aiError, sessionId },

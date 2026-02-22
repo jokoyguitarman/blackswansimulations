@@ -2,6 +2,28 @@ import { useState, useEffect } from 'react';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { api } from '../../lib/api';
 
+const AAR_SECTION_KEYS = [
+  'executive',
+  'decisions',
+  'matrices',
+  'injects_published',
+  'injects_cancelled',
+  'coordination',
+  'escalation',
+  'recommendations',
+] as const;
+
+const AAR_SECTION_LABELS: Record<(typeof AAR_SECTION_KEYS)[number], string> = {
+  executive: 'Executive overview',
+  decisions: 'Decisions and scoring history',
+  matrices: 'Impact matrices',
+  injects_published: 'Injects published',
+  injects_cancelled: 'Injects cancelled',
+  coordination: 'Coordination and communication',
+  escalation: 'Escalation factors and pathways',
+  recommendations: 'Key takeaways and recommendations',
+};
+
 interface AARData {
   aar: {
     id: string;
@@ -12,6 +34,8 @@ interface AARData {
     recommendations: string[];
     ai_insights?: Array<Record<string, unknown>>;
     generated_at: string;
+    report_format?: string;
+    sections?: Record<string, { data: unknown; analysis: string | null }>;
   } | null;
   scores: Array<{
     user_id: string;
@@ -43,6 +67,125 @@ interface AARData {
 
 interface AARDashboardProps {
   sessionId: string;
+}
+
+function AARSectionView({
+  aar,
+}: {
+  aar: {
+    summary: string;
+    generated_at: string;
+    sections?: Record<string, { data: unknown; analysis: string | null }>;
+  };
+}) {
+  const sections = aar.sections ?? {};
+  return (
+    <div className="military-border p-6 space-y-8">
+      <div className="text-xs terminal-text text-robotic-yellow/50 mb-4">
+        Generated: {new Date(aar.generated_at).toLocaleString()} (section-based report)
+      </div>
+      {AAR_SECTION_KEYS.map((key) => {
+        const entry = sections[key];
+        if (!entry) return null;
+        const data = entry.data;
+        const analysis = entry.analysis;
+        const label = AAR_SECTION_LABELS[key];
+        return (
+          <div key={key} className="space-y-2">
+            <h4 className="text-sm terminal-text text-robotic-yellow/70 uppercase border-b border-robotic-yellow/30 pb-1">
+              {label}
+            </h4>
+            {data != null && (
+              <div className="military-border p-4 bg-black/20">
+                <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-2">
+                  Data
+                </div>
+                <SectionDataDisplay keyName={key} data={data} />
+              </div>
+            )}
+            <div className="military-border p-4">
+              <div className="text-xs terminal-text text-robotic-green/70 uppercase mb-2">
+                Analysis
+              </div>
+              {analysis ? (
+                <p className="text-sm terminal-text whitespace-pre-wrap">{analysis}</p>
+              ) : (
+                <p className="text-xs terminal-text text-robotic-yellow/50">
+                  Analysis not available.
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown }) {
+  if (data == null) return null;
+  if (Array.isArray(data)) {
+    if (data.length === 0) return <p className="text-xs terminal-text text-robotic-yellow/50">No entries.</p>;
+    const first = data[0];
+    if (typeof first === 'object' && first !== null && !Array.isArray(first)) {
+      const keys = Object.keys(first as Record<string, unknown>);
+      return (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs terminal-text">
+            <thead>
+              <tr className="text-robotic-yellow/70 border-b border-robotic-yellow/30">
+                {keys.map((k) => (
+                  <th key={k} className="text-left py-1 pr-2">{k}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.slice(0, 30).map((row, i) => (
+                <tr key={i} className="border-b border-robotic-yellow/10">
+                  {keys.map((k) => (
+                    <td key={k} className="py-1 pr-2 max-w-[200px] truncate">
+                      {typeof (row as Record<string, unknown>)[k] === 'object'
+                        ? JSON.stringify((row as Record<string, unknown>)[k])
+                        : String((row as Record<string, unknown>)[k] ?? '')}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {data.length > 30 && (
+            <p className="text-xs terminal-text text-robotic-yellow/50 mt-1">
+              … and {data.length - 30} more
+            </p>
+          )}
+        </div>
+      );
+    }
+  }
+  if (typeof data === 'object') {
+    const obj = data as Record<string, unknown>;
+    if (keyName === 'decisions' && obj.decisions && Array.isArray(obj.decisions)) {
+      return <SectionDataDisplay keyName="decisions_list" data={obj.decisions} />;
+    }
+    if (keyName === 'coordination' && obj.participantSummary && Array.isArray(obj.participantSummary)) {
+      return (
+        <div className="space-y-2">
+          {obj.communication && (
+            <pre className="text-xs terminal-text whitespace-pre-wrap overflow-x-auto">
+              {JSON.stringify(obj.communication, null, 2).slice(0, 1500)}
+            </pre>
+          )}
+          <SectionDataDisplay keyName="participants" data={obj.participantSummary} />
+        </div>
+      );
+    }
+    return (
+      <pre className="text-xs terminal-text whitespace-pre-wrap overflow-x-auto max-h-[400px]">
+        {JSON.stringify(data, null, 2).slice(0, 8000)}
+      </pre>
+    );
+  }
+  return <span className="text-xs terminal-text">{String(data)}</span>;
 }
 
 export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
@@ -160,6 +303,9 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
 
       {/* AAR Report */}
       {aarData.aar ? (
+        (aarData.aar.sections != null && aarData.aar.report_format === 'sections' ? (
+          <AARSectionView aar={aarData.aar} />
+        ) : (
         <div className="military-border p-6 space-y-6">
           <div>
             <h4 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
@@ -286,6 +432,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
             Generated: {new Date(aarData.aar.generated_at).toLocaleString()}
           </div>
         </div>
+        ))
       ) : (
         <div className="military-border p-8 text-center">
           <p className="text-sm terminal-text text-robotic-yellow/50 mb-4">
