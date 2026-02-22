@@ -2,7 +2,12 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import type { Server as SocketServer } from 'socket.io';
-import { generateInjectFromDecision, type DecisionClassification } from './aiService.js';
+import {
+  generateInjectFromDecision,
+  type DecisionClassification,
+  aggregateThemeUsage,
+  computeDecisionsSummaryLine,
+} from './aiService.js';
 import { env } from '../env.js';
 
 /**
@@ -429,6 +434,7 @@ export async function generateAndPublishInjectFromDecision(
       upcomingInjectsResult,
       objectivesResult,
       recentInjectsResult,
+      allSessionInjectsResult,
       participantsResult,
     ] = await Promise.all([
       // Get scenario description
@@ -469,6 +475,14 @@ export async function generateAndPublishInjectFromDecision(
         .order('created_at', { ascending: false })
         .limit(10),
 
+      // Get ALL session injects for theme usage (session-wide diversity)
+      supabaseAdmin
+        .from('session_events')
+        .select('metadata')
+        .eq('session_id', sessionId)
+        .eq('event_type', 'inject')
+        .order('created_at', { ascending: true }),
+
       // Get participants
       supabaseAdmin
         .from('session_participants')
@@ -501,6 +515,33 @@ export async function generateAndPublishInjectFromDecision(
         };
       }) || [];
 
+    // Session-wide theme usage and decision summary for inject diversity
+    let themeUsageThisSession: Record<string, { count: number; keywords: string[] }> = {};
+    let themeUsageByScope: Record<string, Record<string, { count: number; keywords: string[] }>> = {};
+    let decisionsSummaryLine = '';
+    try {
+      if (allSessionInjectsResult.data && allSessionInjectsResult.data.length > 0) {
+        const injectsForAggregation = allSessionInjectsResult.data.map((e: Record<string, unknown>) => {
+          const metadata = (e.metadata as Record<string, unknown>) || {};
+          return {
+            title: (metadata.title as string) || '',
+            content: (metadata.content as string) || '',
+            inject_scope: (metadata.inject_scope as string) || 'universal',
+            target_teams: (metadata.target_teams as string[] | null) || null,
+          };
+        });
+        const aggregated = aggregateThemeUsage(injectsForAggregation);
+        themeUsageThisSession = aggregated.themeUsageThisSession;
+        themeUsageByScope = aggregated.themeUsageByScope;
+      }
+      decisionsSummaryLine = computeDecisionsSummaryLine(allDecisions);
+    } catch (themeErr) {
+      logger.warn(
+        { error: themeErr, sessionId },
+        'Theme usage aggregation failed for decision-triggered inject, continuing',
+      );
+    }
+
     // Enhanced context object
     const enhancedContext = {
       scenarioDescription: scenarioResult.data?.description,
@@ -511,6 +552,9 @@ export async function generateAndPublishInjectFromDecision(
       objectives: objectivesResult.data || [],
       recentInjects,
       participants: participantsResult.data || [],
+      themeUsageThisSession: Object.keys(themeUsageThisSession).length > 0 ? themeUsageThisSession : undefined,
+      themeUsageByScope: Object.keys(themeUsageByScope).length > 0 ? themeUsageByScope : undefined,
+      decisionsSummaryLine: decisionsSummaryLine || undefined,
     };
 
     // Generate inject using AI

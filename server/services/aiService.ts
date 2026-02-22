@@ -1248,6 +1248,205 @@ Based on the decisions made, determine:
   }
 };
 
+/** Fixed theme list for session-wide inject diversity (no raw samples passed to generator) */
+export const INJECT_THEMES = [
+  'resource_strain',
+  'misinformation_media',
+  'evacuation_security',
+  'coordination_friction',
+  'political_pressure',
+  'intel_threat',
+  'de_escalation',
+] as const;
+
+export type InjectThemeId = (typeof INJECT_THEMES)[number];
+
+export interface ThemeUsageEntry {
+  count: number;
+  keywords: string[];
+}
+
+/** Per-scope: universal, or team name (e.g. triage, evacuation, media) */
+export interface ThemeUsageByScope {
+  universal?: Record<string, ThemeUsageEntry>;
+  [teamName: string]: Record<string, ThemeUsageEntry> | undefined;
+}
+
+/**
+ * Extract one theme and 2-5 keywords from an inject title (and optional content snippet).
+ * Used to build session-wide theme usage without passing raw inject text to the generator.
+ */
+export function extractThemeAndKeywords(
+  title: string,
+  contentSnippet?: string,
+): { theme: string; keywords: string[] } {
+  const text = `${title} ${contentSnippet ?? ''}`.toLowerCase();
+  const keywords: string[] = [];
+
+  // Phrase → theme and keyword hints (order matters: first match wins for theme)
+  const rules: Array<{ theme: InjectThemeId; phrases: string[] }> = [
+    {
+      theme: 'resource_strain',
+      phrases: [
+        'resource strain',
+        'resource allocation',
+        'triage',
+        'overwhelmed',
+        'supplies',
+        'shortage',
+        'medical',
+        'casualties',
+        'capacity',
+        'under strain',
+      ],
+    },
+    {
+      theme: 'misinformation_media',
+      phrases: [
+        'misinformation',
+        'viral',
+        'media',
+        'clarification',
+        'transparency',
+        'speculation',
+        'narrative',
+        'online',
+        'statement',
+        'press',
+        'confusion',
+      ],
+    },
+    {
+      theme: 'evacuation_security',
+      phrases: [
+        'evacuation',
+        'exit',
+        'crowd',
+        'security',
+        'suspicious',
+        'perimeter',
+        'flow',
+        'evacuate',
+      ],
+    },
+    {
+      theme: 'coordination_friction',
+      phrases: ['coordination', 'friction', 'inter-team', 'conflict', 'communication'],
+    },
+    {
+      theme: 'political_pressure',
+      phrases: ['political', 'pressure', 'leaders', 'demand', 'policy', 'unity'],
+    },
+    {
+      theme: 'intel_threat',
+      phrases: ['intel', 'threat', 'device', 'bomb', 'attacker', 'suspected'],
+    },
+    {
+      theme: 'de_escalation',
+      phrases: ['improvement', 'calm', 'controlled', 'progress', 'stabilis', 'stabiliz', 'completed'],
+    },
+  ];
+
+  let chosenTheme: string = INJECT_THEMES[0];
+  for (const { theme, phrases } of rules) {
+    for (const p of phrases) {
+      if (text.includes(p)) {
+        chosenTheme = theme;
+        if (!keywords.includes(p)) keywords.push(p);
+      }
+    }
+    if (keywords.length > 0) break;
+  }
+
+  const unique = [...new Set(keywords)].slice(0, 5);
+  return { theme: chosenTheme, keywords: unique.length > 0 ? unique : [chosenTheme] };
+}
+
+/**
+ * Aggregate theme usage from all session injects (global and per-scope).
+ */
+export function aggregateThemeUsage(injects: Array<{
+  title: string;
+  content?: string;
+  inject_scope?: string;
+  target_teams?: string[] | null;
+}>): {
+  themeUsageThisSession: Record<string, ThemeUsageEntry>;
+  themeUsageByScope: ThemeUsageByScope;
+} {
+  const global: Record<string, { count: number; keywords: Set<string> }> = {};
+  const byScopeRaw: Record<string, Record<string, { count: number; keywords: Set<string> }>> = {};
+
+  const add = (scopeKey: string, theme: string, keywords: string[]) => {
+    if (!global[theme]) global[theme] = { count: 0, keywords: new Set() };
+    global[theme].count += 1;
+    keywords.forEach((k) => global[theme].keywords.add(k));
+
+    if (!byScopeRaw[scopeKey]) byScopeRaw[scopeKey] = {};
+    if (!byScopeRaw[scopeKey][theme]) byScopeRaw[scopeKey][theme] = { count: 0, keywords: new Set() };
+    byScopeRaw[scopeKey][theme].count += 1;
+    keywords.forEach((k) => byScopeRaw[scopeKey][theme].keywords.add(k));
+  };
+
+  for (const inj of injects) {
+    const { theme, keywords } = extractThemeAndKeywords(
+      inj.title,
+      (inj.content ?? '').slice(0, 200),
+    );
+    const scope = (inj.inject_scope ?? 'universal').toLowerCase();
+    const teams = Array.isArray(inj.target_teams) ? inj.target_teams : [];
+
+    if (scope === 'universal' || teams.length === 0) {
+      add('universal', theme, keywords);
+    } else {
+      for (const t of teams) {
+        add(t, theme, keywords);
+      }
+    }
+  }
+
+  const toEntry = (acc: Record<string, { count: number; keywords: Set<string> }>): Record<string, ThemeUsageEntry> => {
+    const out: Record<string, ThemeUsageEntry> = {};
+    for (const [theme, v] of Object.entries(acc)) {
+      out[theme] = { count: v.count, keywords: [...v.keywords].slice(0, 10) };
+    }
+    return out;
+  };
+
+  const themeUsageThisSession = toEntry(global);
+  const themeUsageByScopeOut: ThemeUsageByScope = {};
+  for (const [scopeKey, scopeAcc] of Object.entries(byScopeRaw)) {
+    themeUsageByScopeOut[scopeKey] = toEntry(scopeAcc);
+  }
+
+  return { themeUsageThisSession, themeUsageByScope: themeUsageByScopeOut };
+}
+
+/**
+ * One-line summary of what teams have repeatedly addressed (for "read the room" in inject generation).
+ */
+export function computeDecisionsSummaryLine(decisions: Array<{ type?: string; title?: string; description?: string }>): string {
+  if (!decisions.length) return '';
+  const counts: Record<string, number> = {};
+  const typeLabels: Record<string, string> = {
+    public_statement: 'public statements and clarification',
+    resource_allocation: 'resource allocation',
+    policy_change: 'policy and protocols',
+    emergency_declaration: 'evacuation and security',
+    coordination_order: 'coordination',
+  };
+  for (const d of decisions) {
+    const type = (d.type || 'other').toLowerCase();
+    const label = typeLabels[type] ?? type.replace(/_/g, ' ');
+    counts[label] = (counts[label] ?? 0) + 1;
+  }
+  const parts = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([label, n]) => `${label} (${n})`);
+  return `Teams have repeatedly addressed: ${parts.join(', ')}.`;
+}
+
 /**
  * Generated Inject from AI
  */
@@ -1338,6 +1537,12 @@ export const generateInjectFromDecision = async (
       emerging_challenges?: string[];
     }>;
     responseTaxonomy?: Record<string, string>;
+    /** Session-wide theme usage (all injects this session); no raw inject text passed */
+    themeUsageThisSession?: Record<string, ThemeUsageEntry>;
+    /** Per-scope theme usage (universal vs per-team) for diversity */
+    themeUsageByScope?: ThemeUsageByScope;
+    /** One-line summary of what teams have repeatedly addressed */
+    decisionsSummaryLine?: string;
   },
   openAiApiKey: string,
 ): Promise<GeneratedInject | null> => {
@@ -1498,6 +1703,38 @@ Important:
           ? `\n\nUNIVERSAL CONTEXT:\nThis inject should provide a general overview visible to all players, reflecting the overall state of play and all decisions made in the last 5 minutes.`
           : '';
 
+    // Session-wide theme usage (avoid repeating themes; no raw inject samples)
+    const themeUsageGlobal =
+      sessionContext.themeUsageThisSession && Object.keys(sessionContext.themeUsageThisSession).length > 0
+        ? `\n\nTHEME USAGE THIS SESSION (avoid repeating):\n${Object.entries(sessionContext.themeUsageThisSession)
+            .map(([theme, e]) => `${theme}: ${e.count} uses — angles seen: ${e.keywords.slice(0, 8).join(', ')}`)
+            .join('\n')}`
+        : '';
+    const injectTypeForScope = (sessionContext as { injectType?: string; teamName?: string }).injectType;
+    const teamNameForScope = (sessionContext as { teamName?: string }).teamName;
+    const scopeUsage =
+      injectTypeForScope === 'universal' && sessionContext.themeUsageByScope?.universal && Object.keys(sessionContext.themeUsageByScope.universal).length > 0
+        ? `\nFor universal injects, theme usage so far:\n${Object.entries(sessionContext.themeUsageByScope.universal)
+            .map(([theme, e]) => `${theme}: ${e.count} — ${e.keywords.slice(0, 5).join(', ')}`)
+            .join('\n')}`
+        : injectTypeForScope === 'team_specific' &&
+            teamNameForScope &&
+            sessionContext.themeUsageByScope?.[teamNameForScope] &&
+            Object.keys(sessionContext.themeUsageByScope[teamNameForScope]!).length > 0
+          ? `\nFor this team's injects, theme usage so far:\n${Object.entries(sessionContext.themeUsageByScope[teamNameForScope]!)
+              .map(([theme, e]) => `${theme}: ${e.count} — ${e.keywords.slice(0, 5).join(', ')}`)
+              .join('\n')}`
+          : '';
+    const themeUsageContext =
+      themeUsageGlobal || scopeUsage
+        ? `${themeUsageGlobal}${scopeUsage}\n\nThemes with high counts are overused. Prefer themes with low or zero usage for any new or remaining challenge. When robustness is high, prefer de-escalation and underused themes. For overused themes, avoid repeating the same angles—choose a different angle or a different theme. You may use an overused theme only if it is the only logical consequence of recent decisions.`
+        : '';
+
+    const decisionsSummaryContext =
+      sessionContext.decisionsSummaryLine
+        ? `\n\nDECISIONS SUMMARY: ${sessionContext.decisionsSummaryLine} When robustness is high, prefer injects that reflect improvement or new challenge types rather than repeating these same areas unless it is the direct consequence of the last decisions.`
+        : '';
+
     // Checkpoint 8: Inter-team impact matrix and escalation context (influence inject content)
     const hasMatrix =
       sessionContext.latestImpactMatrix &&
@@ -1544,7 +1781,7 @@ ${hasDeEscalationPathways ? `\nDe-escalation pathways (how situation improves wh
 CURRENT DECISION:
 Title: ${decision.title}
 Description: ${decision.description}
-Type: ${decision.type}${scenarioContext}${allDecisionsContext}${upcomingInjectsContext}${currentStateContext}${objectivesContext}${recentInjectsContext}${participantsContext}${injectTypeContext}${escalationContext}
+Type: ${decision.type}${scenarioContext}${allDecisionsContext}${upcomingInjectsContext}${currentStateContext}${objectivesContext}${recentInjectsContext}${participantsContext}${injectTypeContext}${themeUsageContext}${decisionsSummaryContext}${escalationContext}
 
 ${instructions}
 

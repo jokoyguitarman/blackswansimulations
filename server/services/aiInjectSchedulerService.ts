@@ -7,6 +7,8 @@ import {
   identifyDeEscalationFactors,
   generateEscalationPathways,
   generateDeEscalationPathways,
+  aggregateThemeUsage,
+  computeDecisionsSummaryLine,
 } from './aiService.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { env } from '../env.js';
@@ -251,7 +253,7 @@ export class AIInjectSchedulerService {
       };
     });
 
-    // Format recent injects
+    // Format recent injects (last 5 min - for immediate context)
     const formattedInjects = (recentInjects || []).map((e: Record<string, unknown>) => {
       const metadata = e.metadata as Record<string, unknown> | null;
       return {
@@ -261,6 +263,40 @@ export class AIInjectSchedulerService {
         published_at: e.created_at as string,
       };
     });
+
+    // Session-wide theme usage: all injects this session (no 5-min filter) for diversity guidance
+    let themeUsageThisSession: Record<string, { count: number; keywords: string[] }> = {};
+    let themeUsageByScope: Record<string, Record<string, { count: number; keywords: string[] }>> = {};
+    let decisionsSummaryLine = '';
+    try {
+      const { data: allSessionInjects } = await supabaseAdmin
+        .from('session_events')
+        .select('metadata')
+        .eq('session_id', session.id)
+        .eq('event_type', 'inject')
+        .order('created_at', { ascending: true });
+
+      if (allSessionInjects && allSessionInjects.length > 0) {
+        const injectsForAggregation = allSessionInjects.map((e: Record<string, unknown>) => {
+          const metadata = (e.metadata as Record<string, unknown>) || {};
+          return {
+            title: (metadata.title as string) || '',
+            content: (metadata.content as string) || '',
+            inject_scope: (metadata.inject_scope as string) || 'universal',
+            target_teams: (metadata.target_teams as string[] | null) || null,
+          };
+        });
+        const aggregated = aggregateThemeUsage(injectsForAggregation);
+        themeUsageThisSession = aggregated.themeUsageThisSession;
+        themeUsageByScope = aggregated.themeUsageByScope;
+      }
+      decisionsSummaryLine = computeDecisionsSummaryLine(formattedDecisions);
+    } catch (themeErr) {
+      logger.warn(
+        { error: themeErr, sessionId: session.id },
+        'Theme usage aggregation failed, continuing without session theme context',
+      );
+    }
 
     // Get unique teams that have members (all teams in session for taxonomy)
     const teamsWithMembers = new Set(
@@ -288,6 +324,9 @@ export class AIInjectSchedulerService {
       objectives: objectives || [],
       participants: participants || [],
       teams: Array.from(teamsWithMembers),
+      themeUsageThisSession: Object.keys(themeUsageThisSession).length > 0 ? themeUsageThisSession : undefined,
+      themeUsageByScope: Object.keys(themeUsageByScope).length > 0 ? themeUsageByScope : undefined,
+      decisionsSummaryLine: decisionsSummaryLine || undefined,
     };
 
     // Stage 2/3: Recompute escalation factors and pathways every 5-min cycle from current state and injects in last 5 minutes (Checkpoint 6)
