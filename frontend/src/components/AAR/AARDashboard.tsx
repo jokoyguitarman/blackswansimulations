@@ -170,11 +170,11 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
     if (keyName === 'coordination' && obj.participantSummary && Array.isArray(obj.participantSummary)) {
       return (
         <div className="space-y-2">
-          {obj.communication && (
+          {obj.communication != null ? (
             <pre className="text-xs terminal-text whitespace-pre-wrap overflow-x-auto">
               {JSON.stringify(obj.communication, null, 2).slice(0, 1500)}
             </pre>
-          )}
+          ) : null}
           <SectionDataDisplay keyName="participants" data={obj.participantSummary} />
         </div>
       );
