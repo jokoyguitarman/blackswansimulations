@@ -4,7 +4,6 @@ import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRealtime } from '../../hooks/useRealtime';
 import { supabase } from '../../lib/supabase';
 import { IncidentCard } from './IncidentCard';
-import { AssignIncidentModal } from './AssignIncidentModal';
 
 /**
  * Incidents Panel Component - Client-side only
@@ -60,8 +59,6 @@ export const IncidentsPanel = ({
   // const { user } = useAuth(); // Unused - keeping for potential future use
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
-  const [showAssignModal, setShowAssignModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterSeverity, setFilterSeverity] = useState<string>('all');
 
@@ -391,17 +388,6 @@ export const IncidentsPanel = ({
     }
   };
 
-  const handleAssign = (incident: Incident) => {
-    setSelectedIncident(incident);
-    setShowAssignModal(true);
-  };
-
-  const handleAssignSuccess = () => {
-    setShowAssignModal(false);
-    setSelectedIncident(null);
-    loadIncidents();
-  };
-
   // Filter incidents
   const filteredIncidents = incidents.filter((incident) => {
     if (filterStatus !== 'all' && incident.status !== filterStatus) return false;
@@ -468,7 +454,6 @@ export const IncidentsPanel = ({
           <IncidentCard
             key={incident.id}
             incident={incident}
-            onAssign={() => handleAssign(incident)}
             onUpdate={loadIncidents}
             isSelected={selectedIncidentId === incident.id}
             onSelect={() => onIncidentSelect?.(incident.id)}
@@ -484,19 +469,6 @@ export const IncidentsPanel = ({
           </div>
         )}
       </div>
-
-      {/* Assign Incident Modal */}
-      {showAssignModal && selectedIncident && (
-        <AssignIncidentModal
-          incident={selectedIncident}
-          sessionId={sessionId}
-          onClose={() => {
-            setShowAssignModal(false);
-            setSelectedIncident(null);
-          }}
-          onSuccess={handleAssignSuccess}
-        />
-      )}
     </div>
   );
 };

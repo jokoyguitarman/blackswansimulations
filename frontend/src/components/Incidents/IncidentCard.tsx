@@ -43,19 +43,12 @@ interface Incident {
 
 interface IncidentCardProps {
   incident: Incident;
-  onAssign: () => void;
   onUpdate: () => void;
   isSelected?: boolean;
   onSelect?: () => void;
 }
 
-export const IncidentCard = ({
-  incident,
-  onAssign,
-  onUpdate,
-  isSelected,
-  onSelect,
-}: IncidentCardProps) => {
+export const IncidentCard = ({ incident, onUpdate, isSelected, onSelect }: IncidentCardProps) => {
   // const { user } = useAuth(); // Unused - keeping for potential future use
   const [updating, setUpdating] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -188,17 +181,8 @@ export const IncidentCard = ({
       </div>
 
       {/* Actions */}
-      <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-robotic-yellow/30">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onAssign();
-          }}
-          className="px-3 py-1 text-xs terminal-text border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 whitespace-nowrap"
-        >
-          [ASSIGN]
-        </button>
-        {incident.status === 'under_control' && (
+      {incident.status === 'under_control' && (
+        <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-robotic-yellow/30">
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -209,8 +193,8 @@ export const IncidentCard = ({
           >
             [RESOLVE]
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
