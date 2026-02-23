@@ -17,6 +17,7 @@ import { calculateSessionScore } from '../services/objectiveTrackingService.js';
 import { generateAARSummary, generateAARInsights } from '../services/aarAiService.js';
 import {
   buildSectionsData,
+  buildRecommendationsContext,
   generateSectionAnalysis,
   AAR_SECTION_KEYS,
   type SectionsMap,
@@ -306,7 +307,11 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
     }
 
     // Fetch stored AAR metrics for AI prompt (same numbers as in exports)
-    let storedAarMetrics: Array<{ metric_type: string; metric_name: string; metric_value: unknown }> = [];
+    let storedAarMetrics: Array<{
+      metric_type: string;
+      metric_name: string;
+      metric_value: unknown;
+    }> = [];
     try {
       const { data: aarMetricsRows } = await supabaseAdmin
         .from('aar_metrics')
@@ -422,46 +427,46 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
         // Build chronological event timeline for AI (cap at 200 events to avoid token explosion)
         const MAX_TIMELINE_EVENTS = 200;
         const rawEvents = events ?? [];
-        const eventTimeline = rawEvents.slice(0, MAX_TIMELINE_EVENTS).map(
-          (e: {
-            created_at: string;
-            event_type: string;
-            description?: string | null;
-            actor_role?: string | null;
-            metadata?: Record<string, unknown> | null;
-          }) => {
-            const meta = e.metadata ?? {};
-            let payload: string | undefined;
-            if (e.event_type === 'inject') {
-              const title = (meta.title as string) ?? '';
-              const content = typeof meta.content === 'string' ? meta.content.slice(0, 150) : '';
-              payload = title ? (content ? `${title}: ${content}` : title) : content || undefined;
-            } else if (e.event_type === 'decision') {
-              payload = (meta.title as string) ?? (meta.decision_id as string) ?? undefined;
-            } else if (e.event_type === 'communication') {
-              payload = typeof meta.content === 'string' ? meta.content.slice(0, 100) : undefined;
-            } else {
-              payload = Object.keys(meta).length > 0 ? JSON.stringify(meta).slice(0, 120) : undefined;
-            }
-            return {
-              at: e.created_at,
-              type: e.event_type,
-              description: typeof e.description === 'string' ? e.description.slice(0, 200) : undefined,
-              actor_role: e.actor_role ?? undefined,
-              payload,
-            };
-          },
-        );
+        const eventTimeline = rawEvents
+          .slice(0, MAX_TIMELINE_EVENTS)
+          .map(
+            (e: {
+              created_at: string;
+              event_type: string;
+              description?: string | null;
+              actor_role?: string | null;
+              metadata?: Record<string, unknown> | null;
+            }) => {
+              const meta = e.metadata ?? {};
+              let payload: string | undefined;
+              if (e.event_type === 'inject') {
+                const title = (meta.title as string) ?? '';
+                const content = typeof meta.content === 'string' ? meta.content.slice(0, 150) : '';
+                payload = title ? (content ? `${title}: ${content}` : title) : content || undefined;
+              } else if (e.event_type === 'decision') {
+                payload = (meta.title as string) ?? (meta.decision_id as string) ?? undefined;
+              } else if (e.event_type === 'communication') {
+                payload = typeof meta.content === 'string' ? meta.content.slice(0, 100) : undefined;
+              } else {
+                payload =
+                  Object.keys(meta).length > 0 ? JSON.stringify(meta).slice(0, 120) : undefined;
+              }
+              return {
+                at: e.created_at,
+                type: e.event_type,
+                description:
+                  typeof e.description === 'string' ? e.description.slice(0, 200) : undefined,
+                actor_role: e.actor_role ?? undefined,
+                payload,
+              };
+            },
+          );
 
         const messagesPerParticipant =
           (keyMetrics.communication as { messages_per_participant?: Record<string, number> })
             ?.messages_per_participant ?? {};
         const participantSummary = (participants ?? []).map(
-          (p: {
-            user_id: string;
-            role: string;
-            user?: { full_name?: string } | null;
-          }) => ({
+          (p: { user_id: string; role: string; user?: { full_name?: string } | null }) => ({
             participantId: p.user_id,
             displayName: (p.user?.full_name ?? 'Unknown').trim() || 'Unknown',
             role: p.role,
@@ -510,11 +515,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
           ),
           injectsOccurred,
           escalationFactors: escalationFactorsList.map(
-            (r: {
-              evaluated_at: string;
-              factors: unknown;
-              de_escalation_factors?: unknown;
-            }) => ({
+            (r: { evaluated_at: string; factors: unknown; de_escalation_factors?: unknown }) => ({
               evaluated_at: r.evaluated_at,
               factors: (r.factors ?? []) as Array<{
                 id: string;
@@ -530,11 +531,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
             }),
           ),
           escalationPathways: escalationPathwaysList.map(
-            (r: {
-              evaluated_at: string;
-              pathways: unknown;
-              de_escalation_pathways?: unknown;
-            }) => ({
+            (r: { evaluated_at: string; pathways: unknown; de_escalation_pathways?: unknown }) => ({
               evaluated_at: r.evaluated_at,
               pathways: (r.pathways ?? []) as Array<{
                 pathway_id: string;
@@ -580,7 +577,15 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
                   .select('decision_id, role, status, timestamp, created_at')
                   .in('decision_id', decisionIds)
                   .order('created_at', { ascending: true })
-              : { data: [] as Array<{ decision_id: string; role: string; status: string; timestamp?: string; created_at?: string }> },
+              : {
+                  data: [] as Array<{
+                    decision_id: string;
+                    role: string;
+                    status: string;
+                    timestamp?: string;
+                    created_at?: string;
+                  }>,
+                },
             supabaseAdmin
               .from('session_events')
               .select('created_at, metadata')
@@ -591,7 +596,10 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
           const decisionStepsList = decisionStepsRes.data ?? [];
           const injectCancelledEvents = injectCancelledRes.data ?? [];
 
-          const robustnessHistoryByDecisionId: Record<string, Array<{ evaluated_at: string; score: number }>> = {};
+          const robustnessHistoryByDecisionId: Record<
+            string,
+            Array<{ evaluated_at: string; score: number }>
+          > = {};
           for (const m of impactMatricesList) {
             const robustness = (m.robustness_by_decision ?? {}) as Record<string, number>;
             const evaluatedAt = m.evaluated_at as string;
@@ -659,7 +667,13 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
               }),
             ),
             decisionSteps: decisionStepsList.map(
-              (s: { decision_id: string; role: string; status: string; timestamp?: string; created_at?: string }) => ({
+              (s: {
+                decision_id: string;
+                role: string;
+                status: string;
+                timestamp?: string;
+                created_at?: string;
+              }) => ({
                 decision_id: s.decision_id,
                 role: s.role,
                 status: s.status,
@@ -690,11 +704,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
             communication: keyMetrics.communication as Record<string, unknown>,
             participantSummary,
             escalationFactors: escalationFactorsList.map(
-              (r: {
-                evaluated_at: string;
-                factors: unknown;
-                de_escalation_factors?: unknown;
-              }) => ({
+              (r: { evaluated_at: string; factors: unknown; de_escalation_factors?: unknown }) => ({
                 evaluated_at: r.evaluated_at,
                 factors: (r.factors ?? []) as unknown[],
                 de_escalation_factors: (r.de_escalation_factors ?? []) as unknown[],
@@ -726,18 +736,17 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
           for (const key of AAR_SECTION_KEYS) {
             const entry = sections[key];
             if (!entry?.data) continue;
+            const sectionData =
+              key === 'recommendations' ? buildRecommendationsContext(sections) : entry.data;
             try {
               const analysis = await generateSectionAnalysis(
                 key,
-                entry.data,
+                sectionData,
                 sectionContext,
                 env.openAiApiKey,
               );
               sections = { ...sections, [key]: { ...entry, analysis } };
-              await supabaseAdmin
-                .from('aar_reports')
-                .update({ sections })
-                .eq('id', aar.id);
+              await supabaseAdmin.from('aar_reports').update({ sections }).eq('id', aar.id);
             } catch (sectionErr) {
               logger.warn(
                 { error: sectionErr, sessionId, sectionKey: key },
@@ -751,10 +760,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
             executiveAnalysis && executiveAnalysis.trim()
               ? executiveAnalysis
               : 'Section-based AAR generated. See sections for full analysis.';
-          await supabaseAdmin
-            .from('aar_reports')
-            .update({ summary: summaryText })
-            .eq('id', aar.id);
+          await supabaseAdmin.from('aar_reports').update({ summary: summaryText }).eq('id', aar.id);
 
           logger.info({ sessionId }, 'AAR section-based report generated');
         } else {

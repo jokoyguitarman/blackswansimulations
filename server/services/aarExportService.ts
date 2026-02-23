@@ -26,11 +26,38 @@ interface AARData {
   session: Record<string, unknown>;
 }
 
+/** Event types to exclude from export (match TimelineFeed.tsx). */
+const EXCLUDED_EVENT_TYPES = ['ai_step_start', 'ai_step_end', 'inject_cancelled'];
+
+function getEventType(e: Record<string, unknown>): string {
+  return (e.event_type ?? e.type) as string;
+}
+
 function cellValue(v: unknown): string {
   if (v == null) return '';
   if (typeof v !== 'object') return String(v);
   const s = JSON.stringify(v);
   return s.length > 500 ? s.slice(0, 497) + '...' : s;
+}
+
+/**
+ * Human-readable string for key_metrics / metric_value in exports (no raw JSON).
+ * Primitives as-is; objects as "key=value; ..." with optional length cap.
+ */
+function readableValue(v: unknown, maxLen = 400): string {
+  if (v == null) return '';
+  if (typeof v !== 'object') return String(v);
+  if (Array.isArray(v)) return v.length === 0 ? '—' : `${v.length} items`;
+  const entries = Object.entries(v as Record<string, unknown>);
+  const parts = entries.map(([k, val]) => {
+    if (val == null) return `${k}=`;
+    if (typeof val !== 'object') return `${k}=${val}`;
+    if (Array.isArray(val)) return `${k}=${val.length} items`;
+    return `${k}=[nested]`;
+  });
+  let s = parts.join('; ');
+  if (s.length > maxLen) s = s.slice(0, maxLen - 3) + '...';
+  return s;
 }
 
 /**
@@ -40,6 +67,9 @@ export async function generateExcel(aarData: AARData): Promise<Buffer> {
   try {
     const wb = new ExcelJS.Workbook();
     const { aar, scores, metrics, events, decisions } = aarData;
+    const filteredEvents = (events ?? []).filter(
+      (e) => !EXCLUDED_EVENT_TYPES.includes(getEventType(e as Record<string, unknown>)),
+    );
 
     // Sheet: Summary
     const summarySheet = wb.addWorksheet('Summary', { views: [{ state: 'frozen', ySplit: 1 }] });
@@ -55,7 +85,7 @@ export async function generateExcel(aarData: AARData): Promise<Buffer> {
       const kmSheet = wb.addWorksheet('Key metrics');
       kmSheet.addRow(['Metric', 'Value']);
       for (const [k, v] of Object.entries(aar.key_metrics)) {
-        kmSheet.addRow([k, cellValue(v)]);
+        kmSheet.addRow([k, readableValue(v)]);
       }
     }
 
@@ -94,16 +124,16 @@ export async function generateExcel(aarData: AARData): Promise<Buffer> {
       }
     }
 
-    // Sheet: Events
-    if (events.length > 0) {
+    // Sheet: Events (filtered; exclude AI step and inject_cancelled)
+    if (filteredEvents.length > 0) {
       const evSheet = wb.addWorksheet('Events');
-      const headers = Object.keys(events[0] as Record<string, unknown>);
+      const headers = Object.keys(filteredEvents[0] as Record<string, unknown>);
       evSheet.addRow(headers);
-      for (const row of events.slice(0, 500)) {
+      for (const row of filteredEvents.slice(0, 500)) {
         evSheet.addRow(headers.map((h) => cellValue((row as Record<string, unknown>)[h])));
       }
-      if (events.length > 500) {
-        evSheet.addRow([`... and ${events.length - 500} more events`]);
+      if (filteredEvents.length > 500) {
+        evSheet.addRow([`... and ${filteredEvents.length - 500} more events`]);
       }
     }
 
@@ -116,7 +146,7 @@ export async function generateExcel(aarData: AARData): Promise<Buffer> {
         metSheet.addRow([
           cellValue(r.metric_type),
           cellValue(r.metric_name),
-          cellValue(r.metric_value),
+          readableValue(r.metric_value),
         ]);
       }
     }
@@ -142,6 +172,9 @@ export async function generatePDF(aarData: AARData): Promise<Buffer> {
       doc.on('error', reject);
 
       const { aar, scores, metrics, events, decisions } = aarData;
+      const filteredEvents = (events ?? []).filter(
+        (e) => !EXCLUDED_EVENT_TYPES.includes(getEventType(e as Record<string, unknown>)),
+      );
 
       doc.fontSize(18).text('After-Action Review', { align: 'center' });
       doc.moveDown(0.5);
@@ -157,7 +190,7 @@ export async function generatePDF(aarData: AARData): Promise<Buffer> {
         doc.moveDown(0.3);
         doc.fontSize(10);
         for (const [k, v] of Object.entries(aar.key_metrics)) {
-          doc.text(`${k}: ${cellValue(v)}`);
+          doc.text(`${k}: ${readableValue(v)}`);
         }
         doc.moveDown(1);
       }
@@ -197,19 +230,19 @@ export async function generatePDF(aarData: AARData): Promise<Buffer> {
         doc.moveDown(1);
       }
 
-      if (events.length > 0) {
+      if (filteredEvents.length > 0) {
         doc.fontSize(12).text('Events', { continued: false });
         doc.moveDown(0.3);
         doc.fontSize(9);
-        for (const row of events.slice(0, 50)) {
+        for (const row of filteredEvents.slice(0, 50)) {
           const r = row as Record<string, unknown>;
           doc.text(
             `${cellValue(r.event_type ?? r.type)}: ${cellValue(r.description ?? r.title ?? JSON.stringify(r))}`,
           );
           doc.moveDown(0.2);
         }
-        if (events.length > 50) {
-          doc.text(`... and ${events.length - 50} more events`);
+        if (filteredEvents.length > 50) {
+          doc.text(`... and ${filteredEvents.length - 50} more events`);
         }
         doc.moveDown(1);
       }
@@ -236,7 +269,7 @@ export async function generatePDF(aarData: AARData): Promise<Buffer> {
         for (const m of metrics.slice(0, 20)) {
           const r = m as Record<string, unknown>;
           doc.text(
-            `${cellValue(r.metric_type)} / ${cellValue(r.metric_name)}: ${cellValue(r.metric_value)}`,
+            `${cellValue(r.metric_type)} / ${cellValue(r.metric_name)}: ${readableValue(r.metric_value)}`,
           );
         }
         if (metrics.length > 20) {

@@ -1,5 +1,3 @@
-import { logger } from '../lib/logger.js';
-
 /**
  * AAR Section Service
  * Builds section-based AAR data and generates per-section AI analysis (Option B).
@@ -73,7 +71,11 @@ export interface BuildSectionsInput {
     messageCount: number;
     decisionsProposed: number;
   }>;
-  escalationFactors: Array<{ evaluated_at: string; factors: unknown[]; de_escalation_factors?: unknown[] }>;
+  escalationFactors: Array<{
+    evaluated_at: string;
+    factors: unknown[];
+    de_escalation_factors?: unknown[];
+  }>;
   escalationPathways: Array<{
     evaluated_at: string;
     pathways: unknown[];
@@ -164,6 +166,40 @@ export function buildSectionsData(input: BuildSectionsInput): SectionsMap {
   return sections;
 }
 
+const MAX_RECOMMENDATIONS_CONTEXT_CHARS = 10000;
+
+/**
+ * Build context for the recommendations section: other sections' analyses (and brief data hints)
+ * so the AI can synthesise key takeaways. Call this when recommendations is generated last.
+ */
+export function buildRecommendationsContext(sections: SectionsMap): unknown {
+  const otherKeys = (AAR_SECTION_KEYS as readonly string[]).filter((k) => k !== 'recommendations');
+  const otherSections: Array<{
+    sectionKey: string;
+    label: string;
+    analysis: string | null;
+    dataSummary?: string;
+  }> = [];
+  let totalLen = 0;
+  for (const key of otherKeys) {
+    const k = key as AARSectionKey;
+    const entry = sections[k];
+    if (!entry) continue;
+    const label = SECTION_LABELS[k] ?? k;
+    const analysis = entry.analysis ?? null;
+    let dataSummary: string | undefined;
+    if (entry.data != null && typeof entry.data === 'object') {
+      dataSummary = JSON.stringify(entry.data).slice(0, 500);
+    }
+    const block = { sectionKey: k, label, analysis, dataSummary };
+    const blockStr = JSON.stringify(block);
+    if (totalLen + blockStr.length > MAX_RECOMMENDATIONS_CONTEXT_CHARS) break;
+    otherSections.push(block);
+    totalLen += blockStr.length;
+  }
+  return { otherSections };
+}
+
 const SECTION_LABELS: Record<AARSectionKey, string> = {
   executive: 'Executive overview',
   decisions: 'Decisions and scoring history',
@@ -204,16 +240,22 @@ export async function generateSectionAnalysis(
   openAiApiKey: string,
 ): Promise<string> {
   const label = SECTION_LABELS[sectionKey];
-  const extra = SECTION_INSTRUCTIONS[sectionKey] ?? 'Interpret and assess; cite specific numbers and times.';
+  const extra =
+    SECTION_INSTRUCTIONS[sectionKey] ?? 'Interpret and assess; cite specific numbers and times.';
 
-  const systemPrompt = `You are an expert crisis management analyst. Below is the "${label}" data for a training exercise AAR. Write a concise analysis (1–2 paragraphs) that cites specific numbers, times, and names. Do not repeat the raw data; interpret and assess. ${extra}`;
+  const isRecommendations = sectionKey === 'recommendations';
+  const systemPrompt = isRecommendations
+    ? `You are an expert crisis management analyst. Below you will receive the analyses from the other AAR sections (executive overview, decisions, matrices, injects, coordination, escalation). Synthesise them into 3–5 actionable key takeaways and recommendations. Reference specific sections (decisions, matrices, injects, coordination) where relevant. Be concrete and practical. ${extra}`
+    : `You are an expert crisis management analyst. Below is the "${label}" data for a training exercise AAR. Write a concise analysis (1–2 paragraphs) that cites specific numbers, times, and names. Do not repeat the raw data; interpret and assess. ${extra}`;
 
   const dataJson =
     typeof sectionData === 'string'
       ? sectionData
       : JSON.stringify(sectionData, null, 2).slice(0, 12000);
 
-  const userPrompt = `Session: ${context.sessionId}${context.scenarioTitle ? `; Scenario: ${context.scenarioTitle}` : ''}\n\nData for ${label}:\n${dataJson}\n\nWrite the analysis now.`;
+  const userPrompt = isRecommendations
+    ? `Session: ${context.sessionId}${context.scenarioTitle ? `; Scenario: ${context.scenarioTitle}` : ''}\n\nAnalyses from other AAR sections (use these to synthesise key takeaways and recommendations):\n${dataJson}\n\nWrite 3–5 actionable key takeaways and recommendations now.`
+    : `Session: ${context.sessionId}${context.scenarioTitle ? `; Scenario: ${context.scenarioTitle}` : ''}\n\nData for ${label}:\n${dataJson}\n\nWrite the analysis now.`;
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -234,9 +276,7 @@ export async function generateSectionAnalysis(
 
   if (!response.ok) {
     const errBody = await response.json().catch(() => ({}));
-    throw new Error(
-      errBody?.error?.message || `OpenAI ${response.status}`,
-    );
+    throw new Error(errBody?.error?.message || `OpenAI ${response.status}`);
   }
 
   const data = await response.json();
