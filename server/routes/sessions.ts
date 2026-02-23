@@ -470,12 +470,19 @@ router.get(
         robustness_by_decision?: Record<string, number>;
         response_taxonomy?: Record<string, string>;
         analysis?: { overall?: string; matrix_reasoning?: string; robustness_reasoning?: string };
-        factors?: Array<{ id: string; name: string; description: string; severity: string }>;
+        factors?: Array<{
+          id: string;
+          name: string;
+          description: string;
+          severity: string;
+          consequence_for_inaction?: boolean;
+        }>;
         de_escalation_factors?: Array<{ id: string; name: string; description: string }>;
         pathways?: Array<{
           pathway_id: string;
           trajectory: string;
           trigger_behaviours: string[];
+          consequence_for_inaction?: boolean;
         }>;
         de_escalation_pathways?: Array<{
           pathway_id: string;
@@ -553,6 +560,7 @@ router.get(
             name: string;
             description: string;
             severity: string;
+            consequence_for_inaction?: boolean;
           }>) || [];
         const deEscFactors =
           ((f as { de_escalation_factors?: unknown }).de_escalation_factors as Array<{
@@ -576,6 +584,7 @@ router.get(
             pathway_id: string;
             trajectory: string;
             trigger_behaviours: string[];
+            consequence_for_inaction?: boolean;
           }>) || [];
         const deEscPathways =
           ((p as { de_escalation_pathways?: unknown }).de_escalation_pathways as Array<{
@@ -654,7 +663,9 @@ router.get(
                 severity: string;
               }>,
               de_escalation_factors: (latestFactors as { de_escalation_factors?: unknown })
-                .de_escalation_factors as Array<{ id: string; name: string; description: string }> | undefined,
+                .de_escalation_factors as
+                | Array<{ id: string; name: string; description: string }>
+                | undefined,
             }
           : null,
         pathways: latestPathways
@@ -667,12 +678,14 @@ router.get(
                 trigger_behaviours: string[];
               }>,
               de_escalation_pathways: (latestPathways as { de_escalation_pathways?: unknown })
-                .de_escalation_pathways as Array<{
-                pathway_id: string;
-                trajectory: string;
-                mitigating_behaviours: string[];
-                emerging_challenges?: string[];
-              }> | undefined,
+                .de_escalation_pathways as
+                | Array<{
+                    pathway_id: string;
+                    trajectory: string;
+                    mitigating_behaviours: string[];
+                    emerging_challenges?: string[];
+                  }>
+                | undefined,
             }
           : null,
       });

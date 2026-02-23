@@ -451,6 +451,8 @@ export interface EscalationFactor {
   name: string;
   description: string;
   severity: string;
+  /** True when this factor describes escalation from inaction/no response. */
+  consequence_for_inaction?: boolean;
 }
 
 export interface IdentifyEscalationFactorsResult {
@@ -593,10 +595,12 @@ export const identifyEscalationFactors = async (
 
 When a just-published inject is provided, identify factors that arise from or are heightened by that development. Each factor name and description must be framed in terms of this development (what arises or is heightened by it), so the list reads as part of the same narrative—e.g. not "Delayed Evacuation" but "Delayed evacuation of vulnerable areas after order declaration."
 
+Always include exactly one factor that describes escalation or risk from inaction, delayed response, or failure to respond to the current development (e.g. "Escalation from delayed or absent response to [theme]"). Set "consequence_for_inaction": true on that one factor only; omit or set false on all others.
+
 Return ONLY valid JSON in this exact format:
 {
   "factors": [
-    { "id": "EF-1", "name": "Short name", "description": "One or two sentences.", "severity": "low" | "medium" | "high" | "critical" }
+    { "id": "EF-1", "name": "Short name", "description": "One or two sentences.", "severity": "low" | "medium" | "high" | "critical", "consequence_for_inaction": true }
   ]
 }
 
@@ -670,6 +674,7 @@ Identify escalation factors. Return JSON only.`;
         severity: ['low', 'medium', 'high', 'critical'].includes(String(f.severity))
           ? f.severity
           : 'medium',
+        consequence_for_inaction: f.consequence_for_inaction === true,
       }));
 
     logger.info({ factorCount: normalized.length }, 'Escalation factors identified');
@@ -687,6 +692,8 @@ export interface EscalationPathway {
   pathway_id: string;
   trajectory: string;
   trigger_behaviours: string[];
+  /** True when this pathway describes what happens with no response or inaction. */
+  consequence_for_inaction?: boolean;
 }
 
 export interface GenerateEscalationPathwaysResult {
@@ -723,13 +730,16 @@ export const generateEscalationPathways = async (
         : '';
     const systemPrompt = `You are an expert crisis management analyst. Given escalation factors already identified for a scenario, produce plausible escalation pathways: how the situation could get worse, and what trigger behaviours (actions or conditions) could lead there.${injectInstruction}
 
+Always include exactly one escalation pathway that describes what happens when there is no response or inaction (e.g. trajectory: "If no decision or response is taken, [specific escalation]"; trigger_behaviours such as "No decision or response", "Delayed response", or "Failure to act"). Set "consequence_for_inaction": true on that one pathway only; omit or set false on all others.
+
 Return ONLY valid JSON in this exact format:
 {
   "pathways": [
     {
       "pathway_id": "EP-1",
       "trajectory": "One or two sentences describing how the situation could escalate (e.g. delayed evacuation -> overcrowding at shelters -> disease outbreak).",
-      "trigger_behaviours": ["Behaviour or condition 1", "Behaviour or condition 2"]
+      "trigger_behaviours": ["Behaviour or condition 1", "Behaviour or condition 2"],
+      "consequence_for_inaction": true
     }
   ]
 }
@@ -797,6 +807,7 @@ Generate escalation pathways (trajectory + trigger_behaviours). Return JSON only
         trigger_behaviours: Array.isArray(p.trigger_behaviours)
           ? p.trigger_behaviours.map((b) => String(b)).slice(0, 4)
           : [],
+        consequence_for_inaction: p.consequence_for_inaction === true,
       }));
 
     logger.info({ pathwayCount: normalized.length }, 'Escalation pathways generated');
@@ -973,6 +984,8 @@ export interface PathwayOutcome {
   direction: 'escalation' | 'de_escalation';
   robustness_band: 'low' | 'medium' | 'high';
   inject_payload: PathwayOutcomeInjectPayload;
+  /** True when this outcome is used when no decisions are made in the 5-min window. */
+  consequence_for_inaction?: boolean;
 }
 
 export interface GeneratePathwayOutcomeInjectsResult {
@@ -996,6 +1009,8 @@ export const generatePathwayOutcomeInjects = async (
   try {
     const systemPrompt = `You are an expert crisis management scenario writer. Given a scenario, a just-published inject, and escalation/de-escalation pathways, produce 3 to 8 possible "outcome" injects that could happen next depending on how well players respond. Each outcome is a full inject (type, title, content, severity, scope) keyed by robustness_band: "low" (things get worse; use escalation pathways), "medium" (mixed), "high" (things improve; use de-escalation pathways).
 
+Always include at least one outcome with robustness_band "low" that explicitly describes the consequence for inaction or no response (what happens when the team does not respond or fails to act). This outcome will be used when no decisions are made in the 5-minute window. Set "consequence_for_inaction": true on that one low-band outcome only; omit or set false on all others.
+
 Return ONLY valid JSON in this exact format:
 {
   "outcomes": [
@@ -1004,6 +1019,7 @@ Return ONLY valid JSON in this exact format:
       "pathway_id": "EP-1",
       "direction": "escalation",
       "robustness_band": "low",
+      "consequence_for_inaction": true,
       "inject_payload": {
         "type": "media_report",
         "title": "Short headline",
@@ -1024,6 +1040,7 @@ Rules:
 - direction: "escalation" or "de_escalation".
 - robustness_band: "low", "medium", or "high".
 - Include at least one outcome per band (low, medium, high). Prefer 1-2 low, 1-2 medium, 1-2 high.
+- consequence_for_inaction: Set true on exactly one low-band outcome (the inaction outcome); omit or false on others.
 - inject_payload: type (e.g. media_report, field_update, intel_brief), title, content, severity (low/medium/high/critical), inject_scope ("universal" or "team"), target_teams (null for universal, or array of team names), affected_roles (array of role strings or empty), requires_response (boolean).
 - requires_response: Set to true ONLY when this outcome inject describes a development that demands an operational response from players (e.g. new threat or attack, misinformation that must be corrected, resource shortage requiring allocation, public concern requiring official response, or similar). Set to false when the outcome is purely informational, a status update, or good news that does not require a new decision or action. When in doubt, set false. Include this field on every outcome.
 - Each outcome must be a plausible next development from the just-published inject, aligned with the pathway.`;
@@ -1130,6 +1147,7 @@ Generate 3 to 8 outcome injects (low/medium/high robustness bands). Return JSON 
           affected_roles: Array.isArray(p.affected_roles) ? (p.affected_roles as string[]) : [],
           requires_response: p.requires_response === true,
         },
+        consequence_for_inaction: o.consequence_for_inaction === true,
       });
     }
 

@@ -656,10 +656,15 @@ export class AIInjectSchedulerService {
           const outcomes = parseOutcomes(row.outcomes);
           if (outcomes.length === 0) continue;
           const matching = outcomes.filter((o) => o.robustness_band === robustnessBand);
-          const toPublish =
+          const inactionOutcome =
             matching.length > 0
+              ? matching.find((o) => o.consequence_for_inaction === true)
+              : undefined;
+          const toPublish =
+            inactionOutcome ??
+            (matching.length > 0
               ? matching[0]
-              : outcomes[Math.floor(Math.random() * outcomes.length)];
+              : outcomes[Math.floor(Math.random() * outcomes.length)]);
           const { data: createdInject, error: createError } = await supabaseAdmin
             .from('scenario_injects')
             .insert({

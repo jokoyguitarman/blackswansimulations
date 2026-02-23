@@ -848,23 +848,35 @@ export const SessionView = () => {
                             </span>
                             {a.factors && a.factors.length > 0 && (
                               <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                <div className="text-robotic-yellow/80 mb-1">[ESCALATION FACTORS]</div>
+                                <div className="text-robotic-yellow/80 mb-1">
+                                  [ESCALATION FACTORS]
+                                </div>
                                 <ul className="list-disc pl-4 space-y-0.5 text-robotic-green/90">
                                   {a.factors.slice(0, 6).map((f) => (
                                     <li key={f.id}>
                                       {f.name} ({f.severity}): {f.description.slice(0, 80)}
                                       {f.description.length > 80 ? '…' : ''}
+                                      {(f as { consequence_for_inaction?: boolean })
+                                        .consequence_for_inaction && (
+                                        <span className="ml-1 text-robotic-yellow/90 text-xs">
+                                          [Consequence for inaction]
+                                        </span>
+                                      )}
                                     </li>
                                   ))}
                                   {a.factors.length > 6 && (
-                                    <li className="text-robotic-yellow/70">+{a.factors.length - 6} more</li>
+                                    <li className="text-robotic-yellow/70">
+                                      +{a.factors.length - 6} more
+                                    </li>
                                   )}
                                 </ul>
                               </div>
                             )}
                             {a.de_escalation_factors && a.de_escalation_factors.length > 0 && (
                               <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                <div className="text-robotic-yellow/80 mb-1">[DE-ESCALATION FACTORS]</div>
+                                <div className="text-robotic-yellow/80 mb-1">
+                                  [DE-ESCALATION FACTORS]
+                                </div>
                                 <ul className="list-disc pl-4 space-y-0.5 text-robotic-green/90">
                                   {a.de_escalation_factors.slice(0, 4).map((f) => (
                                     <li key={f.id}>
@@ -892,17 +904,27 @@ export const SessionView = () => {
                                       {p.trigger_behaviours?.length
                                         ? ` (triggers: ${p.trigger_behaviours.slice(0, 2).join(', ')})`
                                         : ''}
+                                      {(p as { consequence_for_inaction?: boolean })
+                                        .consequence_for_inaction && (
+                                        <span className="ml-1 text-robotic-yellow/90 text-xs">
+                                          [Consequence for inaction]
+                                        </span>
+                                      )}
                                     </li>
                                   ))}
                                   {a.pathways.length > 4 && (
-                                    <li className="text-robotic-yellow/70">+{a.pathways.length - 4} more</li>
+                                    <li className="text-robotic-yellow/70">
+                                      +{a.pathways.length - 4} more
+                                    </li>
                                   )}
                                 </ul>
                               </div>
                             )}
                             {a.de_escalation_pathways && a.de_escalation_pathways.length > 0 && (
                               <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                <div className="text-robotic-yellow/80 mb-1">[DE-ESCALATION PATHWAYS]</div>
+                                <div className="text-robotic-yellow/80 mb-1">
+                                  [DE-ESCALATION PATHWAYS]
+                                </div>
                                 <ul className="list-disc pl-4 space-y-0.5 text-robotic-green/90">
                                   {a.de_escalation_pathways.slice(0, 3).map((p) => (
                                     <li key={p.pathway_id}>{p.trajectory}</li>
@@ -920,7 +942,9 @@ export const SessionView = () => {
                             {a.analysis?.overall && (
                               <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
                                 <div className="text-robotic-yellow/80 mb-1">[AI REASONING]</div>
-                                <p className="text-robotic-green/90 text-xs">{a.analysis.overall}</p>
+                                <p className="text-robotic-green/90 text-xs">
+                                  {a.analysis.overall}
+                                </p>
                                 {a.analysis.matrix_reasoning && (
                                   <p className="text-robotic-green/80 text-xs mt-1">
                                     Matrix: {a.analysis.matrix_reasoning}
@@ -935,7 +959,9 @@ export const SessionView = () => {
                             )}
                             {a.response_taxonomy && Object.keys(a.response_taxonomy).length > 0 && (
                               <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                <div className="text-robotic-yellow/80 mb-1">[RESPONSE TAXONOMY]</div>
+                                <div className="text-robotic-yellow/80 mb-1">
+                                  [RESPONSE TAXONOMY]
+                                </div>
                                 <div className="flex flex-wrap gap-1">
                                   {Object.entries(a.response_taxonomy).map(([team, cat]) => (
                                     <span
