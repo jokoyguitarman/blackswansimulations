@@ -20,7 +20,9 @@ import type { Server as SocketServer } from 'socket.io';
  * 2. Team-specific injects based on decisions from each team (visible only to that team)
  */
 /** Map robustness scores (1-10) to band for pathway outcome selection. */
-function computeRobustnessBand(robustnessByDecision: Record<string, number> | null): 'low' | 'medium' | 'high' {
+function computeRobustnessBand(
+  robustnessByDecision: Record<string, number> | null,
+): 'low' | 'medium' | 'high' {
   if (!robustnessByDecision || Object.keys(robustnessByDecision).length === 0) return 'medium';
   const values = Object.values(robustnessByDecision);
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
@@ -333,7 +335,8 @@ export class AIInjectSchedulerService {
       objectives: objectives || [],
       participants: participants || [],
       teams: Array.from(teamsWithMembers),
-      themeUsageThisSession: Object.keys(themeUsageThisSession).length > 0 ? themeUsageThisSession : undefined,
+      themeUsageThisSession:
+        Object.keys(themeUsageThisSession).length > 0 ? themeUsageThisSession : undefined,
       themeUsageByScope: Object.keys(themeUsageByScope).length > 0 ? themeUsageByScope : undefined,
       decisionsSummaryLine: decisionsSummaryLine || undefined,
     };
@@ -369,7 +372,9 @@ export class AIInjectSchedulerService {
       .limit(1)
       .single();
     if (latestFactorsRow) {
-      escalationFactorsSnapshot = Array.isArray(latestFactorsRow.factors) ? latestFactorsRow.factors : [];
+      escalationFactorsSnapshot = Array.isArray(latestFactorsRow.factors)
+        ? latestFactorsRow.factors
+        : [];
       deEscalationFactorsSnapshot = Array.isArray(latestFactorsRow.de_escalation_factors)
         ? latestFactorsRow.de_escalation_factors
         : [];
@@ -382,7 +387,9 @@ export class AIInjectSchedulerService {
       .limit(1)
       .single();
     if (latestPathwaysRow) {
-      escalationPathwaysSnapshot = Array.isArray(latestPathwaysRow.pathways) ? latestPathwaysRow.pathways : [];
+      escalationPathwaysSnapshot = Array.isArray(latestPathwaysRow.pathways)
+        ? latestPathwaysRow.pathways
+        : [];
       deEscalationPathwaysSnapshot = Array.isArray(latestPathwaysRow.de_escalation_pathways)
         ? latestPathwaysRow.de_escalation_pathways
         : [];
@@ -496,73 +503,109 @@ export class AIInjectSchedulerService {
       responseTaxonomy: Object.keys(responseTaxonomy).length > 0 ? responseTaxonomy : undefined,
     });
 
-    // Load latest pathway outcomes (from last inject publish) to match and publish one outcome inject
-    const { data: pathwayOutcomesRow } = await supabaseAdmin
+    // Load all pathway outcome rows from the last 5 minutes (one per trigger inject); publish one outcome inject per row
+    const { data: pathwayOutcomesRows } = await supabaseAdmin
       .from('session_pathway_outcomes')
-      .select('id, outcomes')
+      .select('id, outcomes, trigger_inject_id, evaluated_at')
       .eq('session_id', session.id)
-      .order('evaluated_at', { ascending: false })
-      .limit(1)
-      .single();
+      .gte('evaluated_at', fiveMinutesAgo)
+      .order('evaluated_at', { ascending: true });
 
-    const rawOutcomes = pathwayOutcomesRow?.outcomes;
-    let outcomes: PathwayOutcome[] = [];
-    if (Array.isArray(rawOutcomes)) {
-      outcomes = rawOutcomes;
-    } else if (typeof rawOutcomes === 'string') {
-      try {
-        const parsed = JSON.parse(rawOutcomes) as PathwayOutcome[] | PathwayOutcome;
-        outcomes = Array.isArray(parsed) ? parsed : [parsed];
-      } catch {
-        outcomes = [];
+    const rows = (pathwayOutcomesRows ?? []) as Array<{
+      id: string;
+      outcomes: PathwayOutcome[] | string;
+      trigger_inject_id?: string;
+      evaluated_at?: string;
+    }>;
+    const maxPathwayOutcomesPerCycle = 5;
+    const rowsToProcess = rows.slice(0, maxPathwayOutcomesPerCycle);
+
+    function parseOutcomes(raw: PathwayOutcome[] | string | null | undefined): PathwayOutcome[] {
+      if (Array.isArray(raw)) return raw;
+      if (typeof raw === 'string') {
+        try {
+          const parsed = JSON.parse(raw) as PathwayOutcome[] | PathwayOutcome;
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          return [];
+        }
       }
+      return [];
     }
-    const hasPathwayOutcomes = outcomes.length > 0;
+
+    const hasPathwayOutcomes = rowsToProcess.some((r) => parseOutcomes(r.outcomes).length > 0);
 
     if (formattedDecisions.length > 0) {
       if (hasPathwayOutcomes) {
-        // Match robustness to a band and publish the corresponding outcome inject
         const robustnessBand = computeRobustnessBand(latestRobustnessByDecision);
-        const matching = outcomes.filter((o) => o.robustness_band === robustnessBand);
-        const toPublish = matching.length > 0 ? matching[0] : outcomes[Math.floor(Math.random() * outcomes.length)];
-
         if (!this.io) {
           const { io } = await import('../index.js');
           this.io = io;
         }
 
-        const { data: createdInject, error: createError } = await supabaseAdmin
-          .from('scenario_injects')
-          .insert({
-            scenario_id: session.scenario_id,
-            trigger_time_minutes: null,
-            trigger_condition: null,
-            type: toPublish.inject_payload.type,
-            title: toPublish.inject_payload.title,
-            content: toPublish.inject_payload.content,
-            severity: toPublish.inject_payload.severity,
-            affected_roles: toPublish.inject_payload.affected_roles ?? [],
-            inject_scope: toPublish.inject_payload.inject_scope ?? 'universal',
-            target_teams: toPublish.inject_payload.target_teams ?? null,
-            requires_response: false,
-            requires_coordination: false,
-            ai_generated: true,
-            triggered_by_user_id: null,
-          })
-          .select()
-          .single();
+        let publishedCount = 0;
+        for (const row of rowsToProcess) {
+          const outcomes = parseOutcomes(row.outcomes);
+          if (outcomes.length === 0) continue;
 
-        if (!createError && createdInject) {
-          await publishInjectToSession(createdInject.id, session.id, session.trainer_id, this.io!);
-          logger.info(
-            { sessionId: session.id, injectId: createdInject.id, robustnessBand, outcomeId: toPublish.outcome_id },
-            'Pathway outcome inject published',
-          );
-        } else {
-          logger.warn(
-            { error: createError, sessionId: session.id },
-            'Failed to create outcome inject, falling back to generate-from-decision',
-          );
+          const matching = outcomes.filter((o) => o.robustness_band === robustnessBand);
+          const toPublish =
+            matching.length > 0
+              ? matching[0]
+              : outcomes[Math.floor(Math.random() * outcomes.length)];
+
+          const { data: createdInject, error: createError } = await supabaseAdmin
+            .from('scenario_injects')
+            .insert({
+              scenario_id: session.scenario_id,
+              trigger_time_minutes: null,
+              trigger_condition: null,
+              type: toPublish.inject_payload.type,
+              title: toPublish.inject_payload.title,
+              content: toPublish.inject_payload.content,
+              severity: toPublish.inject_payload.severity,
+              affected_roles: toPublish.inject_payload.affected_roles ?? [],
+              inject_scope: toPublish.inject_payload.inject_scope ?? 'universal',
+              target_teams: toPublish.inject_payload.target_teams ?? null,
+              requires_response: false,
+              requires_coordination: false,
+              ai_generated: true,
+              triggered_by_user_id: null,
+            })
+            .select()
+            .single();
+
+          if (!createError && createdInject) {
+            await publishInjectToSession(
+              createdInject.id,
+              session.id,
+              session.trainer_id,
+              this.io!,
+            );
+            publishedCount += 1;
+            logger.info(
+              {
+                sessionId: session.id,
+                injectId: createdInject.id,
+                robustnessBand,
+                outcomeId: toPublish.outcome_id,
+                trigger_inject_id: row.trigger_inject_id,
+              },
+              'Pathway outcome inject published',
+            );
+          } else {
+            logger.warn(
+              {
+                error: createError,
+                sessionId: session.id,
+                trigger_inject_id: row.trigger_inject_id,
+              },
+              'Failed to create outcome inject for row, continuing',
+            );
+          }
+        }
+
+        if (publishedCount === 0) {
           await this.generateUniversalInject(session, baseContext, formattedDecisions);
           for (const teamName of teamsWithMembers) {
             const teamDecisions = formattedDecisions.filter((d) => d.team === teamName);

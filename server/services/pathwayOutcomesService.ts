@@ -44,10 +44,7 @@ export async function runPathwayOutcomesOnInjectPublished(
       .single();
 
     if (sessionError || !session) {
-      logger.warn(
-        { error: sessionError, sessionId },
-        'Pathway outcomes: session not found',
-      );
+      logger.warn({ error: sessionError, sessionId }, 'Pathway outcomes: session not found');
       return;
     }
 
@@ -90,6 +87,7 @@ export async function runPathwayOutcomesOnInjectPublished(
         content: inject.content,
       },
     ];
+    const justPublishedInject = singleInjectContext[0] ?? null;
 
     const factorsResult = await identifyEscalationFactors(
       scenario?.description ?? '',
@@ -121,6 +119,7 @@ export async function runPathwayOutcomesOnInjectPublished(
       scenario?.description ?? '',
       (session.current_state as Record<string, unknown>) ?? {},
       factorsResult.factors,
+      justPublishedInject,
       env.openAiApiKey,
     );
 
@@ -136,6 +135,7 @@ export async function runPathwayOutcomesOnInjectPublished(
         (session.current_state as Record<string, unknown>) ?? {},
         pathwaysResult.pathways,
         deEscalationFactors,
+        justPublishedInject,
         env.openAiApiKey,
       );
       deEscalationPathways = dePathResult.pathways;
@@ -206,10 +206,7 @@ export async function runPathwayOutcomesOnInjectPublished(
       metadata: { step: 'pathway_outcomes', inject_id: injectId },
     });
   } catch (err) {
-    logger.error(
-      { err, sessionId, injectId },
-      'Pathway outcomes on inject publish failed',
-    );
+    logger.error({ err, sessionId, injectId }, 'Pathway outcomes on inject publish failed');
     throw err;
   }
 }

@@ -483,7 +483,7 @@ export const identifyDeEscalationFactors = async (
 ): Promise<IdentifyDeEscalationFactorsResult> => {
   const empty: IdentifyDeEscalationFactorsResult = { factors: [] };
   try {
-    const systemPrompt = `You are an expert crisis management analyst. Identify factors or actions that help mitigate escalation (e.g. clear official messaging, controlled evacuation, resource reallocation, coordination protocols). Consider which escalation factors these counter. Return 3 to 8 items.
+    const systemPrompt = `You are an expert crisis management analyst. Identify factors or actions that help mitigate escalation (e.g. clear official messaging, controlled evacuation, resource reallocation, coordination protocols). Consider which escalation factors these counter. When a just-published inject is provided, identify de-escalation factors that directly address or mitigate that development (e.g. for a viral video: rapid debunking, official counter-narrative, platform takedown). Return 3 to 8 items.
 
 Return ONLY valid JSON in this exact format:
 {
@@ -509,9 +509,7 @@ Use id like DEF-1, DEF-2, etc.`;
         : 'No recent injects';
     const escalationFactorsText =
       escalationFactors.length > 0
-        ? escalationFactors
-            .map((f) => `- ${f.id}: ${f.name}: ${f.description}`)
-            .join('\n')
+        ? escalationFactors.map((f) => `- ${f.id}: ${f.name}: ${f.description}`).join('\n')
         : 'None provided';
 
     const userPrompt = `Scenario description:
@@ -522,7 +520,7 @@ Current state (summary): ${JSON.stringify(currentState).slice(0, 500)}
 Objectives:
 ${objectivesText}
 
-Recent injects (current situation):
+${recentInjects.length > 0 ? 'Just-published inject (identify what would mitigate or improve the situation in response to this development):' : 'Recent injects (current situation):'}
 ${injectsText}
 
 Escalation factors (identify what would help counter these):
@@ -550,10 +548,7 @@ Identify de-escalation factors (what helps mitigate). Return JSON only.`;
     });
 
     if (!response.ok) {
-      logger.warn(
-        { status: response.status },
-        'OpenAI API error in identifyDeEscalationFactors',
-      );
+      logger.warn({ status: response.status }, 'OpenAI API error in identifyDeEscalationFactors');
       return empty;
     }
 
@@ -596,7 +591,7 @@ export const identifyEscalationFactors = async (
   try {
     const systemPrompt = `You are an expert crisis management analyst. Analyse the scenario and current situation to identify factors that may lead to escalation. These are factors, not fixed outcomes.
 
-Consider factors such as: delayed evacuation, misinformation, poor coordination, medical response failures, social panic or fragmentation, resource shortages, communication gaps, or similar.
+Consider factors such as: delayed evacuation, misinformation, poor coordination, medical response failures, social panic or fragmentation, resource shortages, communication gaps, or similar. When a just-published inject is provided, identify factors that arise from or are heightened by that development (e.g. for a viral video inject: unchallenged narrative, targeted violence, counter-messaging failure).
 
 Return ONLY valid JSON in this exact format:
 {
@@ -629,7 +624,7 @@ Current state (summary): ${JSON.stringify(currentState).slice(0, 500)}
 Objectives:
 ${objectivesText}
 
-Recent injects (current situation):
+${recentInjects.length > 0 ? 'Just-published inject (identify escalation factors that arise from or are heightened by this development):' : 'Recent injects (current situation):'}
 ${injectsText}
 
 ---
@@ -701,16 +696,32 @@ export interface GenerateEscalationPathwaysResult {
 /**
  * Stage 3: Generate escalation pathways from current factors and scenario context.
  * AI describes how the situation could escalate (trajectory) and what behaviours could trigger it.
+ * When justPublishedInject is provided, pathways should be from this development.
  */
 export const generateEscalationPathways = async (
   scenarioDescription: string,
   currentState: Record<string, unknown>,
   escalationFactors: EscalationFactor[],
-  openAiApiKey: string,
+  justPublishedInjectOrApiKey?: { type?: string; title?: string; content?: string } | string | null,
+  openAiApiKeyParam?: string,
 ): Promise<GenerateEscalationPathwaysResult> => {
   const empty: GenerateEscalationPathwaysResult = { pathways: [] };
+  const openAiApiKey =
+    typeof openAiApiKeyParam === 'string'
+      ? openAiApiKeyParam
+      : typeof justPublishedInjectOrApiKey === 'string'
+        ? justPublishedInjectOrApiKey
+        : '';
+  const justPublishedInject =
+    justPublishedInjectOrApiKey != null && typeof justPublishedInjectOrApiKey === 'object'
+      ? justPublishedInjectOrApiKey
+      : null;
   try {
-    const systemPrompt = `You are an expert crisis management analyst. Given escalation factors already identified for a scenario, produce plausible escalation pathways: how the situation could get worse, and what trigger behaviours (actions or conditions) could lead there.
+    const injectInstruction =
+      justPublishedInject && openAiApiKey
+        ? ' The following inject has just been published. Describe escalation pathways **from this development**: how could the situation get worse specifically because of or following from this inject (e.g. viral video circulates -> false narrative solidifies -> targeted violence). Trajectories should start from or be clearly tied to this inject.'
+        : '';
+    const systemPrompt = `You are an expert crisis management analyst. Given escalation factors already identified for a scenario, produce plausible escalation pathways: how the situation could get worse, and what trigger behaviours (actions or conditions) could lead there.${injectInstruction}
 
 Return ONLY valid JSON in this exact format:
 {
@@ -732,12 +743,16 @@ Include 2 to 6 pathways. Use pathway_id like EP-1, EP-2, etc. Each pathway shoul
             .join('\n')
         : 'None provided';
 
+    const injectBlock =
+      justPublishedInject && openAiApiKey
+        ? `\nJust-published inject: [${justPublishedInject.type ?? 'update'}] ${justPublishedInject.title ?? 'Untitled'}\n${(justPublishedInject.content ?? '').slice(0, 400)}\n\n`
+        : '';
+
     const userPrompt = `Scenario description:
 ${scenarioDescription.slice(0, 1200)}
 
 Current state (summary): ${JSON.stringify(currentState).slice(0, 400)}
-
-Escalation factors (from Stage 2):
+${injectBlock}Escalation factors (from Stage 2):
 ${factorsText}
 
 ---
@@ -809,17 +824,33 @@ export interface GenerateDeEscalationPathwaysResult {
 /**
  * Stage 3b: Generate de-escalation pathways from escalation pathways and de-escalation factors.
  * Optionally include emerging_challenges (0-2 per pathway) for new problems that can appear once mitigated.
+ * When justPublishedInject is provided, pathways should be from this development.
  */
 export const generateDeEscalationPathways = async (
   scenarioDescription: string,
   currentState: Record<string, unknown>,
   escalationPathways: EscalationPathway[],
   deEscalationFactors: DeEscalationFactor[],
-  openAiApiKey: string,
+  justPublishedInjectOrApiKey?: { type?: string; title?: string; content?: string } | string | null,
+  openAiApiKeyParam?: string,
 ): Promise<GenerateDeEscalationPathwaysResult> => {
   const empty: GenerateDeEscalationPathwaysResult = { pathways: [] };
+  const openAiApiKey =
+    typeof openAiApiKeyParam === 'string'
+      ? openAiApiKeyParam
+      : typeof justPublishedInjectOrApiKey === 'string'
+        ? justPublishedInjectOrApiKey
+        : '';
+  const justPublishedInject =
+    justPublishedInjectOrApiKey != null && typeof justPublishedInjectOrApiKey === 'object'
+      ? justPublishedInjectOrApiKey
+      : null;
   try {
-    const systemPrompt = `You are an expert crisis management analyst. Given escalation pathways (how things get worse) and de-escalation factors (what helps), produce de-escalation pathways: how the situation improves when mitigation happens. For each pathway include 0 to 2 emerging_challenges: new or secondary problems that can arise once this is mitigated (e.g. "Media pressure for casualty figures", "Resource tension between sites") so the scenario stays engaging.
+    const injectInstruction =
+      justPublishedInject && openAiApiKey
+        ? ' The following inject has just been published. Describe de-escalation pathways **from this development**: how could the situation improve if players respond well to this inject (e.g. viral video met with rapid debunking -> narrative contained -> panic decreases). Trajectories should start from or be clearly tied to this inject.'
+        : '';
+    const systemPrompt = `You are an expert crisis management analyst. Given escalation pathways (how things get worse) and de-escalation factors (what helps), produce de-escalation pathways: how the situation improves when mitigation happens. For each pathway include 0 to 2 emerging_challenges: new or secondary problems that can arise once this is mitigated (e.g. "Media pressure for casualty figures", "Resource tension between sites") so the scenario stays engaging.${injectInstruction}
 
 Return ONLY valid JSON in this exact format:
 {
@@ -849,12 +880,16 @@ Include 2 to 6 pathways. Use pathway_id like DEP-1, DEP-2. Each pathway: 1 to 4 
         ? deEscalationFactors.map((f) => `- ${f.id}: ${f.name}: ${f.description}`).join('\n')
         : 'None provided';
 
+    const injectBlock =
+      justPublishedInject && openAiApiKey
+        ? `\nJust-published inject: [${justPublishedInject.type ?? 'update'}] ${justPublishedInject.title ?? 'Untitled'}\n${(justPublishedInject.content ?? '').slice(0, 400)}\n\n`
+        : '';
+
     const userPrompt = `Scenario description:
 ${scenarioDescription.slice(0, 1200)}
 
 Current state (summary): ${JSON.stringify(currentState).slice(0, 400)}
-
-Escalation pathways (how things get worse):
+${injectBlock}Escalation pathways (how things get worse):
 ${escalationPathwaysText}
 
 De-escalation factors (what helps mitigate):
@@ -882,10 +917,7 @@ Generate de-escalation pathways (trajectory + mitigating_behaviours + optional e
     });
 
     if (!response.ok) {
-      logger.warn(
-        { status: response.status },
-        'OpenAI API error in generateDeEscalationPathways',
-      );
+      logger.warn({ status: response.status }, 'OpenAI API error in generateDeEscalationPathways');
       return empty;
     }
 
@@ -913,10 +945,7 @@ Generate de-escalation pathways (trajectory + mitigating_behaviours + optional e
     logger.info({ pathwayCount: normalized.length }, 'De-escalation pathways generated');
     return { pathways: normalized };
   } catch (err) {
-    logger.warn(
-      { error: err },
-      'Error in generateDeEscalationPathways, returning empty',
-    );
+    logger.warn({ error: err }, 'Error in generateDeEscalationPathways, returning empty');
     return empty;
   }
 };
@@ -1056,10 +1085,7 @@ Generate 3 to 8 outcome injects (low/medium/high robustness bands). Return JSON 
     });
 
     if (!response.ok) {
-      logger.warn(
-        { status: response.status },
-        'OpenAI API error in generatePathwayOutcomeInjects',
-      );
+      logger.warn({ status: response.status }, 'OpenAI API error in generatePathwayOutcomeInjects');
       return empty;
     }
 
@@ -1084,7 +1110,9 @@ Generate 3 to 8 outcome injects (low/medium/high robustness bands). Return JSON 
             ? o.direction
             : 'escalation',
         robustness_band:
-          o.robustness_band === 'low' || o.robustness_band === 'medium' || o.robustness_band === 'high'
+          o.robustness_band === 'low' ||
+          o.robustness_band === 'medium' ||
+          o.robustness_band === 'high'
             ? o.robustness_band
             : 'medium',
         inject_payload: {
@@ -1104,10 +1132,7 @@ Generate 3 to 8 outcome injects (low/medium/high robustness bands). Return JSON 
     logger.info({ outcomeCount: outcomes.length }, 'Pathway outcome injects generated');
     return { outcomes };
   } catch (err) {
-    logger.warn(
-      { error: err },
-      'Error in generatePathwayOutcomeInjects, returning empty',
-    );
+    logger.warn({ error: err }, 'Error in generatePathwayOutcomeInjects, returning empty');
     return empty;
   }
 };
@@ -1534,7 +1559,15 @@ export function extractThemeAndKeywords(
     },
     {
       theme: 'de_escalation',
-      phrases: ['improvement', 'calm', 'controlled', 'progress', 'stabilis', 'stabiliz', 'completed'],
+      phrases: [
+        'improvement',
+        'calm',
+        'controlled',
+        'progress',
+        'stabilis',
+        'stabiliz',
+        'completed',
+      ],
     },
   ];
 
@@ -1556,12 +1589,14 @@ export function extractThemeAndKeywords(
 /**
  * Aggregate theme usage from all session injects (global and per-scope).
  */
-export function aggregateThemeUsage(injects: Array<{
-  title: string;
-  content?: string;
-  inject_scope?: string;
-  target_teams?: string[] | null;
-}>): {
+export function aggregateThemeUsage(
+  injects: Array<{
+    title: string;
+    content?: string;
+    inject_scope?: string;
+    target_teams?: string[] | null;
+  }>,
+): {
   themeUsageThisSession: Record<string, ThemeUsageEntry>;
   themeUsageByScope: ThemeUsageByScope;
 } {
@@ -1574,7 +1609,8 @@ export function aggregateThemeUsage(injects: Array<{
     keywords.forEach((k) => global[theme].keywords.add(k));
 
     if (!byScopeRaw[scopeKey]) byScopeRaw[scopeKey] = {};
-    if (!byScopeRaw[scopeKey][theme]) byScopeRaw[scopeKey][theme] = { count: 0, keywords: new Set() };
+    if (!byScopeRaw[scopeKey][theme])
+      byScopeRaw[scopeKey][theme] = { count: 0, keywords: new Set() };
     byScopeRaw[scopeKey][theme].count += 1;
     keywords.forEach((k) => byScopeRaw[scopeKey][theme].keywords.add(k));
   };
@@ -1596,7 +1632,9 @@ export function aggregateThemeUsage(injects: Array<{
     }
   }
 
-  const toEntry = (acc: Record<string, { count: number; keywords: Set<string> }>): Record<string, ThemeUsageEntry> => {
+  const toEntry = (
+    acc: Record<string, { count: number; keywords: Set<string> }>,
+  ): Record<string, ThemeUsageEntry> => {
     const out: Record<string, ThemeUsageEntry> = {};
     for (const [theme, v] of Object.entries(acc)) {
       out[theme] = { count: v.count, keywords: [...v.keywords].slice(0, 10) };
@@ -1616,7 +1654,9 @@ export function aggregateThemeUsage(injects: Array<{
 /**
  * One-line summary of what teams have repeatedly addressed (for "read the room" in inject generation).
  */
-export function computeDecisionsSummaryLine(decisions: Array<{ type?: string; title?: string; description?: string }>): string {
+export function computeDecisionsSummaryLine(
+  decisions: Array<{ type?: string; title?: string; description?: string }>,
+): string {
   if (!decisions.length) return '';
   const counts: Record<string, number> = {};
   const typeLabels: Record<string, string> = {
@@ -1896,23 +1936,36 @@ Important:
 
     // Session-wide theme usage (avoid repeating themes; no raw inject samples)
     const themeUsageGlobal =
-      sessionContext.themeUsageThisSession && Object.keys(sessionContext.themeUsageThisSession).length > 0
-        ? `\n\nTHEME USAGE THIS SESSION (avoid repeating):\n${Object.entries(sessionContext.themeUsageThisSession)
-            .map(([theme, e]) => `${theme}: ${e.count} uses — angles seen: ${e.keywords.slice(0, 8).join(', ')}`)
+      sessionContext.themeUsageThisSession &&
+      Object.keys(sessionContext.themeUsageThisSession).length > 0
+        ? `\n\nTHEME USAGE THIS SESSION (avoid repeating):\n${Object.entries(
+            sessionContext.themeUsageThisSession,
+          )
+            .map(
+              ([theme, e]) =>
+                `${theme}: ${e.count} uses — angles seen: ${e.keywords.slice(0, 8).join(', ')}`,
+            )
             .join('\n')}`
         : '';
-    const injectTypeForScope = (sessionContext as { injectType?: string; teamName?: string }).injectType;
+    const injectTypeForScope = (sessionContext as { injectType?: string; teamName?: string })
+      .injectType;
     const teamNameForScope = (sessionContext as { teamName?: string }).teamName;
     const scopeUsage =
-      injectTypeForScope === 'universal' && sessionContext.themeUsageByScope?.universal && Object.keys(sessionContext.themeUsageByScope.universal).length > 0
-        ? `\nFor universal injects, theme usage so far:\n${Object.entries(sessionContext.themeUsageByScope.universal)
+      injectTypeForScope === 'universal' &&
+      sessionContext.themeUsageByScope?.universal &&
+      Object.keys(sessionContext.themeUsageByScope.universal).length > 0
+        ? `\nFor universal injects, theme usage so far:\n${Object.entries(
+            sessionContext.themeUsageByScope.universal,
+          )
             .map(([theme, e]) => `${theme}: ${e.count} — ${e.keywords.slice(0, 5).join(', ')}`)
             .join('\n')}`
         : injectTypeForScope === 'team_specific' &&
             teamNameForScope &&
             sessionContext.themeUsageByScope?.[teamNameForScope] &&
             Object.keys(sessionContext.themeUsageByScope[teamNameForScope]!).length > 0
-          ? `\nFor this team's injects, theme usage so far:\n${Object.entries(sessionContext.themeUsageByScope[teamNameForScope]!)
+          ? `\nFor this team's injects, theme usage so far:\n${Object.entries(
+              sessionContext.themeUsageByScope[teamNameForScope]!,
+            )
               .map(([theme, e]) => `${theme}: ${e.count} — ${e.keywords.slice(0, 5).join(', ')}`)
               .join('\n')}`
           : '';
@@ -1921,10 +1974,9 @@ Important:
         ? `${themeUsageGlobal}${scopeUsage}\n\nThemes with high counts are overused. Prefer themes with low or zero usage for any new or remaining challenge. When robustness is high, prefer de-escalation and underused themes. For overused themes, avoid repeating the same angles—choose a different angle or a different theme. You may use an overused theme only if it is the only logical consequence of recent decisions.`
         : '';
 
-    const decisionsSummaryContext =
-      sessionContext.decisionsSummaryLine
-        ? `\n\nDECISIONS SUMMARY: ${sessionContext.decisionsSummaryLine} When robustness is high, prefer injects that reflect improvement or new challenge types rather than repeating these same areas unless it is the direct consequence of the last decisions.`
-        : '';
+    const decisionsSummaryContext = sessionContext.decisionsSummaryLine
+      ? `\n\nDECISIONS SUMMARY: ${sessionContext.decisionsSummaryLine} When robustness is high, prefer injects that reflect improvement or new challenge types rather than repeating these same areas unless it is the direct consequence of the last decisions.`
+      : '';
 
     // Checkpoint 8: Inter-team impact matrix and escalation context (influence inject content)
     const hasMatrix =
@@ -1944,7 +1996,12 @@ Important:
         sessionContext.latestImpactAnalysis.matrix_reasoning ||
         sessionContext.latestImpactAnalysis.robustness_reasoning);
     const escalationContext =
-      hasMatrix || hasFactors || hasPathways || hasAnalysis || hasDeEscalationFactors || hasDeEscalationPathways
+      hasMatrix ||
+      hasFactors ||
+      hasPathways ||
+      hasAnalysis ||
+      hasDeEscalationFactors ||
+      hasDeEscalationPathways
         ? `\n\nINTER-TEAM IMPACT MATRIX AND ESCALATION CONTEXT (use this to shape the inject):
 
 Two lenses for the current state of play:
