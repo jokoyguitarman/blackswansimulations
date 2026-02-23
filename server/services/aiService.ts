@@ -483,7 +483,7 @@ export const identifyDeEscalationFactors = async (
 ): Promise<IdentifyDeEscalationFactorsResult> => {
   const empty: IdentifyDeEscalationFactorsResult = { factors: [] };
   try {
-    const systemPrompt = `You are an expert crisis management analyst. Identify factors or actions that help mitigate escalation (e.g. clear official messaging, controlled evacuation, resource reallocation, coordination protocols). Consider which escalation factors these counter. When a just-published inject is provided, identify de-escalation factors that directly address or mitigate that development (e.g. for a viral video: rapid debunking, official counter-narrative, platform takedown). Return 3 to 8 items.
+    const systemPrompt = `You are an expert crisis management analyst. Identify factors or actions that help mitigate escalation. Consider which escalation factors these counter. When a just-published inject is provided, identify de-escalation factors that directly address or mitigate that development; each factor name and description must be clearly a response to or mitigation of that development (e.g. for a viral video: rapid debunking, official counter-narrative, platform takedown). Return 3 to 8 items.
 
 Return ONLY valid JSON in this exact format:
 {
@@ -591,7 +591,7 @@ export const identifyEscalationFactors = async (
   try {
     const systemPrompt = `You are an expert crisis management analyst. Analyse the scenario and current situation to identify factors that may lead to escalation. These are factors, not fixed outcomes.
 
-Consider factors such as: delayed evacuation, misinformation, poor coordination, medical response failures, social panic or fragmentation, resource shortages, communication gaps, or similar. When a just-published inject is provided, identify factors that arise from or are heightened by that development (e.g. for a viral video inject: unchallenged narrative, targeted violence, counter-messaging failure).
+When a just-published inject is provided, identify factors that arise from or are heightened by that development. Each factor name and description must be framed in terms of this development (what arises or is heightened by it), so the list reads as part of the same narrative—e.g. not "Delayed Evacuation" but "Delayed evacuation of vulnerable areas after order declaration."
 
 Return ONLY valid JSON in this exact format:
 {
