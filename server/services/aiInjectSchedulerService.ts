@@ -567,7 +567,7 @@ export class AIInjectSchedulerService {
               affected_roles: toPublish.inject_payload.affected_roles ?? [],
               inject_scope: toPublish.inject_payload.inject_scope ?? 'universal',
               target_teams: toPublish.inject_payload.target_teams ?? null,
-              requires_response: false,
+              requires_response: toPublish.inject_payload.requires_response === true,
               requires_coordination: false,
               ai_generated: true,
               triggered_by_user_id: null,

@@ -961,6 +961,7 @@ export interface PathwayOutcomeInjectPayload {
   inject_scope: string;
   target_teams?: string[] | null;
   affected_roles?: string[];
+  requires_response?: boolean;
 }
 
 /**
@@ -1010,7 +1011,8 @@ Return ONLY valid JSON in this exact format:
         "severity": "high",
         "inject_scope": "universal",
         "target_teams": null,
-        "affected_roles": []
+        "affected_roles": [],
+        "requires_response": true
       }
     }
   ]
@@ -1022,7 +1024,8 @@ Rules:
 - direction: "escalation" or "de_escalation".
 - robustness_band: "low", "medium", or "high".
 - Include at least one outcome per band (low, medium, high). Prefer 1-2 low, 1-2 medium, 1-2 high.
-- inject_payload: type (e.g. media_report, field_update, intel_brief), title, content, severity (low/medium/high/critical), inject_scope ("universal" or "team"), target_teams (null for universal, or array of team names), affected_roles (array of role strings or empty).
+- inject_payload: type (e.g. media_report, field_update, intel_brief), title, content, severity (low/medium/high/critical), inject_scope ("universal" or "team"), target_teams (null for universal, or array of team names), affected_roles (array of role strings or empty), requires_response (boolean).
+- requires_response: Set to true ONLY when this outcome inject describes a development that demands an operational response from players (e.g. new threat or attack, misinformation that must be corrected, resource shortage requiring allocation, public concern requiring official response, or similar). Set to false when the outcome is purely informational, a status update, or good news that does not require a new decision or action. When in doubt, set false. Include this field on every outcome.
 - Each outcome must be a plausible next development from the just-published inject, aligned with the pathway.`;
 
     const escalationText =
@@ -1125,6 +1128,7 @@ Generate 3 to 8 outcome injects (low/medium/high robustness bands). Return JSON 
           inject_scope: String(p.inject_scope ?? 'universal'),
           target_teams: Array.isArray(p.target_teams) ? (p.target_teams as string[]) : null,
           affected_roles: Array.isArray(p.affected_roles) ? (p.affected_roles as string[]) : [],
+          requires_response: p.requires_response === true,
         },
       });
     }
@@ -1796,17 +1800,9 @@ Available inject types:
 - weather_change: Environmental conditions, weather updates
 - political_pressure: Political demands, official pressure, policy concerns
 
-Return ONLY valid JSON in this exact format:
-{
-  "type": "media_report",
-  "title": "Short, descriptive title (max 200 chars)",
-  "content": "Detailed, realistic content describing the inject. Should be 2-4 sentences, written as if it's a real update or report.",
-  "severity": "medium",
-  "affected_roles": ["public_information_officer", "police_commander"],
-  "inject_scope": "role_specific",
-  "requires_response": false,
-  "requires_coordination": false
-}
+Return ONLY valid JSON in this exact format. Use requires_response: true when the inject demands an operational response; use requires_response: false when purely informational.
+Example (demands response, e.g. false claim circulating): { "type": "media_report", "title": "...", "content": "...", "severity": "high", "affected_roles": [], "inject_scope": "universal", "requires_response": true, "requires_coordination": false }
+Example (informational): { "type": "media_report", "title": "Short, descriptive title (max 200 chars)", "content": "Detailed, realistic content describing the inject. Should be 2-4 sentences, written as if it's a real update or report.", "severity": "medium", "affected_roles": ["public_information_officer", "police_commander"], "inject_scope": "role_specific", "requires_response": false, "requires_coordination": false }
 
 CRITICAL: inject_scope and affected_roles determine who sees this inject:
 - "universal": Use ONLY when the inject contains information that ALL participants need to know (e.g., major breaking news, system-wide alerts, critical public announcements). This should be RARE.
@@ -1834,6 +1830,13 @@ CRITICAL: requires_response field determines if an incident is automatically cre
   - Field update: "Team A has completed initial assessment" → status update
   - Intel brief: "Background on suspect organization" → informational context
   - Political pressure: "General policy discussion" → informational
+
+Decision criteria for requires_response:
+- Set requires_response: true ONLY when the inject describes something that demands an operational response: e.g. new threat or attack, misinformation that must be corrected, resource request, public concern requiring official response, or similar. An incident will be created so teams can track and assign it.
+- Set requires_response: false when the inject is purely informational (e.g. "response efforts are underway", "weather update", "background intel", status update with no new demand for action). No incident is created.
+- When in doubt, set false. Do not set true for every inject.
+
+Examples: For a media_report that needs debunking (e.g. "False claim circulating...") use "requires_response": true. For an informational update (e.g. "Local news covers ongoing response efforts") use "requires_response": false.
 
 Examples of inject scope and affected_roles:
 - Media report about police actions → inject_scope: "role_specific", affected_roles: ["public_information_officer", "police_commander"]
