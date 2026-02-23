@@ -198,30 +198,6 @@ export const IncidentCard = ({
         >
           [ASSIGN]
         </button>
-        {incident.status === 'active' && (
-          <>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleStatusChange('under_control');
-              }}
-              disabled={updating}
-              className="px-3 py-1 text-xs terminal-text border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 disabled:opacity-50 whitespace-nowrap"
-            >
-              [UNDER_CONTROL]
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleStatusChange('contained');
-              }}
-              disabled={updating}
-              className="px-3 py-1 text-xs terminal-text border border-green-400 text-green-400 hover:bg-green-400/10 disabled:opacity-50 whitespace-nowrap"
-            >
-              [CONTAINED]
-            </button>
-          </>
-        )}
         {incident.status === 'under_control' && (
           <button
             onClick={(e) => {

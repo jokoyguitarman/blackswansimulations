@@ -3,7 +3,6 @@ import { api } from '../../lib/api';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRealtime } from '../../hooks/useRealtime';
 import { supabase } from '../../lib/supabase';
-import { CreateIncidentForm } from '../Forms/CreateIncidentForm';
 import { IncidentCard } from './IncidentCard';
 import { AssignIncidentModal } from './AssignIncidentModal';
 
@@ -61,7 +60,6 @@ export const IncidentsPanel = ({
   // const { user } = useAuth(); // Unused - keeping for potential future use
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -393,11 +391,6 @@ export const IncidentsPanel = ({
     }
   };
 
-  const handleCreateSuccess = () => {
-    setShowCreateModal(false);
-    loadIncidents();
-  };
-
   const handleAssign = (incident: Incident) => {
     setSelectedIncident(incident);
     setShowAssignModal(true);
@@ -433,12 +426,6 @@ export const IncidentsPanel = ({
       {/* Header */}
       <div className="military-border p-4 flex justify-between items-center">
         <h3 className="text-lg terminal-text uppercase">[INCIDENTS] Active Incidents</h3>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="military-button px-4 py-2 text-sm"
-        >
-          [CREATE_INCIDENT]
-        </button>
       </div>
 
       {/* Filters */}
@@ -497,15 +484,6 @@ export const IncidentsPanel = ({
           </div>
         )}
       </div>
-
-      {/* Create Incident Modal */}
-      {showCreateModal && (
-        <CreateIncidentForm
-          sessionId={sessionId}
-          onClose={() => setShowCreateModal(false)}
-          onSuccess={handleCreateSuccess}
-        />
-      )}
 
       {/* Assign Incident Modal */}
       {showAssignModal && selectedIncident && (
