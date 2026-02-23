@@ -151,6 +151,11 @@ export const TimelineFeed = ({ sessionId }: TimelineFeedProps) => {
     }
   };
 
+  // Hide AI step start/end in timeline; BACKEND / AI ACTIVITY panel still shows them
+  const timelineEvents = events.filter(
+    (e) => e.event_type !== 'ai_step_start' && e.event_type !== 'ai_step_end',
+  );
+
   if (loading && events.length === 0) {
     return (
       <div className="military-border p-6">
@@ -167,7 +172,7 @@ export const TimelineFeed = ({ sessionId }: TimelineFeedProps) => {
     <div className="military-border p-6 h-[600px] overflow-y-auto">
       <h3 className="text-lg terminal-text uppercase mb-4">[TIMELINE] Event Feed</h3>
       <div className="space-y-3">
-        {events.map((event) => (
+        {timelineEvents.map((event) => (
           <div
             key={event.id}
             className={`military-border p-4 border-l-4 ${getEventColor(event.event_type)}`}
@@ -214,7 +219,7 @@ export const TimelineFeed = ({ sessionId }: TimelineFeedProps) => {
             </div>
           </div>
         ))}
-        {events.length === 0 && (
+        {timelineEvents.length === 0 && (
           <div className="text-center py-8">
             <p className="text-sm terminal-text text-robotic-yellow/50">
               [NO_EVENTS] No events yet
