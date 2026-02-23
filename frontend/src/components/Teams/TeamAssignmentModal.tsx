@@ -37,17 +37,7 @@ export const TeamAssignmentModal = ({
   const [loading, setLoading] = useState(true);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [teamAssignments, setTeamAssignments] = useState<TeamAssignment[]>([]);
-  const [availableTeams] = useState<string[]>([
-    'evacuation',
-    'triage',
-    'media',
-    'communications',
-    'logistics',
-    'command',
-    'medical',
-    'security',
-  ]);
-  // const [newTeamName, setNewTeamName] = useState(''); // Unused - keeping for potential future use
+  const [availableTeams, setAvailableTeams] = useState<string[]>([]);
   const [selectedParticipant, setSelectedParticipant] = useState<string | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<string>('');
 
@@ -59,11 +49,21 @@ export const TeamAssignmentModal = ({
     try {
       setLoading(true);
 
-      // Load participants
+      // Load session (includes participants and scenario_id)
       const sessionResult = await api.sessions.get(sessionId);
-      const session = sessionResult.data as any;
+      const session = sessionResult.data as { participants?: Participant[]; scenario_id?: string };
       if (session?.participants) {
         setParticipants(session.participants);
+      }
+
+      // Load teams for this scenario so dropdown shows scenario-specific teams
+      const scenarioId = session?.scenario_id;
+      if (scenarioId) {
+        const scenarioTeamsResult = await api.teams.getScenarioTeams(scenarioId);
+        const teamNames = (scenarioTeamsResult.data ?? []).map((t) => t.team_name);
+        setAvailableTeams(teamNames);
+      } else {
+        setAvailableTeams([]);
       }
 
       // Load team assignments
