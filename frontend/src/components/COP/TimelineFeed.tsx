@@ -151,9 +151,12 @@ export const TimelineFeed = ({ sessionId }: TimelineFeedProps) => {
     }
   };
 
-  // Hide AI step start/end in timeline; BACKEND / AI ACTIVITY panel still shows them
+  // Hide AI step start/end and inject_cancelled in timeline; BACKEND / AI ACTIVITY panel still shows them
   const timelineEvents = events.filter(
-    (e) => e.event_type !== 'ai_step_start' && e.event_type !== 'ai_step_end',
+    (e) =>
+      e.event_type !== 'ai_step_start' &&
+      e.event_type !== 'ai_step_end' &&
+      e.event_type !== 'inject_cancelled',
   );
 
   if (loading && events.length === 0) {

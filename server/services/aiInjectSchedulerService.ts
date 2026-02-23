@@ -642,6 +642,101 @@ export class AIInjectSchedulerService {
           });
         }
       }
+    } else {
+      // No decisions in 5-minute window: punish inaction (pathway outcome or inaction inject)
+      if (hasPathwayOutcomes) {
+        const robustnessBand = 'low' as const;
+        if (!this.io) {
+          const { io } = await import('../index.js');
+          this.io = io;
+        }
+        let publishedCount = 0;
+        for (const row of rowsToProcess) {
+          if (publishedCount >= 1) break; // At most one outcome inject per cycle for inaction
+          const outcomes = parseOutcomes(row.outcomes);
+          if (outcomes.length === 0) continue;
+          const matching = outcomes.filter((o) => o.robustness_band === robustnessBand);
+          const toPublish =
+            matching.length > 0
+              ? matching[0]
+              : outcomes[Math.floor(Math.random() * outcomes.length)];
+          const { data: createdInject, error: createError } = await supabaseAdmin
+            .from('scenario_injects')
+            .insert({
+              scenario_id: session.scenario_id,
+              trigger_time_minutes: null,
+              trigger_condition: null,
+              type: toPublish.inject_payload.type,
+              title: toPublish.inject_payload.title,
+              content: toPublish.inject_payload.content,
+              severity: toPublish.inject_payload.severity,
+              affected_roles: toPublish.inject_payload.affected_roles ?? [],
+              inject_scope: toPublish.inject_payload.inject_scope ?? 'universal',
+              target_teams: toPublish.inject_payload.target_teams ?? null,
+              requires_response: toPublish.inject_payload.requires_response === true,
+              requires_coordination: false,
+              ai_generated: true,
+              triggered_by_user_id: null,
+            })
+            .select()
+            .single();
+          if (!createError && createdInject) {
+            await publishInjectToSession(
+              createdInject.id,
+              session.id,
+              session.trainer_id,
+              this.io!,
+            );
+            publishedCount += 1;
+            logger.info(
+              {
+                sessionId: session.id,
+                injectId: createdInject.id,
+                robustnessBand,
+                outcomeId: toPublish.outcome_id,
+                trigger_inject_id: row.trigger_inject_id,
+              },
+              'Pathway outcome inject published (inaction, low band)',
+            );
+          } else {
+            logger.warn(
+              {
+                error: createError,
+                sessionId: session.id,
+                trigger_inject_id: row.trigger_inject_id,
+              },
+              'Failed to create outcome inject for row (inaction), continuing',
+            );
+          }
+        }
+      } else {
+        // No pathway outcomes: generate one universal inaction inject via AI
+        if (env.openAiApiKey) {
+          await supabaseAdmin.from('session_events').insert({
+            session_id: session.id,
+            event_type: 'ai_step_start',
+            description: 'AI: Generating inject from inaction…',
+            actor_id: null,
+            metadata: { step: 'inject_generation' },
+          });
+        }
+        const inactionContext = {
+          ...baseContext,
+          inactionCycle: true,
+          instructionsOverride:
+            'Generate an inject that reflects escalation or deterioration due to the lack of any team response in the last 5 minutes.',
+        };
+        await this.generateUniversalInject(session, inactionContext, []);
+        if (env.openAiApiKey) {
+          await supabaseAdmin.from('session_events').insert({
+            session_id: session.id,
+            event_type: 'ai_step_end',
+            description: 'AI: Inaction inject generated',
+            actor_id: null,
+            metadata: { step: 'inject_generation' },
+          });
+        }
+      }
     }
   }
 
@@ -660,17 +755,20 @@ export class AIInjectSchedulerService {
       type: 'coordination_order',
     };
 
-    // Enhanced context for universal inject
+    // Enhanced context for universal inject (inactionCycle/instructionsOverride passed through when set)
     const universalContext = {
       ...context,
       injectType: 'universal',
       focus: 'overall_state',
       instructions:
+        (context.instructionsOverride as string) ||
         'Generate a general/universal inject that reflects the overall state of play and all decisions made. This should be visible to all players and provide a high-level view of the situation.',
     } as typeof context & {
       injectType: string;
       focus: string;
       instructions: string;
+      inactionCycle?: boolean;
+      instructionsOverride?: string;
     };
 
     const generatedInject = await generateInjectFromDecision(

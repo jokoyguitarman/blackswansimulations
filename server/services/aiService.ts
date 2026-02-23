@@ -1778,6 +1778,10 @@ export const generateInjectFromDecision = async (
     themeUsageByScope?: ThemeUsageByScope;
     /** One-line summary of what teams have repeatedly addressed */
     decisionsSummaryLine?: string;
+    /** Set when no decisions in 5-min window: generate consequence-of-inaction inject */
+    inactionCycle?: boolean;
+    /** Override instruction for inject (e.g. inaction punishment) */
+    instructionsOverride?: string;
   },
   openAiApiKey: string,
 ): Promise<GeneratedInject | null> => {
@@ -2026,6 +2030,11 @@ ${hasDeEscalationPathways ? `\nDe-escalation pathways (how situation improves wh
         : '';
 
     const instructions = (sessionContext as { instructions?: string }).instructions || '';
+    const inactionInstruction =
+      sessionContext.inactionCycle === true
+        ? sessionContext.instructionsOverride ||
+          'No decisions were made in the last 5 minutes; generate an inject describing negative consequences or escalation from this inaction.'
+        : '';
 
     const userPrompt = `Generate an inject based on this decision:
 
@@ -2034,7 +2043,7 @@ Title: ${decision.title}
 Description: ${decision.description}
 Type: ${decision.type}${scenarioContext}${allDecisionsContext}${upcomingInjectsContext}${currentStateContext}${objectivesContext}${recentInjectsContext}${participantsContext}${injectTypeContext}${themeUsageContext}${decisionsSummaryContext}${escalationContext}
 
-${instructions}
+${inactionInstruction || instructions}
 
 Generate a realistic inject that:
 - Is a natural consequence of the decision(s) and current state
