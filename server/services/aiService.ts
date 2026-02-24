@@ -335,9 +335,10 @@ export interface ScheduledInjectCancellationResult {
 }
 
 /**
- * Decide whether a pre-loaded (scheduled) scenario inject should be suppressed
- * because player decisions in the last 5 minutes have already addressed, prevented,
- * or made the event obsolete (e.g. "bomb explodes" cancelled by "bomb safely detonated").
+ * Decide whether a scheduled scenario inject should be suppressed. The AI reasons as the
+ * adversary: default is do not cancel (publish). Cancel only when players explicitly named
+ * the same channel, facility, location, or incident as in the inject; generic measures
+ * do not justify cancellation (adversary can adapt).
  */
 export const shouldCancelScheduledInject = async (
   inject: { title: string; content: string },
@@ -345,27 +346,31 @@ export const shouldCancelScheduledInject = async (
   openAiApiKey: string,
 ): Promise<ScheduledInjectCancellationResult> => {
   try {
-    const systemPrompt = `You are an expert crisis simulation facilitator. Your task is to decide whether a scheduled scenario event (inject) should still be published to players, given the decisions they have already made in the last 5 minutes.
+    /*
+     * REVERT: restore the block below to systemPrompt/userPrompt to revert to pre-adversary cancellation logic.
+     * OLD systemPrompt:
+     * You are an expert crisis simulation facilitator. Your task is to decide whether a scheduled scenario event (inject) should still be published to players, given the decisions they have already made in the last 5 minutes.
+     * Rules:
+     * - If player decisions have already addressed, prevented, or made this scheduled event obsolete or contradictory, return cancel: true.
+     * - Examples: scheduled "Bomb explodes" but players decided to "safely detonate the bomb" -> cancel. Scheduled "Evacuation chaos" but players already executed a full evacuation order -> consider cancelling if the inject would be redundant or contradictory.
+     * - If the inject is still relevant, adds new information, or is not contradicted by recent decisions, return cancel: false.
+     * - When in doubt, prefer cancel: false so the scenario continues as designed unless there is a clear contradiction.
+     * - Consider partial overlap: if players did something that partially addresses the inject, you may still cancel if the inject would now be misleading (e.g. "Secondary explosion" when the threat was already neutralized).
+     * Return ONLY valid JSON: { "cancel": true|false, "reason": "..." }
+     * OLD userPrompt (same structure, inject.title, inject.content, decisionsText):
+     * Scheduled inject that is about to be published: Title: ... Content: ... --- Decisions made by players in the last 5 minutes: ... --- Should this scheduled inject be CANCELLED (not published) because player actions have already addressed, prevented, or made it obsolete? Return JSON with "cancel" (boolean) and "reason" (string).
+     */
+    const systemPrompt = `You are the adversary / scenario engine. Your goal is to keep the scenario challenging: scheduled injects should RUN unless players have directly and specifically removed the exact thing the inject is about.
 
-Rules:
-- If player decisions have already addressed, prevented, or made this scheduled event obsolete or contradictory, return cancel: true.
-- Examples: scheduled "Bomb explodes" but players decided to "safely detonate the bomb" -> cancel. Scheduled "Evacuation chaos" but players already executed a full evacuation order -> consider cancelling if the inject would be redundant or contradictory.
-- If the inject is still relevant, adds new information, or is not contradicted by recent decisions, return cancel: false.
-- When in doubt, prefer cancel: false so the scenario continues as designed unless there is a clear contradiction.
-- Consider partial overlap: if players did something that partially addresses the inject, you may still cancel if the inject would now be misleading (e.g. "Secondary explosion" when the threat was already neutralized).
+Adversary adapts: If players took generic measures (e.g. "monitor extremist channels", "fortify detention facilities") without naming which channel or facility, assume the adversary uses other channels, other facilities, or other methods. Return cancel: false and give a brief reason (e.g. how the adversary adapts).
 
-Return ONLY valid JSON in this exact format:
-{
-  "cancel": true,
-  "reason": "Brief explanation of why this inject should or should not be published"
-}
+Cancel only when specific: Return cancel: true ONLY if the inject refers to a concrete thing (named channel, facility, location, incident) and player decisions explicitly refer to that SAME thing (e.g. "shut down Channel X", "secure Facility Y"). Treat as "specific" only when the decision text explicitly names the same entity (same channel name, facility name, or location). Generic phrases like "all high-risk facilities" or "known channels" do NOT count unless that specific thing is explicitly listed.
 
+Output: Return ONLY valid JSON in this exact format:
+{ "cancel": true, "reason": "..." }
 or
-
-{
-  "cancel": false,
-  "reason": "Brief explanation"
-}`;
+{ "cancel": false, "reason": "..." }
+When cancel is false, reason should briefly state how the adversary adapts (for backend logging). When cancel is true, reason should state that players specifically addressed the same entity.`;
 
     const decisionsText =
       recentDecisions.length > 0
@@ -374,7 +379,7 @@ or
             .join('\n\n')
         : 'No decisions executed in the last 5 minutes.';
 
-    const userPrompt = `Scheduled inject that is about to be published:
+    const userPrompt = `Scheduled inject that may be published:
 
 Title: ${inject.title}
 
@@ -387,7 +392,7 @@ Decisions made by players in the last 5 minutes:
 ${decisionsText}
 
 ---
-Should this scheduled inject be CANCELLED (not published) because player actions have already addressed, prevented, or made it obsolete? Return JSON with "cancel" (boolean) and "reason" (string).`;
+As the adversary, can this inject still plausibly occur (e.g. by using a different channel, facility, location, or method)? Return cancel: true ONLY if players explicitly named the same channel, facility, location, or incident as in this inject. Otherwise return cancel: false with a brief reason (how the adversary adapts). Return JSON with "cancel" (boolean) and "reason" (string).`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
