@@ -38,7 +38,7 @@ BEGIN
 A coordinated prison assault occurs at a neighbourhood detention facility. Attackers kill police, breach cell blocks, free and selectively recruit inmates, seize weapons, and withdraw into surrounding communities. The state response is delayed and fragmented; the local population initially displays overwhelming passive and active support. Some villages shelter militants for ideological, coercive, or economic reasons; cash, food, fuel, and intelligence are provided; protests emerge alleging discrimination and collective punishment. Primary node may be Sulu, Basilan, Marawi, or Maguindanao; spillover theatres include Java, Peninsular Malaysia, Sabah, Kalimantan.',
     'terrorism',
     'advanced',
-    60,
+    90,
     '[
       "Contain the siege and prevent spread",
       "Coordinate agencies under asymmetric information",
@@ -89,7 +89,7 @@ A coordinated prison assault occurs at a neighbourhood detention facility. Attac
     (scenario_uuid, 'bnpt', 'Badan Nasional Penanggulangan Terorisme. Strategic coordination, prevention, counter-narratives, regional diplomacy. Constraints: non-kinetic mandate, inter-agency coordination limits, dependence on political messaging.', ARRAY[]::TEXT[], 2, 8);
 
   -- ============================================
-  -- PART 3: Universal Injects (4)
+  -- PART 3: Universal Injects (29: opening + Phase 1 + Phases 2-6 + international + intensity)
   -- ============================================
 
   INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
@@ -103,6 +103,86 @@ A coordinated prison assault occurs at a neighbourhood detention facility. Attac
 
   INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
   VALUES (scenario_uuid, 45, 'intel_brief', 'Second Prison Target Identified', 'Intelligence suggests reconnaissance activity around another detention centre.', 'critical', '[]'::jsonb, 'universal', NULL, true, true);
+
+  -- Phase 1: Funerals exploited
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 12, 'media_report', 'Funerals of Slain Police Exploited', 'Propaganda is framing the funerals of slain police to inflame grievances. Freed prisoners are being portrayed as "returned mujahidin." The narrative is gaining traction in sympathetic communities.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  -- Phases 2-6, international scope, intensity (T+50 through T+88)
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 50, 'field_update', 'Second Detention Facility Breach', 'A second detention facility has been overrun. Inmates freed, weapons seized. Recruitment and firepower have been amplified. State response is stretched across multiple flashpoints.', 'critical', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 52, 'political_pressure', 'ASEAN Emergency Meeting Convened', 'Regional bloc has called an emergency session. Some members are pushing for a joint statement; others are resisting. Your government is under pressure to align with a regional position.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 54, 'field_update', 'Multiple Flashpoints Simultaneous', 'Java bombing, unrest in a spillover theatre, and a prison incident are being reported in the same operational window. Command and intelligence bandwidth are stretched to the limit.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 55, 'media_report', 'Suicide Bombing in Java', 'A suicide bombing has occurred in Java with casualties. It signals regional momentum and is stretching intelligence and public attention across the region.', 'critical', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 56, 'media_report', 'International Media Spotlight', 'Major global outlets are leading with the siege. "Southeast Asian caliphate" framing is spreading. Diaspora communities and foreign governments are watching closely.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 58, 'intel_brief', 'Knife Attacks in Kuala Lumpur or Johor', 'Attacks on police or symbolic minority targets have been reported in Kuala Lumpur or Johor. The inevitability narrative is being reinforced; regional synchronisation is under way.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 60, 'intel_brief', 'Cross-Border Intelligence Sharing Stalls', 'Bilateral intelligence sharing with neighbours is delayed or conditional. Gaps in travel and border data are making foreign fighter flow harder to track.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 62, 'field_update', 'Armed Violence in Sabah or Kalimantan', 'Armed incidents have been reported in Sabah or Kalimantan. Regional synchronisation is in progress across spillover theatres.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 64, 'intel_brief', 'Propaganda Names Specific Units or Officials', 'Insurgent propaganda is naming specific local units or officials as targets. Personal and institutional risk is rising; morale and family pressure are growing.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 65, 'intel_brief', 'First Wave Foreign Fighter Influx', 'Foreign fighters are arriving via commercial flights, maritime routes (Sulu/Celebes), and overland. Profiles include Malaysians, Indonesians, Singaporeans, and Thais. They are being allocated to training, media, and specialist combat roles.', 'critical', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 66, 'political_pressure', 'Domestic Opposition Demands Statement', 'Parliament or opposition is demanding a government statement. "Who is in charge?" narrative is gaining traction. Political pressure is compounding operational load.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 68, 'political_pressure', 'Foreign Government Travel Advisories', 'Several countries have issued travel advisories or are evacuating staff. Some are threatening aid cuts or sanctions if the situation deteriorates. Diplomatic pressure is mounting.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 70, 'intel_brief', 'Proto-Governance Experiments', 'Militants are testing proto-governance in controlled areas. Interoperability between disparate groups is being tested. The conflict is shifting from pure insurgency toward territorial control.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 72, 'media_report', 'OIC or Human Rights Bodies Issue Statements', 'Regional or international bodies (OIC, human rights mechanisms) have issued statements of concern. Risk of investigations or resolutions is rising. Narrative and legitimacy are at stake.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 74, 'field_update', 'Supply Lines or Key Infrastructure Threatened', 'Roads or key infrastructure linking to the crisis zone are threatened or cut. Logistics and humanitarian access are at risk.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 75, 'media_report', 'Satellite Caliphate Declared', 'The insurgent coalition has declared an Islamic polity and seized a city or district. The declaration is being broadcast. Local support in seized areas is beginning to fracture.', 'critical', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 76, 'intel_brief', 'Foreign Fighter Origins Beyond Region', 'Reporting confirms foreign fighter arrivals from outside Southeast Asia (e.g. UK, EU, Australia, Middle East). The conflict is clearly internationalised.', 'critical', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 78, 'intel_brief', 'Local Support Fracturing', 'Reports indicate that local support in seized areas is fracturing. Displacement and humanitarian pressure are increasing. The militants'' hold is not unchallenged.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 79, 'intel_brief', 'Reports of Civilian Casualties in Seized Area', 'Unverified reports of civilian casualties in areas under insurgent control are emerging. Risk of war-crimes narrative and international scrutiny is rising.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 80, 'citizen_call', 'International NGO or UN Access Request', 'An international humanitarian or monitoring body has requested access to affected areas. Refusal versus access has major reputational and operational trade-offs.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 82, 'intel_brief', 'Second Wave Foreign Fighters', 'Foreign fighters from outside the region (UK, EU, Australia, Middle East) are arriving. Capabilities are increasing.', 'critical', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 84, 'political_pressure', 'Rumours of External Military Assistance', 'Unconfirmed reports suggest a foreign power may offer or has been asked for military or intelligence support. Sovereignty and escalation concerns are acute.', 'high', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 85, 'field_update', 'Militarisation: Tunnels, Snipers, IEDs', 'Tunnel construction to negate air power, snipers controlling urban high ground, and sophisticated IED belts and booby traps have been reported. Militant capabilities have escalated.', 'critical', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 86, 'citizen_call', 'Hostage Family Appeal or Ultimatum', 'Either a hostage family appeal has been broadcast or a militant ultimatum with a deadline has been issued. Time pressure and public emotion are extreme.', 'critical', '[]'::jsonb, 'universal', NULL, true, true);
+
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (scenario_uuid, 88, 'intel_brief', 'Hostage-Taking for Strategic Leverage', 'Hostages have been taken for strategic leverage. Political support is collapsing while coercive control in militant-held areas is peaking.', 'critical', '[]'::jsonb, 'universal', NULL, true, true);
 
   -- ============================================
   -- PART 4: AFP Injects (3)
@@ -172,6 +252,12 @@ A coordinated prison assault occurs at a neighbourhood detention facility. Attac
     'Local leaders warn of panic and rumours of imminent attacks in Sabah. AI response: Uses threat of expansion as deterrence signal.',
     'high', '[]'::jsonb, 'team_specific', ARRAY['esscom'], true, true
   );
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (
+    scenario_uuid, 67, 'intel_brief', 'Maritime Patrol Request from Neighbour',
+    'A neighbouring navy has requested coordinated patrol or handover of suspects in contested waters. Jurisdiction and escalation risks are in play.',
+    'high', '[]'::jsonb, 'team_specific', ARRAY['esscom'], true, true
+  );
 
   -- ============================================
   -- PART 7: Malaysian Special Branch Injects (3)
@@ -193,6 +279,12 @@ A coordinated prison assault occurs at a neighbourhood detention facility. Attac
   VALUES (
     scenario_uuid, 40, 'intel_brief', 'Returnee Risk (Late Phase)',
     'Intelligence suggests some fighters may return to Malaysia for attacks. AI response: Maintains ambiguity to overstretch monitoring.',
+    'high', '[]'::jsonb, 'team_specific', ARRAY['special_branch'], true, true
+  );
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (
+    scenario_uuid, 63, 'intel_brief', 'Foreign Partner Requests Evidence for Extraditions',
+    'A foreign partner has requested evidence on foreign fighters for potential prosecution or extradition. Legal and diplomatic friction are emerging.',
     'high', '[]'::jsonb, 'team_specific', ARRAY['special_branch'], true, true
   );
 
@@ -241,6 +333,12 @@ A coordinated prison assault occurs at a neighbourhood detention facility. Attac
     'Hard messaging risks backlash; soft messaging appears weak. AI response: Frames restraint as ideological victory.',
     'high', '[]'::jsonb, 'team_specific', ARRAY['bnpt'], true, true
   );
+  INSERT INTO scenario_injects (scenario_id, trigger_time_minutes, type, title, content, severity, affected_roles, inject_scope, target_teams, requires_response, requires_coordination)
+  VALUES (
+    scenario_uuid, 59, 'political_pressure', 'Regional Counter-Narrative Coordination Fails',
+    'A proposed joint counter-message with neighbouring countries has fallen apart. Each country''s messaging is contradicting the other. Regional narrative coordination has failed.',
+    'high', '[]'::jsonb, 'team_specific', ARRAY['bnpt'], true, true
+  );
 
   -- ============================================
   -- PART 10: Scenario Objectives (5)
@@ -263,7 +361,7 @@ A coordinated prison assault occurs at a neighbourhood detention facility. Attac
   ON CONFLICT (scenario_id, objective_id) DO NOTHING;
 
   RAISE NOTICE 'Prison Siege to Caliphate Declaration scenario created successfully. Scenario ID: %', scenario_uuid;
-  RAISE NOTICE 'Created 6 teams, 22 injects (4 universal + 18 team-specific), 5 objectives.';
+  RAISE NOTICE 'Created 6 teams, 50 injects (29 universal + 21 team-specific), 5 objectives.';
 END $$;
 
 -- ============================================
