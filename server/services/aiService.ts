@@ -585,7 +585,7 @@ Identify de-escalation factors (what helps mitigate). Return JSON only.`;
 
 /**
  * Stage 2: Identify escalation factors from current scenario state.
- * AI analyses scenario + current state + recent injects to find factors that may lead to escalation.
+ * AI identifies team-fault risks: how team inaction, delay, or poor choices in response to the development could make things worse.
  */
 export const identifyEscalationFactors = async (
   scenarioDescription: string,
@@ -596,16 +596,18 @@ export const identifyEscalationFactors = async (
 ): Promise<IdentifyEscalationFactorsResult> => {
   const empty: IdentifyEscalationFactorsResult = { factors: [] };
   try {
-    const systemPrompt = `You are an expert crisis management analyst. Analyse the scenario and current situation to identify factors that may lead to escalation. These are factors, not fixed outcomes.
+    const systemPrompt = `You are an expert crisis management analyst. Identify escalation factors: risks that get worse because of specific team actions or inactions in response to the development. Think "How can the team screw this up?"—what would the team have to do or fail to do for each risk to materialise or worsen?
 
-When a just-published inject is provided, identify factors that arise from or are heightened by that development. Each factor name and description must be framed in terms of this development (what arises or is heightened by it), so the list reads as part of the same narrative—e.g. not "Delayed Evacuation" but "Delayed evacuation of vulnerable areas after order declaration."
+Frame every factor as a team-fault risk: name the team behaviour (or lack of it) that could make things worse, then the consequence. Examples of failure modes: delayed or absent response; talking too soon before facts are clear; vague or evasive messaging; skirting the issue; not being transparent; contradicting other agencies; over-promising; failing to coordinate with emergency services; no or belated engagement with community leaders. Do NOT list generic situational consequences (e.g. "Heightened communal tensions due to misinformation") without tying them to a specific team failure (e.g. "Vague or non-transparent official messaging → rumours fill the vacuum and communal tensions rise").
+
+When a just-published inject is provided, each factor must be clearly tied to that development (e.g. in the context of a viral fake voice note: "Issuing a statement that is vague or evasive → community fills the vacuum with rumours and mistrust").
 
 Always include exactly one factor that describes escalation or risk from inaction, delayed response, or failure to respond to the current development (e.g. "Escalation from delayed or absent response to [theme]"). Set "consequence_for_inaction": true on that one factor only; omit or set false on all others.
 
 Return ONLY valid JSON in this exact format:
 {
   "factors": [
-    { "id": "EF-1", "name": "Short name", "description": "One or two sentences.", "severity": "low" | "medium" | "high" | "critical", "consequence_for_inaction": true }
+    { "id": "EF-1", "name": "Short name", "description": "One or two sentences: team failure mode and consequence.", "severity": "low" | "medium" | "high" | "critical", "consequence_for_inaction": true }
   ]
 }
 
@@ -633,7 +635,7 @@ Current state (summary): ${JSON.stringify(currentState).slice(0, 500)}
 Objectives:
 ${objectivesText}
 
-${recentInjects.length > 0 ? 'Just-published inject (identify escalation factors that arise from or are heightened by this development):' : 'Recent injects (current situation):'}
+${recentInjects.length > 0 ? "Just-published inject (identify escalation factors: how could the team's inaction, delay, or poor choices in response to this development make things worse?):" : 'Recent injects (current situation):'}
 ${injectsText}
 
 ---
@@ -1224,9 +1226,14 @@ export const computeInterTeamImpactMatrix = async (
         ? `\n\nResponse taxonomy: the following teams had no decisions in this window (treat as non-responders, robustness 0): ${absentTeams.join(', ')}. Do NOT include these teams as acting_team in the matrix (only teams that made decisions should appear as keys in matrix). You may include them as affected_team when other teams' decisions impact them.`
         : '';
 
+    /* REVERT: stricter robustness calibration – see docs/REVERT_STRICTER_ROBUSTNESS_SCORING.md */
     const systemPrompt = `You are an expert crisis management analyst. Given a list of teams and decisions made by those teams in the last 5 minutes, produce:
 1. An inter-team impact matrix: for each acting_team (team that made decisions), for each other affected_team, output an impact score from -2 (negative impact, hinders or increases risk) to +2 (positive impact, helps or reduces risk). Use 0 for neutral or no clear impact. Do not include acting_team on itself.
-2. Optionally, for each decision_id, output a robustness score from 1 (weak, increases escalation) to 10 (strong, mitigates escalation). Teams with no decisions in the window have robustness 0 (do not invent entries for them).
+2. Required: for each decision_id in the input list, output a robustness score (1-10) in the "robustness" object. Use the exact same decision_id keys as in the input. Teams with no decisions in the window have robustness 0 (do not invent entries for them). Apply this calibration strictly:
+   - 1-4 (weak, increases escalation): Vague, generic, absent, or contradictory to good practice (e.g. "we will monitor" with no concrete action; inaction; decision that ignores or worsens current escalation factors).
+   - 5-8 (mid): Generic measures ("monitor channels", "coordinate with partners") without naming specific channels/partners; or only partly addresses the risk; or good intent but no clear follow-through.
+   - 9-10 (strong, mitigates escalation): Specific, actionable decisions that directly address current escalation factors or pathway triggers (e.g. named facility, named channel, clear allocation, explicit debunking plan).
+   Be strict: mediocre or generic responses should typically score 5-6; reserve 9-10 only for clearly strong, specific decisions that directly address current escalation factors or pathways.
 3. For every (acting_team, affected_team) pair in the matrix, provide a "matrix_reasoning_per_cell" object with the same structure as matrix: each key is an acting_team, each value is an object mapping affected_team to a short explanation (1 sentence) of how that acting team's decisions in this window affected the affected team (e.g. helped, hindered, or neutral and why). Be specific to the decisions listed.
 4. Optionally, an "analysis" object: "overall" (1-2 sentences on overall inter-team dynamics), "matrix_reasoning" (brief note on key matrix scores), "robustness_reasoning" (brief note on decision robustness). When escalation factors or pathways are provided, reference them in your reasoning.
 
@@ -1241,8 +1248,8 @@ Return ONLY valid JSON in this exact format:
     "TeamNameB": { "TeamNameA": "...", "TeamNameC": "..." }
   },
   "robustness": {
-    "decision-uuid-1": 7,
-    "decision-uuid-2": 4
+    "decision-uuid-1": 5,
+    "decision-uuid-2": 9
   },
   "analysis": {
     "overall": "Optional 1-2 sentences.",
@@ -1272,7 +1279,7 @@ ${scenarioContext ? `Scenario context: ${scenarioContext.substring(0, 500)}\n\n`
 ${decisionsText}
 ${escalationContext}
 ---
-Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and optional robustness per decision_id (1-10). When escalation context is provided, reference it in your analysis reasoning. Return JSON only.`;
+Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and robustness per decision_id (required; use the strict calibration above). When escalation context is provided, reference it in your analysis reasoning. Return JSON only.`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
