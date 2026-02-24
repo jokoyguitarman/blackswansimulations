@@ -24,7 +24,7 @@ const router = Router();
 const createDecisionSchema = z.object({
   body: z.object({
     session_id: z.string().uuid(),
-    title: z.string().min(1).max(200),
+    title: z.string().max(200).optional(),
     description: z.string().min(1),
     decision_type: z
       .enum([
@@ -289,7 +289,13 @@ router.post(
   async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      const { session_id, title, description, decision_type, required_approvers } = req.body;
+      const {
+        session_id,
+        title: titleInput,
+        description,
+        decision_type,
+        required_approvers,
+      } = req.body;
 
       // Verify session access
       const { data: session } = await supabaseAdmin
@@ -305,6 +311,12 @@ router.post(
       if (session.status !== 'in_progress') {
         return res.status(400).json({ error: 'Session is not active' });
       }
+
+      // Title is optional; derive from description when missing or empty (DB requires NOT NULL)
+      const title =
+        typeof titleInput === 'string' && titleInput.trim().length > 0
+          ? titleInput.trim().slice(0, 200)
+          : description.trim().slice(0, 80) + (description.trim().length > 80 ? '…' : '');
 
       const { data, error } = await supabaseAdmin
         .from('decisions')

@@ -9,10 +9,7 @@ interface CreateDecisionFormProps {
 
 export const CreateDecisionForm = ({ sessionId, onClose, onSuccess }: CreateDecisionFormProps) => {
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-  });
+  const [description, setDescription] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,7 +18,7 @@ export const CreateDecisionForm = ({ sessionId, onClose, onSuccess }: CreateDeci
     try {
       const result = await api.decisions.create({
         session_id: sessionId,
-        ...formData,
+        description,
         required_approvers: [], // No approval steps; creator executes from this form
       });
       const created = result?.data as { id: string } | undefined;
@@ -50,26 +47,12 @@ export const CreateDecisionForm = ({ sessionId, onClose, onSuccess }: CreateDeci
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-              [TITLE]
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              className="w-full px-4 py-3 military-input terminal-text"
-              placeholder="Decision Title"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
               [DESCRIPTION]
             </label>
             <textarea
               required
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
               className="w-full px-4 py-3 military-input terminal-text"
               rows={4}
               placeholder="Detailed decision description..."
