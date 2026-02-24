@@ -18,6 +18,8 @@ interface Incident {
   casualty_count?: number;
   reported_at: string;
   updated_at: string;
+  /** Which team(s) this incident is for (from inject scope/target_teams). Set by API. */
+  for_teams_display?: string;
   reported_by?: {
     id: string;
     full_name: string;
@@ -136,7 +138,7 @@ export const IncidentCard = ({ incident, onUpdate, isSelected, onSelect }: Incid
             )}
           </div>
           <div className="flex flex-wrap gap-2 text-xs terminal-text text-robotic-yellow/50">
-            <span>[{incident.type}]</span>
+            <span>For: {incident.for_teams_display ?? 'All teams'}</span>
             {incident.casualty_count !== undefined && incident.casualty_count > 0 && (
               <span>Casualties: {incident.casualty_count}</span>
             )}

@@ -108,7 +108,12 @@ export const SessionView = () => {
       matrix?: Record<string, Record<string, number>>;
       robustness_by_decision?: Record<string, number>;
       response_taxonomy?: Record<string, string>;
-      analysis?: { overall?: string; matrix_reasoning?: string; robustness_reasoning?: string };
+      analysis?: {
+        overall?: string;
+        matrix_reasoning?: string;
+        robustness_reasoning?: string;
+        matrix_cell_reasoning?: Record<string, Record<string, string>>;
+      };
       factors?: Array<{ id: string; name: string; description: string; severity: string }>;
       de_escalation_factors?: Array<{ id: string; name: string; description: string }>;
       pathways?: Array<{
@@ -856,11 +861,10 @@ export const SessionView = () => {
                                 <div className="text-robotic-yellow/80 mb-1">
                                   [ESCALATION FACTORS]
                                 </div>
-                                <ul className="list-disc pl-4 space-y-0.5 text-robotic-green/90">
-                                  {a.factors.slice(0, 6).map((f) => (
+                                <ul className="list-disc pl-4 space-y-1 text-robotic-green/90 text-xs break-words">
+                                  {a.factors.map((f) => (
                                     <li key={f.id}>
-                                      {f.name} ({f.severity}): {f.description.slice(0, 80)}
-                                      {f.description.length > 80 ? '…' : ''}
+                                      {f.name} ({f.severity}): {f.description}
                                       {(f as { consequence_for_inaction?: boolean })
                                         .consequence_for_inaction && (
                                         <span className="ml-1 text-robotic-yellow/90 text-xs">
@@ -869,11 +873,6 @@ export const SessionView = () => {
                                       )}
                                     </li>
                                   ))}
-                                  {a.factors.length > 6 && (
-                                    <li className="text-robotic-yellow/70">
-                                      +{a.factors.length - 6} more
-                                    </li>
-                                  )}
                                 </ul>
                               </div>
                             )}
@@ -882,11 +881,10 @@ export const SessionView = () => {
                                 <div className="text-robotic-yellow/80 mb-1">
                                   [DE-ESCALATION FACTORS]
                                 </div>
-                                <ul className="list-disc pl-4 space-y-0.5 text-robotic-green/90">
-                                  {a.de_escalation_factors.slice(0, 4).map((f) => (
+                                <ul className="list-disc pl-4 space-y-1 text-robotic-green/90 text-xs break-words">
+                                  {a.de_escalation_factors.map((f) => (
                                     <li key={f.id}>
-                                      {f.name}: {f.description.slice(0, 60)}
-                                      {f.description.length > 60 ? '…' : ''}
+                                      {f.name}: {f.description}
                                     </li>
                                   ))}
                                 </ul>
@@ -902,12 +900,12 @@ export const SessionView = () => {
                             {a.pathways && a.pathways.length > 0 && (
                               <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
                                 <div className="text-robotic-yellow/80 mb-1">[PATHWAYS]</div>
-                                <ul className="list-disc pl-4 space-y-0.5 text-robotic-green/90">
-                                  {a.pathways.slice(0, 4).map((p) => (
+                                <ul className="list-disc pl-4 space-y-1 text-robotic-green/90 text-xs break-words">
+                                  {a.pathways.map((p) => (
                                     <li key={p.pathway_id}>
                                       {p.trajectory}
                                       {p.trigger_behaviours?.length
-                                        ? ` (triggers: ${p.trigger_behaviours.slice(0, 2).join(', ')})`
+                                        ? ` (triggers: ${p.trigger_behaviours.join(', ')})`
                                         : ''}
                                       {(p as { consequence_for_inaction?: boolean })
                                         .consequence_for_inaction && (
@@ -917,11 +915,6 @@ export const SessionView = () => {
                                       )}
                                     </li>
                                   ))}
-                                  {a.pathways.length > 4 && (
-                                    <li className="text-robotic-yellow/70">
-                                      +{a.pathways.length - 4} more
-                                    </li>
-                                  )}
                                 </ul>
                               </div>
                             )}
@@ -930,8 +923,8 @@ export const SessionView = () => {
                                 <div className="text-robotic-yellow/80 mb-1">
                                   [DE-ESCALATION PATHWAYS]
                                 </div>
-                                <ul className="list-disc pl-4 space-y-0.5 text-robotic-green/90">
-                                  {a.de_escalation_pathways.slice(0, 3).map((p) => (
+                                <ul className="list-disc pl-4 space-y-1 text-robotic-green/90 text-xs break-words">
+                                  {a.de_escalation_pathways.map((p) => (
                                     <li key={p.pathway_id}>{p.trajectory}</li>
                                   ))}
                                 </ul>
@@ -945,18 +938,18 @@ export const SessionView = () => {
                               Impact matrix computed ({a.summary ?? '—'})
                             </span>
                             {a.analysis?.overall && (
-                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20 break-words">
                                 <div className="text-robotic-yellow/80 mb-1">[AI REASONING]</div>
-                                <p className="text-robotic-green/90 text-xs">
+                                <p className="text-robotic-green/90 text-xs whitespace-pre-wrap">
                                   {a.analysis.overall}
                                 </p>
                                 {a.analysis.matrix_reasoning && (
-                                  <p className="text-robotic-green/80 text-xs mt-1">
+                                  <p className="text-robotic-green/80 text-xs mt-1 whitespace-pre-wrap">
                                     Matrix: {a.analysis.matrix_reasoning}
                                   </p>
                                 )}
                                 {a.analysis.robustness_reasoning && (
-                                  <p className="text-robotic-green/80 text-xs mt-1">
+                                  <p className="text-robotic-green/80 text-xs mt-1 whitespace-pre-wrap">
                                     Robustness: {a.analysis.robustness_reasoning}
                                   </p>
                                 )}
@@ -984,13 +977,30 @@ export const SessionView = () => {
                                 <div className="text-robotic-yellow/80 mb-1">
                                   [INTER-TEAM IMPACT -2..+2]
                                 </div>
-                                <div className="overflow-x-auto">
-                                  {Object.entries(a.matrix).map(([acting, affected]) => (
+                                <div className="overflow-x-auto space-y-2">
+                                  {Object.entries(a.matrix).map(([acting, affectedMap]) => (
                                     <div key={acting} className="text-robotic-green/90">
-                                      {acting} →{' '}
-                                      {Object.entries(affected)
-                                        .map(([team, score]) => `${team}: ${score}`)
-                                        .join(', ')}
+                                      {Object.entries(affectedMap as Record<string, number>).map(
+                                        ([team, score]) => {
+                                          const cellReason =
+                                            a.analysis?.matrix_cell_reasoning?.[acting]?.[team];
+                                          return (
+                                            <div
+                                              key={`${acting}-${team}`}
+                                              className="ml-2 mb-1 border-l-2 border-robotic-yellow/30 pl-2"
+                                            >
+                                              <span className="font-medium">
+                                                {acting} → {team}: {score}
+                                              </span>
+                                              {cellReason && (
+                                                <p className="text-robotic-green/80 text-xs mt-0.5 italic break-words whitespace-pre-wrap">
+                                                  {cellReason}
+                                                </p>
+                                              )}
+                                            </div>
+                                          );
+                                        },
+                                      )}
                                     </div>
                                   ))}
                                 </div>
@@ -1007,9 +1017,10 @@ export const SessionView = () => {
                                       ([decId, score]) => (
                                         <span
                                           key={decId}
-                                          className="bg-robotic-gray-400 px-1 rounded"
+                                          className="bg-robotic-gray-400 px-1 rounded break-all text-xs"
+                                          title={decId}
                                         >
-                                          {decId.slice(0, 8)}…:{score}
+                                          {decId}:{score}
                                         </span>
                                       ),
                                     )}

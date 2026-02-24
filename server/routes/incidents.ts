@@ -294,86 +294,88 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
       return res.status(500).json({ error: 'Failed to fetch incidents' });
     }
 
+    // Fetch inject scope/target_teams for all incidents with inject_id (for "for_teams" display and filtering)
+    const incidentInjectIds = (data || [])
+      .map((incident: { inject_id?: string | null }) => incident.inject_id)
+      .filter((id: string | null | undefined): id is string => id !== null && id !== undefined);
+
+    const injectsMap = new Map<
+      string,
+      {
+        id: string;
+        inject_scope?: string | null;
+        target_teams?: string[] | null;
+        affected_roles?: string[] | null;
+        ai_generated?: boolean | null;
+        triggered_by_user_id?: string | null;
+      }
+    >();
+    if (incidentInjectIds.length > 0) {
+      const { data: injects, error: injectsError } = await supabaseAdmin
+        .from('scenario_injects')
+        .select(
+          'id, inject_scope, target_teams, affected_roles, ai_generated, triggered_by_user_id',
+        )
+        .in('id', [...new Set(incidentInjectIds)]);
+
+      if (injectsError) {
+        logger.error(
+          { error: injectsError, incidentInjectIds },
+          'Failed to fetch injects for incidents',
+        );
+      }
+      if (injects) {
+        injects.forEach(
+          (inject: {
+            id: string;
+            inject_scope?: string | null;
+            target_teams?: string[] | null;
+            affected_roles?: string[] | null;
+            ai_generated?: boolean | null;
+            triggered_by_user_id?: string | null;
+          }) => {
+            injectsMap.set(inject.id, inject);
+          },
+        );
+      }
+    }
+
+    const getForTeamsDisplay = (incident: { inject_id?: string | null }): string => {
+      if (!incident.inject_id) return 'All teams';
+      const inject = injectsMap.get(incident.inject_id);
+      if (!inject) return 'All teams';
+      const scope = inject.inject_scope || 'universal';
+      if (scope === 'universal') return 'All teams';
+      if (
+        scope === 'team_specific' &&
+        Array.isArray(inject.target_teams) &&
+        inject.target_teams.length > 0
+      ) {
+        return inject.target_teams.join(', ');
+      }
+      if (
+        scope === 'role_specific' &&
+        Array.isArray(inject.affected_roles) &&
+        inject.affected_roles.length > 0
+      ) {
+        return inject.affected_roles.join(', ');
+      }
+      return 'All teams';
+    };
+
     // Filter incidents based on inject scope and user's role/team
     // Trainers and admins see ALL incidents (no filtering)
     let filteredIncidents = data || [];
 
     // Only apply filtering for non-trainer/non-admin users
     if (user.role !== 'trainer' && user.role !== 'admin') {
-      // Get all inject IDs from incidents that have inject_id
-      const incidentInjectIds = (data || [])
-        .map((incident: { inject_id?: string | null }) => incident.inject_id)
-        .filter((id: string | null | undefined): id is string => id !== null && id !== undefined);
-
       logger.debug(
         {
           totalIncidents: (data || []).length,
           incidentsWithInjectId: incidentInjectIds.length,
-          incidentInjectIds,
-          sampleIncidents: (data || [])
-            .slice(0, 3)
-            .map((inc: { id: string; title: string; inject_id?: string | null }) => ({
-              id: inc.id,
-              title: inc.title,
-              inject_id: inc.inject_id,
-            })),
         },
         'Checking incidents for inject_id',
       );
-
-      // Fetch injects for incidents that were created from injects
-      const injectsMap = new Map<
-        string,
-        {
-          id: string;
-          inject_scope?: string | null;
-          target_teams?: string[] | null;
-          affected_roles?: string[] | null;
-          ai_generated?: boolean | null;
-          triggered_by_user_id?: string | null;
-        }
-      >();
-      if (incidentInjectIds.length > 0) {
-        const { data: injects, error: injectsError } = await supabaseAdmin
-          .from('scenario_injects')
-          .select(
-            'id, inject_scope, target_teams, affected_roles, ai_generated, triggered_by_user_id',
-          )
-          .in('id', incidentInjectIds);
-
-        if (injectsError) {
-          logger.error(
-            { error: injectsError, incidentInjectIds },
-            'Failed to fetch injects for incidents',
-          );
-        }
-
-        if (injects) {
-          injects.forEach(
-            (inject: {
-              id: string;
-              inject_scope?: string | null;
-              target_teams?: string[] | null;
-              affected_roles?: string[] | null;
-              ai_generated?: boolean | null;
-              triggered_by_user_id?: string | null;
-            }) => {
-              injectsMap.set(inject.id, inject);
-            },
-          );
-          logger.debug(
-            {
-              fetchedInjects: injects.length,
-              injectsMap: Array.from(injectsMap.entries()).map(([id, inj]) => ({
-                id,
-                scope: inj.inject_scope,
-                targetTeams: inj.target_teams,
-              })),
-            },
-            'Fetched injects for incidents',
-          );
-        }
-      }
 
       // Get user's teams for this session (needed for team_specific scope filtering)
       const { data: userTeams } = await supabaseAdmin
@@ -573,7 +575,13 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
       );
     }
 
-    res.json({ data: filteredIncidents });
+    const enriched = (
+      filteredIncidents as Array<Record<string, unknown> & { inject_id?: string | null }>
+    ).map((incident) => ({
+      ...incident,
+      for_teams_display: getForTeamsDisplay(incident),
+    }));
+    res.json({ data: enriched });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /incidents/session/:sessionId');
     res.status(500).json({ error: 'Internal server error' });

@@ -1166,11 +1166,14 @@ Generate 3 to 8 outcome injects (low/medium/high robustness bands). Return JSON 
 
 /**
  * Optional AI reasoning for the impact matrix (audit trail).
+ * matrix_cell_reasoning: per (acting_team, affected_team) explanation of how that team's decisions affected the other.
  */
 export interface ImpactMatrixAnalysis {
   overall?: string;
   matrix_reasoning?: string;
   robustness_reasoning?: string;
+  /** acting_team -> affected_team -> short explanation for that cell */
+  matrix_cell_reasoning?: Record<string, Record<string, string>>;
 }
 
 /**
@@ -1224,13 +1227,18 @@ export const computeInterTeamImpactMatrix = async (
     const systemPrompt = `You are an expert crisis management analyst. Given a list of teams and decisions made by those teams in the last 5 minutes, produce:
 1. An inter-team impact matrix: for each acting_team (team that made decisions), for each other affected_team, output an impact score from -2 (negative impact, hinders or increases risk) to +2 (positive impact, helps or reduces risk). Use 0 for neutral or no clear impact. Do not include acting_team on itself.
 2. Optionally, for each decision_id, output a robustness score from 1 (weak, increases escalation) to 10 (strong, mitigates escalation). Teams with no decisions in the window have robustness 0 (do not invent entries for them).
-3. Optionally, an "analysis" object with short reasoning: "overall" (1-2 sentences on overall inter-team dynamics), "matrix_reasoning" (brief note on key matrix scores), "robustness_reasoning" (brief note on decision robustness). When escalation factors or pathways are provided, reference them in your reasoning (e.g. whether decisions mitigate or worsen those factors, or align with pathway triggers).
+3. For every (acting_team, affected_team) pair in the matrix, provide a "matrix_reasoning_per_cell" object with the same structure as matrix: each key is an acting_team, each value is an object mapping affected_team to a short explanation (1 sentence) of how that acting team's decisions in this window affected the affected team (e.g. helped, hindered, or neutral and why). Be specific to the decisions listed.
+4. Optionally, an "analysis" object: "overall" (1-2 sentences on overall inter-team dynamics), "matrix_reasoning" (brief note on key matrix scores), "robustness_reasoning" (brief note on decision robustness). When escalation factors or pathways are provided, reference them in your reasoning.
 
 Return ONLY valid JSON in this exact format:
 {
   "matrix": {
     "TeamNameA": { "TeamNameB": 1, "TeamNameC": -1 },
     "TeamNameB": { "TeamNameA": 0, "TeamNameC": 2 }
+  },
+  "matrix_reasoning_per_cell": {
+    "TeamNameA": { "TeamNameB": "One sentence: how TeamA's decisions affected TeamB.", "TeamNameC": "..." },
+    "TeamNameB": { "TeamNameA": "...", "TeamNameC": "..." }
   },
   "robustness": {
     "decision-uuid-1": 7,
@@ -1243,7 +1251,7 @@ Return ONLY valid JSON in this exact format:
   }
 }
 
-Team names must match exactly the input team list. Include as matrix actors only teams that actually made decisions (appear in the decisions list).${absentInstruction}`;
+Team names must match exactly the input team list. Include as matrix actors only teams that actually made decisions (appear in the decisions list). For matrix_reasoning_per_cell, provide an entry for every (acting_team, affected_team) pair that appears in matrix.${absentInstruction}`;
 
     const decisionsText = decisionsWithTeam
       .map(
@@ -1279,7 +1287,7 @@ Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and o
           { role: 'user', content: userPrompt },
         ],
         temperature: 0.2,
-        max_tokens: 3000,
+        max_tokens: 4000,
         response_format: { type: 'json_object' },
       }),
     });
@@ -1297,12 +1305,32 @@ Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and o
 
     const parsed = JSON.parse(content) as {
       matrix?: Record<string, Record<string, number>>;
+      matrix_reasoning_per_cell?: Record<string, Record<string, string>>;
       robustness?: Record<string, number>;
       analysis?: ImpactMatrixAnalysis;
     };
     const matrix = parsed.matrix && typeof parsed.matrix === 'object' ? parsed.matrix : {};
     const robustnessByDecisionId =
       parsed.robustness && typeof parsed.robustness === 'object' ? parsed.robustness : {};
+    const rawCellReasoning =
+      parsed.matrix_reasoning_per_cell && typeof parsed.matrix_reasoning_per_cell === 'object'
+        ? parsed.matrix_reasoning_per_cell
+        : {};
+    const matrix_cell_reasoning: Record<string, Record<string, string>> = {};
+    for (const [acting, affectedMap] of Object.entries(matrix)) {
+      if (typeof affectedMap !== 'object' || affectedMap === null) continue;
+      const rawAffected = rawCellReasoning[acting];
+      if (typeof rawAffected !== 'object' || rawAffected === null) continue;
+      matrix_cell_reasoning[acting] = {};
+      for (const [affected] of Object.entries(affectedMap)) {
+        const reason = rawAffected[affected];
+        if (typeof reason === 'string' && reason.trim()) {
+          matrix_cell_reasoning[acting][affected] = reason.trim();
+        }
+      }
+      if (Object.keys(matrix_cell_reasoning[acting]).length === 0)
+        delete matrix_cell_reasoning[acting];
+    }
     const analysis =
       parsed.analysis && typeof parsed.analysis === 'object'
         ? {
@@ -1316,8 +1344,11 @@ Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and o
               typeof parsed.analysis.robustness_reasoning === 'string'
                 ? parsed.analysis.robustness_reasoning
                 : undefined,
+            ...(Object.keys(matrix_cell_reasoning).length > 0 && { matrix_cell_reasoning }),
           }
-        : undefined;
+        : Object.keys(matrix_cell_reasoning).length > 0
+          ? { matrix_cell_reasoning }
+          : undefined;
 
     logger.info(
       {
