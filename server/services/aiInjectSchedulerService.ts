@@ -31,6 +31,31 @@ function computeRobustnessBand(
   return 'medium';
 }
 
+/**
+ * Band from only the given teams' decisions (for team-specific pathway outcomes).
+ * If no decisions from those teams, returns 'medium'.
+ */
+function computeRobustnessBandForTeams(
+  robustnessByDecision: Record<string, number> | null,
+  decisionsWithTeam: Array<{ id: string; team: string | null }>,
+  targetTeams: string[],
+): 'low' | 'medium' | 'high' {
+  if (!robustnessByDecision || targetTeams.length === 0)
+    return computeRobustnessBand(robustnessByDecision);
+  const teamSet = new Set(targetTeams);
+  const decisionIdsFromTeams = decisionsWithTeam
+    .filter((d) => d.team != null && teamSet.has(d.team))
+    .map((d) => d.id);
+  const values = decisionIdsFromTeams
+    .map((id) => robustnessByDecision[id])
+    .filter((v): v is number => typeof v === 'number');
+  if (values.length === 0) return 'medium';
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  if (mean <= 3) return 'low';
+  if (mean >= 7) return 'high';
+  return 'medium';
+}
+
 export class AIInjectSchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
@@ -632,8 +657,7 @@ export class AIInjectSchedulerService {
     if (formattedDecisions.length > 0) {
       if (hasPathwayOutcomes) {
         // Pathway outcome selection uses only the robustness band (from per-decision robustness scores).
-        // The matrix result is intentionally not used for pathway publishing. REVERT: remove this comment.
-        const robustnessBand = computeRobustnessBand(latestRobustnessByDecision);
+        // Universal/multi-team rows use global band; team_specific rows use band from target_teams only.
         if (!this.io) {
           const { io } = await import('../index.js');
           this.io = io;
@@ -643,6 +667,32 @@ export class AIInjectSchedulerService {
         for (const row of rowsToProcess) {
           const outcomes = parseOutcomes(row.outcomes);
           if (outcomes.length === 0) continue;
+
+          const firstOutcome = outcomes[0];
+          const scope = (firstOutcome?.inject_payload?.inject_scope as string) ?? 'universal';
+          const targetTeamsRaw = firstOutcome?.inject_payload?.target_teams;
+          const targetTeams = Array.isArray(targetTeamsRaw) ? targetTeamsRaw : [];
+
+          const useTeamBand = scope === 'team_specific' && targetTeams.length > 0;
+          const robustnessBand = useTeamBand
+            ? computeRobustnessBandForTeams(
+                latestRobustnessByDecision,
+                formattedDecisions,
+                targetTeams,
+              )
+            : computeRobustnessBand(latestRobustnessByDecision);
+
+          if (useTeamBand) {
+            logger.debug(
+              {
+                sessionId: session.id,
+                trigger_inject_id: row.trigger_inject_id,
+                targetTeams,
+                robustnessBand,
+              },
+              'Pathway outcome row: using team-specific band',
+            );
+          }
 
           const matching = outcomes.filter((o) => o.robustness_band === robustnessBand);
           const toPublish =
