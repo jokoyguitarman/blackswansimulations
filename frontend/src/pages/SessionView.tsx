@@ -837,9 +837,14 @@ export const SessionView = () => {
                           </span>
                         )}
                         {a.type === 'ai_step_end' && (
-                          <span className="text-robotic-green/90">
-                            {a.title ?? `AI: ${a.step ?? 'step'} completed`}
-                          </span>
+                          <div>
+                            <span className="text-robotic-green/90">
+                              {a.title ?? `AI: ${a.step ?? 'step'} completed`}
+                            </span>
+                            {a.step === 'evaluating_inject_cancellation' && a.reason && (
+                              <div className="mt-1 text-robotic-yellow/80">Reason: {a.reason}</div>
+                            )}
+                          </div>
                         )}
                         {a.type === 'escalation_factors_computed' && (
                           <div>

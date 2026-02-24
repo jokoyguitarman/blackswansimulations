@@ -521,6 +521,7 @@ router.get(
             at: e.created_at,
             title: e.description ?? undefined,
             step: (meta.step as string) ?? undefined,
+            reason: (meta.reason as string) || undefined,
           });
         }
       }

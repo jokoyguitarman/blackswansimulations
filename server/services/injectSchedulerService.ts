@@ -305,7 +305,10 @@ export class InjectSchedulerService {
             event_type: 'ai_step_start',
             description: `AI: Evaluating whether to cancel scheduled inject: ${inject.title ?? inject.id}`,
             actor_id: null,
-            metadata: { step: 'evaluating_inject_cancellation', inject_title: inject.title ?? null },
+            metadata: {
+              step: 'evaluating_inject_cancellation',
+              inject_title: inject.title ?? null,
+            },
           });
           const result = await shouldCancelScheduledInject(
             {
@@ -322,7 +325,11 @@ export class InjectSchedulerService {
               ? `AI: Cancelled scheduled inject: ${inject.title ?? inject.id}`
               : `AI: Keeping scheduled inject: ${inject.title ?? inject.id}`,
             actor_id: null,
-            metadata: { step: 'evaluating_inject_cancellation', cancel: result.cancel },
+            metadata: {
+              step: 'evaluating_inject_cancellation',
+              cancel: result.cancel,
+              reason: result.reason ?? null,
+            },
           });
           if (result.cancel) {
             await supabaseAdmin.from('session_events').insert({
@@ -368,7 +375,10 @@ export class InjectSchedulerService {
               event_type: 'ai_step_start',
               description: `AI: Evaluating whether to cancel inject: ${inject.title ?? inject.id}`,
               actor_id: null,
-              metadata: { step: 'evaluating_inject_cancellation', inject_title: inject.title ?? null },
+              metadata: {
+                step: 'evaluating_inject_cancellation',
+                inject_title: inject.title ?? null,
+              },
             });
             const result = await shouldCancelScheduledInject(
               {
@@ -385,7 +395,11 @@ export class InjectSchedulerService {
                 ? `AI: Cancelled inject: ${inject.title ?? inject.id}`
                 : `AI: Publishing inject: ${inject.title ?? inject.id}`,
               actor_id: null,
-              metadata: { step: 'evaluating_inject_cancellation', cancel: result.cancel },
+              metadata: {
+                step: 'evaluating_inject_cancellation',
+                cancel: result.cancel,
+                reason: result.reason ?? null,
+              },
             });
             if (result.cancel) {
               await supabaseAdmin.from('session_events').insert({

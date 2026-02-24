@@ -503,6 +503,100 @@ export class AIInjectSchedulerService {
       responseTaxonomy: Object.keys(responseTaxonomy).length > 0 ? responseTaxonomy : undefined,
     });
 
+    /*
+     * REVERT: To remove matrix inter-team impact injects, delete this entire block and leave no replacement.
+     * Matrix inter-team impact injects: one inject per (acting_team, affected_team) pair with a meaningful score.
+     */
+    const MAX_MATRIX_INJECTS_PER_CYCLE = 10;
+    if (
+      formattedDecisions.length > 0 &&
+      latestImpactMatrix &&
+      Object.keys(latestImpactMatrix).length > 0
+    ) {
+      const pairs: Array<{ acting: string; affected: string; score: number }> = [];
+      for (const [acting, affectedMap] of Object.entries(latestImpactMatrix)) {
+        if (typeof affectedMap !== 'object' || affectedMap === null) continue;
+        for (const [affected, score] of Object.entries(affectedMap)) {
+          if (acting === affected) continue;
+          const num = typeof score === 'number' ? score : 0;
+          if (num !== 0) pairs.push({ acting, affected, score: num });
+        }
+      }
+      const pairsToPublish = pairs.slice(0, MAX_MATRIX_INJECTS_PER_CYCLE);
+      if (pairsToPublish.length > 0) {
+        if (!this.io) {
+          const { io } = await import('../index.js');
+          this.io = io;
+        }
+        const analysisSnippet =
+          latestImpactAnalysis?.matrix_reasoning || latestImpactAnalysis?.overall
+            ? ` ${[latestImpactAnalysis.matrix_reasoning, latestImpactAnalysis.overall].filter(Boolean).join(' ').slice(0, 200)}`
+            : '';
+        for (const { acting, affected, score } of pairsToPublish) {
+          const impactWord = score < 0 ? 'negative' : score > 0 ? 'positive' : 'neutral';
+          const title = `Impact of ${acting} on ${affected}`;
+          const content =
+            `Team ${acting}'s decisions in the last 5 minutes have ${impactWord} impact on ${affected} (score: ${score}).${analysisSnippet}`.slice(
+              0,
+              500,
+            );
+          const requiresResponse = score < 0;
+          const injectScope = 'team_specific' as const;
+          const targetTeams = [acting, affected].filter((t, i, a) => a.indexOf(t) === i);
+          try {
+            const { data: createdInject, error: createError } = await supabaseAdmin
+              .from('scenario_injects')
+              .insert({
+                scenario_id: session.scenario_id,
+                trigger_time_minutes: null,
+                trigger_condition: null,
+                type: 'field_update',
+                title,
+                content,
+                severity: requiresResponse ? 'high' : 'medium',
+                affected_roles: [],
+                inject_scope: injectScope,
+                target_teams: targetTeams,
+                requires_response: requiresResponse,
+                requires_coordination: false,
+                ai_generated: true,
+                triggered_by_user_id: null,
+              })
+              .select()
+              .single();
+            if (!createError && createdInject && this.io) {
+              await publishInjectToSession(
+                createdInject.id,
+                session.id,
+                session.trainer_id,
+                this.io,
+              );
+              logger.info(
+                {
+                  sessionId: session.id,
+                  injectId: createdInject.id,
+                  acting,
+                  affected,
+                  score,
+                },
+                'Matrix inter-team impact inject published',
+              );
+            } else if (createError) {
+              logger.warn(
+                { error: createError, sessionId: session.id, acting, affected },
+                'Failed to create matrix impact inject',
+              );
+            }
+          } catch (matrixInjectErr) {
+            logger.warn(
+              { error: matrixInjectErr, sessionId: session.id, acting, affected },
+              'Error publishing matrix impact inject, continuing',
+            );
+          }
+        }
+      }
+    }
+
     // Load all pathway outcome rows from the last 5 minutes (one per trigger inject); publish one outcome inject per row
     const { data: pathwayOutcomesRows } = await supabaseAdmin
       .from('session_pathway_outcomes')
@@ -537,6 +631,8 @@ export class AIInjectSchedulerService {
 
     if (formattedDecisions.length > 0) {
       if (hasPathwayOutcomes) {
+        // Pathway outcome selection uses only the robustness band (from per-decision robustness scores).
+        // The matrix result is intentionally not used for pathway publishing. REVERT: remove this comment.
         const robustnessBand = computeRobustnessBand(latestRobustnessByDecision);
         if (!this.io) {
           const { io } = await import('../index.js');
