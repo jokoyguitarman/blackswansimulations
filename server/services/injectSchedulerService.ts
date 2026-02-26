@@ -2,6 +2,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { shouldCancelScheduledInject } from './aiService.js';
+import { runGateEvaluationForSession } from './gateEvaluationService.js';
 import { env } from '../env.js';
 import type { Server as SocketServer } from 'socket.io';
 
@@ -140,10 +141,20 @@ export class InjectSchedulerService {
       'Processing session for inject triggers',
     );
 
-    // Get injects for this scenario that should be triggered (include content for AI cancellation check)
-    const { data: injects, error: injectsError } = await supabaseAdmin
+    // Run gate evaluation so session_gate_progress is up to date before selecting injects
+    let ioForGates = this.io;
+    if (!ioForGates) {
+      const { io } = await import('../index.js');
+      ioForGates = io;
+    }
+    await runGateEvaluationForSession(session.id, elapsedMinutes, ioForGates);
+
+    // Get injects for this scenario that should be triggered (include gate columns for filtering)
+    const { data: injectsRaw, error: injectsError } = await supabaseAdmin
       .from('scenario_injects')
-      .select('id, trigger_time_minutes, title, content')
+      .select(
+        'id, trigger_time_minutes, title, content, required_gate_id, required_gate_not_met_id',
+      )
       .eq('scenario_id', session.scenario_id)
       .not('trigger_time_minutes', 'is', null)
       .lte('trigger_time_minutes', elapsedMinutes);
@@ -155,6 +166,47 @@ export class InjectSchedulerService {
       );
       return;
     }
+
+    // Load gate progress for this session (for required_gate_id and required_gate_not_met_id filtering).
+    // scenario_injects.required_gate_id / required_gate_not_met_id are scenario_gates.id (UUID); session_gate_progress uses gate_id (TEXT). Build map by scenario_gates.id.
+    const { data: scenarioGates } = await supabaseAdmin
+      .from('scenario_gates')
+      .select('id, gate_id')
+      .eq('scenario_id', session.scenario_id);
+    const gateIdToUuid = new Map<string, string>();
+    for (const g of scenarioGates ?? []) {
+      gateIdToUuid.set(g.gate_id, g.id);
+    }
+    const { data: gateProgressRows } = await supabaseAdmin
+      .from('session_gate_progress')
+      .select('gate_id, status')
+      .eq('session_id', session.id);
+    const gateStatusByGateUuid = new Map<string, string>();
+    for (const row of gateProgressRows ?? []) {
+      const uuid = gateIdToUuid.get(row.gate_id);
+      if (uuid) gateStatusByGateUuid.set(uuid, row.status);
+    }
+
+    // Filter: include when (no required_gate or gate met) and (no required_gate_not_met or that gate not_met)
+    type InjectRow = {
+      id: string;
+      trigger_time_minutes: number | null;
+      title: string | null;
+      content?: string;
+      required_gate_id?: string | null;
+      required_gate_not_met_id?: string | null;
+    };
+    const injects = (injectsRaw ?? []).filter((inj: InjectRow) => {
+      if (inj.required_gate_id != null) {
+        const status = gateStatusByGateUuid.get(inj.required_gate_id);
+        if (status !== 'met') return false;
+      }
+      if (inj.required_gate_not_met_id != null) {
+        const status = gateStatusByGateUuid.get(inj.required_gate_not_met_id);
+        if (status !== 'not_met') return false;
+      }
+      return true;
+    }) as typeof injectsRaw;
 
     if (!injects || injects.length === 0) {
       logger.debug(

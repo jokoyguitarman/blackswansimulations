@@ -64,9 +64,33 @@ export async function runPathwayOutcomesOnInjectPublished(
 
     const { data: scenario } = await supabaseAdmin
       .from('scenarios')
-      .select('id, description')
+      .select('id, description, insider_knowledge')
       .eq('id', session.scenario_id)
       .single();
+
+    const insiderKnowledge = (scenario?.insider_knowledge as Record<string, unknown>) || {};
+    const layoutGroundTruth = insiderKnowledge.layout_ground_truth as
+      | {
+          evacuee_count?: number;
+          exits?: Array<{ label?: string; flow_per_min?: number; status?: string }>;
+          zones?: Array<{ label?: string; capacity?: number }>;
+        }
+      | undefined;
+    let layoutContext = '';
+    if (layoutGroundTruth) {
+      const parts: string[] = [];
+      if (layoutGroundTruth.evacuee_count != null)
+        parts.push(`Evacuees: ${layoutGroundTruth.evacuee_count}`);
+      if (layoutGroundTruth.exits?.length)
+        parts.push(
+          `Exits: ${layoutGroundTruth.exits.map((e) => `${e.label ?? 'Exit'}${e.flow_per_min != null ? ` ${e.flow_per_min}/min` : ''}${e.status ? ` [${e.status}]` : ''}`).join('; ')}`,
+        );
+      if (layoutGroundTruth.zones?.length)
+        parts.push(
+          `Zones: ${layoutGroundTruth.zones.map((z) => `${z.label ?? 'Zone'}${z.capacity != null ? ` capacity ${z.capacity}` : ''}`).join('; ')}`,
+        );
+      if (parts.length > 0) layoutContext = `\n\nLAYOUT GROUND TRUTH: ${parts.join('. ')}`;
+    }
 
     const { data: objectives } = await supabaseAdmin
       .from('scenario_objective_progress')
@@ -80,6 +104,22 @@ export async function runPathwayOutcomesOnInjectPublished(
       }),
     );
 
+    // Bad-branch context: session has not_met gates → bias AI toward escalation
+    const { data: notMetProgress } = await supabaseAdmin
+      .from('session_gate_progress')
+      .select('gate_id')
+      .eq('session_id', sessionId)
+      .eq('status', 'not_met');
+    const notMetGateIds = (notMetProgress ?? []).map((r: { gate_id: string }) => r.gate_id);
+    const badBranchContext =
+      notMetGateIds.length > 0
+        ? `Session is on the bad branch for gate(s): [${notMetGateIds.join(', ')}]. Bias toward escalation and ongoing consequences; avoid suggesting improvement unless decisions are concrete and specific.`
+        : '';
+    const scenarioDescriptionWithContext =
+      (scenario?.description ?? '') +
+      layoutContext +
+      (badBranchContext ? '\n\n' + badBranchContext : '');
+
     const singleInjectContext = [
       {
         type: inject.type,
@@ -90,7 +130,7 @@ export async function runPathwayOutcomesOnInjectPublished(
     const justPublishedInject = singleInjectContext[0] ?? null;
 
     const factorsResult = await identifyEscalationFactors(
-      scenario?.description ?? '',
+      scenarioDescriptionWithContext,
       (session.current_state as Record<string, unknown>) ?? {},
       objectivesForFactors,
       singleInjectContext,
@@ -100,7 +140,7 @@ export async function runPathwayOutcomesOnInjectPublished(
     let deEscalationFactors: Array<{ id: string; name: string; description: string }> = [];
     try {
       const deEscResult = await identifyDeEscalationFactors(
-        scenario?.description ?? '',
+        scenarioDescriptionWithContext,
         (session.current_state as Record<string, unknown>) ?? {},
         objectivesForFactors,
         singleInjectContext,
@@ -116,7 +156,7 @@ export async function runPathwayOutcomesOnInjectPublished(
     }
 
     const pathwaysResult = await generateEscalationPathways(
-      scenario?.description ?? '',
+      scenarioDescriptionWithContext,
       (session.current_state as Record<string, unknown>) ?? {},
       factorsResult.factors,
       justPublishedInject,
@@ -131,7 +171,7 @@ export async function runPathwayOutcomesOnInjectPublished(
     }> = [];
     try {
       const dePathResult = await generateDeEscalationPathways(
-        scenario?.description ?? '',
+        scenarioDescriptionWithContext,
         (session.current_state as Record<string, unknown>) ?? {},
         pathwaysResult.pathways,
         deEscalationFactors,
@@ -149,7 +189,7 @@ export async function runPathwayOutcomesOnInjectPublished(
     const pathwayUsageSummary = await buildPathwayUsageSummary(sessionId);
 
     const outcomeResult = await generatePathwayOutcomeInjects(
-      scenario?.description ?? '',
+      scenarioDescriptionWithContext,
       { type: inject.type, title: inject.title, content: inject.content },
       pathwaysResult.pathways,
       deEscalationPathways,

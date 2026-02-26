@@ -13,6 +13,16 @@ import { publishInjectToSession } from '../routes/injects.js';
 import { env } from '../env.js';
 import type { Server as SocketServer } from 'socket.io';
 
+/** When session has not_met gates, prefer escalation (low/medium) over de-escalation (high). */
+function effectiveRobustnessBand(
+  band: 'low' | 'medium' | 'high',
+  hasNotMetGates: boolean,
+): 'low' | 'medium' | 'high' {
+  if (!hasNotMetGates) return band;
+  if (band === 'high') return 'medium';
+  return band;
+}
+
 /**
  * AI Inject Scheduler Service
  * Runs every 5 minutes to generate:
@@ -237,9 +247,34 @@ export class AIInjectSchedulerService {
     // Get scenario info
     const { data: scenario } = await supabaseAdmin
       .from('scenarios')
-      .select('id, title, description')
+      .select('id, title, description, insider_knowledge')
       .eq('id', session.scenario_id)
       .single();
+
+    const insiderKnowledge = (scenario?.insider_knowledge as Record<string, unknown>) || {};
+    const layoutGroundTruth = insiderKnowledge.layout_ground_truth as
+      | {
+          evacuee_count?: number;
+          exits?: Array<{ label?: string; flow_per_min?: number; status?: string }>;
+          zones?: Array<{ label?: string; capacity?: number }>;
+        }
+      | undefined;
+    let layoutContext = '';
+    if (layoutGroundTruth) {
+      const parts: string[] = [];
+      if (layoutGroundTruth.evacuee_count != null)
+        parts.push(`Evacuees: ${layoutGroundTruth.evacuee_count}`);
+      if (layoutGroundTruth.exits?.length)
+        parts.push(
+          `Exits: ${layoutGroundTruth.exits.map((e) => `${e.label ?? 'Exit'}${e.flow_per_min != null ? ` ${e.flow_per_min}/min` : ''}${e.status ? ` [${e.status}]` : ''}`).join('; ')}`,
+        );
+      if (layoutGroundTruth.zones?.length)
+        parts.push(
+          `Zones: ${layoutGroundTruth.zones.map((z) => `${z.label ?? 'Zone'}${z.capacity != null ? ` capacity ${z.capacity}` : ''}`).join('; ')}`,
+        );
+      if (parts.length > 0) layoutContext = `\n\nLAYOUT GROUND TRUTH: ${parts.join('. ')}`;
+    }
+    const scenarioDescriptionWithLayout = (scenario?.description ?? '') + layoutContext;
 
     // Get upcoming injects
     const { data: upcomingInjects } = await supabaseAdmin
@@ -351,7 +386,7 @@ export class AIInjectSchedulerService {
 
     // Build base context (used for both universal and team-specific injects)
     const baseContext = {
-      scenarioDescription: scenario?.description,
+      scenarioDescription: scenarioDescriptionWithLayout,
       recentDecisions: formattedDecisions,
       recentInjects: formattedInjects,
       sessionDurationMinutes,
@@ -622,6 +657,15 @@ export class AIInjectSchedulerService {
       }
     }
 
+    // When session has not_met gates, bias outcome selection toward escalation (low/medium) over high
+    const { data: notMetGates } = await supabaseAdmin
+      .from('session_gate_progress')
+      .select('gate_id')
+      .eq('session_id', session.id)
+      .eq('status', 'not_met')
+      .limit(1);
+    const hasNotMetGates = (notMetGates?.length ?? 0) > 0;
+
     // Load all pathway outcome rows from the last 5 minutes (one per trigger inject); publish one outcome inject per row
     const { data: pathwayOutcomesRows } = await supabaseAdmin
       .from('session_pathway_outcomes')
@@ -674,13 +718,14 @@ export class AIInjectSchedulerService {
           const targetTeams = Array.isArray(targetTeamsRaw) ? targetTeamsRaw : [];
 
           const useTeamBand = scope === 'team_specific' && targetTeams.length > 0;
-          const robustnessBand = useTeamBand
+          const rawBand = useTeamBand
             ? computeRobustnessBandForTeams(
                 latestRobustnessByDecision,
                 formattedDecisions,
                 targetTeams,
               )
             : computeRobustnessBand(latestRobustnessByDecision);
+          const robustnessBand = effectiveRobustnessBand(rawBand, hasNotMetGates);
 
           if (useTeamBand) {
             logger.debug(
@@ -791,7 +836,7 @@ export class AIInjectSchedulerService {
     } else {
       // No decisions in 5-minute window: punish inaction (pathway outcome or inaction inject)
       if (hasPathwayOutcomes) {
-        const robustnessBand = 'low' as const;
+        const robustnessBand = effectiveRobustnessBand('low', hasNotMetGates);
         if (!this.io) {
           const { io } = await import('../index.js');
           this.io = io;

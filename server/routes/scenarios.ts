@@ -4,6 +4,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
+import { refreshOsmVicinityForScenario } from '../services/osmVicinityService.js';
 
 const router = Router();
 
@@ -27,6 +28,12 @@ const createScenarioSchema = z.object({
     initial_state: z.record(z.string(), z.unknown()).default({}),
     briefing: z.string().max(10000).optional(),
     role_specific_briefs: z.record(z.string(), z.string()).optional(),
+    center_lat: z.number().min(-90).max(90).optional(),
+    center_lng: z.number().min(-180).max(180).optional(),
+    vicinity_radius_meters: z.number().int().positive().optional(),
+    vicinity_map_url: z.string().url().max(2000).optional().nullable(),
+    layout_image_url: z.string().url().max(2000).optional().nullable(),
+    insider_knowledge: z.record(z.string(), z.unknown()).optional().nullable(),
     suggested_injects: z
       .array(
         z.object({
@@ -81,6 +88,13 @@ const updateScenarioSchema = z.object({
     briefing: z.string().max(10000).optional(),
     role_specific_briefs: z.record(z.string(), z.string()).optional(),
     is_active: z.boolean().optional(),
+    center_lat: z.number().min(-90).max(90).optional().nullable(),
+    center_lng: z.number().min(-180).max(180).optional().nullable(),
+    vicinity_radius_meters: z.number().int().positive().optional().nullable(),
+    vicinity_map_url: z.string().url().max(2000).optional().nullable(),
+    layout_image_url: z.string().url().max(2000).optional().nullable(),
+    insider_knowledge: z.record(z.string(), z.unknown()).optional().nullable(),
+    refresh_vicinity: z.boolean().optional(),
   }),
 });
 
@@ -160,6 +174,12 @@ router.post(
         initial_state,
         briefing,
         role_specific_briefs,
+        center_lat,
+        center_lng,
+        vicinity_radius_meters,
+        vicinity_map_url,
+        layout_image_url,
+        insider_knowledge,
         suggested_injects,
       } = req.body;
 
@@ -180,6 +200,12 @@ router.post(
           initial_state,
           briefing: briefing || null,
           role_specific_briefs: role_specific_briefs || {},
+          center_lat: center_lat ?? null,
+          center_lng: center_lng ?? null,
+          vicinity_radius_meters: vicinity_radius_meters ?? null,
+          vicinity_map_url: vicinity_map_url ?? null,
+          layout_image_url: layout_image_url ?? null,
+          insider_knowledge: insider_knowledge ?? null,
           created_by: user.id,
         })
         .select()
@@ -256,7 +282,8 @@ router.patch(
     try {
       const { id } = req.params;
       const user = req.user!;
-      const updates = req.body;
+      const updates = { ...req.body };
+      delete (updates as Record<string, unknown>).refresh_vicinity;
 
       // Check if user owns the scenario or is admin
       const { data: scenario } = await supabaseAdmin
@@ -283,6 +310,27 @@ router.patch(
       if (error) {
         logger.error({ error, scenarioId: id }, 'Failed to update scenario');
         return res.status(500).json({ error: 'Failed to update scenario' });
+      }
+
+      if (req.body.refresh_vicinity === true && data) {
+        const lat = data.center_lat ?? updates.center_lat;
+        const lng = data.center_lng ?? updates.center_lng;
+        const radius = data.vicinity_radius_meters ?? updates.vicinity_radius_meters;
+        if (lat != null && lng != null && radius != null && radius > 0) {
+          try {
+            await refreshOsmVicinityForScenario(id);
+            const { data: refreshed } = await supabaseAdmin
+              .from('scenarios')
+              .select('insider_knowledge')
+              .eq('id', id)
+              .single();
+            if (refreshed)
+              (data as Record<string, unknown>).insider_knowledge = refreshed.insider_knowledge;
+          } catch (osmErr) {
+            logger.warn({ error: osmErr, scenarioId: id }, 'OSM vicinity refresh failed');
+            // Do not fail the PATCH; scenario was updated
+          }
+        }
       }
 
       logger.info({ scenarioId: id, userId: user.id }, 'Scenario updated');
@@ -358,6 +406,12 @@ router.post(
           initial_state: originalScenario.initial_state,
           briefing: originalScenario.briefing,
           role_specific_briefs: originalScenario.role_specific_briefs,
+          center_lat: originalScenario.center_lat ?? null,
+          center_lng: originalScenario.center_lng ?? null,
+          vicinity_radius_meters: originalScenario.vicinity_radius_meters ?? null,
+          vicinity_map_url: originalScenario.vicinity_map_url ?? null,
+          layout_image_url: originalScenario.layout_image_url ?? null,
+          insider_knowledge: originalScenario.insider_knowledge ?? null,
           created_by: user.id,
           is_active: false, // Cloned scenarios start as inactive
         })
@@ -371,7 +425,21 @@ router.post(
 
       // Clone all injects if they exist
       if (originalInjects && originalInjects.length > 0) {
-        const injectsToInsert = originalInjects.map((inject: any) => ({
+        type InjectRow = {
+          trigger_time_minutes: number;
+          trigger_condition: string | null;
+          type: string;
+          title: string;
+          content: string;
+          affected_roles: string[] | null;
+          severity: string | null;
+          requires_response: boolean;
+          inject_scope?: string;
+          target_teams: string[] | null;
+          requires_coordination?: boolean;
+          ai_generated?: boolean;
+        };
+        const injectsToInsert = originalInjects.map((inject: InjectRow) => ({
           scenario_id: newScenario.id,
           trigger_time_minutes: inject.trigger_time_minutes,
           trigger_condition: inject.trigger_condition,

@@ -145,7 +145,11 @@ export const api = {
           analysis?: { overall?: string; matrix_reasoning?: string; robustness_reasoning?: string };
           factors?: Array<{ id: string; name: string; description: string; severity: string }>;
           de_escalation_factors?: Array<{ id: string; name: string; description: string }>;
-          pathways?: Array<{ pathway_id: string; trajectory: string; trigger_behaviours: string[] }>;
+          pathways?: Array<{
+            pathway_id: string;
+            trajectory: string;
+            trigger_behaviours: string[];
+          }>;
           de_escalation_pathways?: Array<{
             pathway_id: string;
             trajectory: string;
@@ -271,6 +275,8 @@ export const api = {
           role_specific_briefing: string | null;
           scenario_title: string;
           user_role: string | null;
+          vicinity_map_url?: string | null;
+          layout_image_url?: string | null;
         };
       }>(await fetch(apiUrl(`/api/briefing/session/${sessionId}`), { headers }));
     },

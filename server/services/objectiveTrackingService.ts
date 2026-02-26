@@ -326,6 +326,7 @@ export async function checkAndAutoCompleteSession(sessionId: string): Promise<bo
 /**
  * Track decision impact on objectives
  * Called when decisions are executed
+ * @param options.skipPositiveForObjectiveIds - when set, positive updates (progress/bonus) for these objective IDs are skipped (anti-gaming); penalties still apply
  */
 export async function trackDecisionImpactOnObjectives(
   sessionId: string,
@@ -335,8 +336,13 @@ export async function trackDecisionImpactOnObjectives(
     description: string;
     type: string;
   },
+  options?: { authorId?: string; skipPositiveForObjectiveIds?: string[] },
 ): Promise<void> {
   try {
+    const skipPositive = options?.skipPositiveForObjectiveIds ?? [];
+    const skip = (objectiveId: string) =>
+      skipPositive.length > 0 && skipPositive.includes(objectiveId);
+
     const decisionText = `${decision.title} ${decision.description}`.toLowerCase();
 
     // Check for evacuation decisions
@@ -354,11 +360,13 @@ export async function trackDecisionImpactOnObjectives(
         );
         await addObjectivePenalty(sessionId, 'media', 'Discriminatory actions observed', 40);
       } else if (decisionText.includes('together') || decisionText.includes('everyone')) {
-        // Evacuation together - update progress
-        await updateObjectiveProgress(sessionId, 'evacuation', 30, {
-          status: 'in_progress',
-          metrics: { evacuation_plan_executed: true },
-        });
+        // Evacuation together - update progress (skip if vague for evacuation gate)
+        if (!skip('evacuation')) {
+          await updateObjectiveProgress(sessionId, 'evacuation', 30, {
+            status: 'in_progress',
+            metrics: { evacuation_plan_executed: true },
+          });
+        }
       }
     }
 
@@ -369,9 +377,11 @@ export async function trackDecisionImpactOnObjectives(
         decisionText.includes('false') ||
         decisionText.includes('deny')
       ) {
-        // Addressing misinformation - bonus
-        await addObjectiveBonus(sessionId, 'media', 'Statement addresses misinformation', 20);
-        await updateObjectiveProgress(sessionId, 'media', 50, { status: 'in_progress' });
+        // Addressing misinformation - bonus (skip if vague for media gate)
+        if (!skip('media')) {
+          await addObjectiveBonus(sessionId, 'media', 'Statement addresses misinformation', 20);
+          await updateObjectiveProgress(sessionId, 'media', 50, { status: 'in_progress' });
+        }
       } else if (decisionText.includes('refuse') || decisionText.includes('no comment')) {
         // Refusing to comment - penalty
         await addObjectivePenalty(
@@ -393,18 +403,22 @@ export async function trackDecisionImpactOnObjectives(
 
     // Check for triage/medical decisions
     if (decision.type === 'resource_allocation' && decisionText.includes('triage')) {
-      await updateObjectiveProgress(sessionId, 'triage', 50, {
-        status: 'in_progress',
-        metrics: { triage_system_established: true },
-      });
+      if (!skip('triage')) {
+        await updateObjectiveProgress(sessionId, 'triage', 50, {
+          status: 'in_progress',
+          metrics: { triage_system_established: true },
+        });
+      }
     }
 
     // Check for coordination decisions
     if (decision.type === 'coordination_order') {
-      await updateObjectiveProgress(sessionId, 'coordination', 40, {
-        status: 'in_progress',
-        metrics: { coordination_efforts: true },
-      });
+      if (!skip('coordination')) {
+        await updateObjectiveProgress(sessionId, 'coordination', 40, {
+          status: 'in_progress',
+          metrics: { coordination_efforts: true },
+        });
+      }
     }
 
     // Check if session should be auto-completed after objective update

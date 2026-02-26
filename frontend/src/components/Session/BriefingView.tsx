@@ -11,6 +11,8 @@ export const BriefingView = ({ sessionId }: BriefingViewProps) => {
     role_specific_briefing: string | null;
     scenario_title: string;
     user_role: string | null;
+    vicinity_map_url?: string | null;
+    layout_image_url?: string | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -80,6 +82,34 @@ export const BriefingView = ({ sessionId }: BriefingViewProps) => {
           <p className="text-xs terminal-text text-robotic-yellow/50">
             [NO_ROLE_SPECIFIC_BRIEFING] No additional briefing provided for your role.
           </p>
+        </div>
+      )}
+
+      {/* Vicinity map */}
+      {briefing.vicinity_map_url && (
+        <div className="military-border p-6 bg-robotic-gray-300">
+          <h3 className="text-lg terminal-text uppercase mb-4 text-robotic-yellow">
+            [VICINITY_MAP]
+          </h3>
+          <img
+            src={briefing.vicinity_map_url}
+            alt="Vicinity map"
+            className="max-w-full border border-robotic-yellow/30 rounded"
+          />
+        </div>
+      )}
+
+      {/* Building layout */}
+      {briefing.layout_image_url && (
+        <div className="military-border p-6 bg-robotic-gray-300">
+          <h3 className="text-lg terminal-text uppercase mb-4 text-robotic-yellow">
+            [BUILDING_LAYOUT]
+          </h3>
+          <img
+            src={briefing.layout_image_url}
+            alt="Building layout"
+            className="max-w-full border border-robotic-yellow/30 rounded"
+          />
         </div>
       )}
     </div>

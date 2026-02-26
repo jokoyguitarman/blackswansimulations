@@ -13,6 +13,12 @@ import {
   evaluateAllObjectivesForSession,
 } from '../services/objectiveTrackingService.js';
 import {
+  getNotMetGatesForSession,
+  isDecisionVagueForNotMetGate,
+  objectiveIdForGate,
+} from '../services/gateEvaluationService.js';
+import { publishInjectToSession } from './injects.js';
+import {
   createNotification,
   createNotificationsForUsers,
 } from '../services/notificationService.js';
@@ -851,17 +857,101 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       );
     }
 
-    console.log('🟢 AFTER AI BLOCK', { decisionId: id });
     logger.info({ decisionId: id }, 'AFTER_AI_BLOCK: Completed AI processing');
+
+    const skipPositiveForObjectiveIds: string[] = [];
+    try {
+      const { data: authorTeams } = await supabaseAdmin
+        .from('session_teams')
+        .select('team_name')
+        .eq('session_id', decision.session_id)
+        .eq('user_id', decision.proposed_by);
+      const authorTeamNames = (authorTeams ?? []).map((r: { team_name: string }) => r.team_name);
+
+      const notMetGates = await getNotMetGatesForSession(decision.session_id);
+      if (notMetGates.length > 0) {
+        const { vague, gateIds } = isDecisionVagueForNotMetGate(
+          {
+            description: decision.description,
+            type: decision.type || 'operational_action',
+          },
+          authorTeamNames,
+          notMetGates,
+        );
+        if (vague) {
+          const vagueGates = notMetGates.filter((g) => gateIds.includes(g.gate_id));
+          for (const gate of vagueGates) {
+            const objId = objectiveIdForGate(gate);
+            if (objId && !skipPositiveForObjectiveIds.includes(objId))
+              skipPositiveForObjectiveIds.push(objId);
+          }
+          // Fire if_vague_decision_inject_id at most once per gate per session
+          const { data: vagueFired } = await supabaseAdmin
+            .from('session_events')
+            .select('metadata')
+            .eq('session_id', decision.session_id)
+            .eq('event_type', 'gate_vague_inject_fired');
+          const firedGateIds = new Set(
+            (vagueFired ?? [])
+              .map(
+                (e: { metadata?: { gate_id?: string } }) =>
+                  (e.metadata as { gate_id?: string })?.gate_id,
+              )
+              .filter(Boolean),
+          );
+          const { data: sessionRow } = await supabaseAdmin
+            .from('sessions')
+            .select('trainer_id')
+            .eq('id', decision.session_id)
+            .single();
+          const trainerId = (sessionRow as { trainer_id?: string } | null)?.trainer_id;
+          for (const gate of vagueGates) {
+            if (firedGateIds.has(gate.gate_id) || !gate.if_vague_decision_inject_id) continue;
+            try {
+              if (trainerId && io) {
+                await publishInjectToSession(
+                  gate.if_vague_decision_inject_id,
+                  decision.session_id,
+                  trainerId,
+                  io,
+                );
+                await supabaseAdmin.from('session_events').insert({
+                  session_id: decision.session_id,
+                  event_type: 'gate_vague_inject_fired',
+                  description: `Gate vague inject fired: ${gate.gate_id}`,
+                  actor_id: null,
+                  metadata: { gate_id: gate.gate_id },
+                });
+                firedGateIds.add(gate.gate_id);
+              }
+            } catch (injectErr) {
+              logger.error(
+                { err: injectErr, sessionId: decision.session_id, gateId: gate.gate_id },
+                'Failed to publish gate vague inject',
+              );
+            }
+          }
+        }
+      }
+    } catch (antiGamingErr) {
+      logger.error(
+        { error: antiGamingErr, decisionId: id },
+        'Anti-gaming check failed, continuing with objective tracking',
+      );
+    }
 
     // Track decision impact on objectives
     try {
-      await trackDecisionImpactOnObjectives(decision.session_id, {
-        id: decision.id,
-        title: decision.title,
-        description: decision.description,
-        type: decision.type || 'operational_action',
-      });
+      await trackDecisionImpactOnObjectives(
+        decision.session_id,
+        {
+          id: decision.id,
+          title: decision.title,
+          description: decision.description,
+          type: decision.type || 'operational_action',
+        },
+        { skipPositiveForObjectiveIds },
+      );
     } catch (objectiveError) {
       // Don't block decision execution if objective tracking fails
       logger.error(

@@ -11,6 +11,7 @@ import { initializeSessionObjectives } from '../services/objectiveTrackingServic
 import { getWebSocketService } from '../services/websocketService.js';
 import { identifyEscalationFactors, generateEscalationPathways } from '../services/aiService.js';
 import { env } from '../env.js';
+import { insiderRouter } from './insider.js';
 
 const router = Router();
 
@@ -1985,5 +1986,7 @@ router.patch(
     }
   },
 );
+
+router.use('/:sessionId/insider', insiderRouter);
 
 export { router as sessionsRouter };

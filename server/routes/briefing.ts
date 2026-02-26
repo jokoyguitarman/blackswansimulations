@@ -44,7 +44,9 @@ router.get(
       // Get scenario with briefing
       const { data: scenario } = await supabaseAdmin
         .from('scenarios')
-        .select('briefing, role_specific_briefs, title, description')
+        .select(
+          'briefing, role_specific_briefs, title, description, vicinity_map_url, layout_image_url',
+        )
         .eq('id', session.scenario_id)
         .single();
 
@@ -76,6 +78,8 @@ router.get(
           role_specific_briefing: roleSpecificBrief,
           scenario_title: scenario.title,
           user_role: userRole,
+          vicinity_map_url: scenario.vicinity_map_url ?? null,
+          layout_image_url: scenario.layout_image_url ?? null,
         },
       });
     } catch (err) {

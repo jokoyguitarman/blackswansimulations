@@ -439,8 +439,12 @@ export async function generateAndPublishInjectFromDecision(
       allSessionInjectsResult,
       participantsResult,
     ] = await Promise.all([
-      // Get scenario description
-      supabaseAdmin.from('scenarios').select('description').eq('id', session.scenario_id).single(),
+      // Get scenario description and insider_knowledge for layout ground truth
+      supabaseAdmin
+        .from('scenarios')
+        .select('description, insider_knowledge')
+        .eq('id', session.scenario_id)
+        .single(),
 
       // Get ALL executed decisions (not just last 5) with full context
       supabaseAdmin
@@ -523,15 +527,17 @@ export async function generateAndPublishInjectFromDecision(
     let decisionsSummaryLine = '';
     try {
       if (allSessionInjectsResult.data && allSessionInjectsResult.data.length > 0) {
-        const injectsForAggregation = allSessionInjectsResult.data.map((e: Record<string, unknown>) => {
-          const metadata = (e.metadata as Record<string, unknown>) || {};
-          return {
-            title: (metadata.title as string) || '',
-            content: (metadata.content as string) || '',
-            inject_scope: (metadata.inject_scope as string) || 'universal',
-            target_teams: (metadata.target_teams as string[] | null) || null,
-          };
-        });
+        const injectsForAggregation = allSessionInjectsResult.data.map(
+          (e: Record<string, unknown>) => {
+            const metadata = (e.metadata as Record<string, unknown>) || {};
+            return {
+              title: (metadata.title as string) || '',
+              content: (metadata.content as string) || '',
+              inject_scope: (metadata.inject_scope as string) || 'universal',
+              target_teams: (metadata.target_teams as string[] | null) || null,
+            };
+          },
+        );
         const aggregated = aggregateThemeUsage(injectsForAggregation);
         themeUsageThisSession = aggregated.themeUsageThisSession;
         themeUsageByScope = aggregated.themeUsageByScope;
@@ -544,9 +550,35 @@ export async function generateAndPublishInjectFromDecision(
       );
     }
 
+    const insiderKnowledge =
+      (scenarioResult.data?.insider_knowledge as Record<string, unknown>) || {};
+    const layoutGroundTruth = insiderKnowledge.layout_ground_truth as
+      | {
+          evacuee_count?: number;
+          exits?: Array<{ label?: string; flow_per_min?: number; status?: string }>;
+          zones?: Array<{ label?: string; capacity?: number }>;
+        }
+      | undefined;
+    let layoutContext = '';
+    if (layoutGroundTruth) {
+      const parts: string[] = [];
+      if (layoutGroundTruth.evacuee_count != null)
+        parts.push(`Evacuees: ${layoutGroundTruth.evacuee_count}`);
+      if (layoutGroundTruth.exits?.length)
+        parts.push(
+          `Exits: ${layoutGroundTruth.exits.map((e) => `${e.label ?? 'Exit'}${e.flow_per_min != null ? ` ${e.flow_per_min}/min` : ''}${e.status ? ` [${e.status}]` : ''}`).join('; ')}`,
+        );
+      if (layoutGroundTruth.zones?.length)
+        parts.push(
+          `Zones: ${layoutGroundTruth.zones.map((z) => `${z.label ?? 'Zone'}${z.capacity != null ? ` capacity ${z.capacity}` : ''}`).join('; ')}`,
+        );
+      if (parts.length > 0) layoutContext = `\n\nLAYOUT GROUND TRUTH: ${parts.join('. ')}`;
+    }
+    const scenarioDescriptionWithLayout = (scenarioResult.data?.description ?? '') + layoutContext;
+
     // Enhanced context object
     const enhancedContext = {
-      scenarioDescription: scenarioResult.data?.description,
+      scenarioDescription: scenarioDescriptionWithLayout,
       recentDecisions: allDecisions, // ALL decisions now, not just last 5
       sessionDurationMinutes,
       upcomingInjects: upcomingInjectsResult.data || [],
@@ -554,7 +586,8 @@ export async function generateAndPublishInjectFromDecision(
       objectives: objectivesResult.data || [],
       recentInjects,
       participants: participantsResult.data || [],
-      themeUsageThisSession: Object.keys(themeUsageThisSession).length > 0 ? themeUsageThisSession : undefined,
+      themeUsageThisSession:
+        Object.keys(themeUsageThisSession).length > 0 ? themeUsageThisSession : undefined,
       themeUsageByScope: Object.keys(themeUsageByScope).length > 0 ? themeUsageByScope : undefined,
       decisionsSummaryLine: decisionsSummaryLine || undefined,
     };
