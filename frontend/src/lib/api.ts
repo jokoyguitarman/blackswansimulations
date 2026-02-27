@@ -160,6 +160,18 @@ export const api = {
         sessionId: string;
       }>(await fetch(apiUrl(`/api/sessions/${sessionId}/backend-activity`), { headers }));
     },
+    insiderAsk: async (sessionId: string, body: { content: string; channel_id?: string }) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: { answer: string; category: string; sources_used: string[] };
+      }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/insider/ask`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        }),
+      );
+    },
     create: async (data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(

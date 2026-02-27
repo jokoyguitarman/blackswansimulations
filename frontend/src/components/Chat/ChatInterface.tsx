@@ -51,6 +51,15 @@ interface ChatInterfaceProps {
   sessionId: string;
 }
 
+const INSIDER_DM_ID = '__insider__';
+
+interface InsiderMessage {
+  id: string;
+  role: 'user' | 'insider';
+  content: string;
+  created_at: string;
+}
+
 export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
   const { user } = useAuth();
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -63,6 +72,8 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState('');
   const [loading, setLoading] = useState(true);
+  const [insiderMessages, setInsiderMessages] = useState<InsiderMessage[]>([]);
+  const [insiderLoading, setInsiderLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const optimisticMessageIdRef = useRef<string | null>(null);
   const optimisticMessageContentRef = useRef<string | null>(null);
@@ -92,6 +103,10 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
   useEffect(() => {
     if (selectedDM) {
       setSelectedChannel(null);
+      if (selectedDM === INSIDER_DM_ID) {
+        setMessages([]);
+        return;
+      }
       loadMessages();
       // Queue processing happens in loadMessages after messages are loaded
     }
@@ -1031,7 +1046,7 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
 
   const loadMessages = async () => {
     const channelId = selectedChannel || selectedDM;
-    if (!channelId) return;
+    if (!channelId || channelId === INSIDER_DM_ID) return;
     try {
       const result = await api.channels.getMessages(channelId, 1, 50);
       const loadedMessages = result.data as Message[];
@@ -1087,6 +1102,47 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
     const messageContent = messageInput.trim();
     setMessageInput('');
 
+    // Insider virtual DM: call insider API and show reply in local state
+    if (channelId === INSIDER_DM_ID) {
+      setInsiderLoading(true);
+      const userMsg: InsiderMessage = {
+        id: `insider-user-${Date.now()}`,
+        role: 'user',
+        content: messageContent,
+        created_at: new Date().toISOString(),
+      };
+      setInsiderMessages((prev) => [...prev, userMsg]);
+      scrollToBottom();
+      try {
+        const result = await api.sessions.insiderAsk(sessionId, { content: messageContent });
+        const answer = (result.data as { answer: string }).answer;
+        const insiderMsg: InsiderMessage = {
+          id: `insider-${Date.now()}`,
+          role: 'insider',
+          content: answer,
+          created_at: new Date().toISOString(),
+        };
+        setInsiderMessages((prev) => [...prev, insiderMsg]);
+        scrollToBottom();
+      } catch (err) {
+        console.error('Failed to ask Insider:', err);
+        setInsiderMessages((prev) => [
+          ...prev,
+          {
+            id: `insider-err-${Date.now()}`,
+            role: 'insider',
+            content: `[ERROR] ${err instanceof Error ? err.message : 'Failed to get answer'}`,
+            created_at: new Date().toISOString(),
+          },
+        ]);
+        scrollToBottom();
+      } finally {
+        setInsiderLoading(false);
+      }
+      return;
+    }
+
+    // Regular channel/DM: optimistic update and send via channels API
     // Optimistic update: add message immediately
     const tempId = `temp-${Date.now()}`;
     optimisticMessageIdRef.current = tempId;
@@ -1233,20 +1289,34 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
                 [{channel.name}]
               </button>
             ))}
-          {viewMode === 'dms' &&
-            dmChannels.map((dm) => (
+          {viewMode === 'dms' && (
+            <>
               <button
-                key={dm.id}
-                onClick={() => setSelectedDM(dm.id)}
+                key={INSIDER_DM_ID}
+                onClick={() => setSelectedDM(INSIDER_DM_ID)}
                 className={`px-4 py-2 text-xs terminal-text uppercase border transition-all ${
-                  selectedDM === dm.id
+                  selectedDM === INSIDER_DM_ID
                     ? 'border-green-400 text-green-400 bg-green-400/10'
                     : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-green-400/50'
                 }`}
               >
-                [{dm.recipient?.full_name || 'Unknown'}]
+                [INSIDER]
               </button>
-            ))}
+              {dmChannels.map((dm) => (
+                <button
+                  key={dm.id}
+                  onClick={() => setSelectedDM(dm.id)}
+                  className={`px-4 py-2 text-xs terminal-text uppercase border transition-all ${
+                    selectedDM === dm.id
+                      ? 'border-green-400 text-green-400 bg-green-400/10'
+                      : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-green-400/50'
+                  }`}
+                >
+                  [{dm.recipient?.full_name || 'Unknown'}]
+                </button>
+              ))}
+            </>
+          )}
         </div>
 
         {/* User List for Starting DMs */}
@@ -1279,7 +1349,14 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
       <div className="flex-1 overflow-y-auto mb-4 space-y-2">
         {currentChannelId ? (
           <>
-            {currentDM && (
+            {selectedDM === INSIDER_DM_ID && (
+              <div className="mb-3 pb-3 border-b border-green-400/30">
+                <p className="text-xs terminal-text text-green-400 uppercase">
+                  Direct Message with: Insider [trainer]
+                </p>
+              </div>
+            )}
+            {currentDM && selectedDM !== INSIDER_DM_ID && (
               <div className="mb-3 pb-3 border-b border-green-400/30">
                 <p className="text-xs terminal-text text-green-400 uppercase">
                   Direct Message with: {currentDM.recipient?.full_name || 'Unknown'} [
@@ -1287,50 +1364,90 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
                 </p>
               </div>
             )}
-            {messages.map((message) => {
-              // Determine if message is from current user
-              // Check sender.id first, then fall back to sender_id if sender is undefined
-              const isCurrentUser =
-                message.sender?.id === user?.id ||
-                (message.sender_id && message.sender_id === user?.id);
-
-              return (
-                <div
-                  key={message.id}
-                  className={`military-border p-3 ${
-                    isCurrentUser ? 'ml-8' : 'mr-8'
-                  } ${selectedDM ? 'border-green-400/30' : ''}`}
-                >
-                  <div className="flex justify-between items-start mb-1">
-                    <span
-                      className={`text-xs terminal-text font-semibold ${selectedDM ? 'text-green-400' : 'text-robotic-yellow'}`}
-                    >
-                      {message.sender?.full_name || 'Unknown'} [{message.sender?.role || 'UNKNOWN'}]
-                    </span>
-                    <span
-                      className={`text-xs terminal-text ${selectedDM ? 'text-green-400/50' : 'text-robotic-yellow/50'}`}
-                    >
-                      {new Date(message.created_at).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <p
-                    className={`text-sm terminal-text ${selectedDM ? 'text-green-400/90' : 'text-robotic-yellow/90'}`}
+            {selectedDM === INSIDER_DM_ID ? (
+              <>
+                {insiderMessages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`military-border p-3 ${msg.role === 'user' ? 'ml-8' : 'mr-8'} border-green-400/30`}
                   >
-                    {message.content}
-                  </p>
-                </div>
-              );
-            })}
-            {messages.length === 0 && (
-              <div className="text-center py-8">
-                <p
-                  className={`text-sm terminal-text ${selectedDM ? 'text-green-400/50' : 'text-robotic-yellow/50'}`}
-                >
-                  [NO_MESSAGES] No messages yet
-                </p>
-              </div>
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="text-xs terminal-text font-semibold text-green-400">
+                        {msg.role === 'user' ? user?.displayName || 'You' : 'Insider'} [
+                        {msg.role === 'user' ? user?.role || 'unknown' : 'trainer'}]
+                      </span>
+                      <span className="text-xs terminal-text text-green-400/50">
+                        {new Date(msg.created_at).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <p className="text-sm terminal-text text-green-400/90 whitespace-pre-wrap">
+                      {msg.content}
+                    </p>
+                  </div>
+                ))}
+                {insiderLoading && (
+                  <div className="mr-8 military-border p-3 border-green-400/30">
+                    <p className="text-xs terminal-text text-green-400/50">Insider is typing...</p>
+                  </div>
+                )}
+                {insiderMessages.length === 0 && !insiderLoading && (
+                  <div className="text-center py-8">
+                    <p className="text-sm terminal-text text-green-400/50">
+                      [ASK_INSIDER] Ask about map, layout, hospitals, routes, etc.
+                    </p>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </>
+            ) : (
+              <>
+                {messages.map((message) => {
+                  // Determine if message is from current user
+                  // Check sender.id first, then fall back to sender_id if sender is undefined
+                  const isCurrentUser =
+                    message.sender?.id === user?.id ||
+                    (message.sender_id && message.sender_id === user?.id);
+
+                  return (
+                    <div
+                      key={message.id}
+                      className={`military-border p-3 ${
+                        isCurrentUser ? 'ml-8' : 'mr-8'
+                      } ${selectedDM ? 'border-green-400/30' : ''}`}
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <span
+                          className={`text-xs terminal-text font-semibold ${selectedDM ? 'text-green-400' : 'text-robotic-yellow'}`}
+                        >
+                          {message.sender?.full_name || 'Unknown'} [
+                          {message.sender?.role || 'UNKNOWN'}]
+                        </span>
+                        <span
+                          className={`text-xs terminal-text ${selectedDM ? 'text-green-400/50' : 'text-robotic-yellow/50'}`}
+                        >
+                          {new Date(message.created_at).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <p
+                        className={`text-sm terminal-text ${selectedDM ? 'text-green-400/90' : 'text-robotic-yellow/90'}`}
+                      >
+                        {message.content}
+                      </p>
+                    </div>
+                  );
+                })}
+                {messages.length === 0 && (
+                  <div className="text-center py-8">
+                    <p
+                      className={`text-sm terminal-text ${selectedDM ? 'text-green-400/50' : 'text-robotic-yellow/50'}`}
+                    >
+                      [NO_MESSAGES] No messages yet
+                    </p>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </>
             )}
-            <div ref={messagesEndRef} />
           </>
         ) : (
           <div className="text-center py-8">
