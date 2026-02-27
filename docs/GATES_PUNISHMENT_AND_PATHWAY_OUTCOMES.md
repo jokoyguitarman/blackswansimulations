@@ -65,3 +65,16 @@ So the “bad side of the gate” inject does trigger the escalation and de-esca
 - [ ] Any main-event inject that would contradict the “punish” branch has `required_gate_id` set to the appropriate gate.
 - [ ] Set `requires_response` on punishment injects if they should appear as incidents in the frontend.
 - [ ] Avoid time-based injects at the exact gate-check minute if they could overlap or contradict the punishment message, or give them `required_gate_id` if they assume the gate was met.
+
+---
+
+## 6. C2E Bombing Scenario Authoring Checklist
+
+When authoring or updating the C2E Bombing scenario (or a similar gated scenario):
+
+- [ ] **Punishment and success injects** – Create one punishment inject and one success inject per gate (e.g. "Coordination failure – no evacuation situation report received", "Evacuation plan received"). Insert them with `trigger_time_minutes` = NULL so the scheduler never fires them by time. Reference them in `scenario_gates.if_not_met_inject_ids` and `if_met_inject_id`.
+- [ ] **Vague-decision injects** – Create one vague inject per gate (e.g. "Evacuation plan too vague – specify exits and ground zero"). Reference in `scenario_gates.if_vague_decision_inject_id`. Set `scenario_gates.objective_id` so anti-gaming can skip positive objective progress when a vague decision is executed for a not_met gate.
+- [ ] **Phase 1+ and `required_gate_id`** – Set `required_gate_id` on every time-based inject at T+10 and later that assumes the evac (or triage/media) deliverable was met. Leave T+0, T+5, T+6, T+9 without `required_gate_id` (Phase 0).
+- [ ] **Media gate** – For injects that assume the media team has issued a first statement (e.g. "Press Demand for Confirmation"), set `required_gate_id` to the media gate.
+- [ ] **`requires_response`** – Set on punishment injects if they should create incidents and appear in the frontend incidents list.
+- [ ] **Minimal brief** – Keep general briefing short; state deliverables in role-specific briefs (evacuation plan, triage report, first public statement) so players discover details via injects and cross-team communication.

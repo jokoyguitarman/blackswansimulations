@@ -94,6 +94,43 @@ async function getSessionScenarioId(sessionId: string): Promise<string | null> {
 }
 
 /**
+ * Initialize session_gate_progress for all gates of the session's scenario.
+ * Call when session transitions to in_progress so gate evaluation and inject filtering work.
+ * Inserts one row per scenario gate with status 'pending'; safe to re-run (conflict ignored).
+ */
+export async function initializeSessionGateProgress(sessionId: string): Promise<void> {
+  const scenarioId = await getSessionScenarioId(sessionId);
+  if (!scenarioId) return;
+
+  const { data: gates, error: gatesError } = await supabaseAdmin
+    .from('scenario_gates')
+    .select('gate_id')
+    .eq('scenario_id', scenarioId);
+
+  if (gatesError || !gates?.length) {
+    if (gatesError)
+      logger.warn({ error: gatesError, sessionId }, 'No scenario gates or error loading gates');
+    return;
+  }
+
+  const rows = (gates as Array<{ gate_id: string }>).map((g) => ({
+    session_id: sessionId,
+    gate_id: g.gate_id,
+    status: 'pending',
+  }));
+
+  const { error: insertError } = await supabaseAdmin
+    .from('session_gate_progress')
+    .upsert(rows, { onConflict: 'session_id,gate_id', ignoreDuplicates: true });
+
+  if (insertError) {
+    logger.error({ error: insertError, sessionId }, 'Failed to initialize session gate progress');
+    return;
+  }
+  logger.info({ sessionId, gateCount: rows.length }, 'Session gate progress initialized');
+}
+
+/**
  * Check if the decision is "vague" for any of the not_met gates in scope
  * (author's team matches gate.team and decision.type in gate.decision_types, and content check fails).
  * Returns vague: true and the list of gate_ids for which the decision was vague (for firing if_vague_decision_inject_id).

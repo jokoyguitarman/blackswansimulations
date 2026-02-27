@@ -8,6 +8,7 @@ import { validate, schemas } from '../lib/validation.js';
 import { createDefaultChannels } from '../services/channelService.js';
 import { sendInvitationEmail, sendPendingInvitationEmail } from '../services/emailService.js';
 import { initializeSessionObjectives } from '../services/objectiveTrackingService.js';
+import { initializeSessionGateProgress } from '../services/gateEvaluationService.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { identifyEscalationFactors, generateEscalationPathways } from '../services/aiService.js';
 import { env } from '../env.js';
@@ -873,6 +874,15 @@ router.patch(
           logger.error(
             { error: objectiveError, sessionId: id },
             'Failed to initialize session objectives, continuing with session start',
+          );
+        }
+        // Initialize gate progress so scheduler and gate evaluation work
+        try {
+          await initializeSessionGateProgress(id);
+        } catch (gateError) {
+          logger.error(
+            { error: gateError, sessionId: id },
+            'Failed to initialize session gate progress, continuing with session start',
           );
         }
       }
