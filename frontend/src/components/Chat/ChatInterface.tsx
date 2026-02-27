@@ -112,6 +112,44 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
     }
   }, [selectedDM]);
 
+  // Load Insider Q&A history when opening Insider DM (persists across refresh)
+  useEffect(() => {
+    if (selectedDM !== INSIDER_DM_ID || !sessionId) return;
+    let cancelled = false;
+    setInsiderLoading(true);
+    api.sessions
+      .insiderHistory(sessionId)
+      .then((res) => {
+        if (cancelled) return;
+        const rows = res.data ?? [];
+        const mapped: InsiderMessage[] = [];
+        for (const row of rows) {
+          mapped.push({
+            id: `${row.id}-q`,
+            role: 'user',
+            content: row.question_text,
+            created_at: row.asked_at,
+          });
+          mapped.push({
+            id: `${row.id}-a`,
+            role: 'insider',
+            content: row.answer_snippet ?? '',
+            created_at: row.asked_at,
+          });
+        }
+        setInsiderMessages(mapped);
+      })
+      .catch(() => {
+        if (!cancelled) setInsiderMessages([]);
+      })
+      .finally(() => {
+        if (!cancelled) setInsiderLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, selectedDM]);
+
   const currentChannelId = selectedChannel || selectedDM;
 
   // Memoize loadDMs to prevent dependency issues

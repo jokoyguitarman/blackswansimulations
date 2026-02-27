@@ -171,4 +171,60 @@ router.post(
   },
 );
 
+// GET history: list session_insider_qa for this session (same access as /ask)
+router.get(
+  '/history',
+  (req, _res, next) => {
+    const sid = (req as { insiderSessionId?: string }).insiderSessionId;
+    if (sid) req.params.sessionId = sid;
+    next();
+  },
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const sessionId = req.params.sessionId;
+      const user = req.user!;
+
+      const { data: session } = await supabaseAdmin
+        .from('sessions')
+        .select('id, trainer_id')
+        .eq('id', sessionId)
+        .single();
+
+      if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
+      }
+
+      if (session.trainer_id !== user.id && user.role !== 'admin') {
+        const { data: participant } = await supabaseAdmin
+          .from('session_participants')
+          .select('user_id')
+          .eq('session_id', sessionId)
+          .eq('user_id', user.id)
+          .single();
+        if (!participant) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+      }
+
+      const { data: rows, error } = await supabaseAdmin
+        .from('session_insider_qa')
+        .select('id, question_text, answer_snippet, asked_at, category')
+        .eq('session_id', sessionId)
+        .order('asked_at', { ascending: true })
+        .limit(100);
+
+      if (error) {
+        logger.warn({ error, sessionId }, 'Failed to fetch session_insider_qa history');
+        return res.status(500).json({ error: 'Failed to load history' });
+      }
+
+      return res.json({ data: rows ?? [] });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in GET /sessions/:sessionId/insider/history');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
 export { router as insiderRouter };

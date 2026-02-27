@@ -172,6 +172,18 @@ export const api = {
         }),
       );
     },
+    insiderHistory: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          question_text: string;
+          answer_snippet: string | null;
+          asked_at: string;
+          category?: string;
+        }>;
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/insider/history`), { headers }));
+    },
     create: async (data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
