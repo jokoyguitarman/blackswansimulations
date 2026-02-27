@@ -16,6 +16,13 @@ import { logAndBroadcastEvent } from '../services/eventService.js';
 
 const router = Router();
 
+// Restore sessionId from parent router (nested router overwrites req.params)
+router.use((req, _res, next) => {
+  const sessionId = (req as { insiderSessionId?: string }).insiderSessionId;
+  if (sessionId) req.params.sessionId = sessionId;
+  next();
+});
+
 const askSchema = z.object({
   params: z.object({
     sessionId: z.string().uuid(),

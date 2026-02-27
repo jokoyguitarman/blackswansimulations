@@ -1997,6 +1997,13 @@ router.patch(
   },
 );
 
-router.use('/:sessionId/insider', insiderRouter);
+router.use(
+  '/:sessionId/insider',
+  (req, _res, next) => {
+    (req as { insiderSessionId?: string }).insiderSessionId = req.params.sessionId;
+    next();
+  },
+  insiderRouter,
+);
 
 export { router as sessionsRouter };
