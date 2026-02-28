@@ -13,6 +13,46 @@ import { publishInjectToSession } from '../routes/injects.js';
 import { env } from '../env.js';
 import type { Server as SocketServer } from 'socket.io';
 
+/**
+ * Apply Checkpoint 2 robustness cap: decisions marked environmentally inconsistent
+ * (high severity -> cap 3, medium -> cap 6) so pathway outcome reflects failure.
+ */
+async function applyEnvironmentalConsistencyCap(
+  robustnessByDecisionId: Record<string, number> | null,
+  decisionIds: string[],
+  sessionId: string,
+): Promise<Record<string, number> | null> {
+  if (
+    !robustnessByDecisionId ||
+    Object.keys(robustnessByDecisionId).length === 0 ||
+    decisionIds.length === 0
+  )
+    return robustnessByDecisionId;
+  const { data: rows } = await supabaseAdmin
+    .from('decisions')
+    .select('id, environmental_consistency')
+    .eq('session_id', sessionId)
+    .in('id', decisionIds);
+  const envByDecision = new Map<string, { consistent?: boolean; severity?: string }>();
+  for (const row of rows ?? []) {
+    const r = row as {
+      id: string;
+      environmental_consistency?: { consistent?: boolean; severity?: string } | null;
+    };
+    if (r.environmental_consistency && typeof r.environmental_consistency === 'object')
+      envByDecision.set(r.id, r.environmental_consistency);
+  }
+  const capped: Record<string, number> = {};
+  for (const [id, score] of Object.entries(robustnessByDecisionId)) {
+    const env = envByDecision.get(id);
+    if (env?.consistent === false && env?.severity === 'high') capped[id] = Math.min(score, 3);
+    else if (env?.consistent === false && env?.severity === 'medium')
+      capped[id] = Math.min(score, 6);
+    else capped[id] = score;
+  }
+  return capped;
+}
+
 /** When session has not_met gates, prefer escalation (low/medium) over de-escalation (high). */
 function effectiveRobustnessBand(
   band: 'low' | 'medium' | 'high',
@@ -499,13 +539,20 @@ export class AIInjectSchedulerService {
             escalationPathwaysSnapshot.length > 0 ? escalationPathwaysSnapshot : undefined,
             Object.keys(responseTaxonomy).length > 0 ? responseTaxonomy : undefined,
           );
+          const decisionIds = formattedDecisions.map((d: Record<string, unknown>) => String(d.id));
+          const cappedRobustness = await applyEnvironmentalConsistencyCap(
+            impactResult.robustnessByDecisionId ?? null,
+            decisionIds,
+            session.id,
+          );
           latestImpactMatrix = impactResult.matrix;
           latestImpactAnalysis = impactResult.analysis ?? null;
-          latestRobustnessByDecision = impactResult.robustnessByDecisionId ?? null;
+          latestRobustnessByDecision =
+            cappedRobustness ?? impactResult.robustnessByDecisionId ?? null;
           await supabaseAdmin.from('session_impact_matrix').insert({
             ...baseInsert,
             matrix: impactResult.matrix,
-            robustness_by_decision: impactResult.robustnessByDecisionId ?? {},
+            robustness_by_decision: latestRobustnessByDecision ?? {},
             escalation_factors_snapshot:
               escalationFactorsSnapshot.length > 0 ? escalationFactorsSnapshot : null,
             analysis: impactResult.analysis ?? null,

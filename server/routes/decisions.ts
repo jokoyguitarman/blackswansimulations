@@ -11,12 +11,17 @@ import { classifyDecision } from '../services/aiService.js';
 import {
   trackDecisionImpactOnObjectives,
   evaluateAllObjectivesForSession,
+  addObjectivePenalty,
 } from '../services/objectiveTrackingService.js';
 import {
   getNotMetGatesForSession,
   isDecisionVagueForNotMetGate,
   objectiveIdForGate,
 } from '../services/gateEvaluationService.js';
+import {
+  evaluateDecisionAgainstEnvironment,
+  createAndPublishEnvironmentalMismatchInject,
+} from '../services/environmentalConsistencyService.js';
 import { publishInjectToSession } from './injects.js';
 import {
   createNotification,
@@ -868,6 +873,15 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         .eq('user_id', decision.proposed_by);
       const authorTeamNames = (authorTeams ?? []).map((r: { team_name: string }) => r.team_name);
 
+      const { data: sessionRow } = await supabaseAdmin
+        .from('sessions')
+        .select('scenario_id, trainer_id')
+        .eq('id', decision.session_id)
+        .single();
+      const sessionScenarioId =
+        (sessionRow as { scenario_id?: string } | null)?.scenario_id ?? null;
+      const sessionTrainerId = (sessionRow as { trainer_id?: string } | null)?.trainer_id ?? null;
+
       const notMetGates = await getNotMetGatesForSession(decision.session_id);
       if (notMetGates.length > 0) {
         const { vague, gateIds } = isDecisionVagueForNotMetGate(
@@ -899,12 +913,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
               )
               .filter(Boolean),
           );
-          const { data: sessionRow } = await supabaseAdmin
-            .from('sessions')
-            .select('trainer_id')
-            .eq('id', decision.session_id)
-            .single();
-          const trainerId = (sessionRow as { trainer_id?: string } | null)?.trainer_id;
+          const trainerId = sessionTrainerId;
           for (const gate of vagueGates) {
             if (firedGateIds.has(gate.gate_id) || !gate.if_vague_decision_inject_id) continue;
             try {
@@ -928,6 +937,78 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
               logger.error(
                 { err: injectErr, sessionId: decision.session_id, gateId: gate.gate_id },
                 'Failed to publish gate vague inject',
+              );
+            }
+          }
+        }
+      }
+
+      // Checkpoint 2: Environmental consistency
+      const envResult = await evaluateDecisionAgainstEnvironment(
+        decision.session_id,
+        {
+          id: decision.id,
+          title: decision.title,
+          description: decision.description,
+          type: decision.type ?? null,
+        },
+        env.openAiApiKey,
+      );
+      await supabaseAdmin
+        .from('decisions')
+        .update({ environmental_consistency: envResult })
+        .eq('id', decision.id);
+
+      if (!envResult.consistent && sessionScenarioId && sessionTrainerId && io) {
+        await createAndPublishEnvironmentalMismatchInject(
+          {
+            sessionId: decision.session_id,
+            scenarioId: sessionScenarioId,
+            trainerId: sessionTrainerId,
+            authorTeamNames,
+            result: envResult,
+            decisionId: decision.id,
+          },
+          io,
+        );
+        if (authorTeamNames.length > 0) {
+          const { data: scenarioObjectives } = await supabaseAdmin
+            .from('scenario_objectives')
+            .select('objective_id')
+            .eq('scenario_id', sessionScenarioId)
+            .in('objective_id', authorTeamNames);
+          const objectiveIdsToSkip = (scenarioObjectives ?? []).map(
+            (r: { objective_id: string }) => r.objective_id,
+          );
+          for (const objId of objectiveIdsToSkip) {
+            if (!skipPositiveForObjectiveIds.includes(objId))
+              skipPositiveForObjectiveIds.push(objId);
+          }
+        }
+        if (
+          (envResult.severity === 'medium' || envResult.severity === 'high') &&
+          authorTeamNames.length > 0 &&
+          envResult.reason
+        ) {
+          const penaltyPoints = envResult.severity === 'high' ? 15 : 10;
+          const { data: scenarioObjectives } = await supabaseAdmin
+            .from('scenario_objectives')
+            .select('objective_id')
+            .eq('scenario_id', sessionScenarioId)
+            .in('objective_id', authorTeamNames);
+          for (const row of scenarioObjectives ?? []) {
+            const objId = (row as { objective_id: string }).objective_id;
+            try {
+              await addObjectivePenalty(
+                decision.session_id,
+                objId,
+                envResult.reason.slice(0, 200),
+                penaltyPoints,
+              );
+            } catch (penaltyErr) {
+              logger.warn(
+                { err: penaltyErr, sessionId: decision.session_id, objectiveId: objId },
+                'Failed to add objective penalty for environmental mismatch',
               );
             }
           }
