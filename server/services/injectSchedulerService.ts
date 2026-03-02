@@ -3,7 +3,12 @@ import { logger } from '../lib/logger.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { shouldCancelScheduledInject } from './aiService.js';
 import { runGateEvaluationForSession } from './gateEvaluationService.js';
-import { evaluateInjectConditions, type EvaluationContext } from './conditionEvaluatorService.js';
+import {
+  evaluateInjectConditions,
+  type EvaluationContext,
+  type ConditionsToAppear,
+  type ConditionsToCancel,
+} from './conditionEvaluatorService.js';
 import { env } from '../env.js';
 import type { Server as SocketServer } from 'socket.io';
 
@@ -576,8 +581,8 @@ export class InjectSchedulerService {
         const conditionsToCancel = (inject as { conditions_to_cancel?: unknown })
           .conditions_to_cancel;
         const result = evaluateInjectConditions(
-          conditionsToAppear ?? null,
-          conditionsToCancel ?? null,
+          (conditionsToAppear ?? null) as ConditionsToAppear | null,
+          (conditionsToCancel ?? null) as ConditionsToCancel | null,
           evaluationContext,
         );
 

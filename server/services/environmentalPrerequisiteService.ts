@@ -89,7 +89,7 @@ export async function evaluateEnvironmentalPrerequisite(
         conditions.suitability === 'low' ||
         conditions.unsuitable === true ||
         (conditions.cleared === false &&
-          (conditions.suitability === 'poor' || conditions.unsuitable === true));
+          (conditions.suitability === 'poor' || Boolean(conditions.unsuitable)));
 
       if (!isBad) continue;
 

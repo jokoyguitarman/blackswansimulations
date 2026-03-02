@@ -377,10 +377,10 @@ export const MapView = ({
     (loc) => typeof loc.coordinates?.lat === 'number' && typeof loc.coordinates?.lng === 'number',
   );
 
-  const unmanagedRoutes =
-    Array.isArray(environmentalState?.routes) &&
-    environmentalState.routes.filter((r) => r.managed === false);
-  const hasUnmanagedRoutes = (unmanagedRoutes?.length ?? 0) > 0;
+  const unmanagedRoutes = Array.isArray(environmentalState?.routes)
+    ? environmentalState.routes.filter((r) => r.managed === false)
+    : [];
+  const hasUnmanagedRoutes = unmanagedRoutes.length > 0;
 
   // Key stable per session so map only remounts when session changes, not on every render
   const mapKey = `map-${sessionId}`;
@@ -493,7 +493,7 @@ export const MapView = ({
           className="absolute top-2 left-2 z-[1000] px-2 py-1.5 rounded bg-black/80 border border-robotic-yellow/50 text-xs terminal-text text-robotic-yellow"
           aria-label="Environmental state legend"
         >
-          <span className="font-medium">Traffic / routes:</span> {unmanagedRoutes!.length} unmanaged
+          <span className="font-medium">Traffic / routes:</span> {unmanagedRoutes.length} unmanaged
         </div>
       )}
       {isContainerReady && (
