@@ -9,6 +9,7 @@ import { createDefaultChannels } from '../services/channelService.js';
 import { sendInvitationEmail, sendPendingInvitationEmail } from '../services/emailService.js';
 import { initializeSessionObjectives } from '../services/objectiveTrackingService.js';
 import { initializeSessionGateProgress } from '../services/gateEvaluationService.js';
+import { loadAndApplyEnvironmentalState } from '../services/environmentalStateService.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { identifyEscalationFactors, generateEscalationPathways } from '../services/aiService.js';
 import { env } from '../env.js';
@@ -699,6 +700,69 @@ router.get(
   },
 );
 
+// Get scenario locations (map pins) for the session's scenario — Step 6
+router.get(
+  '/:id/locations',
+  requireAuth,
+  validate(schemas.id),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id: sessionId } = req.params;
+      const user = req.user!;
+
+      const { data: session, error: sessionError } = await supabaseAdmin
+        .from('sessions')
+        .select('id, scenario_id')
+        .eq('id', sessionId)
+        .single();
+
+      if (sessionError || !session) {
+        if (sessionError?.code === 'PGRST116') {
+          return res.status(404).json({ error: 'Session not found' });
+        }
+        logger.error({ error: sessionError, sessionId }, 'Failed to fetch session for locations');
+        return res.status(500).json({ error: 'Failed to fetch session' });
+      }
+
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        const { data: participant } = await supabaseAdmin
+          .from('session_participants')
+          .select('*')
+          .eq('session_id', sessionId)
+          .eq('user_id', user.id)
+          .single();
+        if (!participant) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+      }
+
+      const scenarioId = (session as { scenario_id?: string }).scenario_id;
+      if (!scenarioId) {
+        return res.json({ data: [] });
+      }
+
+      const { data: locations, error: locError } = await supabaseAdmin
+        .from('scenario_locations')
+        .select('id, scenario_id, location_type, label, coordinates, display_order')
+        .eq('scenario_id', scenarioId)
+        .order('display_order', { ascending: true });
+
+      if (locError) {
+        logger.error(
+          { error: locError, sessionId, scenarioId },
+          'Failed to fetch scenario locations',
+        );
+        return res.status(500).json({ error: 'Failed to fetch locations' });
+      }
+
+      res.json({ data: locations ?? [] });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in GET /sessions/:id/locations');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
 // Get single session
 router.get('/:id', requireAuth, validate(schemas.id), async (req: AuthenticatedRequest, res) => {
   try {
@@ -883,6 +947,15 @@ router.patch(
           logger.error(
             { error: gateError, sessionId: id },
             'Failed to initialize session gate progress, continuing with session start',
+          );
+        }
+        // Load pre-authored environmental seed (one random variant) into session state
+        try {
+          await loadAndApplyEnvironmentalState(id);
+        } catch (envError) {
+          logger.error(
+            { error: envError, sessionId: id },
+            'Failed to load environmental state, continuing with session start',
           );
         }
       }

@@ -22,6 +22,7 @@ import {
   evaluateDecisionAgainstEnvironment,
   createAndPublishEnvironmentalMismatchInject,
 } from '../services/environmentalConsistencyService.js';
+import { evaluateEnvironmentalPrerequisite } from '../services/environmentalPrerequisiteService.js';
 import { publishInjectToSession } from './injects.js';
 import {
   createNotification,
@@ -944,7 +945,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       }
 
       // Checkpoint 2: Environmental consistency
-      const envResult = await evaluateDecisionAgainstEnvironment(
+      const aiEnvResult = await evaluateDecisionAgainstEnvironment(
         decision.session_id,
         {
           id: decision.id,
@@ -954,6 +955,14 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         },
         env.openAiApiKey,
       );
+      // Step 5: Environmental prerequisite (corridor traffic + location-condition gate); overrides AI result when failed
+      const prereqResult = await evaluateEnvironmentalPrerequisite(decision.session_id, {
+        id: decision.id,
+        title: decision.title,
+        description: decision.description,
+        type: decision.type ?? null,
+      });
+      const envResult = prereqResult && !prereqResult.consistent ? prereqResult : aiEnvResult;
       await supabaseAdmin
         .from('decisions')
         .update({ environmental_consistency: envResult })

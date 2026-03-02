@@ -128,6 +128,19 @@ export const api = {
         await fetch(apiUrl(`/api/sessions/${id}`), { headers }),
       );
     },
+    getLocations: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          scenario_id: string;
+          location_type: string;
+          label: string;
+          coordinates: { lat?: number; lng?: number };
+          display_order?: number;
+        }>;
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/locations`), { headers }));
+    },
     getBackendActivity: async (sessionId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{

@@ -5,7 +5,9 @@ import 'leaflet/dist/leaflet.css';
 import { IncidentMarker } from './IncidentMarker';
 import { ResourceMarker } from './ResourceMarker';
 import { EvacuationZone } from './EvacuationZone';
+import { ScenarioLocationMarker, type ScenarioLocationPin } from './ScenarioLocationMarker';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { api } from '../../lib/api';
 import type { LatLngExpression } from 'leaflet';
 
 type WebSocketEvent = {
@@ -301,18 +303,61 @@ export const MapView = ({
   const isMapDisabled = disabled || mapDisabledByEnv;
 
   const [evacuationZones, setEvacuationZones] = useState(initialEvacuationZones);
+  const [scenarioLocations, setScenarioLocations] = useState<ScenarioLocationPin[]>([]);
+  const [environmentalState, setEnvironmentalState] = useState<{
+    routes?: Array<{ label?: string; managed?: boolean }>;
+    areas?: unknown[];
+  } | null>(null);
   const [isContainerReady, setIsContainerReady] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Listen for state updates to add evacuation zones
+  // Fetch scenario locations (map pins) for this session's scenario
+  useEffect(() => {
+    if (!sessionId || isMapDisabled) return;
+    let cancelled = false;
+    api.sessions
+      .getLocations(sessionId)
+      .then((res) => {
+        if (!cancelled && Array.isArray(res.data)) {
+          setScenarioLocations(
+            res.data.map((loc) => ({
+              id: loc.id,
+              location_type: loc.location_type,
+              label: loc.label,
+              coordinates: loc.coordinates ?? {},
+            })),
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setScenarioLocations([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, isMapDisabled]);
+
+  // Listen for state updates: evacuation zones + environmental_state (Step 6)
   useWebSocket({
     sessionId,
     eventTypes: ['state.updated'],
     onEvent: (event: WebSocketEvent) => {
       if (event.type === 'state.updated') {
-        const state = (event.data as any).state;
+        const state = (event.data as { state?: Record<string, unknown> })?.state;
         if (state?.evacuation_zones) {
-          setEvacuationZones(state.evacuation_zones);
+          setEvacuationZones(state.evacuation_zones as EvacuationZoneData[]);
+        }
+        if (
+          state &&
+          typeof state.environmental_state === 'object' &&
+          state.environmental_state !== null
+        ) {
+          setEnvironmentalState(
+            state.environmental_state as {
+              routes?: Array<{ label?: string; managed?: boolean }>;
+              areas?: unknown[];
+            },
+          );
         }
       }
     },
@@ -328,8 +373,17 @@ export const MapView = ({
     (resource) => resource.location_lat != null && resource.location_lng != null,
   );
 
-  // Generate unique key for map container to force remount on session change
-  const mapKey = `map-${sessionId}-${Date.now()}`;
+  const scenarioLocationsWithCoords = scenarioLocations.filter(
+    (loc) => typeof loc.coordinates?.lat === 'number' && typeof loc.coordinates?.lng === 'number',
+  );
+
+  const unmanagedRoutes =
+    Array.isArray(environmentalState?.routes) &&
+    environmentalState.routes.filter((r) => r.managed === false);
+  const hasUnmanagedRoutes = (unmanagedRoutes?.length ?? 0) > 0;
+
+  // Key stable per session so map only remounts when session changes, not on every render
+  const mapKey = `map-${sessionId}`;
 
   // Cleanup function to remove Leaflet artifacts before MapContainer renders
   const cleanContainerElement = (element: HTMLDivElement) => {
@@ -433,6 +487,15 @@ export const MapView = ({
         display: 'block',
       }}
     >
+      {/* Optional legend: environmental state (traffic / routes) */}
+      {hasUnmanagedRoutes && (
+        <div
+          className="absolute top-2 left-2 z-[1000] px-2 py-1.5 rounded bg-black/80 border border-robotic-yellow/50 text-xs terminal-text text-robotic-yellow"
+          aria-label="Environmental state legend"
+        >
+          <span className="font-medium">Traffic / routes:</span> {unmanagedRoutes!.length} unmanaged
+        </div>
+      )}
       {isContainerReady && (
         <MapContainer
           key={mapKey}
@@ -492,6 +555,15 @@ export const MapView = ({
               center={[zone.center_lat, zone.center_lng] as LatLngExpression}
               radius={zone.radius_meters}
               title={zone.title}
+            />
+          ))}
+
+          {/* Scenario location pins (Step 6: labels only) */}
+          {scenarioLocationsWithCoords.map((loc) => (
+            <ScenarioLocationMarker
+              key={loc.id}
+              location={loc}
+              position={[loc.coordinates.lat!, loc.coordinates.lng!] as LatLngExpression}
             />
           ))}
 
