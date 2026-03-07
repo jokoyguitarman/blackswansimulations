@@ -407,16 +407,20 @@ export const MapView = ({
   // Key stable per session so map only remounts when session changes, not on every render
   const mapKey = `map-${sessionId}`;
 
-  // Clean only this wrapper's contents on mount; teardown is handled by MapCleanup (map.remove()).
-  // Avoid document-wide or parent-walk removal to prevent racing with Leaflet's own cleanup.
-  const cleanContainerElement = (element: HTMLDivElement) => {
+  // Only clean on unmount. Do NOT clean on mount: React Strict Mode mount-unmount-remount
+  // (or ref running after Leaflet has created DOM) would remove nodes Leaflet owns and cause removeChild errors.
+  const cleanContainerElement = (element: HTMLDivElement | null) => {
+    if (!element) return;
     const existingContainers = element.querySelectorAll('.leaflet-container');
     existingContainers.forEach((container) => {
       try {
         if ((container as any)._leaflet_id) {
           delete (container as any)._leaflet_id;
         }
-        container.remove();
+        // Only remove if still in the DOM (React may have already removed it during teardown).
+        if (container.parentNode) {
+          container.parentNode.removeChild(container);
+        }
       } catch (e) {
         // Ignore cleanup errors
       }
@@ -426,35 +430,27 @@ export const MapView = ({
     }
   };
 
-  // Callback ref - runs SYNCHRONOUSLY when React mounts the div
-  // This is critical: it runs BEFORE MapContainer renders, preventing double initialization
+  // Callback ref: on mount only set ref and schedule ready; do NOT run cleanContainerElement here.
   const containerCallbackRef = (element: HTMLDivElement | null) => {
-    // Store ref for other uses
-    containerRef.current = element;
-
     if (element) {
-      // Clean immediately when div is mounted - runs BEFORE children render
-      cleanContainerElement(element);
-
-      // Use requestAnimationFrame to ensure cleanup completes before MapContainer renders
-      requestAnimationFrame(() => {
-        // Double-check cleanup
-        cleanContainerElement(element);
-        setIsContainerReady(true);
-      });
+      containerRef.current = element;
+      requestAnimationFrame(() => setIsContainerReady(true));
     } else {
       setIsContainerReady(false);
+      // Do not clear containerRef here so useEffect cleanup can still clean the container
     }
   };
 
-  // Also clean on unmount
+  // Clean only on unmount (e.g. navigate away); MapCleanup runs map.remove() before this.
   useEffect(() => {
     return () => {
-      if (containerRef.current) {
-        cleanContainerElement(containerRef.current);
+      const el = containerRef.current;
+      if (el?.isConnected) {
+        cleanContainerElement(el);
       }
+      containerRef.current = null;
     };
-  }, [mapKey]); // Run on every key change
+  }, [mapKey]);
 
   if (isMapDisabled) {
     return <FallbackUI />;

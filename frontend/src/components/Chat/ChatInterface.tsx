@@ -69,7 +69,7 @@ function ContentWithLinks({ content }: { content: string }) {
         key={`link-${key++}`}
         href={match[2]}
         className="underline text-green-400 hover:text-green-300"
-        target="_self"
+        target="_blank"
         rel="noopener noreferrer"
       >
         {match[1]}

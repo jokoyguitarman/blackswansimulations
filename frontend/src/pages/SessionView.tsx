@@ -77,6 +77,7 @@ export const SessionView = () => {
     () => typeof window !== 'undefined' && window.location.hash === '#show-map',
   );
   const [mapModuleReady, setMapModuleReady] = useState(false);
+  const [mapHasBeenOpened, setMapHasBeenOpened] = useState(false);
   const [_incidents, setIncidents] = useState<
     Array<{
       id: string;
@@ -146,6 +147,11 @@ export const SessionView = () => {
     window.addEventListener('hashchange', syncFromHash);
     return () => window.removeEventListener('hashchange', syncFromHash);
   }, []);
+
+  // Once the user opens the map, keep it mounted but hidden when closed (avoids Leaflet removeChild on unmount).
+  useEffect(() => {
+    if (showMapModule) setMapHasBeenOpened(true);
+  }, [showMapModule]);
 
   // Delay mounting MapView slightly so the container is stable (reduces Leaflet removeChild errors).
   useEffect(() => {
@@ -1168,9 +1174,12 @@ export const SessionView = () => {
             </div>
           )}
 
-          {/* Live map module - 2 columns, bottom, on request */}
-          {id && showMapModule && (
-            <div className="md:col-span-2 military-border p-6 bg-robotic-gray-300 flex flex-col h-[500px]">
+          {/* Live map module - 2 columns, bottom; keep mounted when closed to avoid Leaflet removeChild on unmount */}
+          {id && (
+            <div
+              className={`md:col-span-2 military-border p-6 bg-robotic-gray-300 flex flex-col h-[500px] ${showMapModule ? '' : 'hidden'}`}
+              aria-hidden={!showMapModule}
+            >
               <div className="flex justify-between items-center mb-3 flex-shrink-0">
                 <h3 className="text-lg terminal-text uppercase">[MAP]</h3>
                 <button
@@ -1190,7 +1199,7 @@ export const SessionView = () => {
                 </button>
               </div>
               <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden">
-                {mapModuleReady && (
+                {mapModuleReady && mapHasBeenOpened && (
                   <MapView
                     sessionId={id}
                     incidents={[]}
