@@ -74,6 +74,8 @@ These are the phases of the game lifecycle. Development work in each phase of th
 
 C2E injects are categorised in the design discussions; when migrating scenario data (Step 7), set `inject_category` and `eligible_after_minutes` per that table.
 
+**C2E second device (second bomb):** The scenario has a second-device storyline: teams can find and defuse it (gate `second_device_defused` → positive inject), or it can detonate. Detonation is condition-driven at T+20: either "area populated" (bad — additional casualties) or "area cleared" (acceptable — no additional casualties). Both detonation injects use `conditions_to_cancel: ["gate_met:second_device_defused"]`. Session state `second_device_zone_cleared` / `area_cleared` selects which detonation inject fires. See [GAME_SPECIFICS_AND_LOCATIONS.md](GAME_SPECIFICS_AND_LOCATIONS.md#second-device-second-bomb-outcomes).
+
 ---
 
 ## Phase 0 — Foundation

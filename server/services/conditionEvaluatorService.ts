@@ -187,6 +187,16 @@ conditionRegistry.evacuation_gate_not_met = (ctx) => {
   );
 };
 
+// Second device / second bomb (C2E): area cleared for detonation outcome
+conditionRegistry.area_cleared = (ctx) => {
+  const state = ctx.currentState as {
+    second_device_zone_cleared?: boolean;
+    area_cleared?: boolean;
+  };
+  return state?.second_device_zone_cleared === true || state?.area_cleared === true;
+};
+conditionRegistry.area_not_cleared = (ctx) => !conditionRegistry.area_cleared(ctx);
+
 // ---------------------------------------------------------------------------
 // Internal: resolve one condition key (prefix rules + registry)
 // ---------------------------------------------------------------------------
@@ -212,6 +222,11 @@ function evaluateKey(key: string, context: EvaluationContext): boolean {
   if (key.startsWith(prefixGate) && context.gateStatusByGateId) {
     const gateId = key.slice(prefixGate.length);
     return context.gateStatusByGateId[gateId] === 'not_met';
+  }
+  const prefixGateMet = 'gate_met:';
+  if (key.startsWith(prefixGateMet) && context.gateStatusByGateId) {
+    const gateId = key.slice(prefixGateMet.length);
+    return context.gateStatusByGateId[gateId] === 'met';
   }
 
   const fn = conditionRegistry[key];

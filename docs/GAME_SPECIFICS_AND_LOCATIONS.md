@@ -43,6 +43,11 @@ Each pin has **conditions** in the database (good/bad, suitability, etc.). The m
 - Pins are stored in a **scenario-level** table (e.g. `scenario_locations`): id, type, label, coordinates, **conditions** JSONB. Same structure for every scenario; each scenario has its own rows.
 - The **map** shows pins with **labels only**. The **insider** uses the same DB (or session state) to answer questions about a pin. **Location-condition gate:** when a decision references a location, the engine checks that location's conditions and applies penalty if bad and not cleared.
 
+### Which pins are shown on the map
+
+- **Always shown (incident geography):** blast site, exits, triage/open lots (area, triage_site), pathways, parking. The cordon pin is hidden so teams decide placement.
+- **Shown on request via Insider:** hospitals, police stations, fire stations, CCTV, community centres. These appear only after the user has asked the Insider a question that is classified as that category (e.g. “Where are the hospitals?”). The backend returns `map_revealed_categories` from `session_insider_qa` (distinct categories the user has asked about); the frontend filters establishment pins by that list. Asking the Insider triggers a refetch so newly revealed categories appear on the map.
+
 ---
 
 ## C2E Bombing scenario: teams, situations, and environmental conditions
@@ -67,6 +72,18 @@ The following are **specific to the C2E Bombing at Community Event** scenario. O
 - **Routes:** e.g. Route 1 (congested, 20 min) — negative, active until managed; Route 2 (clear, 3 min) — positive, managed by default. Session state holds route list with problem, active, managed, travel_time_minutes.
 - **Areas (facilities):** Hospitals and police stations can appear in `environmental_state.areas` with `at_capacity`, `problem`, and `aliases` for name matching. When a decision names such a facility (e.g. in a triage or resource plan) and that facility is at capacity or has an unmanaged problem, the environmental prerequisite gate fails and the same penalty flow as unmanaged traffic applies (inject, robustness cap, objective penalty). This encourages players to consider hospital/police capacity and alternatives.
 - **Locations:** Blast site (hard court), exits (e.g. North, South, Exit B with capacity limits), potential triage tent sites (with suitability, construction_nearby, terrain), cordon, pathways, parking. Each has conditions in `scenario_locations` (or equivalent); session state can track managed/active if they change during play.
+
+### Second device (second bomb) outcomes
+
+The scenario includes a potential **second device** (the suicide attacker / suspicious individual at Exit B). Outcomes are not strict win/lose:
+
+1. **Positive:** **Second device found and defused** — Gate `second_device_defused` is met when the Evacuation team submits a decision that references finding/defusing the second device (content hints: second device, defuse, found, neutralise, bomb, suspicious package, Exit B, backpack, etc.). When met, the gate engine publishes the "Second device found and defused" inject and the explosion injects are cancelled.
+2. **Bad:** **Second device detonates (area populated)** — Condition-driven inject at T+20 (eligible after 20 minutes). Fires only if the device was not defused and the area was **not** cleared (`area_not_cleared`). Results in additional casualties and panic.
+3. **Acceptable:** **Second device detonates (area cleared)** — Same timing; fires if not defused but the area **was** cleared (`area_cleared`). No additional casualties; blast in cordoned/cleared zone. Still an escalation event but not a hard failure.
+
+Session state can set `current_state.second_device_zone_cleared` or `current_state.area_cleared` to true when teams have cleared the second-device zone (e.g. via decisions or environmental state). The condition evaluator uses `area_cleared` / `area_not_cleared` to choose which detonation inject (if any) fires. Both detonation injects are cancelled if gate `second_device_defused` is met.
+
+**Crowd density around blast site:** When teams ask the Insider about crowd density, population, or people around the blast site (e.g. for second-explosion planning), the Insider returns intel from `custom_facts` topic `crowd_density_blast_surrounds`: per-zone concentration (ground zero cordoned; high density at West exit, Community club corridor, North/South exits; medium at East; low at adjacent field). Scenario pins (blast_site, exits) have `crowd_density` and `crowd_notes` in their `conditions` JSONB for consistency. See [C2E_INSIDER_INTEL_REFERENCE.md](C2E_INSIDER_INTEL_REFERENCE.md).
 
 When building a new scenario, you create new rows in the same tables with that scenario’s teams, locations, routes, and condition values.
 

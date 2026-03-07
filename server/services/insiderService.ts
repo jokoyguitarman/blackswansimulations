@@ -11,6 +11,7 @@ export type InsiderCategory =
   | 'fire_stations'
   | 'cctv'
   | 'routes'
+  | 'crowd_density'
   | 'layout'
   | 'other';
 
@@ -75,6 +76,13 @@ export function classifyInsiderQuestion(question: string): InsiderCategory {
     )
   ) {
     return 'routes';
+  }
+  if (
+    /\bcrowd\s+density\b|\bpopulation\s+(around|near|in)\b|\bpeople\s+(around|near|in\s+the\s+area)\b|\bsurrounds?\s+of\s+(the\s+)?blast\b|\bdensity\s+(of\s+)?(the\s+)?(surrounds?|area)\b|\b(any\s+)?people\s+around\s+(the\s+)?(blast\s+)?(site|area)\b|\bwho\s+is\s+still\s+near\s+(ground\s+zero|the\s+blast)\b/i.test(
+      q,
+    )
+  ) {
+    return 'crowd_density';
   }
   if (
     /\bexit(s)?\b|\bflow\s+rate\b|\bevacuee(s)?\b|\bcapacity\b|\btriage\s+zone\b|\bground\s+zero\b|\blayout\b/i.test(
@@ -180,6 +188,28 @@ export function buildSliceAnswer(
     );
     const answer = `Possible emergency routes in the vicinity:\n\n${lines.join('\n')}`;
     return { answer, sources_used: 'osm_vicinity.emergency_routes' };
+  }
+
+  if (category === 'crowd_density') {
+    if (knowledge.custom_facts?.length) {
+      const fact = knowledge.custom_facts.find(
+        (f) =>
+          f.topic.toLowerCase().includes('crowd_density') ||
+          f.topic.toLowerCase().includes('crowd') ||
+          f.summary.toLowerCase().includes('crowd') ||
+          f.summary.toLowerCase().includes('density'),
+      );
+      if (fact) {
+        return {
+          answer: fact.detail || fact.summary,
+          sources_used: 'custom_facts',
+        };
+      }
+    }
+    return {
+      answer: "I don't have crowd density or population-around-site data for this scenario.",
+      sources_used: 'none',
+    };
   }
 
   if (category === 'layout' && knowledge.layout_ground_truth) {
