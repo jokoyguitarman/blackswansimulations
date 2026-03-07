@@ -21,6 +21,8 @@ export const Scenarios = () => {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedScenario, setSelectedScenario] = useState<Scenario | null>(null);
+  const [generatingMapsForId, setGeneratingMapsForId] = useState<string | null>(null);
+  const [generateMapsError, setGenerateMapsError] = useState<string | null>(null);
 
   useEffect(() => {
     loadScenarios();
@@ -43,6 +45,22 @@ export const Scenarios = () => {
 
   const handleViewScenario = (scenario: Scenario) => {
     setSelectedScenario(scenario);
+    setGenerateMapsError(null);
+  };
+
+  const handleGenerateMaps = async () => {
+    if (!selectedScenario || generatingMapsForId) return;
+    setGeneratingMapsForId(selectedScenario.id);
+    setGenerateMapsError(null);
+    try {
+      await api.scenarios.generateMaps(selectedScenario.id);
+      setSelectedScenario(null);
+      loadScenarios();
+    } catch (err) {
+      setGenerateMapsError(err instanceof Error ? err.message : 'Failed to generate maps');
+    } finally {
+      setGeneratingMapsForId(null);
+    }
   };
 
   if (loading) {
@@ -144,13 +162,29 @@ export const Scenarios = () => {
           <div className="military-border bg-robotic-gray-300 p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start mb-4">
               <h2 className="text-xl terminal-text uppercase">{selectedScenario.title}</h2>
-              <button
-                onClick={() => setSelectedScenario(null)}
-                className="text-robotic-orange hover:text-robotic-yellow"
-              >
-                [CLOSE]
-              </button>
+              <div className="flex gap-2">
+                {isTrainer && (
+                  <button
+                    onClick={handleGenerateMaps}
+                    disabled={!!generatingMapsForId}
+                    className="military-button px-4 py-2 text-sm disabled:opacity-50"
+                  >
+                    {generatingMapsForId === selectedScenario.id
+                      ? 'Generating…'
+                      : '[GENERATE MAPS]'}
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelectedScenario(null)}
+                  className="text-robotic-orange hover:text-robotic-yellow"
+                >
+                  [CLOSE]
+                </button>
+              </div>
             </div>
+            {generateMapsError && (
+              <p className="text-sm text-red-500 mb-2">[ERROR] {generateMapsError}</p>
+            )}
             <div className="space-y-4">
               <div>
                 <h3 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">

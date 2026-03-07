@@ -266,6 +266,36 @@ router.post(
         }
       }
 
+      // When geography is present, trigger background map generation so maps are ready for play
+      if (data.center_lat != null && data.center_lng != null) {
+        const id = data.id;
+        generateScenarioMaps(id)
+          .then((result) => {
+            if (result.error || (!result.vicinityPng && !result.layoutPng)) return;
+            return Promise.all([
+              result.vicinityPng
+                ? uploadScenarioMap(result.vicinityPng, `${id}/vicinity.png`, 'image/png')
+                : null,
+              result.layoutPng
+                ? uploadScenarioMap(result.layoutPng, `${id}/layout.png`, 'image/png')
+                : null,
+            ]).then((urls) => {
+              const u: { vicinity_map_url?: string; layout_image_url?: string } = {};
+              if (urls[0]) u.vicinity_map_url = urls[0];
+              if (urls[1]) u.layout_image_url = urls[1];
+              if (Object.keys(u).length > 0) {
+                return supabaseAdmin.from('scenarios').update(u).eq('id', id);
+              }
+            });
+          })
+          .then(() =>
+            logger.info({ scenarioId: id }, 'Background map generation completed (create)'),
+          )
+          .catch((err) =>
+            logger.warn({ err, scenarioId: data.id }, 'Background map generation failed (create)'),
+          );
+      }
+
       logger.info({ scenarioId: data.id, userId: user.id }, 'Scenario created');
       res.status(201).json({ data });
     } catch (err) {

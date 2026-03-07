@@ -12,6 +12,8 @@ import { initializeSessionGateProgress } from '../services/gateEvaluationService
 import { loadAndApplyEnvironmentalState } from '../services/environmentalStateService.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { identifyEscalationFactors, generateEscalationPathways } from '../services/aiService.js';
+import { generateScenarioMaps } from '../services/scenarioMapImageService.js';
+import { uploadScenarioMap } from '../lib/storage.js';
 import { env } from '../env.js';
 import { insiderRouter } from './insider.js';
 
@@ -883,6 +885,51 @@ router.post(
 
       // Create default channels for the session
       await createDefaultChannels(data.id, user.id);
+
+      // If scenario has geography but no map URLs yet, generate maps in background so briefing is ready
+      const { data: scenarioRow } = await supabaseAdmin
+        .from('scenarios')
+        .select('center_lat, center_lng, vicinity_map_url, layout_image_url')
+        .eq('id', scenario_id)
+        .single();
+      if (
+        scenarioRow?.center_lat != null &&
+        scenarioRow?.center_lng != null &&
+        (!scenarioRow.vicinity_map_url || !scenarioRow.layout_image_url)
+      ) {
+        const sid = scenario_id;
+        generateScenarioMaps(sid)
+          .then((result) => {
+            if (result.error || (!result.vicinityPng && !result.layoutPng)) return;
+            return Promise.all([
+              result.vicinityPng
+                ? uploadScenarioMap(result.vicinityPng, `${sid}/vicinity.png`, 'image/png')
+                : null,
+              result.layoutPng
+                ? uploadScenarioMap(result.layoutPng, `${sid}/layout.png`, 'image/png')
+                : null,
+            ]).then((urls) => {
+              const u: { vicinity_map_url?: string; layout_image_url?: string } = {};
+              if (urls[0]) u.vicinity_map_url = urls[0];
+              if (urls[1]) u.layout_image_url = urls[1];
+              if (Object.keys(u).length > 0) {
+                return supabaseAdmin.from('scenarios').update(u).eq('id', sid);
+              }
+            });
+          })
+          .then(() =>
+            logger.info(
+              { scenarioId: sid, sessionId: data.id },
+              'Background map generation completed (session create)',
+            ),
+          )
+          .catch((err) =>
+            logger.warn(
+              { err, scenarioId: scenario_id },
+              'Background map generation failed (session create)',
+            ),
+          );
+      }
 
       logger.info({ sessionId: data.id, userId: user.id }, 'Session created');
       res.status(201).json({ data });

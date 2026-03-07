@@ -112,6 +112,16 @@ export const api = {
         await fetch(apiUrl(`/api/scenarios/${id}`), { method: 'DELETE', headers }),
       );
     },
+    /** Generate vicinity and layout map images, upload to storage, update scenario URLs. */
+    generateMaps: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: unknown }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/generate-maps`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
   },
 
   // Sessions
