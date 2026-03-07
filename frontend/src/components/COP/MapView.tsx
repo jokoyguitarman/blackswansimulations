@@ -87,13 +87,21 @@ interface MapViewProps {
 const MapSizeInvalidator = ({ isVisible }: { isVisible?: boolean }) => {
   const map = useMap();
   useEffect(() => {
-    if (isVisible) {
+    if (!isVisible) return;
+    const run = () => {
       try {
         map.invalidateSize();
       } catch (_) {
         // Ignore
       }
-    }
+    };
+    run();
+    const t1 = setTimeout(run, 100);
+    const t2 = setTimeout(run, 400);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, [isVisible, map]);
   return null;
 };

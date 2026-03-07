@@ -1198,7 +1198,7 @@ export const SessionView = () => {
                   [HIDE MAP]
                 </button>
               </div>
-              <div className="flex-1 min-h-[600px] rounded border border-robotic-yellow/30 overflow-hidden">
+              <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden h-[620px]">
                 {mapModuleReady && mapHasBeenOpened && (
                   <MapView
                     sessionId={id}
