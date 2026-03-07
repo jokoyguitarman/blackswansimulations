@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { TimelineFeed } from '../components/COP/TimelineFeed';
@@ -78,6 +78,7 @@ export const SessionView = () => {
   );
   const [mapModuleReady, setMapModuleReady] = useState(false);
   const [mapHasBeenOpened, setMapHasBeenOpened] = useState(false);
+  const sessionContentRef = useRef<HTMLDivElement | null>(null);
   const [_incidents, setIncidents] = useState<
     Array<{
       id: string;
@@ -704,7 +705,11 @@ export const SessionView = () => {
 
       {/* Card-Based Content Grid */}
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div
+          ref={sessionContentRef}
+          className="grid grid-cols-1 md:grid-cols-2 gap-6"
+          tabIndex={-1}
+        >
           {/* Row 1: Incidents Card */}
           {id && (
             <div
@@ -1184,6 +1189,7 @@ export const SessionView = () => {
                 <h3 className="text-lg terminal-text uppercase">[MAP]</h3>
                 <button
                   onClick={() => {
+                    sessionContentRef.current?.focus({ preventScroll: true });
                     setShowMapModule(false);
                     if (window.location.hash === '#show-map') {
                       window.history.replaceState(

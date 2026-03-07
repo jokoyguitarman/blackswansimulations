@@ -488,13 +488,16 @@ export const MapView = ({
     return <FallbackUI />;
   }
 
+  // When fillHeight, use fixed pixel height so Leaflet always has dimensions (avoids blank map from 100% resolving to 0)
+  const mapHeight = fillHeight ? '620px' : '600px';
+
   return (
     <div
       ref={containerCallbackRef}
       className="military-border w-full relative"
       style={{
-        height: fillHeight ? '100%' : '600px',
-        minHeight: fillHeight ? '400px' : '600px',
+        height: mapHeight,
+        minHeight: mapHeight,
         width: '100%',
         position: 'relative',
         display: 'block',
