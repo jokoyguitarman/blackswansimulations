@@ -136,6 +136,19 @@ export async function runPathwayOutcomesOnInjectPublished(
       singleInjectContext,
       env.openAiApiKey,
     );
+    const baselineFactors = Array.isArray(insiderKnowledge.baseline_escalation_factors)
+      ? (insiderKnowledge.baseline_escalation_factors as Array<{
+          id: string;
+          name: string;
+          description: string;
+          severity: string;
+        }>)
+      : [];
+    const existingFactorIds = new Set(factorsResult.factors.map((f) => f.id));
+    const mergedFactors = [
+      ...factorsResult.factors,
+      ...baselineFactors.filter((f) => f && !existingFactorIds.has(f.id)),
+    ];
 
     let deEscalationFactors: Array<{ id: string; name: string; description: string }> = [];
     try {
@@ -144,7 +157,7 @@ export async function runPathwayOutcomesOnInjectPublished(
         (session.current_state as Record<string, unknown>) ?? {},
         objectivesForFactors,
         singleInjectContext,
-        factorsResult.factors,
+        mergedFactors,
         env.openAiApiKey,
       );
       deEscalationFactors = deEscResult.factors;
@@ -158,7 +171,7 @@ export async function runPathwayOutcomesOnInjectPublished(
     const pathwaysResult = await generateEscalationPathways(
       scenarioDescriptionWithContext,
       (session.current_state as Record<string, unknown>) ?? {},
-      factorsResult.factors,
+      mergedFactors,
       justPublishedInject,
       env.openAiApiKey,
     );
@@ -198,7 +211,7 @@ export async function runPathwayOutcomesOnInjectPublished(
     );
 
     const factorsSnapshot = {
-      escalation: factorsResult.factors,
+      escalation: mergedFactors,
       de_escalation: deEscalationFactors,
     };
     const pathwaysSnapshot = {
@@ -209,7 +222,7 @@ export async function runPathwayOutcomesOnInjectPublished(
     await supabaseAdmin.from('session_escalation_factors').insert({
       session_id: sessionId,
       evaluated_at: new Date().toISOString(),
-      factors: factorsResult.factors,
+      factors: mergedFactors,
       de_escalation_factors: deEscalationFactors,
     });
 

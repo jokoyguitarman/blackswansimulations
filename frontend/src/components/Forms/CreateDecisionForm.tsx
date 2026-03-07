@@ -42,7 +42,9 @@ export const CreateDecisionForm = ({
       onClose();
     } catch (error) {
       console.error('Failed to create or execute decision:', error);
-      alert('Failed to create or execute decision');
+      const message =
+        error instanceof Error ? error.message : 'Failed to create or execute decision';
+      alert(message);
     } finally {
       setLoading(false);
     }

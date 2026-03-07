@@ -80,6 +80,10 @@ export async function evaluateDecisionAgainstEnvironment(
     const insiderKnowledge = ((scenario as { insider_knowledge?: Record<string, unknown> })
       .insider_knowledge ?? {}) as Record<string, unknown>;
     const groundTruthSummary = buildGroundTruthSummary(insiderKnowledge);
+    const sectorStandards =
+      typeof insiderKnowledge.sector_standards === 'string'
+        ? insiderKnowledge.sector_standards
+        : undefined;
     if (!groundTruthSummary) {
       logger.debug(
         { sessionId, scenarioId: (scenario as { id: string }).id },
@@ -101,6 +105,7 @@ Rules:
 - severity: "low" = minor mismatch (e.g. 60 in 50-capacity area); "medium" = clear mismatch (e.g. 100 in 50, wrong exit name); "high" = dangerous/impossible (e.g. 200 in 50, non-existent exit).
 - error_type: "capacity" = assembly/triage capacity overflow; "location" = wrong place/exit; "flow" = unrealistic flow/timing; "other" = generic.
 - reason: one clear sentence for the player (e.g. "The assembly area you designated has a safe capacity of 50; your plan assumed 100.").
+When sector standards are provided in the user message, use them when evaluating consistency: e.g. assembly area at least 125% of evacuees (ICS); triage zone ~50 patients (WHO). If the decision states numbers that violate these norms or ground truth, set consistent false and cite in reason.
 
 Return ONLY valid JSON: { "consistent": boolean, "severity": "low"|"medium"|"high" (if consistent is false), "error_type": "capacity"|"location"|"flow"|"other" (if consistent is false), "reason": "..." (if consistent is false) }`;
 
@@ -109,8 +114,12 @@ Return ONLY valid JSON: { "consistent": boolean, "severity": "low"|"medium"|"hig
         ? `\nINCIDENT (this decision is in response to):\nTitle: ${incident.title ?? ''}\nDescription: ${incident.description ?? ''}\n\n`
         : '';
 
+    const sectorStandardsLine = sectorStandards
+      ? `Sector standards (if any): ${sectorStandards}\n\n`
+      : '';
     const userPrompt = `ENVIRONMENT GROUND TRUTH: ${groundTruthSummary}
-${incidentUserBlock}DECISION:
+
+${sectorStandardsLine}${incidentUserBlock}DECISION:
 Title: ${decision.title}
 Description: ${decision.description}
 

@@ -64,10 +64,33 @@ export const IncidentsPanel = ({
   const [filterSeverity, setFilterSeverity] = useState<string>('all');
   const [showDecisionModal, setShowDecisionModal] = useState(false);
   const [decisionModalIncidentId, setDecisionModalIncidentId] = useState<string | null>(null);
+  /** Incident IDs that already have an executed decision (show "Done" instead of "Decision") */
+  const [incidentIdsWithExecutedDecision, setIncidentIdsWithExecutedDecision] = useState<
+    Set<string>
+  >(() => new Set());
+
+  const loadIncidentDecisionsState = async () => {
+    try {
+      const result = await api.decisions.list(sessionId);
+      const list = (result?.data ?? []) as Array<{
+        status?: string;
+        response_to_incident_id?: string | null;
+      }>;
+      const ids = new Set(
+        list
+          .filter((d) => d.status === 'executed' && d.response_to_incident_id)
+          .map((d) => d.response_to_incident_id as string),
+      );
+      setIncidentIdsWithExecutedDecision(ids);
+    } catch {
+      setIncidentIdsWithExecutedDecision(new Set());
+    }
+  };
 
   // Initial load
   useEffect(() => {
     loadIncidents();
+    loadIncidentDecisionsState();
   }, [sessionId]);
 
   // Supabase Realtime subscription for instant incident updates
@@ -464,6 +487,7 @@ export const IncidentsPanel = ({
               setDecisionModalIncidentId(incidentId);
               setShowDecisionModal(true);
             }}
+            hasExecutedDecision={incidentIdsWithExecutedDecision.has(incident.id)}
           />
         ))}
         {filteredIncidents.length === 0 && (
@@ -487,6 +511,7 @@ export const IncidentsPanel = ({
           }}
           onSuccess={() => {
             loadIncidents();
+            loadIncidentDecisionsState();
             setShowDecisionModal(false);
             setDecisionModalIncidentId(null);
           }}

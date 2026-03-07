@@ -50,6 +50,8 @@ interface IncidentCardProps {
   onSelect?: () => void;
   /** When user clicks Decision, open create-decision flow for this incident */
   onDecisionClick?: (incidentId: string) => void;
+  /** True if this incident already has an executed decision (show "Done" instead of "Decision") */
+  hasExecutedDecision?: boolean;
 }
 
 export const IncidentCard = ({
@@ -58,6 +60,7 @@ export const IncidentCard = ({
   isSelected,
   onSelect,
   onDecisionClick,
+  hasExecutedDecision,
 }: IncidentCardProps) => {
   // const { user } = useAuth(); // Unused - keeping for potential future use
   const [updating, setUpdating] = useState(false);
@@ -192,17 +195,25 @@ export const IncidentCard = ({
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-robotic-yellow/30">
-        {onDecisionClick && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDecisionClick(incident.id);
-            }}
-            className="px-3 py-1 text-xs terminal-text border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 whitespace-nowrap"
-          >
-            [DECISION]
-          </button>
-        )}
+        {onDecisionClick != null &&
+          (hasExecutedDecision ? (
+            <span
+              className="px-3 py-1 text-xs terminal-text border border-green-400/50 text-green-400/80 bg-green-400/10 whitespace-nowrap cursor-default"
+              title="This incident has already been addressed with a decision"
+            >
+              [DONE]
+            </span>
+          ) : (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDecisionClick(incident.id);
+              }}
+              className="px-3 py-1 text-xs terminal-text border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 whitespace-nowrap"
+            >
+              [DECISION]
+            </button>
+          ))}
         {incident.status === 'under_control' && (
           <button
             onClick={(e) => {

@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../../lib/api';
-import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRealtime } from '../../hooks/useRealtime';
 import { supabase } from '../../lib/supabase';
 
@@ -29,83 +28,74 @@ export const TimelineFeed = ({ sessionId }: TimelineFeedProps) => {
     loadEvents();
   }, [sessionId]);
 
-  // Supabase Realtime subscription for inject events (instant updates)
+  // Helper to add an inject/incident event from Realtime to the timeline
+  const addTimelineEvent = async (payload: {
+    id: string;
+    event_type: string;
+    metadata?: Record<string, unknown>;
+    created_at: string;
+    actor_id?: string | null;
+  }) => {
+    let creator: { full_name: string; role: string } | undefined;
+    if (payload.actor_id) {
+      try {
+        const { data: actor } = await supabase
+          .from('user_profiles')
+          .select('full_name, role')
+          .eq('id', payload.actor_id)
+          .single();
+        if (actor) {
+          creator = { full_name: actor.full_name, role: actor.role };
+        }
+      } catch (error) {
+        console.error('Failed to fetch actor info for event:', error);
+      }
+    }
+    const event: Event = {
+      id: payload.id,
+      event_type: payload.event_type,
+      event_data: payload.metadata || {},
+      created_at: payload.created_at,
+      creator,
+    };
+    setEvents((prev) => {
+      if (prev.some((e) => e.id === event.id)) return prev;
+      return [event, ...prev];
+    });
+  };
+
+  // Supabase Realtime: inject events (instant updates)
   useRealtime<{
     id: string;
     session_id: string;
     event_type: string;
     description: string;
     actor_id: string | null;
-    actor_role: string | null;
     metadata: Record<string, unknown>;
     created_at: string;
   }>({
     table: 'session_events',
     filter: sessionId ? `session_id=eq.${sessionId}.and(event_type=eq.inject)` : undefined,
-    onInsert: async (payload) => {
-      // Only process inject events
-      if (payload.event_type !== 'inject') return;
-
-      // Fetch actor information if available
-      let creator = undefined;
-      if (payload.actor_id) {
-        try {
-          const { data: actor } = await supabase
-            .from('user_profiles')
-            .select('full_name, role')
-            .eq('id', payload.actor_id)
-            .single();
-
-          if (actor) {
-            creator = {
-              full_name: actor.full_name,
-              role: actor.role,
-            };
-          }
-        } catch (error) {
-          console.error('Failed to fetch actor info for event:', error);
-        }
-      }
-
-      // Transform database row into Event format
-      const event: Event = {
-        id: payload.id,
-        event_type: payload.event_type,
-        event_data: payload.metadata || {},
-        created_at: payload.created_at,
-        creator: creator,
-      };
-
-      // Add event optimistically to the beginning of the array
-      setEvents((prev) => {
-        // Check if event already exists (prevent duplicates)
-        const exists = prev.some((e) => e.id === event.id);
-        if (exists) return prev;
-        // Add to beginning for newest first (assuming events are sorted newest first)
-        return [event, ...prev];
-      });
+    onInsert: (payload) => {
+      addTimelineEvent(payload);
     },
     enabled: !!sessionId,
   });
 
-  // WebSocket subscription for other event types (decisions, resources, etc.)
-  useWebSocket({
-    sessionId,
-    eventTypes: [
-      'decision.proposed',
-      'decision.approved',
-      'decision.rejected',
-      'decision.executed',
-      'resource.requested',
-      'resource.countered',
-      'resource.approved',
-      'resource.rejected',
-      'resource.transferred',
-      'message.sent',
-    ],
-    onEvent: async () => {
-      // Reload events when non-inject events occur (these may not be in session_events yet)
-      await loadEvents();
+  // Supabase Realtime: incident events (instant updates)
+  useRealtime<{
+    id: string;
+    session_id: string;
+    event_type: string;
+    description: string;
+    actor_id: string | null;
+    metadata: Record<string, unknown>;
+    created_at: string;
+  }>({
+    table: 'session_events',
+    filter: sessionId ? `session_id=eq.${sessionId}.and(event_type=eq.incident)` : undefined,
+    onInsert: (payload) => {
+      addTimelineEvent(payload);
     },
     enabled: !!sessionId,
   });
@@ -125,12 +115,8 @@ export const TimelineFeed = ({ sessionId }: TimelineFeedProps) => {
     switch (eventType) {
       case 'inject':
         return '📡';
-      case 'decision':
-        return '⚡';
-      case 'message':
-        return '💬';
-      case 'resource':
-        return '📦';
+      case 'incident':
+        return '⚠️';
       default:
         return '📋';
     }
@@ -140,23 +126,16 @@ export const TimelineFeed = ({ sessionId }: TimelineFeedProps) => {
     switch (eventType) {
       case 'inject':
         return 'border-robotic-orange text-robotic-orange';
-      case 'decision':
-        return 'border-robotic-yellow text-robotic-yellow';
-      case 'message':
-        return 'border-robotic-gray-50 text-robotic-gray-50';
-      case 'resource':
+      case 'incident':
         return 'border-robotic-yellow text-robotic-yellow';
       default:
         return 'border-robotic-gray-200 text-robotic-gray-200';
     }
   };
 
-  // Hide AI step start/end and inject_cancelled in timeline; BACKEND / AI ACTIVITY panel still shows them
+  // Timeline shows only injects and incidents (no decisions, resources, messages)
   const timelineEvents = events.filter(
-    (e) =>
-      e.event_type !== 'ai_step_start' &&
-      e.event_type !== 'ai_step_end' &&
-      e.event_type !== 'inject_cancelled',
+    (e) => e.event_type === 'inject' || e.event_type === 'incident',
   );
 
   if (loading && events.length === 0) {

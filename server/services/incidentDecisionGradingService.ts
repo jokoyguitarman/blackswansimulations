@@ -138,7 +138,8 @@ export async function aiGradeRelevanceOnly(
 Return ONLY a JSON object with one key "band": "top" | "medium" | "lowest".
 - top: decision is clearly relevant and sufficiently detailed for the situation.
 - medium: partly relevant or somewhat vague.
-- lowest: vague, off-topic, or unhelpful.`,
+- lowest: vague, off-topic, or unhelpful.
+When judging whether the decision is sufficiently detailed, consider sector norms where relevant to the incident: evacuation (marshal-to-evacuee ratio, assembly/holding capacity); triage (staff-to-critical ratio, protocol e.g. START, hospital communication); media (designated spokesperson, media zone, briefing frequency). More specific on these points counts as more detailed; vague or absent on them counts as less detailed.`,
           },
           {
             role: 'user',

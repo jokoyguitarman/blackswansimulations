@@ -54,7 +54,14 @@ BEGIN
       ),
       'custom_facts', jsonb_build_array(
         jsonb_build_object('topic', 'event', 'summary', 'Community event at neighbourhood hard court, ~1000 participants.', 'detail', 'Large grassroots community event at a neighbourhood hard court. Central seating area near the detonation point.')
-      )
+      ),
+      'sector_standards', 'Evacuation (ICS): marshal-to-evacuee ratio 1:10–20; predefined, congestion-managed routes; assembly area capacity at least 125% of expected evacuees. Triage (WHO MCI): triage staff-to-critical patient ratio 1:5; use START protocol; triage zone capacity ~50 patients; real-time communication with nearby hospitals. Media (ICRC/UNOCHA): one designated spokesperson; safe media zone for briefings; coordinated updates every 1–2 hours.',
+      'baseline_escalation_factors', '[
+        {"id": "EF-baseline-assembly", "name": "Overcrowding at assembly area", "description": "Assembly or holding area capacity or 125% rule not respected; evacuee count exceeds safe capacity, increasing panic and disorder.", "severity": "high"},
+        {"id": "EF-baseline-marshal", "name": "No clear marshal-to-evacuee ratio", "description": "Evacuation plan does not specify marshal-to-evacuee ratio (ICS: 1 per 10–20); order at exits and holding areas at risk.", "severity": "medium"},
+        {"id": "EF-baseline-triage-ratio", "name": "Triage staff or zone capacity not specified", "description": "No staff-to-critical patient ratio (WHO: 1:5) or triage zone capacity (~50); risk of overload and delayed care.", "severity": "high"},
+        {"id": "EF-baseline-media-spokesperson", "name": "No designated media spokesperson", "description": "No single designated spokesperson (ICRC/UNOCHA); mixed or conflicting messages and loss of public trust.", "severity": "medium"}
+      ]'::jsonb
     )
   WHERE id = scenario_uuid;
 

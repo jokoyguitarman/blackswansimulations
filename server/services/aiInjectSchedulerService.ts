@@ -510,6 +510,17 @@ export class AIInjectSchedulerService {
         ? latestFactorsRow.de_escalation_factors
         : [];
     }
+    if (
+      escalationFactorsSnapshot.length === 0 &&
+      Array.isArray(insiderKnowledge.baseline_escalation_factors)
+    ) {
+      escalationFactorsSnapshot = insiderKnowledge.baseline_escalation_factors as Array<{
+        id: string;
+        name: string;
+        description: string;
+        severity: string;
+      }>;
+    }
     const { data: latestPathwaysRow } = await supabaseAdmin
       .from('session_escalation_pathways')
       .select('pathways, de_escalation_pathways')
@@ -561,11 +572,19 @@ export class AIInjectSchedulerService {
             type: (d.type as string) ?? null,
             team: (d.team as string) ?? null,
           }));
+          const scenarioContextParts = [
+            scenario?.description,
+            typeof insiderKnowledge.sector_standards === 'string'
+              ? `Sector standards (use to calibrate robustness):\n${insiderKnowledge.sector_standards}`
+              : null,
+          ].filter(Boolean) as string[];
+          const scenarioContext =
+            scenarioContextParts.length > 0 ? scenarioContextParts.join('\n\n') : undefined;
           const impactResult = await computeInterTeamImpactMatrix(
             teamsArray,
             decisionsWithTeam,
             env.openAiApiKey,
-            scenario?.description,
+            scenarioContext,
             escalationFactorsSnapshot.length > 0 ? escalationFactorsSnapshot : undefined,
             escalationPathwaysSnapshot.length > 0 ? escalationPathwaysSnapshot : undefined,
             Object.keys(responseTaxonomy).length > 0 ? responseTaxonomy : undefined,

@@ -80,6 +80,71 @@ function decisionMentionsLocationNegatively(decisionText: string, locationLabel:
   return false;
 }
 
+/** First segment of a route label (before "–" or "(") for mention matching; e.g. "Bishan Street 13 – north to hospital zone" → "Bishan Street 13". */
+function firstSegmentOfLabel(label: string): string {
+  const trimmed = (label || '').trim();
+  const dash = trimmed.indexOf('–');
+  const paren = trimmed.indexOf('(');
+  const end = Math.min(dash >= 0 ? dash : trimmed.length, paren >= 0 ? paren : trimmed.length);
+  return trimmed.slice(0, end).trim();
+}
+
+/**
+ * Returns true if the decision text (case-insensitive) refers to the route: full label, route_id, or first segment of label.
+ */
+function decisionMentionsRoute(
+  decisionText: string,
+  route: { label?: string; route_id?: string },
+): boolean {
+  const lower = decisionText.toLowerCase();
+  const label = (route.label || '').trim();
+  const labelLower = label.toLowerCase();
+  if (labelLower && lower.includes(labelLower)) return true;
+  const routeId = (route.route_id || '').trim();
+  if (routeId && lower.includes(routeId.toLowerCase())) return true;
+  const segment = firstSegmentOfLabel(label);
+  if (segment.length >= 3 && lower.includes(segment.toLowerCase())) return true;
+  return false;
+}
+
+/** Patterns indicating the decision proposes to manage or clear the route/corridor before using it. */
+const MANAGE_FIRST_PATTERNS = [
+  /\bmanage\s+and\s+clear\b/i,
+  /\bclear\s+.*\s+before\b/i,
+  /\bbefore\s+routing\b/i,
+  /\bbefore\s+use\b/i,
+  /\bactively\s+manage\b/i,
+  /\bdeploy\s+marshals\s+to\b/i,
+  /\bclear\s+the\s+corridor\b/i,
+  /\bclear\s+.*\s+corridor\b/i,
+  /\bmanage\s+.*\s+traffic\b/i,
+  /\bclear\s+.*\s+traffic\b/i,
+  /\bmanage\s+.*\s+before\b/i,
+  /\bclear\s+.*\s+before\b/i,
+];
+
+/**
+ * Returns true if, in a window around each mention of the route in the decision, there is phrasing that the team will manage/clear the route first.
+ */
+function decisionProposesManagingRouteFirst(
+  decisionText: string,
+  routeLabelOrSegment: string,
+): boolean {
+  const lower = decisionText.toLowerCase();
+  const search = routeLabelOrSegment.toLowerCase().trim();
+  if (!search) return false;
+  const windowLen = 120;
+  let idx = lower.indexOf(search);
+  while (idx !== -1) {
+    const start = Math.max(0, idx - windowLen);
+    const end = Math.min(lower.length, idx + search.length + windowLen);
+    const window = lower.slice(start, end);
+    if (MANAGE_FIRST_PATTERNS.some((re) => re.test(window))) return true;
+    idx = lower.indexOf(search, idx + 1);
+  }
+  return false;
+}
+
 /**
  * Evaluate environmental prerequisite (corridor traffic + location-condition gate).
  * Returns null if no prerequisite failure; otherwise returns a result that the caller
@@ -122,21 +187,38 @@ export async function evaluateEnvironmentalPrerequisite(
 
     const decisionText = `${decision.title ?? ''} ${decision.description ?? ''}`.trim();
 
-    // --- (1) Corridor traffic: evacuation/vehicle decision + unmanaged route (only when incident suggests evacuation/route) ---
+    // --- (1) Corridor traffic: only fail when decision mentions an unmanaged route and does not propose managing/clearing it first ---
     const routesRaw = envState?.routes;
     const routes = Array.isArray(routesRaw) ? routesRaw : [];
-    const hasUnmanagedRoute = routes.some((r) => r.managed === false);
+    const unmanagedRoutes = routes.filter((r) => r.managed === false);
     const runCorridorCheck = incidentSuggestsEvacuationOrRoute(incident);
-    if (runCorridorCheck && hasUnmanagedRoute && isEvacuationOrRouteRelated(decisionText)) {
-      const unmanagedLabels = routes
-        .filter((r) => r.managed === false)
-        .map((r) => r.label || r.route_id || 'route');
-      return {
-        consistent: false,
-        severity: 'medium',
-        error_type: 'flow',
-        reason: `Corridor or route traffic is not yet managed (${unmanagedLabels.slice(0, 3).join(', ')}${unmanagedLabels.length > 3 ? '...' : ''}). The decision assumes use of routes that are still congested or unmanaged.`,
-      };
+    if (
+      runCorridorCheck &&
+      unmanagedRoutes.length > 0 &&
+      isEvacuationOrRouteRelated(decisionText)
+    ) {
+      const mentionedUnmanaged = unmanagedRoutes.filter((r) =>
+        decisionMentionsRoute(decisionText, r),
+      );
+      if (mentionedUnmanaged.length === 0) {
+        // Decision never mentions any unmanaged route — do not fail
+      } else {
+        const stillFailing = mentionedUnmanaged.filter((r) => {
+          const labelOrSegment = r.label || r.route_id || '';
+          const segment = firstSegmentOfLabel(labelOrSegment);
+          const search = segment.length >= 3 ? segment : labelOrSegment;
+          return !decisionProposesManagingRouteFirst(decisionText, search);
+        });
+        if (stillFailing.length > 0) {
+          const labels = stillFailing.map((r) => r.label || r.route_id || 'route');
+          return {
+            consistent: false,
+            severity: 'medium',
+            error_type: 'flow',
+            reason: `Corridor or route traffic is not yet managed (${labels.slice(0, 3).join(', ')}${labels.length > 3 ? '...' : ''}). The decision assumes use of routes that are still congested or unmanaged.`,
+          };
+        }
+      }
     }
 
     // --- (2) Facility-capacity gate: decision references a hospital/police area that is at capacity ---

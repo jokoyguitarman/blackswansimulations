@@ -1047,7 +1047,11 @@ router.patch(
             .current_state ?? {}) as Record<string, unknown>;
           const [scenarioRow, objectivesRow] = await Promise.all([
             scenarioId
-              ? supabaseAdmin.from('scenarios').select('description').eq('id', scenarioId).single()
+              ? supabaseAdmin
+                  .from('scenarios')
+                  .select('description, insider_knowledge')
+                  .eq('id', scenarioId)
+                  .single()
               : { data: null },
             supabaseAdmin
               .from('scenario_objective_progress')
@@ -1069,15 +1073,30 @@ router.patch(
             [],
             env.openAiApiKey,
           );
+          const insiderKnowledge = (scenarioRow?.data as { insider_knowledge?: unknown } | null)
+            ?.insider_knowledge as Record<string, unknown> | undefined;
+          const baselineFactors = Array.isArray(insiderKnowledge?.baseline_escalation_factors)
+            ? (insiderKnowledge.baseline_escalation_factors as Array<{
+                id: string;
+                name: string;
+                description: string;
+                severity: string;
+              }>)
+            : [];
+          const existingIds = new Set(factorsResult.factors.map((f) => f.id));
+          const mergedFactors = [
+            ...factorsResult.factors,
+            ...baselineFactors.filter((f) => f && !existingIds.has(f.id)),
+          ];
           await supabaseAdmin.from('session_escalation_factors').insert({
             session_id: id,
             evaluated_at: new Date().toISOString(),
-            factors: factorsResult.factors,
+            factors: mergedFactors,
           });
           const pathwaysResult = await generateEscalationPathways(
             scenarioDescription,
             currentState,
-            factorsResult.factors,
+            mergedFactors,
             env.openAiApiKey,
           );
           await supabaseAdmin.from('session_escalation_pathways').insert({
