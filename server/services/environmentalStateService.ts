@@ -9,11 +9,25 @@ import { getWebSocketService } from './websocketService.js';
  * No generation from scratch; all content comes from scenario_environmental_seeds.
  */
 
+/** Facility (hospital/police) in environmental seed areas; constrains decisions when at_capacity. */
+export interface EnvironmentalAreaSeed {
+  area_id: string;
+  label: string;
+  type?: 'hospital' | 'police' | 'fire_station';
+  at_capacity?: boolean;
+  capacity?: number;
+  current_load?: number;
+  problem?: string;
+  active?: boolean;
+  managed?: boolean;
+  aliases?: string[];
+}
+
 export interface EnvironmentalSeedRow {
   id: string;
   scenario_id: string;
   variant_label: string;
-  seed_data: { routes?: unknown[]; areas?: unknown[] };
+  seed_data: { routes?: unknown[]; areas?: EnvironmentalAreaSeed[] };
 }
 
 /**

@@ -11,6 +11,19 @@ import { logger } from '../lib/logger.js';
 import type { EnvironmentalConsistencyResult } from './environmentalConsistencyService.js';
 
 type RouteRow = { route_id?: string; label?: string; managed?: boolean; active?: boolean };
+
+/** Facility (hospital/police/fire_station) in environmental_state.areas; used for capacity gate. */
+export type AreaRow = {
+  area_id?: string;
+  label?: string;
+  type?: 'hospital' | 'police' | 'fire_station';
+  at_capacity?: boolean;
+  problem?: string;
+  active?: boolean;
+  managed?: boolean;
+  aliases?: string[];
+};
+
 type LocationConditions = { suitability?: string; unsuitable?: boolean; cleared?: boolean };
 
 function isEvacuationOrRouteRelated(text: string): boolean {
@@ -49,7 +62,12 @@ export async function evaluateEnvironmentalPrerequisite(
     if (!scenarioId) return null;
 
     const currentState = (session.current_state as Record<string, unknown>) || {};
-    const envState = currentState.environmental_state as { routes?: RouteRow[] } | undefined;
+    const envState = currentState.environmental_state as
+      | {
+          routes?: RouteRow[];
+          areas?: AreaRow[];
+        }
+      | undefined;
     const locationState = currentState.location_state as
       | Record<string, { managed?: boolean }>
       | undefined;
@@ -72,7 +90,42 @@ export async function evaluateEnvironmentalPrerequisite(
       };
     }
 
-    // --- (2) Location-condition gate: decision references a bad location not yet managed ---
+    // --- (2) Facility-capacity gate: decision references a hospital/police area that is at capacity ---
+    const areasRaw = envState?.areas;
+    const areas = Array.isArray(areasRaw) ? areasRaw : [];
+    const decisionLower = decisionText.toLowerCase();
+    for (const area of areas) {
+      const type = area.type;
+      const isFacility = type === 'hospital' || type === 'police' || type === 'fire_station';
+      if (!isFacility) continue;
+
+      const label = (area.label ?? '').toLowerCase();
+      const aliases = Array.isArray(area.aliases)
+        ? area.aliases.map((a) => String(a).toLowerCase())
+        : [];
+      const mentioned =
+        (label && decisionLower.includes(label)) ||
+        aliases.some((a) => a && decisionLower.includes(a));
+
+      if (!mentioned) continue;
+
+      const atCapacity = area.at_capacity === true;
+      const hasProblem = Boolean(area.problem) && area.managed !== true;
+      if (!atCapacity && !hasProblem) continue;
+
+      const displayLabel = area.label || area.area_id || 'facility';
+      const reason =
+        area.problem?.trim() ||
+        `${displayLabel} reports at full capacity. Your plan cannot rely on this facility; consider alternatives.`;
+      return {
+        consistent: false,
+        severity: 'medium',
+        error_type: 'capacity',
+        reason,
+      };
+    }
+
+    // --- (3) Location-condition gate: decision references a bad location not yet managed ---
     const { data: locations, error: locErr } = await supabaseAdmin
       .from('scenario_locations')
       .select('id, scenario_id, location_type, label, conditions')
@@ -80,7 +133,6 @@ export async function evaluateEnvironmentalPrerequisite(
 
     if (locErr || !locations?.length) return null;
 
-    const decisionLower = decisionText.toLowerCase();
     for (const loc of locations) {
       const label = (loc as { label?: string }).label ?? '';
       const locType = (loc as { location_type?: string }).location_type ?? '';

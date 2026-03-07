@@ -14,6 +14,7 @@ export interface OsmVicinity {
   radius_meters?: number;
   hospitals?: Array<{ name: string; lat: number; lng: number; address?: string }>;
   police?: Array<{ name: string; lat: number; lng: number; address?: string }>;
+  fire_stations?: Array<{ name: string; lat: number; lng: number; address?: string }>;
   emergency_routes?: Array<{
     description: string;
     highway_type?: string;

@@ -14,7 +14,7 @@ When the environmental state service is implemented, it will read/write:
 
 - **`environmental_state`** (optional):
   - **`routes`**: array of `{ route_id, label, travel_time_minutes?, problem?, active, managed }`. `problem` null = positive factor; `active` true only when a problem is present; `managed` true = OK to use.
-  - **`areas`** (optional): array of `{ area_id, label, problem?, active, managed }` for non-route areas.
+  - **`areas`** (optional): array of facility entries (e.g. hospitals, police) with `area_id`, `label`, `type?` (`'hospital'` | `'police'`), `at_capacity?`, `problem?`, `active?`, `managed?`, `aliases?` (strings for matching decision text). When a decision references a facility by label or alias and that area has `at_capacity: true` (or `problem` set and not `managed`), the environmental prerequisite gate fails and the plan is hindered (same flow as unmanaged traffic).
 
 ## Location state (optional)
 

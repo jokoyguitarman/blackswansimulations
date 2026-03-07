@@ -8,6 +8,7 @@ export type InsiderCategory =
   | 'map'
   | 'hospitals'
   | 'police'
+  | 'fire_stations'
   | 'cctv'
   | 'routes'
   | 'layout'
@@ -49,11 +50,17 @@ export function classifyInsiderQuestion(question: string): InsiderCategory {
     return 'hospitals';
   }
   if (
-    /\bpolice\b|\boutpost(s)?\b|\bstation(s)?\b|\b(law\s+enforcement|LE)\s+(location|facilities)\b/i.test(
+    /\bpolice\b|\boutpost(s)?\b|\b(law\s+enforcement|LE)\s+(location|facilities)\b/i.test(q) &&
+    !/\bfire\b|\bscdf\b|\bcivil\s+defence\b/i.test(q)
+  ) {
+    return 'police';
+  }
+  if (
+    /\bfire\s+station(s)?\b|\bscdf\b|\bcivil\s+defence\b|\bfire\s+department\b|\bfirefighter(s)?\b/i.test(
       q,
     )
   ) {
-    return 'police';
+    return 'fire_stations';
   }
   if (
     /\bcctv\b|\bcamera(s)?\b|\bsurveillance\b|\bfootage\b|\bvideo\s+feed\b|\b(bomber|suspect).*camera\b/i.test(
@@ -125,6 +132,26 @@ export function buildSliceAnswer(
     );
     const answer = `There are ${list.length} police station(s)/outpost(s) in the vicinity:\n\n${lines.join('\n')}`;
     return { answer, sources_used: 'osm_vicinity.police' };
+  }
+
+  if (category === 'fire_stations' && knowledge.osm_vicinity?.fire_stations) {
+    const list = knowledge.osm_vicinity.fire_stations;
+    const lines = list.map(
+      (f) =>
+        `- ${f.name} (${f.lat.toFixed(4)}, ${f.lng.toFixed(4)}${f.address ? `; ${f.address}` : ''})`,
+    );
+    const answer = `There are ${list.length} fire station(s)/SCDF post(s) in the vicinity:\n\n${lines.join('\n')}`;
+    return { answer, sources_used: 'osm_vicinity.fire_stations' };
+  }
+
+  if (
+    category === 'fire_stations' &&
+    (!knowledge.osm_vicinity?.fire_stations || knowledge.osm_vicinity.fire_stations.length === 0)
+  ) {
+    return {
+      answer: 'No fire stations or SCDF posts are listed for this vicinity.',
+      sources_used: 'none',
+    };
   }
 
   if (category === 'cctv' && knowledge.osm_vicinity?.cctv_or_surveillance) {

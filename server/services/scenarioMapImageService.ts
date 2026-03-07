@@ -36,7 +36,16 @@ interface OverlayMark {
   lat: number;
   lng: number;
   label: string;
-  type?: 'blast' | 'cordon' | 'exit' | 'triage' | 'hospital' | 'police' | 'cctv';
+  type?:
+    | 'blast'
+    | 'cordon'
+    | 'exit'
+    | 'triage'
+    | 'hospital'
+    | 'police'
+    | 'cctv'
+    | 'fire_station'
+    | 'community_center';
 }
 
 /** Lat/lng to OSM tile indices (slippy map). */
@@ -148,7 +157,11 @@ function buildOverlaySvg(
               ? '#06c'
               : m.type === 'cctv'
                 ? '#606'
-                : '#333';
+                : m.type === 'fire_station'
+                  ? '#ea580c'
+                  : m.type === 'community_center'
+                    ? '#0d9488'
+                    : '#333';
     lines.push(
       `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="#fff" stroke-width="1.5"/>`,
     );
@@ -296,14 +309,37 @@ async function generateVicinityMap(
   }
 
   for (const loc of locations) {
-    if (loc.location_type !== 'blast_site') continue;
+    if (loc.location_type === 'blast_site') {
+      const coords = loc.coordinates;
+      if (!coords || coords.lat == null || coords.lng == null) continue;
+      marks.push({
+        lat: coords.lat,
+        lng: coords.lng,
+        label: loc.label.includes('Ground zero') ? 'GZ' : 'Blast',
+        type: 'blast',
+      });
+      continue;
+    }
     const coords = loc.coordinates;
     if (!coords || coords.lat == null || coords.lng == null) continue;
+    const type =
+      loc.location_type === 'hospital'
+        ? 'hospital'
+        : loc.location_type === 'police_station'
+          ? 'police'
+          : loc.location_type === 'fire_station'
+            ? 'fire_station'
+            : loc.location_type === 'cctv'
+              ? 'cctv'
+              : loc.location_type === 'community_center'
+                ? 'community_center'
+                : undefined;
+    if (!type) continue;
     marks.push({
       lat: coords.lat,
       lng: coords.lng,
-      label: loc.label.includes('Ground zero') ? 'GZ' : 'Blast',
-      type: 'blast',
+      label: shortLabel(loc.label, labelUsed),
+      type,
     });
   }
 
@@ -356,7 +392,17 @@ async function generateLayoutMap(
             ? 'triage'
             : loc.location_type === 'area'
               ? undefined
-              : undefined;
+              : loc.location_type === 'hospital'
+                ? 'hospital'
+                : loc.location_type === 'police_station'
+                  ? 'police'
+                  : loc.location_type === 'fire_station'
+                    ? 'fire_station'
+                    : loc.location_type === 'cctv'
+                      ? 'cctv'
+                      : loc.location_type === 'community_center'
+                        ? 'community_center'
+                        : undefined;
     marks.push({
       lat: coords.lat,
       lng: coords.lng,

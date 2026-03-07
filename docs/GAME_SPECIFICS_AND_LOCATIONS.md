@@ -65,6 +65,7 @@ The following are **specific to the C2E Bombing at Community Event** scenario. O
 ### Environmental conditions for C2E (example)
 
 - **Routes:** e.g. Route 1 (congested, 20 min) — negative, active until managed; Route 2 (clear, 3 min) — positive, managed by default. Session state holds route list with problem, active, managed, travel_time_minutes.
+- **Areas (facilities):** Hospitals and police stations can appear in `environmental_state.areas` with `at_capacity`, `problem`, and `aliases` for name matching. When a decision names such a facility (e.g. in a triage or resource plan) and that facility is at capacity or has an unmanaged problem, the environmental prerequisite gate fails and the same penalty flow as unmanaged traffic applies (inject, robustness cap, objective penalty). This encourages players to consider hospital/police capacity and alternatives.
 - **Locations:** Blast site (hard court), exits (e.g. North, South, Exit B with capacity limits), potential triage tent sites (with suitability, construction_nearby, terrain), cordon, pathways, parking. Each has conditions in `scenario_locations` (or equivalent); session state can track managed/active if they change during play.
 
 When building a new scenario, you create new rows in the same tables with that scenario’s teams, locations, routes, and condition values.

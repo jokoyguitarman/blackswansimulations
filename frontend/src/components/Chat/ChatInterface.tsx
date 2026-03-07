@@ -1463,7 +1463,8 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
                 {insiderMessages.length === 0 && !insiderLoading && (
                   <div className="text-center py-8">
                     <p className="text-sm terminal-text text-green-400/50">
-                      [ASK_INSIDER] Ask about map, layout, hospitals, routes, etc.
+                      [ASK_INSIDER] Ask about map, layout, hospitals, police, fire stations, routes,
+                      etc.
                     </p>
                   </div>
                 )}
