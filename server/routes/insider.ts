@@ -7,6 +7,7 @@ import { validate } from '../lib/validation.js';
 import {
   classifyInsiderQuestion,
   buildSliceAnswer,
+  buildTriageSiteAnswerFromLocations,
   type InsiderKnowledgeBlob,
 } from '../services/insiderService.js';
 import { getWebSocketService } from '../services/websocketService.js';
@@ -92,6 +93,23 @@ router.post(
         // No static map URLs; only the interactive map (labels and pins) via link.
         answer = `You can view the interactive map (with labels and pins) using the link below.\n\n[Open interactive map](/sessions/${sessionId}#show-map)`;
         sources_used = 'interactive_map';
+      } else if (category === 'triage_site') {
+        // Triage tent/zone candidates: map pins (Vacant lot A–E) enriched with insider_knowledge.site_areas when present.
+        const { data: locations } = await supabaseAdmin
+          .from('scenario_locations')
+          .select('label, conditions')
+          .eq('scenario_id', session.scenario_id)
+          .in('location_type', ['area', 'triage_site'])
+          .order('display_order', { ascending: true });
+        const siteAreas = (knowledge.site_areas ?? []) as Array<Record<string, unknown>>;
+        const rows = (locations ?? []).map((loc, i) => ({
+          label: loc.label ?? 'Unknown',
+          conditions: (loc.conditions as Record<string, unknown> | null) ?? undefined,
+          site_area: siteAreas[i] ?? null,
+        }));
+        const result = buildTriageSiteAnswerFromLocations(rows);
+        answer = result.answer;
+        sources_used = result.sources_used;
       } else {
         const result = buildSliceAnswer(knowledge, category);
         answer = result.answer;

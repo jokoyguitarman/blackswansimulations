@@ -12,8 +12,34 @@ export type InsiderCategory =
   | 'cctv'
   | 'routes'
   | 'crowd_density'
+  | 'triage_site'
   | 'layout'
   | 'other';
+
+/** One site area from insider_knowledge.site_areas (C2E triage candidates). */
+export interface SiteAreaEntry {
+  id?: string;
+  label?: string;
+  surface?: string;
+  level?: boolean;
+  area_m2?: number;
+  has_cover?: boolean;
+  cover_notes?: string;
+  capacity_lying?: number;
+  capacity_standing?: number;
+  distance_to_cordon_m?: number;
+  vehicle_access?: boolean;
+  vehicle_notes?: string;
+  stretcher_route?: boolean;
+  stretcher_notes?: string;
+  ambulance_pickup?: string;
+  water?: boolean;
+  water_notes?: string;
+  power?: boolean;
+  power_notes?: string;
+  hazards?: string;
+  wind_exposure?: string;
+}
 
 export interface InsiderKnowledgeBlob {
   vicinity_map_url?: string | null;
@@ -23,6 +49,7 @@ export interface InsiderKnowledgeBlob {
     exits?: Array<{ id: string; label: string; flow_per_min?: number; status?: string }>;
     zones?: Array<{ id: string; label: string; capacity?: number; type?: string }>;
   };
+  site_areas?: SiteAreaEntry[];
   osm_vicinity?: OsmVicinity;
   custom_facts?: Array<{ topic: string; summary: string; detail?: string }>;
 }
@@ -85,6 +112,13 @@ export function classifyInsiderQuestion(question: string): InsiderCategory {
     return 'crowd_density';
   }
   if (
+    /\btriage\s+(tent|zone|site|area|candidate|location|set\s+up|where)\b|\bwhere\s+(can|could|should)\s+(we|i)\s+set\s+up\s+(a\s+)?triage\b|\bvacant\s+lot(s)?\b|\bempty\s+lot(s)?\b|\btriage\s+candidate(s)?\b|\bsuitable\s+(for\s+)?triage\b|\b(which|what)\s+areas?\s+(can|for)\s+triage\b/i.test(
+      q,
+    )
+  ) {
+    return 'triage_site';
+  }
+  if (
     /\bexit(s)?\b|\bflow\s+rate\b|\bevacuee(s)?\b|\bcapacity\b|\btriage\s+zone\b|\bground\s+zero\b|\blayout\b/i.test(
       q,
     )
@@ -92,6 +126,93 @@ export function classifyInsiderQuestion(question: string): InsiderCategory {
     return 'layout';
   }
   return 'other';
+}
+
+/**
+ * Location row when building triage-site answer: map pin label + conditions, optionally enriched with insider_knowledge.site_areas.
+ */
+export interface TriageSiteLocationRow {
+  label: string;
+  conditions?: Record<string, unknown> | null;
+  /** Enriched from insider_knowledge.site_areas (same order as map pins: A→0, B→1, …). */
+  site_area?: SiteAreaEntry | null;
+}
+
+/**
+ * Build answer listing vacant lots / triage zone candidates with capacities, size, access, and utilities.
+ * Uses scenario_locations (map pins) and, when present, insider_knowledge.site_areas for richer detail.
+ */
+export function buildTriageSiteAnswerFromLocations(locations: TriageSiteLocationRow[]): {
+  answer: string;
+  sources_used: string;
+} {
+  if (!locations.length) {
+    return {
+      answer:
+        "I don't have specific vacant lots or triage site candidates for this scenario. Check the map for any pinned areas.",
+      sources_used: 'scenario_locations',
+    };
+  }
+  const usedSiteAreas = locations.some((loc) => loc.site_area != null);
+  const lines = locations.map((loc) => {
+    const cond = loc.conditions ?? {};
+    const sa = loc.site_area;
+    const lying =
+      (sa?.capacity_lying as number | undefined) ?? (cond.capacity_lying as number | undefined);
+    const standing =
+      (sa?.capacity_standing as number | undefined) ??
+      (cond.capacity_standing as number | undefined);
+    const suitability = (cond.suitability as string) ?? null;
+    const hazards = sa?.hazards ?? (cond.hazards as string) ?? null;
+    const areaM2 = sa?.area_m2;
+    const vehicleAccess = sa?.vehicle_access;
+    const vehicleNotes = sa?.vehicle_notes;
+    const stretcherRoute = sa?.stretcher_route;
+    const stretcherNotes = sa?.stretcher_notes;
+    const ambulancePickup = sa?.ambulance_pickup;
+    const water = sa?.water;
+    const waterNotes = sa?.water_notes;
+    const power = sa?.power;
+    const powerNotes = sa?.power_notes;
+    const coverNotes = sa?.cover_notes;
+    const distanceCordon = sa?.distance_to_cordon_m;
+    const windExposure = sa?.wind_exposure;
+
+    const parts: string[] = [];
+    if (lying != null && typeof lying === 'number') parts.push(`lying capacity ${lying}`);
+    if (standing != null && typeof standing === 'number')
+      parts.push(`standing capacity ${standing}`);
+    if (areaM2 != null && typeof areaM2 === 'number') parts.push(`~${areaM2} m²`);
+    if (suitability) parts.push(`suitability ${suitability}`);
+    const capText = parts.length ? ` — ${parts.join('; ')}` : '';
+    const detail: string[] = [];
+    if (hazards) detail.push(hazards);
+    if (coverNotes) detail.push(coverNotes);
+    if (vehicleAccess !== undefined) {
+      detail.push(vehicleAccess ? `Vehicle access: ${vehicleNotes ?? 'yes'}` : 'No vehicle access');
+    }
+    if (stretcherRoute !== undefined && stretcherNotes) {
+      detail.push(`Stretcher: ${stretcherNotes}`);
+    }
+    if (ambulancePickup) detail.push(`Ambulance pickup: ${ambulancePickup}`);
+    if (water !== undefined) {
+      detail.push(water ? `Water: ${waterNotes ?? 'available'}` : 'No water on site');
+    }
+    if (power !== undefined) {
+      detail.push(power ? `Power: ${powerNotes ?? 'available'}` : 'No power on site');
+    }
+    if (distanceCordon != null) detail.push(`${distanceCordon} m from cordon`);
+    if (windExposure) detail.push(windExposure);
+    const detailText = detail.length ? ` ${detail.join('. ')}` : '';
+    return `- **${loc.label}**${capText}.${detailText}`;
+  });
+  const answer = `These empty or vacant lots are pinned on the map and can be used as triage zone candidates:\n\n${lines.join('\n\n')}\n\nUse the map to see their exact positions.`;
+  return {
+    answer,
+    sources_used: usedSiteAreas
+      ? 'scenario_locations, insider_knowledge.site_areas'
+      : 'scenario_locations',
+  };
 }
 
 /**
