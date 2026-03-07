@@ -154,14 +154,13 @@ export const SessionView = () => {
     if (showMapModule) setMapHasBeenOpened(true);
   }, [showMapModule]);
 
-  // Delay mounting MapView slightly so the container is stable (reduces Leaflet removeChild errors).
+  // Mount MapView as soon as the map module is shown so Leaflet gets into the DOM.
   useEffect(() => {
     if (!showMapModule) {
       setMapModuleReady(false);
       return;
     }
-    const t = setTimeout(() => setMapModuleReady(true), 150);
-    return () => clearTimeout(t);
+    setMapModuleReady(true);
   }, [showMapModule]);
 
   useEffect(() => {

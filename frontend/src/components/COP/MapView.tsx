@@ -462,11 +462,11 @@ export const MapView = ({
     }
   };
 
-  // Callback ref: on mount only set ref and schedule ready; do NOT run cleanContainerElement here.
+  // Callback ref: set ref and mark container ready so MapContainer (Leaflet) mounts immediately.
   const containerCallbackRef = (element: HTMLDivElement | null) => {
     if (element) {
       containerRef.current = element;
-      requestAnimationFrame(() => setIsContainerReady(true));
+      setIsContainerReady(true);
     } else {
       setIsContainerReady(false);
       // Do not clear containerRef here so useEffect cleanup can still clean the container
