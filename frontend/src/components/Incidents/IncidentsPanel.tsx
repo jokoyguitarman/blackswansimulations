@@ -4,6 +4,7 @@ import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRealtime } from '../../hooks/useRealtime';
 import { supabase } from '../../lib/supabase';
 import { IncidentCard } from './IncidentCard';
+import { CreateDecisionForm } from '../Forms/CreateDecisionForm';
 
 /**
  * Incidents Panel Component - Client-side only
@@ -61,6 +62,8 @@ export const IncidentsPanel = ({
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterSeverity, setFilterSeverity] = useState<string>('all');
+  const [showDecisionModal, setShowDecisionModal] = useState(false);
+  const [decisionModalIncidentId, setDecisionModalIncidentId] = useState<string | null>(null);
 
   // Initial load
   useEffect(() => {
@@ -457,6 +460,10 @@ export const IncidentsPanel = ({
             onUpdate={loadIncidents}
             isSelected={selectedIncidentId === incident.id}
             onSelect={() => onIncidentSelect?.(incident.id)}
+            onDecisionClick={(incidentId) => {
+              setDecisionModalIncidentId(incidentId);
+              setShowDecisionModal(true);
+            }}
           />
         ))}
         {filteredIncidents.length === 0 && (
@@ -469,6 +476,22 @@ export const IncidentsPanel = ({
           </div>
         )}
       </div>
+
+      {showDecisionModal && decisionModalIncidentId && (
+        <CreateDecisionForm
+          sessionId={sessionId}
+          incidentId={decisionModalIncidentId}
+          onClose={() => {
+            setShowDecisionModal(false);
+            setDecisionModalIncidentId(null);
+          }}
+          onSuccess={() => {
+            loadIncidents();
+            setShowDecisionModal(false);
+            setDecisionModalIncidentId(null);
+          }}
+        />
+      )}
     </div>
   );
 };

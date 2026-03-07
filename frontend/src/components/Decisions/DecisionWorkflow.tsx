@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
-import { CreateDecisionForm } from '../Forms/CreateDecisionForm';
 import { useWebSocket } from '../../hooks/useWebSocket';
 
 interface DecisionStep {
@@ -46,7 +45,6 @@ export const DecisionWorkflow = ({ sessionId }: DecisionWorkflowProps) => {
   const { user } = useAuth();
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedDecision, setSelectedDecision] = useState<Decision | null>(null);
   const [expandedDecisions, setExpandedDecisions] = useState<Set<string>>(new Set());
 
@@ -156,14 +154,11 @@ export const DecisionWorkflow = ({ sessionId }: DecisionWorkflowProps) => {
 
   return (
     <div className="space-y-4">
-      <div className="military-border p-4 flex justify-between items-center">
+      <div className="military-border p-4">
         <h3 className="text-lg terminal-text uppercase">[DECISIONS] Decision Queue</h3>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="military-button px-4 py-2 text-sm"
-        >
-          [CREATE_DECISION]
-        </button>
+        <p className="text-xs terminal-text text-robotic-yellow/70 mt-1">
+          Create decisions from the Incidents panel by clicking [DECISION] on an incident.
+        </p>
       </div>
 
       <div className="space-y-3">
@@ -386,15 +381,6 @@ export const DecisionWorkflow = ({ sessionId }: DecisionWorkflowProps) => {
             </div>
           </div>
         </div>
-      )}
-
-      {/* Create Decision Modal */}
-      {showCreateModal && (
-        <CreateDecisionForm
-          sessionId={sessionId}
-          onClose={() => setShowCreateModal(false)}
-          onSuccess={loadDecisions}
-        />
       )}
     </div>
   );

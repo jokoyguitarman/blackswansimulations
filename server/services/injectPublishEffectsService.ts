@@ -59,10 +59,29 @@ export async function applyInjectPublishEffects(
       const nextState = { ...currentState };
       for (const key of ['evacuation_state', 'triage_state', 'media_state']) {
         if (stateEffect[key] && typeof stateEffect[key] === 'object') {
-          (nextState as Record<string, unknown>)[key] = {
-            ...((nextState[key] as Record<string, unknown>) || {}),
-            ...stateEffect[key],
-          };
+          const current = (nextState[key] as Record<string, unknown>) || {};
+          const effect = stateEffect[key] as Record<string, unknown>;
+          if (
+            key === 'evacuation_state' &&
+            Array.isArray(current.exits_congested) &&
+            Array.isArray(effect.exits_congested)
+          ) {
+            // Append effect exits to current, dedupe by string value
+            const combined = [...current.exits_congested, ...effect.exits_congested].filter(
+              (v): v is string => typeof v === 'string',
+            );
+            const deduped = [...new Set(combined)];
+            (nextState as Record<string, unknown>)[key] = {
+              ...current,
+              ...effect,
+              exits_congested: deduped,
+            };
+          } else {
+            (nextState as Record<string, unknown>)[key] = {
+              ...current,
+              ...effect,
+            };
+          }
         }
       }
       await supabaseAdmin.from('sessions').update({ current_state: nextState }).eq('id', sessionId);

@@ -48,9 +48,17 @@ interface IncidentCardProps {
   onUpdate: () => void;
   isSelected?: boolean;
   onSelect?: () => void;
+  /** When user clicks Decision, open create-decision flow for this incident */
+  onDecisionClick?: (incidentId: string) => void;
 }
 
-export const IncidentCard = ({ incident, onUpdate, isSelected, onSelect }: IncidentCardProps) => {
+export const IncidentCard = ({
+  incident,
+  onUpdate,
+  isSelected,
+  onSelect,
+  onDecisionClick,
+}: IncidentCardProps) => {
   // const { user } = useAuth(); // Unused - keeping for potential future use
   const [updating, setUpdating] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -183,8 +191,19 @@ export const IncidentCard = ({ incident, onUpdate, isSelected, onSelect }: Incid
       </div>
 
       {/* Actions */}
-      {incident.status === 'under_control' && (
-        <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-robotic-yellow/30">
+      <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-robotic-yellow/30">
+        {onDecisionClick && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDecisionClick(incident.id);
+            }}
+            className="px-3 py-1 text-xs terminal-text border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 whitespace-nowrap"
+          >
+            [DECISION]
+          </button>
+        )}
+        {incident.status === 'under_control' && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -195,8 +214,8 @@ export const IncidentCard = ({ incident, onUpdate, isSelected, onSelect }: Incid
           >
             [RESOLVE]
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

@@ -3,11 +3,18 @@ import { api } from '../../lib/api';
 
 interface CreateDecisionFormProps {
   sessionId: string;
+  /** Incident this decision responds to (required; decisions are created from incident card). */
+  incidentId: string;
   onClose: () => void;
   onSuccess?: () => void;
 }
 
-export const CreateDecisionForm = ({ sessionId, onClose, onSuccess }: CreateDecisionFormProps) => {
+export const CreateDecisionForm = ({
+  sessionId,
+  incidentId,
+  onClose,
+  onSuccess,
+}: CreateDecisionFormProps) => {
   const [loading, setLoading] = useState(false);
   const [description, setDescription] = useState('');
 
@@ -18,6 +25,7 @@ export const CreateDecisionForm = ({ sessionId, onClose, onSuccess }: CreateDeci
     try {
       const result = await api.decisions.create({
         session_id: sessionId,
+        response_to_incident_id: incidentId,
         description,
         required_approvers: [], // No approval steps; creator executes from this form
       });
@@ -43,7 +51,7 @@ export const CreateDecisionForm = ({ sessionId, onClose, onSuccess }: CreateDeci
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
       <div className="military-border bg-robotic-gray-300 p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <h2 className="text-xl terminal-text uppercase mb-6">[CREATE_DECISION]</h2>
+        <h2 className="text-xl terminal-text uppercase mb-6">[RESPOND_TO_INCIDENT]</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">

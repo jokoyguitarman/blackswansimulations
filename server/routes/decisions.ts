@@ -18,9 +18,11 @@ import {
 } from '../services/objectiveTrackingService.js';
 import {
   getNotMetGatesForSession,
+  getNotMetGatesInScopeForDecision,
   isDecisionVagueForNotMetGate,
   objectiveIdForGate,
 } from '../services/gateEvaluationService.js';
+import { gradeDecisionBand } from '../services/incidentDecisionGradingService.js';
 import {
   evaluateDecisionAgainstEnvironment,
   createAndPublishEnvironmentalMismatchInject,
@@ -40,6 +42,7 @@ const router = Router();
 const createDecisionSchema = z.object({
   body: z.object({
     session_id: z.string().uuid(),
+    response_to_incident_id: z.string().uuid(), // Required: decision is always created from an incident card
     title: z.string().max(200).optional(),
     description: z.string().min(1),
     decision_type: z
@@ -307,6 +310,7 @@ router.post(
       const user = req.user!;
       const {
         session_id,
+        response_to_incident_id,
         title: titleInput,
         description,
         decision_type,
@@ -328,6 +332,20 @@ router.post(
         return res.status(400).json({ error: 'Session is not active' });
       }
 
+      // Verify incident belongs to this session
+      const { data: incident, error: incidentError } = await supabaseAdmin
+        .from('incidents')
+        .select('id')
+        .eq('id', response_to_incident_id)
+        .eq('session_id', session_id)
+        .single();
+
+      if (incidentError || !incident) {
+        return res
+          .status(400)
+          .json({ error: 'Incident not found or does not belong to this session' });
+      }
+
       // Title is optional; derive from description when missing or empty (DB requires NOT NULL)
       const title =
         typeof titleInput === 'string' && titleInput.trim().length > 0
@@ -339,6 +357,7 @@ router.post(
         .insert({
           session_id,
           proposed_by: user.id,
+          response_to_incident_id,
           title,
           description,
           type: decision_type || null, // Allow null - AI will populate on execution
@@ -939,62 +958,214 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
 
       const notMetGates = await getNotMetGatesForSession(decision.session_id);
       if (notMetGates.length > 0) {
-        const { vague, gateIds } = isDecisionVagueForNotMetGate(
-          {
-            description: decision.description,
-            type: decision.type || 'operational_action',
-          },
-          authorTeamNames,
-          notMetGates,
-        );
-        if (vague) {
-          const vagueGates = notMetGates.filter((g) => gateIds.includes(g.gate_id));
-          for (const gate of vagueGates) {
-            const objId = objectiveIdForGate(gate);
-            if (objId && !skipPositiveForObjectiveIds.includes(objId))
-              skipPositiveForObjectiveIds.push(objId);
-          }
-          // Fire if_vague_decision_inject_id at most once per gate per session
-          const { data: vagueFired } = await supabaseAdmin
-            .from('session_events')
-            .select('metadata')
-            .eq('session_id', decision.session_id)
-            .eq('event_type', 'gate_vague_inject_fired');
-          const firedGateIds = new Set(
-            (vagueFired ?? [])
-              .map(
-                (e: { metadata?: { gate_id?: string } }) =>
-                  (e.metadata as { gate_id?: string })?.gate_id,
-              )
-              .filter(Boolean),
+        const responseToIncidentId = (decision as { response_to_incident_id?: string | null })
+          .response_to_incident_id;
+
+        if (responseToIncidentId && sessionScenarioId) {
+          // Incident-linked decision: band = gradeDecisionBand (Insider has info? match? consulted?)
+          const inScopeGates = await getNotMetGatesInScopeForDecision(
+            responseToIncidentId,
+            notMetGates,
           );
-          const trainerId = sessionTrainerId;
-          for (const gate of vagueGates) {
-            if (firedGateIds.has(gate.gate_id) || !gate.if_vague_decision_inject_id) continue;
-            try {
-              if (trainerId && io) {
-                await publishInjectToSession(
-                  gate.if_vague_decision_inject_id,
-                  decision.session_id,
-                  trainerId,
-                  io,
-                );
-                await supabaseAdmin.from('session_events').insert({
-                  session_id: decision.session_id,
-                  event_type: 'gate_vague_inject_fired',
-                  description: `Gate vague inject fired: ${gate.gate_id}`,
-                  actor_id: null,
-                  metadata: { gate_id: gate.gate_id },
-                });
-                firedGateIds.add(gate.gate_id);
+          if (inScopeGates.length > 0) {
+            const { data: incidentRow } = await supabaseAdmin
+              .from('incidents')
+              .select('title, description')
+              .eq('id', responseToIncidentId)
+              .single();
+            const incidentTitle = (incidentRow as { title?: string } | null)?.title ?? '';
+            const incidentDescription =
+              (incidentRow as { description?: string } | null)?.description ?? '';
+
+            const teamNames = authorTeamNames.length > 0 ? authorTeamNames : [];
+            const { data: teamUserRows } = await supabaseAdmin
+              .from('session_teams')
+              .select('user_id')
+              .eq('session_id', decision.session_id)
+              .in('team_name', teamNames);
+            const authorTeamUserIds = (teamUserRows ?? []).map(
+              (r: { user_id: string }) => r.user_id,
+            );
+
+            const executedAt =
+              (updatedDecision as { executed_at?: string } | null)?.executed_at ??
+              new Date().toISOString();
+            const band = await gradeDecisionBand(
+              {
+                incidentTitle,
+                incidentDescription,
+                decisionDescription: decision.description,
+                scenarioId: sessionScenarioId,
+                sessionId: decision.session_id,
+                teamUserIds: authorTeamUserIds,
+                executedAt,
+              },
+              env.openAiApiKey,
+            );
+
+            if (band !== 'top') {
+              for (const gate of inScopeGates) {
+                const objId = objectiveIdForGate(gate);
+                if (objId && !skipPositiveForObjectiveIds.includes(objId))
+                  skipPositiveForObjectiveIds.push(objId);
               }
-            } catch (injectErr) {
-              logger.error(
-                { err: injectErr, sessionId: decision.session_id, gateId: gate.gate_id },
-                'Failed to publish gate vague inject',
-              );
+            }
+
+            const { data: vagueFired } = await supabaseAdmin
+              .from('session_events')
+              .select('metadata')
+              .eq('session_id', decision.session_id)
+              .eq('event_type', 'gate_vague_inject_fired');
+            const vagueFiredGateIds = new Set(
+              (vagueFired ?? [])
+                .map(
+                  (e: { metadata?: { gate_id?: string } }) =>
+                    (e.metadata as { gate_id?: string })?.gate_id,
+                )
+                .filter(Boolean),
+            );
+            const { data: mediumFired } = await supabaseAdmin
+              .from('session_events')
+              .select('metadata')
+              .eq('session_id', decision.session_id)
+              .eq('event_type', 'gate_medium_inject_fired');
+            const mediumFiredGateIds = new Set(
+              (mediumFired ?? [])
+                .map(
+                  (e: { metadata?: { gate_id?: string } }) =>
+                    (e.metadata as { gate_id?: string })?.gate_id,
+                )
+                .filter(Boolean),
+            );
+
+            const trainerId = sessionTrainerId;
+            for (const gate of inScopeGates) {
+              if (
+                band === 'lowest' &&
+                !vagueFiredGateIds.has(gate.gate_id) &&
+                gate.if_vague_decision_inject_id
+              ) {
+                try {
+                  if (trainerId && io) {
+                    await publishInjectToSession(
+                      gate.if_vague_decision_inject_id,
+                      decision.session_id,
+                      trainerId,
+                      io,
+                    );
+                    await supabaseAdmin.from('session_events').insert({
+                      session_id: decision.session_id,
+                      event_type: 'gate_vague_inject_fired',
+                      description: `Gate vague inject fired: ${gate.gate_id}`,
+                      actor_id: null,
+                      metadata: { gate_id: gate.gate_id },
+                    });
+                  }
+                } catch (injectErr) {
+                  logger.error(
+                    { err: injectErr, sessionId: decision.session_id, gateId: gate.gate_id },
+                    'Failed to publish gate vague inject',
+                  );
+                }
+              }
+              const ifMediumId = gate.if_medium_band_inject_id ?? null;
+              if (band === 'medium' && ifMediumId && !mediumFiredGateIds.has(gate.gate_id)) {
+                try {
+                  if (trainerId && io) {
+                    await publishInjectToSession(ifMediumId, decision.session_id, trainerId, io);
+                    await supabaseAdmin.from('session_events').insert({
+                      session_id: decision.session_id,
+                      event_type: 'gate_medium_inject_fired',
+                      description: `Gate medium band inject fired: ${gate.gate_id}`,
+                      actor_id: null,
+                      metadata: { gate_id: gate.gate_id },
+                    });
+                  }
+                } catch (injectErr) {
+                  logger.error(
+                    { err: injectErr, sessionId: decision.session_id, gateId: gate.gate_id },
+                    'Failed to publish gate medium band inject',
+                  );
+                }
+              }
             }
           }
+        } else {
+          // Legacy: no response_to_incident_id — use vague check
+          const { vague, gateIds } = isDecisionVagueForNotMetGate(
+            {
+              description: decision.description,
+              type: decision.type || 'operational_action',
+            },
+            authorTeamNames,
+            notMetGates,
+          );
+          if (vague) {
+            const vagueGates = notMetGates.filter((g) => gateIds.includes(g.gate_id));
+            for (const gate of vagueGates) {
+              const objId = objectiveIdForGate(gate);
+              if (objId && !skipPositiveForObjectiveIds.includes(objId))
+                skipPositiveForObjectiveIds.push(objId);
+            }
+            const { data: vagueFired } = await supabaseAdmin
+              .from('session_events')
+              .select('metadata')
+              .eq('session_id', decision.session_id)
+              .eq('event_type', 'gate_vague_inject_fired');
+            const firedGateIds = new Set(
+              (vagueFired ?? [])
+                .map(
+                  (e: { metadata?: { gate_id?: string } }) =>
+                    (e.metadata as { gate_id?: string })?.gate_id,
+                )
+                .filter(Boolean),
+            );
+            const trainerId = sessionTrainerId;
+            for (const gate of vagueGates) {
+              if (firedGateIds.has(gate.gate_id) || !gate.if_vague_decision_inject_id) continue;
+              try {
+                if (trainerId && io) {
+                  await publishInjectToSession(
+                    gate.if_vague_decision_inject_id,
+                    decision.session_id,
+                    trainerId,
+                    io,
+                  );
+                  await supabaseAdmin.from('session_events').insert({
+                    session_id: decision.session_id,
+                    event_type: 'gate_vague_inject_fired',
+                    description: `Gate vague inject fired: ${gate.gate_id}`,
+                    actor_id: null,
+                    metadata: { gate_id: gate.gate_id },
+                  });
+                  firedGateIds.add(gate.gate_id);
+                }
+              } catch (injectErr) {
+                logger.error(
+                  { err: injectErr, sessionId: decision.session_id, gateId: gate.gate_id },
+                  'Failed to publish gate vague inject',
+                );
+              }
+            }
+          }
+        }
+      }
+
+      // Load incident context for Checkpoint 2 when decision is incident-linked
+      const responseToIncidentIdForEnv = (decision as { response_to_incident_id?: string | null })
+        .response_to_incident_id;
+      let incidentContext: { title: string; description: string } | null = null;
+      if (responseToIncidentIdForEnv) {
+        const { data: incidentForEnv } = await supabaseAdmin
+          .from('incidents')
+          .select('title, description')
+          .eq('id', responseToIncidentIdForEnv)
+          .single();
+        if (incidentForEnv) {
+          incidentContext = {
+            title: (incidentForEnv as { title?: string }).title ?? '',
+            description: (incidentForEnv as { description?: string }).description ?? '',
+          };
         }
       }
 
@@ -1008,14 +1179,19 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
           type: decision.type ?? null,
         },
         env.openAiApiKey,
+        incidentContext,
       );
       // Step 5: Environmental prerequisite (corridor traffic + location-condition gate); overrides AI result when failed
-      const prereqResult = await evaluateEnvironmentalPrerequisite(decision.session_id, {
-        id: decision.id,
-        title: decision.title,
-        description: decision.description,
-        type: decision.type ?? null,
-      });
+      const prereqResult = await evaluateEnvironmentalPrerequisite(
+        decision.session_id,
+        {
+          id: decision.id,
+          title: decision.title,
+          description: decision.description,
+          type: decision.type ?? null,
+        },
+        incidentContext,
+      );
       const envResult = prereqResult && !prereqResult.consistent ? prereqResult : aiEnvResult;
       await supabaseAdmin
         .from('decisions')

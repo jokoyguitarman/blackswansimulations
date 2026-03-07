@@ -41,6 +41,9 @@ export interface TriageStateSeed {
   supply_request_made?: boolean;
   prioritisation_decided?: boolean;
   handed_over_to_hospital?: number;
+  patients_being_treated?: number;
+  patients_waiting?: number;
+  casualties?: number;
 }
 
 export interface MediaStateSeed {
@@ -83,6 +86,9 @@ const DEFAULT_TRIAGE_STATE: TriageStateSeed = {
   deaths_on_site: 0,
   critical_pending: 0,
   handed_over_to_hospital: 0,
+  patients_being_treated: 0,
+  patients_waiting: 0,
+  casualties: 0,
 };
 
 const DEFAULT_MEDIA_STATE: MediaStateSeed = {

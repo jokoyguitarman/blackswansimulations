@@ -45,11 +45,13 @@ function buildGroundTruthSummary(insiderKnowledge: Record<string, unknown>): str
  * Evaluate whether a decision's details are consistent with the scenario's environment.
  * Uses scenario.insider_knowledge (layout_ground_truth). If no ground truth, returns consistent.
  * On AI failure/timeout, returns consistent to avoid blocking execute.
+ * When incident is provided, only flag contradictions relevant to that incident; prefer consistent when the decision does not make layout-specific claims that contradict ground truth.
  */
 export async function evaluateDecisionAgainstEnvironment(
   sessionId: string,
   decision: { id: string; title: string; description: string; type: string | null },
   openAiApiKey: string | undefined,
+  incident?: { title: string; description: string } | null,
 ): Promise<EnvironmentalConsistencyResult> {
   const consistentDefault: EnvironmentalConsistencyResult = { consistent: true };
   if (!openAiApiKey) return consistentDefault;
@@ -86,7 +88,12 @@ export async function evaluateDecisionAgainstEnvironment(
       return consistentDefault;
     }
 
-    const systemPrompt = `You are an expert crisis management evaluator. Given a decision (title and description) and the scenario's ENVIRONMENT GROUND TRUTH, determine if the decision's details are consistent with that environment.
+    const incidentBlock =
+      incident?.title != null || incident?.description != null
+        ? ` The decision is in response to a specific incident. Only flag contradictions that are RELEVANT to that incident (e.g. for "Journalists at triage", do not penalize lack of exit/layout claims; for "Evacuation route blocked", focus on route/exit/capacity claims). Prefer consistent: true when the decision does not make layout-specific claims that contradict ground truth. When consistent is false, phrase the reason as: "Given the incident (X), the decision proposed Y which contradicts ground truth Z."`
+        : '';
+
+    const systemPrompt = `You are an expert crisis management evaluator. Given a decision (title and description) and the scenario's ENVIRONMENT GROUND TRUTH, determine if the decision's details are consistent with that environment.${incidentBlock}
 
 Rules:
 - consistent: true if the decision does not contradict the ground truth (e.g. capacities, exit names, flow rates, zones). Generic or high-level decisions with no specific numbers/locations are consistent.
@@ -97,9 +104,13 @@ Rules:
 
 Return ONLY valid JSON: { "consistent": boolean, "severity": "low"|"medium"|"high" (if consistent is false), "error_type": "capacity"|"location"|"flow"|"other" (if consistent is false), "reason": "..." (if consistent is false) }`;
 
-    const userPrompt = `ENVIRONMENT GROUND TRUTH: ${groundTruthSummary}
+    const incidentUserBlock =
+      incident?.title != null || incident?.description != null
+        ? `\nINCIDENT (this decision is in response to):\nTitle: ${incident.title ?? ''}\nDescription: ${incident.description ?? ''}\n\n`
+        : '';
 
-DECISION:
+    const userPrompt = `ENVIRONMENT GROUND TRUTH: ${groundTruthSummary}
+${incidentUserBlock}DECISION:
 Title: ${decision.title}
 Description: ${decision.description}
 

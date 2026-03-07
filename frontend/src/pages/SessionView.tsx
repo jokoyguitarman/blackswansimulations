@@ -660,11 +660,20 @@ export const SessionView = () => {
                         Triage
                       </div>
                       <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
-                        <div>Deaths on site: {Math.max(0, Number(triage.deaths_on_site) || 0)}</div>
+                        <div>
+                          Patients being treated:{' '}
+                          {Math.max(0, Number(triage.patients_being_treated) || 0)}
+                        </div>
+                        <div>
+                          Patients waiting medical attention:{' '}
+                          {Math.max(0, Number(triage.patients_waiting) || 0)}
+                        </div>
                         <div>
                           Handed over to hospital:{' '}
                           {Math.max(0, Number(triage.handed_over_to_hospital) || 0)}
                         </div>
+                        <div>Casualties: {Math.max(0, Number(triage.casualties) || 0)}</div>
+                        <div>Deaths on site: {Math.max(0, Number(triage.deaths_on_site) || 0)}</div>
                       </div>
                     </div>
                   )}

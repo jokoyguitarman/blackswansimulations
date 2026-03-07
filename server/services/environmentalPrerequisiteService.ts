@@ -34,14 +34,25 @@ function isEvacuationOrRouteRelated(text: string): boolean {
   );
 }
 
+/** Incident context for scoping prerequisite checks (e.g. skip corridor check when incident is not evacuation-related). */
+export type IncidentContext = { title: string; description: string } | null | undefined;
+
+function incidentSuggestsEvacuationOrRoute(incident: IncidentContext): boolean {
+  if (!incident?.title && !incident?.description) return true; // no context => run check
+  const text = `${incident.title ?? ''} ${incident.description ?? ''}`.toLowerCase();
+  return /evacuat|exit|route|corridor|congestion|bottleneck/i.test(text);
+}
+
 /**
  * Evaluate environmental prerequisite (corridor traffic + location-condition gate).
  * Returns null if no prerequisite failure; otherwise returns a result that the caller
  * can use as environmental_consistency (same penalties apply).
+ * When incident is provided, corridor/route check (1) runs only if incident suggests evacuation/route; otherwise skip.
  */
 export async function evaluateEnvironmentalPrerequisite(
   sessionId: string,
   decision: { id: string; title: string; description: string; type: string | null },
+  incident?: IncidentContext,
 ): Promise<EnvironmentalConsistencyResult | null> {
   try {
     const { data: session, error: sessionErr } = await supabaseAdmin
@@ -74,11 +85,12 @@ export async function evaluateEnvironmentalPrerequisite(
 
     const decisionText = `${decision.title ?? ''} ${decision.description ?? ''}`.trim();
 
-    // --- (1) Corridor traffic: evacuation/vehicle decision + unmanaged route ---
+    // --- (1) Corridor traffic: evacuation/vehicle decision + unmanaged route (only when incident suggests evacuation/route) ---
     const routesRaw = envState?.routes;
     const routes = Array.isArray(routesRaw) ? routesRaw : [];
     const hasUnmanagedRoute = routes.some((r) => r.managed === false);
-    if (hasUnmanagedRoute && isEvacuationOrRouteRelated(decisionText)) {
+    const runCorridorCheck = incidentSuggestsEvacuationOrRoute(incident);
+    if (runCorridorCheck && hasUnmanagedRoute && isEvacuationOrRouteRelated(decisionText)) {
       const unmanagedLabels = routes
         .filter((r) => r.managed === false)
         .map((r) => r.label || r.route_id || 'route');

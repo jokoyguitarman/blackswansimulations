@@ -1196,11 +1196,21 @@ export interface ImpactMatrixResult {
   analysis?: ImpactMatrixAnalysis;
 }
 
+/** Recent inject/outcome for impact matrix context (consequences of team behaviour in the window). */
+export type RecentInjectForMatrix = {
+  type?: string;
+  title?: string;
+  content?: string;
+  severity?: string;
+  target_teams?: string[] | null;
+};
+
 /**
  * Compute inter-team impact matrix and optional per-decision robustness from recent decisions.
  * Uses AI to score how each team's decisions affect other teams (-2 to +2 or similar).
  * Optional escalationFactors and escalationPathways inform the analysis reasoning.
  * Optional responseTaxonomy: teams with "absent" had no decisions in the window—do not include them as actors in the matrix; treat their robustness as 0.
+ * Optional recentInjects: outcomes/injects published in this window (e.g. pathway outcomes). Use as primary evidence for impact: negative/critical outcomes that name or implicate a team imply negative impact from that team; positive outcomes imply positive impact.
  */
 export const computeInterTeamImpactMatrix = async (
   teams: string[],
@@ -1216,6 +1226,7 @@ export const computeInterTeamImpactMatrix = async (
   escalationFactors?: EscalationFactor[],
   escalationPathways?: EscalationPathway[],
   responseTaxonomy?: Record<string, 'textual' | 'absent'>,
+  recentInjects?: RecentInjectForMatrix[],
 ): Promise<ImpactMatrixResult> => {
   const empty: ImpactMatrixResult = { matrix: {}, robustnessByDecisionId: {} };
   try {
@@ -1234,8 +1245,13 @@ export const computeInterTeamImpactMatrix = async (
         ? `\n\nResponse taxonomy: the following teams had no decisions in this window (treat as non-responders, robustness 0): ${absentTeams.join(', ')}. Do NOT include these teams as acting_team in the matrix (only teams that made decisions should appear as keys in matrix). You may include them as affected_team when other teams' decisions impact them.`
         : '';
 
+    const outcomesInstruction =
+      recentInjects && recentInjects.length > 0
+        ? ` When recent outcomes/injects are provided below, use them as the PRIMARY evidence for impact and robustness. Negative or critical injects that name or implicate a team (e.g. "No triage situation report received from the Triage Team") indicate that team had negative impact on others — assign negative scores (e.g. -1 or -2) from that team to affected teams and lower robustness for that team's decisions. Positive or improving outcomes indicate positive impact. Do not rely only on decision text when outcomes contradict it.`
+        : '';
+
     /* REVERT: stricter robustness calibration – see docs/REVERT_STRICTER_ROBUSTNESS_SCORING.md */
-    const systemPrompt = `You are an expert crisis management analyst. Given a list of teams and decisions made by those teams in the last 5 minutes, produce:
+    const systemPrompt = `You are an expert crisis management analyst. Given a list of teams and decisions made by those teams in the last 5 minutes, produce:${outcomesInstruction}
 1. An inter-team impact matrix: for each acting_team (team that made decisions), for each other affected_team, output an impact score from -2 (negative impact, hinders or increases risk) to +2 (positive impact, helps or reduces risk). Use 0 for neutral or no clear impact. Do not include acting_team on itself.
 2. Required: for each decision_id in the input list, output a robustness score (1-10) in the "robustness" object. Use the exact same decision_id keys as in the input. Teams with no decisions in the window have robustness 0 (do not invent entries for them). Apply this calibration strictly:
    - 1-4 (weak, increases escalation): Vague, generic, absent, or contradictory to good practice (e.g. "we will monitor" with no concrete action; inaction; decision that ignores or worsens current escalation factors).
@@ -1280,14 +1296,24 @@ Team names must match exactly the input team list. Include as matrix actors only
         ? `\n\nCurrent escalation factors (evaluate decisions against these risks):\n${(escalationFactors ?? []).map((f) => `- ${f.id}: ${f.name} (${f.severity}): ${f.description}`).join('\n')}\n\nEscalation pathways (how situation could worsen; consider whether decisions avoid trigger behaviours):\n${(escalationPathways ?? []).map((p) => `- ${p.pathway_id}: ${p.trajectory}; triggers: ${(p.trigger_behaviours ?? []).join(', ')}`).join('\n')}\n`
         : '';
 
+    const recentOutcomesBlock =
+      recentInjects && recentInjects.length > 0
+        ? `\n\nRecent outcomes / injects in this window (use as primary evidence for impact; these are consequences of team behaviour, e.g. pathway outcomes):\n${recentInjects
+            .map(
+              (inj) =>
+                `- Title: ${inj.title ?? 'Unknown'}; Severity: ${inj.severity ?? 'N/A'}${Array.isArray(inj.target_teams) && inj.target_teams.length > 0 ? `; target_teams: ${inj.target_teams.join(', ')}` : ''}\n  ${(inj.content ?? '').slice(0, 200)}${(inj.content ?? '').length > 200 ? '...' : ''}`,
+            )
+            .join('\n')}\n`
+        : '';
+
     const userPrompt = `Teams in this session: ${teams.join(', ')}
 
 ${scenarioContext ? `Scenario context: ${scenarioContext.substring(0, 500)}\n\n` : ''}Decisions (last 5 minutes):
 
 ${decisionsText}
-${escalationContext}
+${recentOutcomesBlock}${escalationContext}
 ---
-Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and robustness per decision_id (required; use the strict calibration above). When escalation context is provided, reference it in your analysis reasoning. Return JSON only.`;
+Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and robustness per decision_id (required; use the strict calibration above). When escalation context is provided, reference it in your analysis reasoning. When recent outcomes are provided, use them to set impact and robustness. Return JSON only.`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',

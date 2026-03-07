@@ -364,14 +364,17 @@ export class AIInjectSchedulerService {
       };
     });
 
-    // Format recent injects (last 5 min - for immediate context)
+    // Format recent injects (last 5 min - for immediate context and impact matrix)
     const formattedInjects = (recentInjects || []).map((e: Record<string, unknown>) => {
       const metadata = e.metadata as Record<string, unknown> | null;
+      const targetTeamsRaw = metadata?.target_teams;
       return {
         type: (metadata?.type as string) || 'unknown',
         title: (metadata?.title as string) || 'Unknown',
         content: (metadata?.content as string) || '',
         published_at: e.created_at as string,
+        severity: (metadata?.severity as string) || undefined,
+        target_teams: Array.isArray(targetTeamsRaw) ? targetTeamsRaw : null,
       };
     });
 
@@ -538,6 +541,7 @@ export class AIInjectSchedulerService {
             escalationFactorsSnapshot.length > 0 ? escalationFactorsSnapshot : undefined,
             escalationPathwaysSnapshot.length > 0 ? escalationPathwaysSnapshot : undefined,
             Object.keys(responseTaxonomy).length > 0 ? responseTaxonomy : undefined,
+            formattedInjects.length > 0 ? formattedInjects : undefined,
           );
           const decisionIds = formattedDecisions.map((d: Record<string, unknown>) => String(d.id));
           const cappedRobustness = await applyEnvironmentalConsistencyCap(

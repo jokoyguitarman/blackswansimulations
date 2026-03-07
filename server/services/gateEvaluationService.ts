@@ -14,7 +14,7 @@ export interface GateCondition {
 }
 
 /**
- * Not_met gate row with fields needed for vague check and firing vague inject.
+ * Not_met gate row with fields needed for band-based inject (vague + medium).
  */
 export interface NotMetGate {
   gate_id: string;
@@ -22,6 +22,7 @@ export interface NotMetGate {
   condition: GateCondition;
   objective_id: string | null;
   if_vague_decision_inject_id: string | null;
+  if_medium_band_inject_id?: string | null;
 }
 
 /**
@@ -66,7 +67,9 @@ export async function getNotMetGatesForSession(sessionId: string): Promise<NotMe
 
   const { data: gates, error: gatesError } = await supabaseAdmin
     .from('scenario_gates')
-    .select('id, gate_id, condition, objective_id, if_vague_decision_inject_id')
+    .select(
+      'id, gate_id, condition, objective_id, if_vague_decision_inject_id, if_medium_band_inject_id',
+    )
     .eq('scenario_id', sessionScenarioId)
     .in('gate_id', gateIds);
 
@@ -80,6 +83,7 @@ export async function getNotMetGatesForSession(sessionId: string): Promise<NotMe
     condition: (g.condition as GateCondition) ?? {},
     objective_id: g.objective_id ?? null,
     if_vague_decision_inject_id: g.if_vague_decision_inject_id ?? null,
+    if_medium_band_inject_id: g.if_medium_band_inject_id ?? null,
   }));
 }
 
@@ -164,6 +168,35 @@ export function objectiveIdForGate(gate: NotMetGate): string | null {
 }
 
 /**
+ * Filter not_met gates to those "in scope" for this decision: the decision's incident's inject
+ * must target the gate's team (inject.target_teams contains gate.condition.team).
+ */
+export async function getNotMetGatesInScopeForDecision(
+  responseToIncidentId: string,
+  notMetGates: NotMetGate[],
+): Promise<NotMetGate[]> {
+  const { data: incident } = await supabaseAdmin
+    .from('incidents')
+    .select('inject_id')
+    .eq('id', responseToIncidentId)
+    .single();
+  const injectId = (incident as { inject_id?: string | null } | null)?.inject_id;
+  if (!injectId) return [];
+
+  const { data: inject } = await supabaseAdmin
+    .from('scenario_injects')
+    .select('target_teams')
+    .eq('id', injectId)
+    .single();
+  const targetTeams = (inject as { target_teams?: string[] | null } | null)?.target_teams ?? [];
+
+  return notMetGates.filter((gate) => {
+    const team = gate.condition.team;
+    return typeof team === 'string' && Array.isArray(targetTeams) && targetTeams.includes(team);
+  });
+}
+
+/**
  * Evaluate a single gate for a session at a given elapsed time.
  * If gate is still pending and check_at_minutes <= elapsedMinutes, evaluate condition and set met/not_met.
  */
@@ -212,22 +245,68 @@ export async function evaluateGate(
     return;
   }
 
+  // In-scope = executed decision from this team linked to an incident whose inject targets this team (no content_hints check)
   const decisionTypes = (gate.condition.decision_types ?? []) as string[];
   const { data: decisions } = await supabaseAdmin
     .from('decisions')
-    .select('id, description, type')
+    .select('id, description, type, response_to_incident_id, executed_at')
     .eq('session_id', sessionId)
     .eq('status', 'executed')
     .in('proposed_by', userIds)
+    .not('response_to_incident_id', 'is', null)
     .order('executed_at', { ascending: false });
 
   const candidates = (decisions ?? []).filter(
     (d: { type?: string }) =>
       !decisionTypes.length || decisionTypes.includes((d as { type?: string }).type ?? ''),
   );
-  const satisfying = candidates.find((d) =>
-    decisionSatisfiesGateContent((d as { description: string }).description, gate.condition),
-  );
+
+  let satisfying: { id: string } | undefined;
+  if (candidates.length > 0) {
+    const incidentIds = [
+      ...new Set(
+        (candidates as Array<{ response_to_incident_id?: string | null }>)
+          .map((d) => d.response_to_incident_id)
+          .filter(Boolean) as string[],
+      ),
+    ];
+    const { data: incidents } = await supabaseAdmin
+      .from('incidents')
+      .select('id, inject_id')
+      .in('id', incidentIds);
+    const injectIds = [
+      ...new Set(
+        (incidents ?? [])
+          .map((i: { inject_id?: string | null }) => i.inject_id)
+          .filter(Boolean) as string[],
+      ),
+    ];
+    if (injectIds.length > 0) {
+      const { data: injects } = await supabaseAdmin
+        .from('scenario_injects')
+        .select('id, target_teams')
+        .eq('scenario_id', gate.scenario_id)
+        .in('id', injectIds);
+      const targetTeamInjectIds = new Set<string>();
+      for (const inj of injects ?? []) {
+        const targetTeams = (inj as { target_teams?: string[] | null }).target_teams;
+        if (Array.isArray(targetTeams) && targetTeams.includes(team)) {
+          targetTeamInjectIds.add((inj as { id: string }).id);
+        }
+      }
+      const incidentIdToInjectId = new Map(
+        (incidents ?? []).map((i: { id: string; inject_id?: string | null }) => [
+          i.id,
+          i.inject_id,
+        ]),
+      );
+      satisfying = candidates.find((d) => {
+        const incId = (d as { response_to_incident_id?: string | null }).response_to_incident_id;
+        const injId = incId ? incidentIdToInjectId.get(incId) : null;
+        return injId && targetTeamInjectIds.has(injId);
+      }) as { id: string } | undefined;
+    }
+  }
 
   if (satisfying) {
     await setGateMet(sessionId, gate.gate_id, satisfying.id);
