@@ -3,6 +3,7 @@ import { api } from '../../lib/api';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRealtime } from '../../hooks/useRealtime';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import { IncidentCard } from './IncidentCard';
 import { CreateDecisionForm } from '../Forms/CreateDecisionForm';
 
@@ -57,14 +58,14 @@ export const IncidentsPanel = ({
   selectedIncidentId,
   onIncidentSelect,
 }: IncidentsPanelProps) => {
-  // const { user } = useAuth(); // Unused - keeping for potential future use
+  const { user } = useAuth();
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterSeverity, setFilterSeverity] = useState<string>('all');
   const [showDecisionModal, setShowDecisionModal] = useState(false);
   const [decisionModalIncidentId, setDecisionModalIncidentId] = useState<string | null>(null);
-  /** Incident IDs that already have an executed decision (show "Done" instead of "Decision") */
+  /** Incident IDs where the current user has an executed decision (show "Done" instead of "Decision") */
   const [incidentIdsWithExecutedDecision, setIncidentIdsWithExecutedDecision] = useState<
     Set<string>
   >(() => new Set());
@@ -75,10 +76,14 @@ export const IncidentsPanel = ({
       const list = (result?.data ?? []) as Array<{
         status?: string;
         response_to_incident_id?: string | null;
+        proposed_by?: string | null;
       }>;
       const ids = new Set(
         list
-          .filter((d) => d.status === 'executed' && d.response_to_incident_id)
+          .filter(
+            (d) =>
+              d.status === 'executed' && d.response_to_incident_id && d.proposed_by === user?.id,
+          )
           .map((d) => d.response_to_incident_id as string),
       );
       setIncidentIdsWithExecutedDecision(ids);
@@ -87,11 +92,11 @@ export const IncidentsPanel = ({
     }
   };
 
-  // Initial load
+  // Initial load and when user changes
   useEffect(() => {
     loadIncidents();
     loadIncidentDecisionsState();
-  }, [sessionId]);
+  }, [sessionId, user?.id]);
 
   // Supabase Realtime subscription for instant incident updates
   useRealtime<{

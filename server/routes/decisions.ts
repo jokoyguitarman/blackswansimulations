@@ -346,20 +346,20 @@ router.post(
           .json({ error: 'Incident not found or does not belong to this session' });
       }
 
-      // Only one executed decision per incident
-      const { data: existingExecuted } = await supabaseAdmin
+      // Only one decision per incident per player (this user); other players may also respond
+      const { data: existingByUser } = await supabaseAdmin
         .from('decisions')
         .select('id')
         .eq('session_id', session_id)
         .eq('response_to_incident_id', response_to_incident_id)
-        .eq('status', 'executed')
+        .eq('proposed_by', user.id)
         .limit(1)
         .maybeSingle();
 
-      if (existingExecuted) {
+      if (existingByUser) {
         return res.status(409).json({
           error:
-            'This incident already has an executed decision. Only one decision per incident is allowed.',
+            'You have already created a decision for this incident. Only one decision per incident per player is allowed.',
         });
       }
 
