@@ -328,11 +328,11 @@ async function generateLayoutMap(
 ): Promise<Buffer | null> {
   const lat = scenario.center_lat!;
   const lng = scenario.center_lng!;
-  const zoom = 17;
+  const zoom = 18;
   const tx = latLngToTile(lat, lng, zoom).x;
   const ty = latLngToTile(lat, lng, zoom).y;
   const bounds = grid2x2Bounds(tx, ty, zoom);
-  const size = 600;
+  const size = 800;
 
   let base: Buffer;
   try {
