@@ -694,14 +694,14 @@ export const SessionView = () => {
                           Public sentiment:{' '}
                           {media.public_sentiment != null ? Number(media.public_sentiment) : '–'} /
                           10
-                          {media.sentiment_label && (
+                          {media.sentiment_label != null ? (
                             <span
                               className="ml-1 text-robotic-yellow/70"
-                              title={media.sentiment_reason as string}
+                              title={String(media.sentiment_reason ?? '')}
                             >
                               ({String(media.sentiment_label)})
                             </span>
-                          )}
+                          ) : null}
                         </div>
                       </div>
                     </div>
