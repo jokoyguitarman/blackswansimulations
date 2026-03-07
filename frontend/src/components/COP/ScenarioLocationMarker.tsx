@@ -25,6 +25,7 @@ const getPinColor = (locationType: string): string => {
   if (t.includes('exit')) return '#059669';
   if (t.includes('triage')) return '#d97706';
   if (t.includes('cordon')) return '#7c3aed';
+  if (t.includes('area')) return '#6b7280';
   if (t.includes('pathway')) return '#2563eb';
   if (t.includes('parking')) return '#6b7280';
   return '#4b5563';

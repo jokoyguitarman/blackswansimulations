@@ -13,6 +13,7 @@ import { TeamAssignmentModal } from '../components/Teams/TeamAssignmentModal';
 import { SessionLobby } from '../components/Session/SessionLobby';
 import { NotificationBell } from '../components/Notifications/NotificationBell';
 import { IncidentsPanel } from '../components/Incidents/IncidentsPanel';
+import { MapView } from '../components/COP/MapView';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { type WebSocketEvent } from '../lib/websocketClient';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
@@ -42,6 +43,8 @@ interface Session {
     id?: string;
     title: string;
     description: string;
+    center_lat?: number | null;
+    center_lng?: number | null;
   };
   participants?: Array<{
     user_id: string;
@@ -70,6 +73,7 @@ export const SessionView = () => {
   const [cardNotifications, setCardNotifications] = useState<
     Record<string, 'new' | 'viewed' | 'none'>
   >({});
+  const [showMapModule, setShowMapModule] = useState(false);
   const [_incidents, setIncidents] = useState<
     Array<{
       id: string;
@@ -558,6 +562,16 @@ export const SessionView = () => {
             </div>
             <div className="flex items-center gap-2">
               <NotificationBell />
+              <button
+                onClick={() => setShowMapModule((v) => !v)}
+                className={`px-4 py-2 text-xs terminal-text uppercase border ${
+                  showMapModule
+                    ? 'border-robotic-yellow text-robotic-yellow bg-robotic-yellow/10'
+                    : 'border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10'
+                }`}
+              >
+                [MAP]
+              </button>
               {isTrainer && session.status === 'in_progress' && (
                 <button
                   onClick={handleCompleteSession}
@@ -1137,6 +1151,37 @@ export const SessionView = () => {
                     />
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Live map module - 2 columns, bottom, on request */}
+          {id && showMapModule && (
+            <div className="md:col-span-2 military-border p-6 bg-robotic-gray-300 flex flex-col h-[500px]">
+              <div className="flex justify-between items-center mb-3 flex-shrink-0">
+                <h3 className="text-lg terminal-text uppercase">[MAP]</h3>
+                <button
+                  onClick={() => setShowMapModule(false)}
+                  className="px-3 py-1 text-xs terminal-text uppercase border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
+                >
+                  [HIDE MAP]
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden">
+                <MapView
+                  sessionId={id}
+                  incidents={[]}
+                  resources={[]}
+                  initialCenter={
+                    session?.scenarios?.center_lat != null && session?.scenarios?.center_lng != null
+                      ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
+                          number,
+                          number,
+                        ])
+                      : [1.3521, 103.8198]
+                  }
+                  initialZoom={16}
+                />
               </div>
             </div>
           )}

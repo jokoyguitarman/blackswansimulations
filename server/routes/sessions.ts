@@ -773,7 +773,9 @@ router.get('/:id', requireAuth, validate(schemas.id), async (req: AuthenticatedR
 
     const { data: session, error: sessionError } = await supabaseAdmin
       .from('sessions')
-      .select('*, scenarios(*), trainer:user_profiles!sessions_trainer_id_fkey(*)')
+      .select(
+        '*, scenarios(id, title, description, center_lat, center_lng), trainer:user_profiles!sessions_trainer_id_fkey(*)',
+      )
       .eq('id', id)
       .single();
 

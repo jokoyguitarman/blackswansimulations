@@ -296,14 +296,14 @@ async function generateVicinityMap(
   }
 
   for (const loc of locations) {
-    if (loc.location_type !== 'blast_site' && loc.location_type !== 'cordon') continue;
+    if (loc.location_type !== 'blast_site') continue;
     const coords = loc.coordinates;
     if (!coords || coords.lat == null || coords.lng == null) continue;
     marks.push({
       lat: coords.lat,
       lng: coords.lng,
-      label: loc.label.includes('Ground zero') ? 'GZ' : 'Cordon',
-      type: loc.location_type === 'blast_site' ? 'blast' : 'cordon',
+      label: loc.label.includes('Ground zero') ? 'GZ' : 'Blast',
+      type: 'blast',
     });
   }
 
@@ -344,17 +344,18 @@ async function generateLayoutMap(
 
   const marks: OverlayMark[] = [];
   for (const loc of locations) {
+    if (loc.location_type === 'cordon') continue;
     const coords = loc.coordinates;
     if (!coords || coords.lat == null || coords.lng == null) continue;
     const type =
       loc.location_type === 'blast_site'
         ? 'blast'
-        : loc.location_type === 'cordon'
-          ? 'cordon'
-          : loc.location_type === 'exit'
-            ? 'exit'
-            : loc.location_type === 'triage_site'
-              ? 'triage'
+        : loc.location_type === 'exit'
+          ? 'exit'
+          : loc.location_type === 'triage_site'
+            ? 'triage'
+            : loc.location_type === 'area'
+              ? undefined
               : undefined;
     marks.push({
       lat: coords.lat,

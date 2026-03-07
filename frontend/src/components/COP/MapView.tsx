@@ -376,6 +376,10 @@ export const MapView = ({
   const scenarioLocationsWithCoords = scenarioLocations.filter(
     (loc) => typeof loc.coordinates?.lat === 'number' && typeof loc.coordinates?.lng === 'number',
   );
+  // Hide cordon so teams must decide whether and where to place it
+  const scenarioLocationsForMap = scenarioLocationsWithCoords.filter(
+    (loc) => loc.location_type !== 'cordon',
+  );
 
   const unmanagedRoutes = Array.isArray(environmentalState?.routes)
     ? environmentalState.routes.filter((r) => r.managed === false)
@@ -558,8 +562,8 @@ export const MapView = ({
             />
           ))}
 
-          {/* Scenario location pins (Step 6: labels only) */}
-          {scenarioLocationsWithCoords.map((loc) => (
+          {/* Scenario location pins (Step 6: labels only; cordon hidden so teams decide) */}
+          {scenarioLocationsForMap.map((loc) => (
             <ScenarioLocationMarker
               key={loc.id}
               location={loc}
