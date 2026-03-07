@@ -207,12 +207,20 @@ router.get(
         }
       }
 
-      const { data: rows, error } = await supabaseAdmin
+      const isTrainerOrAdmin = session.trainer_id === user.id || user.role === 'admin';
+
+      let historyQuery = supabaseAdmin
         .from('session_insider_qa')
-        .select('id, question_text, answer_snippet, asked_at, category')
+        .select('id, question_text, answer_snippet, asked_at, category, asked_by')
         .eq('session_id', sessionId)
         .order('asked_at', { ascending: true })
         .limit(100);
+
+      if (!isTrainerOrAdmin) {
+        historyQuery = historyQuery.eq('asked_by', user.id);
+      }
+
+      const { data: rows, error } = await historyQuery;
 
       if (error) {
         logger.warn({ error, sessionId }, 'Failed to fetch session_insider_qa history');
