@@ -5,6 +5,8 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
 import { refreshOsmVicinityForScenario } from '../services/osmVicinityService.js';
+import { generateScenarioMaps } from '../services/scenarioMapImageService.js';
+import { uploadScenarioMap } from '../lib/storage.js';
 
 const router = Router();
 
@@ -333,10 +335,130 @@ router.patch(
         }
       }
 
+      // Optional B2: when geography is present, trigger background map regeneration (fire-and-forget)
+      const lat = data.center_lat ?? updates.center_lat;
+      const lng = data.center_lng ?? updates.center_lng;
+      const radius = data.vicinity_radius_meters ?? updates.vicinity_radius_meters;
+      if (lat != null && lng != null && radius != null && radius > 0) {
+        generateScenarioMaps(id)
+          .then((result) => {
+            if (result.error || (!result.vicinityPng && !result.layoutPng)) return;
+            return Promise.all([
+              result.vicinityPng
+                ? uploadScenarioMap(result.vicinityPng, `${id}/vicinity.png`, 'image/png')
+                : null,
+              result.layoutPng
+                ? uploadScenarioMap(result.layoutPng, `${id}/layout.png`, 'image/png')
+                : null,
+            ]).then((urls) => {
+              const u: { vicinity_map_url?: string; layout_image_url?: string } = {};
+              if (urls[0]) u.vicinity_map_url = urls[0];
+              if (urls[1]) u.layout_image_url = urls[1];
+              if (Object.keys(u).length > 0) {
+                return supabaseAdmin.from('scenarios').update(u).eq('id', id);
+              }
+            });
+          })
+          .then(() => logger.info({ scenarioId: id }, 'Background map generation completed'))
+          .catch((err) => logger.warn({ err, scenarioId: id }, 'Background map generation failed'));
+      }
+
       logger.info({ scenarioId: id, userId: user.id }, 'Scenario updated');
       res.json({ data });
     } catch (err) {
       logger.error({ error: err }, 'Error in PATCH /scenarios/:id');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// Generate vicinity and layout map images (B2), upload to Storage, update scenario URLs
+const generateMapsSchema = z.object({
+  params: z.object({
+    id: z.string().uuid(),
+  }),
+});
+
+router.post(
+  '/:id/generate-maps',
+  requireAuth,
+  validate(generateMapsSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      const user = req.user!;
+
+      const { data: scenario } = await supabaseAdmin
+        .from('scenarios')
+        .select('id, created_by, center_lat, center_lng')
+        .eq('id', id)
+        .single();
+
+      if (!scenario) {
+        return res.status(404).json({ error: 'Scenario not found' });
+      }
+      if (scenario.created_by !== user.id && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const result = await generateScenarioMaps(id);
+      if (result.error) {
+        return res.status(400).json({ error: result.error });
+      }
+
+      const updates: { vicinity_map_url?: string | null; layout_image_url?: string | null } = {};
+
+      if (result.vicinityPng) {
+        try {
+          updates.vicinity_map_url = await uploadScenarioMap(
+            result.vicinityPng,
+            `${id}/vicinity.png`,
+            'image/png',
+          );
+        } catch (err) {
+          logger.warn({ err, scenarioId: id }, 'Failed to upload vicinity map');
+          updates.vicinity_map_url = null;
+        }
+      }
+      if (result.layoutPng) {
+        try {
+          updates.layout_image_url = await uploadScenarioMap(
+            result.layoutPng,
+            `${id}/layout.png`,
+            'image/png',
+          );
+        } catch (err) {
+          logger.warn({ err, scenarioId: id }, 'Failed to upload layout map');
+          updates.layout_image_url = null;
+        }
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(500).json({
+          error:
+            'Map generation produced no images; check scenario has center_lat/center_lng and OSM tiles are reachable',
+        });
+      }
+
+      const { data: updated, error: updateErr } = await supabaseAdmin
+        .from('scenarios')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (updateErr) {
+        logger.error(
+          { error: updateErr, scenarioId: id },
+          'Failed to update scenario with map URLs',
+        );
+        return res.status(500).json({ error: 'Failed to save map URLs' });
+      }
+
+      logger.info({ scenarioId: id, userId: user.id }, 'Scenario maps generated and URLs updated');
+      res.json({ data: updated });
+    } catch (err) {
+      logger.error({ err }, 'Error in POST /scenarios/:id/generate-maps');
       res.status(500).json({ error: 'Internal server error' });
     }
   },
