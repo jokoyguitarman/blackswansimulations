@@ -562,16 +562,6 @@ export const SessionView = () => {
             </div>
             <div className="flex items-center gap-2">
               <NotificationBell />
-              <button
-                onClick={() => setShowMapModule((v) => !v)}
-                className={`px-4 py-2 text-xs terminal-text uppercase border ${
-                  showMapModule
-                    ? 'border-robotic-yellow text-robotic-yellow bg-robotic-yellow/10'
-                    : 'border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10'
-                }`}
-              >
-                [MAP]
-              </button>
               {isTrainer && session.status === 'in_progress' && (
                 <button
                   onClick={handleCompleteSession}
@@ -769,7 +759,7 @@ export const SessionView = () => {
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
-                <ChatInterface sessionId={id} />
+                <ChatInterface sessionId={id} onInsiderShowMap={() => setShowMapModule(true)} />
               </div>
             </div>
           )}

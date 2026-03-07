@@ -186,7 +186,7 @@ export const api = {
     insiderAsk: async (sessionId: string, body: { content: string; channel_id?: string }) => {
       const headers = await getAuthHeaders();
       return handleResponse<{
-        data: { answer: string; category: string; sources_used: string[] };
+        data: { answer: string; category: string; sources_used: string[]; show_map?: boolean };
       }>(
         await fetch(apiUrl(`/api/sessions/${sessionId}/insider/ask`), {
           method: 'POST',

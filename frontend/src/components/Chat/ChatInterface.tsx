@@ -49,6 +49,7 @@ interface Message {
 
 interface ChatInterfaceProps {
   sessionId: string;
+  onInsiderShowMap?: () => void;
 }
 
 const INSIDER_DM_ID = '__insider__';
@@ -60,7 +61,7 @@ interface InsiderMessage {
   created_at: string;
 }
 
-export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
+export const ChatInterface = ({ sessionId, onInsiderShowMap }: ChatInterfaceProps) => {
   const { user } = useAuth();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [dmChannels, setDmChannels] = useState<DMChannel[]>([]);
@@ -1153,7 +1154,8 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
       scrollToBottom();
       try {
         const result = await api.sessions.insiderAsk(sessionId, { content: messageContent });
-        const answer = (result.data as { answer: string }).answer;
+        const data = result.data as { answer: string; show_map?: boolean };
+        const answer = data.answer;
         const insiderMsg: InsiderMessage = {
           id: `insider-${Date.now()}`,
           role: 'insider',
@@ -1162,6 +1164,9 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
         };
         setInsiderMessages((prev) => [...prev, insiderMsg]);
         scrollToBottom();
+        if (data.show_map) {
+          onInsiderShowMap?.();
+        }
       } catch (err) {
         console.error('Failed to ask Insider:', err);
         setInsiderMessages((prev) => [

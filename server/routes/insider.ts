@@ -162,6 +162,7 @@ router.post(
           answer,
           category,
           sources_used,
+          ...(isMapRequest && { show_map: true }),
         },
       });
     } catch (err) {

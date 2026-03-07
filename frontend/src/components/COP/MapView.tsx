@@ -77,6 +77,24 @@ interface MapViewProps {
 }
 
 /**
+ * Calls map.remove() on unmount so Leaflet cleans up before React tears down the DOM.
+ * Prevents "removeChild" errors when the map module is hidden.
+ */
+const MapCleanup = () => {
+  const map = useMap();
+  useEffect(() => {
+    return () => {
+      try {
+        map.remove();
+      } catch (_) {
+        // Ignore if already removed
+      }
+    };
+  }, [map]);
+  return null;
+};
+
+/**
  * Simplified Map Initializer - Uses ResizeObserver to wait for dimensions
  */
 const MapInitializer = ({
@@ -389,13 +407,12 @@ export const MapView = ({
   // Key stable per session so map only remounts when session changes, not on every render
   const mapKey = `map-${sessionId}`;
 
-  // Cleanup function to remove Leaflet artifacts before MapContainer renders
+  // Clean only this wrapper's contents on mount; teardown is handled by MapCleanup (map.remove()).
+  // Avoid document-wide or parent-walk removal to prevent racing with Leaflet's own cleanup.
   const cleanContainerElement = (element: HTMLDivElement) => {
-    // Remove any existing .leaflet-container elements (including nested ones)
     const existingContainers = element.querySelectorAll('.leaflet-container');
     existingContainers.forEach((container) => {
       try {
-        // Remove _leaflet_id from the container before removing it
         if ((container as any)._leaflet_id) {
           delete (container as any)._leaflet_id;
         }
@@ -404,45 +421,9 @@ export const MapView = ({
         // Ignore cleanup errors
       }
     });
-
-    // Also check parent elements for Leaflet containers
-    let parent = element.parentElement;
-    while (parent) {
-      const parentContainers = parent.querySelectorAll('.leaflet-container');
-      parentContainers.forEach((container) => {
-        try {
-          if ((container as any)._leaflet_id) {
-            delete (container as any)._leaflet_id;
-          }
-          container.remove();
-        } catch (e) {
-          // Ignore cleanup errors
-        }
-      });
-      parent = parent.parentElement;
-    }
-
-    // Remove _leaflet_id from the container itself
     if ((element as any)._leaflet_id) {
       delete (element as any)._leaflet_id;
     }
-
-    // Also check for any Leaflet containers in the document that might be orphaned
-    // This is more aggressive but necessary for StrictMode
-    const allLeafletContainers = document.querySelectorAll('.leaflet-container');
-    allLeafletContainers.forEach((container) => {
-      // Only remove if it's not inside our current element (to avoid removing our own)
-      if (!element.contains(container)) {
-        try {
-          if ((container as any)._leaflet_id) {
-            delete (container as any)._leaflet_id;
-          }
-          container.remove();
-        } catch (e) {
-          // Ignore cleanup errors
-        }
-      }
-    });
   };
 
   // Callback ref - runs SYNCHRONOUSLY when React mounts the div
@@ -544,6 +525,7 @@ export const MapView = ({
               console.log('[MapView] Map initialized and ready');
             }}
           />
+          <MapCleanup />
 
           <MapUpdater
             incidents={incidents}
