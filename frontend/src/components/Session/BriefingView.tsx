@@ -11,8 +11,7 @@ export const BriefingView = ({ sessionId }: BriefingViewProps) => {
     role_specific_briefing: string | null;
     scenario_title: string;
     user_role: string | null;
-    vicinity_map_url?: string | null;
-    layout_image_url?: string | null;
+    team_name?: string | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -63,11 +62,15 @@ export const BriefingView = ({ sessionId }: BriefingViewProps) => {
         </div>
       </div>
 
-      {/* Role-Specific Briefing */}
-      {briefing.role_specific_briefing && briefing.user_role && (
+      {/* Team / role-specific briefing */}
+      {briefing.role_specific_briefing && (briefing.team_name || briefing.user_role) && (
         <div className="military-border p-6 bg-robotic-yellow/10 border-robotic-yellow">
           <h3 className="text-lg terminal-text uppercase mb-4 text-robotic-yellow">
-            [ROLE_SPECIFIC_BRIEFING] {briefing.user_role.toUpperCase().replace('_', ' ')}
+            [TEAM_BRIEF]{' '}
+            {(briefing.team_name || briefing.user_role || '')
+              .toString()
+              .toUpperCase()
+              .replace('_', ' ')}
           </h3>
           <div className="prose prose-invert max-w-none">
             <div className="text-sm terminal-text text-robotic-yellow/90 whitespace-pre-wrap">
@@ -77,41 +80,21 @@ export const BriefingView = ({ sessionId }: BriefingViewProps) => {
         </div>
       )}
 
-      {!briefing.role_specific_briefing && briefing.user_role && (
+      {!briefing.role_specific_briefing && (briefing.team_name || briefing.user_role) && (
         <div className="military-border p-4 bg-robotic-gray-300">
           <p className="text-xs terminal-text text-robotic-yellow/50">
-            [NO_ROLE_SPECIFIC_BRIEFING] No additional briefing provided for your role.
+            [NO_TEAM_BRIEF] No additional briefing provided for your team.
           </p>
         </div>
       )}
 
-      {/* Vicinity map */}
-      {briefing.vicinity_map_url && (
-        <div className="military-border p-6 bg-robotic-gray-300">
-          <h3 className="text-lg terminal-text uppercase mb-4 text-robotic-yellow">
-            [VICINITY_MAP]
-          </h3>
-          <img
-            src={briefing.vicinity_map_url}
-            alt="Vicinity map"
-            className="max-w-full border border-robotic-yellow/30 rounded"
-          />
-        </div>
-      )}
-
-      {/* Building layout */}
-      {briefing.layout_image_url && (
-        <div className="military-border p-6 bg-robotic-gray-300">
-          <h3 className="text-lg terminal-text uppercase mb-4 text-robotic-yellow">
-            [BUILDING_LAYOUT]
-          </h3>
-          <img
-            src={briefing.layout_image_url}
-            alt="Building layout"
-            className="max-w-full border border-robotic-yellow/30 rounded"
-          />
-        </div>
-      )}
+      {/* Volunteer / Insider note */}
+      <div className="military-border p-4 bg-robotic-gray-300">
+        <p className="text-sm terminal-text text-robotic-yellow/90">
+          You have a Volunteer in the field you can message through the chat. The contact appears as{' '}
+          <strong>the Insider</strong>.
+        </p>
+      </div>
     </div>
   );
 };

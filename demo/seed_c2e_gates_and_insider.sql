@@ -35,9 +35,9 @@ BEGIN
   SET
     briefing = 'You are the Community Emergency and Engagement (C2E) Committee responding to an incident at a community event. Coordinate with your team; details will emerge via updates and cross-team communication. Do not assume you have full situational awareness from this brief.',
     role_specific_briefs = jsonb_build_object(
-      'evacuation', 'Your deliverable: produce an evacuation plan that cites exits, ground zero, and flow. Gather details from injects and other teams before submitting.',
-      'triage', 'Your deliverable: produce a triage situation report (casualty zones, routes). Base it on injects and cross-team information.',
-      'media', 'Your deliverable: issue a first public statement based on verified facts. Coordinate with Evac and Triage before going public.'
+      'evacuation', 'You are on the Evacuation team. Your role will become clearer as the scenario progresses.',
+      'triage', 'You are on the Triage team. Your role will become clearer as the scenario progresses.',
+      'media', 'You are on the Media team. Your role will become clearer as the scenario progresses.'
     ),
     insider_knowledge = jsonb_build_object(
       'layout_ground_truth', jsonb_build_object(

@@ -324,8 +324,7 @@ export const api = {
           role_specific_briefing: string | null;
           scenario_title: string;
           user_role: string | null;
-          vicinity_map_url?: string | null;
-          layout_image_url?: string | null;
+          team_name?: string | null;
         };
       }>(await fetch(apiUrl(`/api/briefing/session/${sessionId}`), { headers }));
     },

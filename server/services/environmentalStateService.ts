@@ -5,7 +5,8 @@ import { getWebSocketService } from './websocketService.js';
 /**
  * Environmental State Service — Step 2
  * Loads a pre-authored environmental seed (one of multiple variants per scenario) from the DB
- * at session start and writes it into session.current_state.environmental_state.
+ * at session start. Writes routes/areas into session.current_state.environmental_state and
+ * optional team state (evacuation_state, triage_state, media_state) at top level of current_state.
  * No generation from scratch; all content comes from scenario_environmental_seeds.
  */
 
@@ -23,12 +24,64 @@ export interface EnvironmentalAreaSeed {
   aliases?: string[];
 }
 
+/** Team state shapes (optional in seed; written to top-level current_state). */
+export interface EvacuationStateSeed {
+  exits_congested?: string[];
+  flow_control_decided?: boolean;
+  coordination_with_triage?: boolean;
+}
+
+export interface TriageStateSeed {
+  supply_level?: 'adequate' | 'low' | 'critical';
+  surge_active?: boolean;
+  critical_pending?: number;
+  deaths_on_site?: number;
+  supply_request_made?: boolean;
+  prioritisation_decided?: boolean;
+}
+
+export interface MediaStateSeed {
+  first_statement_issued?: boolean;
+  statement_issued_at_minute?: number;
+  misinformation_addressed?: boolean;
+  journalist_arrived?: boolean;
+  public_sentiment?: number;
+}
+
 export interface EnvironmentalSeedRow {
   id: string;
   scenario_id: string;
   variant_label: string;
-  seed_data: { routes?: unknown[]; areas?: EnvironmentalAreaSeed[] };
+  seed_data: {
+    routes?: unknown[];
+    areas?: EnvironmentalAreaSeed[];
+    evacuation_state?: EvacuationStateSeed;
+    triage_state?: TriageStateSeed;
+    media_state?: MediaStateSeed;
+  };
 }
+
+/** Default team state when seed does not provide it. */
+const DEFAULT_EVACUATION_STATE: EvacuationStateSeed = {
+  flow_control_decided: false,
+  coordination_with_triage: false,
+  exits_congested: [],
+};
+
+const DEFAULT_TRIAGE_STATE: TriageStateSeed = {
+  supply_level: 'adequate',
+  surge_active: false,
+  prioritisation_decided: false,
+  supply_request_made: false,
+  deaths_on_site: 0,
+  critical_pending: 0,
+};
+
+const DEFAULT_MEDIA_STATE: MediaStateSeed = {
+  first_statement_issued: false,
+  misinformation_addressed: false,
+  journalist_arrived: false,
+};
 
 /**
  * Load environmental seed variants for the session's scenario, pick one (at random),
@@ -66,11 +119,18 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
     }
 
     const chosen = allSeeds[Math.floor(Math.random() * allSeeds.length)] as EnvironmentalSeedRow;
+    const seed = chosen.seed_data ?? {};
     const currentState = (session.current_state as Record<string, unknown>) || {};
 
     const nextState: Record<string, unknown> = {
       ...currentState,
-      environmental_state: chosen.seed_data ?? {},
+      environmental_state: {
+        routes: seed.routes ?? [],
+        areas: seed.areas ?? [],
+      },
+      evacuation_state: seed.evacuation_state ?? DEFAULT_EVACUATION_STATE,
+      triage_state: seed.triage_state ?? DEFAULT_TRIAGE_STATE,
+      media_state: seed.media_state ?? DEFAULT_MEDIA_STATE,
       environmental_variant: chosen.variant_label,
     };
 

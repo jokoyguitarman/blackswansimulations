@@ -184,6 +184,120 @@ const createStateSnapshot = async (
 };
 
 /**
+ * Phase 3: Update team state (evacuation_state, triage_state, media_state) from an executed decision
+ * using AI classification and author team. Called after classifyDecision and storing ai_classification.
+ */
+export async function updateTeamStateFromDecision(
+  sessionId: string,
+  _decisionId: string,
+  authorTeamNames: string[],
+  classification: { categories?: string[]; keywords?: string[]; primary_category?: string },
+  elapsedMinutes: number,
+): Promise<void> {
+  if (!authorTeamNames?.length) return;
+  const categories = classification?.categories ?? [];
+  const primary = (classification?.primary_category ?? '').toLowerCase();
+  const keywords = (classification?.keywords ?? []).map((k) => String(k).toLowerCase());
+
+  const hasCategory = (c: string) => categories.includes(c) || primary === c.toLowerCase();
+  const hasKeyword = (...kws: string[]) =>
+    kws.some((kw) => keywords.some((k) => k.includes(kw) || kw.includes(k)));
+
+  try {
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('current_state')
+      .eq('id', sessionId)
+      .single();
+
+    if (!session) return;
+    const currentState: Record<string, unknown> =
+      (session.current_state as Record<string, unknown>) || {};
+
+    const evacuationState = (currentState.evacuation_state as Record<string, unknown>) || {};
+    const triageState = (currentState.triage_state as Record<string, unknown>) || {};
+    const mediaState = (currentState.media_state as Record<string, unknown>) || {};
+
+    const isEvacuation = authorTeamNames.some((t) => /evacuation/i.test(t));
+    const isTriage = authorTeamNames.some((t) => /triage/i.test(t));
+    const isMedia = authorTeamNames.some((t) => /media/i.test(t));
+
+    if (isEvacuation) {
+      if (
+        hasCategory('flow_control') ||
+        hasCategory('evacuation_flow_control') ||
+        hasKeyword('flow', 'bottleneck', 'stagger', 'egress', 'congestion')
+      ) {
+        evacuationState.flow_control_decided = true;
+      }
+      if (
+        hasCategory('coordination_order') ||
+        hasCategory('coordination') ||
+        hasCategory('evacuation_coordination') ||
+        hasKeyword('coordinate', 'triage')
+      ) {
+        evacuationState.coordination_with_triage = true;
+      }
+    }
+    if (isTriage) {
+      if (
+        hasCategory('supply_management') ||
+        hasKeyword('supply', 'request', 'ration', 'equipment', 'shortage')
+      ) {
+        triageState.supply_request_made = true;
+      }
+      if (
+        hasCategory('prioritisation') ||
+        hasCategory('triage_protocol') ||
+        hasKeyword('prioritise', 'critical first', 'severity', 'triage protocol')
+      ) {
+        triageState.prioritisation_decided = true;
+      }
+    }
+    if (isMedia) {
+      if (
+        hasCategory('public_statement') ||
+        hasKeyword('statement', 'press', 'announce', 'release')
+      ) {
+        mediaState.first_statement_issued = true;
+        mediaState.statement_issued_at_minute = elapsedMinutes;
+      }
+      if (
+        hasCategory('misinformation_management') ||
+        hasCategory('misinformation_response') ||
+        hasKeyword('debunk', 'counter', 'correct', 'misinformation', 'rumour', 'narrative')
+      ) {
+        mediaState.misinformation_addressed = true;
+      }
+    }
+
+    const nextState = {
+      ...currentState,
+      evacuation_state: evacuationState,
+      triage_state: triageState,
+      media_state: mediaState,
+    };
+
+    const { error } = await supabaseAdmin
+      .from('sessions')
+      .update({ current_state: nextState })
+      .eq('id', sessionId);
+    if (error) {
+      logger.error({ error, sessionId }, 'Failed to update team state from decision');
+      return;
+    }
+    getWebSocketService().stateUpdated?.(sessionId, {
+      type: 'state.updated',
+      state: nextState,
+      timestamp: new Date().toISOString(),
+    });
+    logger.debug({ sessionId, authorTeamNames }, 'Team state updated from decision');
+  } catch (err) {
+    logger.error({ err, sessionId }, 'Error in updateTeamStateFromDecision');
+  }
+}
+
+/**
  * Get current state for a session
  */
 export const getCurrentState = async (sessionId: string): Promise<ScenarioState | null> => {

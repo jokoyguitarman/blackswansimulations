@@ -11,6 +11,7 @@ import {
 } from '../services/notificationService.js';
 import { logAndBroadcastEvent } from '../services/eventService.js';
 import { runPathwayOutcomesOnInjectPublished } from '../services/pathwayOutcomesService.js';
+import { applyInjectPublishEffects } from '../services/injectPublishEffectsService.js';
 import type { Server as SocketServer } from 'socket.io';
 
 const router = Router();
@@ -121,6 +122,9 @@ export async function publishInjectToSession(
   void runPathwayOutcomesOnInjectPublished(sessionId, injectId).catch((err) =>
     logger.error({ err, sessionId, injectId }, 'Pathway outcomes on inject publish failed'),
   );
+
+  // Phase 5.1: Apply inject-driven objective penalty and state effect (central hook)
+  await applyInjectPublishEffects(sessionId, injectId, inject as Record<string, unknown>);
 
   // Broadcast generic event (the session_events insert was already done above)
   // We just need to broadcast it, not log it again

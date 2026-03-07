@@ -26,6 +26,8 @@ export interface EvaluationContext {
     title?: string;
     description?: string;
     tags?: string[];
+    categories?: string[];
+    keywords?: string[];
   }>;
   publishedScenarioInjectIds: string[];
   publishedInjectKeysOrTags?: string[];
@@ -157,6 +159,17 @@ function getEnvAreas(
   return Array.isArray(env?.areas) ? env.areas : [];
 }
 
+// Team state (from current_state; Phase 2)
+function getEvacuationState(ctx: EvaluationContext): Record<string, unknown> {
+  return (ctx.currentState?.evacuation_state as Record<string, unknown>) ?? {};
+}
+function getTriageState(ctx: EvaluationContext): Record<string, unknown> {
+  return (ctx.currentState?.triage_state as Record<string, unknown>) ?? {};
+}
+function getMediaState(ctx: EvaluationContext): Record<string, unknown> {
+  return (ctx.currentState?.media_state as Record<string, unknown>) ?? {};
+}
+
 conditionRegistry['crowd_density_above_0.6'] = (ctx) =>
   getEnvAreas(ctx).some((a) => (a.crowd_density ?? 0) >= 0.6);
 
@@ -196,6 +209,80 @@ conditionRegistry.area_cleared = (ctx) => {
   return state?.second_device_zone_cleared === true || state?.area_cleared === true;
 };
 conditionRegistry.area_not_cleared = (ctx) => !conditionRegistry.area_cleared(ctx);
+
+// Evacuation (from current_state.evacuation_state)
+conditionRegistry.evacuation_no_flow_control_decision = (ctx) =>
+  !hasDecisionMatching(ctx, (d) => {
+    if (d.categories?.includes('flow_control')) return true;
+    const t = (d.decision_type ?? '').toLowerCase();
+    const title = (d.title ?? '').toLowerCase();
+    const desc = (d.description ?? '').toLowerCase();
+    const text = `${t} ${title} ${desc}`;
+    return (
+      /flow|bottleneck|stagger|exit capacity|congestion|egress/.test(text) ||
+      (d.tags ?? []).some((tag) => /flow|bottleneck|congestion|egress/.test(String(tag)))
+    );
+  });
+conditionRegistry.evacuation_flow_control_decided = (ctx) =>
+  getEvacuationState(ctx).flow_control_decided === true;
+conditionRegistry.evacuation_exit_bottleneck_active = (ctx) => {
+  const arr = getEvacuationState(ctx).exits_congested;
+  return Array.isArray(arr) && arr.length > 0;
+};
+conditionRegistry.evacuation_coordination_not_established = (ctx) =>
+  getEvacuationState(ctx).coordination_with_triage !== true;
+conditionRegistry.evacuation_coordination_established = (ctx) =>
+  getEvacuationState(ctx).coordination_with_triage === true;
+
+// Triage (from current_state.triage_state)
+conditionRegistry.triage_supply_critical = (ctx) => getTriageState(ctx).supply_level === 'critical';
+conditionRegistry.triage_supply_low = (ctx) => {
+  const level = getTriageState(ctx).supply_level;
+  return level === 'low' || level === 'critical';
+};
+conditionRegistry.triage_surge_active = (ctx) => getTriageState(ctx).surge_active === true;
+conditionRegistry.triage_no_supply_management_decision = (ctx) =>
+  !hasDecisionMatching(ctx, (d) => {
+    if (d.categories?.includes('supply_management')) return true;
+    const t = (d.decision_type ?? '').toLowerCase();
+    const title = (d.title ?? '').toLowerCase();
+    const desc = (d.description ?? '').toLowerCase();
+    const text = `${t} ${title} ${desc}`;
+    return (
+      /supply|supplies|request|ration|equipment|shortage/.test(text) ||
+      (d.tags ?? []).some((tag) => /supply|ration|shortage/.test(String(tag)))
+    );
+  });
+conditionRegistry.triage_no_prioritisation_decision = (ctx) =>
+  !hasDecisionMatching(ctx, (d) => {
+    if (d.categories?.includes('prioritisation')) return true;
+    const title = (d.title ?? '').toLowerCase();
+    const desc = (d.description ?? '').toLowerCase();
+    const text = `${title} ${desc}`;
+    return (
+      /prioritise|prioritize|priority|critical first|severity|triage protocol|red|yellow|green/.test(
+        text,
+      ) || (d.tags ?? []).some((tag) => /priorit|severity|triage/.test(String(tag)))
+    );
+  });
+conditionRegistry.triage_prioritisation_decided = (ctx) =>
+  getTriageState(ctx).prioritisation_decided === true;
+conditionRegistry.triage_supply_request_made = (ctx) =>
+  getTriageState(ctx).supply_request_made === true;
+conditionRegistry.triage_deaths_on_site_positive = (ctx) =>
+  ((getTriageState(ctx).deaths_on_site as number | undefined) ?? 0) > 0;
+
+// Media (from current_state.media_state)
+conditionRegistry.media_no_statement_by_T12 = (ctx) =>
+  ctx.elapsedMinutes >= 12 && getMediaState(ctx).first_statement_issued !== true;
+conditionRegistry.media_statement_issued = (ctx) =>
+  getMediaState(ctx).first_statement_issued === true;
+conditionRegistry.media_misinformation_not_addressed = (ctx) =>
+  getMediaState(ctx).misinformation_addressed !== true;
+conditionRegistry.media_journalist_arrived = (ctx) =>
+  getMediaState(ctx).journalist_arrived === true;
+conditionRegistry.media_misinformation_addressed = (ctx) =>
+  getMediaState(ctx).misinformation_addressed === true;
 
 // ---------------------------------------------------------------------------
 // Internal: resolve one condition key (prefix rules + registry)

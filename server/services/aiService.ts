@@ -187,8 +187,16 @@ Analyze the decision and classify it into one or more of these categories:
 - resource_allocation: Allocation of personnel, equipment, or resources
 - public_statement: Public communications, press releases, official statements
 - policy_change: Changes to policies, procedures, or protocols
-- coordination_order: Inter-agency coordination, joint operations
+- coordination_order: Inter-agency or inter-team coordination, joint operations (e.g. with triage or evacuation)
 - operational_action: Tactical operations, field actions, direct interventions
+- supply_management: Requesting, rationing, or managing supplies, equipment, or medical resources
+- prioritisation: Prioritising by severity, critical-first triage, or explicit prioritisation protocol
+- flow_control: Managing bottlenecks, staggered egress, or exit flow during evacuation
+- misinformation_management: Debunking rumours, countering false narratives, correcting misinformation
+- triage_protocol: Establishing triage zones, casualty zones, protocol
+- evacuation_flow_control: Managing exit flow, bottlenecks, staggering, exit capacity
+- evacuation_coordination: Coordinating with triage/media, handover, ambulance access
+- misinformation_response: Addressing/countering false claims, clarifying rumours
 
 Extract:
 1. Primary category (most relevant)
@@ -196,7 +204,7 @@ Extract:
 3. Key keywords from the decision
 4. Semantic tags that describe the decision's meaning
 
-Return ONLY valid JSON in this exact format:
+Include relevant keywords (e.g. supply, ration, prioritise, critical first, flow, stagger, coordinate, triage, statement, press, debunk). Return ONLY valid JSON in this exact format:
 {
   "primary_category": "emergency_declaration",
   "categories": ["emergency_declaration", "operational_action"],

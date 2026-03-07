@@ -41,12 +41,10 @@ router.get(
         }
       }
 
-      // Get scenario with briefing
+      // Get scenario with briefing (do not expose map URLs to lobby)
       const { data: scenario } = await supabaseAdmin
         .from('scenarios')
-        .select(
-          'briefing, role_specific_briefs, title, description, vicinity_map_url, layout_image_url',
-        )
+        .select('briefing, role_specific_briefs, title, description')
         .eq('id', session.scenario_id)
         .single();
 
@@ -54,8 +52,9 @@ router.get(
         return res.status(404).json({ error: 'Scenario not found' });
       }
 
-      // Get user's role in this session
+      // For participants: resolve team from session_teams and use for team brief; trainers get no team brief
       let userRole: string | null = null;
+      let teamName: string | null = null;
       if (session.trainer_id !== user.id && user.role !== 'admin') {
         const { data: participant } = await supabaseAdmin
           .from('session_participants')
@@ -64,12 +63,26 @@ router.get(
           .eq('user_id', user.id)
           .single();
         userRole = participant?.role || null;
+
+        // Team-based brief: first assigned team from session_teams (evacuation, triage, media)
+        const { data: teamRows } = await supabaseAdmin
+          .from('session_teams')
+          .select('team_name')
+          .eq('session_id', id)
+          .eq('user_id', user.id)
+          .order('team_name', { ascending: true });
+        const firstTeam = (teamRows ?? [])[0] as { team_name: string } | undefined;
+        if (firstTeam?.team_name) {
+          teamName = firstTeam.team_name;
+        }
       }
 
-      // Get role-specific briefing if available
+      // Team brief from role_specific_briefs keyed by team_name; fallback to role if no team
       const roleSpecificBrief =
-        userRole && scenario.role_specific_briefs
-          ? (scenario.role_specific_briefs as Record<string, string>)[userRole] || null
+        scenario.role_specific_briefs && typeof scenario.role_specific_briefs === 'object'
+          ? (teamName && (scenario.role_specific_briefs as Record<string, string>)[teamName]) ||
+            (userRole && (scenario.role_specific_briefs as Record<string, string>)[userRole]) ||
+            null
           : null;
 
       res.json({
@@ -78,8 +91,9 @@ router.get(
           role_specific_briefing: roleSpecificBrief,
           scenario_title: scenario.title,
           user_role: userRole,
-          vicinity_map_url: scenario.vicinity_map_url ?? null,
-          layout_image_url: scenario.layout_image_url ?? null,
+          team_name: teamName,
+          vicinity_map_url: null,
+          layout_image_url: null,
         },
       });
     } catch (err) {

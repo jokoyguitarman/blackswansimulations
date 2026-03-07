@@ -10,6 +10,7 @@ import {
   type ConditionsToCancel,
 } from './conditionEvaluatorService.js';
 import { env } from '../env.js';
+import { getWebSocketService } from './websocketService.js';
 import type { Server as SocketServer } from 'socket.io';
 
 /**
@@ -162,6 +163,46 @@ export class InjectSchedulerService {
       'Processing session for inject triggers',
     );
 
+    // Phase 6 (optional): time-based state updates — set surge_active at T+10, supply_level at T+15 if no supply decision
+    const currentState = (session.current_state as Record<string, unknown>) || {};
+    const nextState: Record<string, unknown> = { ...currentState };
+    let stateChanged = false;
+    const triageState = (nextState.triage_state as Record<string, unknown>) || {};
+    if (elapsedMinutes >= 10 && triageState.surge_active !== true) {
+      (nextState.triage_state as Record<string, unknown>) = { ...triageState, surge_active: true };
+      stateChanged = true;
+    }
+    const triageAfterSurge = (nextState.triage_state as Record<string, unknown>) || {};
+    if (
+      elapsedMinutes >= 15 &&
+      triageAfterSurge.supply_request_made !== true &&
+      triageAfterSurge.supply_level !== 'critical'
+    ) {
+      (nextState.triage_state as Record<string, unknown>) = {
+        ...triageAfterSurge,
+        supply_level: 'low',
+      };
+      stateChanged = true;
+    }
+    if (stateChanged) {
+      try {
+        await supabaseAdmin
+          .from('sessions')
+          .update({ current_state: nextState })
+          .eq('id', session.id);
+        getWebSocketService().stateUpdated?.(session.id, {
+          state: nextState,
+          timestamp: new Date().toISOString(),
+        });
+        (session as { current_state?: Record<string, unknown> }).current_state = nextState;
+      } catch (stateErr) {
+        logger.error(
+          { err: stateErr, sessionId: session.id },
+          'Failed to apply scheduler time-based state update',
+        );
+      }
+    }
+
     // Run gate evaluation so session_gate_progress is up to date before selecting injects
     let ioForGates = this.io;
     if (!ioForGates) {
@@ -295,21 +336,31 @@ export class InjectSchedulerService {
       );
     }
 
-    // Build evaluation context once per tick (for condition-driven injects; also used if we add more logic later)
+    // Build evaluation context once per tick (for condition-driven injects; Phase 3 includes ai_classification)
     const { data: executedDecisionsRows } = await supabaseAdmin
       .from('decisions')
-      .select('id, title, description, type')
+      .select('id, title, description, type, ai_classification')
       .eq('session_id', session.id)
       .eq('status', 'executed')
       .order('executed_at', { ascending: false });
 
-    const executedDecisions = (executedDecisionsRows ?? []).map((d) => ({
-      id: d.id,
-      decision_type: (d as { type?: string }).type,
-      title: d.title ?? undefined,
-      description: d.description ?? undefined,
-      tags: undefined,
-    }));
+    const aiClassification = (d: {
+      ai_classification?: { categories?: string[]; keywords?: string[] };
+    }) => d.ai_classification as { categories?: string[]; keywords?: string[] } | null | undefined;
+    const executedDecisions = (executedDecisionsRows ?? []).map((d) => {
+      const ac = aiClassification(
+        d as { ai_classification?: { categories?: string[]; keywords?: string[] } },
+      );
+      return {
+        id: d.id,
+        decision_type: (d as { type?: string }).type,
+        title: d.title ?? undefined,
+        description: d.description ?? undefined,
+        tags: undefined,
+        categories: ac?.categories ?? [],
+        keywords: ac?.keywords ?? [],
+      };
+    });
 
     const { data: objectiveRows, error: objectiveError } = await supabaseAdmin
       .from('scenario_objective_progress')
