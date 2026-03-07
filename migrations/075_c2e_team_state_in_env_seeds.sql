@@ -16,13 +16,15 @@ BEGIN
     RETURN;
   END IF;
 
-  -- all_clear: default team state
+  -- all_clear: default team state and counters
   UPDATE scenario_environmental_seeds
   SET seed_data = seed_data || '{
     "evacuation_state": {
       "flow_control_decided": false,
       "coordination_with_triage": false,
-      "exits_congested": []
+      "exits_congested": [],
+      "evacuated_count": 0,
+      "total_evacuees": 1000
     },
     "triage_state": {
       "supply_level": "adequate",
@@ -30,12 +32,15 @@ BEGIN
       "prioritisation_decided": false,
       "supply_request_made": false,
       "deaths_on_site": 0,
-      "critical_pending": 0
+      "critical_pending": 0,
+      "handed_over_to_hospital": 0
     },
     "media_state": {
       "first_statement_issued": false,
       "misinformation_addressed": false,
-      "journalist_arrived": false
+      "journalist_arrived": false,
+      "statements_issued": 0,
+      "misinformation_addressed_count": 0
     }
   }'::jsonb
   WHERE scenario_id = scenario_uuid AND variant_label = 'all_clear';
@@ -46,7 +51,9 @@ BEGIN
     "evacuation_state": {
       "flow_control_decided": false,
       "coordination_with_triage": false,
-      "exits_congested": ["West exit"]
+      "exits_congested": ["West exit"],
+      "evacuated_count": 0,
+      "total_evacuees": 1000
     },
     "triage_state": {
       "supply_level": "adequate",
@@ -54,12 +61,15 @@ BEGIN
       "prioritisation_decided": false,
       "supply_request_made": false,
       "deaths_on_site": 0,
-      "critical_pending": 0
+      "critical_pending": 0,
+      "handed_over_to_hospital": 0
     },
     "media_state": {
       "first_statement_issued": false,
       "misinformation_addressed": false,
-      "journalist_arrived": false
+      "journalist_arrived": false,
+      "statements_issued": 0,
+      "misinformation_addressed_count": 0
     }
   }'::jsonb
   WHERE scenario_id = scenario_uuid AND variant_label = 'north_congested';
@@ -70,7 +80,9 @@ BEGIN
     "evacuation_state": {
       "flow_control_decided": false,
       "coordination_with_triage": false,
-      "exits_congested": []
+      "exits_congested": [],
+      "evacuated_count": 0,
+      "total_evacuees": 1000
     },
     "triage_state": {
       "supply_level": "low",
@@ -78,12 +90,15 @@ BEGIN
       "prioritisation_decided": false,
       "supply_request_made": false,
       "deaths_on_site": 0,
-      "critical_pending": 0
+      "critical_pending": 0,
+      "handed_over_to_hospital": 0
     },
     "media_state": {
       "first_statement_issued": false,
       "misinformation_addressed": false,
-      "journalist_arrived": false
+      "journalist_arrived": false,
+      "statements_issued": 0,
+      "misinformation_addressed_count": 0
     }
   }'::jsonb
   WHERE scenario_id = scenario_uuid AND variant_label = 'service_road_blocked';

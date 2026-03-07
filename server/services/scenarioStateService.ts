@@ -253,6 +253,10 @@ export async function updateTeamStateFromDecision(
       ) {
         triageState.prioritisation_decided = true;
       }
+      if (hasKeyword('handover', 'transfer', 'hospital', 'ambulance', 'hand over')) {
+        const current = Math.max(0, Number(triageState.handed_over_to_hospital) || 0);
+        triageState.handed_over_to_hospital = current + 5;
+      }
     }
     if (isMedia) {
       if (
@@ -261,6 +265,7 @@ export async function updateTeamStateFromDecision(
       ) {
         mediaState.first_statement_issued = true;
         mediaState.statement_issued_at_minute = elapsedMinutes;
+        mediaState.statements_issued = Math.max(0, Number(mediaState.statements_issued) || 0) + 1;
       }
       if (
         hasCategory('misinformation_management') ||
@@ -268,6 +273,8 @@ export async function updateTeamStateFromDecision(
         hasKeyword('debunk', 'counter', 'correct', 'misinformation', 'rumour', 'narrative')
       ) {
         mediaState.misinformation_addressed = true;
+        mediaState.misinformation_addressed_count =
+          Math.max(0, Number(mediaState.misinformation_addressed_count) || 0) + 1;
       }
     }
 

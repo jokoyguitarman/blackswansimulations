@@ -29,6 +29,8 @@ export interface EvacuationStateSeed {
   exits_congested?: string[];
   flow_control_decided?: boolean;
   coordination_with_triage?: boolean;
+  evacuated_count?: number;
+  total_evacuees?: number;
 }
 
 export interface TriageStateSeed {
@@ -38,6 +40,7 @@ export interface TriageStateSeed {
   deaths_on_site?: number;
   supply_request_made?: boolean;
   prioritisation_decided?: boolean;
+  handed_over_to_hospital?: number;
 }
 
 export interface MediaStateSeed {
@@ -46,6 +49,8 @@ export interface MediaStateSeed {
   misinformation_addressed?: boolean;
   journalist_arrived?: boolean;
   public_sentiment?: number;
+  statements_issued?: number;
+  misinformation_addressed_count?: number;
 }
 
 export interface EnvironmentalSeedRow {
@@ -66,6 +71,8 @@ const DEFAULT_EVACUATION_STATE: EvacuationStateSeed = {
   flow_control_decided: false,
   coordination_with_triage: false,
   exits_congested: [],
+  evacuated_count: 0,
+  total_evacuees: 1000,
 };
 
 const DEFAULT_TRIAGE_STATE: TriageStateSeed = {
@@ -75,12 +82,15 @@ const DEFAULT_TRIAGE_STATE: TriageStateSeed = {
   supply_request_made: false,
   deaths_on_site: 0,
   critical_pending: 0,
+  handed_over_to_hospital: 0,
 };
 
 const DEFAULT_MEDIA_STATE: MediaStateSeed = {
   first_statement_issued: false,
   misinformation_addressed: false,
   journalist_arrived: false,
+  statements_issued: 0,
+  misinformation_addressed_count: 0,
 };
 
 /**
@@ -128,9 +138,9 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
         routes: seed.routes ?? [],
         areas: seed.areas ?? [],
       },
-      evacuation_state: seed.evacuation_state ?? DEFAULT_EVACUATION_STATE,
-      triage_state: seed.triage_state ?? DEFAULT_TRIAGE_STATE,
-      media_state: seed.media_state ?? DEFAULT_MEDIA_STATE,
+      evacuation_state: { ...DEFAULT_EVACUATION_STATE, ...seed.evacuation_state },
+      triage_state: { ...DEFAULT_TRIAGE_STATE, ...seed.triage_state },
+      media_state: { ...DEFAULT_MEDIA_STATE, ...seed.media_state },
       environmental_variant: chosen.variant_label,
     };
 

@@ -184,6 +184,25 @@ export class InjectSchedulerService {
       };
       stateChanged = true;
     }
+    // Evacuation counter: when flow_control_decided, advance evacuated_count by time and rate (capped at total_evacuees)
+    const BASE_EVAC_RATE_PER_MIN = 40;
+    const evacState = (nextState.evacuation_state as Record<string, unknown>) || {};
+    const totalEvacuees = Math.max(0, Number(evacState.total_evacuees) || 1000);
+    if (evacState.flow_control_decided === true) {
+      let rate = BASE_EVAC_RATE_PER_MIN;
+      const exitsCongested = evacState.exits_congested as string[] | undefined;
+      if (exitsCongested && exitsCongested.length > 0) rate = Math.floor(rate / 2);
+      const evacuated = Math.min(totalEvacuees, Math.floor(rate * elapsedMinutes));
+      const currentEvacuated = Math.max(0, Number(evacState.evacuated_count) || 0);
+      if (evacuated > currentEvacuated) {
+        (nextState.evacuation_state as Record<string, unknown>) = {
+          ...evacState,
+          evacuated_count: evacuated,
+        };
+        stateChanged = true;
+      }
+    }
+
     if (stateChanged) {
       try {
         await supabaseAdmin

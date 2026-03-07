@@ -96,17 +96,6 @@ export const SessionView = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showTeamAssignmentModal, setShowTeamAssignmentModal] = useState(false);
   const [myTeams, setMyTeams] = useState<Array<{ team_name: string; team_role?: string }>>([]);
-  const [objectives, setObjectives] = useState<
-    Array<{
-      id: string;
-      objective_id: string;
-      objective_name: string;
-      progress_percentage: number;
-      status: 'not_started' | 'in_progress' | 'completed' | 'failed';
-      score: number | null;
-      weight: number;
-    }>
-  >([]);
   const [backendActivities, setBackendActivities] = useState<
     Array<{
       type: string;
@@ -172,13 +161,6 @@ export const SessionView = () => {
     }
   }, [id, user?.id]);
 
-  useEffect(() => {
-    // Only load objectives for trainers (load once, no polling)
-    if (id && session?.status === 'in_progress' && isTrainer) {
-      loadObjectives();
-    }
-  }, [id, session?.status, isTrainer]);
-
   // Backend/AI activity log for trainers (poll every 8s when in progress, load once when completed)
   useEffect(() => {
     if (!id || !isTrainer || !session) return;
@@ -230,26 +212,6 @@ export const SessionView = () => {
       );
     } catch (error) {
       console.error('[SessionView] Failed to load team assignments:', error);
-    }
-  };
-
-  const loadObjectives = async () => {
-    if (!id) return;
-    try {
-      const result = await api.objectives.getProgress(id);
-      setObjectives(
-        (result.data || []) as Array<{
-          id: string;
-          objective_id: string;
-          objective_name: string;
-          progress_percentage: number;
-          status: 'not_started' | 'in_progress' | 'completed' | 'failed';
-          score: number | null;
-          weight: number;
-        }>,
-      );
-    } catch (error) {
-      console.error('Failed to load objectives:', error);
     }
   };
 
@@ -342,8 +304,16 @@ export const SessionView = () => {
       'incident.created',
       'incident.updated',
       'media_post',
+      'state.updated',
     ],
     onEvent: (event: WebSocketEvent) => {
+      if (event.type === 'state.updated') {
+        const state = (event.data as { state?: Record<string, unknown> })?.state;
+        if (state) {
+          setSession((prev) => (prev ? { ...prev, current_state: state } : null));
+        }
+        return;
+      }
       // Handle event-specific UI updates
       // Note: Notifications are now automatically created by the backend notification system
 
@@ -644,64 +614,84 @@ export const SessionView = () => {
         </div>
       )}
 
-      {/* Objectives Progress Panel - Show during active session (trainer only) */}
-      {session.status === 'in_progress' && isTrainer && objectives.length > 0 && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="military-border p-4 bg-robotic-gray-200">
-            <h3 className="text-sm terminal-text uppercase text-robotic-yellow mb-3">
-              [OBJECTIVES]
-            </h3>
-            <div className="space-y-3">
-              {objectives.map((objective) => {
-                const statusColor =
-                  objective.status === 'completed'
-                    ? 'text-robotic-green border-robotic-green'
-                    : objective.status === 'failed'
-                      ? 'text-robotic-red border-robotic-red'
-                      : objective.status === 'in_progress'
-                        ? 'text-robotic-yellow border-robotic-yellow'
-                        : 'text-robotic-gray-50 border-robotic-gray-50';
-
-                return (
-                  <div key={objective.id} className="military-border p-3 bg-robotic-gray-300">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm terminal-text font-semibold">
-                        {objective.objective_name}
-                      </span>
-                      <span className={`text-xs terminal-text px-2 py-1 border ${statusColor}`}>
-                        {objective.status.toUpperCase().replace('_', ' ')}
-                      </span>
+      {/* Team Counters Panel - during active session: trainer sees all teams, participant sees own team(s) */}
+      {session.status === 'in_progress' &&
+        (() => {
+          const cs = session.current_state as Record<string, unknown> | undefined;
+          const evac = (cs?.evacuation_state as Record<string, unknown> | undefined) ?? {};
+          const triage = (cs?.triage_state as Record<string, unknown> | undefined) ?? {};
+          const media = (cs?.media_state as Record<string, unknown> | undefined) ?? {};
+          const showEvac = isTrainer || myTeams.some((t) => /evacuation/i.test(t.team_name ?? ''));
+          const showTriage = isTrainer || myTeams.some((t) => /triage/i.test(t.team_name ?? ''));
+          const showMedia = isTrainer || myTeams.some((t) => /media/i.test(t.team_name ?? ''));
+          if (!showEvac && !showTriage && !showMedia) return null;
+          return (
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+              <div className="military-border p-4 bg-robotic-gray-200">
+                <h3 className="text-sm terminal-text uppercase text-robotic-yellow mb-3">
+                  [TEAM METRICS]
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {showEvac && (
+                    <div className="military-border p-3 bg-robotic-gray-300">
+                      <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                        Evacuation
+                      </div>
+                      <div className="text-sm terminal-text text-robotic-gray-50">
+                        Evacuated: {Math.max(0, Number(evac.evacuated_count) || 0)} /{' '}
+                        {Math.max(0, Number(evac.total_evacuees) || 1000)}
+                        {(Number(evac.total_evacuees) || 1000) > 0 && (
+                          <span className="text-robotic-yellow/70 ml-1">
+                            (
+                            {Math.round(
+                              ((Number(evac.evacuated_count) || 0) /
+                                (Number(evac.total_evacuees) || 1000)) *
+                                100,
+                            )}
+                            %)
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="w-full bg-robotic-gray-400 h-2 mb-1">
-                      <div
-                        className={`h-full ${
-                          objective.status === 'completed'
-                            ? 'bg-robotic-green'
-                            : objective.status === 'failed'
-                              ? 'bg-robotic-red'
-                              : 'bg-robotic-yellow'
-                        }`}
-                        style={{ width: `${objective.progress_percentage}%` }}
-                      />
+                  )}
+                  {showTriage && (
+                    <div className="military-border p-3 bg-robotic-gray-300">
+                      <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                        Triage
+                      </div>
+                      <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
+                        <div>Deaths on site: {Math.max(0, Number(triage.deaths_on_site) || 0)}</div>
+                        <div>
+                          Handed over to hospital:{' '}
+                          {Math.max(0, Number(triage.handed_over_to_hospital) || 0)}
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between text-xs terminal-text text-robotic-yellow/70">
-                      <span>{objective.progress_percentage}% Complete</span>
-                      {objective.score !== null && <span>Score: {objective.score}/100</span>}
+                  )}
+                  {showMedia && (
+                    <div className="military-border p-3 bg-robotic-gray-300">
+                      <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                        Media
+                      </div>
+                      <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
+                        <div>
+                          Statements issued: {Math.max(0, Number(media.statements_issued) || 0)}
+                        </div>
+                        <div>
+                          Misinformation addressed:{' '}
+                          {Math.max(0, Number(media.misinformation_addressed_count) || 0)}
+                        </div>
+                        <div>
+                          Public sentiment: {Math.max(0, Number(media.public_sentiment) || 0)}/100
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-            {objectives.every((obj) => obj.status === 'completed' || obj.status === 'failed') && (
-              <div className="mt-3 p-2 military-border bg-robotic-yellow/10 border-robotic-yellow">
-                <p className="text-xs terminal-text text-robotic-yellow">
-                  [ALL_OBJECTIVES_RESOLVED] All objectives have been completed or failed.
-                </p>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
-        </div>
-      )}
+            </div>
+          );
+        })()}
 
       {/* Card-Based Content Grid */}
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
