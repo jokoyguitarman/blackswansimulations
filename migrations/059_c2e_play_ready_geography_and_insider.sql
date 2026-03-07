@@ -18,8 +18,8 @@ BEGIN
 
   UPDATE scenarios
   SET
-    center_lat = COALESCE(center_lat, 1.3521),
-    center_lng = COALESCE(center_lng, 103.8198),
+    center_lat = COALESCE(center_lat, 1.3489),
+    center_lng = COALESCE(center_lng, 103.8519),
     vicinity_radius_meters = COALESCE(vicinity_radius_meters, 2000),
     vicinity_map_url = COALESCE(vicinity_map_url, 'https://placehold.co/600x400/1a1a2e/eee?text=Vicinity+Map'),
     layout_image_url = COALESCE(layout_image_url, 'https://placehold.co/600x400/1a1a2e/eee?text=Layout'),

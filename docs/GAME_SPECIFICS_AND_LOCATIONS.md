@@ -46,7 +46,7 @@ Each pin has **conditions** in the database (good/bad, suitability, etc.). The m
 ### Which pins are shown on the map
 
 - **Always shown (incident geography):** blast site, exits, triage/open lots (area, triage_site), pathways, parking. The cordon pin is hidden so teams decide placement.
-- **Shown on request via Insider:** hospitals, police stations, fire stations, CCTV, community centres. These appear only after the user has asked the Insider a question that is classified as that category (e.g. “Where are the hospitals?”). The backend returns `map_revealed_categories` from `session_insider_qa` (distinct categories the user has asked about); the frontend filters establishment pins by that list. Asking the Insider triggers a refetch so newly revealed categories appear on the map.
+- **Shown on request via Insider:** hospitals, police stations, fire stations, CCTV, community centres. These appear only after **that player** has asked the Insider a question classified as that category (e.g. “Where are the hospitals?”). The backend returns `map_revealed_categories` from `session_insider_qa` filtered by **asked_by = current user**, so each player’s map shows only the POI categories they have personally asked about. Asking the Insider triggers a refetch so newly revealed categories appear on that player’s map.
 
 ---
 

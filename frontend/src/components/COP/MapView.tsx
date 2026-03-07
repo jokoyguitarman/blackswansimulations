@@ -63,6 +63,25 @@ interface EvacuationZoneData {
   title: string;
 }
 
+/** Map pins for incident geography (blast, exits, triage areas) are always shown. */
+const ALWAYS_SHOW_LOCATION_TYPES = [
+  'blast_site',
+  'exit',
+  'triage_site',
+  'area',
+  'pathway',
+  'parking',
+] as const;
+
+/** Establishment/POI pins only show after the user has asked the Insider about that category. */
+const LOCATION_TYPE_TO_INSIDER_CATEGORY: Record<string, string> = {
+  hospital: 'hospitals',
+  police_station: 'police',
+  fire_station: 'fire_stations',
+  cctv: 'cctv',
+  community_center: 'community_centres',
+};
+
 interface MapViewProps {
   sessionId: string;
   incidents?: Incident[];
@@ -78,6 +97,8 @@ interface MapViewProps {
   isVisible?: boolean;
   /** When true, use height 100% to fill the parent (e.g. session map module). */
   fillHeight?: boolean;
+  /** Increment to refetch locations (e.g. after user asked Insider, so new POI categories appear). */
+  locationsRefreshTrigger?: number;
 }
 
 /**
@@ -348,12 +369,14 @@ export const MapView = ({
   disabled = false,
   isVisible = true,
   fillHeight = false,
+  locationsRefreshTrigger = 0,
 }: MapViewProps) => {
   const mapDisabledByEnv = import.meta.env.VITE_DISABLE_MAP === 'true';
   const isMapDisabled = disabled || mapDisabledByEnv;
 
   const [evacuationZones, setEvacuationZones] = useState(initialEvacuationZones);
   const [scenarioLocations, setScenarioLocations] = useState<ScenarioLocationPin[]>([]);
+  const [mapRevealedCategories, setMapRevealedCategories] = useState<string[]>([]);
   const [environmentalState, setEnvironmentalState] = useState<{
     routes?: Array<{ label?: string; managed?: boolean }>;
     areas?: unknown[];
@@ -361,14 +384,15 @@ export const MapView = ({
   const [isContainerReady, setIsContainerReady] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Fetch scenario locations (map pins) for this session's scenario
+  // Fetch scenario locations (map pins) and which POI categories the user has asked the Insider about
   useEffect(() => {
     if (!sessionId || isMapDisabled) return;
     let cancelled = false;
     api.sessions
       .getLocations(sessionId)
       .then((res) => {
-        if (!cancelled && Array.isArray(res.data)) {
+        if (cancelled) return;
+        if (Array.isArray(res.data)) {
           setScenarioLocations(
             res.data.map((loc) => ({
               id: loc.id,
@@ -378,14 +402,18 @@ export const MapView = ({
             })),
           );
         }
+        setMapRevealedCategories(res.map_revealed_categories ?? []);
       })
       .catch(() => {
-        if (!cancelled) setScenarioLocations([]);
+        if (!cancelled) {
+          setScenarioLocations([]);
+          setMapRevealedCategories([]);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [sessionId, isMapDisabled]);
+  }, [sessionId, isMapDisabled, locationsRefreshTrigger]);
 
   // Listen for state updates: evacuation zones + environmental_state (Step 6)
   useWebSocket({
@@ -426,10 +454,18 @@ export const MapView = ({
   const scenarioLocationsWithCoords = scenarioLocations.filter(
     (loc) => typeof loc.coordinates?.lat === 'number' && typeof loc.coordinates?.lng === 'number',
   );
-  // Hide cordon so teams must decide whether and where to place it
-  const scenarioLocationsForMap = scenarioLocationsWithCoords.filter(
-    (loc) => loc.location_type !== 'cordon',
-  );
+  // Hide cordon; show incident geography always; show establishment/POI pins only when user asked Insider for that category
+  const scenarioLocationsForMap = scenarioLocationsWithCoords.filter((loc) => {
+    if (loc.location_type === 'cordon') return false;
+    if (
+      ALWAYS_SHOW_LOCATION_TYPES.includes(
+        loc.location_type as (typeof ALWAYS_SHOW_LOCATION_TYPES)[number],
+      )
+    )
+      return true;
+    const category = LOCATION_TYPE_TO_INSIDER_CATEGORY[loc.location_type];
+    return category ? mapRevealedCategories.includes(category) : false;
+  });
 
   const unmanagedRoutes = Array.isArray(environmentalState?.routes)
     ? environmentalState.routes.filter((r) => r.managed === false)

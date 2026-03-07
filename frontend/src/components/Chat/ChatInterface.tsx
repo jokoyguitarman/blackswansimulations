@@ -49,6 +49,8 @@ interface Message {
 
 interface ChatInterfaceProps {
   sessionId: string;
+  /** Called after the user gets an Insider reply (so the map can refetch and show newly revealed POI pins). */
+  onInsiderAsked?: () => void;
 }
 
 const INSIDER_DM_ID = '__insider__';
@@ -90,7 +92,7 @@ interface InsiderMessage {
   created_at: string;
 }
 
-export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
+export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps) => {
   const { user } = useAuth();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [dmChannels, setDmChannels] = useState<DMChannel[]>([]);
@@ -1193,6 +1195,7 @@ export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
         };
         setInsiderMessages((prev) => [...prev, insiderMsg]);
         scrollToBottom();
+        onInsiderAsked?.();
         // Map opens via clickable link in the reply (hash #show-map), not auto-open.
       } catch (err) {
         console.error('Failed to ask Insider:', err);

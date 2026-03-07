@@ -20,27 +20,38 @@ BEGIN
 
   -- ============================================
   -- PART 1: scenario_locations (map pins)
-  -- Center from 061 osm_vicinity: lat 1.3521, lng 103.8198
+  -- Center: Bishan East Community Park (green activity area), lat 1.3489, lng 103.8519
   -- ============================================
   DELETE FROM scenario_locations WHERE scenario_id = scenario_uuid;
 
   INSERT INTO scenario_locations (scenario_id, location_type, label, coordinates, conditions, display_order)
   VALUES
-    -- Blast & cordon
-    (scenario_uuid, 'blast_site', 'Ground zero (blast epicentre)', '{"lat": 1.3521, "lng": 103.8198}'::jsonb, '{"cordon_rule": "No entry except authorised response; casualty pickup at edge only."}'::jsonb, 0),
-    (scenario_uuid, 'cordon', 'Inner cordon perimeter (20m)', '{"lat": 1.3521, "lng": 103.8198}'::jsonb, '{}'::jsonb, 1),
-    -- Exits (N, S, E, W, CC)
-    (scenario_uuid, 'exit', 'North exit', '{"lat": 1.3526, "lng": 103.8198}'::jsonb, '{"flow_per_min": 120, "status": "open", "width_m": 4}'::jsonb, 10),
-    (scenario_uuid, 'exit', 'South exit', '{"lat": 1.3516, "lng": 103.8198}'::jsonb, '{"flow_per_min": 80, "status": "open", "width_m": 3}'::jsonb, 11),
-    (scenario_uuid, 'exit', 'East exit', '{"lat": 1.3521, "lng": 103.8203}'::jsonb, '{"flow_per_min": 60, "status": "open", "width_m": 2}'::jsonb, 12),
-    (scenario_uuid, 'exit', 'West exit', '{"lat": 1.3521, "lng": 103.8193}'::jsonb, '{"flow_per_min": 45, "status": "congested", "width_m": 2.5}'::jsonb, 13),
-    (scenario_uuid, 'exit', 'Community club', '{"lat": 1.3520, "lng": 103.8202}'::jsonb, '{"flow_per_min": 90, "status": "open", "width_m": 3.5}'::jsonb, 14),
-    -- Triage candidate areas (site_areas from 061; conditions drive prerequisite gate)
-    (scenario_uuid, 'triage_site', 'North side of court', '{"lat": 1.3524, "lng": 103.8198}'::jsonb, '{"suitability": "medium", "capacity_lying": 45, "hazards": "Partially collapsed shelter; check structural integrity."}'::jsonb, 20),
-    (scenario_uuid, 'triage_site', 'South side of court', '{"lat": 1.3518, "lng": 103.8198}'::jsonb, '{"suitability": "high", "capacity_lying": 65}'::jsonb, 21),
-    (scenario_uuid, 'triage_site', 'East side (along community club)', '{"lat": 1.3521, "lng": 103.8201}'::jsonb, '{"suitability": "high", "capacity_lying": 15}'::jsonb, 22),
-    (scenario_uuid, 'triage_site', 'West side (service road area)', '{"lat": 1.3521, "lng": 103.8195}'::jsonb, '{"suitability": "low", "unsuitable": true, "capacity_lying": 50, "hazards": "Congested; downwind of cordon."}'::jsonb, 23),
-    (scenario_uuid, 'triage_site', 'Adjacent grass field (north-west)', '{"lat": 1.3528, "lng": 103.8192}'::jsonb, '{"suitability": "high", "capacity_lying": 100}'::jsonb, 24);
+    -- Blast & cordon at park (green activity area)
+    (scenario_uuid, 'blast_site', 'Ground zero (blast epicentre)', '{"lat": 1.3489, "lng": 103.8519}'::jsonb, '{"cordon_rule": "No entry except authorised response; casualty pickup at edge only."}'::jsonb, 0),
+    (scenario_uuid, 'cordon', 'Inner cordon perimeter (20m)', '{"lat": 1.3489, "lng": 103.8519}'::jsonb, '{}'::jsonb, 1),
+    -- Exits (N, S, E, W, CC) – around the park
+    (scenario_uuid, 'exit', 'North exit', '{"lat": 1.3494, "lng": 103.8519}'::jsonb, '{"flow_per_min": 120, "status": "open", "width_m": 4}'::jsonb, 10),
+    (scenario_uuid, 'exit', 'South exit', '{"lat": 1.3484, "lng": 103.8519}'::jsonb, '{"flow_per_min": 80, "status": "open", "width_m": 3}'::jsonb, 11),
+    (scenario_uuid, 'exit', 'East exit', '{"lat": 1.3489, "lng": 103.8524}'::jsonb, '{"flow_per_min": 60, "status": "open", "width_m": 2}'::jsonb, 12),
+    (scenario_uuid, 'exit', 'West exit', '{"lat": 1.3489, "lng": 103.8514}'::jsonb, '{"flow_per_min": 45, "status": "congested", "width_m": 2.5}'::jsonb, 13),
+    (scenario_uuid, 'exit', 'Community club', '{"lat": 1.3492, "lng": 103.8512}'::jsonb, '{"flow_per_min": 90, "status": "open", "width_m": 3.5}'::jsonb, 14),
+    -- Candidate areas (066 sets labels to Vacant lot A–E, type to area)
+    (scenario_uuid, 'triage_site', 'Area A', '{"lat": 1.3492, "lng": 103.8519}'::jsonb, '{"suitability": "medium", "capacity_lying": 45, "hazards": "Partially collapsed shelter; check structural integrity."}'::jsonb, 20),
+    (scenario_uuid, 'triage_site', 'Area B', '{"lat": 1.3486, "lng": 103.8519}'::jsonb, '{"suitability": "high", "capacity_lying": 65}'::jsonb, 21),
+    (scenario_uuid, 'triage_site', 'Area C', '{"lat": 1.3489, "lng": 103.8522}'::jsonb, '{"suitability": "high", "capacity_lying": 15}'::jsonb, 22),
+    (scenario_uuid, 'triage_site', 'Area D', '{"lat": 1.3489, "lng": 103.8516}'::jsonb, '{"suitability": "low", "unsuitable": true, "capacity_lying": 50, "hazards": "Congested; downwind of cordon."}'::jsonb, 23),
+    (scenario_uuid, 'triage_site', 'Area E', '{"lat": 1.3495, "lng": 103.8515}'::jsonb, '{"suitability": "high", "capacity_lying": 100}'::jsonb, 24),
+    -- Establishments and response organisations near blast site
+    (scenario_uuid, 'police_station', 'Bishan Neighbourhood Police Centre', '{"lat": 1.3578, "lng": 103.8478}'::jsonb, '{}'::jsonb, 30),
+    (scenario_uuid, 'fire_station', 'Bishan Fire Station (SCDF)', '{"lat": 1.3479, "lng": 103.8387}'::jsonb, '{}'::jsonb, 31),
+    (scenario_uuid, 'hospital', 'Tan Tock Seng Hospital', '{"lat": 1.3216, "lng": 103.8459}'::jsonb, '{}'::jsonb, 32),
+    (scenario_uuid, 'community_center', 'Toa Payoh Central Community Club', '{"lat": 1.3329, "lng": 103.8497}'::jsonb, '{}'::jsonb, 33),
+    (scenario_uuid, 'cctv', 'CCTV (Bishan MRT area)', '{"lat": 1.3512, "lng": 103.8485}'::jsonb, '{}'::jsonb, 34),
+    (scenario_uuid, 'cctv', 'CCTV (east of park)', '{"lat": 1.3490, "lng": 103.8520}'::jsonb, '{}'::jsonb, 35),
+    (scenario_uuid, 'hospital', 'Bishan Community Hospital', '{"lat": 1.3502, "lng": 103.8491}'::jsonb, '{}'::jsonb, 36),
+    (scenario_uuid, 'hospital', 'Toa Payoh Polyclinic', '{"lat": 1.3343, "lng": 103.8494}'::jsonb, '{}'::jsonb, 37),
+    (scenario_uuid, 'police_station', 'Toa Payoh East NPC', '{"lat": 1.3345, "lng": 103.8512}'::jsonb, '{}'::jsonb, 38),
+    (scenario_uuid, 'police_station', 'Ang Mo Kio Division HQ', '{"lat": 1.3752, "lng": 103.8490}'::jsonb, '{}'::jsonb, 39);
 
   GET DIAGNOSTICS loc_count = ROW_COUNT;
   RAISE NOTICE '064: scenario_locations inserted: %', loc_count;

@@ -78,6 +78,7 @@ export const SessionView = () => {
   );
   const [mapModuleReady, setMapModuleReady] = useState(false);
   const [mapHasBeenOpened, setMapHasBeenOpened] = useState(false);
+  const [locationsRefreshTrigger, setLocationsRefreshTrigger] = useState(0);
   const sessionContentRef = useRef<HTMLDivElement | null>(null);
   const [_incidents, setIncidents] = useState<
     Array<{
@@ -792,7 +793,10 @@ export const SessionView = () => {
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
-                <ChatInterface sessionId={id} />
+                <ChatInterface
+                  sessionId={id}
+                  onInsiderAsked={() => setLocationsRefreshTrigger((t) => t + 1)}
+                />
               </div>
             </div>
           )}
@@ -1211,6 +1215,7 @@ export const SessionView = () => {
                     resources={[]}
                     isVisible={showMapModule}
                     fillHeight
+                    locationsRefreshTrigger={locationsRefreshTrigger}
                     initialCenter={
                       session?.scenarios?.center_lat != null &&
                       session?.scenarios?.center_lng != null

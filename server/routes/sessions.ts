@@ -757,7 +757,22 @@ router.get(
         return res.status(500).json({ error: 'Failed to fetch locations' });
       }
 
-      res.json({ data: locations ?? [] });
+      // Pins for establishments (hospital, police, fire, cctv, community) only show when THIS user has asked the Insider about that category (per-player view).
+      const { data: qaRows } = await supabaseAdmin
+        .from('session_insider_qa')
+        .select('category')
+        .eq('session_id', sessionId)
+        .eq('asked_by', user.id)
+        .in('category', ['hospitals', 'police', 'fire_stations', 'cctv']);
+
+      const mapRevealedCategories = Array.from(
+        new Set((qaRows ?? []).map((r) => (r as { category: string }).category)),
+      );
+
+      res.json({
+        data: locations ?? [],
+        map_revealed_categories: mapRevealedCategories,
+      });
     } catch (err) {
       logger.error({ error: err }, 'Error in GET /sessions/:id/locations');
       res.status(500).json({ error: 'Internal server error' });

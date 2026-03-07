@@ -149,6 +149,8 @@ export const api = {
           coordinates: { lat?: number; lng?: number };
           display_order?: number;
         }>;
+        /** Insider categories the user has asked about this session; only those POI pins are shown. */
+        map_revealed_categories?: string[];
       }>(await fetch(apiUrl(`/api/sessions/${sessionId}/locations`), { headers }));
     },
     getBackendActivity: async (sessionId: string) => {
