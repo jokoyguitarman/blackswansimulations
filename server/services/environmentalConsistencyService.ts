@@ -12,10 +12,15 @@ import type { Server as SocketServer } from 'socket.io';
 export type EnvironmentalConsistencySeverity = 'low' | 'medium' | 'high';
 export type EnvironmentalConsistencyErrorType = 'capacity' | 'location' | 'flow' | 'other';
 
+/** When consistent is false: "contradiction" = wrong vs ground truth; "below_standard" = correct but short of sector standard. */
+export type EnvironmentalMismatchKind = 'contradiction' | 'below_standard';
+
 export interface EnvironmentalConsistencyResult {
   consistent: boolean;
   severity?: EnvironmentalConsistencySeverity;
   error_type?: EnvironmentalConsistencyErrorType;
+  /** Set when consistent is false: contradiction = factual error vs ground truth; below_standard = meets ground truth but below sector standard. */
+  mismatch_kind?: EnvironmentalMismatchKind;
   reason?: string;
 }
 
@@ -100,14 +105,16 @@ export async function evaluateDecisionAgainstEnvironment(
     const systemPrompt = `You are an expert crisis management evaluator. Given a decision (title and description) and the scenario's ENVIRONMENT GROUND TRUTH, determine if the decision's details are consistent with that environment.${incidentBlock}
 
 Rules:
-- consistent: true if the decision does not contradict the ground truth (e.g. capacities, exit names, flow rates, zones). Generic or high-level decisions with no specific numbers/locations are consistent.
-- consistent: false if the decision states specific details that contradict the ground truth (e.g. "assembly area North for 100" but North capacity is 50; "use East exit" but East does not exist; "clear in 2 minutes" but flow cannot support that).
-- severity: "low" = minor mismatch (e.g. 60 in 50-capacity area); "medium" = clear mismatch (e.g. 100 in 50, wrong exit name); "high" = dangerous/impossible (e.g. 200 in 50, non-existent exit).
-- error_type: "capacity" = assembly/triage capacity overflow; "location" = wrong place/exit; "flow" = unrealistic flow/timing; "other" = generic.
-- reason: one clear sentence for the player (e.g. "The assembly area you designated has a safe capacity of 50; your plan assumed 100.").
-When sector standards are provided in the user message, use them when evaluating consistency: e.g. assembly area at least 125% of evacuees (ICS); triage zone ~50 patients (WHO). If the decision states numbers that violate these norms or ground truth, set consistent false and cite in reason.
+- consistent: true if the decision does not contradict the ground truth and (when sector standards exist) either meets them or uses a pragmatic option that matches ground truth.
+- consistent: false only when (a) the decision contradicts ground truth, or (b) the decision is clearly dangerous (e.g. capacity a small fraction of need with no mitigation). Do NOT set consistent false merely for being below a sector standard (e.g. 125% evacuee capacity) when the decision correctly uses an existing area and the shortfall is a realistic constraint.
+- mismatch_kind (required when consistent is false): "contradiction" = the decision states facts that contradict ground truth (e.g. wrong exit name, North capacity 200 but ground truth says 50, non-existent location, flow that cannot be supported). "below_standard" = the decision matches ground truth (right place, right capacities per layout) but falls short of an aspirational sector standard (e.g. assembly area holds 200, standard is 125% of 1250 evacuees). In real crises, meeting standards immediately is often impossible; using the best available option is not a contradiction.
+- severity: "low" = minor (e.g. 60 in 50-capacity area); "medium" = clear contradiction (e.g. wrong exit, 100 in 50); "high" = dangerous/impossible (e.g. 200 in 50, non-existent exit). For below_standard use "low" or "medium" only.
+- error_type: "capacity" | "location" | "flow" | "other" (if consistent is false).
+- reason: one clear sentence (e.g. for contradiction: "The assembly area North has a safe capacity of 50; your plan assumed 100." For below_standard: "The assembly area you designated (North capacity 200) is below the sector guideline of 125% of expected evacuees (1250); your plan uses the available option.").
 
-Return ONLY valid JSON: { "consistent": boolean, "severity": "low"|"medium"|"high" (if consistent is false), "error_type": "capacity"|"location"|"flow"|"other" (if consistent is false), "reason": "..." (if consistent is false) }`;
+Sector standards (e.g. 125% assembly capacity, triage ratios) are best-practice targets, not absolute requirements. Only use them to set consistent false when the decision also contradicts ground truth or is clearly dangerous. If the decision correctly uses a real area/capacity from ground truth but that capacity is below the standard, set mismatch_kind "below_standard" and severity "low" or "medium".
+
+Return ONLY valid JSON: { "consistent": boolean, "mismatch_kind": "contradiction"|"below_standard" (if consistent is false), "severity": "low"|"medium"|"high" (if consistent is false), "error_type": "capacity"|"location"|"flow"|"other" (if consistent is false), "reason": "..." (if consistent is false) }`;
 
     const incidentUserBlock =
       incident?.title != null || incident?.description != null
@@ -157,6 +164,7 @@ Is this decision consistent with the environment? Return JSON only.`;
 
     const parsed = JSON.parse(content) as {
       consistent?: boolean;
+      mismatch_kind?: string;
       severity?: string;
       error_type?: string;
       reason?: string;
@@ -165,6 +173,10 @@ Is this decision consistent with the environment? Return JSON only.`;
     const consistent = parsed.consistent === true;
     if (consistent) return { consistent: true };
 
+    const mismatch_kind =
+      parsed.mismatch_kind === 'below_standard'
+        ? ('below_standard' as const)
+        : ('contradiction' as const); // default contradiction for backward compat and prerequisite
     const severity = ['low', 'medium', 'high'].includes(parsed.severity ?? '')
       ? (parsed.severity as EnvironmentalConsistencySeverity)
       : 'medium';
@@ -176,7 +188,7 @@ Is this decision consistent with the environment? Return JSON only.`;
         ? parsed.reason.trim().slice(0, 500)
         : 'Decision details do not match current site conditions.';
 
-    return { consistent: false, severity, error_type, reason };
+    return { consistent: false, severity, error_type, mismatch_kind, reason };
   } catch (err) {
     logger.warn(
       { err, sessionId, decisionId: decision.id },
@@ -189,6 +201,10 @@ Is this decision consistent with the environment? Return JSON only.`;
 /**
  * Create and publish an environmental mismatch inject for the team(s) that made the decision.
  * Call when Checkpoint 2 returns consistent: false.
+ */
+/**
+ * Publish environmental mismatch inject only for contradictions (wrong vs ground truth).
+ * Below-standard (correct but short of sector guideline) is not announced; robustness cap still applies.
  */
 export async function createAndPublishEnvironmentalMismatchInject(
   params: {
@@ -203,6 +219,7 @@ export async function createAndPublishEnvironmentalMismatchInject(
 ): Promise<void> {
   const { sessionId, scenarioId, trainerId, authorTeamNames, result } = params;
   if (result.consistent) return;
+  if (result.mismatch_kind === 'below_standard') return; // no inject for below-standard only
 
   const title =
     result.error_type === 'capacity'

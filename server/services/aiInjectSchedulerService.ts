@@ -43,7 +43,7 @@ function computeRobustnessByTeam(
 
 /**
  * Apply Checkpoint 2 robustness cap: decisions marked environmentally inconsistent
- * (high severity -> cap 3, medium -> cap 6) so pathway outcome reflects failure.
+ * (contradiction: high severity -> cap 3, medium -> cap 6; below_standard -> cap 6 only).
  */
 async function applyEnvironmentalConsistencyCap(
   robustnessByDecisionId: Record<string, number> | null,
@@ -61,11 +61,18 @@ async function applyEnvironmentalConsistencyCap(
     .select('id, environmental_consistency')
     .eq('session_id', sessionId)
     .in('id', decisionIds);
-  const envByDecision = new Map<string, { consistent?: boolean; severity?: string }>();
+  const envByDecision = new Map<
+    string,
+    { consistent?: boolean; severity?: string; mismatch_kind?: 'contradiction' | 'below_standard' }
+  >();
   for (const row of rows ?? []) {
     const r = row as {
       id: string;
-      environmental_consistency?: { consistent?: boolean; severity?: string } | null;
+      environmental_consistency?: {
+        consistent?: boolean;
+        severity?: string;
+        mismatch_kind?: string;
+      } | null;
     };
     if (r.environmental_consistency && typeof r.environmental_consistency === 'object')
       envByDecision.set(r.id, r.environmental_consistency);
@@ -73,9 +80,16 @@ async function applyEnvironmentalConsistencyCap(
   const capped: Record<string, number> = {};
   for (const [id, score] of Object.entries(robustnessByDecisionId)) {
     const env = envByDecision.get(id);
-    if (env?.consistent === false && env?.severity === 'high') capped[id] = Math.min(score, 3);
-    else if (env?.consistent === false && env?.severity === 'medium')
+    if (env?.consistent !== false) {
+      capped[id] = score;
+      continue;
+    }
+    if (env.mismatch_kind === 'below_standard') {
       capped[id] = Math.min(score, 6);
+      continue;
+    }
+    if (env?.severity === 'high') capped[id] = Math.min(score, 3);
+    else if (env?.severity === 'medium') capped[id] = Math.min(score, 6);
     else capped[id] = score;
   }
   return capped;

@@ -1215,7 +1215,21 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         .update({ environmental_consistency: envResult })
         .eq('id', decision.id);
 
-      if (!envResult.consistent && sessionScenarioId && sessionTrainerId && io) {
+      const isContradiction = !envResult.consistent && envResult.mismatch_kind !== 'below_standard';
+      if (!envResult.consistent && authorTeamNames.length > 0 && sessionScenarioId) {
+        const { data: scenarioObjectives } = await supabaseAdmin
+          .from('scenario_objectives')
+          .select('objective_id')
+          .eq('scenario_id', sessionScenarioId)
+          .in('objective_id', authorTeamNames);
+        const objectiveIdsToSkip = (scenarioObjectives ?? []).map(
+          (r: { objective_id: string }) => r.objective_id,
+        );
+        for (const objId of objectiveIdsToSkip) {
+          if (!skipPositiveForObjectiveIds.includes(objId)) skipPositiveForObjectiveIds.push(objId);
+        }
+      }
+      if (isContradiction && sessionScenarioId && sessionTrainerId && io) {
         await createAndPublishEnvironmentalMismatchInject(
           {
             sessionId: decision.session_id,
@@ -1227,20 +1241,6 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
           },
           io,
         );
-        if (authorTeamNames.length > 0) {
-          const { data: scenarioObjectives } = await supabaseAdmin
-            .from('scenario_objectives')
-            .select('objective_id')
-            .eq('scenario_id', sessionScenarioId)
-            .in('objective_id', authorTeamNames);
-          const objectiveIdsToSkip = (scenarioObjectives ?? []).map(
-            (r: { objective_id: string }) => r.objective_id,
-          );
-          for (const objId of objectiveIdsToSkip) {
-            if (!skipPositiveForObjectiveIds.includes(objId))
-              skipPositiveForObjectiveIds.push(objId);
-          }
-        }
         if (
           (envResult.severity === 'medium' || envResult.severity === 'high') &&
           authorTeamNames.length > 0 &&
