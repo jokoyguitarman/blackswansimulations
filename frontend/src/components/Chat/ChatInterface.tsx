@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
 import { useWebSocket, type WebSocketEvent } from '../../hooks/useWebSocket';
@@ -49,10 +49,39 @@ interface Message {
 
 interface ChatInterfaceProps {
   sessionId: string;
-  onInsiderShowMap?: () => void;
 }
 
 const INSIDER_DM_ID = '__insider__';
+
+/** Renders Insider message content with markdown-style [text](url) links as clickable anchors. */
+function ContentWithLinks({ content }: { content: string }) {
+  const re = /\[([^\]]+)\]\(([^)]+)\)/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+  while ((match = re.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(<span key={`t-${key++}`}>{content.slice(lastIndex, match.index)}</span>);
+    }
+    parts.push(
+      <a
+        key={`link-${key++}`}
+        href={match[2]}
+        className="underline text-green-400 hover:text-green-300"
+        target="_self"
+        rel="noopener noreferrer"
+      >
+        {match[1]}
+      </a>,
+    );
+    lastIndex = re.lastIndex;
+  }
+  if (lastIndex < content.length) {
+    parts.push(<span key={`t-${key++}`}>{content.slice(lastIndex)}</span>);
+  }
+  return parts.length > 0 ? <>{parts}</> : <>{content}</>;
+}
 
 interface InsiderMessage {
   id: string;
@@ -61,7 +90,7 @@ interface InsiderMessage {
   created_at: string;
 }
 
-export const ChatInterface = ({ sessionId, onInsiderShowMap }: ChatInterfaceProps) => {
+export const ChatInterface = ({ sessionId }: ChatInterfaceProps) => {
   const { user } = useAuth();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [dmChannels, setDmChannels] = useState<DMChannel[]>([]);
@@ -1164,9 +1193,7 @@ export const ChatInterface = ({ sessionId, onInsiderShowMap }: ChatInterfaceProp
         };
         setInsiderMessages((prev) => [...prev, insiderMsg]);
         scrollToBottom();
-        if (data.show_map) {
-          onInsiderShowMap?.();
-        }
+        // Map opens via clickable link in the reply (hash #show-map), not auto-open.
       } catch (err) {
         console.error('Failed to ask Insider:', err);
         setInsiderMessages((prev) => [
@@ -1424,7 +1451,7 @@ export const ChatInterface = ({ sessionId, onInsiderShowMap }: ChatInterfaceProp
                       </span>
                     </div>
                     <p className="text-sm terminal-text text-green-400/90 whitespace-pre-wrap">
-                      {msg.content}
+                      <ContentWithLinks content={msg.content} />
                     </p>
                   </div>
                 ))}

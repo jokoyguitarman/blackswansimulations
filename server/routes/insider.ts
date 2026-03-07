@@ -7,7 +7,6 @@ import { validate } from '../lib/validation.js';
 import {
   classifyInsiderQuestion,
   buildSliceAnswer,
-  buildMapOnlyResponse,
   type InsiderKnowledgeBlob,
 } from '../services/insiderService.js';
 import { getWebSocketService } from '../services/websocketService.js';
@@ -87,9 +86,17 @@ router.post(
 
       const category = classifyInsiderQuestion(content);
       const isMapRequest = category === 'map';
-      const { answer, sources_used } = isMapRequest
-        ? buildMapOnlyResponse(knowledge)
-        : buildSliceAnswer(knowledge, category);
+      let answer: string;
+      let sources_used: string;
+      if (isMapRequest) {
+        // No static map URLs; only the interactive map (labels and pins) via link.
+        answer = `You can view the interactive map (with labels and pins) using the link below.\n\n[Open interactive map](/sessions/${sessionId}#show-map)`;
+        sources_used = 'interactive_map';
+      } else {
+        const result = buildSliceAnswer(knowledge, category);
+        answer = result.answer;
+        sources_used = result.sources_used;
+      }
 
       const answerSnippet = answer.length > 500 ? answer.slice(0, 497) + '...' : answer;
 

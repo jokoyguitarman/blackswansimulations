@@ -73,7 +73,10 @@ export const SessionView = () => {
   const [cardNotifications, setCardNotifications] = useState<
     Record<string, 'new' | 'viewed' | 'none'>
   >({});
-  const [showMapModule, setShowMapModule] = useState(false);
+  const [showMapModule, setShowMapModule] = useState(
+    () => typeof window !== 'undefined' && window.location.hash === '#show-map',
+  );
+  const [mapModuleReady, setMapModuleReady] = useState(false);
   const [_incidents, setIncidents] = useState<
     Array<{
       id: string;
@@ -133,6 +136,26 @@ export const SessionView = () => {
       }>;
     }>
   >([]);
+
+  // Sync map module visibility with #show-map hash (link in Insider reply opens map via hash).
+  useEffect(() => {
+    const syncFromHash = () => {
+      setShowMapModule(window.location.hash === '#show-map');
+    };
+    syncFromHash();
+    window.addEventListener('hashchange', syncFromHash);
+    return () => window.removeEventListener('hashchange', syncFromHash);
+  }, []);
+
+  // Delay mounting MapView slightly so the container is stable (reduces Leaflet removeChild errors).
+  useEffect(() => {
+    if (!showMapModule) {
+      setMapModuleReady(false);
+      return;
+    }
+    const t = setTimeout(() => setMapModuleReady(true), 150);
+    return () => clearTimeout(t);
+  }, [showMapModule]);
 
   useEffect(() => {
     if (id) {
@@ -759,7 +782,7 @@ export const SessionView = () => {
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
-                <ChatInterface sessionId={id} onInsiderShowMap={() => setShowMapModule(true)} />
+                <ChatInterface sessionId={id} />
               </div>
             </div>
           )}
@@ -1151,27 +1174,39 @@ export const SessionView = () => {
               <div className="flex justify-between items-center mb-3 flex-shrink-0">
                 <h3 className="text-lg terminal-text uppercase">[MAP]</h3>
                 <button
-                  onClick={() => setShowMapModule(false)}
+                  onClick={() => {
+                    setShowMapModule(false);
+                    if (window.location.hash === '#show-map') {
+                      window.history.replaceState(
+                        null,
+                        '',
+                        window.location.pathname + window.location.search,
+                      );
+                    }
+                  }}
                   className="px-3 py-1 text-xs terminal-text uppercase border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
                 >
                   [HIDE MAP]
                 </button>
               </div>
               <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden">
-                <MapView
-                  sessionId={id}
-                  incidents={[]}
-                  resources={[]}
-                  initialCenter={
-                    session?.scenarios?.center_lat != null && session?.scenarios?.center_lng != null
-                      ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
-                          number,
-                          number,
-                        ])
-                      : [1.3521, 103.8198]
-                  }
-                  initialZoom={16}
-                />
+                {mapModuleReady && (
+                  <MapView
+                    sessionId={id}
+                    incidents={[]}
+                    resources={[]}
+                    initialCenter={
+                      session?.scenarios?.center_lat != null &&
+                      session?.scenarios?.center_lng != null
+                        ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
+                            number,
+                            number,
+                          ])
+                        : [1.3521, 103.8198]
+                    }
+                    initialZoom={16}
+                  />
+                )}
               </div>
             </div>
           )}
