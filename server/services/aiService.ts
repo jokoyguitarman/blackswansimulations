@@ -1406,6 +1406,81 @@ Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and r
   }
 };
 
+export interface PublicSentimentResult {
+  public_sentiment: number;
+  sentiment_label?: string;
+  reason?: string;
+}
+
+/**
+ * Compute public sentiment (1-10) from game state and media actions for the media counter.
+ * Returns default 5 / "Unknown" if API key missing or call fails.
+ */
+export const computePublicSentiment = async (
+  stateSummary: string,
+  mediaSummary: string,
+  openAiApiKey: string | undefined,
+): Promise<PublicSentimentResult> => {
+  const defaultResult: PublicSentimentResult = {
+    public_sentiment: 5,
+    sentiment_label: 'Unknown',
+  };
+  if (!openAiApiKey?.trim()) return defaultResult;
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `You evaluate public sentiment in a crisis simulation based on the current game state and media team actions.
+Output a public sentiment score from 1 (hostile, panic, distrust) to 10 (calm, trusting, cooperative), and optionally a short label (e.g. calm, anxious, distrustful, hostile) and a one-sentence reason.
+Return ONLY valid JSON: { "public_sentiment": number, "sentiment_label": string, "reason": string }.`,
+          },
+          {
+            role: 'user',
+            content: `Current state:\n${stateSummary.slice(0, 3000)}\n\nMedia / statements:\n${mediaSummary.slice(0, 1500)}\n\nScore public sentiment 1-10 and optional label and reason. JSON only.`,
+          },
+        ],
+        temperature: 0.3,
+        max_tokens: 150,
+        response_format: { type: 'json_object' },
+      }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      logger.warn({ status: response.status, body: text }, 'computePublicSentiment API error');
+      return defaultResult;
+    }
+    const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = json.choices?.[0]?.message?.content;
+    if (!content) return defaultResult;
+    const parsed = JSON.parse(content) as {
+      public_sentiment?: number;
+      sentiment_label?: string;
+      reason?: string;
+    };
+    const score =
+      typeof parsed.public_sentiment === 'number'
+        ? Math.max(1, Math.min(10, Math.round(parsed.public_sentiment)))
+        : 5;
+    return {
+      public_sentiment: score,
+      sentiment_label:
+        typeof parsed.sentiment_label === 'string' ? parsed.sentiment_label : 'Unknown',
+      reason: typeof parsed.reason === 'string' ? parsed.reason : undefined,
+    };
+  } catch (err) {
+    logger.warn({ err }, 'computePublicSentiment failed');
+    return defaultResult;
+  }
+};
+
 /**
  * Objective Completion Evaluation Result
  */

@@ -3,6 +3,7 @@ import { logger } from '../lib/logger.js';
 import {
   generateInjectFromDecision,
   computeInterTeamImpactMatrix,
+  computePublicSentiment,
   aggregateThemeUsage,
   computeDecisionsSummaryLine,
   type ThemeUsageByScope,
@@ -11,7 +12,34 @@ import {
 } from './aiService.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { env } from '../env.js';
+import { getWebSocketService } from './websocketService.js';
 import type { Server as SocketServer } from 'socket.io';
+
+/**
+ * Compute per-team average robustness from decisions in the window.
+ * Used for evac/triage rate modulation in the inject scheduler.
+ */
+function computeRobustnessByTeam(
+  formattedDecisions: Array<{ id: string; team?: string | null }>,
+  robustnessByDecisionId: Record<string, number>,
+): Record<string, number> {
+  const byTeam: Record<string, number[]> = {};
+  for (const d of formattedDecisions) {
+    const team = d.team ?? 'Unknown';
+    if (!team) continue;
+    const score = robustnessByDecisionId[String(d.id)];
+    if (typeof score !== 'number') continue;
+    if (!byTeam[team]) byTeam[team] = [];
+    byTeam[team].push(score);
+  }
+  const result: Record<string, number> = {};
+  for (const [team, scores] of Object.entries(byTeam)) {
+    if (scores.length === 0) continue;
+    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+    result[team] = Math.round(avg * 10) / 10;
+  }
+  return result;
+}
 
 /**
  * Apply Checkpoint 2 robustness cap: decisions marked environmentally inconsistent
@@ -553,10 +581,15 @@ export class AIInjectSchedulerService {
           latestImpactAnalysis = impactResult.analysis ?? null;
           latestRobustnessByDecision =
             cappedRobustness ?? impactResult.robustnessByDecisionId ?? null;
+          const robustnessByTeam = computeRobustnessByTeam(
+            formattedDecisions,
+            latestRobustnessByDecision ?? {},
+          );
           await supabaseAdmin.from('session_impact_matrix').insert({
             ...baseInsert,
             matrix: impactResult.matrix,
             robustness_by_decision: latestRobustnessByDecision ?? {},
+            robustness_by_team: robustnessByTeam,
             escalation_factors_snapshot:
               escalationFactorsSnapshot.length > 0 ? escalationFactorsSnapshot : null,
             analysis: impactResult.analysis ?? null,
@@ -574,6 +607,7 @@ export class AIInjectSchedulerService {
             ...baseInsert,
             matrix: {},
             robustness_by_decision: {},
+            robustness_by_team: {},
             escalation_factors_snapshot:
               escalationFactorsSnapshot.length > 0 ? escalationFactorsSnapshot : null,
             analysis: null,
@@ -596,6 +630,77 @@ export class AIInjectSchedulerService {
           'Failed to compute or save impact matrix, continuing with inject generation',
         );
       }
+    }
+
+    // Public sentiment: AI-backed media_state.public_sentiment from full state and media actions
+    try {
+      const currentState = (session.current_state as Record<string, unknown>) || {};
+      const evac = (currentState.evacuation_state as Record<string, unknown>) || {};
+      const triage = (currentState.triage_state as Record<string, unknown>) || {};
+      const media = (currentState.media_state as Record<string, unknown>) || {};
+      const stateSummary = [
+        `Evac: ${evac.evacuated_count ?? 0} / ${evac.total_evacuees ?? 1000} evacuated`,
+        `Triage: ${triage.deaths_on_site ?? 0} deaths on site, ${triage.handed_over_to_hospital ?? 0} handed over, ${triage.patients_being_treated ?? 0} being treated, ${triage.patients_waiting ?? 0} waiting`,
+        `Recent injects: ${(formattedInjects || [])
+          .slice(0, 5)
+          .map(
+            (i: { title?: string; severity?: string }) =>
+              `${i.title ?? '?'} (${i.severity ?? 'N/A'})`,
+          )
+          .join('; ')}`,
+        `Misinformation addressed: ${media.misinformation_addressed ? 'yes' : 'no'}, statements issued: ${media.statements_issued ?? 0}`,
+      ].join('. ');
+      const mediaSummary = [
+        `Statements: ${media.statements_issued ?? 0}, misinformation addressed count: ${media.misinformation_addressed_count ?? 0}`,
+        formattedDecisions?.length
+          ? `Recent decisions (media-related): ${
+              formattedDecisions
+                .filter((d: { team?: string | null }) => /media/i.test(String(d.team ?? '')))
+                .map(
+                  (d: { title?: string; description?: string }) =>
+                    `${d.title ?? '?'}: ${(d.description ?? '').slice(0, 80)}...`,
+                )
+                .join(' | ') || 'none'
+            }`
+          : '',
+      ]
+        .filter(Boolean)
+        .join('. ');
+      const sentimentResult = await computePublicSentiment(
+        stateSummary,
+        mediaSummary,
+        env.openAiApiKey,
+      );
+      const { data: sessionForState } = await supabaseAdmin
+        .from('sessions')
+        .select('current_state')
+        .eq('id', session.id)
+        .single();
+      const latestState = (sessionForState?.current_state as Record<string, unknown>) || {};
+      const latestMedia = (latestState.media_state as Record<string, unknown>) || {};
+      const nextState = {
+        ...latestState,
+        media_state: {
+          ...latestMedia,
+          public_sentiment: sentimentResult.public_sentiment,
+          sentiment_label: sentimentResult.sentiment_label,
+          sentiment_reason: sentimentResult.reason,
+        },
+      };
+      await supabaseAdmin
+        .from('sessions')
+        .update({ current_state: nextState })
+        .eq('id', session.id);
+      getWebSocketService().stateUpdated?.(session.id, {
+        state: nextState,
+        timestamp: new Date().toISOString(),
+      });
+      (session as { current_state?: Record<string, unknown> }).current_state = nextState;
+    } catch (sentimentErr) {
+      logger.warn(
+        { err: sentimentErr, sessionId: session.id },
+        'Failed to compute or persist public sentiment',
+      );
     }
 
     // Enrich context for inject generation with matrix and escalation data (Checkpoint 8)

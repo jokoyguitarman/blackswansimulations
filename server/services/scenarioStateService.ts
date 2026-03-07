@@ -253,22 +253,8 @@ export async function updateTeamStateFromDecision(
       ) {
         triageState.prioritisation_decided = true;
       }
-      if (hasKeyword('handover', 'transfer', 'hospital', 'ambulance', 'hand over')) {
-        const current = Math.max(0, Number(triageState.handed_over_to_hospital) || 0);
-        triageState.handed_over_to_hospital = current + 5;
-      }
-      if (hasKeyword('treat', 'care', 'stable', 'patient care', 'treating')) {
-        const current = Math.max(0, Number(triageState.patients_being_treated) || 0);
-        triageState.patients_being_treated = current + 3;
-      }
-      if (hasKeyword('waiting', 'queue', 'backlog', 'wait list')) {
-        const current = Math.max(0, Number(triageState.patients_waiting) || 0);
-        triageState.patients_waiting = current + 2;
-      }
-      if (hasKeyword('casualty', 'casualties', 'critical count', 'red tag')) {
-        const current = Math.max(0, Number(triageState.casualties) || 0);
-        triageState.casualties = current + 1;
-      }
+      // Triage counters (handed_over, patients_being_treated, patients_waiting, casualties) are now
+      // driven by predetermined rates and robustness in the inject scheduler; no keyword-based bumps.
     }
     if (isMedia) {
       if (

@@ -5,11 +5,13 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
 import {
-  classifyInsiderQuestion,
+  classifyInsiderQuestionWithAI,
   buildSliceAnswer,
   buildTriageSiteAnswerFromLocations,
+  buildEvacuationHoldingAnswerFromLocations,
   type InsiderKnowledgeBlob,
 } from '../services/insiderService.js';
+import { env } from '../env.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { io } from '../index.js';
 import { logAndBroadcastEvent } from '../services/eventService.js';
@@ -85,7 +87,7 @@ router.post(
       if (scenario.vicinity_map_url) knowledge.vicinity_map_url = scenario.vicinity_map_url;
       if (scenario.layout_image_url) knowledge.layout_image_url = scenario.layout_image_url;
 
-      const category = classifyInsiderQuestion(content);
+      const category = await classifyInsiderQuestionWithAI(content, env.openAiApiKey);
       const isMapRequest = category === 'map';
       let answer: string;
       let sources_used: string;
@@ -108,6 +110,21 @@ router.post(
           site_area: siteAreas[i] ?? null,
         }));
         const result = buildTriageSiteAnswerFromLocations(rows);
+        answer = result.answer;
+        sources_used = result.sources_used;
+      } else if (category === 'evacuation_holding') {
+        // Evacuation holding / assembly zones: where to send or hold evacuees after they exit.
+        const { data: locations } = await supabaseAdmin
+          .from('scenario_locations')
+          .select('label, conditions')
+          .eq('scenario_id', session.scenario_id)
+          .eq('location_type', 'evacuation_holding')
+          .order('display_order', { ascending: true });
+        const rows = (locations ?? []).map((loc) => ({
+          label: loc.label ?? 'Unknown',
+          conditions: (loc.conditions as Record<string, unknown> | null) ?? undefined,
+        }));
+        const result = buildEvacuationHoldingAnswerFromLocations(rows);
         answer = result.answer;
         sources_used = result.sources_used;
       } else {

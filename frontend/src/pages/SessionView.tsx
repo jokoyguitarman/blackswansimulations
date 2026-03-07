@@ -691,7 +691,17 @@ export const SessionView = () => {
                           {Math.max(0, Number(media.misinformation_addressed_count) || 0)}
                         </div>
                         <div>
-                          Public sentiment: {Math.max(0, Number(media.public_sentiment) || 0)}/100
+                          Public sentiment:{' '}
+                          {media.public_sentiment != null ? Number(media.public_sentiment) : '–'} /
+                          10
+                          {media.sentiment_label && (
+                            <span
+                              className="ml-1 text-robotic-yellow/70"
+                              title={media.sentiment_reason as string}
+                            >
+                              ({String(media.sentiment_label)})
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

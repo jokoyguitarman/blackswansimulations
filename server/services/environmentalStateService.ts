@@ -44,6 +44,8 @@ export interface TriageStateSeed {
   patients_being_treated?: number;
   patients_waiting?: number;
   casualties?: number;
+  /** If set, used as pool cap for rate-based triage counters; else derived from total_evacuees * 0.25. */
+  initial_patients_at_site?: number;
 }
 
 export interface MediaStateSeed {
@@ -54,6 +56,8 @@ export interface MediaStateSeed {
   public_sentiment?: number;
   statements_issued?: number;
   misinformation_addressed_count?: number;
+  sentiment_label?: string;
+  sentiment_reason?: string;
 }
 
 export interface EnvironmentalSeedRow {

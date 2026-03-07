@@ -167,6 +167,20 @@ export class InjectSchedulerService {
     const currentState = (session.current_state as Record<string, unknown>) || {};
     const nextState: Record<string, unknown> = { ...currentState };
     let stateChanged = false;
+
+    // Fetch latest impact matrix for robustness-based rate modulation (evac and triage)
+    let robustnessByTeam: Record<string, number> = {};
+    const { data: latestMatrix } = await supabaseAdmin
+      .from('session_impact_matrix')
+      .select('robustness_by_team')
+      .eq('session_id', session.id)
+      .order('evaluated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latestMatrix?.robustness_by_team && typeof latestMatrix.robustness_by_team === 'object') {
+      robustnessByTeam = latestMatrix.robustness_by_team as Record<string, number>;
+    }
+
     const triageState = (nextState.triage_state as Record<string, unknown>) || {};
     if (elapsedMinutes >= 10 && triageState.surge_active !== true) {
       (nextState.triage_state as Record<string, unknown>) = { ...triageState, surge_active: true };
@@ -184,7 +198,8 @@ export class InjectSchedulerService {
       };
       stateChanged = true;
     }
-    // Evacuation counter: when flow_control_decided, advance evacuated_count by time and rate (capped at total_evacuees)
+    // Evacuation counter: when flow_control_decided, advance evacuated_count by time and rate (capped at total_evacuees).
+    // Robustness modifier: <=7 → ×0.25, >=8 → ×1.25, else ×1.0 (applied to current rate).
     const BASE_EVAC_RATE_PER_MIN = 40;
     const evacState = (nextState.evacuation_state as Record<string, unknown>) || {};
     const totalEvacuees = Math.max(0, Number(evacState.total_evacuees) || 1000);
@@ -192,6 +207,11 @@ export class InjectSchedulerService {
       let rate = BASE_EVAC_RATE_PER_MIN;
       const exitsCongested = evacState.exits_congested as string[] | undefined;
       if (exitsCongested && exitsCongested.length > 0) rate = Math.floor(rate / 2);
+      const evacRobustness = robustnessByTeam.Evacuation ?? robustnessByTeam.evacuation ?? null;
+      if (evacRobustness !== null && typeof evacRobustness === 'number') {
+        const mod = evacRobustness <= 7 ? 0.25 : evacRobustness >= 8 ? 1.25 : 1;
+        rate = rate * mod;
+      }
       const evacuated = Math.min(totalEvacuees, Math.floor(rate * elapsedMinutes));
       const currentEvacuated = Math.max(0, Number(evacState.evacuated_count) || 0);
       if (evacuated > currentEvacuated) {
@@ -202,6 +222,38 @@ export class InjectSchedulerService {
         stateChanged = true;
       }
     }
+
+    // Triage counters: predetermined rates driven by Triage team robustness; pool aligned with evac.
+    const triageStateNext = (nextState.triage_state as Record<string, unknown>) || {};
+    const pool =
+      typeof triageStateNext.initial_patients_at_site === 'number'
+        ? Math.max(0, triageStateNext.initial_patients_at_site)
+        : Math.max(0, Math.floor(totalEvacuees * 0.25));
+    const triageRobustness = robustnessByTeam.Triage ?? robustnessByTeam.triage ?? 5.5;
+    const band: 'low' | 'mid' | 'high' =
+      triageRobustness <= 4 ? 'low' : triageRobustness <= 7 ? 'mid' : 'high';
+    const BASE_TRIAGE_PROCESSED_PER_MIN = 8;
+    const throughputMult = band === 'low' ? 0.5 : band === 'high' ? 1.25 : 1;
+    const processed = Math.min(
+      pool,
+      Math.floor(BASE_TRIAGE_PROCESSED_PER_MIN * throughputMult * elapsedMinutes),
+    );
+    const deathFrac = band === 'low' ? 0.25 : band === 'high' ? 0.05 : 0.12;
+    const deaths = Math.min(processed, Math.floor(processed * deathFrac));
+    const remaining = processed - deaths;
+    const transportFrac = band === 'low' ? 0.2 : band === 'high' ? 0.6 : 0.4;
+    const handedOver = Math.floor(remaining * transportFrac);
+    const beingTreated = Math.max(0, remaining - handedOver);
+    const patientsWaiting = Math.max(0, pool - processed);
+    (nextState.triage_state as Record<string, unknown>) = {
+      ...triageStateNext,
+      deaths_on_site: deaths,
+      handed_over_to_hospital: handedOver,
+      patients_being_treated: beingTreated,
+      patients_waiting: patientsWaiting,
+      casualties: deaths,
+    };
+    stateChanged = true;
 
     if (stateChanged) {
       try {

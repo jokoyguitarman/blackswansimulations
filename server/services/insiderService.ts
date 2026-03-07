@@ -2,6 +2,7 @@
  * Insider answer service: map-only and slice-based answers from insider_knowledge.
  */
 
+import { logger } from '../lib/logger.js';
 import type { OsmVicinity } from './osmVicinityService.js';
 
 export type InsiderCategory =
@@ -13,6 +14,7 @@ export type InsiderCategory =
   | 'routes'
   | 'crowd_density'
   | 'triage_site'
+  | 'evacuation_holding'
   | 'layout'
   | 'other';
 
@@ -119,6 +121,13 @@ export function classifyInsiderQuestion(question: string): InsiderCategory {
     return 'triage_site';
   }
   if (
+    /\bholding\s+zone(s)?\b|\bassembly\s+(area|point)(s)?\b|\bwhere\s+(can\s+we\s+)?(send|disperse|direct)\s+evacuees\b|\bafter\s+(they\s+)?exit\b|\bstaging\s+area\b|\bevacuation\s+(holding|assembly)\b|\bwhere\s+to\s+(send|hold|stage)\s+(people|evacuees)\b|\bsuitable\s+(for\s+)?(evacuation\s+)?(holding|assembly)\b/i.test(
+      q,
+    )
+  ) {
+    return 'evacuation_holding';
+  }
+  if (
     /\bexit(s)?\b|\bflow\s+rate\b|\bevacuee(s)?\b|\bcapacity\b|\btriage\s+zone\b|\bground\s+zero\b|\blayout\b/i.test(
       q,
     )
@@ -126,6 +135,97 @@ export function classifyInsiderQuestion(question: string): InsiderCategory {
     return 'layout';
   }
   return 'other';
+}
+
+const VALID_INSIDER_CATEGORIES: InsiderCategory[] = [
+  'map',
+  'hospitals',
+  'police',
+  'fire_stations',
+  'cctv',
+  'routes',
+  'crowd_density',
+  'triage_site',
+  'evacuation_holding',
+  'layout',
+  'other',
+];
+
+/**
+ * Classify user question via AI into one of the Insider categories. Falls back to regex classification when API key is missing or the AI call fails.
+ */
+export async function classifyInsiderQuestionWithAI(
+  question: string,
+  openAiApiKey: string | undefined,
+): Promise<InsiderCategory> {
+  if (!openAiApiKey?.trim()) {
+    return classifyInsiderQuestion(question);
+  }
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `You classify a crisis-simulation player question into exactly one category. Return ONLY a JSON object: { "category": "<category>" }.
+
+Valid categories and what they mean:
+- map: request for a map, layout image, or vicinity map
+- hospitals: hospitals, medical facilities, healthcare, activating hospitals
+- police: police stations, outposts, law enforcement locations (not fire/SCDF)
+- fire_stations: fire stations, SCDF, civil defence, fire department
+- cctv: CCTV, cameras, surveillance, footage, video feed
+- routes: evacuation routes, emergency routes, roads, access, how to get there
+- crowd_density: crowd density, population around the area, people near the blast/site
+- triage_site: where to set up triage, triage zones/sites/tents, vacant lots for casualties, suitable areas for triage
+- evacuation_holding: where to send or hold evacuees after they exit, evacuation holding zones, assembly areas, staging areas
+- layout: exits, flow rate, evacuees, capacity, ground zero, general layout (not map image)
+- other: none of the above or unclear
+
+Pick the single best-matching category. Use "other" only if the question does not clearly fit any other category.`,
+          },
+          {
+            role: 'user',
+            content: normalizeQuestion(question).slice(0, 1000) || question.slice(0, 1000),
+          },
+        ],
+        temperature: 0.2,
+        max_tokens: 30,
+        response_format: { type: 'json_object' },
+      }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      logger.warn(
+        { status: response.status, body: text },
+        'Insider AI classification request failed',
+      );
+      return classifyInsiderQuestion(question);
+    }
+    const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = json.choices?.[0]?.message?.content;
+    if (!content) {
+      return classifyInsiderQuestion(question);
+    }
+    const parsed = JSON.parse(content) as { category?: string };
+    const category = parsed.category;
+    if (
+      typeof category === 'string' &&
+      VALID_INSIDER_CATEGORIES.includes(category as InsiderCategory)
+    ) {
+      return category as InsiderCategory;
+    }
+    return classifyInsiderQuestion(question);
+  } catch (e) {
+    logger.warn({ err: e }, 'classifyInsiderQuestionWithAI failed, using regex fallback');
+    return classifyInsiderQuestion(question);
+  }
 }
 
 /**
@@ -212,6 +312,58 @@ export function buildTriageSiteAnswerFromLocations(locations: TriageSiteLocation
     sources_used: usedSiteAreas
       ? 'scenario_locations, insider_knowledge.site_areas'
       : 'scenario_locations',
+  };
+}
+
+/** Row for building evacuation-holding answer from scenario_locations (label + conditions). */
+export interface EvacuationHoldingLocationRow {
+  label: string;
+  conditions?: Record<string, unknown> | null;
+}
+
+/**
+ * Build answer listing evacuation holding / assembly zones with capacity, suitability, nearest exit, etc.
+ * Uses scenario_locations (map pins) with location_type = 'evacuation_holding' only.
+ */
+export function buildEvacuationHoldingAnswerFromLocations(
+  locations: EvacuationHoldingLocationRow[],
+): { answer: string; sources_used: string } {
+  if (!locations.length) {
+    return {
+      answer:
+        "I don't have specific evacuation holding or assembly areas for this scenario. Check the map for any pinned areas.",
+      sources_used: 'scenario_locations',
+    };
+  }
+  const lines = locations.map((loc) => {
+    const cond = loc.conditions ?? {};
+    const capacity = cond.capacity as number | undefined;
+    const suitability = (cond.suitability as string) ?? null;
+    const nearestExit = (cond.nearest_exit as string) ?? null;
+    const hazards = (cond.hazards as string) ?? null;
+    const hasCover = cond.has_cover as boolean | undefined;
+    const distanceCordon = cond.distance_from_cordon_m as number | undefined;
+
+    const parts: string[] = [];
+    if (capacity != null && typeof capacity === 'number') parts.push(`capacity ${capacity}`);
+    if (suitability) parts.push(`suitability ${suitability}`);
+    if (nearestExit) parts.push(`nearest exit ${nearestExit}`);
+    const capText = parts.length ? ` — ${parts.join('; ')}` : '';
+    const detail: string[] = [];
+    if (hazards) detail.push(hazards);
+    if (hasCover !== undefined) {
+      detail.push(hasCover ? 'Cover available' : 'No cover');
+    }
+    if (distanceCordon != null && typeof distanceCordon === 'number') {
+      detail.push(`${distanceCordon} m from cordon`);
+    }
+    const detailText = detail.length ? ` ${detail.join('. ')}` : '';
+    return `- **${loc.label}**${capText}.${detailText}`;
+  });
+  const answer = `These areas are pinned on the map and can be used to hold or disperse evacuees after they exit:\n\n${lines.join('\n\n')}\n\nUse the map to see their exact positions.`;
+  return {
+    answer,
+    sources_used: 'scenario_locations',
   };
 }
 

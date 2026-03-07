@@ -41,6 +41,7 @@ interface OverlayMark {
     | 'cordon'
     | 'exit'
     | 'triage'
+    | 'evac_holding'
     | 'hospital'
     | 'police'
     | 'cctv'
@@ -161,7 +162,9 @@ function buildOverlaySvg(
                   ? '#ea580c'
                   : m.type === 'community_center'
                     ? '#0d9488'
-                    : '#333';
+                    : m.type === 'evac_holding'
+                      ? '#0284c7'
+                      : '#333';
     lines.push(
       `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="#fff" stroke-width="1.5"/>`,
     );
@@ -390,19 +393,21 @@ async function generateLayoutMap(
           ? 'exit'
           : loc.location_type === 'triage_site'
             ? 'triage'
-            : loc.location_type === 'area'
-              ? undefined
-              : loc.location_type === 'hospital'
-                ? 'hospital'
-                : loc.location_type === 'police_station'
-                  ? 'police'
-                  : loc.location_type === 'fire_station'
-                    ? 'fire_station'
-                    : loc.location_type === 'cctv'
-                      ? 'cctv'
-                      : loc.location_type === 'community_center'
-                        ? 'community_center'
-                        : undefined;
+            : loc.location_type === 'evacuation_holding'
+              ? 'evac_holding'
+              : loc.location_type === 'area'
+                ? undefined
+                : loc.location_type === 'hospital'
+                  ? 'hospital'
+                  : loc.location_type === 'police_station'
+                    ? 'police'
+                    : loc.location_type === 'fire_station'
+                      ? 'fire_station'
+                      : loc.location_type === 'cctv'
+                        ? 'cctv'
+                        : loc.location_type === 'community_center'
+                          ? 'community_center'
+                          : undefined;
     marks.push({
       lat: coords.lat,
       lng: coords.lng,

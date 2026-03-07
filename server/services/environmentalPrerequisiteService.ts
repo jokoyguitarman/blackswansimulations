@@ -43,6 +43,43 @@ function incidentSuggestsEvacuationOrRoute(incident: IncidentContext): boolean {
   return /evacuat|exit|route|corridor|congestion|bottleneck/i.test(text);
 }
 
+/** Negation patterns: decision is saying to avoid / not use the location rather than use it. */
+const NEGATION_PATTERNS = [
+  /\bavoid\b/i,
+  /\bdo\s+not\s+use\b/i,
+  /\bdon'?t\s+use\b/i,
+  /\bexclude\b/i,
+  /\bnot\s+use\b/i,
+  /\bskip\b/i,
+  /\bdo\s+not\s+(?:use|deploy|designate)\b/i,
+  /\bunsuitable\b/i,
+  /\bpoor\s+(?:suitability|conditions)\b/i,
+  /\bblocked\b/i,
+  /\bcongestion\b/i,
+  /\bsmoke\s+exposure\b/i,
+  /\bdue\s+to\b/i,
+];
+
+/**
+ * Returns true if the decision mentions the location in a negative context (e.g. "avoid Lot D", "do not use Lot D").
+ * In that case we should not fail the prerequisite for "referencing without clearance".
+ */
+function decisionMentionsLocationNegatively(decisionText: string, locationLabel: string): boolean {
+  const lower = decisionText.toLowerCase();
+  const labelLower = locationLabel.toLowerCase().trim();
+  if (!labelLower) return false;
+  const windowLen = 120;
+  let idx = lower.indexOf(labelLower);
+  while (idx !== -1) {
+    const start = Math.max(0, idx - windowLen);
+    const end = Math.min(lower.length, idx + labelLower.length + windowLen);
+    const window = lower.slice(start, end);
+    if (NEGATION_PATTERNS.some((re) => re.test(window))) return true;
+    idx = lower.indexOf(labelLower, idx + 1);
+  }
+  return false;
+}
+
 /**
  * Evaluate environmental prerequisite (corridor traffic + location-condition gate).
  * Returns null if no prerequisite failure; otherwise returns a result that the caller
@@ -172,6 +209,8 @@ export async function evaluateEnvironmentalPrerequisite(
 
       const managed = locationState?.[loc.id]?.managed === true;
       if (managed) continue;
+
+      if (labelMatch && decisionMentionsLocationNegatively(decisionText, label)) continue;
 
       return {
         consistent: false,

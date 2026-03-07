@@ -63,12 +63,13 @@ interface EvacuationZoneData {
   title: string;
 }
 
-/** Map pins for incident geography (blast, exits, triage areas) are always shown. */
+/** Map pins for incident geography (blast, exits, triage areas, evacuation holding) are always shown. */
 const ALWAYS_SHOW_LOCATION_TYPES = [
   'blast_site',
   'exit',
   'triage_site',
   'area',
+  'evacuation_holding',
   'pathway',
   'parking',
 ] as const;
