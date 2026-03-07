@@ -1177,7 +1177,7 @@ export const SessionView = () => {
           {/* Live map module - 2 columns, bottom; keep mounted when closed to avoid Leaflet removeChild on unmount */}
           {id && (
             <div
-              className={`md:col-span-2 military-border p-6 bg-robotic-gray-300 flex flex-col h-[500px] ${showMapModule ? '' : 'hidden'}`}
+              className={`md:col-span-2 military-border p-6 bg-robotic-gray-300 flex flex-col h-[700px] ${showMapModule ? '' : 'hidden'}`}
               aria-hidden={!showMapModule}
             >
               <div className="flex justify-between items-center mb-3 flex-shrink-0">
@@ -1198,12 +1198,14 @@ export const SessionView = () => {
                   [HIDE MAP]
                 </button>
               </div>
-              <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden">
+              <div className="flex-1 min-h-[600px] rounded border border-robotic-yellow/30 overflow-hidden">
                 {mapModuleReady && mapHasBeenOpened && (
                   <MapView
                     sessionId={id}
                     incidents={[]}
                     resources={[]}
+                    isVisible={showMapModule}
+                    fillHeight
                     initialCenter={
                       session?.scenarios?.center_lat != null &&
                       session?.scenarios?.center_lng != null

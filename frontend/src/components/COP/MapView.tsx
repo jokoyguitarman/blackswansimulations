@@ -74,7 +74,29 @@ interface MapViewProps {
   initialCenter?: LatLngExpression;
   initialZoom?: number;
   disabled?: boolean;
+  /** When true, call invalidateSize so the map fills the container (e.g. after module becomes visible). */
+  isVisible?: boolean;
+  /** When true, use height 100% to fill the parent (e.g. session map module). */
+  fillHeight?: boolean;
 }
+
+/**
+ * When isVisible becomes true, call map.invalidateSize() so Leaflet recalculates
+ * (e.g. after the map module is shown from hidden).
+ */
+const MapSizeInvalidator = ({ isVisible }: { isVisible?: boolean }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (isVisible) {
+      try {
+        map.invalidateSize();
+      } catch (_) {
+        // Ignore
+      }
+    }
+  }, [isVisible, map]);
+  return null;
+};
 
 /**
  * Calls map.remove() on unmount so Leaflet cleans up before React tears down the DOM.
@@ -316,6 +338,8 @@ export const MapView = ({
   initialCenter = [1.2931, 103.8558] as LatLngExpression,
   initialZoom = 13,
   disabled = false,
+  isVisible = true,
+  fillHeight = false,
 }: MapViewProps) => {
   const mapDisabledByEnv = import.meta.env.VITE_DISABLE_MAP === 'true';
   const isMapDisabled = disabled || mapDisabledByEnv;
@@ -461,8 +485,8 @@ export const MapView = ({
       ref={containerCallbackRef}
       className="military-border w-full relative"
       style={{
-        height: '600px',
-        minHeight: '600px',
+        height: fillHeight ? '100%' : '600px',
+        minHeight: fillHeight ? '400px' : '600px',
         width: '100%',
         position: 'relative',
         display: 'block',
@@ -521,6 +545,7 @@ export const MapView = ({
               console.log('[MapView] Map initialized and ready');
             }}
           />
+          <MapSizeInvalidator isVisible={isVisible} />
           <MapCleanup />
 
           <MapUpdater
