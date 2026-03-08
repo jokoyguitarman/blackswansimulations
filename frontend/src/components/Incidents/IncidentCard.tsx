@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { api } from '../../lib/api';
 
 /**
@@ -65,6 +65,14 @@ export const IncidentCard = ({
   // const { user } = useAuth(); // Unused - keeping for potential future use
   const [updating, setUpdating] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const descriptionRef = useRef<HTMLDivElement>(null);
+
+  // When expanded, scroll the description into view so long content (e.g. impact matrix text) is visible
+  useEffect(() => {
+    if (isExpanded && descriptionRef.current) {
+      descriptionRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [isExpanded]);
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -130,10 +138,12 @@ export const IncidentCard = ({
               {incident.status.toUpperCase().replace('_', ' ')}
             </span>
           </div>
-          <div className="text-xs terminal-text text-robotic-yellow/70 mb-2">
+          <div ref={descriptionRef} className="text-xs terminal-text text-robotic-yellow/70 mb-2">
             {incident.description.length > 150 ? (
               <>
-                <p className={isExpanded ? '' : 'line-clamp-2'}>{incident.description}</p>
+                <p className={isExpanded ? 'whitespace-pre-wrap break-words' : 'line-clamp-2'}>
+                  {incident.description}
+                </p>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -145,7 +155,7 @@ export const IncidentCard = ({
                 </button>
               </>
             ) : (
-              <p>{incident.description}</p>
+              <p className="whitespace-pre-wrap break-words">{incident.description}</p>
             )}
           </div>
           <div className="flex flex-wrap gap-2 text-xs terminal-text text-robotic-yellow/50">
