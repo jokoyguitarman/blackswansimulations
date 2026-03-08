@@ -25,6 +25,29 @@ import type { Server as SocketServer } from 'socket.io';
 /** Per-session lock: avoid processing the same session in two overlapping ticks (prevents double publish). */
 const sessionsInProgress = new Set<string>();
 
+/**
+ * Sum of impact scores where the affected team matches the given key (case-insensitive).
+ * Used to penalize evacuation rate, triage band, and media sentiment when other teams hurt this one.
+ */
+function incomingImpactOn(
+  matrix: Record<string, Record<string, number>> | null | undefined,
+  affectedTeamKey: string,
+): number {
+  if (!matrix || typeof matrix !== 'object') return 0;
+  const keyLower = affectedTeamKey.toLowerCase();
+  let sum = 0;
+  for (const [acting, affectedMap] of Object.entries(matrix)) {
+    if (typeof affectedMap !== 'object' || affectedMap === null) continue;
+    if (acting.toLowerCase() === keyLower) continue; // exclude self
+    for (const [affected, score] of Object.entries(affectedMap)) {
+      if (affected.toLowerCase() === keyLower && typeof score === 'number') {
+        sum += score;
+      }
+    }
+  }
+  return sum;
+}
+
 export class InjectSchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
@@ -172,17 +195,21 @@ export class InjectSchedulerService {
     const nextState: Record<string, unknown> = { ...currentState };
     let stateChanged = false;
 
-    // Fetch latest impact matrix for robustness-based rate modulation (evac and triage)
+    // Fetch latest impact matrix for robustness-based rate modulation (evac and triage) and incoming-impact penalties
     let robustnessByTeam: Record<string, number> = {};
+    let impactMatrix: Record<string, Record<string, number>> = {};
     const { data: latestMatrix } = await supabaseAdmin
       .from('session_impact_matrix')
-      .select('robustness_by_team')
+      .select('robustness_by_team, matrix')
       .eq('session_id', session.id)
       .order('evaluated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     if (latestMatrix?.robustness_by_team && typeof latestMatrix.robustness_by_team === 'object') {
       robustnessByTeam = latestMatrix.robustness_by_team as Record<string, number>;
+    }
+    if (latestMatrix?.matrix && typeof latestMatrix.matrix === 'object') {
+      impactMatrix = latestMatrix.matrix as Record<string, Record<string, number>>;
     }
 
     const triageState = (nextState.triage_state as Record<string, unknown>) || {};
@@ -216,6 +243,11 @@ export class InjectSchedulerService {
         const mod = evacRobustness <= 7 ? 0.25 : evacRobustness >= 8 ? 1.25 : 1;
         rate = rate * mod;
       }
+      // Incoming impact penalty: other teams hurting evacuation slows evac rate
+      const incomingOnEvac = incomingImpactOn(impactMatrix, 'evacuation');
+      if (incomingOnEvac < 0) {
+        rate = rate * Math.max(0.5, 1 + incomingOnEvac * 0.15);
+      }
       const evacuated = Math.min(totalEvacuees, Math.floor(rate * elapsedMinutes));
       const currentEvacuated = Math.max(0, Number(evacState.evacuated_count) || 0);
       if (evacuated > currentEvacuated) {
@@ -234,8 +266,12 @@ export class InjectSchedulerService {
         ? Math.max(0, triageStateNext.initial_patients_at_site)
         : Math.max(0, Math.floor(totalEvacuees * 0.25));
     const triageRobustness = robustnessByTeam.Triage ?? robustnessByTeam.triage ?? 5.5;
-    const band: 'low' | 'mid' | 'high' =
+    let band: 'low' | 'mid' | 'high' =
       triageRobustness <= 4 ? 'low' : triageRobustness <= 7 ? 'mid' : 'high';
+    // Incoming impact penalty: other teams hurting triage worsens effective band (more deaths, more waiting)
+    const incomingOnTriage = incomingImpactOn(impactMatrix, 'triage');
+    if (incomingOnTriage < 0 && band === 'high') band = 'mid';
+    else if (incomingOnTriage < 0 && band === 'mid') band = 'low';
     const BASE_TRIAGE_PROCESSED_PER_MIN = 8;
     const throughputMult = band === 'low' ? 0.5 : band === 'high' ? 1.25 : 1;
     const processed = Math.min(

@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
-import { TimelineFeed } from '../components/COP/TimelineFeed';
 import { ChatInterface } from '../components/Chat/ChatInterface';
 import { DecisionWorkflow } from '../components/Decisions/DecisionWorkflow';
 import { AIInjectSystem } from '../components/Injects/AIInjectSystem';
@@ -765,14 +764,14 @@ export const SessionView = () => {
             </div>
           )}
 
-          {/* Row 2: Timeline Card */}
-          {id && (
+          {/* Row 2: Timeline Card - Trainer only (full session activity) */}
+          {id && isTrainer && (
             <div
               className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('timeline')}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-lg terminal-text uppercase">[TIMELINE]</h3>
+                <h3 className="text-lg terminal-text uppercase">[TIMELINE] Session activity</h3>
                 {cardNotifications['timeline'] === 'new' && (
                   <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
                 )}
@@ -780,8 +779,233 @@ export const SessionView = () => {
                   <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
                 )}
               </div>
-              <div className="flex-1 min-h-0">
-                <TimelineFeed sessionId={id} />
+              <div
+                className="flex-1 overflow-y-auto min-h-0 space-y-2 text-sm"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {session?.status !== 'in_progress' && session?.status !== 'completed' ? (
+                  <p className="text-robotic-yellow/70">
+                    No activity yet. Session activity (injects, impact matrix, escalation) will
+                    appear here when the session is in progress.
+                  </p>
+                ) : backendActivities.length === 0 ? (
+                  <p className="text-robotic-yellow/70">
+                    No activity yet. Injects and impact matrix will appear here.
+                  </p>
+                ) : (
+                  backendActivities.map((a, i) => (
+                    <div
+                      key={`${a.type}-${a.at}-${a.step ?? ''}-${i}`}
+                      className="border border-robotic-yellow/30 p-2 bg-robotic-gray-300/80 font-mono text-xs"
+                    >
+                      <span className="text-robotic-yellow/90">
+                        {new Date(a.at).toLocaleTimeString()}
+                      </span>
+                      {' — '}
+                      {a.type === 'inject_published' && (
+                        <span className="text-robotic-green">
+                          Inject published: {a.title ?? '—'}
+                        </span>
+                      )}
+                      {a.type === 'inject_cancelled' && (
+                        <span className="text-robotic-yellow">
+                          Inject cancelled by AI. Reason: {a.reason ?? '—'}
+                        </span>
+                      )}
+                      {a.type === 'ai_step_start' && (
+                        <span className="text-robotic-cyan/90">
+                          {a.title ?? `AI: ${a.step ?? 'step'} started`}
+                        </span>
+                      )}
+                      {a.type === 'ai_step_end' && (
+                        <div>
+                          <span className="text-robotic-green/90">
+                            {a.title ?? `AI: ${a.step ?? 'step'} completed`}
+                          </span>
+                          {a.step === 'evaluating_inject_cancellation' && a.reason && (
+                            <div className="mt-1 text-robotic-yellow/80">Reason: {a.reason}</div>
+                          )}
+                        </div>
+                      )}
+                      {a.type === 'escalation_factors_computed' && (
+                        <div>
+                          <span className="text-robotic-gold">
+                            Escalation factors computed ({a.summary ?? '—'})
+                          </span>
+                          {a.factors && a.factors.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                              <div className="text-robotic-yellow/80 mb-1">
+                                [ESCALATION FACTORS]
+                              </div>
+                              <ul className="list-disc pl-4 space-y-1 text-robotic-green/90 text-xs break-words">
+                                {a.factors.map((f) => (
+                                  <li key={f.id}>
+                                    {f.name} ({f.severity}): {f.description}
+                                    {(f as { consequence_for_inaction?: boolean })
+                                      .consequence_for_inaction && (
+                                      <span className="ml-1 text-robotic-yellow/90 text-xs">
+                                        [Consequence for inaction]
+                                      </span>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {a.de_escalation_factors && a.de_escalation_factors.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                              <div className="text-robotic-yellow/80 mb-1">
+                                [DE-ESCALATION FACTORS]
+                              </div>
+                              <ul className="list-disc pl-4 space-y-1 text-robotic-green/90 text-xs break-words">
+                                {a.de_escalation_factors.map((f) => (
+                                  <li key={f.id}>
+                                    {f.name}: {f.description}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {a.type === 'escalation_pathways_computed' && (
+                        <div>
+                          <span className="text-robotic-gold">
+                            Escalation pathways computed ({a.summary ?? '—'})
+                          </span>
+                          {a.pathways && a.pathways.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                              <div className="text-robotic-yellow/80 mb-1">[PATHWAYS]</div>
+                              <ul className="list-disc pl-4 space-y-1 text-robotic-green/90 text-xs break-words">
+                                {a.pathways.map((p) => (
+                                  <li key={p.pathway_id}>
+                                    {p.trajectory}
+                                    {p.trigger_behaviours?.length
+                                      ? ` (triggers: ${p.trigger_behaviours.join(', ')})`
+                                      : ''}
+                                    {(p as { consequence_for_inaction?: boolean })
+                                      .consequence_for_inaction && (
+                                      <span className="ml-1 text-robotic-yellow/90 text-xs">
+                                        [Consequence for inaction]
+                                      </span>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {a.de_escalation_pathways && a.de_escalation_pathways.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                              <div className="text-robotic-yellow/80 mb-1">
+                                [DE-ESCALATION PATHWAYS]
+                              </div>
+                              <ul className="list-disc pl-4 space-y-1 text-robotic-green/90 text-xs break-words">
+                                {a.de_escalation_pathways.map((p) => (
+                                  <li key={p.pathway_id}>{p.trajectory}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {a.type === 'impact_matrix_computed' && (
+                        <div>
+                          <span className="text-robotic-gold">
+                            Impact matrix computed ({a.summary ?? '—'})
+                          </span>
+                          {a.analysis?.overall && (
+                            <div className="mt-2 pt-2 border-t border-robotic-yellow/20 break-words">
+                              <div className="text-robotic-yellow/80 mb-1">[AI REASONING]</div>
+                              <p className="text-robotic-green/90 text-xs whitespace-pre-wrap">
+                                {a.analysis.overall}
+                              </p>
+                              {a.analysis.matrix_reasoning && (
+                                <p className="text-robotic-green/80 text-xs mt-1 whitespace-pre-wrap">
+                                  Matrix: {a.analysis.matrix_reasoning}
+                                </p>
+                              )}
+                              {a.analysis.robustness_reasoning && (
+                                <p className="text-robotic-green/80 text-xs mt-1 whitespace-pre-wrap">
+                                  Robustness: {a.analysis.robustness_reasoning}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                          {a.response_taxonomy && Object.keys(a.response_taxonomy).length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                              <div className="text-robotic-yellow/80 mb-1">[RESPONSE TAXONOMY]</div>
+                              <div className="flex flex-wrap gap-1">
+                                {Object.entries(a.response_taxonomy).map(([team, cat]) => (
+                                  <span
+                                    key={team}
+                                    className="bg-robotic-gray-400 px-1 rounded text-robotic-green/90"
+                                  >
+                                    {team}: {cat}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {a.matrix && Object.keys(a.matrix).length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                              <div className="text-robotic-yellow/80 mb-1">
+                                [INTER-TEAM IMPACT -2..+2]
+                              </div>
+                              <div className="overflow-x-auto space-y-2">
+                                {Object.entries(a.matrix).map(([acting, affectedMap]) => (
+                                  <div key={acting} className="text-robotic-green/90">
+                                    {Object.entries(affectedMap as Record<string, number>).map(
+                                      ([team, score]) => {
+                                        const cellReason =
+                                          a.analysis?.matrix_cell_reasoning?.[acting]?.[team];
+                                        return (
+                                          <div
+                                            key={`${acting}-${team}`}
+                                            className="ml-2 mb-1 border-l-2 border-robotic-yellow/30 pl-2"
+                                          >
+                                            <span className="font-medium">
+                                              {acting} → {team}: {score}
+                                            </span>
+                                            {cellReason && (
+                                              <p className="text-robotic-green/80 text-xs mt-0.5 italic break-words whitespace-pre-wrap">
+                                                {cellReason}
+                                              </p>
+                                            )}
+                                          </div>
+                                        );
+                                      },
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {a.robustness_by_decision &&
+                            Object.keys(a.robustness_by_decision).length > 0 && (
+                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                                <div className="text-robotic-yellow/80 mb-1">
+                                  [PER-DECISION ROBUSTNESS 1-10]
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {Object.entries(a.robustness_by_decision).map(
+                                    ([decId, score]) => (
+                                      <span
+                                        key={decId}
+                                        className="bg-robotic-gray-400 px-1 rounded break-all text-xs"
+                                        title={decId}
+                                      >
+                                        {decId}:{score}
+                                      </span>
+                                    ),
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -851,240 +1075,6 @@ export const SessionView = () => {
               </div>
             </div>
           )}
-
-          {/* Backend / AI activity - Trainer only, during and post session, 2 columns wide, scrollable */}
-          {id &&
-            isTrainer &&
-            session &&
-            (session.status === 'in_progress' || session.status === 'completed') && (
-              <div className="md:col-span-2 military-border p-6 bg-robotic-gray-300 flex flex-col h-[750px]">
-                <h3 className="text-lg terminal-text uppercase mb-3 flex-shrink-0">
-                  [BACKEND / AI ACTIVITY]
-                </h3>
-                <div className="flex-1 overflow-y-auto min-h-0 space-y-2 text-sm">
-                  {backendActivities.length === 0 ? (
-                    <p className="text-robotic-yellow/70">
-                      No activity yet. Injects and impact matrix will appear here.
-                    </p>
-                  ) : (
-                    backendActivities.map((a, i) => (
-                      <div
-                        key={`${a.type}-${a.at}-${a.step ?? ''}-${i}`}
-                        className="border border-robotic-yellow/30 p-2 bg-robotic-gray-300/80 font-mono text-xs"
-                      >
-                        <span className="text-robotic-yellow/90">
-                          {new Date(a.at).toLocaleTimeString()}
-                        </span>
-                        {' — '}
-                        {a.type === 'inject_published' && (
-                          <span className="text-robotic-green">
-                            Inject published: {a.title ?? '—'}
-                          </span>
-                        )}
-                        {a.type === 'inject_cancelled' && (
-                          <span className="text-robotic-yellow">
-                            Inject cancelled by AI. Reason: {a.reason ?? '—'}
-                          </span>
-                        )}
-                        {a.type === 'ai_step_start' && (
-                          <span className="text-robotic-cyan/90">
-                            {a.title ?? `AI: ${a.step ?? 'step'} started`}
-                          </span>
-                        )}
-                        {a.type === 'ai_step_end' && (
-                          <div>
-                            <span className="text-robotic-green/90">
-                              {a.title ?? `AI: ${a.step ?? 'step'} completed`}
-                            </span>
-                            {a.step === 'evaluating_inject_cancellation' && a.reason && (
-                              <div className="mt-1 text-robotic-yellow/80">Reason: {a.reason}</div>
-                            )}
-                          </div>
-                        )}
-                        {a.type === 'escalation_factors_computed' && (
-                          <div>
-                            <span className="text-robotic-gold">
-                              Escalation factors computed ({a.summary ?? '—'})
-                            </span>
-                            {a.factors && a.factors.length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                <div className="text-robotic-yellow/80 mb-1">
-                                  [ESCALATION FACTORS]
-                                </div>
-                                <ul className="list-disc pl-4 space-y-1 text-robotic-green/90 text-xs break-words">
-                                  {a.factors.map((f) => (
-                                    <li key={f.id}>
-                                      {f.name} ({f.severity}): {f.description}
-                                      {(f as { consequence_for_inaction?: boolean })
-                                        .consequence_for_inaction && (
-                                        <span className="ml-1 text-robotic-yellow/90 text-xs">
-                                          [Consequence for inaction]
-                                        </span>
-                                      )}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            {a.de_escalation_factors && a.de_escalation_factors.length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                <div className="text-robotic-yellow/80 mb-1">
-                                  [DE-ESCALATION FACTORS]
-                                </div>
-                                <ul className="list-disc pl-4 space-y-1 text-robotic-green/90 text-xs break-words">
-                                  {a.de_escalation_factors.map((f) => (
-                                    <li key={f.id}>
-                                      {f.name}: {f.description}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {a.type === 'escalation_pathways_computed' && (
-                          <div>
-                            <span className="text-robotic-gold">
-                              Escalation pathways computed ({a.summary ?? '—'})
-                            </span>
-                            {a.pathways && a.pathways.length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                <div className="text-robotic-yellow/80 mb-1">[PATHWAYS]</div>
-                                <ul className="list-disc pl-4 space-y-1 text-robotic-green/90 text-xs break-words">
-                                  {a.pathways.map((p) => (
-                                    <li key={p.pathway_id}>
-                                      {p.trajectory}
-                                      {p.trigger_behaviours?.length
-                                        ? ` (triggers: ${p.trigger_behaviours.join(', ')})`
-                                        : ''}
-                                      {(p as { consequence_for_inaction?: boolean })
-                                        .consequence_for_inaction && (
-                                        <span className="ml-1 text-robotic-yellow/90 text-xs">
-                                          [Consequence for inaction]
-                                        </span>
-                                      )}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            {a.de_escalation_pathways && a.de_escalation_pathways.length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                <div className="text-robotic-yellow/80 mb-1">
-                                  [DE-ESCALATION PATHWAYS]
-                                </div>
-                                <ul className="list-disc pl-4 space-y-1 text-robotic-green/90 text-xs break-words">
-                                  {a.de_escalation_pathways.map((p) => (
-                                    <li key={p.pathway_id}>{p.trajectory}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {a.type === 'impact_matrix_computed' && (
-                          <div>
-                            <span className="text-robotic-gold">
-                              Impact matrix computed ({a.summary ?? '—'})
-                            </span>
-                            {a.analysis?.overall && (
-                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20 break-words">
-                                <div className="text-robotic-yellow/80 mb-1">[AI REASONING]</div>
-                                <p className="text-robotic-green/90 text-xs whitespace-pre-wrap">
-                                  {a.analysis.overall}
-                                </p>
-                                {a.analysis.matrix_reasoning && (
-                                  <p className="text-robotic-green/80 text-xs mt-1 whitespace-pre-wrap">
-                                    Matrix: {a.analysis.matrix_reasoning}
-                                  </p>
-                                )}
-                                {a.analysis.robustness_reasoning && (
-                                  <p className="text-robotic-green/80 text-xs mt-1 whitespace-pre-wrap">
-                                    Robustness: {a.analysis.robustness_reasoning}
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                            {a.response_taxonomy && Object.keys(a.response_taxonomy).length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                <div className="text-robotic-yellow/80 mb-1">
-                                  [RESPONSE TAXONOMY]
-                                </div>
-                                <div className="flex flex-wrap gap-1">
-                                  {Object.entries(a.response_taxonomy).map(([team, cat]) => (
-                                    <span
-                                      key={team}
-                                      className="bg-robotic-gray-400 px-1 rounded text-robotic-green/90"
-                                    >
-                                      {team}: {cat}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {a.matrix && Object.keys(a.matrix).length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                <div className="text-robotic-yellow/80 mb-1">
-                                  [INTER-TEAM IMPACT -2..+2]
-                                </div>
-                                <div className="overflow-x-auto space-y-2">
-                                  {Object.entries(a.matrix).map(([acting, affectedMap]) => (
-                                    <div key={acting} className="text-robotic-green/90">
-                                      {Object.entries(affectedMap as Record<string, number>).map(
-                                        ([team, score]) => {
-                                          const cellReason =
-                                            a.analysis?.matrix_cell_reasoning?.[acting]?.[team];
-                                          return (
-                                            <div
-                                              key={`${acting}-${team}`}
-                                              className="ml-2 mb-1 border-l-2 border-robotic-yellow/30 pl-2"
-                                            >
-                                              <span className="font-medium">
-                                                {acting} → {team}: {score}
-                                              </span>
-                                              {cellReason && (
-                                                <p className="text-robotic-green/80 text-xs mt-0.5 italic break-words whitespace-pre-wrap">
-                                                  {cellReason}
-                                                </p>
-                                              )}
-                                            </div>
-                                          );
-                                        },
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {a.robustness_by_decision &&
-                              Object.keys(a.robustness_by_decision).length > 0 && (
-                                <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                  <div className="text-robotic-yellow/80 mb-1">
-                                    [PER-DECISION ROBUSTNESS 1-10]
-                                  </div>
-                                  <div className="flex flex-wrap gap-1">
-                                    {Object.entries(a.robustness_by_decision).map(
-                                      ([decId, score]) => (
-                                        <span
-                                          key={decId}
-                                          className="bg-robotic-gray-400 px-1 rounded break-all text-xs"
-                                          title={decId}
-                                        >
-                                          {decId}:{score}
-                                        </span>
-                                      ),
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
 
           {/* Row 3+: AAR Card - Only show for completed sessions (Trainer only) */}
           {id && session.status === 'completed' && isTrainer && (
