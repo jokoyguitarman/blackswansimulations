@@ -28,6 +28,7 @@ import {
   createAndPublishEnvironmentalMismatchInject,
 } from '../services/environmentalConsistencyService.js';
 import { evaluateEnvironmentalPrerequisite } from '../services/environmentalPrerequisiteService.js';
+import { evaluateEnvironmentalManagementIntentAndUpdateState } from '../services/environmentalConditionManagementService.js';
 import { publishInjectToSession } from './injects.js';
 import { evaluateDecisionBasedTriggers } from '../services/injectTriggerService.js';
 import {
@@ -1292,6 +1293,25 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       logger.error(
         { error: antiGamingErr, decisionId: id },
         'Anti-gaming check failed, continuing with objective tracking',
+      );
+    }
+
+    // Environmental condition management: if decision credibly addressed an unmanaged route/location, mark it managed
+    try {
+      await evaluateEnvironmentalManagementIntentAndUpdateState(
+        decision.session_id,
+        {
+          id: decision.id,
+          title: decision.title,
+          description: decision.description,
+          type: decision.type ?? null,
+        },
+        env.openAiApiKey,
+      );
+    } catch (envMgmtErr) {
+      logger.error(
+        { error: envMgmtErr, decisionId: id },
+        'Env condition management check failed, continuing',
       );
     }
 
