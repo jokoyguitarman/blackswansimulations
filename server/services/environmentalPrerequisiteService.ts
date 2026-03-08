@@ -9,6 +9,8 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import type { EnvironmentalConsistencyResult } from './environmentalConsistencyService.js';
+import { evaluateLocationReferenceIntent } from './decisionEvaluationAiService.js';
+import { evaluateRouteManagementIntent } from './decisionEvaluationAiService.js';
 
 type RouteRow = { route_id?: string; label?: string; managed?: boolean; active?: boolean };
 
@@ -145,17 +147,25 @@ function decisionProposesManagingRouteFirst(
   return false;
 }
 
+export interface EnvironmentalPrerequisiteEvaluationResult {
+  result: EnvironmentalConsistencyResult | null;
+  /** When AI was used (pass or fail), short summary for persistence on decisions.evaluation_reasoning. */
+  evaluationReason?: string;
+}
+
 /**
  * Evaluate environmental prerequisite (corridor traffic + location-condition gate).
- * Returns null if no prerequisite failure; otherwise returns a result that the caller
+ * Returns result null if no prerequisite failure; otherwise result that the caller
  * can use as environmental_consistency (same penalties apply).
- * When incident is provided, corridor/route check (1) runs only if incident suggests evacuation/route; otherwise skip.
+ * When openAiApiKey is set and AI is used, evaluationReason is set for AAR/trainer visibility.
  */
 export async function evaluateEnvironmentalPrerequisite(
   sessionId: string,
   decision: { id: string; title: string; description: string; type: string | null },
   incident?: IncidentContext,
-): Promise<EnvironmentalConsistencyResult | null> {
+  openAiApiKey?: string,
+): Promise<EnvironmentalPrerequisiteEvaluationResult> {
+  let evaluationReason: string | undefined;
   try {
     const { data: session, error: sessionErr } = await supabaseAdmin
       .from('sessions')
@@ -168,11 +178,11 @@ export async function evaluateEnvironmentalPrerequisite(
         { sessionId, error: sessionErr },
         'Session not found for environmental prerequisite',
       );
-      return null;
+      return { result: null };
     }
 
     const scenarioId = (session as { scenario_id?: string }).scenario_id;
-    if (!scenarioId) return null;
+    if (!scenarioId) return { result: null };
 
     const currentState = (session.current_state as Record<string, unknown>) || {};
     const envState = currentState.environmental_state as
@@ -203,20 +213,65 @@ export async function evaluateEnvironmentalPrerequisite(
       if (mentionedUnmanaged.length === 0) {
         // Decision never mentions any unmanaged route — do not fail
       } else {
-        const stillFailing = mentionedUnmanaged.filter((r) => {
+        const routeLabelsOrSegments = mentionedUnmanaged.map((r) => {
           const labelOrSegment = r.label || r.route_id || '';
           const segment = firstSegmentOfLabel(labelOrSegment);
-          const search = segment.length >= 3 ? segment : labelOrSegment;
-          return !decisionProposesManagingRouteFirst(decisionText, search);
+          return segment.length >= 3 ? segment : labelOrSegment;
         });
-        if (stillFailing.length > 0) {
-          const labels = stillFailing.map((r) => r.label || r.route_id || 'route');
-          return {
-            consistent: false,
-            severity: 'medium',
-            error_type: 'flow',
-            reason: `Corridor or route traffic is not yet managed (${labels.slice(0, 3).join(', ')}${labels.length > 3 ? '...' : ''}). The decision assumes use of routes that are still congested or unmanaged.`,
-          };
+        if (openAiApiKey && routeLabelsOrSegments.length > 0) {
+          const aiResult = await evaluateRouteManagementIntent(
+            { decisionText, unmanagedRouteLabelsOrSegments: routeLabelsOrSegments },
+            openAiApiKey,
+          );
+          if (aiResult !== null) {
+            if (!aiResult.proposesManagingBeforeUse) {
+              const labels = mentionedUnmanaged.map((r) => r.label || r.route_id || 'route');
+              const reason =
+                aiResult.reason?.slice(0, 400) ??
+                `Corridor or route traffic is not yet managed (${labels.slice(0, 3).join(', ')}${labels.length > 3 ? '...' : ''}). The decision assumes use of routes that are still congested or unmanaged.`;
+              return {
+                result: {
+                  consistent: false,
+                  severity: 'medium',
+                  error_type: 'flow',
+                  reason,
+                },
+                evaluationReason: reason,
+              };
+            }
+            evaluationReason =
+              (evaluationReason ? `${evaluationReason} ` : '') +
+              (aiResult.reason ?? 'Route: passed – decision proposes managing corridor first.');
+          } else {
+            // Fallback: use keyword logic
+            const stillFailing = mentionedUnmanaged.filter((r) => {
+              const labelOrSegment = r.label || r.route_id || '';
+              const segment = firstSegmentOfLabel(labelOrSegment);
+              const search = segment.length >= 3 ? segment : labelOrSegment;
+              return !decisionProposesManagingRouteFirst(decisionText, search);
+            });
+            if (stillFailing.length > 0) {
+              const labels = stillFailing.map((r) => r.label || r.route_id || 'route');
+              const reason = `Corridor or route traffic is not yet managed (${labels.slice(0, 3).join(', ')}${labels.length > 3 ? '...' : ''}). The decision assumes use of routes that are still congested or unmanaged.`;
+              return {
+                result: { consistent: false, severity: 'medium', error_type: 'flow', reason },
+              };
+            }
+          }
+        } else {
+          const stillFailing = mentionedUnmanaged.filter((r) => {
+            const labelOrSegment = r.label || r.route_id || '';
+            const segment = firstSegmentOfLabel(labelOrSegment);
+            const search = segment.length >= 3 ? segment : labelOrSegment;
+            return !decisionProposesManagingRouteFirst(decisionText, search);
+          });
+          if (stillFailing.length > 0) {
+            const labels = stillFailing.map((r) => r.label || r.route_id || 'route');
+            const reason = `Corridor or route traffic is not yet managed (${labels.slice(0, 3).join(', ')}${labels.length > 3 ? '...' : ''}). The decision assumes use of routes that are still congested or unmanaged.`;
+            return {
+              result: { consistent: false, severity: 'medium', error_type: 'flow', reason },
+            };
+          }
         }
       }
     }
@@ -249,10 +304,7 @@ export async function evaluateEnvironmentalPrerequisite(
         area.problem?.trim() ||
         `${displayLabel} reports at full capacity. Your plan cannot rely on this facility; consider alternatives.`;
       return {
-        consistent: false,
-        severity: 'medium',
-        error_type: 'capacity',
-        reason,
+        result: { consistent: false, severity: 'medium', error_type: 'capacity', reason },
       };
     }
 
@@ -262,8 +314,9 @@ export async function evaluateEnvironmentalPrerequisite(
       .select('id, scenario_id, location_type, label, conditions')
       .eq('scenario_id', scenarioId);
 
-    if (locErr || !locations?.length) return null;
+    if (locErr || !locations?.length) return { result: null, evaluationReason };
 
+    const badLocationsInScope: Array<{ label: string; location_type: string }> = [];
     for (const loc of locations) {
       const label = (loc as { label?: string }).label ?? '';
       const locType = (loc as { location_type?: string }).location_type ?? '';
@@ -277,7 +330,62 @@ export async function evaluateEnvironmentalPrerequisite(
       if (!isBad) continue;
 
       const labelMatch = label && decisionLower.includes(label.toLowerCase());
-      // Match by explicit location-type keywords only (no generic "location_type as phrase" to avoid matching every location of that type)
+      const typeMatch =
+        (locType === 'triage_site' && /triage|site/.test(decisionLower)) ||
+        (locType === 'evacuation' && /evacuat/.test(decisionLower)) ||
+        (locType === 'exit' && /\bexit\b/.test(decisionLower)) ||
+        (locType === 'blast_site' && /blast|epicentre|epicenter/.test(decisionLower)) ||
+        (locType === 'pathway' && /\bpathway\b/.test(decisionLower)) ||
+        (locType === 'cordon' && /\bcordon\b/.test(decisionLower)) ||
+        (locType === 'parking' && /\bparking\b/.test(decisionLower));
+
+      if (!labelMatch && !typeMatch) continue;
+
+      const managed = locationState?.[loc.id]?.managed === true;
+      if (managed) continue;
+
+      badLocationsInScope.push({ label, location_type: locType });
+    }
+
+    if (badLocationsInScope.length > 0 && openAiApiKey) {
+      const aiResult = await evaluateLocationReferenceIntent(
+        { decisionText, badLocations: badLocationsInScope, incidentContext: incident ?? undefined },
+        openAiApiKey,
+      );
+      if (aiResult !== null) {
+        if (aiResult.referencesBadLocationPositively) {
+          const firstLabel =
+            badLocationsInScope[0]?.label || badLocationsInScope[0]?.location_type || 'location';
+          const reason =
+            aiResult.reason?.slice(0, 400) ??
+            `The location "${firstLabel}" has poor suitability or conditions that have not been cleared or managed. The decision references this location without prior clearance.`;
+          return {
+            result: { consistent: false, severity: 'medium', error_type: 'location', reason },
+            evaluationReason: reason,
+          };
+        }
+        evaluationReason =
+          (evaluationReason ? `${evaluationReason} ` : '') +
+          (aiResult.reason ??
+            'Location: passed – decision only references bad locations in a rejecting way.');
+        return { result: null, evaluationReason };
+      }
+    }
+
+    // Fallback: existing keyword logic per location
+    for (const loc of locations) {
+      const label = (loc as { label?: string }).label ?? '';
+      const locType = (loc as { location_type?: string }).location_type ?? '';
+      const conditions = (loc.conditions as LocationConditions) ?? {};
+      const isBad =
+        conditions.suitability === 'low' ||
+        conditions.unsuitable === true ||
+        (conditions.cleared === false &&
+          (conditions.suitability === 'poor' || Boolean(conditions.unsuitable)));
+
+      if (!isBad) continue;
+
+      const labelMatch = label && decisionLower.includes(label.toLowerCase());
       const typeMatch =
         (locType === 'triage_site' && /triage|site/.test(decisionLower)) ||
         (locType === 'evacuation' && /evacuat/.test(decisionLower)) ||
@@ -294,20 +402,16 @@ export async function evaluateEnvironmentalPrerequisite(
 
       if (labelMatch && decisionMentionsLocationNegatively(decisionText, label)) continue;
 
-      return {
-        consistent: false,
-        severity: 'medium',
-        error_type: 'location',
-        reason: `The location "${label || locType}" has poor suitability or conditions that have not been cleared or managed. The decision references this location without prior clearance.`,
-      };
+      const reason = `The location "${label || locType}" has poor suitability or conditions that have not been cleared or managed. The decision references this location without prior clearance.`;
+      return { result: { consistent: false, severity: 'medium', error_type: 'location', reason } };
     }
 
-    return null;
+    return { result: null, evaluationReason };
   } catch (err) {
     logger.warn(
       { err, sessionId, decisionId: decision.id },
       'Environmental prerequisite check failed, skipping',
     );
-    return null;
+    return { result: null };
   }
 }

@@ -474,7 +474,12 @@ router.get(
         matrix?: Record<string, Record<string, number>>;
         robustness_by_decision?: Record<string, number>;
         response_taxonomy?: Record<string, string>;
-        analysis?: { overall?: string; matrix_reasoning?: string; robustness_reasoning?: string };
+        analysis?: {
+          overall?: string;
+          matrix_reasoning?: string;
+          robustness_reasoning?: string;
+          robustness_reasoning_by_decision?: Record<string, string>;
+        };
         factors?: Array<{
           id: string;
           name: string;
@@ -541,6 +546,7 @@ router.get(
             overall?: string;
             matrix_reasoning?: string;
             robustness_reasoning?: string;
+            robustness_reasoning_by_decision?: Record<string, string>;
           }) || undefined;
         const teamCount = Object.keys(matrix).length;
         const decisionCount = Object.keys(robustnessByDecision).length;

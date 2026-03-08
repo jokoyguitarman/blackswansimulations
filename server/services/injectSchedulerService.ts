@@ -9,6 +9,10 @@ import {
   type ConditionsToAppear,
   type ConditionsToCancel,
 } from './conditionEvaluatorService.js';
+import {
+  evaluateDecisionSemanticConditionKeys,
+  DECISION_SEMANTIC_CONDITION_KEYS,
+} from './decisionEvaluationAiService.js';
 import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
 import type { Server as SocketServer } from 'socket.io';
@@ -457,6 +461,43 @@ export class InjectSchedulerService {
       if (s === 'pending' || s === 'met' || s === 'not_met') gateStatusByGateId[row.gate_id] = s;
     }
 
+    // Precompute decision-semantic condition keys via AI when key is set (fallback: registry in evaluateKey)
+    let precomputedDecisionKeys: Record<string, boolean> | undefined;
+    const { data: conditionInjectsForKeys } = await supabaseAdmin
+      .from('scenario_injects')
+      .select('conditions_to_appear, conditions_to_cancel')
+      .eq('scenario_id', session.scenario_id)
+      .not('conditions_to_appear', 'is', null);
+    const semanticKeysSet = new Set(DECISION_SEMANTIC_CONDITION_KEYS);
+    const keysUsedInInjects = new Set<string>();
+    for (const row of conditionInjectsForKeys ?? []) {
+      const appear = (row as { conditions_to_appear?: ConditionsToAppear }).conditions_to_appear;
+      const cancel = (row as { conditions_to_cancel?: ConditionsToCancel }).conditions_to_cancel;
+      if (appear && typeof appear === 'object') {
+        const list = 'all' in appear ? appear.all : appear.conditions;
+        if (Array.isArray(list)) list.forEach((k) => keysUsedInInjects.add(k));
+      }
+      if (Array.isArray(cancel)) cancel.forEach((k) => keysUsedInInjects.add(k));
+    }
+    const keysToPrecompute = [...keysUsedInInjects].filter((k) =>
+      semanticKeysSet.has(k as (typeof DECISION_SEMANTIC_CONDITION_KEYS)[number]),
+    ) as string[];
+    if (keysToPrecompute.length > 0 && env.openAiApiKey) {
+      const aiResult = await evaluateDecisionSemanticConditionKeys(
+        {
+          executedDecisions: executedDecisions.map((d) => ({
+            id: d.id,
+            title: d.title,
+            description: d.description,
+            type: d.decision_type,
+          })),
+          conditionKeys: keysToPrecompute,
+        },
+        env.openAiApiKey,
+      );
+      if (aiResult !== null) precomputedDecisionKeys = aiResult;
+    }
+
     const evaluationContext: EvaluationContext = {
       sessionId: session.id,
       scenarioId: session.scenario_id,
@@ -468,6 +509,7 @@ export class InjectSchedulerService {
       objectiveProgress,
       gateStatusByGateId:
         Object.keys(gateStatusByGateId).length > 0 ? gateStatusByGateId : undefined,
+      precomputedDecisionKeys,
     };
 
     // --- Time-based injects: publish and optionally run AI cancel for future injects ---

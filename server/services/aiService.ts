@@ -1182,6 +1182,8 @@ export interface ImpactMatrixAnalysis {
   overall?: string;
   matrix_reasoning?: string;
   robustness_reasoning?: string;
+  /** decision_id -> one sentence explaining why this decision received its robustness score */
+  robustness_reasoning_by_decision?: Record<string, string>;
   /** acting_team -> affected_team -> short explanation for that cell */
   matrix_cell_reasoning?: Record<string, Record<string, string>>;
 }
@@ -1260,7 +1262,7 @@ export const computeInterTeamImpactMatrix = async (
    Be strict: mediocre or generic responses should typically score 5-6; reserve 9-10 only for clearly strong, specific decisions that directly address current escalation factors or pathways.
    When the scenario context includes "Sector standards", use them to calibrate robustness: decisions that specify ratios, capacities, or protocols per these standards (e.g. marshal-to-evacuee ratio, assembly/holding capacity vs evacuee count, triage staff-to-critical ratio, START protocol, designated spokesperson, briefing frequency) should tend toward the higher band (7-10) when they directly address the situation; decisions that are vague on these points (e.g. "we will manage evacuation" with no marshal ratio or assembly capacity) should score in the lower band (5-6 or below).
 3. For every (acting_team, affected_team) pair in the matrix, provide a "matrix_reasoning_per_cell" object with the same structure as matrix: each key is an acting_team, each value is an object mapping affected_team to a short explanation (1 sentence) of how that acting team's decisions in this window affected the affected team (e.g. helped, hindered, or neutral and why). Be specific to the decisions listed.
-4. Optionally, an "analysis" object: "overall" (1-2 sentences on overall inter-team dynamics), "matrix_reasoning" (brief note on key matrix scores), "robustness_reasoning" (brief note on decision robustness). When escalation factors or pathways are provided, reference them in your reasoning.
+4. Optionally, an "analysis" object: "overall" (1-2 sentences on overall inter-team dynamics), "matrix_reasoning" (brief note on key matrix scores), "robustness_reasoning" (brief note on decision robustness), "robustness_reasoning_by_decision" (object mapping each decision_id to one sentence explaining why that decision received its robustness score). When escalation factors or pathways are provided, reference them in your reasoning.
 
 Return ONLY valid JSON in this exact format:
 {
@@ -1279,7 +1281,8 @@ Return ONLY valid JSON in this exact format:
   "analysis": {
     "overall": "Optional 1-2 sentences.",
     "matrix_reasoning": "Optional brief note.",
-    "robustness_reasoning": "Optional brief note."
+    "robustness_reasoning": "Optional brief note.",
+    "robustness_reasoning_by_decision": { "decision-uuid-1": "One sentence why this decision got this robustness score.", "decision-uuid-2": "..." }
   }
 }
 
@@ -1373,19 +1376,32 @@ Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and r
       if (Object.keys(matrix_cell_reasoning[acting]).length === 0)
         delete matrix_cell_reasoning[acting];
     }
+    const rawAnalysis = parsed.analysis;
+    const rawRobustnessByDecision =
+      rawAnalysis &&
+      typeof rawAnalysis === 'object' &&
+      rawAnalysis.robustness_reasoning_by_decision;
+    const robustness_reasoning_by_decision: Record<string, string> = {};
+    if (rawRobustnessByDecision && typeof rawRobustnessByDecision === 'object') {
+      for (const [k, v] of Object.entries(rawRobustnessByDecision)) {
+        if (typeof v === 'string' && v.trim()) robustness_reasoning_by_decision[k] = v.trim();
+      }
+    }
     const analysis =
-      parsed.analysis && typeof parsed.analysis === 'object'
+      rawAnalysis && typeof rawAnalysis === 'object'
         ? {
-            overall:
-              typeof parsed.analysis.overall === 'string' ? parsed.analysis.overall : undefined,
+            overall: typeof rawAnalysis.overall === 'string' ? rawAnalysis.overall : undefined,
             matrix_reasoning:
-              typeof parsed.analysis.matrix_reasoning === 'string'
-                ? parsed.analysis.matrix_reasoning
+              typeof rawAnalysis.matrix_reasoning === 'string'
+                ? rawAnalysis.matrix_reasoning
                 : undefined,
             robustness_reasoning:
-              typeof parsed.analysis.robustness_reasoning === 'string'
-                ? parsed.analysis.robustness_reasoning
+              typeof rawAnalysis.robustness_reasoning === 'string'
+                ? rawAnalysis.robustness_reasoning
                 : undefined,
+            ...(Object.keys(robustness_reasoning_by_decision).length > 0 && {
+              robustness_reasoning_by_decision,
+            }),
             ...(Object.keys(matrix_cell_reasoning).length > 0 && { matrix_cell_reasoning }),
           }
         : Object.keys(matrix_cell_reasoning).length > 0

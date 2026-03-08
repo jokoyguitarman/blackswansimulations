@@ -61,10 +61,12 @@ async function applyEnvironmentalConsistencyCap(
     .select('id, environmental_consistency')
     .eq('session_id', sessionId)
     .in('id', decisionIds);
-  const envByDecision = new Map<
-    string,
-    { consistent?: boolean; severity?: string; mismatch_kind?: 'contradiction' | 'below_standard' }
-  >();
+  type EnvConsistency = {
+    consistent?: boolean;
+    severity?: string;
+    mismatch_kind?: 'contradiction' | 'below_standard';
+  };
+  const envByDecision = new Map<string, EnvConsistency>();
   for (const row of rows ?? []) {
     const r = row as {
       id: string;
@@ -74,8 +76,20 @@ async function applyEnvironmentalConsistencyCap(
         mismatch_kind?: string;
       } | null;
     };
-    if (r.environmental_consistency && typeof r.environmental_consistency === 'object')
-      envByDecision.set(r.id, r.environmental_consistency);
+    if (r.environmental_consistency && typeof r.environmental_consistency === 'object') {
+      const ec = r.environmental_consistency;
+      const kind =
+        ec.mismatch_kind === 'below_standard'
+          ? ('below_standard' as const)
+          : ec.mismatch_kind === 'contradiction'
+            ? ('contradiction' as const)
+            : undefined;
+      envByDecision.set(r.id, {
+        consistent: ec.consistent,
+        severity: ec.severity,
+        mismatch_kind: kind,
+      });
+    }
   }
   const capped: Record<string, number> = {};
   for (const [id, score] of Object.entries(robustnessByDecisionId)) {
@@ -557,6 +571,7 @@ export class AIInjectSchedulerService {
       overall?: string;
       matrix_reasoning?: string;
       robustness_reasoning?: string;
+      robustness_reasoning_by_decision?: Record<string, string>;
     } | null = null;
     let latestRobustnessByDecision: Record<string, number> | null = null;
 

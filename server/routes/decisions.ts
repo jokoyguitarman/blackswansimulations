@@ -19,7 +19,7 @@ import {
 import {
   getNotMetGatesForSession,
   getNotMetGatesInScopeForDecision,
-  isDecisionVagueForNotMetGate,
+  isDecisionVagueForNotMetGateAsync,
   objectiveIdForGate,
 } from '../services/gateEvaluationService.js';
 import { gradeDecisionBand } from '../services/incidentDecisionGradingService.js';
@@ -974,6 +974,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       const sessionTrainerId = (sessionRow as { trainer_id?: string } | null)?.trainer_id ?? null;
 
       const notMetGates = await getNotMetGatesForSession(decision.session_id);
+      let gateContentReason: string | undefined;
       if (notMetGates.length > 0) {
         const responseToIncidentId = (decision as { response_to_incident_id?: string | null })
           .response_to_incident_id;
@@ -1108,15 +1109,18 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
             }
           }
         } else {
-          // Legacy: no response_to_incident_id — use vague check
-          const { vague, gateIds } = isDecisionVagueForNotMetGate(
+          // Legacy: no response_to_incident_id — use vague check (AI when key set, else substring fallback)
+          const vagueResult = await isDecisionVagueForNotMetGateAsync(
             {
               description: decision.description,
               type: decision.type || 'operational_action',
             },
             authorTeamNames,
             notMetGates,
+            env.openAiApiKey,
           );
+          gateContentReason = vagueResult.gateContentReason;
+          const { vague, gateIds } = vagueResult;
           if (vague) {
             const vagueGates = notMetGates.filter((g) => gateIds.includes(g.gate_id));
             for (const gate of vagueGates) {
@@ -1199,21 +1203,35 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         incidentContext,
       );
       // Step 5: Environmental prerequisite (corridor traffic + location-condition gate); overrides AI result when failed
-      const prereqResult = await evaluateEnvironmentalPrerequisite(
-        decision.session_id,
-        {
-          id: decision.id,
-          title: decision.title,
-          description: decision.description,
-          type: decision.type ?? null,
-        },
-        incidentContext,
-      );
+      const { result: prereqResult, evaluationReason: envPrereqReason } =
+        await evaluateEnvironmentalPrerequisite(
+          decision.session_id,
+          {
+            id: decision.id,
+            title: decision.title,
+            description: decision.description,
+            type: decision.type ?? null,
+          },
+          incidentContext,
+          env.openAiApiKey,
+        );
       const envResult = prereqResult && !prereqResult.consistent ? prereqResult : aiEnvResult;
       await supabaseAdmin
         .from('decisions')
         .update({ environmental_consistency: envResult })
         .eq('id', decision.id);
+
+      // Persist evaluation reasoning (gate content + env prerequisite) for AAR/trainer visibility
+      const evaluationReasoning =
+        envPrereqReason != null || gateContentReason != null
+          ? { gate_content: gateContentReason ?? null, env_prerequisite: envPrereqReason ?? null }
+          : null;
+      if (evaluationReasoning) {
+        await supabaseAdmin
+          .from('decisions')
+          .update({ evaluation_reasoning: evaluationReasoning })
+          .eq('id', decision.id);
+      }
 
       const isContradiction = !envResult.consistent && envResult.mismatch_kind !== 'below_standard';
       if (!envResult.consistent && authorTeamNames.length > 0 && sessionScenarioId) {

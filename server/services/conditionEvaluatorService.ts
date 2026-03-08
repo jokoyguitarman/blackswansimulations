@@ -39,6 +39,8 @@ export interface EvaluationContext {
     progress_percentage?: number;
   }>;
   gateStatusByGateId?: Record<string, 'pending' | 'met' | 'not_met'>;
+  /** When set, decision-semantic condition keys use these values instead of registry (AI precomputed). */
+  precomputedDecisionKeys?: Record<string, boolean>;
 }
 
 export type EvaluatorResult =
@@ -314,6 +316,10 @@ function evaluateKey(key: string, context: EvaluationContext): boolean {
   if (key.startsWith(prefixGateMet) && context.gateStatusByGateId) {
     const gateId = key.slice(prefixGateMet.length);
     return context.gateStatusByGateId[gateId] === 'met';
+  }
+
+  if (context.precomputedDecisionKeys != null && key in context.precomputedDecisionKeys) {
+    return context.precomputedDecisionKeys[key] === true;
   }
 
   const fn = conditionRegistry[key];

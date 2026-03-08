@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { evaluateGateContentSatisfaction } from './decisionEvaluationAiService.js';
 
 /**
  * Gate condition shape (from scenario_gates.condition JSONB).
@@ -43,6 +44,34 @@ export function decisionSatisfiesGateContent(
     (h) => typeof h === 'string' && lower.includes((h as string).toLowerCase()),
   ).length;
   return count >= minHints;
+}
+
+/**
+ * Async gate content check: uses AI when openAiApiKey is set; falls back to substring match on failure.
+ */
+export async function decisionSatisfiesGateContentAsync(
+  description: string,
+  condition: GateCondition,
+  openAiApiKey: string | undefined,
+): Promise<boolean> {
+  const hints = condition.content_hints;
+  const minHints = condition.min_hints ?? 0;
+  if (!Array.isArray(hints) || hints.length === 0 || minHints <= 0) {
+    return true;
+  }
+  if (openAiApiKey) {
+    const result = await evaluateGateContentSatisfaction(
+      {
+        decisionDescription: description,
+        contentHints: hints.filter((h): h is string => typeof h === 'string'),
+        minHints,
+        gateDescription: undefined,
+      },
+      openAiApiKey,
+    );
+    if (result !== null) return result.satisfies;
+  }
+  return decisionSatisfiesGateContent(description, condition);
 }
 
 /**
@@ -155,6 +184,54 @@ export function isDecisionVagueForNotMetGate(
     gateIds.push(gate.gate_id);
   }
   return { vague: gateIds.length > 0, gateIds };
+}
+
+/**
+ * Async version: uses AI for gate content satisfaction when openAiApiKey is set; falls back to substring match.
+ * When openAiApiKey is set, builds gateContentReason from AI results for persistence on decisions.evaluation_reasoning.
+ */
+export async function isDecisionVagueForNotMetGateAsync(
+  decision: { description: string; type: string },
+  authorTeamNames: string[],
+  notMetGates: NotMetGate[],
+  openAiApiKey: string | undefined,
+): Promise<{ vague: boolean; gateIds: string[]; gateContentReason?: string }> {
+  const gateIds: string[] = [];
+  const reasonParts: string[] = [];
+  for (const gate of notMetGates) {
+    const cond = gate.condition;
+    const team = cond.team;
+    const types = cond.decision_types;
+    if (typeof team !== 'string' || !authorTeamNames.includes(team)) continue;
+    if (Array.isArray(types) && types.length > 0 && !types.includes(decision.type)) continue;
+    const hints = cond.content_hints;
+    const minHints = cond.min_hints ?? 0;
+    let satisfies: boolean;
+    if (openAiApiKey && Array.isArray(hints) && hints.length > 0 && minHints > 0) {
+      const result = await evaluateGateContentSatisfaction(
+        {
+          decisionDescription: decision.description,
+          contentHints: hints.filter((h): h is string => typeof h === 'string'),
+          minHints,
+          gateDescription: undefined,
+        },
+        openAiApiKey,
+      );
+      if (result !== null) {
+        satisfies = result.satisfies;
+        const short = (result.reason ?? (satisfies ? 'satisfied' : 'vague')).slice(0, 120);
+        reasonParts.push(`${gate.gate_id}: ${satisfies ? 'satisfied' : 'vague'} (${short})`);
+      } else {
+        satisfies = decisionSatisfiesGateContent(decision.description, cond);
+      }
+    } else {
+      satisfies = decisionSatisfiesGateContent(decision.description, cond);
+    }
+    if (satisfies) continue;
+    gateIds.push(gate.gate_id);
+  }
+  const gateContentReason = reasonParts.length > 0 ? reasonParts.join('. ') : undefined;
+  return { vague: gateIds.length > 0, gateIds, gateContentReason };
 }
 
 /**

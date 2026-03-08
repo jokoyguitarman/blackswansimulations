@@ -560,7 +560,12 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
               robustness_by_decision: (m.robustness_by_decision ?? {}) as Record<string, number>,
               escalation_factors_snapshot: m.escalation_factors_snapshot,
               analysis: m.analysis as
-                | { overall?: string; matrix_reasoning?: string; robustness_reasoning?: string }
+                | {
+                    overall?: string;
+                    matrix_reasoning?: string;
+                    robustness_reasoning?: string;
+                    robustness_reasoning_by_decision?: Record<string, string>;
+                  }
                 | undefined,
               response_taxonomy: m.response_taxonomy,
             }),
@@ -694,7 +699,12 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
                 matrix: (m.matrix ?? {}) as Record<string, Record<string, number>>,
                 robustness_by_decision: (m.robustness_by_decision ?? {}) as Record<string, number>,
                 analysis: m.analysis as
-                  | { overall?: string; matrix_reasoning?: string; robustness_reasoning?: string }
+                  | {
+                      overall?: string;
+                      matrix_reasoning?: string;
+                      robustness_reasoning?: string;
+                      robustness_reasoning_by_decision?: Record<string, string>;
+                    }
                   | undefined,
                 response_taxonomy: m.response_taxonomy as Record<string, string> | undefined,
               }),
