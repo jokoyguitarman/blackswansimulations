@@ -1,7 +1,9 @@
 /**
  * Step 5: Environmental prerequisite gate.
- * Checks (1) corridor traffic: decision uses evacuation/vehicle/route while env has unmanaged routes;
+ * Checks (1) facility-capacity: decision references a hospital/police/fire_station area that is at capacity;
  * (2) location-condition gate: decision references a scenario location that is "bad" and not yet managed.
+ * Route-related failures (unmanaged/congested route) are handled by the environmental consistency service
+ * (ground truth + AI); no separate corridor-traffic check here.
  * Returns same shape as EnvironmentalConsistencyResult so the decision execute flow can apply the same
  * penalties (inject, robustness cap, objective skip/penalty).
  */
@@ -10,7 +12,6 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import type { EnvironmentalConsistencyResult } from './environmentalConsistencyService.js';
 import { evaluateLocationReferenceIntent } from './decisionEvaluationAiService.js';
-import { evaluateRouteManagementIntent } from './decisionEvaluationAiService.js';
 
 type RouteRow = { route_id?: string; label?: string; managed?: boolean; active?: boolean };
 
@@ -28,22 +29,8 @@ export type AreaRow = {
 
 type LocationConditions = { suitability?: string; unsuitable?: boolean; cleared?: boolean };
 
-function isEvacuationOrRouteRelated(text: string): boolean {
-  const t = text.toLowerCase();
-  return (
-    /evacuat|vehicle|route|corridor|exit|convoy|deployment|traffic|congestion/.test(t) ||
-    /\bexit\s+[a-z]|\broute\s+[a-z]/i.test(t)
-  );
-}
-
-/** Incident context for scoping prerequisite checks (e.g. skip corridor check when incident is not evacuation-related). */
+/** Incident context for scoping prerequisite checks. */
 export type IncidentContext = { title: string; description: string } | null | undefined;
-
-function incidentSuggestsEvacuationOrRoute(incident: IncidentContext): boolean {
-  if (!incident?.title && !incident?.description) return true; // no context => run check
-  const text = `${incident.title ?? ''} ${incident.description ?? ''}`.toLowerCase();
-  return /evacuat|exit|route|corridor|congestion|bottleneck/i.test(text);
-}
 
 /** Negation patterns: decision is saying to avoid / not use the location rather than use it. */
 const NEGATION_PATTERNS = [
@@ -78,71 +65,6 @@ function decisionMentionsLocationNegatively(decisionText: string, locationLabel:
     const window = lower.slice(start, end);
     if (NEGATION_PATTERNS.some((re) => re.test(window))) return true;
     idx = lower.indexOf(labelLower, idx + 1);
-  }
-  return false;
-}
-
-/** First segment of a route label (before "–" or "(") for mention matching; e.g. "Bishan Street 13 – north to hospital zone" → "Bishan Street 13". */
-function firstSegmentOfLabel(label: string): string {
-  const trimmed = (label || '').trim();
-  const dash = trimmed.indexOf('–');
-  const paren = trimmed.indexOf('(');
-  const end = Math.min(dash >= 0 ? dash : trimmed.length, paren >= 0 ? paren : trimmed.length);
-  return trimmed.slice(0, end).trim();
-}
-
-/**
- * Returns true if the decision text (case-insensitive) refers to the route: full label, route_id, or first segment of label.
- */
-function decisionMentionsRoute(
-  decisionText: string,
-  route: { label?: string; route_id?: string },
-): boolean {
-  const lower = decisionText.toLowerCase();
-  const label = (route.label || '').trim();
-  const labelLower = label.toLowerCase();
-  if (labelLower && lower.includes(labelLower)) return true;
-  const routeId = (route.route_id || '').trim();
-  if (routeId && lower.includes(routeId.toLowerCase())) return true;
-  const segment = firstSegmentOfLabel(label);
-  if (segment.length >= 3 && lower.includes(segment.toLowerCase())) return true;
-  return false;
-}
-
-/** Patterns indicating the decision proposes to manage or clear the route/corridor before using it. */
-const MANAGE_FIRST_PATTERNS = [
-  /\bmanage\s+and\s+clear\b/i,
-  /\bclear\s+.*\s+before\b/i,
-  /\bbefore\s+routing\b/i,
-  /\bbefore\s+use\b/i,
-  /\bactively\s+manage\b/i,
-  /\bdeploy\s+marshals\s+to\b/i,
-  /\bclear\s+the\s+corridor\b/i,
-  /\bclear\s+.*\s+corridor\b/i,
-  /\bmanage\s+.*\s+traffic\b/i,
-  /\bclear\s+.*\s+traffic\b/i,
-  /\bmanage\s+.*\s+before\b/i,
-  /\bclear\s+.*\s+before\b/i,
-];
-
-/**
- * Returns true if, in a window around each mention of the route in the decision, there is phrasing that the team will manage/clear the route first.
- */
-function decisionProposesManagingRouteFirst(
-  decisionText: string,
-  routeLabelOrSegment: string,
-): boolean {
-  const lower = decisionText.toLowerCase();
-  const search = routeLabelOrSegment.toLowerCase().trim();
-  if (!search) return false;
-  const windowLen = 120;
-  let idx = lower.indexOf(search);
-  while (idx !== -1) {
-    const start = Math.max(0, idx - windowLen);
-    const end = Math.min(lower.length, idx + search.length + windowLen);
-    const window = lower.slice(start, end);
-    if (MANAGE_FIRST_PATTERNS.some((re) => re.test(window))) return true;
-    idx = lower.indexOf(search, idx + 1);
   }
   return false;
 }
@@ -197,86 +119,7 @@ export async function evaluateEnvironmentalPrerequisite(
 
     const decisionText = `${decision.title ?? ''} ${decision.description ?? ''}`.trim();
 
-    // --- (1) Corridor traffic: only fail when decision mentions an unmanaged route and does not propose managing/clearing it first ---
-    const routesRaw = envState?.routes;
-    const routes = Array.isArray(routesRaw) ? routesRaw : [];
-    const unmanagedRoutes = routes.filter((r) => r.managed === false);
-    const runCorridorCheck = incidentSuggestsEvacuationOrRoute(incident);
-    if (
-      runCorridorCheck &&
-      unmanagedRoutes.length > 0 &&
-      isEvacuationOrRouteRelated(decisionText)
-    ) {
-      const mentionedUnmanaged = unmanagedRoutes.filter((r) =>
-        decisionMentionsRoute(decisionText, r),
-      );
-      if (mentionedUnmanaged.length === 0) {
-        // Decision never mentions any unmanaged route — do not fail
-      } else {
-        const routeLabelsOrSegments = mentionedUnmanaged.map((r) => {
-          const labelOrSegment = r.label || r.route_id || '';
-          const segment = firstSegmentOfLabel(labelOrSegment);
-          return segment.length >= 3 ? segment : labelOrSegment;
-        });
-        if (openAiApiKey && routeLabelsOrSegments.length > 0) {
-          const aiResult = await evaluateRouteManagementIntent(
-            { decisionText, unmanagedRouteLabelsOrSegments: routeLabelsOrSegments },
-            openAiApiKey,
-          );
-          if (aiResult !== null) {
-            if (!aiResult.proposesManagingBeforeUse) {
-              const labels = mentionedUnmanaged.map((r) => r.label || r.route_id || 'route');
-              const reason =
-                aiResult.reason?.slice(0, 400) ??
-                `Corridor or route traffic is not yet managed (${labels.slice(0, 3).join(', ')}${labels.length > 3 ? '...' : ''}). The decision assumes use of routes that are still congested or unmanaged.`;
-              return {
-                result: {
-                  consistent: false,
-                  severity: 'medium',
-                  error_type: 'flow',
-                  reason,
-                },
-                evaluationReason: reason,
-              };
-            }
-            evaluationReason =
-              (evaluationReason ? `${evaluationReason} ` : '') +
-              (aiResult.reason ?? 'Route: passed – decision proposes managing corridor first.');
-          } else {
-            // Fallback: use keyword logic
-            const stillFailing = mentionedUnmanaged.filter((r) => {
-              const labelOrSegment = r.label || r.route_id || '';
-              const segment = firstSegmentOfLabel(labelOrSegment);
-              const search = segment.length >= 3 ? segment : labelOrSegment;
-              return !decisionProposesManagingRouteFirst(decisionText, search);
-            });
-            if (stillFailing.length > 0) {
-              const labels = stillFailing.map((r) => r.label || r.route_id || 'route');
-              const reason = `Corridor or route traffic is not yet managed (${labels.slice(0, 3).join(', ')}${labels.length > 3 ? '...' : ''}). The decision assumes use of routes that are still congested or unmanaged.`;
-              return {
-                result: { consistent: false, severity: 'medium', error_type: 'flow', reason },
-              };
-            }
-          }
-        } else {
-          const stillFailing = mentionedUnmanaged.filter((r) => {
-            const labelOrSegment = r.label || r.route_id || '';
-            const segment = firstSegmentOfLabel(labelOrSegment);
-            const search = segment.length >= 3 ? segment : labelOrSegment;
-            return !decisionProposesManagingRouteFirst(decisionText, search);
-          });
-          if (stillFailing.length > 0) {
-            const labels = stillFailing.map((r) => r.label || r.route_id || 'route');
-            const reason = `Corridor or route traffic is not yet managed (${labels.slice(0, 3).join(', ')}${labels.length > 3 ? '...' : ''}). The decision assumes use of routes that are still congested or unmanaged.`;
-            return {
-              result: { consistent: false, severity: 'medium', error_type: 'flow', reason },
-            };
-          }
-        }
-      }
-    }
-
-    // --- (2) Facility-capacity gate: decision references a hospital/police area that is at capacity ---
+    // --- (1) Facility-capacity gate: decision references a hospital/police area that is at capacity ---
     const areasRaw = envState?.areas;
     const areas = Array.isArray(areasRaw) ? areasRaw : [];
     const decisionLower = decisionText.toLowerCase();
@@ -308,7 +151,7 @@ export async function evaluateEnvironmentalPrerequisite(
       };
     }
 
-    // --- (3) Location-condition gate: decision references a bad location not yet managed ---
+    // --- (2) Location-condition gate: decision references a bad location not yet managed ---
     const { data: locations, error: locErr } = await supabaseAdmin
       .from('scenario_locations')
       .select('id, scenario_id, location_type, label, conditions')

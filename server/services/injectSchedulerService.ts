@@ -212,6 +212,21 @@ export class InjectSchedulerService {
       impactMatrix = latestMatrix.matrix as Record<string, Record<string, number>>;
     }
 
+    // Route-effect pressure: recent decisions with slow/congested route apply penalty to evac rate and triage band
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data: recentDecisionsWithRoute } = await supabaseAdmin
+      .from('decisions')
+      .select('id, environmental_consistency')
+      .eq('session_id', session.id)
+      .eq('status', 'executed')
+      .gte('executed_at', fiveMinutesAgo);
+    const hasSuboptimalRoute = (recentDecisionsWithRoute ?? []).some((d) => {
+      const ec = (d as { environmental_consistency?: { route_effect?: string } })
+        .environmental_consistency;
+      const re = ec?.route_effect;
+      return re === 'slow' || re === 'congested';
+    });
+
     const triageState = (nextState.triage_state as Record<string, unknown>) || {};
     if (elapsedMinutes >= 10 && triageState.surge_active !== true) {
       (nextState.triage_state as Record<string, unknown>) = { ...triageState, surge_active: true };
@@ -248,6 +263,10 @@ export class InjectSchedulerService {
       if (incomingOnEvac < 0) {
         rate = rate * Math.max(0.5, 1 + incomingOnEvac * 0.15);
       }
+      // Route pressure: recent decision used slow/congested route → slow evac rate
+      if (hasSuboptimalRoute) {
+        rate = rate * 0.85;
+      }
       const evacuated = Math.min(totalEvacuees, Math.floor(rate * elapsedMinutes));
       const currentEvacuated = Math.max(0, Number(evacState.evacuated_count) || 0);
       if (evacuated > currentEvacuated) {
@@ -272,6 +291,9 @@ export class InjectSchedulerService {
     const incomingOnTriage = incomingImpactOn(impactMatrix, 'triage');
     if (incomingOnTriage < 0 && band === 'high') band = 'mid';
     else if (incomingOnTriage < 0 && band === 'mid') band = 'low';
+    // Route pressure: recent decision used slow/congested route → worsen triage band one step
+    if (hasSuboptimalRoute && band === 'high') band = 'mid';
+    else if (hasSuboptimalRoute && band === 'mid') band = 'low';
     const BASE_TRIAGE_PROCESSED_PER_MIN = 8;
     const throughputMult = band === 'low' ? 0.5 : band === 'high' ? 1.25 : 1;
     const processed = Math.min(

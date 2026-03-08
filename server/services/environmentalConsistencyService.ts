@@ -15,6 +15,9 @@ export type EnvironmentalConsistencyErrorType = 'capacity' | 'location' | 'flow'
 /** When consistent is false: "contradiction" = wrong vs ground truth; "below_standard" = correct but short of sector standard. */
 export type EnvironmentalMismatchKind = 'contradiction' | 'below_standard';
 
+/** When the decision is route-related: effect on counters (clear = fast/managed, slow = slower/congested but valid, congested = blocked/unmanaged or clearly suboptimal). */
+export type RouteEffect = 'clear' | 'slow' | 'congested';
+
 export interface EnvironmentalConsistencyResult {
   consistent: boolean;
   severity?: EnvironmentalConsistencySeverity;
@@ -22,6 +25,8 @@ export interface EnvironmentalConsistencyResult {
   /** Set when consistent is false: contradiction = factual error vs ground truth; below_standard = meets ground truth but below sector standard. */
   mismatch_kind?: EnvironmentalMismatchKind;
   reason?: string;
+  /** When the decision is route-related (evacuation, triage, transport): used for counter pressure in inject scheduler. */
+  route_effect?: RouteEffect | null;
 }
 
 /** Scenario location row (map pin) for building ground truth from same data the Insider uses. */
@@ -39,16 +44,26 @@ interface SiteAreaForGroundTruth {
   label?: string;
 }
 
+/** Session route row (from current_state.environmental_state.routes) for ground truth. */
+interface SessionRouteRow {
+  label?: string;
+  problem?: string | null;
+  managed?: boolean;
+  travel_time_minutes?: number | null;
+}
+
 /**
  * Build environment ground truth summary for the evaluator.
  * Includes (1) full layout_ground_truth (exits with status/congestion, zones, blast_site) so traffic/blockages
  * are in ground truth even if the Insider does not mention them; (2) all Insider-visible data (triage candidates
  * from scenario_locations + site_areas, evacuation holding areas, routes, hospitals) so decisions that follow
- * Insider intel are not falsely flagged. Ground truth ⊇ Insider knowledge; ground truth can have more (e.g. congestion).
+ * Insider intel are not falsely flagged; (3) current route status from session (label, problem, managed, travel_time).
+ * Ground truth ⊇ Insider knowledge; ground truth can have more (e.g. congestion).
  */
 function buildGroundTruthSummary(
   insiderKnowledge: Record<string, unknown>,
   scenarioLocations?: ScenarioLocationRow[] | null,
+  sessionRoutes?: SessionRouteRow[],
 ): string {
   const layout = insiderKnowledge.layout_ground_truth as
     | {
@@ -133,6 +148,18 @@ function buildGroundTruthSummary(
     parts.push(`Nearby hospitals: ${hospitalNames}`);
   }
 
+  // 6) Current route status from session (congestion, managed, travel time) — used to cap robustness and set route_effect
+  if (sessionRoutes?.length) {
+    const routeLines = sessionRoutes.map((r) => {
+      const label = r.label ?? 'Route';
+      const status = r.problem?.trim() || 'clear';
+      const managed = r.managed === true ? 'managed' : 'unmanaged';
+      const min = r.travel_time_minutes != null ? `${r.travel_time_minutes} min` : '? min';
+      return `${label} – ${status}, ${managed}, ${min}`;
+    });
+    parts.push(`Current route status: ${routeLines.join('; ')}`);
+  }
+
   return parts.length > 0 ? parts.join('. ') : '';
 }
 
@@ -154,7 +181,7 @@ export async function evaluateDecisionAgainstEnvironment(
   try {
     const { data: session, error: sessionErr } = await supabaseAdmin
       .from('sessions')
-      .select('scenario_id')
+      .select('scenario_id, current_state')
       .eq('id', sessionId)
       .single();
     if (sessionErr || !session) {
@@ -166,6 +193,20 @@ export async function evaluateDecisionAgainstEnvironment(
     }
 
     const scenarioId = (session as { scenario_id: string }).scenario_id;
+    const currentState = (session as { current_state?: Record<string, unknown> }).current_state as
+      | Record<string, unknown>
+      | undefined;
+    const envState = currentState?.environmental_state as
+      | {
+          routes?: Array<{
+            label?: string;
+            problem?: string | null;
+            managed?: boolean;
+            travel_time_minutes?: number | null;
+          }>;
+        }
+      | undefined;
+    const sessionRoutes = Array.isArray(envState?.routes) ? envState.routes : [];
     const { data: scenario, error: scenarioErr } = await supabaseAdmin
       .from('scenarios')
       .select('id, description, insider_knowledge')
@@ -183,7 +224,11 @@ export async function evaluateDecisionAgainstEnvironment(
       .eq('scenario_id', scenarioId)
       .order('display_order', { ascending: true });
 
-    const groundTruthSummary = buildGroundTruthSummary(insiderKnowledge, scenarioLocations ?? null);
+    const groundTruthSummary = buildGroundTruthSummary(
+      insiderKnowledge,
+      scenarioLocations ?? null,
+      sessionRoutes,
+    );
     const sectorStandards =
       typeof insiderKnowledge.sector_standards === 'string'
         ? insiderKnowledge.sector_standards
@@ -210,10 +255,12 @@ Rules:
 - severity: "low" = minor (e.g. 60 in 50-capacity area); "medium" = clear contradiction (e.g. wrong exit, 100 in 50); "high" = dangerous/impossible (e.g. 200 in 50, non-existent exit). For below_standard use "low" or "medium" only.
 - error_type: "capacity" | "location" | "flow" | "other" (if consistent is false).
 - reason: one clear sentence (e.g. for contradiction: "The assembly area North has a safe capacity of 50; your plan assumed 100." For below_standard: "The assembly area you designated (North capacity 200) is below the sector guideline of 125% of expected evacuees (1250); your plan uses the available option.").
+- Routes: If "Current route status" is in the ground truth, use it. If the decision uses a route that is congested, blocked, or unmanaged without proposing to manage/clear it first, set consistent: false with appropriate severity and error_type "flow" or "location". If the decision chooses a significantly slower route when a faster one is available, set consistent: false (or below_standard) with severity and reason.
+- route_effect (when the decision is route-related: evacuation, triage, transport, convoy): "clear" = uses a fast/managed route; "slow" = uses a slower or congested route but still valid; "congested" = uses a blocked/unmanaged route or clearly suboptimal. Omit or null when the decision does not involve route choice.
 
 Sector standards (e.g. 125% assembly capacity, triage ratios) are best-practice targets, not absolute requirements. Only use them to set consistent false when the decision also contradicts ground truth or is clearly dangerous. If the decision correctly uses a real area/capacity from ground truth but that capacity is below the standard, set mismatch_kind "below_standard" and severity "low" or "medium".
 
-Return ONLY valid JSON: { "consistent": boolean, "mismatch_kind": "contradiction"|"below_standard" (if consistent is false), "severity": "low"|"medium"|"high" (if consistent is false), "error_type": "capacity"|"location"|"flow"|"other" (if consistent is false), "reason": "..." (if consistent is false) }`;
+Return ONLY valid JSON: { "consistent": boolean, "mismatch_kind": "contradiction"|"below_standard" (if consistent is false), "severity": "low"|"medium"|"high" (if consistent is false), "error_type": "capacity"|"location"|"flow"|"other" (if consistent is false), "reason": "..." (if consistent is false), "route_effect": "clear"|"slow"|"congested"|null (when decision is route-related) }`;
 
     const incidentUserBlock =
       incident?.title != null || incident?.description != null
@@ -267,10 +314,20 @@ Is this decision consistent with the environment? Return JSON only.`;
       severity?: string;
       error_type?: string;
       reason?: string;
+      route_effect?: string | null;
     };
 
+    const routeEffect =
+      parsed.route_effect === 'clear' ||
+      parsed.route_effect === 'slow' ||
+      parsed.route_effect === 'congested'
+        ? (parsed.route_effect as RouteEffect)
+        : undefined;
+
     const consistent = parsed.consistent === true;
-    if (consistent) return { consistent: true };
+    if (consistent) {
+      return { consistent: true, route_effect: routeEffect ?? null };
+    }
 
     const mismatch_kind =
       parsed.mismatch_kind === 'below_standard'
@@ -287,7 +344,14 @@ Is this decision consistent with the environment? Return JSON only.`;
         ? parsed.reason.trim().slice(0, 500)
         : 'Decision details do not match current site conditions.';
 
-    return { consistent: false, severity, error_type, mismatch_kind, reason };
+    return {
+      consistent: false,
+      severity,
+      error_type,
+      mismatch_kind,
+      reason,
+      route_effect: routeEffect ?? null,
+    };
   } catch (err) {
     logger.warn(
       { err, sessionId, decisionId: decision.id },

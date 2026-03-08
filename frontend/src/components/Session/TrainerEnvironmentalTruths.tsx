@@ -48,6 +48,13 @@ interface LocationRow {
   coordinates?: { lat?: number; lng?: number };
 }
 
+interface SessionRoute {
+  label?: string;
+  problem?: string | null;
+  managed?: boolean;
+  travel_time_minutes?: number | null;
+}
+
 interface TrainerEnvironmentalTruthsProps {
   sessionId: string;
   scenarioId: string;
@@ -59,6 +66,7 @@ export const TrainerEnvironmentalTruths = ({
 }: TrainerEnvironmentalTruthsProps) => {
   const [insiderKnowledge, setInsiderKnowledge] = useState<InsiderKnowledge | null>(null);
   const [locations, setLocations] = useState<LocationRow[]>([]);
+  const [sessionRoutes, setSessionRoutes] = useState<SessionRoute[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,11 +82,18 @@ export const TrainerEnvironmentalTruths = ({
           (r) => (r.data as { insider_knowledge?: InsiderKnowledge })?.insider_knowledge ?? null,
         ),
       api.sessions.getLocations(sessionId).then((r) => (r.data ?? []) as LocationRow[]),
+      api.sessions.get(sessionId).then((r) => {
+        const data = r.data as {
+          current_state?: { environmental_state?: { routes?: SessionRoute[] } };
+        };
+        return data?.current_state?.environmental_state?.routes ?? [];
+      }),
     ])
-      .then(([ik, locs]) => {
+      .then(([ik, locs, routes]) => {
         if (!cancelled) {
           setInsiderKnowledge((ik as InsiderKnowledge) ?? null);
           setLocations(locs ?? []);
+          setSessionRoutes(Array.isArray(routes) ? routes : []);
         }
       })
       .catch((e) => {
@@ -214,6 +229,24 @@ export const TrainerEnvironmentalTruths = ({
         </div>
       )}
 
+      {sessionRoutes.length > 0 && (
+        <div>
+          <div className="text-robotic-yellow/80 mb-1">Current route status (session)</div>
+          <p className="text-robotic-gray-50/80 text-xs mb-1">
+            Same data used for consistency checks; affects robustness cap and counter pressure.
+          </p>
+          <ul className="list-disc pl-4 space-y-0.5 text-robotic-gray-50">
+            {sessionRoutes.map((r, i) => (
+              <li key={i}>
+                {r.label ?? 'Route'} — {r.problem?.trim() || 'clear'},{' '}
+                {r.managed ? 'managed' : 'unmanaged'}
+                {r.travel_time_minutes != null ? `, ${r.travel_time_minutes} min` : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {osm?.hospitals && osm.hospitals.length > 0 && (
         <div>
           <div className="text-robotic-yellow/80 mb-1">Nearby hospitals</div>
@@ -243,7 +276,8 @@ export const TrainerEnvironmentalTruths = ({
         evacHoldingLocs.length === 0 &&
         !osm?.emergency_routes?.length &&
         !osm?.hospitals?.length &&
-        !sectorStandards && (
+        !sectorStandards &&
+        sessionRoutes.length === 0 && (
           <p className="text-robotic-yellow/70">
             No environmental truths configured for this scenario.
           </p>
