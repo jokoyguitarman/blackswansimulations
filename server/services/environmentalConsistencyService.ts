@@ -24,25 +24,115 @@ export interface EnvironmentalConsistencyResult {
   reason?: string;
 }
 
-function buildGroundTruthSummary(insiderKnowledge: Record<string, unknown>): string {
+/** Scenario location row (map pin) for building ground truth from same data the Insider uses. */
+interface ScenarioLocationRow {
+  label?: string | null;
+  location_type?: string | null;
+  conditions?: Record<string, unknown> | null;
+  display_order?: number | null;
+}
+
+/** Site area from insider_knowledge.site_areas (triage candidates). */
+interface SiteAreaForGroundTruth {
+  capacity_lying?: number;
+  capacity_standing?: number;
+  label?: string;
+}
+
+/**
+ * Build environment ground truth summary for the evaluator.
+ * Includes (1) full layout_ground_truth (exits with status/congestion, zones, blast_site) so traffic/blockages
+ * are in ground truth even if the Insider does not mention them; (2) all Insider-visible data (triage candidates
+ * from scenario_locations + site_areas, evacuation holding areas, routes, hospitals) so decisions that follow
+ * Insider intel are not falsely flagged. Ground truth ⊇ Insider knowledge; ground truth can have more (e.g. congestion).
+ */
+function buildGroundTruthSummary(
+  insiderKnowledge: Record<string, unknown>,
+  scenarioLocations?: ScenarioLocationRow[] | null,
+): string {
   const layout = insiderKnowledge.layout_ground_truth as
     | {
         evacuee_count?: number;
         exits?: Array<{ id?: string; label?: string; flow_per_min?: number; status?: string }>;
         zones?: Array<{ id?: string; label?: string; capacity?: number; type?: string }>;
+        blast_site?: Record<string, unknown>;
       }
     | undefined;
-  if (!layout) return '';
   const parts: string[] = [];
-  if (layout.evacuee_count != null) parts.push(`Evacuees: ${layout.evacuee_count}`);
-  if (layout.exits?.length)
-    parts.push(
-      `Exits: ${layout.exits.map((e) => `${e.label ?? e.id ?? 'Exit'}${e.flow_per_min != null ? ` ${e.flow_per_min}/min` : ''}${e.status ? ` [${e.status}]` : ''}`).join('; ')}`,
+
+  // 1) Full layout (exits with status/congestion, zones, evacuee_count, blast_site) — can include info Insider doesn't show
+  if (layout) {
+    if (layout.evacuee_count != null) parts.push(`Evacuees: ${layout.evacuee_count}`);
+    if (layout.exits?.length)
+      parts.push(
+        `Exits: ${layout.exits.map((e) => `${e.label ?? e.id ?? 'Exit'}${e.flow_per_min != null ? ` ${e.flow_per_min}/min` : ''}${e.status ? ` [${e.status}]` : ''}`).join('; ')}`,
+      );
+    if (layout.zones?.length)
+      parts.push(
+        `Zones/areas: ${layout.zones.map((z) => `${z.label ?? z.id ?? 'Zone'}${z.capacity != null ? ` capacity ${z.capacity}` : ''}${z.type ? ` type ${z.type}` : ''}`).join('; ')}`,
+      );
+    if (layout.blast_site && typeof layout.blast_site === 'object') {
+      const desc = (layout.blast_site as { description?: string }).description;
+      if (desc) parts.push(`Blast/cordon: ${desc}`);
+    }
+  }
+
+  // 2) Triage zone candidates (same as Insider triage_site: scenario_locations area/triage_site + site_areas)
+  const siteAreas = (insiderKnowledge.site_areas ?? []) as SiteAreaForGroundTruth[];
+  const triageLocations = (scenarioLocations ?? []).filter(
+    (loc) => loc.location_type === 'area' || loc.location_type === 'triage_site',
+  );
+  if (triageLocations.length > 0) {
+    const triageLines = triageLocations.map((loc, i) => {
+      const label = loc.label ?? `Area ${i + 1}`;
+      const sa = siteAreas[i];
+      const lying = sa?.capacity_lying;
+      const standing = sa?.capacity_standing;
+      const cap = [lying != null && `lying ${lying}`, standing != null && `standing ${standing}`]
+        .filter(Boolean)
+        .join(', ');
+      return cap ? `${label} (${cap})` : label;
+    });
+    parts.push(`Triage zone candidates (valid for decisions): ${triageLines.join('; ')}`);
+  }
+
+  // 3) Evacuation holding areas (same as Insider evacuation_holding)
+  const evacHolding = (scenarioLocations ?? []).filter(
+    (loc) => loc.location_type === 'evacuation_holding',
+  );
+  if (evacHolding.length > 0) {
+    const evacLines = evacHolding.map((loc) => {
+      const label = loc.label ?? 'Unknown';
+      const cap = (loc.conditions as { capacity?: number } | undefined)?.capacity;
+      return cap != null ? `${label} (capacity ${cap})` : label;
+    });
+    parts.push(`Evacuation holding areas (valid for decisions): ${evacLines.join('; ')}`);
+  }
+
+  // 4) Emergency routes (same as Insider routes)
+  const osm = insiderKnowledge.osm_vicinity as
+    | {
+        emergency_routes?: Array<{
+          description?: string;
+          highway_type?: string;
+          one_way?: boolean;
+        }>;
+        hospitals?: Array<{ name?: string; address?: string }>;
+      }
+    | undefined;
+  if (osm?.emergency_routes?.length) {
+    const routeLines = osm.emergency_routes.map(
+      (r) => `${r.description ?? 'Route'}${r.one_way ? ' [one-way]' : ''}`,
     );
-  if (layout.zones?.length)
-    parts.push(
-      `Zones/areas: ${layout.zones.map((z) => `${z.label ?? z.id ?? 'Zone'}${z.capacity != null ? ` capacity ${z.capacity}` : ''}${z.type ? ` type ${z.type}` : ''}`).join('; ')}`,
-    );
+    parts.push(`Emergency routes: ${routeLines.join('; ')}`);
+  }
+
+  // 5) Hospitals (same as Insider hospitals) so decisions referring to hospitals match known list
+  if (osm?.hospitals?.length) {
+    const hospitalNames = osm.hospitals.map((h) => h.name ?? 'Unknown').join(', ');
+    parts.push(`Nearby hospitals: ${hospitalNames}`);
+  }
+
   return parts.length > 0 ? parts.join('. ') : '';
 }
 
@@ -75,16 +165,25 @@ export async function evaluateDecisionAgainstEnvironment(
       return consistentDefault;
     }
 
+    const scenarioId = (session as { scenario_id: string }).scenario_id;
     const { data: scenario, error: scenarioErr } = await supabaseAdmin
       .from('scenarios')
       .select('id, description, insider_knowledge')
-      .eq('id', (session as { scenario_id: string }).scenario_id)
+      .eq('id', scenarioId)
       .single();
     if (scenarioErr || !scenario) return consistentDefault;
 
     const insiderKnowledge = ((scenario as { insider_knowledge?: Record<string, unknown> })
       .insider_knowledge ?? {}) as Record<string, unknown>;
-    const groundTruthSummary = buildGroundTruthSummary(insiderKnowledge);
+
+    // Fetch scenario_locations (same source as Insider) so ground truth includes all Insider-visible data
+    const { data: scenarioLocations } = await supabaseAdmin
+      .from('scenario_locations')
+      .select('label, location_type, conditions, display_order')
+      .eq('scenario_id', scenarioId)
+      .order('display_order', { ascending: true });
+
+    const groundTruthSummary = buildGroundTruthSummary(insiderKnowledge, scenarioLocations ?? null);
     const sectorStandards =
       typeof insiderKnowledge.sector_standards === 'string'
         ? insiderKnowledge.sector_standards

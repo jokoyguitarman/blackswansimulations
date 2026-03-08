@@ -100,6 +100,8 @@ interface MapViewProps {
   fillHeight?: boolean;
   /** Increment to refetch locations (e.g. after user asked Insider, so new POI categories appear). */
   locationsRefreshTrigger?: number;
+  /** When true (e.g. trainer view), show all pins regardless of Insider reveal; default false. */
+  showAllPins?: boolean;
 }
 
 /**
@@ -371,6 +373,7 @@ export const MapView = ({
   isVisible = true,
   fillHeight = false,
   locationsRefreshTrigger = 0,
+  showAllPins = false,
 }: MapViewProps) => {
   const mapDisabledByEnv = import.meta.env.VITE_DISABLE_MAP === 'true';
   const isMapDisabled = disabled || mapDisabledByEnv;
@@ -455,9 +458,10 @@ export const MapView = ({
   const scenarioLocationsWithCoords = scenarioLocations.filter(
     (loc) => typeof loc.coordinates?.lat === 'number' && typeof loc.coordinates?.lng === 'number',
   );
-  // Hide cordon; show incident geography always; show establishment/POI pins only when user asked Insider for that category
+  // When showAllPins (trainer): show all pins except cordon; otherwise hide cordon and show geography + POIs only when Insider-revealed
   const scenarioLocationsForMap = scenarioLocationsWithCoords.filter((loc) => {
     if (loc.location_type === 'cordon') return false;
+    if (showAllPins) return true;
     if (
       ALWAYS_SHOW_LOCATION_TYPES.includes(
         loc.location_type as (typeof ALWAYS_SHOW_LOCATION_TYPES)[number],
