@@ -118,10 +118,12 @@ export async function publishInjectToSession(
     target_teams: ((inject as Record<string, unknown>).target_teams as string[] | null) || null,
   });
 
-  // Fire-and-forget: generate pathway outcomes (factors + outcome injects) for next 5-min cycle
-  void runPathwayOutcomesOnInjectPublished(sessionId, injectId).catch((err) =>
-    logger.error({ err, sessionId, injectId }, 'Pathway outcomes on inject publish failed'),
-  );
+  // Only review for escalation/de-escalation factors and pathways when the inject requires a response
+  if ((inject as { requires_response?: boolean }).requires_response === true) {
+    void runPathwayOutcomesOnInjectPublished(sessionId, injectId).catch((err) =>
+      logger.error({ err, sessionId, injectId }, 'Pathway outcomes on inject publish failed'),
+    );
+  }
 
   // Phase 5.1: Apply inject-driven objective penalty and state effect (central hook)
   await applyInjectPublishEffects(sessionId, injectId, inject as Record<string, unknown>);
@@ -250,135 +252,134 @@ export async function publishInjectToSession(
     // Don't throw - notification failure shouldn't block inject publishing
   }
 
-  // If inject requires response, automatically create an incident
-  if (inject.requires_response) {
-    try {
-      // Map inject type to incident type
-      const incidentTypeMap: Record<string, string> = {
-        field_update: 'operational',
-        intel_brief: 'intelligence',
-        media_report: 'media',
-        citizen_call: 'civilian',
-        resource_shortage: 'logistics',
-        weather_change: 'environmental',
-        political_pressure: 'political',
-      };
-      const incidentType = incidentTypeMap[inject.type] || 'general';
+  // Create an incident for every inject so teams see all updates (status and action-required)
+  try {
+    // Map inject type to incident type
+    const incidentTypeMap: Record<string, string> = {
+      field_update: 'operational',
+      intel_brief: 'intelligence',
+      media_report: 'media',
+      citizen_call: 'civilian',
+      resource_shortage: 'logistics',
+      weather_change: 'environmental',
+      political_pressure: 'political',
+    };
+    const incidentType = incidentTypeMap[inject.type] || 'general';
 
-      // Create incident from inject
-      const { data: incident, error: incidentError } = await supabaseAdmin
+    // Create incident from inject (all injects create an incident; requires_response controls [DECISION] button)
+    const requiresResponse = (inject as { requires_response?: boolean }).requires_response === true;
+    const { data: incident, error: incidentError } = await supabaseAdmin
+      .from('incidents')
+      .insert({
+        session_id: sessionId,
+        title: inject.title,
+        description: inject.content,
+        type: incidentType,
+        severity: inject.severity,
+        status: 'active',
+        reported_by: userId,
+        inject_id: injectId, // Track which inject created this incident
+        requires_response: requiresResponse,
+        // Location can be extracted from content later or left null
+        location_lat: null,
+        location_lng: null,
+      })
+      .select()
+      .single();
+
+    if (incidentError) {
+      logger.error(
+        {
+          error: incidentError,
+          errorCode: incidentError.code,
+          errorMessage: incidentError.message,
+          errorDetails: incidentError.details,
+          errorHint: incidentError.hint,
+          injectId,
+          sessionId,
+          userId,
+        },
+        'Failed to create incident from inject',
+      );
+      // Don't fail the inject publish if incident creation fails
+    } else if (incident) {
+      // Create initial status update
+      await supabaseAdmin.from('incident_updates').insert({
+        incident_id: incident.id,
+        status: 'active',
+        updated_by: userId,
+        notes: `Incident automatically created from inject: ${inject.title}`,
+      });
+
+      // Fetch full incident with relations for WebSocket broadcast
+      const { data: fullIncident } = await supabaseAdmin
         .from('incidents')
-        .insert({
-          session_id: sessionId,
-          title: inject.title,
-          description: inject.content,
-          type: incidentType,
-          severity: inject.severity,
-          status: 'active',
-          reported_by: userId,
-          inject_id: injectId, // Track which inject created this incident
-          // Location can be extracted from content later or left null
-          location_lat: null,
-          location_lng: null,
-        })
-        .select()
-        .single();
-
-      if (incidentError) {
-        logger.error(
-          {
-            error: incidentError,
-            errorCode: incidentError.code,
-            errorMessage: incidentError.message,
-            errorDetails: incidentError.details,
-            errorHint: incidentError.hint,
-            injectId,
-            sessionId,
-            userId,
-          },
-          'Failed to create incident from inject',
-        );
-        // Don't fail the inject publish if incident creation fails
-      } else if (incident) {
-        // Create initial status update
-        await supabaseAdmin.from('incident_updates').insert({
-          incident_id: incident.id,
-          status: 'active',
-          updated_by: userId,
-          notes: `Incident automatically created from inject: ${inject.title}`,
-        });
-
-        // Fetch full incident with relations for WebSocket broadcast
-        const { data: fullIncident } = await supabaseAdmin
-          .from('incidents')
-          .select(
-            `
+        .select(
+          `
             *,
             reported_by:user_profiles!incidents_reported_by_fkey(id, full_name, role)
           `,
-          )
-          .eq('id', incident.id)
-          .single();
+        )
+        .eq('id', incident.id)
+        .single();
 
-        // Broadcast incident created event
-        getWebSocketService().incidentCreated(sessionId, fullIncident || incident);
+      getWebSocketService().incidentCreated(sessionId, fullIncident || incident);
 
-        // Log incident creation event in session_events
-        // Note: session_events table uses: actor_id (not created_by), metadata (not event_data), description (required)
-        try {
-          await supabaseAdmin.from('session_events').insert({
-            session_id: sessionId,
-            event_type: 'incident',
-            description: `Incident created from inject: ${incident.title}`,
-            actor_id: userId,
-            metadata: {
-              incident_id: incident.id,
-              title: incident.title,
-              type: incident.type,
-              severity: incident.severity,
-              created_from_inject: true,
-              inject_id: injectId,
-            },
-          });
-
-          // Broadcast the event
-          io.to(`session:${sessionId}`).emit('event', {
-            type: 'incident',
-            data: {
-              incident_id: incident.id,
-              title: incident.title,
-              type: incident.type,
-              severity: incident.severity,
-              created_from_inject: true,
-              inject_id: injectId,
-            },
-            timestamp: new Date().toISOString(),
-          });
-          logger.debug(
-            { sessionId, incidentId: incident.id },
-            'Incident event logged and broadcasted',
-          );
-        } catch (eventErr) {
-          logger.error(
-            { error: eventErr, sessionId, incidentId: incident.id },
-            'Error logging incident event',
-          );
-          // Don't throw - incident is created, event logging failure is non-critical
-        }
-
-        logger.info(
-          {
-            injectId,
-            incidentId: incident.id,
-            sessionId,
+      // Log incident creation event in session_events
+      // Note: session_events table uses: actor_id (not created_by), metadata (not event_data), description (required)
+      try {
+        await supabaseAdmin.from('session_events').insert({
+          session_id: sessionId,
+          event_type: 'incident',
+          description: `Incident created from inject: ${incident.title}`,
+          actor_id: userId,
+          metadata: {
+            incident_id: incident.id,
+            title: incident.title,
+            type: incident.type,
+            severity: incident.severity,
+            created_from_inject: true,
+            inject_id: injectId,
           },
-          'Incident automatically created from inject',
+        });
+
+        // Broadcast the event
+        io.to(`session:${sessionId}`).emit('event', {
+          type: 'incident',
+          data: {
+            incident_id: incident.id,
+            title: incident.title,
+            type: incident.type,
+            severity: incident.severity,
+            created_from_inject: true,
+            inject_id: injectId,
+          },
+          timestamp: new Date().toISOString(),
+        });
+        logger.debug(
+          { sessionId, incidentId: incident.id },
+          'Incident event logged and broadcasted',
         );
+      } catch (eventErr) {
+        logger.error(
+          { error: eventErr, sessionId, incidentId: incident.id },
+          'Error logging incident event',
+        );
+        // Don't throw - incident is created, event logging failure is non-critical
       }
-    } catch (incidentErr) {
-      logger.error({ error: incidentErr, injectId }, 'Error creating incident from inject');
-      // Don't fail the inject publish if incident creation fails
+
+      logger.info(
+        {
+          injectId,
+          incidentId: incident.id,
+          sessionId,
+        },
+        'Incident automatically created from inject',
+      );
     }
+  } catch (incidentErr) {
+    logger.error({ error: incidentErr, injectId }, 'Error creating incident from inject');
+    // Don't fail the inject publish if incident creation fails
   }
 
   // Create media post for media-related inject types

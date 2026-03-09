@@ -911,6 +911,10 @@ export class AIInjectSchedulerService {
               ? matching[0]
               : outcomes[Math.floor(Math.random() * outcomes.length)];
 
+          // High-band outcomes are de-escalation (things improving); do not require a response
+          const requiresResponse =
+            robustnessBand === 'high' ? false : toPublish.inject_payload.requires_response === true;
+
           const { data: createdInject, error: createError } = await supabaseAdmin
             .from('scenario_injects')
             .insert({
@@ -924,7 +928,7 @@ export class AIInjectSchedulerService {
               affected_roles: toPublish.inject_payload.affected_roles ?? [],
               inject_scope: toPublish.inject_payload.inject_scope ?? 'universal',
               target_teams: toPublish.inject_payload.target_teams ?? null,
-              requires_response: toPublish.inject_payload.requires_response === true,
+              requires_response: requiresResponse,
               requires_coordination: false,
               ai_generated: true,
               triggered_by_user_id: null,

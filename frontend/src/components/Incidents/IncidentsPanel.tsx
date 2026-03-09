@@ -45,6 +45,8 @@ interface Incident {
       full_name: string;
     };
   }>;
+  /** When false, do not show [DECISION] button (status-update only). */
+  requires_response?: boolean;
 }
 
 interface IncidentsPanelProps {
@@ -157,6 +159,7 @@ export const IncidentsPanel = ({
           casualty_count: payload.casualty_count || undefined,
           reported_at: payload.reported_at,
           updated_at: payload.updated_at,
+          requires_response: payload.requires_response,
           reported_by: reportedByResult.data
             ? {
                 id: reportedByResult.data.id,
@@ -207,6 +210,7 @@ export const IncidentsPanel = ({
           casualty_count: payload.casualty_count || undefined,
           reported_at: payload.reported_at,
           updated_at: payload.updated_at,
+          requires_response: payload.requires_response,
         };
         setIncidents((prev) => {
           const exists = prev.some((i) => i.id === incident.id);

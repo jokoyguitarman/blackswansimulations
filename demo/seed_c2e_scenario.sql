@@ -106,7 +106,7 @@ The situation is complicated by a developing media environment in which misinfor
     'critical',
     '[]'::jsonb,
     'universal',
-    NULL,
+    ARRAY['evacuation', 'triage', 'media'],
     true,
     false
   );
@@ -128,7 +128,7 @@ No two accounts match.',
     'high',
     '[]'::jsonb,
     'universal',
-    NULL,
+    ARRAY['evacuation', 'triage', 'media'],
     false,
     true
   );
@@ -144,7 +144,7 @@ No two accounts match.',
     'high',
     '[]'::jsonb,
     'universal',
-    NULL,
+    ARRAY['evacuation', 'triage', 'media'],
     true,
     true
   );
@@ -165,7 +165,7 @@ The video is going viral rapidly.',
     'critical',
     '[]'::jsonb,
     'universal',
-    NULL,
+    ARRAY['evacuation', 'triage', 'media'],
     true,
     true
   );
@@ -181,7 +181,7 @@ The video is going viral rapidly.',
     'high',
     '[]'::jsonb,
     'universal',
-    NULL,
+    ARRAY['evacuation', 'triage', 'media'],
     true,
     true
   );
@@ -197,7 +197,7 @@ The video is going viral rapidly.',
     'critical',
     '[]'::jsonb,
     'universal',
-    NULL,
+    ARRAY['evacuation', 'triage', 'media'],
     true,
     true
   );

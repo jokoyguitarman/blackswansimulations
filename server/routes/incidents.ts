@@ -308,13 +308,14 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
         affected_roles?: string[] | null;
         ai_generated?: boolean | null;
         triggered_by_user_id?: string | null;
+        requires_response?: boolean | null;
       }
     >();
     if (incidentInjectIds.length > 0) {
       const { data: injects, error: injectsError } = await supabaseAdmin
         .from('scenario_injects')
         .select(
-          'id, inject_scope, target_teams, affected_roles, ai_generated, triggered_by_user_id',
+          'id, inject_scope, target_teams, affected_roles, ai_generated, triggered_by_user_id, requires_response',
         )
         .in('id', [...new Set(incidentInjectIds)]);
 
@@ -333,6 +334,7 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
             affected_roles?: string[] | null;
             ai_generated?: boolean | null;
             triggered_by_user_id?: string | null;
+            requires_response?: boolean | null;
           }) => {
             injectsMap.set(inject.id, inject);
           },
@@ -576,11 +578,21 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
     }
 
     const enriched = (
-      filteredIncidents as Array<Record<string, unknown> & { inject_id?: string | null }>
-    ).map((incident) => ({
-      ...incident,
-      for_teams_display: getForTeamsDisplay(incident),
-    }));
+      filteredIncidents as Array<
+        Record<string, unknown> & {
+          inject_id?: string | null;
+          requires_response?: boolean | null;
+        }
+      >
+    ).map((incident) => {
+      const inject = incident.inject_id ? injectsMap.get(incident.inject_id) : undefined;
+      return {
+        ...incident,
+        for_teams_display: getForTeamsDisplay(incident),
+        requires_response:
+          incident.requires_response ?? (inject ? inject.requires_response === true : true),
+      };
+    });
     res.json({ data: enriched });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /incidents/session/:sessionId');

@@ -20,6 +20,8 @@ interface Incident {
   updated_at: string;
   /** Which team(s) this incident is for (from inject scope/target_teams). Set by API. */
   for_teams_display?: string;
+  /** When false, incident is status-update only; do not show [DECISION] button. */
+  requires_response?: boolean;
   reported_by?: {
     id: string;
     full_name: string;
@@ -206,6 +208,7 @@ export const IncidentCard = ({
       {/* Actions */}
       <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-robotic-yellow/30">
         {onDecisionClick != null &&
+          incident.requires_response !== false &&
           (hasExecutedDecision ? (
             <span
               className="px-3 py-1 text-xs terminal-text border border-green-400/50 text-green-400/80 bg-green-400/10 whitespace-nowrap cursor-default"
