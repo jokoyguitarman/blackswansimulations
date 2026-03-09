@@ -209,6 +209,24 @@ export const api = {
         }>;
       }>(await fetch(apiUrl(`/api/sessions/${sessionId}/insider/history`), { headers }));
     },
+    hospitalList: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{ id: string; label: string }>;
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/hospital/list`), { headers }));
+    },
+    hospitalAsk: async (sessionId: string, body: { hospital_id: string; content: string }) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: { answer: string };
+      }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/hospital/ask`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        }),
+      );
+    },
     create: async (data: unknown) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(

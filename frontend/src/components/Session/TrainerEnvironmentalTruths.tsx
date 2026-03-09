@@ -46,6 +46,15 @@ interface LocationRow {
   label?: string;
   location_type?: string;
   coordinates?: { lat?: number; lng?: number };
+  conditions?: Record<string, unknown> | null;
+}
+
+interface EnvArea {
+  area_id?: string;
+  label?: string;
+  type?: string;
+  at_capacity?: boolean;
+  capacity?: number;
 }
 
 interface SessionRoute {
@@ -67,6 +76,7 @@ export const TrainerEnvironmentalTruths = ({
   const [insiderKnowledge, setInsiderKnowledge] = useState<InsiderKnowledge | null>(null);
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [sessionRoutes, setSessionRoutes] = useState<SessionRoute[]>([]);
+  const [envAreas, setEnvAreas] = useState<EnvArea[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,16 +94,27 @@ export const TrainerEnvironmentalTruths = ({
       api.sessions.getLocations(sessionId).then((r) => (r.data ?? []) as LocationRow[]),
       api.sessions.get(sessionId).then((r) => {
         const data = r.data as {
-          current_state?: { environmental_state?: { routes?: SessionRoute[] } };
+          current_state?: {
+            environmental_state?: {
+              routes?: SessionRoute[];
+              areas?: EnvArea[];
+            };
+          };
         };
-        return data?.current_state?.environmental_state?.routes ?? [];
+        const env = data?.current_state?.environmental_state;
+        return {
+          routes: Array.isArray(env?.routes) ? env.routes : [],
+          areas: Array.isArray(env?.areas) ? env.areas : [],
+        };
       }),
     ])
-      .then(([ik, locs, routes]) => {
+      .then(([ik, locs, sessionData]) => {
         if (!cancelled) {
           setInsiderKnowledge((ik as InsiderKnowledge) ?? null);
           setLocations(locs ?? []);
-          setSessionRoutes(Array.isArray(routes) ? routes : []);
+          const { routes, areas } = sessionData as { routes: SessionRoute[]; areas: EnvArea[] };
+          setSessionRoutes(routes ?? []);
+          setEnvAreas(areas ?? []);
         }
       })
       .catch((e) => {
@@ -127,8 +148,11 @@ export const TrainerEnvironmentalTruths = ({
   );
   const evacHoldingLocs = locations.filter((l) => l.location_type === 'evacuation_holding');
 
+  const hospitalAreas = envAreas.filter((a) => a.type === 'hospital');
+  const hasHospitalData = hospitalAreas.length > 0 ? hospitalAreas : (osm?.hospitals ?? []);
+
   return (
-    <div className="space-y-4 text-sm terminal-text overflow-y-auto">
+    <div className="env-truths-panel terminal-text space-y-4 text-sm overflow-y-auto">
       <h4 className="text-robotic-yellow uppercase text-xs font-semibold border-b border-robotic-yellow/30 pb-1">
         [ENVIRONMENT GROUND TRUTH]
       </h4>
@@ -208,55 +232,65 @@ export const TrainerEnvironmentalTruths = ({
         <div>
           <div className="text-robotic-yellow/80 mb-1">Evacuation holding areas</div>
           <ul className="list-disc pl-4 space-y-0.5 text-robotic-gray-50">
-            {evacHoldingLocs.map((loc, i) => (
-              <li key={i}>{loc.label ?? 'Unknown'}</li>
-            ))}
+            {evacHoldingLocs.map((loc, i) => {
+              const cond = (loc.conditions ?? {}) as { capacity?: number; suitability?: string };
+              const cap = cond.capacity != null ? ` — capacity ${cond.capacity}` : '';
+              const suit = cond.suitability ? `, ${cond.suitability}` : '';
+              return (
+                <li key={i}>
+                  {loc.label ?? 'Unknown'}
+                  {cap}
+                  {suit}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
 
-      {osm?.emergency_routes && osm.emergency_routes.length > 0 && (
+      {(sessionRoutes.length > 0 || (osm?.emergency_routes?.length ?? 0) > 0) && (
         <div>
-          <div className="text-robotic-yellow/80 mb-1">Emergency routes</div>
-          <ul className="list-disc pl-4 space-y-0.5 text-robotic-gray-50">
-            {osm.emergency_routes.map((r, i) => (
-              <li key={i}>
-                {r.description ?? 'Route'}
-                {r.one_way ? ' [one-way]' : ''}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {sessionRoutes.length > 0 && (
-        <div>
-          <div className="text-robotic-yellow/80 mb-1">Current route status (session)</div>
+          <div className="text-robotic-yellow/80 mb-1">Routes (managed/unmanaged, traffic)</div>
           <p className="text-robotic-gray-50/80 text-xs mb-1">
-            Same data used for consistency checks; affects robustness cap and counter pressure.
+            Session data used for consistency checks; affects robustness cap and counter pressure.
           </p>
           <ul className="list-disc pl-4 space-y-0.5 text-robotic-gray-50">
-            {sessionRoutes.map((r, i) => (
-              <li key={i}>
-                {r.label ?? 'Route'} — {r.problem?.trim() || 'clear'},{' '}
-                {r.managed ? 'managed' : 'unmanaged'}
-                {r.travel_time_minutes != null ? `, ${r.travel_time_minutes} min` : ''}
-              </li>
-            ))}
+            {sessionRoutes.length > 0
+              ? sessionRoutes.map((r, i) => (
+                  <li key={i}>
+                    {r.label ?? 'Route'} — {r.problem?.trim() || 'clear'},{' '}
+                    {r.managed ? 'managed' : 'unmanaged'}
+                    {r.travel_time_minutes != null ? `, ${r.travel_time_minutes} min` : ''}
+                  </li>
+                ))
+              : (osm?.emergency_routes ?? []).map((r, i) => (
+                  <li key={i}>
+                    {r.description ?? 'Route'}
+                    {r.one_way ? ' [one-way]' : ''} — (no session status)
+                  </li>
+                ))}
           </ul>
         </div>
       )}
 
-      {osm?.hospitals && osm.hospitals.length > 0 && (
+      {hasHospitalData.length > 0 && (
         <div>
           <div className="text-robotic-yellow/80 mb-1">Nearby hospitals</div>
           <ul className="list-disc pl-4 space-y-0.5 text-robotic-gray-50">
-            {osm.hospitals.map((h, i) => (
-              <li key={i}>
-                {h.name ?? 'Unknown'}
-                {h.address ? ` — ${h.address}` : ''}
-              </li>
-            ))}
+            {hospitalAreas.length > 0
+              ? hospitalAreas.map((h, i) => (
+                  <li key={i}>
+                    {h.label ?? 'Unknown'}
+                    {h.at_capacity ? ' — at full capacity' : ''}
+                    {h.capacity != null && !h.at_capacity ? ` — capacity ${h.capacity}` : ''}
+                  </li>
+                ))
+              : (osm?.hospitals ?? []).map((h, i) => (
+                  <li key={i}>
+                    {h.name ?? 'Unknown'}
+                    {h.address ? ` — ${h.address}` : ''}
+                  </li>
+                ))}
           </ul>
         </div>
       )}
@@ -275,7 +309,7 @@ export const TrainerEnvironmentalTruths = ({
         triageLocs.length === 0 &&
         evacHoldingLocs.length === 0 &&
         !osm?.emergency_routes?.length &&
-        !osm?.hospitals?.length &&
+        hasHospitalData.length === 0 &&
         !sectorStandards &&
         sessionRoutes.length === 0 && (
           <p className="text-robotic-yellow/70">

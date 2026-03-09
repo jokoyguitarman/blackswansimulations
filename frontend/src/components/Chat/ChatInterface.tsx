@@ -54,6 +54,11 @@ interface ChatInterfaceProps {
 }
 
 const INSIDER_DM_ID = '__insider__';
+const HOSPITAL_DM_PREFIX = '__hospital__';
+const toHospitalDMId = (hospitalId: string) => `${HOSPITAL_DM_PREFIX}${hospitalId}`;
+const isHospitalDM = (id: string | null) => id?.startsWith(HOSPITAL_DM_PREFIX) ?? false;
+const getHospitalIdFromDM = (id: string | null) =>
+  id?.startsWith(HOSPITAL_DM_PREFIX) ? id.slice(HOSPITAL_DM_PREFIX.length) : null;
 
 /** Renders Insider message content with markdown-style [text](url) links as clickable anchors. */
 function ContentWithLinks({ content }: { content: string }) {
@@ -106,6 +111,11 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
   const [loading, setLoading] = useState(true);
   const [insiderMessages, setInsiderMessages] = useState<InsiderMessage[]>([]);
   const [insiderLoading, setInsiderLoading] = useState(false);
+  const [hospitals, setHospitals] = useState<Array<{ id: string; label: string }>>([]);
+  const [hospitalMessagesByHospitalId, setHospitalMessagesByHospitalId] = useState<
+    Record<string, InsiderMessage[]>
+  >({});
+  const [hospitalLoading, setHospitalLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const optimisticMessageIdRef = useRef<string | null>(null);
   const optimisticMessageContentRef = useRef<string | null>(null);
@@ -124,6 +134,15 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
     initialize();
   }, [sessionId]);
 
+  // Load hospitals when in DM view (for hospital capacity DMs)
+  useEffect(() => {
+    if (!sessionId || viewMode !== 'dms') return;
+    api.sessions
+      .hospitalList(sessionId)
+      .then((res) => setHospitals(res.data ?? []))
+      .catch(() => setHospitals([]));
+  }, [sessionId, viewMode]);
+
   useEffect(() => {
     if (selectedChannel) {
       setSelectedDM(null);
@@ -135,7 +154,7 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
   useEffect(() => {
     if (selectedDM) {
       setSelectedChannel(null);
-      if (selectedDM === INSIDER_DM_ID) {
+      if (selectedDM === INSIDER_DM_ID || isHospitalDM(selectedDM)) {
         setMessages([]);
         return;
       }
@@ -1116,7 +1135,7 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
 
   const loadMessages = async () => {
     const channelId = selectedChannel || selectedDM;
-    if (!channelId || channelId === INSIDER_DM_ID) return;
+    if (!channelId || channelId === INSIDER_DM_ID || isHospitalDM(channelId)) return;
     try {
       const result = await api.channels.getMessages(channelId, 1, 50);
       const loadedMessages = result.data as Message[];
@@ -1211,6 +1230,60 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
         scrollToBottom();
       } finally {
         setInsiderLoading(false);
+      }
+      return;
+    }
+
+    // Hospital virtual DM: ask about capacity
+    if (isHospitalDM(channelId)) {
+      const hospitalId = getHospitalIdFromDM(channelId);
+      if (!hospitalId) return;
+      setHospitalLoading(true);
+      const userMsg: InsiderMessage = {
+        id: `hospital-user-${Date.now()}`,
+        role: 'user',
+        content: messageContent,
+        created_at: new Date().toISOString(),
+      };
+      setHospitalMessagesByHospitalId((prev) => ({
+        ...prev,
+        [hospitalId]: [...(prev[hospitalId] ?? []), userMsg],
+      }));
+      scrollToBottom();
+      try {
+        const result = await api.sessions.hospitalAsk(sessionId, {
+          hospital_id: hospitalId,
+          content: messageContent,
+        });
+        const answer = (result.data as { answer: string }).answer;
+        const hospitalMsg: InsiderMessage = {
+          id: `hospital-${Date.now()}`,
+          role: 'insider',
+          content: answer,
+          created_at: new Date().toISOString(),
+        };
+        setHospitalMessagesByHospitalId((prev) => ({
+          ...prev,
+          [hospitalId]: [...(prev[hospitalId] ?? []), hospitalMsg],
+        }));
+        scrollToBottom();
+      } catch (err) {
+        console.error('Failed to ask hospital:', err);
+        setHospitalMessagesByHospitalId((prev) => ({
+          ...prev,
+          [hospitalId]: [
+            ...(prev[hospitalId] ?? []),
+            {
+              id: `hospital-err-${Date.now()}`,
+              role: 'insider',
+              content: `[ERROR] ${err instanceof Error ? err.message : 'Failed to get answer'}`,
+              created_at: new Date().toISOString(),
+            },
+          ],
+        }));
+        scrollToBottom();
+      } finally {
+        setHospitalLoading(false);
       }
       return;
     }
@@ -1375,6 +1448,22 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
               >
                 [INSIDER]
               </button>
+              {hospitals.map((h) => {
+                const dmId = toHospitalDMId(h.id);
+                return (
+                  <button
+                    key={dmId}
+                    onClick={() => setSelectedDM(dmId)}
+                    className={`px-4 py-2 text-xs terminal-text uppercase border transition-all ${
+                      selectedDM === dmId
+                        ? 'border-green-400 text-green-400 bg-green-400/10'
+                        : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-green-400/50'
+                    }`}
+                  >
+                    [{h.label}]
+                  </button>
+                );
+              })}
               {dmChannels.map((dm) => (
                 <button
                   key={dm.id}
@@ -1429,7 +1518,15 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                 </p>
               </div>
             )}
-            {currentDM && selectedDM !== INSIDER_DM_ID && (
+            {isHospitalDM(selectedDM) && (
+              <div className="mb-3 pb-3 border-b border-green-400/30">
+                <p className="text-xs terminal-text text-green-400 uppercase">
+                  Direct Message with:{' '}
+                  {hospitals.find((h) => toHospitalDMId(h.id) === selectedDM)?.label ?? 'Hospital'}
+                </p>
+              </div>
+            )}
+            {currentDM && selectedDM !== INSIDER_DM_ID && !isHospitalDM(selectedDM) && (
               <div className="mb-3 pb-3 border-b border-green-400/30">
                 <p className="text-xs terminal-text text-green-400 uppercase">
                   Direct Message with: {currentDM.recipient?.full_name || 'Unknown'} [
@@ -1471,6 +1568,50 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                     </p>
                   </div>
                 )}
+                <div ref={messagesEndRef} />
+              </>
+            ) : isHospitalDM(selectedDM) ? (
+              <>
+                {(hospitalMessagesByHospitalId[getHospitalIdFromDM(selectedDM) ?? ''] ?? []).map(
+                  (msg) => (
+                    <div
+                      key={msg.id}
+                      className={`military-border p-3 ${msg.role === 'user' ? 'ml-8' : 'mr-8'} border-green-400/30`}
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="text-xs terminal-text font-semibold text-green-400">
+                          {msg.role === 'user'
+                            ? user?.displayName || 'You'
+                            : (hospitals.find((h) => toHospitalDMId(h.id) === selectedDM)?.label ??
+                              'Hospital')}{' '}
+                          [{msg.role === 'user' ? user?.role || 'unknown' : 'hospital'}]
+                        </span>
+                        <span className="text-xs terminal-text text-green-400/50">
+                          {new Date(msg.created_at).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <p className="text-sm terminal-text text-green-400/90 whitespace-pre-wrap">
+                        <ContentWithLinks content={msg.content} />
+                      </p>
+                    </div>
+                  ),
+                )}
+                {hospitalLoading && (
+                  <div className="mr-8 military-border p-3 border-green-400/30">
+                    <p className="text-xs terminal-text text-green-400/50">
+                      Hospital is responding...
+                    </p>
+                  </div>
+                )}
+                {(hospitalMessagesByHospitalId[getHospitalIdFromDM(selectedDM) ?? ''] ?? [])
+                  .length === 0 &&
+                  !hospitalLoading && (
+                    <div className="text-center py-8">
+                      <p className="text-sm terminal-text text-green-400/50">
+                        Ask about capacity, availability, or whether they can take patients.
+                      </p>
+                    </div>
+                  )}
                 <div ref={messagesEndRef} />
               </>
             ) : (

@@ -34,6 +34,12 @@ body {
       0 0 10px rgba(255, 184, 0, 0.6),
       0 0 20px rgba(255, 184, 0, 0.3);
   }
+
+  /* Environmental truths panel: no glow for better readability */
+  .env-truths-panel,
+  .env-truths-panel * {
+    text-shadow: none;
+  }
   
   .classified-stamp {
     font-family: 'Orbitron', sans-serif;

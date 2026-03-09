@@ -16,6 +16,7 @@ import { generateScenarioMaps } from '../services/scenarioMapImageService.js';
 import { uploadScenarioMap } from '../lib/storage.js';
 import { env } from '../env.js';
 import { insiderRouter } from './insider.js';
+import { hospitalRouter } from './hospital.js';
 
 const router = Router();
 
@@ -767,7 +768,7 @@ router.get(
 
       const { data: locations, error: locError } = await supabaseAdmin
         .from('scenario_locations')
-        .select('id, scenario_id, location_type, label, coordinates, display_order')
+        .select('id, scenario_id, location_type, label, coordinates, conditions, display_order')
         .eq('scenario_id', scenarioId)
         .order('display_order', { ascending: true });
 
@@ -2182,6 +2183,15 @@ router.use(
     next();
   },
   insiderRouter,
+);
+
+router.use(
+  '/:sessionId/hospital',
+  (req, _res, next) => {
+    (req as { hospitalSessionId?: string }).hospitalSessionId = req.params.sessionId;
+    next();
+  },
+  hospitalRouter,
 );
 
 export { router as sessionsRouter };

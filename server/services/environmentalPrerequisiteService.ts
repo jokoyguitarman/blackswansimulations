@@ -143,9 +143,14 @@ export async function evaluateEnvironmentalPrerequisite(
       if (!atCapacity && !hasProblem) continue;
 
       const displayLabel = area.label || area.area_id || 'facility';
+      // Use neutral wording without hints (e.g. no "divert to X or Y") so players must think of alternatives
       const reason =
-        area.problem?.trim() ||
-        `${displayLabel} reports at full capacity. Your plan cannot rely on this facility; consider alternatives.`;
+        type === 'hospital'
+          ? `${displayLabel} is at full capacity at the moment, causing further delay to delivering your patients.`
+          : type === 'police' || type === 'fire_station'
+            ? `${displayLabel} is at full capacity; your plan cannot rely on this facility.`
+            : area.problem?.trim() ||
+              `${displayLabel} reports at full capacity. Your plan cannot rely on this facility; consider alternatives.`;
       return {
         result: { consistent: false, severity: 'medium', error_type: 'capacity', reason },
       };
