@@ -18,10 +18,15 @@ import { generateAARSummary, generateAARInsights } from '../services/aarAiServic
 import {
   buildSectionsData,
   buildRecommendationsContext,
+  buildInformationAnalysisContext,
   generateSectionAnalysis,
   AAR_SECTION_KEYS,
   type SectionsMap,
 } from '../services/aarSectionService.js';
+import {
+  buildIncidentResponsePairs,
+  buildInsiderUsageGaps,
+} from '../services/aarIncidentResponseService.js';
 import * as aarExportService from '../services/aarExportService.js';
 import { env } from '../env.js';
 
@@ -575,7 +580,15 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
         if (env.aarReportFormat === 'sections') {
           // Option B: section-based AAR (data + per-section AI analysis)
           const decisionIds = (decisions ?? []).map((d: { id: string }) => d.id);
-          const [decisionStepsRes, injectCancelledRes] = await Promise.all([
+          const [
+            decisionStepsRes,
+            injectCancelledRes,
+            incidentsRes,
+            resourceRequestsRes,
+            pathwayOutcomesRes,
+            insiderQaRes,
+            stateHistoryRes,
+          ] = await Promise.all([
             decisionIds.length > 0
               ? supabaseAdmin
                   .from('decision_steps')
@@ -597,9 +610,38 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
               .eq('session_id', sessionId)
               .eq('event_type', 'inject_cancelled')
               .order('created_at', { ascending: true }),
+            supabaseAdmin
+              .from('incidents')
+              .select('id, inject_id, title, description, reported_at, status')
+              .eq('session_id', sessionId),
+            supabaseAdmin
+              .from('resource_requests')
+              .select('from_agency, to_agency, resource_type, quantity, status, created_at')
+              .eq('session_id', sessionId)
+              .order('created_at', { ascending: true }),
+            supabaseAdmin
+              .from('session_pathway_outcomes')
+              .select('trigger_inject_id, evaluated_at, outcomes')
+              .eq('session_id', sessionId)
+              .order('evaluated_at', { ascending: true }),
+            supabaseAdmin
+              .from('session_insider_qa')
+              .select('question_text, category, asked_by, asked_at')
+              .eq('session_id', sessionId)
+              .order('asked_at', { ascending: true }),
+            supabaseAdmin
+              .from('scenario_state_history')
+              .select('created_at, state_snapshot')
+              .eq('session_id', sessionId)
+              .order('created_at', { ascending: true }),
           ]);
           const decisionStepsList = decisionStepsRes.data ?? [];
           const injectCancelledEvents = injectCancelledRes.data ?? [];
+          const incidentsList = incidentsRes.data ?? [];
+          const resourceRequestsList = resourceRequestsRes.data ?? [];
+          const pathwayOutcomesList = pathwayOutcomesRes.data ?? [];
+          const insiderQaList = insiderQaRes.data ?? [];
+          const stateHistoryList = stateHistoryRes.data ?? [];
 
           const robustnessHistoryByDecisionId: Record<
             string,
@@ -634,6 +676,97 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
                 at: e.created_at,
                 inject_id: (meta.inject_id as string) ?? undefined,
                 reason: (meta.reason as string) ?? undefined,
+              };
+            },
+          );
+
+          const incidentResponsePairs = await buildIncidentResponsePairs(
+            sessionId,
+            scenarioId ?? '',
+            (decisions ?? []).map((d: Record<string, unknown>) => ({
+              id: String(d.id ?? ''),
+              title: String(d.title ?? ''),
+              description: d.description as string | undefined,
+              executed_at: d.executed_at as string | undefined,
+              proposed_by: d.proposed_by as string | undefined,
+              response_to_incident_id: d.response_to_incident_id as string | null | undefined,
+              environmental_consistency: d.environmental_consistency,
+            })),
+            incidentsList.map((i: Record<string, unknown>) => ({
+              id: String(i.id ?? ''),
+              title: String(i.title ?? ''),
+              description: i.description as string | undefined,
+              reported_at: i.reported_at as string | undefined,
+              inject_id: i.inject_id as string | undefined,
+            })),
+            impactMatricesList.map(
+              (m: { evaluated_at: string; robustness_by_decision?: Record<string, number> }) => ({
+                evaluated_at: m.evaluated_at,
+                robustness_by_decision: m.robustness_by_decision,
+              }),
+            ),
+            env.openAiApiKey,
+          );
+
+          const insiderUsage = await buildInsiderUsageGaps(
+            sessionId,
+            incidentsList.map((i: Record<string, unknown>) => ({
+              id: String(i.id ?? ''),
+              title: String(i.title ?? ''),
+              description: i.description as string | undefined,
+              reported_at: i.reported_at as string | undefined,
+              inject_id: i.inject_id as string | undefined,
+            })),
+            (decisions ?? []).map((d: Record<string, unknown>) => ({
+              id: String(d.id ?? ''),
+              title: String(d.title ?? ''),
+              description: d.description as string | undefined,
+              executed_at: d.executed_at as string | undefined,
+              proposed_by: d.proposed_by as string | undefined,
+              response_to_incident_id: d.response_to_incident_id as string | null | undefined,
+            })),
+            insiderQaList,
+          );
+
+          const teamMetricsHistory = stateHistoryList.map(
+            (row: { created_at?: string; state_snapshot?: Record<string, unknown> }) => {
+              const snap = (row.state_snapshot ?? {}) as Record<string, unknown>;
+              return {
+                at: row.created_at ?? '',
+                evacuation_state: snap.evacuation_state,
+                triage_state: snap.triage_state,
+                media_state: snap.media_state,
+              };
+            },
+          );
+
+          const injectIdToIncidentId = new Map(
+            incidentsList
+              .filter((i: { inject_id?: string }) => i.inject_id)
+              .map((i: { id: string; inject_id: string }) => [i.inject_id, i.id]),
+          );
+          const incidentIdToDecisionId = new Map(
+            (decisions ?? [])
+              .filter((d: { response_to_incident_id?: string }) => d.response_to_incident_id)
+              .map((d: { id: string; response_to_incident_id: string }) => [
+                d.response_to_incident_id,
+                d.id,
+              ]),
+          );
+          const pathwayOutcomes = pathwayOutcomesList.map(
+            (row: { trigger_inject_id?: string; evaluated_at?: string; outcomes?: unknown[] }) => {
+              const triggerInjectId = row.trigger_inject_id;
+              const incidentId = triggerInjectId
+                ? injectIdToIncidentId.get(triggerInjectId)
+                : undefined;
+              const linkedDecisionId = incidentId
+                ? incidentIdToDecisionId.get(incidentId)
+                : undefined;
+              return {
+                trigger_inject_id: triggerInjectId,
+                evaluated_at: row.evaluated_at,
+                outcomes: row.outcomes,
+                linkedDecisionId,
               };
             },
           );
@@ -731,6 +864,18 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
                 de_escalation_pathways: (r.de_escalation_pathways ?? []) as unknown[],
               }),
             ),
+            incidentResponsePairs,
+            insiderUsage,
+            teamMetricsHistory,
+            resourceRequests: resourceRequestsList.map((r: Record<string, unknown>) => ({
+              from_agency: r.from_agency as string | undefined,
+              to_agency: r.to_agency as string | undefined,
+              resource_type: r.resource_type as string | undefined,
+              quantity: r.quantity as number | undefined,
+              status: r.status as string | undefined,
+              created_at: r.created_at as string | undefined,
+            })),
+            pathwayOutcomes,
           };
 
           let sections: SectionsMap = buildSectionsData(sectionsInput);
@@ -747,7 +892,11 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
             const entry = sections[key];
             if (!entry?.data) continue;
             const sectionData =
-              key === 'recommendations' ? buildRecommendationsContext(sections) : entry.data;
+              key === 'recommendations'
+                ? buildRecommendationsContext(sections)
+                : key === 'information_analysis'
+                  ? buildInformationAnalysisContext(sections)
+                  : entry.data;
             try {
               const analysis = await generateSectionAnalysis(
                 key,

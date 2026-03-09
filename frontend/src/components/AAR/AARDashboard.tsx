@@ -10,6 +10,12 @@ const AAR_SECTION_KEYS = [
   'injects_cancelled',
   'coordination',
   'escalation',
+  'incident_response',
+  'insider_usage',
+  'team_metrics',
+  'resource_requests',
+  'pathway_outcomes',
+  'information_analysis',
   'recommendations',
 ] as const;
 
@@ -21,6 +27,12 @@ const AAR_SECTION_LABELS: Record<(typeof AAR_SECTION_KEYS)[number], string> = {
   injects_cancelled: 'Injects cancelled',
   coordination: 'Coordination and communication',
   escalation: 'Escalation factors and pathways',
+  incident_response: 'Incident–Response pairs',
+  insider_usage: 'Insider information usage',
+  team_metrics: 'Team metrics over time',
+  resource_requests: 'Resource requests and transfers',
+  pathway_outcomes: 'Pathway outcomes',
+  information_analysis: 'Information-sharing analysis',
   recommendations: 'Key takeaways and recommendations',
 };
 

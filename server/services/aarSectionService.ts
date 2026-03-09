@@ -12,6 +12,12 @@ export const AAR_SECTION_KEYS = [
   'injects_cancelled',
   'coordination',
   'escalation',
+  'incident_response',
+  'insider_usage',
+  'team_metrics',
+  'resource_requests',
+  'pathway_outcomes',
+  'information_analysis',
   'recommendations',
 ] as const;
 
@@ -80,6 +86,57 @@ export interface BuildSectionsInput {
     evaluated_at: string;
     pathways: unknown[];
     de_escalation_pathways?: unknown[];
+  }>;
+  incidentResponsePairs?: Array<{
+    incident: {
+      id: string;
+      title: string;
+      description?: string;
+      reported_at?: string;
+      inject_id?: string;
+    };
+    decision: {
+      id: string;
+      title: string;
+      description?: string;
+      executed_at?: string;
+      proposed_by?: string;
+    };
+    robustness?: number;
+    environmentalConsistency?: unknown;
+    latencyMinutes?: number;
+    insiderConsulted?: boolean;
+    intelMatch?: boolean;
+  }>;
+  insiderUsage?: {
+    questions: Array<{
+      question_text?: string;
+      category?: string;
+      asked_by?: string;
+      asked_at?: string;
+    }>;
+    gaps: Array<{ incident_id: string; incident_title: string; decision_id?: string }>;
+  };
+  teamMetricsHistory?: Array<{
+    at: string;
+    evacuation_state?: unknown;
+    triage_state?: unknown;
+    media_state?: unknown;
+  }>;
+  resourceRequests?: Array<{
+    from_agency?: string;
+    to_agency?: string;
+    resource_type?: string;
+    quantity?: number;
+    status?: string;
+    created_at?: string;
+  }>;
+  pathwayOutcomes?: Array<{
+    trigger_inject_id?: string;
+    evaluated_at?: string;
+    outcomes?: unknown[];
+    chosenBand?: string;
+    linkedDecisionId?: string;
   }>;
 }
 
@@ -158,6 +215,36 @@ export function buildSectionsData(input: BuildSectionsInput): SectionsMap {
     analysis: null,
   };
 
+  sections.incident_response = {
+    data: input.incidentResponsePairs ?? [],
+    analysis: null,
+  };
+
+  sections.insider_usage = {
+    data: input.insiderUsage ?? { questions: [], gaps: [] },
+    analysis: null,
+  };
+
+  sections.team_metrics = {
+    data: input.teamMetricsHistory ?? [],
+    analysis: null,
+  };
+
+  sections.resource_requests = {
+    data: input.resourceRequests ?? [],
+    analysis: null,
+  };
+
+  sections.pathway_outcomes = {
+    data: input.pathwayOutcomes ?? [],
+    analysis: null,
+  };
+
+  sections.information_analysis = {
+    data: { note: 'Synthesise from insider_usage and coordination sections' },
+    analysis: null,
+  };
+
   sections.recommendations = {
     data: { note: 'Synthesise from other sections' },
     analysis: null,
@@ -200,6 +287,35 @@ export function buildRecommendationsContext(sections: SectionsMap): unknown {
   return { otherSections };
 }
 
+/**
+ * Build context for the information_analysis section: insider_usage and coordination analyses
+ * so the AI can synthesise information-sharing effectiveness.
+ */
+export function buildInformationAnalysisContext(sections: SectionsMap): unknown {
+  const sourceKeys: AARSectionKey[] = ['insider_usage', 'coordination'];
+  const blocks: Array<{
+    sectionKey: string;
+    label: string;
+    analysis: string | null;
+    dataSummary?: string;
+  }> = [];
+  for (const key of sourceKeys) {
+    const entry = sections[key];
+    if (!entry) continue;
+    const label = SECTION_LABELS[key] ?? key;
+    blocks.push({
+      sectionKey: key,
+      label,
+      analysis: entry.analysis ?? null,
+      dataSummary:
+        entry.data != null && typeof entry.data === 'object'
+          ? JSON.stringify(entry.data).slice(0, 800)
+          : undefined,
+    });
+  }
+  return { sourceSections: blocks };
+}
+
 const SECTION_LABELS: Record<AARSectionKey, string> = {
   executive: 'Executive overview',
   decisions: 'Decisions and scoring history',
@@ -208,6 +324,12 @@ const SECTION_LABELS: Record<AARSectionKey, string> = {
   injects_cancelled: 'Injects cancelled',
   coordination: 'Coordination and communication',
   escalation: 'Escalation factors and pathways',
+  incident_response: 'Incident–Response pairs',
+  insider_usage: 'Insider information usage',
+  team_metrics: 'Team metrics over time',
+  resource_requests: 'Resource requests and transfers',
+  pathway_outcomes: 'Pathway outcomes',
+  information_analysis: 'Information-sharing analysis',
   recommendations: 'Key takeaways and recommendations',
 };
 
@@ -226,8 +348,20 @@ const SECTION_INSTRUCTIONS: Partial<Record<AARSectionKey, string>> = {
     'Assess participation balance, response times, and inter-agency communication. Cite roles and message counts.',
   escalation:
     'Summarise how escalation factors and pathways evolved and how decisions/injects aligned with them.',
+  incident_response:
+    'Assess incident–response pairs: robustness scores, environmental consistency, latency, whether Insider was consulted, and intel match. Note patterns and gaps.',
+  insider_usage:
+    'Assess how well the team used Insider information: questions asked, categories, timing. Highlight gaps where intel existed but was not consulted before decisions.',
+  team_metrics:
+    'Interpret evacuation, triage, and media state evolution over time. Note key transitions and whether team decisions aligned with state changes.',
+  resource_requests:
+    'Assess resource request and transfer patterns: agencies involved, status outcomes, timing. Note coordination effectiveness.',
+  pathway_outcomes:
+    'Interpret pathway outcomes: which robustness bands led to which outcome injects, links to incident–response pairs. Note escalation vs de-escalation trajectories.',
+  information_analysis:
+    'Synthesise from insider_usage and coordination: how well did the team share and use information? Were there missed opportunities to consult Insider or coordinate?',
   recommendations:
-    'Prioritise 3–5 actionable recommendations. Reference specific sections (decisions, matrices, injects, coordination) where relevant.',
+    'Prioritise 3–5 actionable recommendations. Reference specific sections (decisions, matrices, injects, coordination, incident_response, insider_usage) where relevant.',
 };
 
 /**
@@ -244,9 +378,12 @@ export async function generateSectionAnalysis(
     SECTION_INSTRUCTIONS[sectionKey] ?? 'Interpret and assess; cite specific numbers and times.';
 
   const isRecommendations = sectionKey === 'recommendations';
+  const isInformationAnalysis = sectionKey === 'information_analysis';
   const systemPrompt = isRecommendations
-    ? `You are an expert crisis management analyst. Below you will receive the analyses from the other AAR sections (executive overview, decisions, matrices, injects, coordination, escalation). Synthesise them into 3–5 actionable key takeaways and recommendations. Reference specific sections (decisions, matrices, injects, coordination) where relevant. Be concrete and practical. ${extra}`
-    : `You are an expert crisis management analyst. Below is the "${label}" data for a training exercise AAR. Write a concise analysis (1–2 paragraphs) that cites specific numbers, times, and names. Do not repeat the raw data; interpret and assess. ${extra}`;
+    ? `You are an expert crisis management analyst. Below you will receive the analyses from the other AAR sections (executive overview, decisions, matrices, injects, coordination, escalation, incident_response, insider_usage, team_metrics, resource_requests, pathway_outcomes, information_analysis). Synthesise them into 3–5 actionable key takeaways and recommendations. Reference specific sections where relevant. Be concrete and practical. ${extra}`
+    : isInformationAnalysis
+      ? `You are an expert crisis management analyst. Below you will receive the analyses from the insider_usage and coordination sections. Synthesise them into an information-sharing analysis: how well did the team use and share information? Were there missed opportunities to consult Insider or coordinate? Be concise (1–2 paragraphs). ${extra}`
+      : `You are an expert crisis management analyst. Below is the "${label}" data for a training exercise AAR. Write a concise analysis (1–2 paragraphs) that cites specific numbers, times, and names. Do not repeat the raw data; interpret and assess. ${extra}`;
 
   const dataJson =
     typeof sectionData === 'string'
@@ -255,7 +392,9 @@ export async function generateSectionAnalysis(
 
   const userPrompt = isRecommendations
     ? `Session: ${context.sessionId}${context.scenarioTitle ? `; Scenario: ${context.scenarioTitle}` : ''}\n\nAnalyses from other AAR sections (use these to synthesise key takeaways and recommendations):\n${dataJson}\n\nWrite 3–5 actionable key takeaways and recommendations now.`
-    : `Session: ${context.sessionId}${context.scenarioTitle ? `; Scenario: ${context.scenarioTitle}` : ''}\n\nData for ${label}:\n${dataJson}\n\nWrite the analysis now.`;
+    : isInformationAnalysis
+      ? `Session: ${context.sessionId}${context.scenarioTitle ? `; Scenario: ${context.scenarioTitle}` : ''}\n\nSource sections (insider_usage and coordination):\n${dataJson}\n\nWrite the information-sharing analysis now.`
+      : `Session: ${context.sessionId}${context.scenarioTitle ? `; Scenario: ${context.scenarioTitle}` : ''}\n\nData for ${label}:\n${dataJson}\n\nWrite the analysis now.`;
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',

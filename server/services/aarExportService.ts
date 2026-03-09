@@ -8,6 +8,23 @@ import { logger } from '../lib/logger.js';
  * Generates PDF and Excel exports for AAR reports
  */
 
+const SECTION_LABELS: Record<string, string> = {
+  executive: 'Executive overview',
+  decisions: 'Decisions and scoring history',
+  matrices: 'Impact matrices',
+  injects_published: 'Injects published',
+  injects_cancelled: 'Injects cancelled',
+  coordination: 'Coordination and communication',
+  escalation: 'Escalation factors and pathways',
+  incident_response: 'Incident–Response pairs',
+  insider_usage: 'Insider information usage',
+  team_metrics: 'Team metrics over time',
+  resource_requests: 'Resource requests and transfers',
+  pathway_outcomes: 'Pathway outcomes',
+  information_analysis: 'Information-sharing analysis',
+  recommendations: 'Key takeaways and recommendations',
+};
+
 interface AARData {
   aar: {
     id: string;
@@ -18,6 +35,8 @@ interface AARData {
     timeline_summary?: Array<Record<string, unknown>>;
     ai_insights?: Array<Record<string, unknown>>;
     generated_at: string;
+    report_format?: string;
+    sections?: Record<string, { data: unknown; analysis: string | null }>;
   };
   scores: Array<Record<string, unknown>>;
   metrics: Array<Record<string, unknown>>;
@@ -151,6 +170,69 @@ export async function generateExcel(aarData: AARData): Promise<Buffer> {
       }
     }
 
+    // Sheets: Section-based AAR (when report_format is sections)
+    const sections = aar.report_format === 'sections' ? aar.sections : undefined;
+    if (sections && typeof sections === 'object') {
+      for (const [key, entry] of Object.entries(sections)) {
+        if (!entry) continue;
+        const label = SECTION_LABELS[key] ?? key;
+        const sheetName = (label.replace(/[\]\\/*?:[\]]/g, '_').replace(/\s+/g, ' ') || key).slice(
+          0,
+          31,
+        );
+        const sheet = wb.addWorksheet(sheetName, { views: [{ state: 'frozen', ySplit: 1 }] });
+        sheet.getColumn(1).width = 80;
+        if (entry.analysis) {
+          sheet.addRow([label]);
+          sheet.addRow([]);
+          sheet.addRow(['Analysis']);
+          sheet.addRow([entry.analysis]);
+          sheet.addRow([]);
+        }
+        if (entry.data != null) {
+          sheet.addRow(['Data']);
+          if (Array.isArray(entry.data)) {
+            if (entry.data.length > 0) {
+              const first = entry.data[0] as Record<string, unknown>;
+              const headers = Object.keys(first);
+              sheet.addRow(headers);
+              for (const row of entry.data.slice(0, 100)) {
+                sheet.addRow(headers.map((h) => cellValue((row as Record<string, unknown>)[h])));
+              }
+              if (entry.data.length > 100) {
+                sheet.addRow([`... and ${entry.data.length - 100} more rows`]);
+              }
+            }
+          } else if (typeof entry.data === 'object') {
+            const obj = entry.data as Record<string, unknown>;
+            if (obj.questions && Array.isArray(obj.questions)) {
+              sheet.addRow(['Questions']);
+              const qHeaders = ['question_text', 'category', 'asked_by', 'asked_at'];
+              sheet.addRow(qHeaders);
+              for (const q of obj.questions as Array<Record<string, unknown>>) {
+                sheet.addRow(qHeaders.map((h) => cellValue(q[h])));
+              }
+            }
+            if (obj.gaps && Array.isArray(obj.gaps)) {
+              sheet.addRow([]);
+              sheet.addRow(['Gaps (incidents with intel but no consultation)']);
+              sheet.addRow(['incident_id', 'incident_title', 'decision_id']);
+              for (const g of obj.gaps as Array<Record<string, unknown>>) {
+                sheet.addRow([
+                  cellValue(g.incident_id),
+                  cellValue(g.incident_title),
+                  cellValue(g.decision_id),
+                ]);
+              }
+            }
+            if (!obj.questions && !obj.gaps) {
+              sheet.addRow([readableValue(entry.data)]);
+            }
+          }
+        }
+      }
+    }
+
     const buffer = await wb.xlsx.writeBuffer();
     return Buffer.from(buffer);
   } catch (err) {
@@ -274,6 +356,67 @@ export async function generatePDF(aarData: AARData): Promise<Buffer> {
         }
         if (metrics.length > 20) {
           doc.text(`... and ${metrics.length - 20} more metrics`);
+        }
+        doc.moveDown(1);
+      }
+
+      // Section-based AAR (when report_format is sections)
+      const sections = aar.report_format === 'sections' ? aar.sections : undefined;
+      if (sections && typeof sections === 'object') {
+        for (const [key, entry] of Object.entries(sections)) {
+          if (!entry) continue;
+          const label = SECTION_LABELS[key] ?? key;
+          doc.fontSize(12).text(label, { continued: false });
+          doc.moveDown(0.3);
+          if (entry.analysis) {
+            doc.fontSize(10).text(entry.analysis, { align: 'justify' });
+            doc.moveDown(0.5);
+          }
+          if (entry.data != null) {
+            doc.fontSize(9);
+            if (Array.isArray(entry.data) && entry.data.length > 0) {
+              const first = entry.data[0] as Record<string, unknown>;
+              const cols = Object.keys(first);
+              const colW = 70;
+              let x = 50;
+              let rowY = doc.y;
+              cols.forEach((c) => {
+                doc.text(String(c).slice(0, 12), x, rowY, { width: colW });
+                x += colW;
+              });
+              rowY += 12;
+              for (const row of entry.data.slice(0, 15)) {
+                x = 50;
+                cols.forEach((col) => {
+                  doc.text(cellValue((row as Record<string, unknown>)[col]).slice(0, 25), x, rowY, {
+                    width: colW,
+                  });
+                  x += colW;
+                });
+                rowY += 12;
+              }
+              doc.y = rowY;
+              if (entry.data.length > 15) {
+                doc.text(`... and ${entry.data.length - 15} more rows`);
+              }
+            } else if (typeof entry.data === 'object') {
+              const obj = entry.data as Record<string, unknown>;
+              if (obj.questions && Array.isArray(obj.questions)) {
+                doc.text('Questions:', { continued: false });
+                for (const q of (obj.questions as Array<Record<string, unknown>>).slice(0, 10)) {
+                  doc.text(`  ${cellValue(q.question_text)} (${cellValue(q.category)})`);
+                }
+              }
+              if (obj.gaps && Array.isArray(obj.gaps)) {
+                doc.text('Gaps:', { continued: false });
+                for (const g of obj.gaps as Array<Record<string, unknown>>) {
+                  doc.text(`  ${cellValue(g.incident_title)}`);
+                }
+              }
+            }
+            doc.moveDown(0.5);
+          }
+          doc.moveDown(1);
         }
       }
 
