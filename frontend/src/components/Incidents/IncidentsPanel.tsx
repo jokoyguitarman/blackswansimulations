@@ -117,6 +117,7 @@ export const IncidentsPanel = ({
     inject_id: string | null;
     reported_at: string;
     updated_at: string;
+    requires_response?: boolean;
   }>({
     table: 'incidents',
     filter: sessionId ? `session_id=eq.${sessionId}` : undefined,
@@ -258,6 +259,7 @@ export const IncidentsPanel = ({
           casualty_count: payload.casualty_count || undefined,
           reported_at: payload.reported_at,
           updated_at: payload.updated_at,
+          requires_response: payload.requires_response,
           reported_by: reportedByResult.data
             ? {
                 id: reportedByResult.data.id,
@@ -305,6 +307,7 @@ export const IncidentsPanel = ({
           casualty_count: payload.casualty_count || undefined,
           reported_at: payload.reported_at,
           updated_at: payload.updated_at,
+          requires_response: payload.requires_response,
         };
         setIncidents((prev) =>
           prev.map((incident) => (incident.id === updatedIncident.id ? updatedIncident : incident)),
