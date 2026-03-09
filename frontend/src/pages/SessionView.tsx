@@ -620,8 +620,8 @@ export const SessionView = () => {
         </div>
       )}
 
-      {/* Team Counters Panel - during active session: trainer sees all teams, participant sees own team(s) */}
-      {session.status === 'in_progress' &&
+      {/* Team Counters Panel - during active session and after completion for review: trainer sees all teams, participant sees own team(s) */}
+      {(session.status === 'in_progress' || session.status === 'completed') &&
         (() => {
           const cs = session.current_state as Record<string, unknown> | undefined;
           const evac = (cs?.evacuation_state as Record<string, unknown> | undefined) ?? {};

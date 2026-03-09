@@ -346,10 +346,10 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
     // Generate AI summary if OpenAI API key is configured
     if (env.openAiApiKey) {
       try {
-        // Get session start/end times and scenario_id
+        // Get session start/end times, scenario_id, and current_state (for final counters when state_history is empty)
         const { data: sessionDetails } = await supabaseAdmin
           .from('sessions')
-          .select('start_time, end_time, scenario_id')
+          .select('start_time, end_time, scenario_id, current_state')
           .eq('id', sessionId)
           .single();
 
@@ -728,7 +728,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
             insiderQaList,
           );
 
-          const teamMetricsHistory = stateHistoryList.map(
+          let teamMetricsHistory = stateHistoryList.map(
             (row: { created_at?: string; state_snapshot?: Record<string, unknown> }) => {
               const snap = (row.state_snapshot ?? {}) as Record<string, unknown>;
               return {
@@ -739,6 +739,22 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
               };
             },
           );
+          // Fallback: if no state history (e.g. session completed before snapshot was added), use session's current_state as final
+          if (
+            teamMetricsHistory.length === 0 &&
+            sessionDetails?.current_state &&
+            typeof sessionDetails.current_state === 'object'
+          ) {
+            const cs = sessionDetails.current_state as Record<string, unknown>;
+            teamMetricsHistory = [
+              {
+                at: sessionDetails.end_time ?? 'Session end',
+                evacuation_state: cs.evacuation_state,
+                triage_state: cs.triage_state,
+                media_state: cs.media_state,
+              },
+            ];
+          }
 
           const injectIdToIncidentId = new Map(
             incidentsList

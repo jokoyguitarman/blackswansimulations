@@ -315,6 +315,12 @@ export async function checkAndAutoCompleteSession(sessionId: string): Promise<bo
       return false;
     }
 
+    // Snapshot final state so counters persist for AAR review
+    const { snapshotFinalStateOnCompletion } = await import('./scenarioStateService.js');
+    void snapshotFinalStateOnCompletion(sessionId).catch((err) =>
+      logger.error({ err, sessionId }, 'Snapshot final state on auto-complete failed'),
+    );
+
     logger.info({ sessionId }, 'Session auto-completed - all objectives resolved');
     return true;
   } catch (err) {

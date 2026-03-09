@@ -319,3 +319,38 @@ export const getCurrentState = async (sessionId: string): Promise<ScenarioState 
     return null;
   }
 };
+
+/**
+ * Snapshot final state when session completes so counters persist for AAR review.
+ * Writes to scenario_state_history with notes 'Session completion snapshot'.
+ */
+export async function snapshotFinalStateOnCompletion(sessionId: string): Promise<void> {
+  try {
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('current_state')
+      .eq('id', sessionId)
+      .single();
+
+    if (!session?.current_state || typeof session.current_state !== 'object') {
+      logger.debug({ sessionId }, 'No current_state to snapshot on completion');
+      return;
+    }
+
+    const { error } = await supabaseAdmin.from('scenario_state_history').insert({
+      session_id: sessionId,
+      state_snapshot: session.current_state,
+      triggered_by_decision_id: null,
+      triggered_by_inject_id: null,
+      notes: 'Session completion snapshot',
+    });
+
+    if (error) {
+      logger.error({ error, sessionId }, 'Failed to snapshot final state on completion');
+    } else {
+      logger.info({ sessionId }, 'Final state snapshotted for AAR review');
+    }
+  } catch (err) {
+    logger.error({ err, sessionId }, 'Error snapshotting final state on completion');
+  }
+}

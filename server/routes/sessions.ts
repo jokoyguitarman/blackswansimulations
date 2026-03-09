@@ -9,6 +9,7 @@ import { createDefaultChannels } from '../services/channelService.js';
 import { sendInvitationEmail, sendPendingInvitationEmail } from '../services/emailService.js';
 import { initializeSessionObjectives } from '../services/objectiveTrackingService.js';
 import { initializeSessionGateProgress } from '../services/gateEvaluationService.js';
+import { snapshotFinalStateOnCompletion } from '../services/scenarioStateService.js';
 import { loadAndApplyEnvironmentalState } from '../services/environmentalStateService.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { identifyEscalationFactors, generateEscalationPathways } from '../services/aiService.js';
@@ -995,7 +996,7 @@ router.patch(
       // Check if user is trainer of this session
       const { data: session } = await supabaseAdmin
         .from('sessions')
-        .select('trainer_id, start_time')
+        .select('trainer_id, start_time, status')
         .eq('id', id)
         .single();
 
@@ -1050,6 +1051,7 @@ router.patch(
         updates.end_time = new Date().toISOString();
       }
 
+      const previousStatus = (session as { status?: string }).status;
       const { data, error } = await supabaseAdmin
         .from('sessions')
         .update(updates)
@@ -1060,6 +1062,17 @@ router.patch(
       if (error) {
         logger.error({ error, sessionId: id }, 'Failed to update session');
         return res.status(500).json({ error: 'Failed to update session' });
+      }
+
+      // Snapshot final state when session completes so counters persist for AAR review
+      if (
+        status === 'completed' &&
+        previousStatus !== 'completed' &&
+        previousStatus !== 'cancelled'
+      ) {
+        void snapshotFinalStateOnCompletion(id).catch((err) =>
+          logger.error({ err, sessionId: id }, 'Snapshot final state on completion failed'),
+        );
       }
 
       // Checkpoint 4: When session becomes in_progress (just started), persist initial escalation factors and pathways
