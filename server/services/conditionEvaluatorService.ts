@@ -229,7 +229,15 @@ conditionRegistry.evacuation_flow_control_decided = (ctx) =>
   getEvacuationState(ctx).flow_control_decided === true;
 conditionRegistry.evacuation_exit_bottleneck_active = (ctx) => {
   const arr = getEvacuationState(ctx).exits_congested;
-  return Array.isArray(arr) && arr.length > 0;
+  if (!Array.isArray(arr) || arr.length === 0) return false;
+  const state =
+    (ctx.currentState as { managed_effects?: Record<string, { managed?: boolean }> }) || {};
+  const managed = state.managed_effects ?? {};
+  return arr.some((e) => {
+    if (typeof e !== 'string' || !e.trim()) return false;
+    const key = `evacuation.exits_congested:${e.trim()}`;
+    return managed[key]?.managed !== true;
+  });
 };
 conditionRegistry.evacuation_coordination_not_established = (ctx) =>
   getEvacuationState(ctx).coordination_with_triage !== true;
@@ -237,12 +245,29 @@ conditionRegistry.evacuation_coordination_established = (ctx) =>
   getEvacuationState(ctx).coordination_with_triage === true;
 
 // Triage (from current_state.triage_state)
-conditionRegistry.triage_supply_critical = (ctx) => getTriageState(ctx).supply_level === 'critical';
+conditionRegistry.triage_supply_critical = (ctx) => {
+  if (getTriageState(ctx).supply_level !== 'critical') return false;
+  const state =
+    (ctx.currentState as { managed_effects?: Record<string, { managed?: boolean }> }) || {};
+  const managed = state.managed_effects ?? {};
+  return managed['triage.supply_level:critical']?.managed !== true;
+};
 conditionRegistry.triage_supply_low = (ctx) => {
   const level = getTriageState(ctx).supply_level;
-  return level === 'low' || level === 'critical';
+  if (level !== 'low' && level !== 'critical') return false;
+  const state =
+    (ctx.currentState as { managed_effects?: Record<string, { managed?: boolean }> }) || {};
+  const managed = state.managed_effects ?? {};
+  const key = `triage.supply_level:${String(level)}`;
+  return managed[key]?.managed !== true;
 };
-conditionRegistry.triage_surge_active = (ctx) => getTriageState(ctx).surge_active === true;
+conditionRegistry.triage_surge_active = (ctx) => {
+  if (getTriageState(ctx).surge_active !== true) return false;
+  const state =
+    (ctx.currentState as { managed_effects?: Record<string, { managed?: boolean }> }) || {};
+  const managed = state.managed_effects ?? {};
+  return managed['triage.surge_active']?.managed !== true;
+};
 conditionRegistry.triage_no_supply_management_decision = (ctx) =>
   !hasDecisionMatching(ctx, (d) => {
     if (d.categories?.includes('supply_management')) return true;
@@ -281,8 +306,13 @@ conditionRegistry.media_statement_issued = (ctx) =>
   getMediaState(ctx).first_statement_issued === true;
 conditionRegistry.media_misinformation_not_addressed = (ctx) =>
   getMediaState(ctx).misinformation_addressed !== true;
-conditionRegistry.media_journalist_arrived = (ctx) =>
-  getMediaState(ctx).journalist_arrived === true;
+conditionRegistry.media_journalist_arrived = (ctx) => {
+  if (getMediaState(ctx).journalist_arrived !== true) return false;
+  const state =
+    (ctx.currentState as { managed_effects?: Record<string, { managed?: boolean }> }) || {};
+  const managed = state.managed_effects ?? {};
+  return managed['media.journalist_arrived']?.managed !== true;
+};
 conditionRegistry.media_misinformation_addressed = (ctx) =>
   getMediaState(ctx).misinformation_addressed === true;
 

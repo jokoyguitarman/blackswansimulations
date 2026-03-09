@@ -29,6 +29,7 @@ import {
 } from '../services/environmentalConsistencyService.js';
 import { evaluateEnvironmentalPrerequisite } from '../services/environmentalPrerequisiteService.js';
 import { evaluateEnvironmentalManagementIntentAndUpdateState } from '../services/environmentalConditionManagementService.js';
+import { evaluateStateEffectManagementAndUpdateState } from '../services/stateEffectManagementService.js';
 import { publishInjectToSession } from './injects.js';
 import { evaluateDecisionBasedTriggers } from '../services/injectTriggerService.js';
 import {
@@ -1312,6 +1313,21 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       logger.error(
         { error: envMgmtErr, decisionId: id },
         'Env condition management check failed, continuing',
+      );
+    }
+
+    // State effect management: if decision credibly addresses an active state effect (e.g. exit congestion), mark it managed
+    try {
+      await evaluateStateEffectManagementAndUpdateState(
+        decision.session_id,
+        { id: decision.id, title: decision.title, description: decision.description },
+        env.openAiApiKey,
+        user.id,
+      );
+    } catch (stateEffErr) {
+      logger.error(
+        { error: stateEffErr, decisionId: id },
+        'State effect management check failed, continuing',
       );
     }
 

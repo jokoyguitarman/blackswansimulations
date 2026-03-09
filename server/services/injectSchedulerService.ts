@@ -252,7 +252,16 @@ export class InjectSchedulerService {
     if (evacState.flow_control_decided === true) {
       let rate = BASE_EVAC_RATE_PER_MIN;
       const exitsCongested = evacState.exits_congested as string[] | undefined;
-      if (exitsCongested && exitsCongested.length > 0) rate = Math.floor(rate / 2);
+      const managedEffects =
+        (nextState.managed_effects as Record<string, { managed?: boolean }> | undefined) ?? {};
+      const hasUnmanagedCongestedExit =
+        Array.isArray(exitsCongested) &&
+        exitsCongested.some((e) => {
+          if (typeof e !== 'string' || !e.trim()) return false;
+          const key = `evacuation.exits_congested:${e.trim()}`;
+          return managedEffects[key]?.managed !== true;
+        });
+      if (hasUnmanagedCongestedExit) rate = Math.floor(rate / 2);
       const evacRobustness = robustnessByTeam.Evacuation ?? robustnessByTeam.evacuation ?? null;
       if (evacRobustness !== null && typeof evacRobustness === 'number') {
         const mod = evacRobustness <= 7 ? 0.25 : evacRobustness >= 8 ? 1.25 : 1;

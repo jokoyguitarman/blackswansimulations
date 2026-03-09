@@ -41,21 +41,34 @@ function computeRobustnessByTeam(
   return result;
 }
 
+/** Per-decision cap detail for trainer Timeline (raw, capped, reason). */
+export interface RobustnessCapDetail {
+  raw: number;
+  capped: number;
+  severity: string;
+  mismatch_kind: string;
+  reason?: string;
+}
+
 /**
  * Apply Checkpoint 2 robustness cap: decisions marked environmentally inconsistent
  * (contradiction: high severity -> cap 3, medium -> cap 6; below_standard -> cap 6 only).
+ * Returns capped scores and, for decisions that were capped, detail for Timeline display.
  */
 async function applyEnvironmentalConsistencyCap(
   robustnessByDecisionId: Record<string, number> | null,
   decisionIds: string[],
   sessionId: string,
-): Promise<Record<string, number> | null> {
+): Promise<{
+  capped: Record<string, number>;
+  capDetails: Record<string, RobustnessCapDetail>;
+} | null> {
   if (
     !robustnessByDecisionId ||
     Object.keys(robustnessByDecisionId).length === 0 ||
     decisionIds.length === 0
   )
-    return robustnessByDecisionId;
+    return null;
   const { data: rows } = await supabaseAdmin
     .from('decisions')
     .select('id, environmental_consistency')
@@ -65,6 +78,7 @@ async function applyEnvironmentalConsistencyCap(
     consistent?: boolean;
     severity?: string;
     mismatch_kind?: 'contradiction' | 'below_standard';
+    reason?: string;
   };
   const envByDecision = new Map<string, EnvConsistency>();
   for (const row of rows ?? []) {
@@ -74,6 +88,7 @@ async function applyEnvironmentalConsistencyCap(
         consistent?: boolean;
         severity?: string;
         mismatch_kind?: string;
+        reason?: string;
       } | null;
     };
     if (r.environmental_consistency && typeof r.environmental_consistency === 'object') {
@@ -88,25 +103,42 @@ async function applyEnvironmentalConsistencyCap(
         consistent: ec.consistent,
         severity: ec.severity,
         mismatch_kind: kind,
+        reason: typeof ec.reason === 'string' ? ec.reason : undefined,
       });
     }
   }
   const capped: Record<string, number> = {};
+  const capDetails: Record<string, RobustnessCapDetail> = {};
   for (const [id, score] of Object.entries(robustnessByDecisionId)) {
     const env = envByDecision.get(id);
     if (env?.consistent !== false) {
       capped[id] = score;
       continue;
     }
+    const severity = env?.severity ?? 'medium';
+    const mismatch_kind = env?.mismatch_kind ?? 'contradiction';
+    let cappedScore: number;
     if (env.mismatch_kind === 'below_standard') {
-      capped[id] = Math.min(score, 6);
-      continue;
+      cappedScore = Math.min(score, 6);
+    } else if (env?.severity === 'high') {
+      cappedScore = Math.min(score, 3);
+    } else if (env?.severity === 'medium') {
+      cappedScore = Math.min(score, 6);
+    } else {
+      cappedScore = score;
     }
-    if (env?.severity === 'high') capped[id] = Math.min(score, 3);
-    else if (env?.severity === 'medium') capped[id] = Math.min(score, 6);
-    else capped[id] = score;
+    capped[id] = cappedScore;
+    if (cappedScore !== score) {
+      capDetails[id] = {
+        raw: score,
+        capped: cappedScore,
+        severity,
+        mismatch_kind,
+        reason: env?.reason,
+      };
+    }
   }
-  return capped;
+  return { capped, capDetails };
 }
 
 /** When session has not_met gates, prefer escalation (low/medium) over de-escalation (high). */
@@ -620,7 +652,7 @@ export class AIInjectSchedulerService {
             formattedInjects.length > 0 ? formattedInjects : undefined,
           );
           const decisionIds = formattedDecisions.map((d: Record<string, unknown>) => String(d.id));
-          const cappedRobustness = await applyEnvironmentalConsistencyCap(
+          const capResult = await applyEnvironmentalConsistencyCap(
             impactResult.robustnessByDecisionId ?? null,
             decisionIds,
             session.id,
@@ -628,11 +660,18 @@ export class AIInjectSchedulerService {
           latestImpactMatrix = impactResult.matrix;
           latestImpactAnalysis = impactResult.analysis ?? null;
           latestRobustnessByDecision =
-            cappedRobustness ?? impactResult.robustnessByDecisionId ?? null;
+            capResult?.capped ?? impactResult.robustnessByDecisionId ?? null;
           const robustnessByTeam = computeRobustnessByTeam(
             formattedDecisions,
             latestRobustnessByDecision ?? {},
           );
+          const rawRobustness = impactResult.robustnessByDecisionId ?? {};
+          const capDetails = capResult?.capDetails ?? {};
+          const analysisWithRawAndCap = {
+            ...(impactResult.analysis ?? {}),
+            raw_robustness_by_decision: rawRobustness,
+            robustness_cap_detail: capDetails,
+          };
           await supabaseAdmin.from('session_impact_matrix').insert({
             ...baseInsert,
             matrix: impactResult.matrix,
@@ -640,7 +679,7 @@ export class AIInjectSchedulerService {
             robustness_by_team: robustnessByTeam,
             escalation_factors_snapshot:
               escalationFactorsSnapshot.length > 0 ? escalationFactorsSnapshot : null,
-            analysis: impactResult.analysis ?? null,
+            analysis: analysisWithRawAndCap,
           });
           logger.info(
             {

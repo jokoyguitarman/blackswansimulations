@@ -112,7 +112,13 @@ export const SessionView = () => {
         matrix_reasoning?: string;
         robustness_reasoning?: string;
         matrix_cell_reasoning?: Record<string, Record<string, string>>;
+        raw_robustness_by_decision?: Record<string, number>;
+        robustness_cap_detail?: Record<
+          string,
+          { raw: number; capped: number; severity: string; mismatch_kind: string; reason?: string }
+        >;
       };
+      managed_effect_keys?: string[];
       factors?: Array<{ id: string; name: string; description: string; severity: string }>;
       de_escalation_factors?: Array<{ id: string; name: string; description: string }>;
       pathways?: Array<{
@@ -1049,6 +1055,13 @@ export const SessionView = () => {
                             )}
                           </div>
                         )}
+                        {a.type === 'state_effect_managed' && (
+                          <div>
+                            <span className="text-robotic-gold">
+                              State effect managed{a.summary ? ` (${a.summary})` : ''}
+                            </span>
+                          </div>
+                        )}
                         {a.type === 'escalation_factors_computed' && (
                           <div>
                             <span className="text-robotic-gold">
@@ -1223,6 +1236,42 @@ export const SessionView = () => {
                                       ),
                                     )}
                                   </div>
+                                </div>
+                              )}
+                            {a.robustness_by_decision &&
+                              Object.keys(a.robustness_by_decision).length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
+                                  <div className="text-robotic-yellow/80 mb-1">
+                                    [ROBUSTNESS PROCESS: RAW → CAPPED]
+                                  </div>
+                                  <ul className="list-none space-y-1.5 text-xs">
+                                    {Object.keys(a.robustness_by_decision).map((decId) => {
+                                      const cappedScore = a.robustness_by_decision![decId];
+                                      const rawScore =
+                                        a.analysis?.raw_robustness_by_decision?.[decId];
+                                      const capDetail = a.analysis?.robustness_cap_detail?.[decId];
+                                      return (
+                                        <li
+                                          key={decId}
+                                          className="border-l-2 border-robotic-yellow/30 pl-2 text-robotic-green/90 break-words"
+                                        >
+                                          <span className="font-mono text-robotic-gray-50">
+                                            {decId.slice(0, 8)}…
+                                          </span>
+                                          {' — raw: '}
+                                          {rawScore != null ? rawScore : '—'}
+                                          {' → capped (used): '}
+                                          {cappedScore}
+                                          {capDetail && (
+                                            <div className="mt-0.5 text-robotic-yellow/80 italic">
+                                              Cap: {capDetail.severity} {capDetail.mismatch_kind}.
+                                              {capDetail.reason ? ` ${capDetail.reason}` : ''}
+                                            </div>
+                                          )}
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
                                 </div>
                               )}
                           </div>

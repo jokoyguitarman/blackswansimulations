@@ -440,7 +440,13 @@ router.get(
           .from('session_events')
           .select('id, event_type, description, metadata, created_at')
           .eq('session_id', sessionId)
-          .in('event_type', ['inject', 'inject_cancelled', 'ai_step_start', 'ai_step_end'])
+          .in('event_type', [
+            'inject',
+            'inject_cancelled',
+            'ai_step_start',
+            'ai_step_end',
+            'state_effect_managed',
+          ])
           .order('created_at', { ascending: false })
           .limit(200),
         supabaseAdmin
@@ -517,6 +523,16 @@ router.get(
             at: e.created_at,
             reason: (meta.reason as string) || 'AI determined recent decisions made it obsolete',
             injectId: meta.inject_id as string,
+          });
+        } else if (e.event_type === 'state_effect_managed') {
+          activities.push({
+            type: 'state_effect_managed',
+            at: e.created_at,
+            title: 'State effect managed',
+            summary:
+              Array.isArray(meta.managed_effect_keys) && meta.managed_effect_keys.length > 0
+                ? `Managed: ${(meta.managed_effect_keys as string[]).join(', ')}`
+                : undefined,
           });
         } else if (e.event_type === 'ai_step_start') {
           activities.push({
