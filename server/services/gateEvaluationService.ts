@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
 import { evaluateGateContentSatisfaction } from './decisionEvaluationAiService.js';
 
 /**
@@ -276,6 +277,8 @@ export async function getNotMetGatesInScopeForDecision(
 /**
  * Evaluate a single gate for a session at a given elapsed time.
  * If gate is still pending and check_at_minutes <= elapsedMinutes, evaluate condition and set met/not_met.
+ * Uses AI content analysis (content_hints) as primary classifier; decision_types is optional.
+ * First decision that passes the content check satisfies the gate.
  */
 export async function evaluateGate(
   sessionId: string,
@@ -290,6 +293,7 @@ export async function evaluateGate(
   },
   elapsedMinutes: number,
   io: import('socket.io').Server | null,
+  openAiApiKey?: string,
 ): Promise<void> {
   if (gate.check_at_minutes > elapsedMinutes) return;
 
@@ -322,7 +326,7 @@ export async function evaluateGate(
     return;
   }
 
-  // In-scope = executed decision from this team linked to an incident whose inject targets this team (no content_hints check)
+  // decision_types is optional: when empty, all team decisions are candidates
   const decisionTypes = (gate.condition.decision_types ?? []) as string[];
   const { data: decisions } = await supabaseAdmin
     .from('decisions')
@@ -338,7 +342,8 @@ export async function evaluateGate(
       !decisionTypes.length || decisionTypes.includes((d as { type?: string }).type ?? ''),
   );
 
-  let satisfying: { id: string } | undefined;
+  // Build in-scope candidates: decisions whose incident's inject targets this team
+  let inScopeCandidates: Array<{ id: string; description: string }> = [];
   if (candidates.length > 0) {
     const incidentIds = [
       ...new Set(
@@ -377,11 +382,35 @@ export async function evaluateGate(
           i.inject_id,
         ]),
       );
-      satisfying = candidates.find((d) => {
-        const incId = (d as { response_to_incident_id?: string | null }).response_to_incident_id;
-        const injId = incId ? incidentIdToInjectId.get(incId) : null;
-        return injId && targetTeamInjectIds.has(injId);
-      }) as { id: string } | undefined;
+      inScopeCandidates = (
+        candidates as Array<{
+          id: string;
+          description: string;
+          response_to_incident_id?: string | null;
+        }>
+      )
+        .filter((d) => {
+          const injId = d.response_to_incident_id
+            ? incidentIdToInjectId.get(d.response_to_incident_id)
+            : null;
+          return injId && targetTeamInjectIds.has(injId);
+        })
+        .map((d) => ({ id: d.id, description: d.description }));
+    }
+  }
+
+  // Content check: first decision that passes satisfies the gate (AI when key set, else substring fallback)
+  const apiKey = openAiApiKey ?? env.openAiApiKey;
+  let satisfying: { id: string } | undefined;
+  for (const candidate of inScopeCandidates) {
+    const passes = await decisionSatisfiesGateContentAsync(
+      candidate.description,
+      gate.condition,
+      apiKey,
+    );
+    if (passes) {
+      satisfying = { id: candidate.id };
+      break;
     }
   }
 
@@ -505,7 +534,7 @@ export async function runGateEvaluationForSession(
     if_met_inject_id: string | null;
   }>) {
     if (pendingGateIds.has(gate.gate_id)) {
-      await evaluateGate(sessionId, gate, elapsedMinutes, io);
+      await evaluateGate(sessionId, gate, elapsedMinutes, io, env.openAiApiKey);
     }
   }
 }

@@ -50,7 +50,7 @@ export async function runPathwayOutcomesOnInjectPublished(
 
     const { data: inject, error: injectError } = await supabaseAdmin
       .from('scenario_injects')
-      .select('id, type, title, content')
+      .select('id, type, title, content, inject_scope, target_teams')
       .eq('id', injectId)
       .single();
 
@@ -209,6 +209,28 @@ export async function runPathwayOutcomesOnInjectPublished(
       pathwayUsageSummary,
       env.openAiApiKey,
     );
+
+    // Inherit trigger inject's scope when team_specific: outcome is a consequence of that inject,
+    // so the same team(s) should receive it.
+    const triggerScope = (inject as { inject_scope?: string | null }).inject_scope;
+    const triggerTargetTeams = (inject as { target_teams?: string[] | null }).target_teams;
+    const shouldInheritScope =
+      (triggerScope === 'team_specific' || triggerScope === 'team') &&
+      Array.isArray(triggerTargetTeams) &&
+      triggerTargetTeams.length > 0;
+
+    if (shouldInheritScope) {
+      for (const outcome of outcomeResult.outcomes) {
+        if (outcome.inject_payload) {
+          outcome.inject_payload.inject_scope = 'team_specific';
+          outcome.inject_payload.target_teams = triggerTargetTeams;
+        }
+      }
+      logger.debug(
+        { sessionId, injectId, target_teams: triggerTargetTeams },
+        'Pathway outcomes: inherited team_specific scope from trigger inject',
+      );
+    }
 
     const factorsSnapshot = {
       escalation: mergedFactors,

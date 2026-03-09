@@ -26,7 +26,7 @@ router.use((req, _res, next) => {
   next();
 });
 
-// GET /sessions/:sessionId/hospital/list - list hospitals available for DM
+// GET /sessions/:sessionId/hospital/list - list hospitals available for DM (triage team only)
 router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const sessionId = req.params.sessionId;
@@ -42,7 +42,9 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    if (session.trainer_id !== user.id && user.role !== 'admin') {
+    const isTrainerOrAdmin = session.trainer_id === user.id || user.role === 'admin';
+
+    if (!isTrainerOrAdmin) {
       const { data: participant } = await supabaseAdmin
         .from('session_participants')
         .select('user_id')
@@ -51,6 +53,20 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
         .single();
       if (!participant) {
         return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Hospitals are only visible to triage team assignees (information points for triage)
+      const { data: teamRows } = await supabaseAdmin
+        .from('session_teams')
+        .select('team_name')
+        .eq('session_id', sessionId)
+        .eq('user_id', user.id);
+
+      const isTriageTeam = (teamRows ?? []).some((r) =>
+        /triage/i.test((r as { team_name: string }).team_name ?? ''),
+      );
+      if (!isTriageTeam) {
+        return res.json({ data: [] });
       }
     }
 
@@ -90,7 +106,7 @@ router.get('/list', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
-// POST /sessions/:sessionId/hospital/ask - ask a hospital about capacity
+// POST /sessions/:sessionId/hospital/ask - ask a hospital about capacity (triage team only)
 router.post('/ask', requireAuth, validate(askSchema), async (req: AuthenticatedRequest, res) => {
   try {
     const sessionId = req.params.sessionId;
@@ -107,7 +123,9 @@ router.post('/ask', requireAuth, validate(askSchema), async (req: AuthenticatedR
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    if (session.trainer_id !== user.id && user.role !== 'admin') {
+    const isTrainerOrAdmin = session.trainer_id === user.id || user.role === 'admin';
+
+    if (!isTrainerOrAdmin) {
       const { data: participant } = await supabaseAdmin
         .from('session_participants')
         .select('user_id')
@@ -116,6 +134,22 @@ router.post('/ask', requireAuth, validate(askSchema), async (req: AuthenticatedR
         .single();
       if (!participant) {
         return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Only triage team can ask hospitals about capacity
+      const { data: teamRows } = await supabaseAdmin
+        .from('session_teams')
+        .select('team_name')
+        .eq('session_id', sessionId)
+        .eq('user_id', user.id);
+
+      const isTriageTeam = (teamRows ?? []).some((r) =>
+        /triage/i.test((r as { team_name: string }).team_name ?? ''),
+      );
+      if (!isTriageTeam) {
+        return res
+          .status(403)
+          .json({ error: 'Hospitals are only available to triage team assignees' });
       }
     }
 

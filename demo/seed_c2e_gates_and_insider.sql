@@ -232,17 +232,17 @@ BEGIN
     ) VALUES
       (
         scenario_uuid, 'evac_situation_report', 1, 8,
-        '{"team": "evacuation", "decision_types": ["emergency_declaration", "operational_plan"], "content_hints": ["exit", "ground zero", "situation", "evacuation plan", "flow"], "min_hints": 2}'::jsonb,
+        '{"team": "evacuation", "decision_types": [], "content_hints": ["exit", "ground zero", "situation", "evacuation plan", "flow"], "min_hints": 2}'::jsonb,
         ARRAY[inj_evac_punish], inj_evac_success, inj_evac_vague, 'evacuation'
       ),
       (
         scenario_uuid, 'triage_situation_report', 2, 10,
-        '{"team": "triage", "decision_types": ["operational_plan", "resource_allocation"], "content_hints": ["triage", "casualty", "zone", "route", "situation report"], "min_hints": 2}'::jsonb,
+        '{"team": "triage", "decision_types": [], "content_hints": ["triage", "casualty", "zone", "route", "situation report"], "min_hints": 2}'::jsonb,
         ARRAY[inj_triage_punish], inj_triage_success, inj_triage_vague, 'triage'
       ),
       (
         scenario_uuid, 'media_first_statement', 3, 12,
-        '{"team": "media", "decision_types": ["public_statement"], "content_hints": ["statement", "public", "verified", "facts", "misinformation"], "min_hints": 1}'::jsonb,
+        '{"team": "media", "decision_types": [], "content_hints": ["statement", "public", "verified", "facts", "misinformation"], "min_hints": 1}'::jsonb,
         ARRAY[inj_media_punish], inj_media_success, inj_media_vague, 'media'
       )
     ON CONFLICT (scenario_id, gate_id) DO UPDATE SET
@@ -259,17 +259,17 @@ BEGIN
     ) VALUES
       (
         scenario_uuid, 'evac_situation_report', 1, 8,
-        '{"team": "evacuation", "decision_types": ["emergency_declaration", "operational_plan"], "content_hints": ["exit", "ground zero", "situation", "evacuation plan", "flow"], "min_hints": 2}'::jsonb,
+        '{"team": "evacuation", "decision_types": [], "content_hints": ["exit", "ground zero", "situation", "evacuation plan", "flow"], "min_hints": 2}'::jsonb,
         ARRAY[inj_evac_punish], inj_evac_success
       ),
       (
         scenario_uuid, 'triage_situation_report', 2, 10,
-        '{"team": "triage", "decision_types": ["operational_plan", "resource_allocation"], "content_hints": ["triage", "casualty", "zone", "route", "situation report"], "min_hints": 2}'::jsonb,
+        '{"team": "triage", "decision_types": [], "content_hints": ["triage", "casualty", "zone", "route", "situation report"], "min_hints": 2}'::jsonb,
         ARRAY[inj_triage_punish], inj_triage_success
       ),
       (
         scenario_uuid, 'media_first_statement', 3, 12,
-        '{"team": "media", "decision_types": ["public_statement"], "content_hints": ["statement", "public", "verified", "facts", "misinformation"], "min_hints": 1}'::jsonb,
+        '{"team": "media", "decision_types": [], "content_hints": ["statement", "public", "verified", "facts", "misinformation"], "min_hints": 1}'::jsonb,
         ARRAY[inj_media_punish], inj_media_success
       )
     ON CONFLICT (scenario_id, gate_id) DO UPDATE SET

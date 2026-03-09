@@ -119,26 +119,6 @@ export const IncidentMarker = ({
               <span className="text-robotic-yellow/70">[TYPE]</span>
               <span>{incident.type}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-robotic-yellow/70">[SEVERITY]</span>
-              <span
-                className={`px-2 py-0.5 rounded border ${
-                  incident.severity === 'critical'
-                    ? 'bg-red-500/20 text-red-400 border-red-400'
-                    : incident.severity === 'high'
-                      ? 'bg-orange-500/20 text-orange-400 border-orange-400'
-                      : incident.severity === 'medium'
-                        ? 'bg-yellow-500/20 text-yellow-400 border-yellow-400'
-                        : 'bg-gray-500/20 text-gray-400 border-gray-400'
-                }`}
-              >
-                {incident.severity.toUpperCase()}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-robotic-yellow/70">[STATUS]</span>
-              <span>{incident.status.replace('_', ' ').toUpperCase()}</span>
-            </div>
             {incident.casualty_count !== undefined && incident.casualty_count > 0 && (
               <div className="flex items-center gap-2">
                 <span className="text-robotic-yellow/70">[CASUALTIES]</span>

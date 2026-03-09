@@ -76,35 +76,6 @@ export const IncidentCard = ({
     }
   }, [isExpanded]);
 
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'critical':
-        return 'bg-red-900/20 text-red-400 border-red-400';
-      case 'high':
-        return 'bg-robotic-orange/20 text-robotic-orange border-robotic-orange';
-      case 'medium':
-        return 'bg-robotic-yellow/20 text-robotic-yellow border-robotic-yellow';
-      case 'low':
-        return 'bg-robotic-gray-200 text-robotic-gray-50 border-robotic-gray-200';
-      default:
-        return 'bg-robotic-gray-200 text-robotic-gray-50 border-robotic-gray-200';
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'resolved':
-      case 'contained':
-        return 'bg-green-900/20 text-green-400 border-green-400';
-      case 'under_control':
-        return 'bg-robotic-yellow/20 text-robotic-yellow border-robotic-yellow';
-      case 'active':
-        return 'bg-robotic-orange/20 text-robotic-orange border-robotic-orange';
-      default:
-        return 'bg-robotic-gray-200 text-robotic-gray-50 border-robotic-gray-200';
-    }
-  };
-
   const handleStatusChange = async (newStatus: string) => {
     setUpdating(true);
     try {
@@ -129,16 +100,6 @@ export const IncidentCard = ({
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
             <h4 className="text-sm terminal-text font-semibold">{incident.title}</h4>
-            <span
-              className={`text-xs terminal-text px-2 py-1 border ${getSeverityColor(incident.severity)}`}
-            >
-              {incident.severity.toUpperCase()}
-            </span>
-            <span
-              className={`text-xs terminal-text px-2 py-1 border ${getStatusColor(incident.status)}`}
-            >
-              {incident.status.toUpperCase().replace('_', ' ')}
-            </span>
           </div>
           <div ref={descriptionRef} className="text-xs terminal-text text-robotic-yellow/70 mb-2">
             {incident.description.length > 150 ? (
@@ -168,11 +129,6 @@ export const IncidentCard = ({
             {incident.location_lat && incident.location_lng && (
               <span>
                 📍 {incident.location_lat.toFixed(4)}, {incident.location_lng.toFixed(4)}
-              </span>
-            )}
-            {incident.reported_by && (
-              <span>
-                Reported by: {incident.reported_by.full_name} [{incident.reported_by.role}]
               </span>
             )}
             {incident.assigned_to_user && (
