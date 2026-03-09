@@ -232,12 +232,12 @@ BEGIN
     ) VALUES
       (
         scenario_uuid, 'evac_situation_report', 1, 8,
-        '{"team": "evacuation", "decision_types": [], "content_hints": ["exit", "ground zero", "situation", "evacuation plan", "flow"], "min_hints": 2}'::jsonb,
+        '{"team": "evacuation", "decision_types": [], "content_hints": ["exit", "exits", "ground zero", "situation", "evacuation plan", "flow", "cordon", "assembly", "staging", "evacuee", "marshal", "corridor", "flow rate"], "min_hints": 2}'::jsonb,
         ARRAY[inj_evac_punish], inj_evac_success, inj_evac_vague, 'evacuation'
       ),
       (
         scenario_uuid, 'triage_situation_report', 2, 10,
-        '{"team": "triage", "decision_types": [], "content_hints": ["triage", "casualty", "zone", "route", "situation report"], "min_hints": 2}'::jsonb,
+        '{"team": "triage", "decision_types": [], "content_hints": ["triage", "casualty", "zone", "area", "route", "situation report", "sitrep", "corridor", "access", "evacuation", "ambulance", "hospital", "capacity"], "min_hints": 2}'::jsonb,
         ARRAY[inj_triage_punish], inj_triage_success, inj_triage_vague, 'triage'
       ),
       (
@@ -259,12 +259,12 @@ BEGIN
     ) VALUES
       (
         scenario_uuid, 'evac_situation_report', 1, 8,
-        '{"team": "evacuation", "decision_types": [], "content_hints": ["exit", "ground zero", "situation", "evacuation plan", "flow"], "min_hints": 2}'::jsonb,
+        '{"team": "evacuation", "decision_types": [], "content_hints": ["exit", "exits", "ground zero", "situation", "evacuation plan", "flow", "cordon", "assembly", "staging", "evacuee", "marshal", "corridor", "flow rate"], "min_hints": 2}'::jsonb,
         ARRAY[inj_evac_punish], inj_evac_success
       ),
       (
         scenario_uuid, 'triage_situation_report', 2, 10,
-        '{"team": "triage", "decision_types": [], "content_hints": ["triage", "casualty", "zone", "route", "situation report"], "min_hints": 2}'::jsonb,
+        '{"team": "triage", "decision_types": [], "content_hints": ["triage", "casualty", "zone", "area", "route", "situation report", "sitrep", "corridor", "access", "evacuation", "ambulance", "hospital", "capacity"], "min_hints": 2}'::jsonb,
         ARRAY[inj_triage_punish], inj_triage_success
       ),
       (

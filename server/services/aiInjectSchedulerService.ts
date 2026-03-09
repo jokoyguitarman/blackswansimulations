@@ -152,6 +152,47 @@ function effectiveRobustnessBand(
 }
 
 /**
+ * Teams that had at least one actionable incident (requires_response: true) in the last 5 minutes.
+ * Used to avoid penalizing teams that had nothing to respond to.
+ */
+async function teamsWithActionableIncidents(
+  sessionId: string,
+  fiveMinutesAgo: string,
+): Promise<Set<string>> {
+  const { data: incidents } = await supabaseAdmin
+    .from('incidents')
+    .select('id, inject_id')
+    .eq('session_id', sessionId)
+    .eq('requires_response', true)
+    .gte('reported_at', fiveMinutesAgo);
+  if (!incidents?.length) return new Set();
+  const injectIds = [
+    ...new Set(
+      (incidents as Array<{ inject_id?: string | null }>)
+        .map((i) => i.inject_id)
+        .filter(Boolean) as string[],
+    ),
+  ];
+  if (injectIds.length === 0) return new Set();
+  const { data: injects } = await supabaseAdmin
+    .from('scenario_injects')
+    .select('id, target_teams')
+    .in('id', injectIds);
+  const teams = new Set<string>();
+  for (const inj of injects ?? []) {
+    const tt = (inj as { target_teams?: string[] | null }).target_teams;
+    if (!Array.isArray(tt) || tt.length === 0) {
+      teams.add('evacuation');
+      teams.add('triage');
+      teams.add('media');
+    } else {
+      for (const t of tt) teams.add(t);
+    }
+  }
+  return teams;
+}
+
+/**
  * AI Inject Scheduler Service
  * Runs every 5 minutes to generate:
  * 1. Universal injects based on all recent decisions and state (visible to all)
@@ -832,6 +873,9 @@ export class AIInjectSchedulerService {
       .limit(1);
     const hasNotMetGates = (notMetGates?.length ?? 0) > 0;
 
+    // Teams that had actionable incidents (requires_response: true) in last 5 min – avoid penalizing when they had nothing to respond to
+    const teamsWithActionable = await teamsWithActionableIncidents(session.id, fiveMinutesAgo);
+
     // Load all pathway outcome rows from the last 5 minutes (one per trigger inject); publish one outcome inject per row
     const { data: pathwayOutcomesRows } = await supabaseAdmin
       .from('session_pathway_outcomes')
@@ -891,7 +935,19 @@ export class AIInjectSchedulerService {
                 targetTeams,
               )
             : computeRobustnessBand(latestRobustnessByDecision);
-          const robustnessBand = effectiveRobustnessBand(rawBand, hasNotMetGates);
+          let robustnessBand = effectiveRobustnessBand(rawBand, hasNotMetGates);
+
+          // Don't penalize teams that had no actionable incidents – use medium instead of low
+          if (useTeamBand && robustnessBand === 'low') {
+            const targetHadActionable = targetTeams.some((t) => teamsWithActionable.has(t));
+            if (!targetHadActionable) {
+              robustnessBand = 'medium';
+              logger.debug(
+                { sessionId: session.id, targetTeams },
+                'Pathway outcome: target team had no actionable incidents, using medium band',
+              );
+            }
+          }
 
           if (useTeamBand) {
             logger.debug(
@@ -912,8 +968,13 @@ export class AIInjectSchedulerService {
               : outcomes[Math.floor(Math.random() * outcomes.length)];
 
           // High-band outcomes are de-escalation (things improving); do not require a response
+          // Low/medium band outcomes (escalation/problems): always require response so teams have something to act on
           const requiresResponse =
-            robustnessBand === 'high' ? false : toPublish.inject_payload.requires_response === true;
+            robustnessBand === 'high'
+              ? false
+              : robustnessBand === 'low' || robustnessBand === 'medium'
+                ? true
+                : toPublish.inject_payload.requires_response === true;
 
           const { data: createdInject, error: createError } = await supabaseAdmin
             .from('scenario_injects')
@@ -1005,7 +1066,9 @@ export class AIInjectSchedulerService {
       }
     } else {
       // No decisions in 5-minute window: punish inaction (pathway outcome or inaction inject)
-      if (hasPathwayOutcomes) {
+      // Skip penalty if no team had actionable incidents – they had nothing to respond to
+      const anyTeamHadActionable = teamsWithActionable.size > 0;
+      if (hasPathwayOutcomes && anyTeamHadActionable) {
         const robustnessBand = effectiveRobustnessBand('low', hasNotMetGates);
         if (!this.io) {
           const { io } = await import('../index.js');
@@ -1016,6 +1079,14 @@ export class AIInjectSchedulerService {
           if (publishedCount >= 1) break; // At most one outcome inject per cycle for inaction
           const outcomes = parseOutcomes(row.outcomes);
           if (outcomes.length === 0) continue;
+          const firstOutcome = outcomes[0];
+          const targetTeamsRow = (firstOutcome?.inject_payload?.target_teams as string[]) ?? [];
+          const isTeamSpecific =
+            (firstOutcome?.inject_payload?.inject_scope as string) === 'team_specific' &&
+            targetTeamsRow.length > 0;
+          const targetHadActionable =
+            !isTeamSpecific || targetTeamsRow.some((t) => teamsWithActionable.has(t));
+          if (!targetHadActionable) continue; // Skip penalty for team that had no actionable items
           const matching = outcomes.filter((o) => o.robustness_band === robustnessBand);
           const inactionOutcome =
             matching.length > 0
@@ -1026,6 +1097,8 @@ export class AIInjectSchedulerService {
             (matching.length > 0
               ? matching[0]
               : outcomes[Math.floor(Math.random() * outcomes.length)]);
+          // Inaction penalties always require response so teams can act
+          const inactionRequiresResponse = true;
           const { data: createdInject, error: createError } = await supabaseAdmin
             .from('scenario_injects')
             .insert({
@@ -1039,7 +1112,7 @@ export class AIInjectSchedulerService {
               affected_roles: toPublish.inject_payload.affected_roles ?? [],
               inject_scope: toPublish.inject_payload.inject_scope ?? 'universal',
               target_teams: toPublish.inject_payload.target_teams ?? null,
-              requires_response: toPublish.inject_payload.requires_response === true,
+              requires_response: inactionRequiresResponse,
               requires_coordination: false,
               ai_generated: true,
               triggered_by_user_id: null,
@@ -1075,7 +1148,8 @@ export class AIInjectSchedulerService {
             );
           }
         }
-      } else {
+        // When hasPathwayOutcomes but !anyTeamHadActionable: skip penalty (teams had nothing to respond to)
+      } else if (!hasPathwayOutcomes) {
         // No pathway outcomes: generate one universal inaction inject via AI
         if (env.openAiApiKey) {
           await supabaseAdmin.from('session_events').insert({
