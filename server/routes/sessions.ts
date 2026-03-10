@@ -458,11 +458,6 @@ router.get(
           .order('evaluated_at', { ascending: false })
           .limit(50),
         supabaseAdmin
-          .from('decisions')
-          .select('id, title, executed_at, environmental_consistency')
-          .eq('session_id', sessionId)
-          .not('executed_at', 'is', null),
-        supabaseAdmin
           .from('session_escalation_factors')
           .select('id, evaluated_at, factors, de_escalation_factors')
           .eq('session_id', sessionId)
@@ -474,6 +469,11 @@ router.get(
           .eq('session_id', sessionId)
           .order('evaluated_at', { ascending: false })
           .limit(50),
+        supabaseAdmin
+          .from('decisions')
+          .select('id, title, executed_at, environmental_consistency')
+          .eq('session_id', sessionId)
+          .not('executed_at', 'is', null),
       ]);
 
       const activities: Array<{

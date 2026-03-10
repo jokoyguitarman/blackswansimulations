@@ -30,6 +30,7 @@ export interface SiteAreaEntry {
   capacity_lying?: number;
   capacity_standing?: number;
   distance_to_cordon_m?: number;
+  distance_from_blast_m?: number;
   vehicle_access?: boolean;
   vehicle_notes?: string;
   stretcher_route?: boolean;
