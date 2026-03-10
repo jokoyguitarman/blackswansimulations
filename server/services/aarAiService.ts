@@ -79,8 +79,8 @@ export async function generateAARSummary(
 Your task is to generate a comprehensive, professional after-action review summary based on the session data provided.
 
 How to evaluate:
-- Judge recorded actions (decisions, timing, coordination, process adherence) against: (1) the scenario intent and objectives, (2) the injects that occurred and whether responses were appropriate and timely, (3) when escalation data is provided, use the impact matrices (inter-team impact and robustness by decision), escalation factors (risks identified), and escalation pathways (how the situation could have worsened and what trigger behaviours could lead there) to assess whether the team did well enough to avoid escalations or whether things turned for the worse.
-- Compare "what was planned/expected" (scenario, objectives, injects) with "what was recorded" (decisions, events, metrics) and use escalation factors/pathways and impact/robustness to judge escalation avoidance or deterioration.
+- Judge recorded actions (decisions, timing, coordination, process adherence) against: (1) the scenario intent, (2) the injects that occurred and whether responses were appropriate and timely, (3) when escalation data is provided, use the impact matrices (inter-team impact and robustness by decision), escalation factors (risks identified), and escalation pathways (how the situation could have worsened and what trigger behaviours could lead there) to assess whether the team did well enough to avoid escalations or whether things turned for the worse.
+- Compare "what was planned/expected" (scenario, injects) with "what was recorded" (decisions, events, metrics) and use escalation factors/pathways and impact/robustness to judge escalation avoidance or deterioration.
 - Decisions are executed immediately by the decision maker (no approval workflow). Do not refer to approval workflows, cross-agency approval counts, or compliance with required sign-offs.
 
 Guidelines:
@@ -89,15 +89,15 @@ Guidelines:
 
 The summary must include these six sections with the following focus:
 
-1. Executive overview: Set the scene from the scenario; state whether objectives were met overall and how the recorded session aligned with the scenario.
+1. Executive overview: Set the scene from the scenario; state how the recorded session aligned with the scenario.
 
 2. Key decisions and timing: Relate decisions to the timeline of injects and scenario; note whether decisions were timely and appropriate to the situation presented. Where escalation data is available, relate decisions to robustness_by_decision (higher = more mitigating) and to escalation pathways (did decisions avoid the trigger behaviours or reduce the risk of those trajectories?).
 
 3. Coordination and communication effectiveness: Judge coordination from inter_agency_messages and participation (shared channels, messages_per_participant)—not from cross-agency approvals. Use keyMetrics.communication: total_messages, messages_per_participant, avg_response_time_minutes, inter_agency_message_count, communication_delays. Assess whether participants communicated in line with scenario demands; note response times vs inject timing; note channel use and participation balance.
 
-4. Compliance and process adherence: Do not use approval-based compliance. Judge by: decision latency (were decisions executed in a timely way relative to injects and scenario?); alignment of decisions with scenario and injects; objective progress (keyMetrics.objectives). State where execution was timely and aligned vs delayed or misaligned.
+4. Compliance and process adherence: Do not use approval-based compliance. Judge by: decision latency (were decisions executed in a timely way relative to injects and scenario?); alignment of decisions with scenario and injects. State where execution was timely and aligned vs delayed or misaligned.
 
-5. Overall performance assessment: Synthesise alignment with scenario and objectives; strengths and gaps. When escalation data is provided: use the impact matrix (inter-team impact scores), robustness by decision (1–10 per decision), escalation factors (risks identified), and escalation pathways (trajectories and trigger behaviours). Judge whether the team did well enough to avoid escalations (e.g. positive impact, higher robustness, decisions that did not align with pathway triggers) or whether things turned for the worse (e.g. negative inter-team impact, low robustness, or decisions/behaviours that matched pathway triggers). Use the matrix analysis field (overall, matrix_reasoning, robustness_reasoning) if present.
+5. Overall performance assessment: Synthesise alignment with scenario; strengths and gaps. When escalation data is provided: use the impact matrix (inter-team impact scores), robustness by decision (1–10 per decision), escalation factors (risks identified), and escalation pathways (trajectories and trigger behaviours). Judge whether the team did well enough to avoid escalations (e.g. positive impact, higher robustness, decisions that did not align with pathway triggers) or whether things turned for the worse (e.g. negative inter-team impact, low robustness, or decisions/behaviours that matched pathway triggers). Use the matrix analysis field (overall, matrix_reasoning, robustness_reasoning) if present.
 
 6. Key takeaways and recommendations: Prioritise actions that would improve alignment with scenario intent and response to injects. Where escalation data is available, include recommendations on how to avoid escalation pathways (trigger behaviours to avoid, factors to mitigate) and how to strengthen decisions that had low robustness or negative impact.`;
 
@@ -108,13 +108,10 @@ The summary must include these six sections with the following focus:
 Scenario: ${sessionData.scenarioTitle ?? 'N/A'}
 ${sessionData.scenarioDescription ? `Description: ${sessionData.scenarioDescription.slice(0, 2000)}` : ''}
 
-Objectives:
-${(sessionData.objectives ?? []).map((o) => `- ${o.objective_name ?? 'Objective'}: ${o.status ?? 'N/A'}${o.progress_percentage != null ? ` (${o.progress_percentage}%)` : ''}`).join('\n')}
-
 Injects that occurred (timeline; reference specific inject text when assessing responses):
 ${(sessionData.injectsOccurred ?? []).map((i) => `- At ${i.at}: [${i.type ?? 'update'}] ${i.title ?? 'Untitled'}${i.content ? ` — ${i.content.slice(0, 500)}` : ''}`).join('\n')}
 `
-        : '\nNo scenario/objectives/injects data provided.\n';
+        : '\nNo scenario/injects data provided.\n';
 
     const escalationBlock =
       (sessionData.escalationFactors?.length ?? 0) > 0 ||
@@ -158,10 +155,9 @@ ${(sessionData.impactMatrices ?? [])
       (sessionData.eventTimeline?.length ?? 0) > 0
         ? `
 Chronological event timeline (use this to describe what happened when and to relate decisions/injects to specific moments):
-${sessionData.eventTimeline!
-  .map(
-    (e) =>
-      `- ${e.at} [${e.type}]${e.actor_role ? ` (${e.actor_role})` : ''} ${e.description ?? ''}${e.payload ? ` | ${e.payload}` : ''}`.trim(),
+${sessionData
+  .eventTimeline!.map((e) =>
+    `- ${e.at} [${e.type}]${e.actor_role ? ` (${e.actor_role})` : ''} ${e.description ?? ''}${e.payload ? ` | ${e.payload}` : ''}`.trim(),
   )
   .join('\n')}
 ${(sessionData.eventTimeline?.length ?? 0) >= 200 ? '\n(First 200 events shown; use for timeline anchoring.)' : ''}
@@ -172,8 +168,8 @@ ${(sessionData.eventTimeline?.length ?? 0) >= 200 ? '\n(First 200 events shown; 
       (sessionData.participantSummary?.length ?? 0) > 0
         ? `
 Participant summary (use for coordination/communication analysis; cite roles and numbers e.g. "Fire (12 messages, 2 decisions) responded later than Police (28 messages)"):
-${sessionData.participantSummary!
-  .map(
+${sessionData
+  .participantSummary!.map(
     (p) =>
       `- ${p.displayName} (${p.role}): ${p.messageCount} messages, ${p.decisionsProposed} decisions proposed`,
   )
@@ -275,11 +271,11 @@ Return your response as a JSON array of insight objects. Each insight should hav
 - content: A concise insight statement (2-3 sentences)
 - priority: "high", "medium", or "low"
 
-Focus on actionable, specific insights. Cite roles and numbers when participant summary is provided (e.g. "Fire (12 messages) was slower to respond than Police (28 messages)"). Decisions are executed immediately by the maker (no approval workflow). When scenario/objectives/injects are provided, reflect how well recorded actions matched them. When escalation data is provided (impact matrix, robustness by decision, escalation factors, pathways), include insights on whether the team did well enough to avoid escalations or things turned for the worse—use robustness scores, inter-team impact, and pathway triggers vs actual decisions. For coordination/communication use inter_agency_messages and participation balance; for process adherence use decision latency and objective progress.`;
+Focus on actionable, specific insights. Cite roles and numbers when participant summary is provided (e.g. "Fire (12 messages) was slower to respond than Police (28 messages)"). Decisions are executed immediately by the maker (no approval workflow). When scenario/injects are provided, reflect how well recorded actions matched them. When escalation data is provided (impact matrix, robustness by decision, escalation factors, pathways), include insights on whether the team did well enough to avoid escalations or things turned for the worse—use robustness scores, inter-team impact, and pathway triggers vs actual decisions. For coordination/communication use inter_agency_messages and participation balance; for process adherence use decision latency.`;
 
     const scenarioSummary = sessionData.scenarioDescription
-      ? `Scenario: ${sessionData.scenarioTitle ?? 'N/A'}. Objectives: ${(sessionData.objectives ?? []).map((o) => `${o.objective_name ?? 'Objective'}=${o.status}`).join('; ')}. Injects: ${(sessionData.injectsOccurred ?? []).length} occurred.`
-      : 'No scenario/objectives/injects provided.';
+      ? `Scenario: ${sessionData.scenarioTitle ?? 'N/A'}. Injects: ${(sessionData.injectsOccurred ?? []).length} occurred.`
+      : 'No scenario/injects provided.';
     const escalationSummary =
       (sessionData.impactMatrices?.length ?? 0) > 0 ||
       (sessionData.escalationFactors?.length ?? 0) > 0 ||

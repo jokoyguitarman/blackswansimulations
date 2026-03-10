@@ -180,17 +180,21 @@ export function buildSectionsData(input: BuildSectionsInput): SectionsMap {
   const matricesCap = input.impactMatrices.slice(0, 50);
   sections.matrices = {
     data: matricesCap.map((m) => ({
-      evaluated_at: m.evaluated_at,
       matrix: m.matrix,
-      robustness_by_decision: m.robustness_by_decision,
       analysis: m.analysis,
+      evaluated_at: m.evaluated_at,
       response_taxonomy: m.response_taxonomy,
     })),
     analysis: null,
   };
 
   sections.injects_published = {
-    data: input.injectsPublished,
+    data: input.injectsPublished.map((i) => ({
+      at: i.at,
+      title: i.title,
+      content: i.content,
+      inject_scope: i.inject_scope,
+    })),
     analysis: null,
   };
 
@@ -216,12 +220,40 @@ export function buildSectionsData(input: BuildSectionsInput): SectionsMap {
   };
 
   sections.incident_response = {
-    data: input.incidentResponsePairs ?? [],
+    data: (input.incidentResponsePairs ?? []).map((p) => ({
+      incident: {
+        title: p.incident.title,
+        description: p.incident.description,
+        reported_at: p.incident.reported_at,
+      },
+      decision: {
+        title: p.decision.title,
+        description: p.decision.description,
+        executed_at: p.decision.executed_at,
+      },
+      robustness: p.robustness,
+      latencyMinutes: p.latencyMinutes,
+      insiderConsulted: p.insiderConsulted,
+      environmentalConsistency: p.environmentalConsistency,
+    })),
     analysis: null,
   };
 
   sections.insider_usage = {
-    data: input.insiderUsage ?? { questions: [], gaps: [] },
+    data: (() => {
+      const usage = input.insiderUsage ?? { questions: [], gaps: [] };
+      return {
+        questions: usage.questions.map((q) => ({
+          question_text: q.question_text,
+          category: q.category,
+          asked_by: q.asked_by,
+          asked_at: q.asked_at,
+        })),
+        gaps: (usage.gaps ?? []).map((g) => ({
+          incident_title: g.incident_title,
+        })),
+      };
+    })(),
     analysis: null,
   };
 
@@ -236,7 +268,32 @@ export function buildSectionsData(input: BuildSectionsInput): SectionsMap {
   };
 
   sections.pathway_outcomes = {
-    data: input.pathwayOutcomes ?? [],
+    data: (() => {
+      const decisions = input.decisions ?? [];
+      const decisionMap = new Map(decisions.map((d) => [d.id, d]));
+      const rows = input.pathwayOutcomes ?? [];
+      return rows
+        .filter((r) => r.linkedDecisionId)
+        .map((r) => {
+          const decision = r.linkedDecisionId ? decisionMap.get(r.linkedDecisionId) : undefined;
+          const outcomes = (r.outcomes ?? []) as Array<{
+            robustness_band?: string;
+            inject_payload?: { title?: string; content?: string };
+          }>;
+          const outcomeTexts = outcomes.map((o) => {
+            const p = o.inject_payload;
+            const title = p?.title ?? '';
+            const content = p?.content ?? '';
+            return { title, content };
+          });
+          return {
+            decision_text: decision
+              ? [decision.title, decision.description].filter(Boolean).join('\n\n')
+              : '',
+            pathway_outcomes: outcomeTexts,
+          };
+        });
+    })(),
     analysis: null,
   };
 
@@ -335,15 +392,14 @@ const SECTION_LABELS: Record<AARSectionKey, string> = {
 
 const SECTION_INSTRUCTIONS: Partial<Record<AARSectionKey, string>> = {
   executive:
-    'Set the scene from the scenario; state whether objectives were met overall and how the session aligned with the scenario. Be concise.',
+    'Set the scene from the scenario; state how the session aligned with the scenario. Be concise.',
   decisions:
     'Assess timing of decisions vs injects; note robustness trends over time; cite specific decision titles and scores. Do not repeat the raw table.',
   matrices:
     'Interpret inter-team impact and robustness by decision; note which teams or decisions improved or worsened over time. Cite evaluated_at and scores.',
   injects_published:
     'Assess whether team responses matched injects and were timely; note gaps or strong responses. Reference specific inject titles and times.',
-  injects_cancelled:
-    'Assess whether cancellations were appropriate given recent decisions; note consistency and impact on exercise flow.',
+  injects_cancelled: `Interpret inject cancellations correctly. In this game, a cancellation means a scheduled or condition-driven inject was cancelled (it will not fire). Cancellations can be GOOD or BAD: (1) Good: team actions prevented a harmful inject (e.g. AI cancelled "Secondary explosion" because they neutralized the threat). (2) Bad: team actions caused a beneficial inject to be cancelled (e.g. they failed to meet a condition, so a helpful nudge never appeared). If the list is EMPTY (no cancellations): do NOT assume this means preparedness or efficiency. An empty list could mean: the scenario had no cancellable injects; no decisions triggered cancellations either way; the scenario design did not include injects with cancel conditions. State what the data shows; avoid inferring positive or negative from absence. When cancellations exist: for each, infer from the inject title and reason whether the cancellation was good (prevented harm) or bad (lost a benefit). Cite specific inject titles and reasons.`,
   coordination:
     'Assess participation balance, response times, and inter-agency communication. Cite roles and message counts.',
   escalation:
@@ -357,7 +413,7 @@ const SECTION_INSTRUCTIONS: Partial<Record<AARSectionKey, string>> = {
   resource_requests:
     'Assess resource request and transfer patterns: agencies involved, status outcomes, timing. Note coordination effectiveness.',
   pathway_outcomes:
-    'Interpret pathway outcomes: which robustness bands led to which outcome injects, links to incident–response pairs. Note escalation vs de-escalation trajectories.',
+    'Interpret pathway outcomes: for each decision, assess the resulting outcome inject(s). Note escalation vs de-escalation trajectories and how decisions influenced pathways.',
   information_analysis:
     'Synthesise from insider_usage and coordination: how well did the team share and use information? Were there missed opportunities to consult Insider or coordinate?',
   recommendations:

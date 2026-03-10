@@ -194,8 +194,335 @@ function KeyValueTable({ data }: { data: Record<string, unknown> }) {
   );
 }
 
+/** Render analysis object as full text (no truncation). */
+function formatAnalysisFull(analysis: unknown): string {
+  if (analysis == null) return '—';
+  if (typeof analysis !== 'object' || Array.isArray(analysis)) return String(analysis);
+  const obj = analysis as Record<string, unknown>;
+  const parts: string[] = [];
+  if (typeof obj.overall === 'string' && obj.overall.trim())
+    parts.push(`Overall: ${obj.overall.trim()}`);
+  if (typeof obj.matrix_reasoning === 'string' && obj.matrix_reasoning.trim())
+    parts.push(`Matrix: ${obj.matrix_reasoning.trim()}`);
+  if (typeof obj.robustness_reasoning === 'string' && obj.robustness_reasoning.trim())
+    parts.push(`Robustness: ${obj.robustness_reasoning.trim()}`);
+  const byDec = obj.robustness_reasoning_by_decision;
+  if (byDec && typeof byDec === 'object' && !Array.isArray(byDec)) {
+    const entries = Object.entries(byDec as Record<string, string>)
+      .filter(([, v]) => typeof v === 'string' && v.trim())
+      .map(([k, v]) => `${k}: ${(v as string).trim()}`);
+    if (entries.length > 0) parts.push(`By decision: ${entries.join(' | ')}`);
+  }
+  return parts.length > 0 ? parts.join('\n\n') : JSON.stringify(obj);
+}
+
+const CONTENT_PREVIEW_CHARS = 400;
+const INCIDENT_RESPONSE_EXPAND_THRESHOLD = 800;
+
+function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unknown>> }) {
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+  const toggle = (key: string) => {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+  const renderText = (val: unknown, i: number, field: string): React.ReactNode => {
+    const s = val != null ? String(val) : '';
+    if (!s) return '—';
+    const isLong = s.length > INCIDENT_RESPONSE_EXPAND_THRESHOLD;
+    const key = `${i}-${field}`;
+    const isExpanded = expandedKeys.has(key);
+    if (isLong) {
+      const display = isExpanded ? s : s.slice(0, INCIDENT_RESPONSE_EXPAND_THRESHOLD);
+      return (
+        <span>
+          <span className="whitespace-pre-wrap break-words">{display}</span>
+          {!isExpanded && <span className="text-robotic-yellow/50">… </span>}
+          <button
+            type="button"
+            className="ml-1 text-robotic-yellow/80 hover:text-robotic-yellow underline text-xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggle(key);
+            }}
+          >
+            {isExpanded ? 'See less' : 'See more'}
+          </button>
+        </span>
+      );
+    }
+    return <span className="whitespace-pre-wrap break-words">{s}</span>;
+  };
+  return (
+    <div className="overflow-x-auto space-y-4">
+      {pairs.map((p, i) => {
+        const inc = (p.incident as Record<string, unknown>) ?? {};
+        const dec = (p.decision as Record<string, unknown>) ?? {};
+        return (
+          <div
+            key={i}
+            className="border border-robotic-yellow/30 p-3 bg-robotic-gray-300/80 font-mono text-xs"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <div className="text-robotic-yellow/70 uppercase mb-1">Incident</div>
+                <div className="text-robotic-green font-semibold">{inc.title ?? '—'}</div>
+                <div className="text-robotic-yellow/90 mt-1 whitespace-pre-wrap break-words">
+                  {renderText(inc.description, i, 'inc-desc')}
+                </div>
+                {inc.reported_at && (
+                  <div className="text-robotic-yellow/50 mt-1">
+                    Reported: {new Date(inc.reported_at as string).toLocaleString()}
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="text-robotic-yellow/70 uppercase mb-1">Decision</div>
+                <div className="text-robotic-green font-semibold">{dec.title ?? '—'}</div>
+                <div className="text-robotic-yellow/90 mt-1 whitespace-pre-wrap break-words">
+                  {renderText(dec.description, i, 'dec-desc')}
+                </div>
+                {dec.executed_at && (
+                  <div className="text-robotic-yellow/50 mt-1">
+                    Executed: {new Date(dec.executed_at as string).toLocaleString()}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-robotic-yellow/20 text-robotic-yellow/70">
+              {p.robustness != null && <span>Robustness: {String(p.robustness)}</span>}
+              {p.latencyMinutes != null && <span>Latency: {String(p.latencyMinutes)} min</span>}
+              {p.insiderConsulted != null && (
+                <span>Insider consulted: {p.insiderConsulted ? 'Yes' : 'No'}</span>
+              )}
+              {p.environmentalConsistency != null &&
+                typeof p.environmentalConsistency === 'object' && (
+                  <span className="whitespace-pre-wrap break-words">
+                    Env:{' '}
+                    {(p.environmentalConsistency as { consistent?: boolean; reason?: string })
+                      .reason ?? JSON.stringify(p.environmentalConsistency)}
+                  </span>
+                )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function InjectsPublishedTable({ rows }: { rows: Array<Record<string, unknown>> }) {
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const toggle = (i: number) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  };
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs terminal-text">
+        <thead>
+          <tr className="text-robotic-yellow/70 border-b border-robotic-yellow/30">
+            <th className="text-left py-1 pr-2">at</th>
+            <th className="text-left py-1 pr-2">title</th>
+            <th className="text-left py-1 pr-2">content</th>
+            <th className="text-left py-1 pr-2">inject_scope</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => {
+            const content = row.content;
+            const contentStr = content != null ? String(content) : '';
+            const isLong = contentStr.length > CONTENT_PREVIEW_CHARS;
+            const isExpanded = expandedIds.has(i);
+            const displayContent =
+              isLong && !isExpanded ? contentStr.slice(0, CONTENT_PREVIEW_CHARS) : contentStr;
+            return (
+              <tr key={i} className="border-b border-robotic-yellow/10 align-top">
+                <td className="py-1 pr-2 whitespace-nowrap">{formatCellValue(row.at)}</td>
+                <td className="py-1 pr-2 max-w-[200px] break-words">
+                  {formatCellValue(row.title)}
+                </td>
+                <td className="py-1 pr-2 max-w-none whitespace-pre-wrap break-words">
+                  {displayContent || '—'}
+                  {isLong && (
+                    <button
+                      type="button"
+                      className="ml-2 text-robotic-yellow/80 hover:text-robotic-yellow underline"
+                      onClick={() => toggle(i)}
+                    >
+                      {isExpanded ? 'See less' : 'See more'}
+                    </button>
+                  )}
+                </td>
+                <td className="py-1 pr-2">{formatCellValue(row.inject_scope)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown }) {
   if (data == null) return null;
+  // Injects published: columns at, title, content, inject_scope; all rows, full text, See more for long content
+  if (keyName === 'injects_published' && Array.isArray(data)) {
+    if (data.length === 0)
+      return <p className="text-xs terminal-text text-robotic-yellow/50">No injects published.</p>;
+    return <InjectsPublishedTable rows={data as Array<Record<string, unknown>>} />;
+  }
+  // Pathway outcomes: decision text and pathway outcome(s) only
+  if (keyName === 'pathway_outcomes' && Array.isArray(data)) {
+    const pairs = data as Array<{
+      decision_text?: string;
+      pathway_outcomes?: Array<{ title?: string; content?: string }>;
+    }>;
+    if (pairs.length === 0)
+      return (
+        <p className="text-xs terminal-text text-robotic-yellow/50">No pathway outcome pairs.</p>
+      );
+    return (
+      <div className="space-y-4">
+        {pairs.map((p, i) => (
+          <div
+            key={i}
+            className="border border-robotic-yellow/30 p-3 bg-robotic-gray-300/80 font-mono text-xs"
+          >
+            <div className="mb-3">
+              <div className="text-robotic-yellow/70 uppercase mb-1">Decision</div>
+              <div className="text-robotic-green whitespace-pre-wrap break-words">
+                {p.decision_text || '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-robotic-yellow/70 uppercase mb-1">Pathway outcome(s)</div>
+              {(p.pathway_outcomes ?? []).length === 0 ? (
+                <p className="text-robotic-yellow/50">—</p>
+              ) : (
+                <div className="space-y-2">
+                  {(p.pathway_outcomes ?? []).map((o, j) => (
+                    <div key={j} className="border-l-2 border-robotic-yellow/30 pl-2">
+                      <div className="text-robotic-green font-semibold">{o.title || '—'}</div>
+                      <div className="text-robotic-yellow/90 mt-0.5 whitespace-pre-wrap break-words">
+                        {o.content || '—'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  // Insider information usage: no ids, full text
+  if (keyName === 'insider_usage' && data != null && typeof data === 'object') {
+    const obj = data as {
+      questions?: Array<Record<string, unknown>>;
+      gaps?: Array<Record<string, unknown>>;
+    };
+    const questions = obj.questions ?? [];
+    const gaps = obj.gaps ?? [];
+    return (
+      <div className="space-y-4">
+        <div>
+          <div className="text-robotic-yellow/70 uppercase mb-2 text-xs">Questions asked</div>
+          {questions.length === 0 ? (
+            <p className="text-robotic-yellow/50 text-xs">No questions asked.</p>
+          ) : (
+            <div className="space-y-2">
+              {questions.map((q, i) => (
+                <div
+                  key={i}
+                  className="border border-robotic-yellow/30 p-3 bg-robotic-gray-300/80 font-mono text-xs"
+                >
+                  <div className="text-robotic-green font-semibold whitespace-pre-wrap break-words">
+                    {String(q.question_text ?? '—')}
+                  </div>
+                  <div className="text-robotic-yellow/70 mt-1">
+                    Category: {String(q.category ?? '—')} | Asked at:{' '}
+                    {q.asked_at ? new Date(q.asked_at as string).toLocaleString() : '—'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div>
+          <div className="text-robotic-yellow/70 uppercase mb-2 text-xs">
+            Gaps (incidents with intel not consulted)
+          </div>
+          {gaps.length === 0 ? (
+            <p className="text-robotic-yellow/50 text-xs">No gaps.</p>
+          ) : (
+            <div className="space-y-2">
+              {gaps.map((g, i) => (
+                <div
+                  key={i}
+                  className="border border-robotic-yellow/30 p-3 bg-robotic-gray-300/80 font-mono text-xs"
+                >
+                  <div className="text-robotic-green font-semibold whitespace-pre-wrap break-words">
+                    {String(g.incident_title ?? '—')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  // Incident–response pairs: no ids, full text, See more only if very long
+  if (keyName === 'incident_response' && Array.isArray(data)) {
+    if (data.length === 0)
+      return (
+        <p className="text-xs terminal-text text-robotic-yellow/50">No incident–response pairs.</p>
+      );
+    return <IncidentResponsePairsTable pairs={data as Array<Record<string, unknown>>} />;
+  }
+  // Impact matrices: columns matrix, analysis, evaluated_at, response_taxonomy; full analysis text
+  if (keyName === 'matrices' && Array.isArray(data) && data.length > 0) {
+    const rows = data as Array<Record<string, unknown>>;
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs terminal-text">
+          <thead>
+            <tr className="text-robotic-yellow/70 border-b border-robotic-yellow/30">
+              <th className="text-left py-1 pr-2">matrix</th>
+              <th className="text-left py-1 pr-2">analysis</th>
+              <th className="text-left py-1 pr-2">evaluated_at</th>
+              <th className="text-left py-1 pr-2">response_taxonomy</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i} className="border-b border-robotic-yellow/10 align-top">
+                <td className="py-1 pr-2 max-w-[300px] break-words">
+                  {formatCellValue(row.matrix)}
+                </td>
+                <td className="py-1 pr-2 max-w-none whitespace-pre-wrap break-words">
+                  {formatAnalysisFull(row.analysis)}
+                </td>
+                <td className="py-1 pr-2">{formatCellValue(row.evaluated_at)}</td>
+                <td className="py-1 pr-2 max-w-[200px] break-words">
+                  {formatCellValue(row.response_taxonomy)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
   if (Array.isArray(data)) {
     if (data.length === 0)
       return <p className="text-xs terminal-text text-robotic-yellow/50">No entries.</p>;
@@ -467,16 +794,6 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
                       </div>
                       <div className="text-sm terminal-text">
                         {((metrics.compliance as { rate?: number }).rate || 0).toFixed(1)}%
-                      </div>
-                    </div>
-                  ) : null}
-                  {metrics.objectives ? (
-                    <div className="military-border p-4">
-                      <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-                        [OBJECTIVES_SCORE]
-                      </div>
-                      <div className="text-sm terminal-text">
-                        {(metrics.objectives as { overall_score?: number }).overall_score || 0}/100
                       </div>
                     </div>
                   ) : null}

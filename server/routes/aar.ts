@@ -13,7 +13,6 @@ import {
   calculateParticipantScores,
   storeParticipantScores,
 } from '../services/participantScoreService.js';
-import { calculateSessionScore } from '../services/objectiveTrackingService.js';
 import { generateAARSummary, generateAARInsights } from '../services/aarAiService.js';
 import {
   buildSectionsData,
@@ -108,6 +107,12 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
       .eq('session_id', sessionId)
       .order('evaluated_at', { ascending: true });
 
+    // Get session participants (for decider names in decisions display)
+    const { data: participants } = await supabaseAdmin
+      .from('session_participants')
+      .select('user_id, user:user_profiles(full_name)')
+      .eq('session_id', sessionId);
+
     // Get escalation factors and pathways (7-stage escalation system; includes de-escalation columns)
     const [{ data: escalationFactors }, { data: escalationPathways }] = await Promise.all([
       supabaseAdmin
@@ -132,6 +137,7 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
         impact_matrices: impactMatrices || [],
         escalation_factors: escalationFactors || [],
         escalation_pathways: escalationPathways || [],
+        participants: participants || [],
         session,
       },
     });
@@ -194,17 +200,6 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
     const coordination = await calculateCoordinationScore(sessionId);
     const compliance = await calculateComplianceRate(sessionId);
 
-    // Get objective scores if available
-    let objectiveScore = null;
-    try {
-      objectiveScore = await calculateSessionScore(sessionId);
-    } catch (objectiveError) {
-      logger.warn(
-        { error: objectiveError, sessionId },
-        'Failed to calculate objective scores, continuing without them',
-      );
-    }
-
     // Build key_metrics object
     const keyMetrics: Record<string, unknown> = {
       decision_latency: {
@@ -237,14 +232,6 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
         by_type: compliance.by_type,
       },
     };
-
-    if (objectiveScore) {
-      keyMetrics.objectives = {
-        overall_score: objectiveScore.overall_score,
-        success_level: objectiveScore.success_level,
-        objective_scores: objectiveScore.objective_scores,
-      };
-    }
 
     // Generate summary (simplified - AI summary will be added in Phase 5)
     const summary = `Session completed with ${events?.length || 0} events, ${decisions?.length || 0} decisions, and ${participants?.length || 0} participants. Average decision latency: ${decisionLatency.avg_minutes.toFixed(1)} minutes. Coordination score: ${coordination.overall_score}/100.`;
@@ -365,7 +352,6 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
         const impactMatrixLimit = env.aarReportFormat === 'sections' ? 50 : 20;
         const [
           scenarioRes,
-          objectivesRes,
           injectEventsRes,
           escalationFactorsRes,
           escalationPathwaysRes,
@@ -378,10 +364,6 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
                 .eq('id', scenarioId)
                 .single()
             : { data: null },
-          supabaseAdmin
-            .from('scenario_objective_progress')
-            .select('objective_id, objective_name, status, progress_percentage')
-            .eq('session_id', sessionId),
           supabaseAdmin
             .from('session_events')
             .select('created_at, metadata')
@@ -411,7 +393,6 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
         ]);
 
         const scenario = scenarioRes.data;
-        const objectivesList = objectivesRes.data ?? [];
         const injectEvents = injectEventsRes.data ?? [];
         const escalationFactorsList = escalationFactorsRes.data ?? [];
         const escalationPathwaysList = escalationPathwaysRes.data ?? [];
@@ -511,13 +492,6 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
           keyMetrics: keyMetrics as Record<string, unknown>,
           scenarioDescription: scenario?.description ?? undefined,
           scenarioTitle: scenario?.title ?? undefined,
-          objectives: objectivesList.map(
-            (o: { objective_name?: string; status?: string; progress_percentage?: number }) => ({
-              objective_name: o.objective_name,
-              status: o.status,
-              progress_percentage: o.progress_percentage,
-            }),
-          ),
           injectsOccurred,
           escalationFactors: escalationFactorsList.map(
             (r: { evaluated_at: string; factors: unknown; de_escalation_factors?: unknown }) => ({
@@ -790,13 +764,11 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
           const sectionsInput = {
             scenarioTitle: scenario?.title ?? undefined,
             scenarioDescription: scenario?.description ?? undefined,
-            objectives: objectivesList.map(
-              (o: { objective_name?: string; status?: string; progress_percentage?: number }) => ({
-                objective_name: o.objective_name,
-                status: o.status,
-                progress_percentage: o.progress_percentage,
-              }),
-            ),
+            objectives: [] as Array<{
+              objective_name?: string;
+              status?: string;
+              progress_percentage?: number;
+            }>,
             durationMinutes,
             participantCount: participants?.length || 0,
             decisions: (decisions ?? []).map(
