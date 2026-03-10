@@ -801,6 +801,11 @@ export class AIInjectSchedulerService {
       );
       // Incoming impact penalty: other teams hurting media lowers public sentiment (scale 1-10)
       let sentimentToWrite = sentimentResult.public_sentiment;
+      // Media robustness boost (from crisis standards: spokesperson, verify, victim dignity, etc.)
+      const mediaBoost = (media.robustness_boost as number) ?? 0;
+      if (mediaBoost > 0) {
+        sentimentToWrite = Math.min(10, sentimentToWrite + mediaBoost * 0.5);
+      }
       if (latestImpactMatrix && typeof latestImpactMatrix === 'object') {
         let incomingOnMedia = 0;
         for (const [acting, affectedMap] of Object.entries(latestImpactMatrix)) {

@@ -293,7 +293,9 @@ export class InjectSchedulerService {
       typeof triageStateNext.initial_patients_at_site === 'number'
         ? Math.max(0, triageStateNext.initial_patients_at_site)
         : Math.max(0, Math.floor(totalEvacuees * 0.25));
-    const triageRobustness = robustnessByTeam.Triage ?? robustnessByTeam.triage ?? 5.5;
+    const baseRobustness = robustnessByTeam.Triage ?? robustnessByTeam.triage ?? 5.5;
+    const boost = (triageStateNext.robustness_boost as number) ?? 0;
+    const triageRobustness = Math.max(1, Math.min(10, baseRobustness + boost));
     let band: 'low' | 'mid' | 'high' =
       triageRobustness <= 4 ? 'low' : triageRobustness <= 7 ? 'mid' : 'high';
     // Incoming impact penalty: other teams hurting triage worsens effective band (more deaths, more waiting)

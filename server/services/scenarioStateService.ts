@@ -385,7 +385,18 @@ export async function updateTeamStateFromDecision(
       if (
         hasCategory('flow_control') ||
         hasCategory('evacuation_flow_control') ||
-        hasKeyword('flow', 'bottleneck', 'stagger', 'egress', 'congestion')
+        hasKeyword(
+          'flow',
+          'bottleneck',
+          'stagger',
+          'egress',
+          'congestion',
+          'exit capacity',
+          'exit width',
+          'flow rate',
+          'people per minute',
+          'capacity per exit',
+        )
       ) {
         evacuationState.flow_control_decided = true;
       }
@@ -401,7 +412,24 @@ export async function updateTeamStateFromDecision(
     if (isTriage) {
       if (
         hasCategory('supply_management') ||
-        hasKeyword('supply', 'request', 'ration', 'equipment', 'shortage')
+        hasKeyword(
+          'supply',
+          'request',
+          'ration',
+          'equipment',
+          'shortage',
+          'tourniquet',
+          'stretcher',
+          'triage tag',
+          'airway kit',
+          'oxygen',
+          'iv fluid',
+          'trauma kit',
+          'gauze',
+          'bandage',
+          'first aid kit',
+          'medical kit',
+        )
       ) {
         triageState.supply_request_made = true;
       }
@@ -432,6 +460,35 @@ export async function updateTeamStateFromDecision(
         mediaState.misinformation_addressed = true;
         mediaState.misinformation_addressed_count =
           Math.max(0, Number(mediaState.misinformation_addressed_count) || 0) + 1;
+      }
+      if (
+        hasKeyword('spokesperson', 'one voice', 'single spokesperson', 'designated spokesperson')
+      ) {
+        mediaState.spokesperson_designated = true;
+      }
+      if (
+        hasKeyword(
+          'no names',
+          'family first',
+          'notify family',
+          'victim dignity',
+          'do not release names',
+        )
+      ) {
+        mediaState.victim_dignity_respected = true;
+      }
+      if (
+        hasKeyword(
+          '30 min',
+          '60 min',
+          '30 minutes',
+          '60 minutes',
+          'next update',
+          'regular updates',
+          'update every',
+        )
+      ) {
+        mediaState.regular_updates_planned = true;
       }
     }
 

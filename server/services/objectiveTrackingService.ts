@@ -330,9 +330,64 @@ export async function checkAndAutoCompleteSession(sessionId: string): Promise<bo
 }
 
 /**
+ * Update triage_state.robustness_boost when triage bonuses/penalties are applied.
+ * The inject scheduler adds this to robustness_by_team.Triage when computing the triage band.
+ */
+export async function updateTriageRobustnessBoost(sessionId: string, delta: number): Promise<void> {
+  try {
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('current_state')
+      .eq('id', sessionId)
+      .single();
+    const currentState = (session?.current_state as Record<string, unknown>) || {};
+    const triageState = (currentState.triage_state as Record<string, unknown>) || {};
+    const current = (triageState.robustness_boost as number) ?? 0;
+    const next = Math.max(-2, Math.min(2, current + delta));
+    const nextTriageState = { ...triageState, robustness_boost: next };
+    await supabaseAdmin
+      .from('sessions')
+      .update({
+        current_state: { ...currentState, triage_state: nextTriageState },
+      })
+      .eq('id', sessionId);
+  } catch (err) {
+    logger.error({ err, sessionId }, 'Failed to update triage robustness boost');
+  }
+}
+
+/**
+ * Update media_state.robustness_boost when media bonuses/penalties are applied.
+ * Used by computePublicSentiment or sentiment modifiers.
+ */
+export async function updateMediaRobustnessBoost(sessionId: string, delta: number): Promise<void> {
+  try {
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('current_state')
+      .eq('id', sessionId)
+      .single();
+    const currentState = (session?.current_state as Record<string, unknown>) || {};
+    const mediaState = (currentState.media_state as Record<string, unknown>) || {};
+    const current = (mediaState.robustness_boost as number) ?? 0;
+    const next = Math.max(-2, Math.min(2, current + delta));
+    const nextMediaState = { ...mediaState, robustness_boost: next };
+    await supabaseAdmin
+      .from('sessions')
+      .update({
+        current_state: { ...currentState, media_state: nextMediaState },
+      })
+      .eq('id', sessionId);
+  } catch (err) {
+    logger.error({ err, sessionId }, 'Failed to update media robustness boost');
+  }
+}
+
+/**
  * Track decision impact on objectives
  * Called when decisions are executed
  * @param options.skipPositiveForObjectiveIds - when set, positive updates (progress/bonus) for these objective IDs are skipped (anti-gaming); penalties still apply
+ * @param options.authorTeamNames - team names of the decision author; triage bonuses only apply when author is in triage team
  */
 export async function trackDecisionImpactOnObjectives(
   sessionId: string,
@@ -342,12 +397,19 @@ export async function trackDecisionImpactOnObjectives(
     description: string;
     type: string;
   },
-  options?: { authorId?: string; skipPositiveForObjectiveIds?: string[] },
+  options?: {
+    authorId?: string;
+    skipPositiveForObjectiveIds?: string[];
+    authorTeamNames?: string[];
+  },
 ): Promise<void> {
   try {
     const skipPositive = options?.skipPositiveForObjectiveIds ?? [];
     const skip = (objectiveId: string) =>
       skipPositive.length > 0 && skipPositive.includes(objectiveId);
+    const authorTeamNames = options?.authorTeamNames ?? [];
+    const isTriageTeam = authorTeamNames.some((t) => /triage/i.test(t));
+    const isMediaTeam = authorTeamNames.some((t) => /media/i.test(t));
 
     const decisionText = `${decision.title} ${decision.description}`.toLowerCase();
 
@@ -405,15 +467,177 @@ export async function trackDecisionImpactOnObjectives(
           25,
         );
       }
+
+      // Tier 1: Crisis media keyword bonuses (only when author is media team)
+      if (isMediaTeam && !skip('media')) {
+        if (
+          decisionText.includes('spokesperson') ||
+          decisionText.includes('one voice') ||
+          decisionText.includes('designated spokesperson')
+        ) {
+          await addObjectiveBonus(sessionId, 'media', 'Designated spokesperson referenced', 5);
+          await updateMediaRobustnessBoost(sessionId, 0.5);
+        }
+        if (
+          decisionText.includes('cannot confirm') ||
+          decisionText.includes('under investigation') ||
+          decisionText.includes('no comment on') ||
+          (decisionText.includes('investigat') && decisionText.includes('authorities'))
+        ) {
+          await addObjectiveBonus(sessionId, 'media', 'Avoids speculation on perpetrators', 5);
+          await updateMediaRobustnessBoost(sessionId, 0.5);
+        }
+        if (
+          decisionText.includes('verified') ||
+          decisionText.includes('confirmed') ||
+          decisionText.includes('what we know')
+        ) {
+          await addObjectiveBonus(sessionId, 'media', 'Verify-before-release framing', 5);
+          await updateMediaRobustnessBoost(sessionId, 0.5);
+        }
+        if (
+          decisionText.includes('no names') ||
+          decisionText.includes('family first') ||
+          decisionText.includes('notify family') ||
+          decisionText.includes('victim dignity')
+        ) {
+          await addObjectiveBonus(sessionId, 'media', 'Victim dignity respected', 5);
+          await updateMediaRobustnessBoost(sessionId, 0.5);
+        }
+        if (
+          decisionText.includes('media zone') ||
+          decisionText.includes('100m') ||
+          decisionText.includes('150m') ||
+          decisionText.includes('outside operational')
+        ) {
+          await addObjectiveBonus(sessionId, 'media', 'Media zone management', 5);
+          await updateMediaRobustnessBoost(sessionId, 0.5);
+        }
+        if (
+          decisionText.includes('30 min') ||
+          decisionText.includes('60 min') ||
+          decisionText.includes('next update') ||
+          decisionText.includes('regular updates')
+        ) {
+          await addObjectiveBonus(sessionId, 'media', 'Regular update schedule', 5);
+          await updateMediaRobustnessBoost(sessionId, 0.5);
+        }
+      }
     }
 
-    // Check for triage/medical decisions
-    if (decision.type === 'resource_allocation' && decisionText.includes('triage')) {
-      if (!skip('triage')) {
-        await updateObjectiveProgress(sessionId, 'triage', 50, {
-          status: 'in_progress',
-          metrics: { triage_system_established: true },
-        });
+    // Check for triage/medical decisions (broaden: resource_allocation, triage_protocol, prioritisation)
+    const isTriageDecision =
+      (decision.type === 'resource_allocation' && decisionText.includes('triage')) ||
+      decision.type === 'triage_protocol' ||
+      (decision.type === 'prioritisation' &&
+        (decisionText.includes('triage') ||
+          decisionText.includes('casualty') ||
+          decisionText.includes('red') ||
+          decisionText.includes('critical')));
+
+    if (isTriageDecision && !skip('triage')) {
+      await updateObjectiveProgress(sessionId, 'triage', 50, {
+        status: 'in_progress',
+        metrics: { triage_system_established: true },
+      });
+
+      // Tier 1: Keyword-based bonuses (only when author is triage team)
+      if (isTriageTeam) {
+        // START protocol
+        if (decisionText.includes('start') || decisionText.includes('simple triage')) {
+          await addObjectiveBonus(sessionId, 'triage', 'START protocol referenced', 10);
+          await updateTriageRobustnessBoost(sessionId, 0.5);
+        }
+        // Tag colours (at least 2 of red/yellow/green)
+        const tagCount = ['red', 'yellow', 'green'].filter((c) => decisionText.includes(c)).length;
+        if (tagCount >= 2) {
+          await addObjectiveBonus(
+            sessionId,
+            'triage',
+            'Triage tag categories (Red/Yellow/Green)',
+            5,
+          );
+        }
+        // Staff ratio 1:5
+        if (
+          decisionText.includes('1:5') ||
+          decisionText.includes('1 per 5') ||
+          decisionText.includes('staff per 5 critical')
+        ) {
+          await addObjectiveBonus(sessionId, 'triage', 'Correct staff-to-critical ratio', 10);
+          await updateTriageRobustnessBoost(sessionId, 0.5);
+        }
+        // Zone separation (hot/warm/cold)
+        if (
+          decisionText.includes('hot zone') ||
+          decisionText.includes('warm zone') ||
+          decisionText.includes('cold zone') ||
+          (decisionText.includes('perimeter') && decisionText.includes('buffer'))
+        ) {
+          await addObjectiveBonus(sessionId, 'triage', 'Proper zone separation mentioned', 10);
+          await updateTriageRobustnessBoost(sessionId, 0.5);
+        }
+        // Secondary device awareness
+        if (
+          decisionText.includes('bomb sweep') ||
+          decisionText.includes('secondary device') ||
+          decisionText.includes('blast radius')
+        ) {
+          await addObjectiveBonus(sessionId, 'triage', 'Secondary device awareness', 10);
+          await updateTriageRobustnessBoost(sessionId, 0.5);
+        }
+        // Red-first transport
+        if (
+          decisionText.includes('red first') ||
+          decisionText.includes('critical first') ||
+          decisionText.includes('immediate first') ||
+          decisionText.includes('priority transport')
+        ) {
+          await addObjectiveBonus(sessionId, 'triage', 'Red patients transport priority', 10);
+          await updateTriageRobustnessBoost(sessionId, 0.5);
+        }
+        // Hospital distribution
+        if (
+          decisionText.includes('distribute') ||
+          decisionText.includes('multiple hospitals') ||
+          decisionText.includes('trauma center') ||
+          decisionText.includes('trauma centre') ||
+          decisionText.includes('spread')
+        ) {
+          await addObjectiveBonus(sessionId, 'triage', 'Hospital distribution protocol', 10);
+          await updateTriageRobustnessBoost(sessionId, 0.5);
+        }
+        // Transport coordination
+        if (
+          decisionText.includes('transport officer') ||
+          decisionText.includes('hospital coordination') ||
+          decisionText.includes('ambulance staging')
+        ) {
+          await addObjectiveBonus(sessionId, 'triage', 'Transport coordination', 5);
+          await updateTriageRobustnessBoost(sessionId, 0.25);
+        }
+        // Hospital tier penalties: Red/critical to polyclinic = wrong
+        const mentionsRed =
+          decisionText.includes('red') ||
+          decisionText.includes('critical') ||
+          decisionText.includes('immediate');
+        const mentionsPolyclinic =
+          decisionText.includes('toa payoh polyclinic') || decisionText.includes('polyclinic');
+        const mentionsTTSH =
+          decisionText.includes('tan tock seng') || decisionText.includes('ttsh');
+        if (mentionsRed && mentionsPolyclinic) {
+          await addObjectivePenalty(
+            sessionId,
+            'triage',
+            'Red/critical patients routed to polyclinic (wrong tier)',
+            15,
+          );
+          await updateTriageRobustnessBoost(sessionId, -0.5);
+        }
+        if (mentionsRed && mentionsTTSH) {
+          await addObjectiveBonus(sessionId, 'triage', 'Red patients routed to trauma center', 5);
+          await updateTriageRobustnessBoost(sessionId, 0.25);
+        }
       }
     }
 

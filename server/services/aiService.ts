@@ -1019,6 +1019,7 @@ export const generatePathwayOutcomeInjects = async (
   deEscalationPathways: DeEscalationPathway[],
   pathwayUsageSummary: string | undefined,
   openAiApiKey: string,
+  upcomingPremadeThemes?: string,
 ): Promise<GeneratePathwayOutcomeInjectsResult> => {
   const empty: GeneratePathwayOutcomeInjectsResult = { outcomes: [] };
   try {
@@ -1083,6 +1084,10 @@ Rules:
       ? `\n\nPathway themes already used this session: ${pathwayUsageSummary}. Prefer outcome injects that explore different trajectory angles (different escalation or de-escalation angles) when possible.`
       : '';
 
+    const upcomingPremadeLine = upcomingPremadeThemes
+      ? `\n\nUpcoming premade injects in the next 10-15 minutes: ${upcomingPremadeThemes}. Do NOT generate outcome injects that repeat these themes. Instead explore different escalation or de-escalation angles (e.g. misinformation, political pressure, resource gaps, coordination failures).`
+      : '';
+
     const userPrompt = `Scenario description:
 ${scenarioDescription.slice(0, 1200)}
 
@@ -1097,6 +1102,7 @@ ${escalationText}
 De-escalation pathways (how things improve):
 ${deEscalationText}
 ${diversityLine}
+${upcomingPremadeLine}
 
 ---
 Generate 3 to 8 outcome injects (low/medium/high robustness bands). Return JSON only.`;

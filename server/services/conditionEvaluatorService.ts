@@ -276,8 +276,12 @@ conditionRegistry.evacuation_no_flow_control_decision = (ctx) =>
     const desc = (d.description ?? '').toLowerCase();
     const text = `${t} ${title} ${desc}`;
     return (
-      /flow|bottleneck|stagger|exit capacity|congestion|egress/.test(text) ||
-      (d.tags ?? []).some((tag) => /flow|bottleneck|congestion|egress/.test(String(tag)))
+      /flow|bottleneck|stagger|exit capacity|congestion|egress|exit width|flow rate|people per minute|capacity per exit/.test(
+        text,
+      ) ||
+      (d.tags ?? []).some((tag) =>
+        /flow|bottleneck|congestion|egress|exit capacity|width|flow rate/.test(String(tag)),
+      )
     );
   });
 conditionRegistry.evacuation_flow_control_decided = (ctx) =>
@@ -331,8 +335,12 @@ conditionRegistry.triage_no_supply_management_decision = (ctx) =>
     const desc = (d.description ?? '').toLowerCase();
     const text = `${t} ${title} ${desc}`;
     return (
-      /supply|supplies|request|ration|equipment|shortage/.test(text) ||
-      (d.tags ?? []).some((tag) => /supply|ration|shortage/.test(String(tag)))
+      /supply|supplies|request|ration|equipment|shortage|tourniquet|stretcher|triage tag|triage tags|airway kit|oxygen|iv fluid|trauma kit|gauze|bandage|first aid kit|medical kit/.test(
+        text,
+      ) ||
+      (d.tags ?? []).some((tag) =>
+        /supply|ration|shortage|equipment|tourniquet|stretcher|kit/.test(String(tag)),
+      )
     );
   });
 conditionRegistry.triage_no_prioritisation_decision = (ctx) =>
@@ -370,6 +378,14 @@ conditionRegistry.media_journalist_arrived = (ctx) => {
 };
 conditionRegistry.media_misinformation_addressed = (ctx) =>
   getMediaState(ctx).misinformation_addressed === true;
+conditionRegistry.media_spokesperson_designated = (ctx) =>
+  getMediaState(ctx).spokesperson_designated === true;
+conditionRegistry.media_no_spokesperson_designated = (ctx) =>
+  getMediaState(ctx).spokesperson_designated !== true;
+conditionRegistry.media_regular_updates_planned = (ctx) =>
+  getMediaState(ctx).regular_updates_planned === true;
+conditionRegistry.media_no_regular_updates_decision = (ctx) =>
+  getMediaState(ctx).regular_updates_planned !== true;
 
 // ---------------------------------------------------------------------------
 // Internal: resolve one condition key (prefix rules + registry)

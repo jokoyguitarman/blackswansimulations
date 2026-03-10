@@ -39,7 +39,7 @@ export async function runPathwayOutcomesOnInjectPublished(
   try {
     const { data: session, error: sessionError } = await supabaseAdmin
       .from('sessions')
-      .select('id, scenario_id, current_state')
+      .select('id, scenario_id, start_time, current_state')
       .eq('id', sessionId)
       .single();
 
@@ -201,6 +201,16 @@ export async function runPathwayOutcomesOnInjectPublished(
 
     const pathwayUsageSummary = await buildPathwayUsageSummary(sessionId);
 
+    const sessionStartTime = (session as { start_time?: string | null }).start_time;
+    const elapsedMinutes =
+      sessionStartTime != null
+        ? Math.floor((Date.now() - new Date(sessionStartTime).getTime()) / (1000 * 60))
+        : 0;
+    const upcomingPremadeThemes =
+      sessionStartTime != null
+        ? await buildUpcomingPremadeThemes(session.scenario_id, elapsedMinutes)
+        : '';
+
     const outcomeResult = await generatePathwayOutcomeInjects(
       scenarioDescriptionWithContext,
       { type: inject.type, title: inject.title, content: inject.content },
@@ -208,6 +218,7 @@ export async function runPathwayOutcomesOnInjectPublished(
       deEscalationPathways,
       pathwayUsageSummary,
       env.openAiApiKey,
+      upcomingPremadeThemes || undefined,
     );
 
     // Inherit trigger inject's scope when team_specific: outcome is a consequence of that inject,
@@ -283,6 +294,31 @@ export async function runPathwayOutcomesOnInjectPublished(
   } catch (err) {
     logger.error({ err, sessionId, injectId }, 'Pathway outcomes on inject publish failed');
     throw err;
+  }
+}
+
+async function buildUpcomingPremadeThemes(
+  scenarioId: string,
+  elapsedMinutes: number,
+): Promise<string> {
+  try {
+    const { data: injects } = await supabaseAdmin
+      .from('scenario_injects')
+      .select('title')
+      .eq('scenario_id', scenarioId)
+      .not('trigger_time_minutes', 'is', null)
+      .gt('trigger_time_minutes', elapsedMinutes)
+      .lte('trigger_time_minutes', elapsedMinutes + 15)
+      .or('ai_generated.is.null,ai_generated.eq.false')
+      .order('trigger_time_minutes', { ascending: true });
+
+    if (!injects?.length) return '';
+    const titles = injects
+      .map((i) => (i as { title?: string }).title)
+      .filter((t): t is string => typeof t === 'string' && t.length > 0);
+    return titles.join('; ');
+  } catch {
+    return '';
   }
 }
 

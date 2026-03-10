@@ -58,6 +58,10 @@ export interface MediaStateSeed {
   misinformation_addressed_count?: number;
   sentiment_label?: string;
   sentiment_reason?: string;
+  robustness_boost?: number;
+  spokesperson_designated?: boolean;
+  victim_dignity_respected?: boolean;
+  regular_updates_planned?: boolean;
 }
 
 export interface EnvironmentalSeedRow {
@@ -101,6 +105,7 @@ const DEFAULT_MEDIA_STATE: MediaStateSeed = {
   journalist_arrived: false,
   statements_issued: 0,
   misinformation_addressed_count: 0,
+  robustness_boost: 0,
 };
 
 /**

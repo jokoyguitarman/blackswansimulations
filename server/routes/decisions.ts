@@ -960,13 +960,14 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
     logger.info({ decisionId: id }, 'AFTER_AI_BLOCK: Completed AI processing');
 
     const skipPositiveForObjectiveIds: string[] = [];
+    let authorTeamNames: string[] = [];
     try {
       const { data: authorTeams } = await supabaseAdmin
         .from('session_teams')
         .select('team_name')
         .eq('session_id', decision.session_id)
         .eq('user_id', decision.proposed_by);
-      const authorTeamNames = (authorTeams ?? []).map((r: { team_name: string }) => r.team_name);
+      authorTeamNames = (authorTeams ?? []).map((r: { team_name: string }) => r.team_name);
 
       const { data: sessionRow } = await supabaseAdmin
         .from('sessions')
@@ -1334,7 +1335,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
           description: decision.description,
           type: decision.type || 'operational_action',
         },
-        { skipPositiveForObjectiveIds },
+        { skipPositiveForObjectiveIds, authorTeamNames },
       );
     } catch (objectiveError) {
       // Don't block decision execution if objective tracking fails
