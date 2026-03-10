@@ -100,13 +100,17 @@ function buildGroundTruthSummary(
   if (triageLocations.length > 0) {
     const triageLines = triageLocations.map((loc, i) => {
       const label = loc.label ?? `Area ${i + 1}`;
+      const cond = (loc.conditions ?? {}) as Record<string, unknown>;
       const sa = siteAreas[i];
-      const lying = sa?.capacity_lying;
-      const standing = sa?.capacity_standing;
+      const lying = (cond.capacity_lying as number) ?? sa?.capacity_lying;
+      const standing = (cond.capacity_standing as number) ?? sa?.capacity_standing;
+      const distBlast = cond.distance_from_blast_m as number | undefined;
       const cap = [lying != null && `lying ${lying}`, standing != null && `standing ${standing}`]
         .filter(Boolean)
         .join(', ');
-      return cap ? `${label} (${cap})` : label;
+      const distPart = distBlast != null ? `${distBlast} m from blast` : '';
+      const inner = [cap, distPart].filter(Boolean).join(', ');
+      return inner ? `${label} (${inner})` : label;
     });
     parts.push(`Triage zone candidates (valid for decisions): ${triageLines.join('; ')}`);
   }
@@ -118,8 +122,13 @@ function buildGroundTruthSummary(
   if (evacHolding.length > 0) {
     const evacLines = evacHolding.map((loc) => {
       const label = loc.label ?? 'Unknown';
-      const cap = (loc.conditions as { capacity?: number } | undefined)?.capacity;
-      return cap != null ? `${label} (capacity ${cap})` : label;
+      const cond = (loc.conditions ?? {}) as Record<string, unknown>;
+      const cap = cond.capacity as number | undefined;
+      const distBlast = cond.distance_from_blast_m as number | undefined;
+      const evacParts: string[] = [];
+      if (cap != null) evacParts.push(`capacity ${cap}`);
+      if (distBlast != null) evacParts.push(`${distBlast} m from blast`);
+      return evacParts.length ? `${label} (${evacParts.join(', ')})` : label;
     });
     parts.push(`Evacuation holding areas (valid for decisions): ${evacLines.join('; ')}`);
   }

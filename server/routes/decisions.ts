@@ -23,10 +23,7 @@ import {
   objectiveIdForGate,
 } from '../services/gateEvaluationService.js';
 import { gradeDecisionBand } from '../services/incidentDecisionGradingService.js';
-import {
-  evaluateDecisionAgainstEnvironment,
-  createAndPublishEnvironmentalMismatchInject,
-} from '../services/environmentalConsistencyService.js';
+import { evaluateDecisionAgainstEnvironment } from '../services/environmentalConsistencyService.js';
 import { evaluateEnvironmentalPrerequisite } from '../services/environmentalPrerequisiteService.js';
 import { evaluateEnvironmentalManagementIntentAndUpdateState } from '../services/environmentalConditionManagementService.js';
 import { evaluateStateEffectManagementAndUpdateState } from '../services/stateEffectManagementService.js';
@@ -890,7 +887,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
           );
           const { data: sessionRow } = await supabaseAdmin
             .from('sessions')
-            .select('start_time')
+            .select('start_time, scenario_id')
             .eq('id', decision.session_id)
             .single();
           const startTime = (sessionRow as { start_time?: string } | null)?.start_time;
@@ -903,6 +900,11 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
             authorTeamNames,
             aiClassification,
             elapsedMinutes,
+            {
+              decisionTitle: decision.title ?? '',
+              decisionDescription: decision.description ?? '',
+              scenarioId: (sessionRow as { scenario_id?: string } | null)?.scenario_id ?? undefined,
+            },
           );
         } catch (teamStateErr) {
           logger.error(
@@ -1250,17 +1252,8 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         }
       }
       if (isContradiction && sessionScenarioId && sessionTrainerId && io) {
-        await createAndPublishEnvironmentalMismatchInject(
-          {
-            sessionId: decision.session_id,
-            scenarioId: sessionScenarioId,
-            trainerId: sessionTrainerId,
-            authorTeamNames,
-            result: envResult,
-            decisionId: decision.id,
-          },
-          io,
-        );
+        // Environmental mismatch inject removed: replaced by in-world location-choice problem injects.
+        // Robustness cap and objective penalty below are retained.
         if (
           (envResult.severity === 'medium' || envResult.severity === 'high') &&
           authorTeamNames.length > 0 &&

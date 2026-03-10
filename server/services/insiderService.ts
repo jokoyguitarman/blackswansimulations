@@ -275,7 +275,11 @@ export function buildTriageSiteAnswerFromLocations(locations: TriageSiteLocation
     const power = sa?.power;
     const powerNotes = sa?.power_notes;
     const coverNotes = sa?.cover_notes;
-    const distanceCordon = sa?.distance_to_cordon_m;
+    const distanceCordon =
+      sa?.distance_to_cordon_m ?? (cond.distance_from_cordon_m as number | undefined);
+    const distanceBlast =
+      (cond.distance_from_blast_m as number | undefined) ??
+      (sa?.distance_from_blast_m as number | undefined);
     const windExposure = sa?.wind_exposure;
 
     const parts: string[] = [];
@@ -302,6 +306,8 @@ export function buildTriageSiteAnswerFromLocations(locations: TriageSiteLocation
       detail.push(power ? `Power: ${powerNotes ?? 'available'}` : 'No power on site');
     }
     if (distanceCordon != null) detail.push(`${distanceCordon} m from cordon`);
+    if (distanceBlast != null && typeof distanceBlast === 'number')
+      detail.push(`${distanceBlast} m from blast`);
     if (windExposure) detail.push(windExposure);
     const detailText = detail.length ? ` ${detail.join('. ')}` : '';
     return `- **${loc.label}**${capText}.${detailText}`;
@@ -343,6 +349,11 @@ export function buildEvacuationHoldingAnswerFromLocations(
     const hazards = (cond.hazards as string) ?? null;
     const hasCover = cond.has_cover as boolean | undefined;
     const distanceCordon = cond.distance_from_cordon_m as number | undefined;
+    const distanceBlast = cond.distance_from_blast_m as number | undefined;
+    const water = cond.water as boolean | undefined;
+    const waterNotes = cond.water_notes as string | undefined;
+    const power = cond.power as boolean | undefined;
+    const powerNotes = cond.power_notes as string | undefined;
 
     const parts: string[] = [];
     if (capacity != null && typeof capacity === 'number') parts.push(`capacity ${capacity}`);
@@ -356,6 +367,15 @@ export function buildEvacuationHoldingAnswerFromLocations(
     }
     if (distanceCordon != null && typeof distanceCordon === 'number') {
       detail.push(`${distanceCordon} m from cordon`);
+    }
+    if (distanceBlast != null && typeof distanceBlast === 'number') {
+      detail.push(`${distanceBlast} m from blast`);
+    }
+    if (water !== undefined) {
+      detail.push(water ? `Water: ${waterNotes ?? 'available'}` : 'No water on site');
+    }
+    if (power !== undefined) {
+      detail.push(power ? `Power: ${powerNotes ?? 'available'}` : 'No power on site');
     }
     const detailText = detail.length ? ` ${detail.join('. ')}` : '';
     return `- **${loc.label}**${capText}.${detailText}`;

@@ -183,9 +183,137 @@ const createStateSnapshot = async (
   }
 };
 
+/** Triage zone labels to match (Vacant lot A–E, Area A–E, Lot A–E). */
+const TRIAGE_LABEL_PATTERNS = [
+  /(?:vacant\s+)?lot\s+([A-E])/i,
+  /area\s+([A-E])/i,
+  /(?:vacant\s+lot\s+)?([A-E])\b/i,
+];
+
+/** Evacuation holding labels (exact or partial). */
+const EVAC_LABEL_PATTERNS = [
+  'Assembly North',
+  'Holding East',
+  'Staging South',
+  'Community club side',
+  'West open area',
+  'Assembly North-East',
+  'West open staging',
+];
+
+/** Keywords indicating second-device cordon/clear at Exit B. */
+const SECOND_DEVICE_KEYWORDS = [
+  'exit b',
+  'exit B',
+  'clear',
+  'cordon',
+  'evacuate',
+  'second device',
+  'suspicious',
+  'package',
+  'bag',
+];
+
+/**
+ * Extract triage zone label from decision text and match to scenario_locations.
+ */
+async function extractTriageChoice(
+  scenarioId: string,
+  title: string,
+  description: string,
+): Promise<{ label: string; properties: Record<string, unknown> } | null> {
+  const text = `${title} ${description}`.toLowerCase();
+  let matchedLabel: string | null = null;
+  for (const pat of TRIAGE_LABEL_PATTERNS) {
+    const m = text.match(pat);
+    if (m) {
+      const letter = m[1]?.toUpperCase();
+      if (letter) matchedLabel = `Vacant lot ${letter}`;
+      break;
+    }
+  }
+  if (!matchedLabel) return null;
+
+  const { data: locs } = await supabaseAdmin
+    .from('scenario_locations')
+    .select('label, conditions')
+    .eq('scenario_id', scenarioId)
+    .in('location_type', ['area', 'triage_site']);
+
+  const loc = locs?.find(
+    (l) =>
+      l.label === matchedLabel ||
+      l.label?.toLowerCase() === matchedLabel.toLowerCase() ||
+      (l.label?.toLowerCase().includes('lot') &&
+        l.label?.toUpperCase().endsWith(matchedLabel.slice(-1))),
+  );
+  if (!loc) return null;
+
+  const cond = (loc.conditions as Record<string, unknown>) || {};
+  return {
+    label: loc.label ?? matchedLabel,
+    properties: {
+      water: cond.water,
+      power: cond.power,
+      unsuitable: cond.unsuitable,
+      suitability: cond.suitability,
+      distance_from_blast_m: cond.distance_from_blast_m,
+      capacity_lying: cond.capacity_lying,
+      capacity_standing: cond.capacity_standing,
+    },
+  };
+}
+
+/**
+ * Extract evacuation holding label from decision text and match to scenario_locations.
+ */
+async function extractEvacChoice(
+  scenarioId: string,
+  title: string,
+  description: string,
+): Promise<{ label: string; properties: Record<string, unknown> } | null> {
+  const text = `${title} ${description}`;
+  for (const pattern of EVAC_LABEL_PATTERNS) {
+    if (text.toLowerCase().includes(pattern.toLowerCase())) {
+      const { data: locs } = await supabaseAdmin
+        .from('scenario_locations')
+        .select('label, conditions')
+        .eq('scenario_id', scenarioId)
+        .eq('location_type', 'evacuation_holding');
+
+      const loc = locs?.find(
+        (l) =>
+          l.label?.toLowerCase().includes(pattern.toLowerCase()) ||
+          pattern.toLowerCase().includes(l.label?.toLowerCase() ?? ''),
+      );
+      if (loc) {
+        const cond = (loc.conditions as Record<string, unknown>) || {};
+        return {
+          label: loc.label ?? pattern,
+          properties: {
+            capacity: cond.capacity,
+            water: cond.water,
+            has_cover: cond.has_cover,
+          },
+        };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Check if decision text indicates clearing/cordoning the second-device area (Exit B).
+ */
+function indicatesSecondDeviceZoneCleared(title: string, description: string): boolean {
+  const text = `${title} ${description}`.toLowerCase();
+  return SECOND_DEVICE_KEYWORDS.some((kw) => text.includes(kw.toLowerCase()));
+}
+
 /**
  * Phase 3: Update team state (evacuation_state, triage_state, media_state) from an executed decision
  * using AI classification and author team. Called after classifyDecision and storing ai_classification.
+ * Also tracks triage_zone_selected, evac_holding_selected, second_device_zone_cleared from decision text.
  */
 export async function updateTeamStateFromDecision(
   sessionId: string,
@@ -193,6 +321,11 @@ export async function updateTeamStateFromDecision(
   authorTeamNames: string[],
   classification: { categories?: string[]; keywords?: string[]; primary_category?: string },
   elapsedMinutes: number,
+  options?: {
+    decisionTitle?: string;
+    decisionDescription?: string;
+    scenarioId?: string;
+  },
 ): Promise<void> {
   if (!authorTeamNames?.length) return;
   const categories = classification?.categories ?? [];
@@ -206,13 +339,14 @@ export async function updateTeamStateFromDecision(
   try {
     const { data: session } = await supabaseAdmin
       .from('sessions')
-      .select('current_state')
+      .select('current_state, scenario_id')
       .eq('id', sessionId)
       .single();
 
     if (!session) return;
     const currentState: Record<string, unknown> =
       (session.current_state as Record<string, unknown>) || {};
+    const scenarioId = options?.scenarioId ?? (session.scenario_id as string | undefined) ?? null;
 
     const evacuationState = (currentState.evacuation_state as Record<string, unknown>) || {};
     const triageState = (currentState.triage_state as Record<string, unknown>) || {};
@@ -221,6 +355,31 @@ export async function updateTeamStateFromDecision(
     const isEvacuation = authorTeamNames.some((t) => /evacuation/i.test(t));
     const isTriage = authorTeamNames.some((t) => /triage/i.test(t));
     const isMedia = authorTeamNames.some((t) => /media/i.test(t));
+
+    const title = options?.decisionTitle ?? '';
+    const description = options?.decisionDescription ?? '';
+
+    // Triage: extract zone choice and store properties for condition evaluator
+    if (isTriage && scenarioId && (title || description)) {
+      const triageChoice = await extractTriageChoice(scenarioId, title, description);
+      if (triageChoice) {
+        currentState.triage_zone_selected = triageChoice.label;
+        currentState.triage_zone_properties = triageChoice.properties;
+      }
+    }
+
+    // Evacuation: extract holding choice and second-device cordon
+    if (isEvacuation && scenarioId && (title || description)) {
+      const evacChoice = await extractEvacChoice(scenarioId, title, description);
+      if (evacChoice) {
+        currentState.evac_holding_selected = evacChoice.label;
+        currentState.evac_holding_properties = evacChoice.properties;
+      }
+      if (indicatesSecondDeviceZoneCleared(title, description)) {
+        currentState.second_device_zone_cleared = true;
+        currentState.area_cleared = true;
+      }
+    }
 
     if (isEvacuation) {
       if (

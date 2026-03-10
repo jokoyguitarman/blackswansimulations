@@ -437,7 +437,7 @@ router.get(
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      const [eventsRes, matrixRes, factorsRes, pathwaysRes] = await Promise.all([
+      const [eventsRes, matrixRes, factorsRes, pathwaysRes, decisionsRes] = await Promise.all([
         supabaseAdmin
           .from('session_events')
           .select('id, event_type, description, metadata, created_at')
@@ -457,6 +457,11 @@ router.get(
           .eq('session_id', sessionId)
           .order('evaluated_at', { ascending: false })
           .limit(50),
+        supabaseAdmin
+          .from('decisions')
+          .select('id, title, executed_at, environmental_consistency')
+          .eq('session_id', sessionId)
+          .not('executed_at', 'is', null),
         supabaseAdmin
           .from('session_escalation_factors')
           .select('id, evaluated_at, factors, de_escalation_factors')
@@ -487,7 +492,19 @@ router.get(
           matrix_reasoning?: string;
           robustness_reasoning?: string;
           robustness_reasoning_by_decision?: Record<string, string>;
+          raw_robustness_by_decision?: Record<string, number>;
+          robustness_cap_detail?: Record<
+            string,
+            {
+              raw: number;
+              capped: number;
+              severity: string;
+              mismatch_kind: string;
+              reason?: string;
+            }
+          >;
         };
+        computed_band?: 'low' | 'medium' | 'high';
         factors?: Array<{
           id: string;
           name: string;
@@ -554,6 +571,15 @@ router.get(
         }
       }
 
+      function computeBand(rb: Record<string, number> | null): 'low' | 'medium' | 'high' {
+        if (!rb || Object.keys(rb).length === 0) return 'medium';
+        const values = Object.values(rb);
+        const mean = values.reduce((a, b) => a + b, 0) / values.length;
+        if (mean <= 3) return 'low';
+        if (mean >= 7) return 'high';
+        return 'medium';
+      }
+
       const matrixList = matrixRes.data || [];
       for (const m of matrixList) {
         const matrix = (m.matrix as Record<string, Record<string, number>>) || {};
@@ -565,6 +591,17 @@ router.get(
             matrix_reasoning?: string;
             robustness_reasoning?: string;
             robustness_reasoning_by_decision?: Record<string, string>;
+            raw_robustness_by_decision?: Record<string, number>;
+            robustness_cap_detail?: Record<
+              string,
+              {
+                raw: number;
+                capped: number;
+                severity: string;
+                mismatch_kind: string;
+                reason?: string;
+              }
+            >;
           }) || undefined;
         const teamCount = Object.keys(matrix).length;
         const decisionCount = Object.keys(robustnessByDecision).length;
@@ -574,6 +611,7 @@ router.get(
           summary: `${teamCount} teams, ${decisionCount} decisions scored`,
           matrix,
           robustness_by_decision: robustnessByDecision,
+          computed_band: computeBand(robustnessByDecision),
           ...(responseTaxonomyRow &&
             Object.keys(responseTaxonomyRow).length > 0 && {
               response_taxonomy: responseTaxonomyRow,
@@ -581,6 +619,20 @@ router.get(
           ...(analysisRow && { analysis: analysisRow }),
         });
       }
+
+      const decisions = (decisionsRes.data || []).map(
+        (d: {
+          id: string;
+          title?: string;
+          executed_at?: string;
+          environmental_consistency?: unknown;
+        }) => ({
+          id: d.id,
+          title: d.title ?? '',
+          executed_at: d.executed_at ?? null,
+          environmental_consistency: d.environmental_consistency ?? null,
+        }),
+      );
 
       const factorsList = factorsRes.data || [];
       for (const f of factorsList) {
@@ -635,7 +687,7 @@ router.get(
       // Sort ascending (oldest first) so scrolling shows chronological order from beginning to end
       activities.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
-      res.json({ activities, sessionId });
+      res.json({ activities, decisions, sessionId });
     } catch (err) {
       logger.error({ error: err }, 'Error in GET /sessions/:id/backend-activity');
       res.status(500).json({ error: 'Internal server error' });

@@ -167,7 +167,23 @@ export const api = {
           matrix?: Record<string, Record<string, number>>;
           robustness_by_decision?: Record<string, number>;
           response_taxonomy?: Record<string, string>;
-          analysis?: { overall?: string; matrix_reasoning?: string; robustness_reasoning?: string };
+          analysis?: {
+            overall?: string;
+            matrix_reasoning?: string;
+            robustness_reasoning?: string;
+            raw_robustness_by_decision?: Record<string, number>;
+            robustness_cap_detail?: Record<
+              string,
+              {
+                raw: number;
+                capped: number;
+                severity: string;
+                mismatch_kind: string;
+                reason?: string;
+              }
+            >;
+          };
+          computed_band?: 'low' | 'medium' | 'high';
           factors?: Array<{ id: string; name: string; description: string; severity: string }>;
           de_escalation_factors?: Array<{ id: string; name: string; description: string }>;
           pathways?: Array<{
@@ -181,6 +197,17 @@ export const api = {
             mitigating_behaviours: string[];
             emerging_challenges?: string[];
           }>;
+        }>;
+        decisions?: Array<{
+          id: string;
+          title: string;
+          executed_at: string | null;
+          environmental_consistency?: {
+            consistent?: boolean;
+            mismatch_kind?: string;
+            severity?: string;
+            reason?: string;
+          } | null;
         }>;
         sessionId: string;
       }>(await fetch(apiUrl(`/api/sessions/${sessionId}/backend-activity`), { headers }));

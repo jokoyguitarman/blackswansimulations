@@ -212,6 +212,61 @@ conditionRegistry.area_cleared = (ctx) => {
 };
 conditionRegistry.area_not_cleared = (ctx) => !conditionRegistry.area_cleared(ctx);
 
+// Location-choice conditions (from current_state.triage_zone_properties, evac_holding_properties)
+function getTriageZoneProperties(ctx: EvaluationContext): Record<string, unknown> | null {
+  return (ctx.currentState?.triage_zone_properties as Record<string, unknown>) ?? null;
+}
+function getEvacHoldingProperties(ctx: EvaluationContext): Record<string, unknown> | null {
+  return (ctx.currentState?.evac_holding_properties as Record<string, unknown>) ?? null;
+}
+conditionRegistry.triage_zone_unsuitable = (ctx) => {
+  const p = getTriageZoneProperties(ctx);
+  if (!p) return false;
+  return p.suitability === 'low' || p.unsuitable === true;
+};
+conditionRegistry.triage_zone_no_water = (ctx) => {
+  const p = getTriageZoneProperties(ctx);
+  if (!p) return false;
+  return p.water === false;
+};
+conditionRegistry.triage_zone_no_power = (ctx) => {
+  const p = getTriageZoneProperties(ctx);
+  if (!p) return false;
+  return p.power === false;
+};
+conditionRegistry.triage_zone_small_capacity = (ctx) => {
+  const p = getTriageZoneProperties(ctx);
+  if (!p) return false;
+  const lying = (p.capacity_lying as number) ?? 0;
+  const standing = (p.capacity_standing as number) ?? 0;
+  const total = lying + standing;
+  return total < 50;
+};
+conditionRegistry.triage_zone_close_to_blast = (ctx) => {
+  const p = getTriageZoneProperties(ctx);
+  if (!p) return false;
+  const dist = p.distance_from_blast_m as number | undefined;
+  return dist != null && dist < 50;
+};
+conditionRegistry.evac_holding_small_capacity = (ctx) => {
+  const p = getEvacHoldingProperties(ctx);
+  if (!p) return false;
+  const capacity = (p.capacity as number) ?? 0;
+  const evacueeCount =
+    (ctx.currentState?.layout_ground_truth as { evacuee_count?: number })?.evacuee_count ?? 150;
+  return capacity < evacueeCount;
+};
+conditionRegistry.evac_holding_no_water = (ctx) => {
+  const p = getEvacHoldingProperties(ctx);
+  if (!p) return false;
+  return p.water === false;
+};
+conditionRegistry.evac_holding_no_cover = (ctx) => {
+  const p = getEvacHoldingProperties(ctx);
+  if (!p) return false;
+  return p.has_cover === false;
+};
+
 // Evacuation (from current_state.evacuation_state)
 conditionRegistry.evacuation_no_flow_control_decision = (ctx) =>
   !hasDecisionMatching(ctx, (d) => {

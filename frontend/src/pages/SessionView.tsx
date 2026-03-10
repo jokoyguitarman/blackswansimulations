@@ -96,6 +96,19 @@ export const SessionView = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showTeamAssignmentModal, setShowTeamAssignmentModal] = useState(false);
   const [myTeams, setMyTeams] = useState<Array<{ team_name: string; team_role?: string }>>([]);
+  const [backendDecisions, setBackendDecisions] = useState<
+    Array<{
+      id: string;
+      title: string;
+      executed_at: string | null;
+      environmental_consistency?: {
+        consistent?: boolean;
+        mismatch_kind?: string;
+        severity?: string;
+        reason?: string;
+      } | null;
+    }>
+  >([]);
   const [backendActivities, setBackendActivities] = useState<
     Array<{
       type: string;
@@ -118,6 +131,7 @@ export const SessionView = () => {
           { raw: number; capped: number; severity: string; mismatch_kind: string; reason?: string }
         >;
       };
+      computed_band?: 'low' | 'medium' | 'high';
       managed_effect_keys?: string[];
       factors?: Array<{ id: string; name: string; description: string; severity: string }>;
       de_escalation_factors?: Array<{ id: string; name: string; description: string }>;
@@ -175,6 +189,7 @@ export const SessionView = () => {
       try {
         const res = await api.sessions.getBackendActivity(id);
         setBackendActivities(res.activities || []);
+        setBackendDecisions(res.decisions || []);
       } catch {
         // Non-blocking; leave previous data
       }
@@ -1129,6 +1144,11 @@ export const SessionView = () => {
                           <div>
                             <span className="text-robotic-gold">
                               Impact matrix computed ({a.summary ?? '—'})
+                              {a.computed_band && (
+                                <span className="ml-1 text-robotic-yellow/80 text-xs">
+                                  [Band: {a.computed_band}]
+                                </span>
+                              )}
                             </span>
                             {a.analysis?.overall && (
                               <div className="mt-2 pt-2 border-t border-robotic-yellow/20 break-words">
@@ -1207,15 +1227,21 @@ export const SessionView = () => {
                                   </div>
                                   <div className="flex flex-wrap gap-1">
                                     {Object.entries(a.robustness_by_decision).map(
-                                      ([decId, score]) => (
-                                        <span
-                                          key={decId}
-                                          className="bg-robotic-gray-400 px-1 rounded break-all text-xs"
-                                          title={decId}
-                                        >
-                                          {decId}:{score}
-                                        </span>
-                                      ),
+                                      ([decId, score]) => {
+                                        const dec = backendDecisions.find((d) => d.id === decId);
+                                        const label = dec?.title
+                                          ? `${dec.title.slice(0, 30)}…`
+                                          : `${decId.slice(0, 8)}…`;
+                                        return (
+                                          <span
+                                            key={decId}
+                                            className="bg-robotic-gray-400 px-1 rounded break-all text-xs"
+                                            title={dec?.title ?? decId}
+                                          >
+                                            {label}:{score}
+                                          </span>
+                                        );
+                                      },
                                     )}
                                   </div>
                                 </div>
@@ -1232,13 +1258,17 @@ export const SessionView = () => {
                                       const rawScore =
                                         a.analysis?.raw_robustness_by_decision?.[decId];
                                       const capDetail = a.analysis?.robustness_cap_detail?.[decId];
+                                      const dec = backendDecisions.find((d) => d.id === decId);
+                                      const decLabel = dec?.title ?? `${decId.slice(0, 8)}…`;
                                       return (
                                         <li
                                           key={decId}
                                           className="border-l-2 border-robotic-yellow/30 pl-2 text-robotic-green/90 break-words"
                                         >
                                           <span className="font-mono text-robotic-gray-50">
-                                            {decId.slice(0, 8)}…
+                                            {decLabel.length > 35
+                                              ? `${decLabel.slice(0, 35)}…`
+                                              : decLabel}
                                           </span>
                                           {' — raw: '}
                                           {rawScore != null ? rawScore : '—'}
@@ -1246,7 +1276,8 @@ export const SessionView = () => {
                                           {cappedScore}
                                           {capDetail && (
                                             <div className="mt-0.5 text-robotic-yellow/80 italic">
-                                              Cap: {capDetail.severity} {capDetail.mismatch_kind}.
+                                              Below standard / mismatch — {capDetail.severity}{' '}
+                                              {capDetail.mismatch_kind}.
                                               {capDetail.reason ? ` ${capDetail.reason}` : ''}
                                             </div>
                                           )}
