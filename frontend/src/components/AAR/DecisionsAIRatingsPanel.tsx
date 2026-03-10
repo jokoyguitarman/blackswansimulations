@@ -110,6 +110,12 @@ export const DecisionsAIRatingsPanel = ({ sessionId }: DecisionsAIRatingsPanelPr
     }
   }
 
+  const decisionsSorted = [...decisions].sort(
+    (a, b) =>
+      new Date(a.executed_at || a.created_at).getTime() -
+      new Date(b.executed_at || b.created_at).getTime(),
+  );
+
   // Redeeming: decision has high robustness (>=7) and follows a capped decision from same "team" (inferred by sequence)
   const cappedDecisionIds = new Set(Object.keys(capDetailByDecisionId));
   const redeemingIds = new Set<string>();
@@ -126,12 +132,6 @@ export const DecisionsAIRatingsPanel = ({ sessionId }: DecisionsAIRatingsPanelPr
       }
     }
   }
-
-  const decisionsSorted = [...decisions].sort(
-    (a, b) =>
-      new Date(a.executed_at || a.created_at).getTime() -
-      new Date(b.executed_at || b.created_at).getTime(),
-  );
 
   const toggleExpanded = (id: string) => {
     setExpandedIds((prev) => {
