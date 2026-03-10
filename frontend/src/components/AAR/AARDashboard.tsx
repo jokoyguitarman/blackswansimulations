@@ -219,6 +219,39 @@ function formatAnalysisFull(analysis: unknown): string {
 const CONTENT_PREVIEW_CHARS = 400;
 const INCIDENT_RESPONSE_EXPAND_THRESHOLD = 800;
 
+function ExpandableText({
+  text,
+  expanded,
+  onToggle,
+}: {
+  text: string;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  if (!text) return <>—</>;
+  const isLong = text.length > INCIDENT_RESPONSE_EXPAND_THRESHOLD;
+  if (isLong) {
+    const display = expanded ? text : text.slice(0, INCIDENT_RESPONSE_EXPAND_THRESHOLD);
+    return (
+      <span>
+        <span className="whitespace-pre-wrap break-words">{display}</span>
+        {!expanded && <span className="text-robotic-yellow/50">… </span>}
+        <button
+          type="button"
+          className="ml-1 text-robotic-yellow/80 hover:text-robotic-yellow underline text-xs"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle();
+          }}
+        >
+          {expanded ? 'See less' : 'See more'}
+        </button>
+      </span>
+    );
+  }
+  return <span className="whitespace-pre-wrap break-words">{text}</span>;
+}
+
 function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unknown>> }) {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const toggle = (key: string) => {
@@ -229,38 +262,13 @@ function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unk
       return next;
     });
   };
-  const renderText = (val: unknown, i: number, field: string): React.ReactNode => {
-    const s = val != null ? String(val) : '';
-    if (!s) return '—';
-    const isLong = s.length > INCIDENT_RESPONSE_EXPAND_THRESHOLD;
-    const key = `${i}-${field}`;
-    const isExpanded = expandedKeys.has(key);
-    if (isLong) {
-      const display = isExpanded ? s : s.slice(0, INCIDENT_RESPONSE_EXPAND_THRESHOLD);
-      return (
-        <span>
-          <span className="whitespace-pre-wrap break-words">{display}</span>
-          {!isExpanded && <span className="text-robotic-yellow/50">… </span>}
-          <button
-            type="button"
-            className="ml-1 text-robotic-yellow/80 hover:text-robotic-yellow underline text-xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              toggle(key);
-            }}
-          >
-            {isExpanded ? 'See less' : 'See more'}
-          </button>
-        </span>
-      );
-    }
-    return <span className="whitespace-pre-wrap break-words">{s}</span>;
-  };
   return (
     <div className="overflow-x-auto space-y-4">
       {pairs.map((p, i) => {
         const inc = (p.incident as Record<string, unknown>) ?? {};
         const dec = (p.decision as Record<string, unknown>) ?? {};
+        const incDesc = inc.description != null ? String(inc.description) : '';
+        const decDesc = dec.description != null ? String(dec.description) : '';
         return (
           <div
             key={i}
@@ -273,7 +281,11 @@ function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unk
                   {String(inc.title ?? '') || '—'}
                 </div>
                 <div className="text-robotic-yellow/90 mt-1 whitespace-pre-wrap break-words">
-                  {renderText(inc.description, i, 'inc-desc') as React.ReactNode}
+                  <ExpandableText
+                    text={incDesc}
+                    expanded={expandedKeys.has(`${i}-inc-desc`)}
+                    onToggle={() => toggle(`${i}-inc-desc`)}
+                  />
                 </div>
                 {inc.reported_at && (
                   <div className="text-robotic-yellow/50 mt-1">
@@ -287,7 +299,11 @@ function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unk
                   {String(dec.title ?? '') || '—'}
                 </div>
                 <div className="text-robotic-yellow/90 mt-1 whitespace-pre-wrap break-words">
-                  {renderText(dec.description, i, 'dec-desc') as React.ReactNode}
+                  <ExpandableText
+                    text={decDesc}
+                    expanded={expandedKeys.has(`${i}-dec-desc`)}
+                    onToggle={() => toggle(`${i}-dec-desc`)}
+                  />
                 </div>
                 {dec.executed_at && (
                   <div className="text-robotic-yellow/50 mt-1">
