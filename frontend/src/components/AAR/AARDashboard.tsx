@@ -227,8 +227,8 @@ function ExpandableText({
   text: string;
   expanded: boolean;
   onToggle: () => void;
-}) {
-  if (!text) return <>—</>;
+}): React.ReactElement {
+  if (!text) return <span>—</span>;
   const isLong = text.length > INCIDENT_RESPONSE_EXPAND_THRESHOLD;
   if (isLong) {
     const display = expanded ? text : text.slice(0, INCIDENT_RESPONSE_EXPAND_THRESHOLD);
@@ -267,8 +267,8 @@ function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unk
       {pairs.map((p, i) => {
         const inc = (p.incident as Record<string, unknown>) ?? {};
         const dec = (p.decision as Record<string, unknown>) ?? {};
-        const incDesc = inc.description != null ? String(inc.description) : '';
-        const decDesc = dec.description != null ? String(dec.description) : '';
+        const incDesc: string = inc.description != null ? String(inc.description) : '';
+        const decDesc: string = dec.description != null ? String(dec.description) : '';
         return (
           <div
             key={i}
