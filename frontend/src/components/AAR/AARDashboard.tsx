@@ -276,11 +276,11 @@ function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unk
                       : incDesc
                     : '—'}
                 </div>
-                {inc.reported_at && (
+                {inc.reported_at ? (
                   <div className="text-robotic-yellow/50 mt-1">
                     Reported: {new Date(inc.reported_at as string).toLocaleString()}
                   </div>
-                )}
+                ) : null}
               </div>
               <div>
                 <div className="text-robotic-yellow/70 uppercase mb-1">Decision</div>
@@ -316,11 +316,11 @@ function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unk
                       : decDesc
                     : '—'}
                 </div>
-                {dec.executed_at && (
+                {dec.executed_at ? (
                   <div className="text-robotic-yellow/50 mt-1">
                     Executed: {new Date(dec.executed_at as string).toLocaleString()}
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
             <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-robotic-yellow/20 text-robotic-yellow/70">

@@ -12,6 +12,7 @@
     "dev:server": "tsx watch server/index.ts",
     "dev:client": "npm --prefix frontend run dev",
     "build:server": "tsc --project tsconfig.json",
+    "build:frontend": "cd frontend && npm install && npm run build",
     "start": "node dist/server/index.js",
     "lint": "eslint \"{src,server,shared}/**/*.{ts,tsx}\"",
     "format": "prettier --write .",
