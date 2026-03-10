@@ -837,48 +837,6 @@ export const SessionView = () => {
             </div>
           )}
 
-          {/* Row 3+: AAR Card - Only show for completed sessions (Trainer only) */}
-          {id && session.status === 'completed' && isTrainer && (
-            <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
-              onClick={() => markCardViewed('aar')}
-            >
-              <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-lg terminal-text uppercase">[AAR] After Action Review</h3>
-                {cardNotifications['aar'] === 'new' && (
-                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
-                )}
-                {cardNotifications['aar'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
-                )}
-              </div>
-              <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
-                <AARDashboard sessionId={id} />
-              </div>
-            </div>
-          )}
-
-          {/* Row 3+: Decisions & AI Ratings Card - Completed sessions (Trainer only) */}
-          {id && session.status === 'completed' && isTrainer && (
-            <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
-              onClick={() => markCardViewed('decisions_ai')}
-            >
-              <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-lg terminal-text uppercase">[DECISIONS & AI RATINGS]</h3>
-                {cardNotifications['decisions_ai'] === 'new' && (
-                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
-                )}
-                {cardNotifications['decisions_ai'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
-                )}
-              </div>
-              <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
-                <DecisionsAIRatingsPanel sessionId={id} />
-              </div>
-            </div>
-          )}
-
           {/* Row 3+: Participants Card - Trainer only */}
           {id && session && isTrainer && (
             <div
@@ -993,9 +951,33 @@ export const SessionView = () => {
                 </div>
               </div>
 
-              {/* Timeline - last module, 2 columns width, 2 rows height */}
+              {/* Decisions & AI Ratings - 2 cols, before timeline (completed sessions only) */}
+              {session.status === 'completed' && (
+                <div
+                  className="md:col-span-2 military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
+                  onClick={() => markCardViewed('decisions_ai')}
+                >
+                  <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                    <h3 className="text-lg terminal-text uppercase">[DECISIONS & AI RATINGS]</h3>
+                    {cardNotifications['decisions_ai'] === 'new' && (
+                      <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                    )}
+                    {cardNotifications['decisions_ai'] === 'viewed' && (
+                      <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                    )}
+                  </div>
+                  <div
+                    className="flex-1 overflow-y-auto min-h-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <DecisionsAIRatingsPanel sessionId={id} />
+                  </div>
+                </div>
+              )}
+
+              {/* Timeline - 2 cols, fixed height (3 rows), scrollable */}
               <div
-                className="md:col-span-2 military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col min-h-[1500px]"
+                className="md:col-span-2 military-border p-6 bg-robotic-gray-300 relative cursor-pointer flex flex-col h-[420px]"
                 onClick={() => markCardViewed('timeline')}
               >
                 <div className="flex items-center justify-between mb-4 flex-shrink-0">
@@ -1281,6 +1263,30 @@ export const SessionView = () => {
                   )}
                 </div>
               </div>
+
+              {/* AAR - same size as map (h-[700px]), under timeline (completed sessions only) */}
+              {session.status === 'completed' && (
+                <div
+                  className="md:col-span-2 military-border p-6 bg-robotic-gray-300 relative cursor-pointer flex flex-col h-[700px]"
+                  onClick={() => markCardViewed('aar')}
+                >
+                  <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                    <h3 className="text-lg terminal-text uppercase">[AAR] After Action Review</h3>
+                    {cardNotifications['aar'] === 'new' && (
+                      <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                    )}
+                    {cardNotifications['aar'] === 'viewed' && (
+                      <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                    )}
+                  </div>
+                  <div
+                    className="flex-1 overflow-y-auto min-h-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <AARDashboard sessionId={id} />
+                  </div>
+                </div>
+              )}
             </>
           )}
 
