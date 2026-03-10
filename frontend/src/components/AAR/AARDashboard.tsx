@@ -219,39 +219,6 @@ function formatAnalysisFull(analysis: unknown): string {
 const CONTENT_PREVIEW_CHARS = 400;
 const INCIDENT_RESPONSE_EXPAND_THRESHOLD = 800;
 
-function ExpandableText({
-  text,
-  expanded,
-  onToggle,
-}: {
-  text: string;
-  expanded: boolean;
-  onToggle: () => void;
-}): React.ReactElement {
-  if (!text) return <span>—</span>;
-  const isLong = text.length > INCIDENT_RESPONSE_EXPAND_THRESHOLD;
-  if (isLong) {
-    const display = expanded ? text : text.slice(0, INCIDENT_RESPONSE_EXPAND_THRESHOLD);
-    return (
-      <span>
-        <span className="whitespace-pre-wrap break-words">{display}</span>
-        {!expanded && <span className="text-robotic-yellow/50">… </span>}
-        <button
-          type="button"
-          className="ml-1 text-robotic-yellow/80 hover:text-robotic-yellow underline text-xs"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle();
-          }}
-        >
-          {expanded ? 'See less' : 'See more'}
-        </button>
-      </span>
-    );
-  }
-  return <span className="whitespace-pre-wrap break-words">{text}</span>;
-}
-
 function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unknown>> }) {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const toggle = (key: string) => {
@@ -281,11 +248,33 @@ function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unk
                   {String(inc.title ?? '') || '—'}
                 </div>
                 <div className="text-robotic-yellow/90 mt-1 whitespace-pre-wrap break-words">
-                  <ExpandableText
-                    text={incDesc}
-                    expanded={expandedKeys.has(`${i}-inc-desc`)}
-                    onToggle={() => toggle(`${i}-inc-desc`)}
-                  />
+                  {incDesc
+                    ? incDesc.length > INCIDENT_RESPONSE_EXPAND_THRESHOLD
+                      ? (() => {
+                          const key = `${i}-inc-desc`;
+                          const expanded = expandedKeys.has(key);
+                          const display = expanded
+                            ? incDesc
+                            : incDesc.slice(0, INCIDENT_RESPONSE_EXPAND_THRESHOLD);
+                          return (
+                            <span>
+                              <span className="whitespace-pre-wrap break-words">{display}</span>
+                              {!expanded && <span className="text-robotic-yellow/50">… </span>}
+                              <button
+                                type="button"
+                                className="ml-1 text-robotic-yellow/80 hover:text-robotic-yellow underline text-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggle(key);
+                                }}
+                              >
+                                {expanded ? 'See less' : 'See more'}
+                              </button>
+                            </span>
+                          );
+                        })()
+                      : incDesc
+                    : '—'}
                 </div>
                 {inc.reported_at && (
                   <div className="text-robotic-yellow/50 mt-1">
@@ -299,11 +288,33 @@ function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unk
                   {String(dec.title ?? '') || '—'}
                 </div>
                 <div className="text-robotic-yellow/90 mt-1 whitespace-pre-wrap break-words">
-                  <ExpandableText
-                    text={decDesc}
-                    expanded={expandedKeys.has(`${i}-dec-desc`)}
-                    onToggle={() => toggle(`${i}-dec-desc`)}
-                  />
+                  {decDesc
+                    ? decDesc.length > INCIDENT_RESPONSE_EXPAND_THRESHOLD
+                      ? (() => {
+                          const key = `${i}-dec-desc`;
+                          const expanded = expandedKeys.has(key);
+                          const display = expanded
+                            ? decDesc
+                            : decDesc.slice(0, INCIDENT_RESPONSE_EXPAND_THRESHOLD);
+                          return (
+                            <span>
+                              <span className="whitespace-pre-wrap break-words">{display}</span>
+                              {!expanded && <span className="text-robotic-yellow/50">… </span>}
+                              <button
+                                type="button"
+                                className="ml-1 text-robotic-yellow/80 hover:text-robotic-yellow underline text-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggle(key);
+                                }}
+                              >
+                                {expanded ? 'See less' : 'See more'}
+                              </button>
+                            </span>
+                          );
+                        })()
+                      : decDesc
+                    : '—'}
                 </div>
                 {dec.executed_at && (
                   <div className="text-robotic-yellow/50 mt-1">
