@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { api } from '../../lib/api';
 
@@ -269,9 +269,11 @@ function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unk
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <div className="text-robotic-yellow/70 uppercase mb-1">Incident</div>
-                <div className="text-robotic-green font-semibold">{inc.title ?? '—'}</div>
+                <div className="text-robotic-green font-semibold">
+                  {String(inc.title ?? '') || '—'}
+                </div>
                 <div className="text-robotic-yellow/90 mt-1 whitespace-pre-wrap break-words">
-                  {renderText(inc.description, i, 'inc-desc')}
+                  {renderText(inc.description, i, 'inc-desc') as React.ReactNode}
                 </div>
                 {inc.reported_at && (
                   <div className="text-robotic-yellow/50 mt-1">
@@ -281,9 +283,11 @@ function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unk
               </div>
               <div>
                 <div className="text-robotic-yellow/70 uppercase mb-1">Decision</div>
-                <div className="text-robotic-green font-semibold">{dec.title ?? '—'}</div>
+                <div className="text-robotic-green font-semibold">
+                  {String(dec.title ?? '') || '—'}
+                </div>
                 <div className="text-robotic-yellow/90 mt-1 whitespace-pre-wrap break-words">
-                  {renderText(dec.description, i, 'dec-desc')}
+                  {renderText(dec.description, i, 'dec-desc') as React.ReactNode}
                 </div>
                 {dec.executed_at && (
                   <div className="text-robotic-yellow/50 mt-1">
