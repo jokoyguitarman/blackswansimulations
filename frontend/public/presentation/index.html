@@ -116,6 +116,7 @@
       width: 100%;
       height: 100%;
       transition: transform 0.4s ease-out;
+      overflow: hidden;
     }
 
     .slide {
@@ -129,12 +130,18 @@
       align-items: center;
       padding: 2rem;
       position: relative;
+      overflow: hidden;
+      isolation: isolate;
     }
 
     @media (max-width: 768px) {
       .slide {
-        padding: 1.5rem;
+        padding: 1rem 1rem 5rem;
         height: 50vh;
+        justify-content: flex-start;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
       }
       body:not(.demo-open) .slide {
         height: 100vh;
@@ -144,11 +151,14 @@
     .slide-content {
       max-width: 900px;
       width: 100%;
+      min-height: 0;
+      overflow-wrap: break-word;
     }
 
     @media (max-width: 768px) {
       .slide-content {
         max-width: 100%;
+        padding-bottom: 1rem;
       }
     }
 
@@ -176,6 +186,18 @@
       color: rgba(255, 184, 0, 0.9);
       line-height: 1.6;
       margin-bottom: 0.75rem;
+    }
+
+    @media (max-width: 768px) {
+      .slide h1 {
+        font-size: clamp(1.25rem, 5vw, 2rem);
+      }
+      .slide h2 {
+        font-size: clamp(1rem, 4vw, 1.25rem);
+      }
+      .slide p, .slide li {
+        font-size: clamp(0.8rem, 3.5vw, 0.95rem);
+      }
     }
 
     .slide ul {
@@ -266,11 +288,12 @@
 
     @media (max-width: 768px) {
       .comparison-table {
-        font-size: 0.75rem;
+        font-size: 0.65rem;
       }
       .comparison-table th,
       .comparison-table td {
-        padding: 0.4rem 0.5rem;
+        padding: 0.35rem 0.4rem;
+        word-break: break-word;
       }
     }
 
@@ -288,30 +311,15 @@
       color: var(--robotic-green);
     }
 
-    .nav-controls {
-      position: fixed;
-      bottom: 2rem;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 1rem;
-      align-items: center;
-      z-index: 100;
-      transition: left 0.3s ease;
-    }
-
-    body.demo-open .nav-controls {
-      left: 25%;
-    }
 
     .nav-btn {
-      padding: 0.5rem 1rem;
+      padding: 0.5rem 0.75rem;
       background: linear-gradient(135deg, var(--robotic-yellow), var(--robotic-orange));
       border: 1px solid rgba(255, 184, 0, 0.5);
       color: #0f0f0f;
       font-family: 'JetBrains Mono', monospace;
       font-weight: 700;
-      font-size: 0.8rem;
+      font-size: clamp(0.7rem, 2vw, 0.8rem);
       text-transform: uppercase;
       letter-spacing: 0.1em;
       cursor: pointer;
@@ -343,11 +351,30 @@
       right: calc(50% + 1.5rem);
     }
 
+    @media (max-width: 768px) {
+      .slide-counter {
+        top: 0.5rem;
+        right: 0.75rem;
+        font-size: 0.7rem;
+      }
+      body.demo-open .slide-counter {
+        right: 0.75rem;
+      }
+    }
+
     .title-slide .classified-stamp {
       position: absolute;
       top: 2rem;
       right: 3rem;
       font-size: 1.25rem;
+    }
+
+    @media (max-width: 768px) {
+      .title-slide .classified-stamp {
+        top: 1rem;
+        right: 1rem;
+        font-size: 0.9rem;
+      }
     }
 
     .title-slide h1 {
@@ -437,53 +464,62 @@
       border: none;
     }
 
-    .demo-float {
+    .bottom-controls {
       position: fixed;
-      bottom: 2rem;
-      right: 2rem;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      padding: 0.75rem 1rem;
       z-index: 100;
+      background: linear-gradient(to top, rgba(15, 15, 15, 0.98) 0%, rgba(15, 15, 15, 0.6) 70%, transparent 100%);
     }
 
-    body.demo-open .demo-float {
-      right: calc(50% + 1rem);
+    @media (min-width: 769px) {
+      .bottom-controls {
+        bottom: 1.5rem;
+        padding: 0 2rem;
+        background: transparent;
+        justify-content: center;
+        gap: 2rem;
+      }
+      body.demo-open .bottom-controls {
+        left: 0;
+        right: 50%;
+      }
     }
 
-    @media (max-width: 768px) {
-      .demo-float {
-        bottom: 1rem;
-        right: 1rem;
-      }
-      body.demo-open .demo-float {
-        right: 1rem;
-        bottom: calc(50vh + 1rem);
-      }
+    .nav-controls {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    @media (min-width: 769px) {
       .nav-controls {
-        bottom: 1rem;
+        gap: 1rem;
       }
-      body.demo-open .nav-controls {
-        left: 50%;
-        bottom: calc(50vh + 1rem);
-      }
-      .slide-counter {
-        top: 0.5rem;
-        right: 1rem;
-      }
-      body.demo-open .slide-counter {
-        right: 1rem;
-      }
+    }
+
+    .demo-float {
+      display: flex;
     }
 
     .demo-float button {
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      padding: 0.75rem 1.25rem;
+      padding: 0.5rem 0.75rem;
       border: 1px solid rgba(255, 184, 0, 0.5);
       background: linear-gradient(135deg, rgba(26, 26, 26, 0.95) 0%, rgba(45, 45, 45, 0.95) 100%);
       box-shadow: 0 0 20px rgba(255, 184, 0, 0.2), inset 0 0 20px rgba(255, 184, 0, 0.05);
       backdrop-filter: blur(10px);
       font-family: 'JetBrains Mono', monospace;
-      font-size: 0.8rem;
+      font-size: clamp(0.65rem, 2vw, 0.8rem);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.1em;
@@ -699,7 +735,7 @@
     </div>
     <iframe
       id="demoFrame"
-      src=""
+      src="https://blackswansimulations.vercel.app/sessions/94595f22-a41f-49c2-87ee-a9d163d97959"
       title="Black Swan Simulations – Example Session"
       allow="fullscreen"
     ></iframe>
@@ -707,18 +743,19 @@
   </div>
 
   <div class="slide-counter terminal-text" id="counter">1 / 10</div>
-  <div class="demo-float">
-    <button type="button" id="demoToggle" title="Toggle live demo panel (login may be required)">
-      <span id="demoToggleLabel">View Live Demo</span>
-    </button>
-  </div>
-  <div class="nav-controls">
-    <button class="nav-btn" id="prev" aria-label="Previous slide">« Prev</button>
-    <button class="nav-btn" id="next" aria-label="Next slide">Next »</button>
+  <div class="bottom-controls">
+    <div class="nav-controls">
+      <button class="nav-btn" id="prev" aria-label="Previous slide">« Prev</button>
+      <button class="nav-btn" id="next" aria-label="Next slide">Next »</button>
+    </div>
+    <div class="demo-float">
+      <button type="button" id="demoToggle" title="Toggle live demo panel (login may be required)">
+        <span id="demoToggleLabel">View Live Demo</span>
+      </button>
+    </div>
   </div>
 
   <script>
-    const DEMO_URL = 'https://blackswansimulations.vercel.app/sessions/94595f22-a41f-49c2-87ee-a9d163d97959';
     const deck = document.querySelector('.deck');
     const slides = document.getElementById('slides');
     const counter = document.getElementById('counter');
@@ -726,7 +763,6 @@
     const nextBtn = document.getElementById('next');
     const demoToggle = document.getElementById('demoToggle');
     const demoClose = document.getElementById('demoClose');
-    const demoFrame = document.getElementById('demoFrame');
     const body = document.getElementById('body');
     const totalSlides = 10;
     let currentSlide = 1;
@@ -754,9 +790,6 @@
       demoOpen = !demoOpen;
       body.classList.toggle('demo-open', demoOpen);
       document.getElementById('demoToggleLabel').textContent = demoOpen ? 'Hide Demo' : 'View Live Demo';
-      if (demoOpen && !demoFrame.src) {
-        demoFrame.src = DEMO_URL;
-      }
       setTimeout(updateSlidePosition, 350);
     }
 
