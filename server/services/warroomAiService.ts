@@ -72,6 +72,11 @@ export interface WarroomScenarioPayload {
   };
 }
 
+export interface WarroomResearchContext {
+  area_summary?: string;
+  standards_summary?: string;
+}
+
 export interface WarroomGenerateInput {
   scenario_type: string;
   setting: string;
@@ -84,6 +89,7 @@ export interface WarroomGenerateInput {
   typeSpec: Record<string, unknown>;
   settingSpec: Record<string, unknown>;
   terrainSpec: Record<string, unknown>;
+  researchContext?: WarroomResearchContext;
 }
 
 /**
@@ -105,6 +111,7 @@ export async function warroomGenerateScenario(
     typeSpec,
     settingSpec,
     terrainSpec,
+    researchContext,
   } = input;
 
   const venue = venue_name || location || setting;
@@ -123,6 +130,14 @@ Real facilities from OpenStreetMap:
 - Emergency routes: ${osm_vicinity.emergency_routes?.map((r) => r.description).join(', ') || 'None'}
 Use these real names in scenario content where relevant.`
     : '';
+
+  const researchContextBlock =
+    researchContext?.area_summary || researchContext?.standards_summary
+      ? `
+Research context (use for realism—landmarks, agency names, triage protocols):
+${researchContext?.area_summary ? `Area research:\n${researchContext.area_summary}` : ''}
+${researchContext?.standards_summary ? `\nResponse standards:\n${researchContext.standards_summary}` : ''}`
+      : '';
 
   const injectCount =
     complexity_tier === 'minimal'
@@ -151,6 +166,7 @@ Terrain: ${terrain}
 Venue: ${venue}
 ${locationContext}
 ${osmContext}
+${researchContextBlock}
 
 Template context:
 - Scenario type: ${JSON.stringify(typeSpec)}

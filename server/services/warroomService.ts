@@ -16,6 +16,7 @@ import {
 } from './warroomPromptParser.js';
 import { warroomGenerateScenario, type WarroomScenarioPayload } from './warroomAiService.js';
 import { persistWarroomScenario } from './warroomPersistenceService.js';
+import { researchArea, researchStandards } from './warroomResearchService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -26,6 +27,19 @@ export interface WarroomGenerateOptions {
   terrain?: string;
   location?: string;
   complexity_tier?: 'minimal' | 'standard' | 'full' | 'rich';
+}
+
+export type WarroomProgressPhase =
+  | 'parsing'
+  | 'geocoding'
+  | 'osm'
+  | 'area_research'
+  | 'standards_research'
+  | 'ai'
+  | 'persist';
+
+export interface WarroomProgressCallback {
+  (phase: WarroomProgressPhase, message: string): void;
 }
 
 function loadJson<T>(filePath: string): T | null {
@@ -55,10 +69,12 @@ export async function generateAndPersistWarroomScenario(
   options: WarroomGenerateOptions,
   openAiApiKey: string,
   createdBy: string,
+  onProgress?: WarroomProgressCallback,
 ): Promise<{ scenarioId: string; payload: WarroomScenarioPayload }> {
   let parsed: ParsedWarroomInput;
 
   if (options.prompt && !options.scenario_type) {
+    onProgress?.('parsing', 'Parsing prompt and classifying scenario type, setting, terrain...');
     parsed = await parseFreeTextPrompt(options.prompt, openAiApiKey);
   } else {
     parsed = {
@@ -95,8 +111,10 @@ export async function generateAndPersistWarroomScenario(
   let osmVicinity = undefined;
 
   if (parsed.location) {
+    onProgress?.('geocoding', `Resolving coordinates for "${parsed.location}"...`);
     geocodeResult = await geocode(parsed.location);
     if (geocodeResult) {
+      onProgress?.('osm', 'Fetching hospitals, police, fire stations, and routes nearby...');
       try {
         osmVicinity = await fetchOsmVicinityByCoordinates(
           geocodeResult.lat,
@@ -110,8 +128,25 @@ export async function generateAndPersistWarroomScenario(
         );
       }
     }
+  } else {
+    onProgress?.('geocoding', 'No location specified; skipping geocoding.');
   }
 
+  const venueName = parsed.location || parsed.setting;
+  const [areaSummary, standardsSummary] = await Promise.all([
+    parsed.location
+      ? (() => {
+          onProgress?.('area_research', 'Researching area: geography, agencies...');
+          return researchArea(openAiApiKey, parsed.location!, venueName).catch(() => '');
+        })()
+      : Promise.resolve(''),
+    (() => {
+      onProgress?.('standards_research', 'Researching response standards...');
+      return researchStandards(openAiApiKey, parsed.scenario_type).catch(() => '');
+    })(),
+  ]);
+
+  onProgress?.('ai', 'Generating scenario world: teams, injects, objectives, locations...');
   const payload = await warroomGenerateScenario(
     {
       scenario_type: parsed.scenario_type,
@@ -131,10 +166,18 @@ export async function generateAndPersistWarroomScenario(
       typeSpec,
       settingSpec,
       terrainSpec,
+      researchContext:
+        areaSummary || standardsSummary
+          ? {
+              area_summary: areaSummary || undefined,
+              standards_summary: standardsSummary || undefined,
+            }
+          : undefined,
     },
     openAiApiKey,
   );
 
+  onProgress?.('persist', 'Saving scenario to database: teams, injects, objectives...');
   const scenarioId = await persistWarroomScenario(payload, createdBy, {
     center_lat: geocodeResult?.lat,
     center_lng: geocodeResult?.lng,

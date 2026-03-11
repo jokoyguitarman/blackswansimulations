@@ -40,6 +40,16 @@ const COMPLEXITY_TIERS = [
   { id: 'rich', label: 'Rich', desc: '18 injects, 6 decision branches, full content' },
 ];
 
+const GENERATION_PHASES: { id: string; label: string; desc: string }[] = [
+  { id: 'parsing', label: 'Parsing', desc: 'Classifying scenario type, setting, terrain' },
+  { id: 'geocoding', label: 'Geocoding', desc: 'Resolving location coordinates' },
+  { id: 'osm', label: 'Map data', desc: 'Hospitals, police, fire stations, routes' },
+  { id: 'area_research', label: 'Area research', desc: 'Geography, agencies, access' },
+  { id: 'standards_research', label: 'Standards research', desc: 'ICS, triage, protocols' },
+  { id: 'ai', label: 'AI generation', desc: 'Teams, injects, objectives, locations' },
+  { id: 'persist', label: 'Persisting', desc: 'Saving world to database' },
+];
+
 export const WarRoom = () => {
   const { isTrainer } = useRoleVisibility();
   const navigate = useNavigate();
@@ -54,6 +64,8 @@ export const WarRoom = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [useStructured, setUseStructured] = useState(false);
+  const [progressPhase, setProgressPhase] = useState<string | null>(null);
+  const [progressMessage, setProgressMessage] = useState<string>('');
 
   if (!isTrainer) {
     return (
@@ -71,6 +83,8 @@ export const WarRoom = () => {
   const handleGenerate = async () => {
     setError(null);
     setLoading(true);
+    setProgressPhase(null);
+    setProgressMessage('');
     try {
       const options: Parameters<typeof api.warroom.generate>[0] = {
         complexity_tier: complexityTier,
@@ -88,9 +102,13 @@ export const WarRoom = () => {
         return;
       }
 
-      const result = await api.warroom.generate(options);
-      const scenarioId = result.data?.scenarioId;
-      if (scenarioId) {
+      const result = await api.warroom.generateStream(options, (phase, message) => {
+        setProgressPhase(phase);
+        setProgressMessage(message);
+      });
+      if (result.scenarioId) {
+        setProgressPhase('persist');
+        setProgressMessage('Scenario created successfully.');
         navigate(`/scenarios`);
       } else {
         setError('No scenario ID returned');
@@ -262,6 +280,52 @@ export const WarRoom = () => {
         {error && (
           <div className="military-border p-4 mb-6 border-robotic-orange">
             <p className="text-sm terminal-text text-robotic-orange">{error}</p>
+          </div>
+        )}
+
+        {loading && (
+          <div className="military-border p-6 mb-6 bg-robotic-gray-300">
+            <h3 className="text-lg terminal-text uppercase mb-4">
+              [BACKEND] Building scenario world
+            </h3>
+            <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
+              Creating a playable scenario with multiple layers: teams, injects, objectives,
+              locations, environmental seeds, and real-world facility data.
+            </p>
+            <div className="space-y-2">
+              {GENERATION_PHASES.map((phase) => {
+                const phaseIndex = GENERATION_PHASES.findIndex((p) => p.id === phase.id);
+                const currentIndex =
+                  progressPhase !== null
+                    ? GENERATION_PHASES.findIndex((p) => p.id === progressPhase)
+                    : 0;
+                const isDone = phaseIndex >= 0 && currentIndex >= 0 && phaseIndex < currentIndex;
+                const isCurrent =
+                  progressPhase === phase.id || (progressPhase === null && phaseIndex === 0);
+                return (
+                  <div
+                    key={phase.id}
+                    className={`border p-3 font-mono text-xs transition-all ${
+                      isCurrent
+                        ? 'border-robotic-yellow bg-robotic-yellow/10'
+                        : isDone
+                          ? 'border-robotic-green/50 bg-robotic-green/5'
+                          : 'border-robotic-gray-200 text-robotic-yellow/60'
+                    }`}
+                  >
+                    <span className="text-robotic-yellow/90">
+                      {isDone ? '[DONE]' : isCurrent ? '[...]' : '[---]'} {phase.label}
+                    </span>
+                    <span className="text-robotic-yellow/60"> — {phase.desc}</span>
+                    {isCurrent && (
+                      <div className="mt-2 text-robotic-yellow/80 pl-6">
+                        {progressMessage || 'In progress...'}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
