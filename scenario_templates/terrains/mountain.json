@@ -1,0 +1,9 @@
+{
+  "id": "mountain",
+  "display_name": "Mountain",
+  "environmental_factors": ["elevation", "weather", "avalanche_risk", "narrow_roads"],
+  "access_routes": ["road", "cable_car", "helicopter_LZ", "trail"],
+  "adversary_advantages": ["high_ground", "choke_points", "weather_cover"],
+  "evacuation_challenges": ["road_capacity", "weather_delays", "altitude_effects"],
+  "weather_interactions": ["snow", "fog", "avalanche", "road_closure"]
+}

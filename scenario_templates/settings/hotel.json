@@ -1,0 +1,9 @@
+{
+  "id": "hotel",
+  "display_name": "Hotel",
+  "compatible_terrains": ["urban", "coastal", "mountain"],
+  "location_types": ["lobby", "room", "hallway", "elevator", "stairwell", "restaurant", "parking"],
+  "access_routes": ["main_entrance", "service_entrance", "parking", "stairwells", "elevators"],
+  "multi_storey": true,
+  "environmental_seed_variants": ["occupancy", "floor_layout", "room_access", "evacuation_flow"]
+}

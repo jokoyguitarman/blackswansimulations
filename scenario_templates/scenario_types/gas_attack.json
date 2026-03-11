@@ -1,0 +1,75 @@
+{
+  "id": "gas_attack",
+  "display_name": "Gas attack",
+  "category": "terrorism",
+  "required_teams": [
+    {
+      "team_name": "evacuation",
+      "team_description": "Evacuate affected area, manage decontamination flow",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "triage",
+      "team_description": "Triage respiratory injuries, coordinate decon",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "media",
+      "team_description": "Manage media, prevent panic",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "fire_hazmat",
+      "team_description": "Hazmat response, ventilation, substance identification",
+      "min_participants": 2,
+      "max_participants": 8
+    }
+  ],
+  "environmental_factors": ["enclosed_space", "ventilation", "station_vs_tunnel", "decon_site"],
+  "adversary_behaviors": ["package_placement", "perpetrator_may_have_left"],
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "field_update",
+      "template": "Gas or unknown substance reported at {venue}. People experiencing respiratory distress. Enclosed space; ventilation limited.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+4",
+      "type": "field_update",
+      "template": "Substance spreading through carriages/area. Ventilation decision needed. Evacuate or contain?",
+      "severity": "high"
+    },
+    {
+      "timing": "T+8",
+      "type": "intel_brief",
+      "template": "Hazmat assessment: substance unknown. Decontamination site required. Fire/Hazmat coordinating.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+12",
+      "type": "resource_shortage",
+      "template": "Decon supplies limited. Triage prioritising respiratory cases. Hospital surge expected.",
+      "severity": "high"
+    }
+  ],
+  "decision_branches": [
+    {
+      "branch_id": "evacuate_vs_contain",
+      "keywords": ["evacuate", "contain", "ventilation"],
+      "trigger_condition": "when Fire/Hazmat decides evacuate vs contain and ventilate",
+      "inject_template": "Ventilate and risk spread? Or contain and risk exposure to those inside?"
+    },
+    {
+      "branch_id": "decon_site",
+      "keywords": ["decontamination", "decon", "site"],
+      "trigger_condition": "when coordination selects decontamination site location",
+      "inject_template": "Decon site selection. Upwind? Capacity? Access for ambulances?"
+    }
+  ],
+  "compatible_settings": ["train", "subway", "mall"],
+  "compatible_terrains": ["urban", "mountain"]
+}

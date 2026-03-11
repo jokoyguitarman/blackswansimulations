@@ -1,0 +1,28 @@
+{
+  "id": "mall",
+  "display_name": "Shopping mall",
+  "compatible_terrains": ["urban"],
+  "location_types": [
+    "atrium",
+    "anchor_store",
+    "food_court",
+    "parking",
+    "stairwell",
+    "escalator",
+    "elevator"
+  ],
+  "access_routes": [
+    "main_entrance",
+    "parking_entrance",
+    "service_entrance",
+    "stairwells",
+    "escalators"
+  ],
+  "multi_storey": true,
+  "environmental_seed_variants": [
+    "footfall",
+    "anchor_store_layout",
+    "smoke_spread",
+    "vertical_evacuation"
+  ]
+}

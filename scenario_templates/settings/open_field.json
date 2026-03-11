@@ -1,0 +1,9 @@
+{
+  "id": "open_field",
+  "display_name": "Open field",
+  "compatible_terrains": ["coastal", "urban", "rural", "desert", "jungle", "mountain"],
+  "location_types": ["stage", "entrance", "parking", "perimeter", "water_boundary"],
+  "access_routes": ["main_entrance", "parking", "perimeter", "water_access"],
+  "multi_storey": false,
+  "environmental_seed_variants": ["crowd_density", "cover_availability", "exit_capacity", "weather"]
+}

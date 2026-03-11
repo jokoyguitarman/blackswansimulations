@@ -1,0 +1,9 @@
+{
+  "id": "island",
+  "display_name": "Island",
+  "environmental_factors": ["ferry_schedule", "airstrip", "single_port", "boat_access"],
+  "access_routes": ["ferry", "boat", "airstrip", "port"],
+  "adversary_advantages": ["choke_point_egress", "boat_extraction", "limited_pursuit"],
+  "evacuation_challenges": ["ferry_capacity", "hospital_off_island", "weather_dependent"],
+  "weather_interactions": ["storm", "ferry_cancellation", "sea_state"]
+}

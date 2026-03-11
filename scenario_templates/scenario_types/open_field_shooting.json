@@ -1,0 +1,75 @@
+{
+  "id": "open_field_shooting",
+  "display_name": "Open-field shooting",
+  "category": "terrorism",
+  "required_teams": [
+    {
+      "team_name": "evacuation",
+      "team_description": "Safely evacuate participants, manage bottlenecks, prevent stampede",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "triage",
+      "team_description": "Establish medical triage, prioritize injuries, manage casualty zones",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "media",
+      "team_description": "Manage media relations, counter misinformation, handle communications",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "police",
+      "team_description": "Security response, threat assessment, coordinate with evacuation",
+      "min_participants": 2,
+      "max_participants": 8
+    }
+  ],
+  "environmental_factors": ["crowd_density", "limited_cover", "water_boundary", "exit_capacity"],
+  "adversary_behaviors": ["active_shooter_moving", "visibility_changes", "cover_and_concealment"],
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "field_update",
+      "template": "Shots fired at {venue}. Panic spreads. Active shooter location unknown. Limited cover available.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+5",
+      "type": "field_update",
+      "template": "Conflicting reports on shooter location. Crowd stampede risk at exits. Water boundary may limit escape routes.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+10",
+      "type": "intel_brief",
+      "template": "Shooter last seen near {landmark}. Multiple casualties reported. Crowd density high at main exit.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+12",
+      "type": "field_update",
+      "template": "EMS delayed. Triage site needed. Coordinate evacuation flow to avoid bottleneck.",
+      "severity": "high"
+    }
+  ],
+  "decision_branches": [
+    {
+      "branch_id": "evacuate_vs_shelter",
+      "keywords": ["evacuate", "shelter", "lockdown"],
+      "trigger_condition": "when coordination centre decides evacuate vs shelter-in-place",
+      "inject_template": "Shooter location still unclear. Evacuate now or shelter? Each option has risks."
+    },
+    {
+      "branch_id": "media_statement",
+      "keywords": ["statement", "public", "media"],
+      "trigger_condition": "when media team submits first public statement",
+      "inject_template": "Public statement needed. Avoid revealing tactical information. Calm public."
+    }
+  ],
+  "compatible_settings": ["beach", "open_field"],
+  "compatible_terrains": ["coastal", "urban", "rural", "desert"]
+}

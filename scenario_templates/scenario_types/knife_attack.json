@@ -1,0 +1,80 @@
+{
+  "id": "knife_attack",
+  "display_name": "Knife attack",
+  "category": "terrorism",
+  "required_teams": [
+    {
+      "team_name": "evacuation",
+      "team_description": "Evacuate participants, manage choke points, prevent trampling",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "triage",
+      "team_description": "Establish triage, prioritize stabbing injuries",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "media",
+      "team_description": "Manage media, counter speculation",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "transit_security",
+      "team_description": "Transit security, coordinate station/platform evacuation",
+      "min_participants": 2,
+      "max_participants": 6
+    }
+  ],
+  "environmental_factors": [
+    "choke_points",
+    "enclosed_corridors",
+    "platform_edges",
+    "escalator_safety"
+  ],
+  "adversary_behaviors": ["close_quarters", "blend_in_crowd", "multiple_entry_exit_points"],
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "field_update",
+      "template": "Stabbing reported at {venue}. Attacker may still be on site. Choke points at escalators and platforms.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+5",
+      "type": "field_update",
+      "template": "Conflicting witness reports. Attacker description varies. Multiple exits; attacker could move between them.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+8",
+      "type": "intel_brief",
+      "template": "Attacker seen moving between platforms. Evacuation routes at risk. Transit security coordinating.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+10",
+      "type": "citizen_call",
+      "template": "Injured person at platform edge. Trampling risk. Triage and evacuation coordination needed.",
+      "severity": "high"
+    }
+  ],
+  "decision_branches": [
+    {
+      "branch_id": "stop_trains",
+      "keywords": ["stop", "trains", "halt", "service"],
+      "trigger_condition": "when transit security or coordination decides to halt train service",
+      "inject_template": "Stop all trains? Prevents attacker escape but may strand passengers. Continue service? Risk of attacker moving."
+    },
+    {
+      "branch_id": "platform_order",
+      "keywords": ["platform", "evacuate", "order"],
+      "trigger_condition": "when evacuation team decides platform evacuation order",
+      "inject_template": "Multiple platforms. Which to evacuate first? Attacker location unknown."
+    }
+  ],
+  "compatible_settings": ["subway", "foot_bridge", "mall"],
+  "compatible_terrains": ["urban"]
+}

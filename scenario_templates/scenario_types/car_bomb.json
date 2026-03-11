@@ -1,0 +1,98 @@
+{
+  "id": "car_bomb",
+  "display_name": "Car bomb / suicide bomber",
+  "category": "terrorism",
+  "required_teams": [
+    {
+      "team_name": "evacuation",
+      "team_description": "Evacuate participants, manage bottlenecks, prevent discriminatory segregation",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "triage",
+      "team_description": "Establish triage, prioritize injuries",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "media",
+      "team_description": "Manage media, counter misinformation",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "fire",
+      "team_description": "Fire containment, structural assessment",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "police",
+      "team_description": "Cordon, EOD coordination, security",
+      "min_participants": 2,
+      "max_participants": 8
+    }
+  ],
+  "environmental_factors": [
+    "blast_radius",
+    "secondary_collapse",
+    "vehicle_access",
+    "secondary_fire_risk"
+  ],
+  "adversary_behaviors": ["vehicle_approach", "pedestrian_approach", "possible_second_attacker"],
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "field_update",
+      "template": "Explosion at {venue}. Smoke, debris, casualties. Extent unknown. Blast radius unclear.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+5",
+      "type": "field_update",
+      "template": "Conflicting reports. Possible second device. Suspect may have fled. Vehicle or pedestrian approach?",
+      "severity": "high"
+    },
+    {
+      "timing": "T+10",
+      "type": "intel_brief",
+      "template": "Emergency services delayed. Traffic congestion. Self-manage extended. Ambulance ETA unclear.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+12",
+      "type": "field_update",
+      "template": "Secondary fire risk. Structural damage to nearby buildings. Cordon expansion may be needed.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+15",
+      "type": "media_report",
+      "template": "Viral misinformation: false claims about perpetrator identity. Community tensions rising.",
+      "severity": "critical"
+    }
+  ],
+  "decision_branches": [
+    {
+      "branch_id": "evacuate_together",
+      "keywords": ["evacuate", "together", "everyone"],
+      "trigger_condition": "when evacuation proceeds without demographic segregation",
+      "inject_template": "Evacuation proceeds without segregation. All evacuees use same routes and assembly points."
+    },
+    {
+      "branch_id": "segregate",
+      "keywords": ["separate", "segregate", "demographic"],
+      "trigger_condition": "when evacuation team receives request to segregate by demographic",
+      "inject_template": "Fearful resident requests segregation. Evacuation team must decide: comply or refuse."
+    },
+    {
+      "branch_id": "media_statement",
+      "keywords": ["statement", "misinformation", "counter"],
+      "trigger_condition": "when media team submits first public statement",
+      "inject_template": "Public statement submitted. Does it address misinformation? Verified facts?"
+    }
+  ],
+  "compatible_settings": ["mall", "open_field", "beach", "hotel"],
+  "compatible_terrains": ["urban", "coastal", "rural", "desert"]
+}

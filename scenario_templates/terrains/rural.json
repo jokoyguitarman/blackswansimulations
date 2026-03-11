@@ -1,0 +1,14 @@
+{
+  "id": "rural",
+  "display_name": "Rural",
+  "environmental_factors": [
+    "farm_tracks",
+    "limited_EMS",
+    "sparse_population",
+    "agricultural_roads"
+  ],
+  "access_routes": ["farm_road", "field_access", "helicopter_LZ", "main_highway"],
+  "adversary_advantages": ["remote", "limited_police", "escape_routes"],
+  "evacuation_challenges": ["EMS_response_time", "road_quality", "hospital_distance"],
+  "weather_interactions": ["mud", "flood", "harvest_season"]
+}

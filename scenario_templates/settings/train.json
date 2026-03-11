@@ -1,0 +1,9 @@
+{
+  "id": "train",
+  "display_name": "Train",
+  "compatible_terrains": ["urban", "mountain"],
+  "location_types": ["carriage", "platform", "tunnel", "station"],
+  "access_routes": ["carriage_interior", "platform_egress", "emergency_exits", "tunnel_access"],
+  "multi_storey": false,
+  "environmental_seed_variants": ["crowding", "carriage_layout", "ventilation", "station_access"]
+}

@@ -7,6 +7,7 @@ import { Login } from './pages/Login';
 import { SignUp } from './pages/SignUp';
 import { Dashboard } from './pages/Dashboard';
 import { Scenarios } from './pages/Scenarios';
+import { WarRoom } from './pages/WarRoom';
 import { Sessions } from './pages/Sessions';
 import { SessionView } from './pages/SessionView';
 import { JoinSessionPage } from './pages/JoinSessionPage';
@@ -60,6 +61,14 @@ const App = () => {
               element={
                 <ProtectedRoute>
                   <Scenarios />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/warroom"
+              element={
+                <ProtectedRoute>
+                  <WarRoom />
                 </ProtectedRoute>
               }
             />

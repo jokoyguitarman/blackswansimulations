@@ -1,0 +1,9 @@
+{
+  "id": "coastal",
+  "display_name": "Coastal",
+  "environmental_factors": ["tide", "wind", "boat_access", "beach_access"],
+  "access_routes": ["road", "boat", "beach", "cliff_path"],
+  "adversary_advantages": ["water_egress", "boat_extraction", "beach_approach"],
+  "evacuation_challenges": ["tide_timing", "boat_capacity", "wind_conditions"],
+  "weather_interactions": ["storm", "high_tide", "rip_currents"]
+}

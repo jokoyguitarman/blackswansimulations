@@ -1,0 +1,14 @@
+{
+  "id": "beach",
+  "display_name": "Beach",
+  "compatible_terrains": ["coastal"],
+  "location_types": ["beach_access", "lifeguard_station", "parking_lot", "boardwalk", "restroom"],
+  "access_routes": ["beach_access_points", "parking_lot", "boardwalk", "water_access"],
+  "multi_storey": false,
+  "environmental_seed_variants": [
+    "crowd_density",
+    "tide_level",
+    "weather_visibility",
+    "lifeguard_coverage"
+  ]
+}

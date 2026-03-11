@@ -1,0 +1,9 @@
+{
+  "id": "desert",
+  "display_name": "Desert",
+  "environmental_factors": ["heat", "sandstorm", "long_approach", "water_availability"],
+  "access_routes": ["road", "off_road", "helicopter_LZ", "oasis"],
+  "adversary_advantages": ["heat_delays", "sandstorm_cover", "remote_location"],
+  "evacuation_challenges": ["heat_stress", "EMS_distance", "water_supply"],
+  "weather_interactions": ["sandstorm", "extreme_heat", "flash_flood"]
+}

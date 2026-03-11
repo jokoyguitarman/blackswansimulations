@@ -82,6 +82,8 @@ async function runOverpassQuery(
   way["healthcare"="hospital"](around:${radius},${lat},${lng});
   node["amenity"="police"](around:${radius},${lat},${lng});
   way["amenity"="police"](around:${radius},${lat},${lng});
+  node["amenity"="fire_station"](around:${radius},${lat},${lng});
+  way["amenity"="fire_station"](around:${radius},${lat},${lng});
   way["highway"~"^(primary|secondary|tertiary|trunk|motorway)"](around:${radius},${lat},${lng});
   node["man_made"="surveillance"](around:${radius},${lat},${lng});
   node["surveillance:type"="camera"](around:${radius},${lat},${lng});
@@ -110,11 +112,13 @@ function normalizeToOsmVicinity(
 ): OsmVicinity {
   const hospitals: OsmVicinity['hospitals'] = [];
   const police: OsmVicinity['police'] = [];
+  const fire_stations: OsmVicinity['fire_stations'] = [];
   const emergency_routes: OsmVicinity['emergency_routes'] = [];
   const cctv_or_surveillance: OsmVicinity['cctv_or_surveillance'] = [];
 
   const seenHospitals = new Set<string>();
   const seenPolice = new Set<string>();
+  const seenFireStations = new Set<string>();
   const seenRoutes = new Set<string>();
   const seenCctv = new Set<string>();
 
@@ -139,6 +143,16 @@ function normalizeToOsmVicinity(
       if (!seenPolice.has(key)) {
         seenPolice.add(key);
         police.push({
+          name: getName(el as { tags?: Record<string, string> }),
+          lat: pos.lat,
+          lng: pos.lng,
+          address: getAddress(el as { tags?: Record<string, string> }),
+        });
+      }
+    } else if (tags.amenity === 'fire_station') {
+      if (!seenFireStations.has(key)) {
+        seenFireStations.add(key);
+        fire_stations.push({
           name: getName(el as { tags?: Record<string, string> }),
           lat: pos.lat,
           lng: pos.lng,
@@ -173,9 +187,23 @@ function normalizeToOsmVicinity(
     radius_meters: radiusMeters,
     hospitals: hospitals.length > 0 ? hospitals : undefined,
     police: police.length > 0 ? police : undefined,
+    fire_stations: fire_stations.length > 0 ? fire_stations : undefined,
     emergency_routes: emergency_routes.length > 0 ? emergency_routes : undefined,
     cctv_or_surveillance: cctv_or_surveillance.length > 0 ? cctv_or_surveillance : undefined,
   };
+}
+
+/**
+ * Fetch OSM vicinity by coordinates (no DB update).
+ * Used by War Room to get facility data before scenario exists.
+ */
+export async function fetchOsmVicinityByCoordinates(
+  lat: number,
+  lng: number,
+  radiusMeters: number = 3000,
+): Promise<OsmVicinity> {
+  const { elements } = await runOverpassQuery(lat, lng, radiusMeters);
+  return normalizeToOsmVicinity(elements, { lat, lng }, radiusMeters);
 }
 
 /**
@@ -228,6 +256,7 @@ export async function refreshOsmVicinityForScenario(scenarioId: string): Promise
       scenarioId,
       hospitals: osmVicinity.hospitals?.length ?? 0,
       police: osmVicinity.police?.length ?? 0,
+      fire_stations: osmVicinity.fire_stations?.length ?? 0,
       routes: osmVicinity.emergency_routes?.length ?? 0,
       cctv: osmVicinity.cctv_or_surveillance?.length ?? 0,
     },

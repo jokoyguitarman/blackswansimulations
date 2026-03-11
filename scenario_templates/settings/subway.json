@@ -1,0 +1,14 @@
+{
+  "id": "subway",
+  "display_name": "Subway / Metro",
+  "compatible_terrains": ["urban"],
+  "location_types": ["platform", "tunnel", "escalator", "ticket_hall", "entrance_exit"],
+  "access_routes": ["platform_access", "tunnel_egress", "escalator", "emergency_exits"],
+  "multi_storey": true,
+  "environmental_seed_variants": [
+    "peak_hours",
+    "train_frequency",
+    "ventilation",
+    "platform_crowding"
+  ]
+}

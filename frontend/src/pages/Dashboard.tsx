@@ -41,12 +41,20 @@ export const Dashboard = () => {
               {/* Role-based navigation */}
               <div className="flex items-center space-x-4">
                 {isTrainer && (
-                  <a
-                    href="/scenarios"
-                    className="px-3 py-1 text-xs terminal-text uppercase border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 transition-all"
-                  >
-                    [SCENARIOS]
-                  </a>
+                  <>
+                    <a
+                      href="/scenarios"
+                      className="px-3 py-1 text-xs terminal-text uppercase border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 transition-all"
+                    >
+                      [SCENARIOS]
+                    </a>
+                    <a
+                      href="/warroom"
+                      className="px-3 py-1 text-xs terminal-text uppercase border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 transition-all"
+                    >
+                      [WAR_ROOM]
+                    </a>
+                  </>
                 )}
                 <a
                   href="/sessions"

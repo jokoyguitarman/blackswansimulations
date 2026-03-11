@@ -822,6 +822,27 @@ export const api = {
     },
   },
 
+  // War Room
+  warroom: {
+    generate: async (options: {
+      prompt?: string;
+      scenario_type?: string;
+      setting?: string;
+      terrain?: string;
+      location?: string;
+      complexity_tier?: 'minimal' | 'standard' | 'full' | 'rich';
+    }) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { scenarioId: string } }>(
+        await fetch(apiUrl('/api/warroom/generate'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(options),
+        }),
+      );
+    },
+  },
+
   // Join Link
   join: {
     getInfo: async (joinToken: string) => {

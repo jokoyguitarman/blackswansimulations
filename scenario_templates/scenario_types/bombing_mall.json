@@ -1,0 +1,111 @@
+{
+  "id": "bombing_mall",
+  "display_name": "Mall bombing",
+  "category": "terrorism",
+  "required_teams": [
+    {
+      "team_name": "evacuation",
+      "team_description": "Vertical and horizontal evacuation, stairwell bottlenecks, floor-by-floor priority",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "triage",
+      "team_description": "Establish triage, coordinate with Fire for smoke-free sites",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "media",
+      "team_description": "Manage media, counter misinformation",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "fire",
+      "team_description": "Fire containment, smoke control, structural assessment, search and rescue",
+      "min_participants": 2,
+      "max_participants": 8
+    }
+  ],
+  "environmental_factors": [
+    "vertical_evacuation",
+    "smoke_spread",
+    "stairwell_capacity",
+    "escalator_elevator_safety"
+  ],
+  "adversary_behaviors": ["propaganda_operative", "suicide_attacker_at_crowd_density"],
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "field_update",
+      "template": "A sudden explosion occurs at {venue} central atrium. Smoke, dust, and debris obscure visibility. Panic spreads rapidly across multiple floors. People run toward stairwells and exits. The extent of casualties is unknown.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+4",
+      "type": "field_update",
+      "template": "Secondary fire reported. Smoke spreading to upper floors. Volunteers return with inconsistent casualty counts.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+4",
+      "type": "field_update",
+      "template": "Escalator/elevator hazard. Structural damage suspected. Use stairwells only. Do not use elevators.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+6",
+      "type": "field_update",
+      "template": "Stairwell congestion. Child fallen. Trampling risk. Immediate flow control needed.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+8",
+      "type": "field_update",
+      "template": "Emergency services delayed. Traffic congestion. C2E and Fire must manage longer independently.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+10",
+      "type": "media_report",
+      "template": "Viral video circulates online. Poor visibility leads to false accusations. Online commenters claim attackers from specific community. Video going viral rapidly.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+12",
+      "type": "media_report",
+      "template": "Journalist arrives before emergency services. Begins filming casualties. Asks leading questions. Posting unverified observations online.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+15",
+      "type": "field_update",
+      "template": "Crowd tension escalates. Dispute erupts near evacuation zone. Attendee shouts accusations. Minor altercation. Volunteer confronted.",
+      "severity": "critical"
+    }
+  ],
+  "decision_branches": [
+    {
+      "branch_id": "evacuate_together",
+      "keywords": ["evacuate", "together", "everyone"],
+      "trigger_condition": "when evacuation team decides to evacuate all together without segregation",
+      "inject_template": "Evacuation proceeds without demographic segregation. All evacuees use same routes."
+    },
+    {
+      "branch_id": "segregate",
+      "keywords": ["separate", "segregate", "demographic"],
+      "trigger_condition": "when evacuation team or coordination centre decides to segregate by demographic",
+      "inject_template": "A fearful resident requests segregation. Evacuation team must decide: comply with discriminatory request or refuse and evacuate together."
+    },
+    {
+      "branch_id": "media_statement",
+      "keywords": ["statement", "misinformation", "counter"],
+      "trigger_condition": "when media team submits first public statement",
+      "inject_template": "Public statement submitted. Does it address misinformation? Does it cite verified facts? Designated spokesperson?"
+    }
+  ],
+  "compatible_settings": ["mall"],
+  "compatible_terrains": ["urban"],
+  "multi_storey": true
+}

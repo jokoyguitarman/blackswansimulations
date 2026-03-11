@@ -1,0 +1,9 @@
+{
+  "id": "swamp",
+  "display_name": "Swamp",
+  "environmental_factors": ["flooding", "boat_boardwalk", "soft_ground", "mosquito_risk"],
+  "access_routes": ["boardwalk", "boat", "elevated_road", "helicopter_LZ"],
+  "adversary_advantages": ["water_cover", "boardwalk_ambush", "limited_pursuit"],
+  "evacuation_challenges": ["boat_capacity", "boardwalk_capacity", "EMS_access"],
+  "weather_interactions": ["flood", "storm", "visibility"]
+}

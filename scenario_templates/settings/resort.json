@@ -1,0 +1,15 @@
+{
+  "id": "resort",
+  "display_name": "Resort",
+  "compatible_terrains": ["coastal", "jungle", "mountain"],
+  "location_types": ["lobby", "villa", "pool", "beach_access", "jungle_path", "restaurant", "spa"],
+  "access_routes": ["main_gate", "beach_access", "jungle_path", "boat_dock", "road_access"],
+  "multi_storey": false,
+  "environmental_seed_variants": [
+    "guest_density",
+    "resort_perimeter",
+    "tide",
+    "weather",
+    "jungle_visibility"
+  ]
+}

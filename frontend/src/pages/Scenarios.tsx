@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
 import { CreateScenarioForm } from '../components/Forms/CreateScenarioForm';
@@ -89,9 +90,17 @@ export const Scenarios = () => {
               </p>
             </div>
             {isTrainer && (
-              <button onClick={handleCreateScenario} className="military-button px-6 py-3">
-                [CREATE_SCENARIO]
-              </button>
+              <div className="flex gap-3">
+                <Link
+                  to="/warroom"
+                  className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 transition-all"
+                >
+                  [WAR_ROOM]
+                </Link>
+                <button onClick={handleCreateScenario} className="military-button px-6 py-3">
+                  [CREATE_SCENARIO]
+                </button>
+              </div>
             )}
           </div>
         </div>

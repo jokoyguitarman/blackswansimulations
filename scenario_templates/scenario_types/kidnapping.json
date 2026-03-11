@@ -1,0 +1,96 @@
+{
+  "id": "kidnapping",
+  "display_name": "Kidnapping",
+  "category": "terrorism",
+  "required_teams": [
+    {
+      "team_name": "police",
+      "team_description": "Lead response, perimeter, tactical options",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "negotiation",
+      "team_description": "Hostage negotiation, ransom communication",
+      "min_participants": 1,
+      "max_participants": 4
+    },
+    {
+      "team_name": "intelligence",
+      "team_description": "Intelligence gathering, ingress/egress assessment",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "resort_security",
+      "team_description": "Resort security, perimeter, local knowledge",
+      "min_participants": 2,
+      "max_participants": 6
+    }
+  ],
+  "environmental_factors": [
+    "ingress_routes",
+    "extraction_routes",
+    "weather_visibility",
+    "perimeter_security"
+  ],
+  "adversary_behaviors": ["movement_between_locations", "ransom_timing", "threat_escalation"],
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "field_update",
+      "template": "Abduction reported at {venue}. Hostages taken. Perpetrators' location unknown. Number of assailants unclear.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+5",
+      "type": "intel_brief",
+      "template": "Initial intelligence: perpetrators may have local knowledge. Possible extraction routes: {ingress_vector}. Weather affecting visibility.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+10",
+      "type": "intel_brief",
+      "template": "Ransom demand received. Deadline set. Amount specified. Perpetrators may be monitoring media.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+15",
+      "type": "field_update",
+      "template": "Intelligence suggests possible extraction route via {ingress_vector}. Perimeter breach risk. Resort security reports movement.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+20",
+      "type": "political_pressure",
+      "template": "Government/headquarters demands update. Pressure to resolve quickly. Media asking for comment.",
+      "severity": "high"
+    }
+  ],
+  "decision_branches": [
+    {
+      "branch_id": "negotiate_vs_assault",
+      "keywords": ["negotiate", "assault", "storm"],
+      "trigger_condition": "when police/command decides between continued negotiation or tactical assault",
+      "inject_template": "Negotiation has stalled. Perpetrators threaten harm. Tactical team reports assault option viable. Decision required."
+    },
+    {
+      "branch_id": "media_blackout",
+      "keywords": ["blackout", "silence", "release", "media"],
+      "trigger_condition": "when coordination centre decides on media blackout vs controlled release",
+      "inject_template": "Media requesting information. Perpetrators may be monitoring. Blackout could buy time; release could reduce speculation."
+    }
+  ],
+  "setting_overrides": {
+    "resort": {
+      "ingress_vectors": ["jungle_path", "ocean", "direct_assault"],
+      "additional_env_factors": ["tide", "jungle_visibility", "resort_perimeter"]
+    },
+    "hotel": {
+      "ingress_vectors": ["lobby", "service_entrance", "room_invasion"],
+      "additional_env_factors": ["floor_layout", "room_access"]
+    }
+  },
+  "compatible_settings": ["resort", "hotel", "open_field"],
+  "compatible_terrains": ["jungle", "coastal", "mountain", "urban"]
+}

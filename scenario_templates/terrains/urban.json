@@ -1,0 +1,9 @@
+{
+  "id": "urban",
+  "display_name": "Urban",
+  "environmental_factors": ["traffic", "crowds", "utilities", "building_density"],
+  "access_routes": ["road", "pedestrian", "metro", "emergency_lanes"],
+  "adversary_advantages": ["crowd_blend", "multiple_exits", "traffic_chaos"],
+  "evacuation_challenges": ["traffic_congestion", "crowd_management", "EMS_access"],
+  "weather_interactions": ["rain", "heat", "visibility"]
+}

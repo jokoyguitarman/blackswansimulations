@@ -25,6 +25,7 @@ import { teamsRouter } from './routes/teams.js';
 import { objectivesRouter } from './routes/objectives.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { joinRouter } from './routes/join.js';
+import { warroomRouter } from './routes/warroom.js';
 import { setupWebSocket } from './websocket/index.js';
 import { initializeWebSocketService } from './services/websocketService.js';
 import { initializeInjectScheduler } from './services/injectSchedulerService.js';
@@ -159,6 +160,7 @@ app.use('/api/teams', teamsRouter);
 app.use('/api/objectives', objectivesRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/join', joinRouter);
+app.use('/api/warroom', warroomRouter);
 
 // 404 handler
 app.use((req, res) => {

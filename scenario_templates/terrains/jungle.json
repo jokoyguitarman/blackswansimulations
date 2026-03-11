@@ -1,0 +1,9 @@
+{
+  "id": "jungle",
+  "display_name": "Jungle",
+  "environmental_factors": ["canopy_visibility", "trails", "river_crossings", "monsoon_risk"],
+  "access_routes": ["main_trail", "river_crossing", "helicopter_LZ", "boat_access"],
+  "adversary_advantages": ["cover", "local_knowledge", "ambush_points"],
+  "evacuation_challenges": ["narrow_trails", "weather", "limited_EMS_access"],
+  "weather_interactions": ["monsoon", "flash_flood", "visibility_reduction"]
+}
