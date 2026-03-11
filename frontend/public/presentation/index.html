@@ -33,8 +33,15 @@
 
     .main-layout {
       display: flex;
+      flex-direction: row;
       width: 100vw;
       height: 100vh;
+    }
+
+    @media (max-width: 768px) {
+      .main-layout {
+        flex-direction: column;
+      }
     }
 
     .terminal-text {
@@ -97,6 +104,13 @@
       flex: 0 0 50%;
     }
 
+    @media (max-width: 768px) {
+      body.demo-open .deck {
+        flex: 0 0 50%;
+        height: 50vh;
+      }
+    }
+
     .slides {
       display: flex;
       width: 100%;
@@ -113,13 +127,29 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      padding: 3rem;
+      padding: 2rem;
       position: relative;
+    }
+
+    @media (max-width: 768px) {
+      .slide {
+        padding: 1.5rem;
+        height: 50vh;
+      }
+      body:not(.demo-open) .slide {
+        height: 100vh;
+      }
     }
 
     .slide-content {
       max-width: 900px;
       width: 100%;
+    }
+
+    @media (max-width: 768px) {
+      .slide-content {
+        max-width: 100%;
+      }
     }
 
     .slide h1 {
@@ -166,6 +196,13 @@
       margin-top: 1.5rem;
     }
 
+    @media (max-width: 768px) {
+      .feature-grid {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+      }
+    }
+
     .feature-card {
       padding: 1rem 1.25rem;
     }
@@ -193,6 +230,16 @@
       margin: 2rem 0;
     }
 
+    @media (max-width: 768px) {
+      .flow-steps {
+        margin: 1rem 0;
+      }
+      .flow-step {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.75rem;
+      }
+    }
+
     .flow-step {
       padding: 0.75rem 1rem;
       font-size: 0.85rem;
@@ -215,6 +262,16 @@
       padding: 0.6rem 1rem;
       text-align: left;
       border: 1px solid rgba(255, 184, 0, 0.3);
+    }
+
+    @media (max-width: 768px) {
+      .comparison-table {
+        font-size: 0.75rem;
+      }
+      .comparison-table th,
+      .comparison-table td {
+        padding: 0.4rem 0.5rem;
+      }
     }
 
     .comparison-table th {
@@ -308,18 +365,38 @@
     .demo-panel {
       width: 0;
       min-width: 0;
+      height: 0;
       overflow: hidden;
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
       border-left: 2px solid rgba(255, 184, 0, 0.3);
       background: #0a0a0a;
-      transition: min-width 0.3s ease, width 0.3s ease;
+      transition: min-width 0.3s ease, width 0.3s ease, min-height 0.3s ease, height 0.3s ease;
     }
 
     body.demo-open .demo-panel {
       width: 50%;
       min-width: 50%;
+      height: 100%;
+      min-height: 50vh;
+    }
+
+    @media (max-width: 768px) {
+      .demo-panel {
+        width: 100%;
+        min-width: 100%;
+        height: 0;
+        min-height: 0;
+        border-left: none;
+        border-top: 2px solid rgba(255, 184, 0, 0.3);
+      }
+      body.demo-open .demo-panel {
+        width: 100%;
+        min-width: 100%;
+        height: 50vh;
+        min-height: 50vh;
+      }
     }
 
     .demo-panel-header {
@@ -360,52 +437,6 @@
       border: none;
     }
 
-    .demo-panel.iframe-blocked iframe {
-      display: none;
-    }
-
-    .demo-panel-fallback {
-      display: none;
-      flex: 1;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 1rem;
-      padding: 2rem;
-    }
-
-    .demo-panel.iframe-blocked .demo-panel-fallback {
-      display: flex;
-    }
-
-    .demo-panel-fallback p {
-      font-size: 0.9rem;
-      color: rgba(255, 184, 0, 0.8);
-      text-align: center;
-      margin: 0;
-    }
-
-    .demo-open-link {
-      display: inline-flex;
-      align-items: center;
-      padding: 1rem 2rem;
-      border: 2px solid var(--robotic-yellow);
-      background: linear-gradient(135deg, rgba(255, 184, 0, 0.15) 0%, rgba(255, 107, 53, 0.1) 100%);
-      color: var(--robotic-yellow);
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 1rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      text-decoration: none;
-      transition: all 0.3s ease;
-    }
-
-    .demo-open-link:hover {
-      background: linear-gradient(135deg, rgba(255, 184, 0, 0.25) 0%, rgba(255, 107, 53, 0.2) 100%);
-      box-shadow: 0 0 25px rgba(255, 184, 0, 0.4);
-    }
-
     .demo-float {
       position: fixed;
       bottom: 2rem;
@@ -415,6 +446,31 @@
 
     body.demo-open .demo-float {
       right: calc(50% + 1rem);
+    }
+
+    @media (max-width: 768px) {
+      .demo-float {
+        bottom: 1rem;
+        right: 1rem;
+      }
+      body.demo-open .demo-float {
+        right: 1rem;
+        bottom: calc(50vh + 1rem);
+      }
+      .nav-controls {
+        bottom: 1rem;
+      }
+      body.demo-open .nav-controls {
+        left: 50%;
+        bottom: calc(50vh + 1rem);
+      }
+      .slide-counter {
+        top: 0.5rem;
+        right: 1rem;
+      }
+      body.demo-open .slide-counter {
+        right: 1rem;
+      }
     }
 
     .demo-float button {
@@ -647,10 +703,6 @@
       title="Black Swan Simulations – Example Session"
       allow="fullscreen"
     ></iframe>
-    <div class="demo-panel-fallback" id="demoFallback">
-      <p>Open from <strong>blackswansimulations.vercel.app/presentation/</strong> to view the session here, or:</p>
-      <a href="https://blackswansimulations.vercel.app/sessions/94595f22-a41f-49c2-87ee-a9d163d97959" target="_blank" rel="noopener noreferrer" class="demo-open-link">Open in new tab</a>
-    </div>
   </div>
   </div>
 
@@ -666,7 +718,7 @@
   </div>
 
   <script>
-    const SESSION_URL = '/sessions/94595f22-a41f-49c2-87ee-a9d163d97959';
+    const DEMO_URL = 'https://blackswansimulations.vercel.app/sessions/94595f22-a41f-49c2-87ee-a9d163d97959';
     const deck = document.querySelector('.deck');
     const slides = document.getElementById('slides');
     const counter = document.getElementById('counter');
@@ -675,7 +727,6 @@
     const demoToggle = document.getElementById('demoToggle');
     const demoClose = document.getElementById('demoClose');
     const demoFrame = document.getElementById('demoFrame');
-    const demoPanel = document.getElementById('demoPanel');
     const body = document.getElementById('body');
     const totalSlides = 10;
     let currentSlide = 1;
@@ -704,11 +755,7 @@
       body.classList.toggle('demo-open', demoOpen);
       document.getElementById('demoToggleLabel').textContent = demoOpen ? 'Hide Demo' : 'View Live Demo';
       if (demoOpen && !demoFrame.src) {
-        if (window.location.protocol === 'file:') {
-          demoPanel.classList.add('iframe-blocked');
-        } else {
-          demoFrame.src = window.location.origin + SESSION_URL;
-        }
+        demoFrame.src = DEMO_URL;
       }
       setTimeout(updateSlidePosition, 350);
     }

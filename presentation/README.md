@@ -4,8 +4,10 @@ Client-facing pitch deck for organisations (companies, agencies, special forces)
 
 ## How to Run
 
-1. **Deployed (recommended):** Open **https://blackswansimulations.vercel.app/presentation/** — the live demo panel will load the session in the right half.
-2. **Local:** Open `index.html` in a browser — the demo panel shows a fallback link (embedding requires same-origin).
+1. **Deployed:** Open **https://blackswansimulations.vercel.app/presentation/** — the demo panel loads the live session in an iframe.
+2. **Local:** Open `index.html` in a browser — the iframe loads the session (login may be required).
+
+On mobile, the demo opens in the lower half (top/bottom split).
 
 ## Navigation
 
