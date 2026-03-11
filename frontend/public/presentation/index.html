@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Black Swan Simulations – Client Pitch</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --robotic-yellow: #FFB800;
+      --robotic-orange: #FF6B35;
+      --robotic-dark: #0f0f0f;
+      --robotic-green: #00FF88;
+      --robotic-gray-300: #1a1a1a;
+      --robotic-gray-200: #2d2d2d;
+    }
+
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 50%, #0f0f0f 100%);
+      color: var(--robotic-yellow);
+      overflow: hidden;
+      min-height: 100vh;
+    }
+
+    .main-layout {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .terminal-text {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--robotic-yellow);
+      text-shadow: 0 0 10px rgba(255, 184, 0, 0.6), 0 0 20px rgba(255, 184, 0, 0.3);
+    }
+
+    .classified-stamp {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 900;
+      color: var(--robotic-orange);
+      text-shadow: 0 0 10px rgba(255, 107, 53, 0.8), 0 0 20px rgba(255, 107, 53, 0.4);
+      letter-spacing: 0.2em;
+      transform: rotate(-15deg);
+    }
+
+    .military-border {
+      border: 1px solid;
+      border-image: linear-gradient(135deg, var(--robotic-yellow), var(--robotic-orange), var(--robotic-yellow)) 1;
+      background: linear-gradient(135deg, rgba(26, 26, 26, 0.95) 0%, rgba(45, 45, 45, 0.95) 100%);
+      box-shadow: 0 0 20px rgba(255, 184, 0, 0.2), inset 0 0 20px rgba(255, 184, 0, 0.05);
+      backdrop-filter: blur(10px);
+    }
+
+    .scanline {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .scanline::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(255, 184, 0, 0.3), rgba(255, 107, 53, 0.3), transparent);
+      animation: scan 6s linear infinite;
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    @keyframes scan {
+      0% { transform: translateY(0); opacity: 0.3; }
+      50% { opacity: 0.6; }
+      100% { transform: translateY(100vh); opacity: 0.3; }
+    }
+
+    .deck {
+      position: relative;
+      flex: 1;
+      min-width: 0;
+      height: 100vh;
+      overflow: hidden;
+      transition: flex 0.3s ease;
+    }
+
+    body.demo-open .deck {
+      flex: 0 0 50%;
+    }
+
+    .slides {
+      display: flex;
+      width: 100%;
+      height: 100%;
+      transition: transform 0.4s ease-out;
+    }
+
+    .slide {
+      flex: 0 0 100%;
+      width: 100%;
+      min-width: 100%;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 3rem;
+      position: relative;
+    }
+
+    .slide-content {
+      max-width: 900px;
+      width: 100%;
+    }
+
+    .slide h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(2rem, 4vw, 3.5rem);
+      color: var(--robotic-yellow);
+      text-shadow: 0 0 20px rgba(255, 184, 0, 0.5);
+      margin-bottom: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .slide h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+      color: var(--robotic-orange);
+      margin-bottom: 1.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .slide p, .slide li {
+      font-size: clamp(0.9rem, 1.5vw, 1.1rem);
+      color: rgba(255, 184, 0, 0.9);
+      line-height: 1.6;
+      margin-bottom: 0.75rem;
+    }
+
+    .slide ul {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .slide ul li::before {
+      content: '[>] ';
+      color: var(--robotic-orange);
+      margin-right: 0.5rem;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .feature-card {
+      padding: 1rem 1.25rem;
+    }
+
+    .feature-card h3 {
+      font-size: 0.85rem;
+      color: var(--robotic-orange);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+    }
+
+    .feature-card p {
+      font-size: 0.8rem;
+      margin: 0;
+      color: rgba(255, 184, 0, 0.8);
+    }
+
+    .flow-steps {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin: 2rem 0;
+    }
+
+    .flow-step {
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+    }
+
+    .flow-arrow {
+      color: var(--robotic-orange);
+      font-size: 1.25rem;
+    }
+
+    .comparison-table {
+      width: 100%;
+      margin: 1.5rem 0;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    .comparison-table th,
+    .comparison-table td {
+      padding: 0.6rem 1rem;
+      text-align: left;
+      border: 1px solid rgba(255, 184, 0, 0.3);
+    }
+
+    .comparison-table th {
+      color: var(--robotic-orange);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .comparison-table td {
+      color: rgba(255, 184, 0, 0.9);
+    }
+
+    .comparison-table .highlight {
+      color: var(--robotic-green);
+    }
+
+    .nav-controls {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      z-index: 100;
+      transition: left 0.3s ease;
+    }
+
+    body.demo-open .nav-controls {
+      left: 25%;
+    }
+
+    .nav-btn {
+      padding: 0.5rem 1rem;
+      background: linear-gradient(135deg, var(--robotic-yellow), var(--robotic-orange));
+      border: 1px solid rgba(255, 184, 0, 0.5);
+      color: #0f0f0f;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .nav-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 15px rgba(255, 184, 0, 0.4);
+    }
+
+    .nav-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .slide-counter {
+      position: fixed;
+      top: 1rem;
+      right: 1.5rem;
+      font-size: 0.8rem;
+      color: rgba(255, 184, 0, 0.6);
+      z-index: 100;
+      transition: right 0.3s ease;
+    }
+
+    body.demo-open .slide-counter {
+      right: calc(50% + 1.5rem);
+    }
+
+    .title-slide .classified-stamp {
+      position: absolute;
+      top: 2rem;
+      right: 3rem;
+      font-size: 1.25rem;
+    }
+
+    .title-slide h1 {
+      font-size: clamp(2.5rem, 6vw, 4.5rem);
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .title-slide .tagline {
+      font-size: clamp(1rem, 2vw, 1.5rem);
+      text-align: center;
+      color: rgba(255, 184, 0, 0.9);
+    }
+
+    .demo-panel {
+      width: 0;
+      min-width: 0;
+      overflow: hidden;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      border-left: 2px solid rgba(255, 184, 0, 0.3);
+      background: #0a0a0a;
+      transition: min-width 0.3s ease, width 0.3s ease;
+    }
+
+    body.demo-open .demo-panel {
+      width: 50%;
+      min-width: 50%;
+    }
+
+    .demo-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 1rem;
+      border-bottom: 1px solid rgba(255, 184, 0, 0.3);
+      flex-shrink: 0;
+    }
+
+    .demo-panel-header span {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: rgba(255, 184, 0, 0.8);
+    }
+
+    .demo-panel-close {
+      padding: 0.25rem 0.5rem;
+      background: transparent;
+      border: 1px solid rgba(255, 184, 0, 0.5);
+      color: var(--robotic-yellow);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .demo-panel-close:hover {
+      background: rgba(255, 184, 0, 0.1);
+    }
+
+    .demo-panel iframe {
+      flex: 1;
+      width: 100%;
+      min-height: 0;
+      border: none;
+    }
+
+    .demo-panel.iframe-blocked iframe {
+      display: none;
+    }
+
+    .demo-panel-fallback {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      padding: 2rem;
+    }
+
+    .demo-panel.iframe-blocked .demo-panel-fallback {
+      display: flex;
+    }
+
+    .demo-panel-fallback p {
+      font-size: 0.9rem;
+      color: rgba(255, 184, 0, 0.8);
+      text-align: center;
+      margin: 0;
+    }
+
+    .demo-open-link {
+      display: inline-flex;
+      align-items: center;
+      padding: 1rem 2rem;
+      border: 2px solid var(--robotic-yellow);
+      background: linear-gradient(135deg, rgba(255, 184, 0, 0.15) 0%, rgba(255, 107, 53, 0.1) 100%);
+      color: var(--robotic-yellow);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      text-decoration: none;
+      transition: all 0.3s ease;
+    }
+
+    .demo-open-link:hover {
+      background: linear-gradient(135deg, rgba(255, 184, 0, 0.25) 0%, rgba(255, 107, 53, 0.2) 100%);
+      box-shadow: 0 0 25px rgba(255, 184, 0, 0.4);
+    }
+
+    .demo-float {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      z-index: 100;
+    }
+
+    body.demo-open .demo-float {
+      right: calc(50% + 1rem);
+    }
+
+    .demo-float button {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.25rem;
+      border: 1px solid rgba(255, 184, 0, 0.5);
+      background: linear-gradient(135deg, rgba(26, 26, 26, 0.95) 0%, rgba(45, 45, 45, 0.95) 100%);
+      box-shadow: 0 0 20px rgba(255, 184, 0, 0.2), inset 0 0 20px rgba(255, 184, 0, 0.05);
+      backdrop-filter: blur(10px);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--robotic-yellow);
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .demo-float button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 20px rgba(255, 184, 0, 0.4);
+    }
+  </style>
+</head>
+<body class="scanline" id="body">
+  <div class="main-layout">
+  <div class="deck">
+    <div class="slides" id="slides">
+      <!-- Slide 1: Title -->
+      <section class="slide title-slide" data-slide="1">
+        <span class="classified-stamp">CLASSIFIED</span>
+        <div class="slide-content">
+          <h1>Black Swan Simulations</h1>
+          <p class="tagline">Every agency can rehearse chaos — safely.</p>
+          <p class="tagline" style="margin-top: 1.5rem; font-size: 1rem;">Run crisis simulation exercises with us.</p>
+        </div>
+      </section>
+
+      <!-- Slide 2: Problem -->
+      <section class="slide" data-slide="2">
+        <div class="slide-content">
+          <h2>[PROBLEM]</h2>
+          <h1>Crisis Coordination Gaps</h1>
+          <ul>
+            <li>Information blind spots between agencies during real crises</li>
+            <li>Inter-agency friction and unclear chain-of-command</li>
+            <li>Lack of safe rehearsal for high-stakes decisions</li>
+            <li>No structured way to measure coordination effectiveness</li>
+            <li>Traditional tabletop exercises are slow, resource-heavy, and hard to score</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Slide 3: Why Us -->
+      <section class="slide" data-slide="3">
+        <div class="slide-content">
+          <h2>[WHY US]</h2>
+          <h1>Secure, AI-Assisted Crisis Training</h1>
+          <ul>
+            <li>Fictional, non-operational scenarios only — safe to rehearse</li>
+            <li>Focus on information flow, leadership, legal compliance</li>
+            <li>Multi-agency coordination with AI-driven events</li>
+            <li>Designed for companies, agencies, and special forces</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Slide 4: AI & Scoring -->
+      <section class="slide" data-slide="4">
+        <div class="slide-content">
+          <h2>[AI & SCORING]</h2>
+          <h1>Decisions Are Measured, Not Guessed</h1>
+          <div class="feature-grid">
+            <div class="feature-card military-border">
+              <h3>Decision Latency</h3>
+              <p>How quickly decisions are made vs inject timing</p>
+            </div>
+            <div class="feature-card military-border">
+              <h3>Coordination Score</h3>
+              <p>Inter-agency communication, shared channels</p>
+            </div>
+            <div class="feature-card military-border">
+              <h3>Robustness (1–10)</h3>
+              <p>AI rates each decision against sector standards</p>
+            </div>
+            <div class="feature-card military-border">
+              <h3>Impact Matrix</h3>
+              <p>Inter-team impact of decisions</p>
+            </div>
+          </div>
+          <p style="margin-top: 1rem;">AI-generated after-action report with narrative summary and recommendations</p>
+        </div>
+      </section>
+
+      <!-- Slide 5: Branching Outcomes -->
+      <section class="slide" data-slide="5">
+        <div class="slide-content">
+          <h2>[BRANCHING OUTCOMES]</h2>
+          <h1>Different Paths, Different Endings</h1>
+          <ul>
+            <li><strong>Escalation pathways</strong> — Situations worsen when decisions are late or wrong</li>
+            <li><strong>De-escalation pathways</strong> — Situations improve when decisions are timely and appropriate</li>
+            <li><strong>Conditional outcomes</strong> — Degraded vs full effectiveness (e.g. traffic cleared before evacuation)</li>
+            <li><strong>Scenario outcomes depend on accuracy and timeliness</strong> — No two runs are the same</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Slide 6: How It Works -->
+      <section class="slide" data-slide="6">
+        <div class="slide-content">
+          <h2>[HOW IT WORKS]</h2>
+          <h1>Exercise Lifecycle</h1>
+          <div class="flow-steps">
+            <div class="flow-step military-border">Setup</div>
+            <span class="flow-arrow">→</span>
+            <div class="flow-step military-border">Participants Join</div>
+            <span class="flow-arrow">→</span>
+            <div class="flow-step military-border">Live Session</div>
+            <span class="flow-arrow">→</span>
+            <div class="flow-step military-border">After-Action Review</div>
+          </div>
+          <ul>
+            <li>We configure the scenario and assign roles; your team receives invites</li>
+            <li>Participants review briefing, join lobby, session starts when ready</li>
+            <li>AI injects events; teams make decisions, coordinate via chat, negotiate resources</li>
+            <li>Session ends → timeline replay, metrics, AI-generated report, export</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Slide 7: Tabletop vs Digital -->
+      <section class="slide" data-slide="7">
+        <div class="slide-content">
+          <h2>[TABLETOP VS DIGITAL]</h2>
+          <h1>Faster, More Efficient, Measurable</h1>
+          <table class="comparison-table military-border">
+            <thead>
+              <tr>
+                <th>Aspect</th>
+                <th>Traditional Tabletop</th>
+                <th>Black Swan</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Setup</td>
+                <td>Manual, facilitator-heavy</td>
+                <td class="highlight">Digital, automated</td>
+              </tr>
+              <tr>
+                <td>Injects</td>
+                <td>Manual delivery</td>
+                <td class="highlight">AI-driven, timed</td>
+              </tr>
+              <tr>
+                <td>Scoring</td>
+                <td>Subjective, manual</td>
+                <td class="highlight">Automated, AI-scored</td>
+              </tr>
+              <tr>
+                <td>Replay</td>
+                <td>Difficult</td>
+                <td class="highlight">Timeline replay, metrics</td>
+              </tr>
+              <tr>
+                <td>Branching</td>
+                <td>Fixed script</td>
+                <td class="highlight">Dynamic based on decisions</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Slide 8: Scenarios -->
+      <section class="slide" data-slide="8">
+        <div class="slide-content">
+          <h2>[SCENARIOS]</h2>
+          <h1>Example Exercises</h1>
+          <ul>
+            <li><strong>C2E Bombing at Community Event</strong> — 15 injects, 3 teams (Evacuation, Triage, Media), information blind spots, misinformation</li>
+            <li><strong>Christmas Festival Terror Attack</strong> — Multi-agency coordination, delayed emergency services, viral misinformation</li>
+          </ul>
+          <p style="margin-top: 1rem;">Team-specific injects create coordination needs; Media team may see fake intel others don't</p>
+        </div>
+      </section>
+
+      <!-- Slide 9: What You Get -->
+      <section class="slide" data-slide="9">
+        <div class="slide-content">
+          <h2>[WHAT YOU GET]</h2>
+          <h1>Working With Us</h1>
+          <ul>
+            <li><strong>Live demo</strong> — Walkthrough of a scenario with your team</li>
+            <li><strong>Pilot exercise</strong> — Run a full simulation with your organisation</li>
+            <li><strong>Custom scenarios</strong> — Tailored to your sector and objectives</li>
+            <li><strong>Deployment options</strong> — SaaS, on-prem, or air-gapped</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Slide 10: Next Steps -->
+      <section class="slide" data-slide="10">
+        <div class="slide-content">
+          <h2>[NEXT STEPS]</h2>
+          <h1>Get Started</h1>
+          <ul>
+            <li><strong>Schedule a demo</strong> — See the platform in action</li>
+            <li><strong>Run a pilot</strong> — Exercise with your team</li>
+            <li><strong>Deploy</strong> — Choose the deployment model that fits</li>
+          </ul>
+          <p style="margin-top: 2rem; font-size: 1.25rem;">Every agency can rehearse chaos — safely.</p>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="demo-panel" id="demoPanel">
+    <div class="demo-panel-header">
+      <span>Live Session Demo</span>
+      <button class="demo-panel-close" id="demoClose" aria-label="Close demo panel">Close</button>
+    </div>
+    <iframe
+      id="demoFrame"
+      src=""
+      title="Black Swan Simulations – Example Session"
+      allow="fullscreen"
+    ></iframe>
+    <div class="demo-panel-fallback" id="demoFallback">
+      <p>Open from <strong>blackswansimulations.vercel.app/presentation/</strong> to view the session here, or:</p>
+      <a href="https://blackswansimulations.vercel.app/sessions/94595f22-a41f-49c2-87ee-a9d163d97959" target="_blank" rel="noopener noreferrer" class="demo-open-link">Open in new tab</a>
+    </div>
+  </div>
+  </div>
+
+  <div class="slide-counter terminal-text" id="counter">1 / 10</div>
+  <div class="demo-float">
+    <button type="button" id="demoToggle" title="Toggle live demo panel (login may be required)">
+      <span id="demoToggleLabel">View Live Demo</span>
+    </button>
+  </div>
+  <div class="nav-controls">
+    <button class="nav-btn" id="prev" aria-label="Previous slide">« Prev</button>
+    <button class="nav-btn" id="next" aria-label="Next slide">Next »</button>
+  </div>
+
+  <script>
+    const SESSION_URL = '/sessions/94595f22-a41f-49c2-87ee-a9d163d97959';
+    const deck = document.querySelector('.deck');
+    const slides = document.getElementById('slides');
+    const counter = document.getElementById('counter');
+    const prevBtn = document.getElementById('prev');
+    const nextBtn = document.getElementById('next');
+    const demoToggle = document.getElementById('demoToggle');
+    const demoClose = document.getElementById('demoClose');
+    const demoFrame = document.getElementById('demoFrame');
+    const demoPanel = document.getElementById('demoPanel');
+    const body = document.getElementById('body');
+    const totalSlides = 10;
+    let currentSlide = 1;
+    let demoOpen = false;
+
+    function getSlideWidth() {
+      return deck.offsetWidth;
+    }
+
+    function updateSlidePosition() {
+      const w = getSlideWidth();
+      slides.style.transform = `translateX(-${(currentSlide - 1) * w}px)`;
+    }
+
+    function goToSlide(n) {
+      currentSlide = Math.max(1, Math.min(n, totalSlides));
+      updateSlidePosition();
+      counter.textContent = `${currentSlide} / ${totalSlides}`;
+      prevBtn.disabled = currentSlide === 1;
+      nextBtn.disabled = currentSlide === totalSlides;
+      window.location.hash = `slide-${currentSlide}`;
+    }
+
+    function toggleDemo() {
+      demoOpen = !demoOpen;
+      body.classList.toggle('demo-open', demoOpen);
+      document.getElementById('demoToggleLabel').textContent = demoOpen ? 'Hide Demo' : 'View Live Demo';
+      if (demoOpen && !demoFrame.src) {
+        if (window.location.protocol === 'file:') {
+          demoPanel.classList.add('iframe-blocked');
+        } else {
+          demoFrame.src = window.location.origin + SESSION_URL;
+        }
+      }
+      setTimeout(updateSlidePosition, 350);
+    }
+
+    demoToggle.addEventListener('click', toggleDemo);
+    demoClose.addEventListener('click', toggleDemo);
+
+    function initFromHash() {
+      const hash = window.location.hash;
+      const match = hash.match(/slide-(\d+)/);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (n >= 1 && n <= totalSlides) goToSlide(n);
+      }
+    }
+
+    prevBtn.addEventListener('click', () => goToSlide(currentSlide - 1));
+    nextBtn.addEventListener('click', () => goToSlide(currentSlide + 1));
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        e.preventDefault();
+        goToSlide(currentSlide + 1);
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        goToSlide(currentSlide - 1);
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        goToSlide(1);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        goToSlide(totalSlides);
+      }
+    });
+
+    window.addEventListener('hashchange', initFromHash);
+    window.addEventListener('resize', updateSlidePosition);
+    initFromHash();
+    goToSlide(currentSlide);
+  </script>
+</body>
+</html>
