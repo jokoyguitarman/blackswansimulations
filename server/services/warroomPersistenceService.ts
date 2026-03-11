@@ -164,13 +164,15 @@ export async function persistWarroomScenario(
 
     if (decision_injects && decision_injects.length > 0) {
       for (const inj of decision_injects) {
+        const title = inj.title || inj.trigger_condition?.slice(0, 100) || 'Decision point';
+        const content = inj.content || inj.trigger_condition || '';
         const { error: injError } = await supabaseAdmin.from('scenario_injects').insert({
           scenario_id: scenarioId,
           trigger_time_minutes: null,
           trigger_condition: inj.trigger_condition,
           type: normalizeInjectType(inj.type),
-          title: inj.title,
-          content: inj.content,
+          title,
+          content,
           affected_roles: [],
           severity: inj.severity || 'high',
           inject_scope: inj.inject_scope || 'universal',

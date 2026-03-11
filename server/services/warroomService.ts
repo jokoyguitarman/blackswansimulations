@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { logger } from '../lib/logger.js';
 import { geocode } from './geocodingService.js';
 import { fetchOsmVicinityByCoordinates } from './osmVicinityService.js';
 import {
@@ -96,7 +97,18 @@ export async function generateAndPersistWarroomScenario(
   if (parsed.location) {
     geocodeResult = await geocode(parsed.location);
     if (geocodeResult) {
-      osmVicinity = await fetchOsmVicinityByCoordinates(geocodeResult.lat, geocodeResult.lng, 3000);
+      try {
+        osmVicinity = await fetchOsmVicinityByCoordinates(
+          geocodeResult.lat,
+          geocodeResult.lng,
+          3000,
+        );
+      } catch (osmErr) {
+        logger.warn(
+          { err: osmErr, location: parsed.location },
+          'OSM vicinity fetch failed; continuing without',
+        );
+      }
     }
   }
 

@@ -215,13 +215,17 @@ Return ONLY valid JSON matching this schema. No markdown, no explanation.`;
     requires_coordination: inj.requires_coordination ?? false,
   }));
 
-  const decision_injects = (parsed.decision_injects || []).map((inj) => ({
-    ...inj,
-    target_teams: (inj.target_teams || []).filter((t) => teamNames.has(t)),
-    inject_scope: inj.inject_scope || 'universal',
-    requires_response: inj.requires_response ?? false,
-    requires_coordination: inj.requires_coordination ?? false,
-  }));
+  const decision_injects = (parsed.decision_injects || [])
+    .filter((inj) => inj.trigger_condition)
+    .map((inj) => ({
+      ...inj,
+      title: inj.title || inj.trigger_condition?.slice(0, 80) || 'Decision required',
+      content: inj.content || inj.trigger_condition || '',
+      target_teams: (inj.target_teams || []).filter((t) => teamNames.has(t)),
+      inject_scope: inj.inject_scope || 'universal',
+      requires_response: inj.requires_response ?? false,
+      requires_coordination: inj.requires_coordination ?? false,
+    }));
 
   return {
     scenario: {
