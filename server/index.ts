@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import http from 'http';
 import { pinoHttp } from 'pino-http';
 import { env } from './env.js';
@@ -33,6 +33,8 @@ import { initializeAIInjectScheduler } from './services/aiInjectSchedulerService
 import jwt from 'jsonwebtoken';
 
 const app = express();
+// Trust proxy for correct client IP behind Render/Cloudflare
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 
 // WebSocket server
@@ -110,7 +112,9 @@ const limiter = rateLimit({
     } catch {
       // Fall back to IP if token parsing fails
     }
-    return req.ip || req.socket.remoteAddress || 'unknown';
+    const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+    if (ip === 'unknown') return 'unknown';
+    return ipKeyGenerator(ip);
   },
   skip: (req) => {
     return req.path === '/health';
@@ -126,7 +130,11 @@ const joinLimiter = rateLimit({
   message: 'Too many requests. Please try again in a moment.',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip || req.socket.remoteAddress || 'unknown',
+  keyGenerator: (req) => {
+    const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+    if (ip === 'unknown') return 'unknown';
+    return ipKeyGenerator(ip);
+  },
 });
 app.use('/api/join', joinLimiter);
 
