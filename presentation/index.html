@@ -113,16 +113,17 @@
 
     .slides {
       display: flex;
-      width: 100%;
+      width: 1000%;
       height: 100%;
       transition: transform 0.4s ease-out;
-      overflow: hidden;
+      flex-wrap: nowrap;
     }
 
     .slide {
-      flex: 0 0 100%;
-      width: 100%;
-      min-width: 100%;
+      flex: 0 0 10%;
+      width: 10%;
+      min-width: 10%;
+      flex-shrink: 0;
       height: 100vh;
       display: flex;
       flex-direction: column;
@@ -756,7 +757,6 @@
   </div>
 
   <script>
-    const deck = document.querySelector('.deck');
     const slides = document.getElementById('slides');
     const counter = document.getElementById('counter');
     const prevBtn = document.getElementById('prev');
@@ -768,13 +768,9 @@
     let currentSlide = 1;
     let demoOpen = false;
 
-    function getSlideWidth() {
-      return deck.offsetWidth;
-    }
-
     function updateSlidePosition() {
-      const w = getSlideWidth();
-      slides.style.transform = `translateX(-${(currentSlide - 1) * w}px)`;
+      const pct = (currentSlide - 1) * 10;
+      slides.style.transform = `translateX(-${pct}%)`;
     }
 
     function goToSlide(n) {
