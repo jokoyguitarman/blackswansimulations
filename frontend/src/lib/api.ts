@@ -824,6 +824,35 @@ export const api = {
 
   // War Room
   warroom: {
+    suggestTeams: async (options: {
+      prompt?: string;
+      scenario_type?: string;
+      setting?: string;
+      terrain?: string;
+      location?: string;
+    }) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: {
+          suggested_teams: Array<{
+            team_name: string;
+            team_description: string;
+            min_participants?: number;
+            max_participants?: number;
+          }>;
+          scenario_type?: string;
+          setting?: string;
+          terrain?: string;
+          location?: string | null;
+        };
+      }>(
+        await fetch(apiUrl('/api/warroom/suggest-teams'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(options),
+        }),
+      );
+    },
     generate: async (options: {
       prompt?: string;
       scenario_type?: string;
@@ -831,6 +860,12 @@ export const api = {
       terrain?: string;
       location?: string;
       complexity_tier?: 'minimal' | 'standard' | 'full' | 'rich';
+      teams?: Array<{
+        team_name: string;
+        team_description?: string;
+        min_participants?: number;
+        max_participants?: number;
+      }>;
     }) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: { scenarioId: string } }>(
@@ -850,6 +885,12 @@ export const api = {
         terrain?: string;
         location?: string;
         complexity_tier?: 'minimal' | 'standard' | 'full' | 'rich';
+        teams?: Array<{
+          team_name: string;
+          team_description?: string;
+          min_participants?: number;
+          max_participants?: number;
+        }>;
       },
       onProgress: (phase: string, message: string) => void,
     ): Promise<{ scenarioId: string }> => {

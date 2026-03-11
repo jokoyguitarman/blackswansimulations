@@ -78,6 +78,13 @@ export interface WarroomResearchContext {
   standards_summary?: string;
 }
 
+export interface WarroomUserTeam {
+  team_name: string;
+  team_description: string;
+  min_participants: number;
+  max_participants: number;
+}
+
 export interface WarroomGenerateInput {
   scenario_type: string;
   setting: string;
@@ -91,6 +98,7 @@ export interface WarroomGenerateInput {
   settingSpec: Record<string, unknown>;
   terrainSpec: Record<string, unknown>;
   researchContext?: WarroomResearchContext;
+  userTeams?: WarroomUserTeam[];
 }
 
 export type WarroomAiProgressCallback = (message: string) => void;
@@ -174,6 +182,7 @@ function getRequiredTeamsFromTemplate(
 
 /**
  * Phase 1: Generate teams and core scenario (title, description, briefing, objectives).
+ * When userTeams provided, only generates core scenario; uses userTeams as teams.
  */
 async function generateTeamsAndCore(
   input: WarroomGenerateInput,
@@ -184,7 +193,10 @@ async function generateTeamsAndCore(
   teams: WarroomScenarioPayload['teams'];
   objectives: WarroomScenarioPayload['objectives'];
 }> {
-  onProgress?.('Generating teams and core scenario...');
+  const hasUserTeams = input.userTeams && input.userTeams.length > 0;
+  onProgress?.(
+    hasUserTeams ? 'Generating core scenario...' : 'Generating teams and core scenario...',
+  );
 
   const {
     scenario_type,
@@ -196,12 +208,24 @@ async function generateTeamsAndCore(
     settingSpec,
     terrainSpec,
     researchContext,
+    userTeams,
   } = input;
   const venue = venue_name || location || setting;
   const researchBlock =
     researchContext?.area_summary || researchContext?.standards_summary
       ? `\nResearch context:\n${researchContext?.area_summary || ''}\n${researchContext?.standards_summary || ''}`
       : '';
+
+  const teamsBlock = hasUserTeams
+    ? ''
+    : `,
+  "teams": [
+    { "team_name": "string", "team_description": "string", "min_participants": 2, "max_participants": 8 },
+    ...
+  ]`;
+  const teamsRule = hasUserTeams
+    ? ''
+    : '\n- You MUST include at least 4 teams. Use required_teams from the scenario type template as a base; you may add or adapt.';
 
   const systemPrompt = `You are an expert crisis management scenario designer.
 
@@ -228,24 +252,21 @@ Return ONLY valid JSON in this exact structure (no markdown, no explanation):
     "category": "terrorism",
     "difficulty": "advanced",
     "duration_minutes": 60
-  },
-  "teams": [
-    { "team_name": "string", "team_description": "string", "min_participants": 2, "max_participants": 8 },
-    ...
-  ],
+  }${teamsBlock},
   "objectives": [
     { "objective_id": "id", "objective_name": "name", "description": "string", "weight": 25 },
     ...
   ]
 }
 
-RULES:
-- You MUST include at least 4 teams. Use required_teams from the scenario type template as a base; you may add or adapt.
+RULES:${teamsRule}
 - description and briefing MUST be non-empty (2+ sentences each).
 - objectives array in scenario: 3-5 high-level objectives as strings.
 - objectives array at root: 3-5 detailed objective objects with objective_id, objective_name, description, weight.`;
 
-  const userPrompt = `Create the core scenario and teams for a ${input.complexity_tier} complexity ${scenario_type} at ${venue}.`;
+  const userPrompt = hasUserTeams
+    ? `Create the core scenario for a ${input.complexity_tier} complexity ${scenario_type} at ${venue}.`
+    : `Create the core scenario and teams for a ${input.complexity_tier} complexity ${scenario_type} at ${venue}.`;
 
   const parsed = await callOpenAi<{
     scenario?: {
@@ -264,8 +285,9 @@ RULES:
   }>(systemPrompt, userPrompt, openAiApiKey, 3000);
 
   const templateTeams = getRequiredTeamsFromTemplate(typeSpec);
-  const teams =
-    parsed.teams && parsed.teams.length >= 4
+  const teams = hasUserTeams
+    ? userTeams!
+    : parsed.teams && parsed.teams.length >= 4
       ? parsed.teams
       : templateTeams.length > 0
         ? templateTeams

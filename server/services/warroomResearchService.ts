@@ -51,13 +51,19 @@ export async function researchArea(
 
 /**
  * Research response standards for a scenario type: ICS, WHO MCI, ICRC, media handling.
+ * When teams are provided, includes team-specific protocols (e.g. media, coastguard).
  * Returns empty string on failure so the main flow can continue without research.
  */
 export async function researchStandards(
   openAiApiKey: string,
   scenarioType: string,
+  teams?: string[],
 ): Promise<string> {
-  const prompt = `What are key response standards for ${scenarioType} incidents: ICS structure, WHO MCI triage, ICRC principles, media handling? Return a concise 150-word summary.`;
+  const teamContext =
+    teams && teams.length > 0
+      ? ` Include protocols specific to these teams: ${teams.join(', ')}.`
+      : '';
+  const prompt = `What are key response standards for ${scenarioType} incidents: ICS structure, WHO MCI triage, ICRC principles, media handling?${teamContext} Return a concise 150-word summary.`;
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {

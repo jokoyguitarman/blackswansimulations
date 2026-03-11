@@ -5,6 +5,7 @@ import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
 import {
   generateAndPersistWarroomScenario,
+  suggestWarroomTeams,
   type WarroomProgressPhase,
 } from '../services/warroomService.js';
 import { env } from '../env.js';
@@ -18,6 +19,13 @@ function writeProgress(
 ) {
   res.write(JSON.stringify({ type: 'progress', phase, message }) + '\n');
 }
+
+const teamSchema = z.object({
+  team_name: z.string().min(1).max(100),
+  team_description: z.string().max(500).optional(),
+  min_participants: z.number().int().min(1).max(50).optional(),
+  max_participants: z.number().int().min(1).max(50).optional(),
+});
 
 const generateSchema = z.object({
   body: z.object({
@@ -40,8 +48,74 @@ const generateSchema = z.object({
       .optional(),
     location: z.string().max(500).optional(),
     complexity_tier: z.enum(['minimal', 'standard', 'full', 'rich']).optional(),
+    teams: z.array(teamSchema).optional(),
   }),
 });
+
+const suggestTeamsSchema = z.object({
+  body: z.object({
+    prompt: z.string().max(2000).optional(),
+    scenario_type: z
+      .enum([
+        'open_field_shooting',
+        'knife_attack',
+        'gas_attack',
+        'kidnapping',
+        'car_bomb',
+        'bombing_mall',
+      ])
+      .optional(),
+    setting: z
+      .enum(['beach', 'subway', 'mall', 'resort', 'hotel', 'train', 'open_field'])
+      .optional(),
+    terrain: z
+      .enum(['jungle', 'mountain', 'coastal', 'desert', 'urban', 'rural', 'swamp', 'island'])
+      .optional(),
+    location: z.string().max(500).optional(),
+  }),
+});
+
+router.post(
+  '/suggest-teams',
+  requireAuth,
+  validate(suggestTeamsSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { prompt, scenario_type, setting, terrain, location } = req.body;
+
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only trainers can use the War Room' });
+      }
+
+      if (!env.openAiApiKey) {
+        return res.status(500).json({ error: 'OpenAI API key not configured' });
+      }
+
+      if (!prompt && !scenario_type) {
+        return res
+          .status(400)
+          .json({ error: 'Provide either prompt or scenario_type (with setting, terrain)' });
+      }
+
+      const result = await suggestWarroomTeams(
+        { prompt, scenario_type, setting, terrain, location },
+        env.openAiApiKey,
+      );
+      res.json({ data: result });
+    } catch (err) {
+      const error = err as Error & { statusCode?: number };
+      logger.error({ error: error.message }, 'Error in POST /warroom/suggest-teams');
+      const statusCode =
+        error.statusCode && error.statusCode >= 400 && error.statusCode < 600
+          ? error.statusCode
+          : 500;
+      res.status(statusCode).json({
+        error: error.message || 'Failed to suggest teams',
+      });
+    }
+  },
+);
 
 router.post(
   '/generate',
@@ -50,7 +124,8 @@ router.post(
   async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      const { prompt, scenario_type, setting, terrain, location, complexity_tier } = req.body;
+      const { prompt, scenario_type, setting, terrain, location, complexity_tier, teams } =
+        req.body;
 
       if (user.role !== 'trainer' && user.role !== 'admin') {
         return res.status(403).json({ error: 'Only trainers can use the War Room' });
@@ -79,6 +154,7 @@ router.post(
           terrain,
           location,
           complexity_tier,
+          teams,
         },
         env.openAiApiKey,
         user.id,
@@ -111,7 +187,8 @@ router.post(
   async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      const { prompt, scenario_type, setting, terrain, location, complexity_tier } = req.body;
+      const { prompt, scenario_type, setting, terrain, location, complexity_tier, teams } =
+        req.body;
 
       if (user.role !== 'trainer' && user.role !== 'admin') {
         return res.status(403).json({ error: 'Only trainers can use the War Room' });
@@ -149,6 +226,7 @@ router.post(
           terrain,
           location,
           complexity_tier,
+          teams,
         },
         env.openAiApiKey,
         user.id,

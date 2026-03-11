@@ -20,6 +20,13 @@ import { researchArea, researchStandards } from './warroomResearchService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+export interface WarroomTeamInput {
+  team_name: string;
+  team_description: string;
+  min_participants?: number;
+  max_participants?: number;
+}
+
 export interface WarroomGenerateOptions {
   prompt?: string;
   scenario_type?: string;
@@ -27,6 +34,15 @@ export interface WarroomGenerateOptions {
   terrain?: string;
   location?: string;
   complexity_tier?: 'minimal' | 'standard' | 'full' | 'rich';
+  teams?: WarroomTeamInput[];
+}
+
+export interface WarroomSuggestTeamsResult {
+  suggested_teams: WarroomTeamInput[];
+  scenario_type?: string;
+  setting?: string;
+  terrain?: string;
+  location?: string | null;
 }
 
 export type WarroomProgressPhase =
@@ -60,6 +76,72 @@ function getTemplatesDir(): string {
     if (fs.existsSync(dir)) return dir;
   }
   return path.join(process.cwd(), 'scenario_templates');
+}
+
+function getRequiredTeamsFromTemplate(typeSpec: Record<string, unknown>): WarroomTeamInput[] {
+  const teams = typeSpec.required_teams as
+    | Array<{
+        team_name: string;
+        team_description: string;
+        min_participants?: number;
+        max_participants?: number;
+      }>
+    | undefined;
+  if (!Array.isArray(teams) || teams.length === 0) return [];
+  return teams.map((t) => ({
+    team_name: t.team_name,
+    team_description: t.team_description || '',
+    min_participants: t.min_participants ?? 1,
+    max_participants: t.max_participants ?? 10,
+  }));
+}
+
+/**
+ * Suggest teams from scenario template. Parses prompt if provided.
+ */
+export async function suggestWarroomTeams(
+  options: Pick<
+    WarroomGenerateOptions,
+    'prompt' | 'scenario_type' | 'setting' | 'terrain' | 'location'
+  >,
+  openAiApiKey: string,
+): Promise<WarroomSuggestTeamsResult> {
+  let parsed: ParsedWarroomInput;
+
+  if (options.prompt && !options.scenario_type) {
+    parsed = await parseFreeTextPrompt(options.prompt, openAiApiKey);
+  } else {
+    parsed = {
+      scenario_type: options.scenario_type || 'car_bomb',
+      setting: options.setting || 'open_field',
+      terrain: options.terrain || 'urban',
+      location: options.location || null,
+    };
+  }
+
+  const validation = validateCompatibility(parsed.scenario_type, parsed.setting, parsed.terrain);
+  if (!validation.valid) {
+    throw new Error(validation.message);
+  }
+
+  const templatesDir = getTemplatesDir();
+  const typeSpec = loadJson<Record<string, unknown>>(
+    path.join(templatesDir, 'scenario_types', `${parsed.scenario_type}.json`),
+  );
+
+  if (!typeSpec) {
+    throw new Error(`Failed to load scenario template: ${parsed.scenario_type}`);
+  }
+
+  const suggested_teams = getRequiredTeamsFromTemplate(typeSpec);
+
+  return {
+    suggested_teams,
+    scenario_type: parsed.scenario_type,
+    setting: parsed.setting,
+    terrain: parsed.terrain,
+    location: parsed.location,
+  };
 }
 
 /**
@@ -133,6 +215,8 @@ export async function generateAndPersistWarroomScenario(
   }
 
   const venueName = parsed.location || parsed.setting;
+  const teamNames = options.teams?.map((t) => t.team_name) ?? [];
+
   const [areaSummary, standardsSummary] = await Promise.all([
     parsed.location
       ? (() => {
@@ -142,12 +226,23 @@ export async function generateAndPersistWarroomScenario(
       : Promise.resolve(''),
     (() => {
       onProgress?.('standards_research', 'Researching response standards...');
-      return researchStandards(openAiApiKey, parsed.scenario_type).catch(() => '');
+      return researchStandards(
+        openAiApiKey,
+        parsed.scenario_type,
+        teamNames.length > 0 ? teamNames : undefined,
+      ).catch(() => '');
     })(),
   ]);
 
   onProgress?.('ai', 'Generating scenario world: teams, injects, objectives, locations...');
   const aiProgress = (msg: string) => onProgress?.('ai', msg);
+  const userTeams = options.teams?.map((t) => ({
+    team_name: t.team_name,
+    team_description: t.team_description || '',
+    min_participants: t.min_participants ?? 1,
+    max_participants: t.max_participants ?? 10,
+  }));
+
   const payload = await warroomGenerateScenario(
     {
       scenario_type: parsed.scenario_type,
@@ -174,6 +269,7 @@ export async function generateAndPersistWarroomScenario(
               standards_summary: standardsSummary || undefined,
             }
           : undefined,
+      userTeams,
     },
     openAiApiKey,
     aiProgress,

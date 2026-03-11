@@ -3,6 +3,13 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
 
+type TeamEntry = {
+  team_name: string;
+  team_description: string;
+  min_participants: number;
+  max_participants: number;
+};
+
 const SCENARIO_TYPES = [
   { id: 'open_field_shooting', label: 'Open-field shooting' },
   { id: 'knife_attack', label: 'Knife attack' },
@@ -66,6 +73,9 @@ export const WarRoom = () => {
   const [useStructured, setUseStructured] = useState(false);
   const [progressPhase, setProgressPhase] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState<string>('');
+  const [step, setStep] = useState<1 | 2>(1);
+  const [teams, setTeams] = useState<TeamEntry[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
 
   if (!isTrainer) {
     return (
@@ -80,27 +90,64 @@ export const WarRoom = () => {
     );
   }
 
+  const buildOptions = () => {
+    const opts: Parameters<typeof api.warroom.generateStream>[0] = {
+      complexity_tier: complexityTier,
+    };
+    if (useStructured && scenarioType) {
+      opts.scenario_type = scenarioType;
+      opts.setting = setting || undefined;
+      opts.terrain = terrain || undefined;
+      opts.location = location || undefined;
+    } else if (prompt.trim()) {
+      opts.prompt = prompt.trim();
+    }
+    return opts;
+  };
+
+  const handleNext = async () => {
+    setError(null);
+    if (useStructured && !scenarioType) {
+      setError('Select scenario type, setting, and terrain.');
+      return;
+    }
+    if (!useStructured && !prompt.trim()) {
+      setError('Provide a prompt or select scenario type, setting, and terrain.');
+      return;
+    }
+    setTeamsLoading(true);
+    try {
+      const opts = buildOptions();
+      const { data } = await api.warroom.suggestTeams(opts);
+      setTeams(
+        data.suggested_teams.map((t) => ({
+          team_name: t.team_name,
+          team_description: t.team_description || '',
+          min_participants: t.min_participants ?? 1,
+          max_participants: t.max_participants ?? 10,
+        })),
+      );
+      setStep(2);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load suggested teams');
+    } finally {
+      setTeamsLoading(false);
+    }
+  };
+
   const handleGenerate = async () => {
     setError(null);
     setLoading(true);
     setProgressPhase(null);
     setProgressMessage('');
     try {
-      const options: Parameters<typeof api.warroom.generate>[0] = {
-        complexity_tier: complexityTier,
-      };
-      if (useStructured && scenarioType) {
-        options.scenario_type = scenarioType;
-        options.setting = setting || undefined;
-        options.terrain = terrain || undefined;
-        options.location = location || undefined;
-      } else if (prompt.trim()) {
-        options.prompt = prompt.trim();
-      } else {
-        setError('Provide a prompt or select scenario type, setting, and terrain.');
-        setLoading(false);
-        return;
-      }
+      const options = buildOptions();
+      options.teams = teams.map((t) => ({
+        team_name: t.team_name,
+        team_description: t.team_description,
+        min_participants: t.min_participants,
+        max_participants: t.max_participants,
+      }));
 
       const result = await api.warroom.generateStream(options, (phase, message) => {
         setProgressPhase(phase);
@@ -118,6 +165,24 @@ export const WarRoom = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const updateTeam = (index: number, field: keyof TeamEntry, value: string | number) => {
+    setTeams((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)));
+  };
+  const addTeam = () => {
+    setTeams((prev) => [
+      ...prev,
+      {
+        team_name: 'new_team',
+        team_description: '',
+        min_participants: 1,
+        max_participants: 10,
+      },
+    ]);
+  };
+  const removeTeam = (index: number) => {
+    setTeams((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -140,7 +205,7 @@ export const WarRoom = () => {
           </p>
         </div>
 
-        <div className="military-border p-6 mb-6">
+        <div className={`military-border p-6 mb-6 ${step !== 1 ? 'hidden' : ''}`}>
           <div className="flex gap-4 mb-4">
             <button
               onClick={() => setUseStructured(false)}
@@ -277,6 +342,89 @@ export const WarRoom = () => {
           </div>
         </div>
 
+        {step === 2 && (
+          <div className="military-border p-6 mb-6">
+            <h3 className="text-lg terminal-text uppercase mb-4">[CONFIGURE TEAMS]</h3>
+            <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
+              Add, remove, or rename teams. These will be used for standards research and inject
+              targeting.
+            </p>
+            <div className="space-y-3 mb-4">
+              {teams.map((t, i) => (
+                <div
+                  key={i}
+                  className="border border-robotic-yellow/50 p-4 bg-black/30 flex flex-col gap-2"
+                >
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      value={t.team_name}
+                      onChange={(e) => updateTeam(i, 'team_name', e.target.value)}
+                      placeholder="team_name"
+                      className="flex-1 px-3 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
+                      disabled={loading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeTeam(i)}
+                      disabled={loading || teams.length <= 1}
+                      className="px-3 py-2 text-xs terminal-text text-robotic-orange hover:bg-robotic-orange/10 disabled:opacity-50"
+                    >
+                      [REMOVE]
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={t.team_description}
+                    onChange={(e) => updateTeam(i, 'team_description', e.target.value)}
+                    placeholder="Team description"
+                    className="px-3 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
+                    disabled={loading}
+                  />
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 text-xs terminal-text text-robotic-yellow/70">
+                      Min:
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={t.min_participants}
+                        onChange={(e) =>
+                          updateTeam(i, 'min_participants', parseInt(e.target.value, 10) || 1)
+                        }
+                        className="w-16 px-2 py-1 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow"
+                        disabled={loading}
+                      />
+                    </label>
+                    <label className="flex items-center gap-2 text-xs terminal-text text-robotic-yellow/70">
+                      Max:
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={t.max_participants}
+                        onChange={(e) =>
+                          updateTeam(i, 'max_participants', parseInt(e.target.value, 10) || 10)
+                        }
+                        className="w-16 px-2 py-1 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow"
+                        disabled={loading}
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={addTeam}
+              disabled={loading}
+              className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow border border-robotic-yellow/50 px-3 py-2"
+            >
+              [+ ADD TEAM]
+            </button>
+          </div>
+        )}
+
         {error && (
           <div className="military-border p-4 mb-6 border-robotic-orange">
             <p className="text-sm terminal-text text-robotic-orange">{error}</p>
@@ -330,19 +478,46 @@ export const WarRoom = () => {
         )}
 
         <div className="flex gap-4">
-          <button
-            onClick={handleGenerate}
-            disabled={loading}
-            className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? '[GENERATING...] (30–60s)' : '[GENERATE]'}
-          </button>
-          <a
-            href="/scenarios"
-            className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50 transition-all"
-          >
-            [CANCEL]
-          </a>
+          {step === 1 ? (
+            <>
+              <button
+                onClick={handleNext}
+                disabled={loading || teamsLoading}
+                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {teamsLoading ? '[LOADING TEAMS...]' : '[NEXT: CONFIGURE TEAMS]'}
+              </button>
+              <Link
+                to="/scenarios"
+                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50 transition-all"
+              >
+                [CANCEL]
+              </Link>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setStep(1)}
+                disabled={loading}
+                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              >
+                [BACK]
+              </button>
+              <button
+                onClick={handleGenerate}
+                disabled={loading || teams.length === 0}
+                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? '[GENERATING...] (30–60s)' : '[GENERATE]'}
+              </button>
+              <Link
+                to="/scenarios"
+                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50 transition-all"
+              >
+                [CANCEL]
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </div>
