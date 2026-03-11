@@ -841,6 +841,65 @@ export const api = {
         }),
       );
     },
+    /** Stream progress events during generation. onProgress(phase, message) called for each step. */
+    generateStream: async (
+      options: {
+        prompt?: string;
+        scenario_type?: string;
+        setting?: string;
+        terrain?: string;
+        location?: string;
+        complexity_tier?: 'minimal' | 'standard' | 'full' | 'rich';
+      },
+      onProgress: (phase: string, message: string) => void,
+    ): Promise<{ scenarioId: string }> => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl('/api/warroom/generate-stream'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(options),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
+      }
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('Streaming not supported');
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let result: { scenarioId: string } | null = null;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const obj = JSON.parse(line) as {
+              type: string;
+              phase?: string;
+              message?: string;
+              data?: { scenarioId: string };
+              error?: string;
+            };
+            if (obj.type === 'progress' && obj.phase && obj.message) {
+              onProgress(obj.phase, obj.message);
+            } else if (obj.type === 'done' && obj.data?.scenarioId) {
+              result = { scenarioId: obj.data.scenarioId };
+            } else if (obj.type === 'error') {
+              throw new Error(obj.error || 'Generation failed');
+            }
+          } catch (e) {
+            if (e instanceof SyntaxError) continue;
+            throw e;
+          }
+        }
+      }
+      if (!result) throw new Error('No scenario ID returned');
+      return result;
+    },
   },
 
   // Join Link
