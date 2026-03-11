@@ -147,6 +147,7 @@ export async function generateAndPersistWarroomScenario(
   ]);
 
   onProgress?.('ai', 'Generating scenario world: teams, injects, objectives, locations...');
+  const aiProgress = (msg: string) => onProgress?.('ai', msg);
   const payload = await warroomGenerateScenario(
     {
       scenario_type: parsed.scenario_type,
@@ -175,6 +176,7 @@ export async function generateAndPersistWarroomScenario(
           : undefined,
     },
     openAiApiKey,
+    aiProgress,
   );
 
   onProgress?.('persist', 'Saving scenario to database: teams, injects, objectives...');
