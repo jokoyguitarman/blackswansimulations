@@ -1,6 +1,10 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from './websocketService.js';
+import {
+  getConditionConfigForScenario,
+  type KeywordPatternDef,
+} from './scenarioConditionConfigService.js';
 
 /**
  * Scenario State Service - Server-side only
@@ -443,6 +447,40 @@ export async function updateTeamStateFromDecision(
       // Triage counters (handed_over, patients_being_treated, patients_waiting, casualties) are now
       // driven by predetermined rates and robustness in the inject scheduler; no keyword-based bumps.
     }
+    // Config-driven keyword patterns (from scenario type template)
+    if (scenarioId) {
+      try {
+        const config = await getConditionConfigForScenario(scenarioId);
+        const text = `${title} ${description}`.toLowerCase();
+        for (const pattern of config.keyword_patterns as KeywordPatternDef[]) {
+          if (!pattern.state_key || !pattern.keywords?.length) continue;
+          const matches = pattern.keywords.some((kw) => text.includes(kw.toLowerCase()));
+          if (!matches) continue;
+          const [parent, child] = pattern.state_key.split('.');
+          if (!parent || !child) continue;
+          if (parent === 'evacuation_state') {
+            (evacuationState as Record<string, unknown>)[child] = true;
+          } else if (parent === 'triage_state') {
+            (triageState as Record<string, unknown>)[child] = true;
+          } else if (parent === 'media_state') {
+            (mediaState as Record<string, unknown>)[child] = true;
+          } else {
+            let target = currentState[parent] as Record<string, unknown>;
+            if (typeof target !== 'object' || target === null) {
+              target = {};
+              currentState[parent] = target;
+            }
+            (target as Record<string, unknown>)[child] = true;
+          }
+        }
+      } catch (configErr) {
+        logger.debug(
+          { scenarioId, err: configErr },
+          'Condition config fetch failed; using defaults',
+        );
+      }
+    }
+
     if (isMedia) {
       if (
         hasCategory('public_statement') ||

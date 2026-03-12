@@ -42,6 +42,24 @@ export interface WarroomScenarioPayload {
     target_teams: string[];
     requires_response?: boolean;
     requires_coordination?: boolean;
+    conditions_to_appear?: { threshold?: number; conditions?: string[] } | { all: string[] };
+    conditions_to_cancel?: string[];
+    eligible_after_minutes?: number;
+    objective_penalty?: { objective_id: string; reason: string; points: number };
+    state_effect?: Record<string, unknown>;
+  }>;
+  condition_driven_injects?: Array<{
+    title: string;
+    content: string;
+    type: string;
+    severity: string;
+    inject_scope: string;
+    target_teams: string[];
+    conditions_to_appear: { threshold?: number; conditions?: string[] } | { all: string[] };
+    conditions_to_cancel?: string[];
+    eligible_after_minutes?: number;
+    objective_penalty?: { objective_id: string; reason: string; points: number };
+    state_effect?: Record<string, unknown>;
   }>;
   decision_injects?: Array<{
     trigger_condition: string;
@@ -53,6 +71,11 @@ export interface WarroomScenarioPayload {
     target_teams: string[];
     requires_response?: boolean;
     requires_coordination?: boolean;
+    conditions_to_appear?: { threshold?: number; conditions?: string[] } | { all: string[] };
+    conditions_to_cancel?: string[];
+    eligible_after_minutes?: number;
+    objective_penalty?: { objective_id: string; reason: string; points: number };
+    state_effect?: Record<string, unknown>;
   }>;
   locations?: Array<{
     location_type: string;
@@ -70,7 +93,14 @@ export interface WarroomScenarioPayload {
     osm_vicinity?: OsmVicinity;
     sector_standards?: string;
     layout_ground_truth?: Record<string, unknown>;
-    custom_facts?: Record<string, unknown>;
+    site_areas?: Array<Record<string, unknown>>;
+    custom_facts?: Array<{ topic: string; summary: string; detail?: string }>;
+    baseline_escalation_factors?: Array<{
+      id: string;
+      name: string;
+      description: string;
+      severity: string;
+    }>;
   };
 }
 
@@ -584,19 +614,159 @@ RULES:
   return filtered.length > 0 ? filtered : undefined;
 }
 
+const MCI_CONDITION_KEY_NAMES = [
+  'evacuation_no_flow_control_decision',
+  'evacuation_flow_control_decided',
+  'evacuation_exit_bottleneck_active',
+  'evacuation_coordination_not_established',
+  'evacuation_coordination_established',
+  'triage_supply_critical',
+  'triage_supply_low',
+  'triage_surge_active',
+  'triage_no_supply_management_decision',
+  'triage_no_prioritisation_decision',
+  'triage_prioritisation_decided',
+  'triage_supply_request_made',
+  'triage_deaths_on_site_positive',
+  'media_no_statement_by_T12',
+  'media_statement_issued',
+  'media_misinformation_not_addressed',
+  'media_misinformation_addressed',
+  'media_journalist_arrived',
+  'no_media_management_decision',
+  'no_perimeter_establishment_decision',
+  'official_public_statement_issued',
+  'prior_social_media_rumour_inject_fired',
+  'crowd_density_above_0.6',
+];
+
 /**
- * Phase 4: Generate locations and environmental seeds (optional).
+ * Phase 3b: Generate condition-driven injects (perfect storm).
+ * For all scenario types when complexity is full/rich. Uses condition keys from template.
+ */
+async function generateConditionDrivenInjects(
+  input: WarroomGenerateInput,
+  teamNames: string[],
+  openAiApiKey: string,
+  onProgress?: WarroomAiProgressCallback,
+): Promise<WarroomScenarioPayload['condition_driven_injects']> {
+  const includeConditionInjects =
+    input.complexity_tier === 'full' || input.complexity_tier === 'rich';
+  if (!includeConditionInjects) return undefined;
+
+  onProgress?.('Generating condition-driven injects...');
+
+  const { scenario_type, venue_name, location, typeSpec } = input;
+  const venue = venue_name || location || input.setting;
+
+  const templateConditionKeys = (typeSpec.condition_keys as Array<{ key: string }>) ?? [];
+  const keyNames =
+    templateConditionKeys.length > 0
+      ? templateConditionKeys.map((c) => c.key)
+      : MCI_CONDITION_KEY_NAMES;
+  const conditionKeysHint = `Use ONLY these condition keys (unknown keys evaluate to false): ${keyNames.join(', ')}`;
+
+  const systemPrompt = `You are an expert crisis management scenario designer.
+
+Scenario: ${scenario_type} at ${venue}
+Teams: ${teamNames.join(', ')}
+
+Generate condition-driven injects: these fire when conditions_to_appear are met and conditions_to_cancel are not. Use eligible_after_minutes (e.g. 5-10) to avoid firing in first minutes.
+
+${conditionKeysHint}
+
+Return ONLY valid JSON:
+{
+  "condition_driven_injects": [
+    {
+      "title": "string",
+      "content": "string - detailed inject content",
+      "type": "field_update",
+      "severity": "critical|high|medium",
+      "inject_scope": "universal|team_specific",
+      "target_teams": ["evacuation"] or [],
+      "conditions_to_appear": { "threshold": 2, "conditions": ["evacuation_exit_bottleneck_active", "evacuation_no_flow_control_decision"] } OR { "all": ["media_no_statement_by_T12"] },
+      "conditions_to_cancel": ["evacuation_flow_control_decided"],
+      "eligible_after_minutes": 8,
+      "objective_penalty": { "objective_id": "triage", "reason": "Death on site", "points": 15 } (optional),
+      "state_effect": { "triage_state": { "deaths_on_site": 1 } } (optional)
+    }
+  ]
+}
+
+RULES:
+- 2-4 condition-driven injects. Use threshold (N-of-M) or all (every condition must be true).
+- target_teams: subset of team names or [] for universal.
+- objective_penalty: only when inject represents a failure (e.g. death, supply crisis).
+- state_effect: when inject should update session state (e.g. triage_state.deaths_on_site).`;
+
+  const userPrompt = `Create condition-driven injects for ${scenario_type} at ${venue}.`;
+
+  try {
+    const parsed = await callOpenAi<{
+      condition_driven_injects?: WarroomScenarioPayload['condition_driven_injects'];
+    }>(systemPrompt, userPrompt, openAiApiKey, 2000);
+
+    const raw = parsed.condition_driven_injects || [];
+    if (raw.length === 0) return undefined;
+
+    const teamSet = new Set(teamNames);
+    const filtered = raw
+      .filter(
+        (inj) =>
+          inj.title &&
+          inj.conditions_to_appear &&
+          (('conditions' in inj.conditions_to_appear &&
+            inj.conditions_to_appear.conditions?.length) ||
+            ('all' in inj.conditions_to_appear && inj.conditions_to_appear.all?.length)),
+      )
+      .map((inj) => ({
+        title: inj.title,
+        content: inj.content || inj.title,
+        type: normalizeInjectType(inj.type || 'field_update'),
+        severity: inj.severity || 'high',
+        inject_scope: inj.inject_scope || 'universal',
+        target_teams: (inj.target_teams || []).filter((t) => teamSet.has(t)),
+        conditions_to_appear: inj.conditions_to_appear,
+        conditions_to_cancel: inj.conditions_to_cancel ?? [],
+        eligible_after_minutes: inj.eligible_after_minutes ?? 5,
+        objective_penalty: inj.objective_penalty,
+        state_effect: inj.state_effect,
+      }));
+
+    return filtered.length > 0 ? filtered : undefined;
+  } catch (err) {
+    logger.warn({ err }, 'Condition-driven injects generation failed; continuing without');
+    return undefined;
+  }
+}
+
+/**
+ * Phase 4: Generate locations, environmental seeds, layout_ground_truth, site_areas, custom_facts.
  */
 async function generateLocationsAndSeeds(
   input: WarroomGenerateInput,
+  teamNames: string[],
   openAiApiKey: string,
   onProgress?: WarroomAiProgressCallback,
 ): Promise<{
   locations?: WarroomScenarioPayload['locations'];
   environmental_seeds?: WarroomScenarioPayload['environmental_seeds'];
+  layout_ground_truth?: Record<string, unknown>;
+  site_areas?: Array<Record<string, unknown>>;
+  custom_facts?: Array<{ topic: string; summary: string; detail?: string }>;
+  baseline_escalation_factors?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    severity: string;
+  }>;
 }> {
   const includeLocations = input.complexity_tier !== 'minimal';
   const includeEnvSeeds = input.complexity_tier === 'full' || input.complexity_tier === 'rich';
+  const includeInsiderKnowledge =
+    (input.complexity_tier === 'full' || input.complexity_tier === 'rich') &&
+    (includeLocations || includeEnvSeeds);
   if (!includeLocations && !includeEnvSeeds) return {};
 
   onProgress?.('Generating locations and environmental seeds...');
@@ -605,42 +775,72 @@ async function generateLocationsAndSeeds(
   const venue = venue_name || location || setting;
   const coords = geocode ? `Center: ${geocode.lat}, ${geocode.lng}` : 'No coordinates';
 
+  const isMCI = /bombing|mci|mass.?casualty|evacuation|triage|media/i.test(scenario_type);
+  const teamStateKeys = isMCI
+    ? 'evacuation_state, triage_state, media_state'
+    : teamNames.map((t) => `${t.toLowerCase().replace(/\s+/g, '_')}_state`).join(', ');
+  const teamStateHints = isMCI
+    ? 'evacuation_state, triage_state, media_state with exits_congested, flow_control_decided, supply_level, surge_active, first_statement_issued, journalist_arrived'
+    : 'team state keys: ' + teamStateKeys;
+
   const systemPrompt = `You are an expert crisis management scenario designer.
 
 Scenario: ${scenario_type} at ${venue}
 Setting: ${setting}
 Terrain: ${terrain}
+Teams: ${teamNames.join(', ')}
 ${coords}
 
-Return ONLY valid JSON:
-{
-  "locations": [
-    { "location_type": "blast_site", "label": "string", "coordinates": { "lat": 0, "lng": 0 }, "conditions": {}, "display_order": 0 },
-    ...
-  ],
-  "environmental_seeds": [
-    { "variant_label": "string", "seed_data": {}, "display_order": 0 },
-    ...
-  ]
-}
+Return ONLY valid JSON with these keys:
+- locations: array of { location_type, label, coordinates: {lat,lng}, conditions, display_order }
+- environmental_seeds: array of { variant_label, seed_data, display_order }. seed_data MUST include: routes (array of {label, problem?, managed?, travel_time_minutes?}), areas (array of {area_id, label, type?, at_capacity?, capacity?}), and team state: ${teamStateHints}
+- layout_ground_truth: { evacuee_count?, exits: [{id, label, flow_per_min, status, width_m}], zones?, blast_site?: {description} }
+- site_areas: array of { label, capacity_lying?, capacity_standing?, area_m2?, hazards?, vehicle_access?, stretcher_route? }
+- custom_facts: array of { topic, summary, detail? }
+- baseline_escalation_factors: array of { id, name, description, severity } (optional, 2-4 factors that may escalate during the scenario)
 
 RULES:
-- locations: ${includeLocations ? 'Include blast_site, exits, triage_sites; add hospitals/police if coordinates available. 4-8 locations.' : 'Empty array []'}
-- environmental_seeds: ${includeEnvSeeds ? '2 variants with seed_data (e.g. guest_density, weather, perimeter)' : 'Empty array []'}`;
+- locations: ${includeLocations ? 'Include blast_site, exits, triage_sites (or area/cordon for non-MCI); add hospitals/police if coordinates available. 4-8 locations.' : 'Empty array []'}
+- environmental_seeds: ${includeEnvSeeds ? `2 variants. seed_data MUST include routes, areas, and ${teamStateHints}.` : 'Empty array []'}
+- layout_ground_truth: ${includeInsiderKnowledge ? 'For MCI/bombing: evacuee_count, exits with flow_per_min/status, zones, blast_site. For kidnapping: perimeter, ingress/egress, negotiation zones. Omit if not applicable.' : 'null'}
+- site_areas: ${includeInsiderKnowledge ? 'Areas for triage/casualty staging or team operations. Include capacity_lying, capacity_standing, hazards, vehicle_access.' : 'Empty array []'}
+- custom_facts: ${includeInsiderKnowledge ? '3-6 facts: event/incident, verified casualties, information environment, sensitivities, official sources.' : 'Empty array []'}
+- baseline_escalation_factors: ${includeInsiderKnowledge ? '2-4 factors that may escalate (e.g. crowd panic, secondary device, misinformation spread, supply shortage).' : 'Empty array []'}`;
 
-  const userPrompt = `Create locations and environmental seeds for ${scenario_type} at ${venue}.`;
+  const userPrompt = `Create locations and environmental seeds for ${scenario_type} at ${venue}. Teams: ${teamNames.join(', ')}.`;
 
   try {
     const parsed = await callOpenAi<{
       locations?: WarroomScenarioPayload['locations'];
       environmental_seeds?: WarroomScenarioPayload['environmental_seeds'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 2000);
+      layout_ground_truth?: Record<string, unknown>;
+      site_areas?: Array<Record<string, unknown>>;
+      custom_facts?: Array<{ topic: string; summary: string; detail?: string }>;
+      baseline_escalation_factors?: Array<{
+        id: string;
+        name: string;
+        description: string;
+        severity: string;
+      }>;
+    }>(systemPrompt, userPrompt, openAiApiKey, 3000);
 
     return {
       locations: includeLocations && parsed.locations?.length ? parsed.locations : undefined,
       environmental_seeds:
         includeEnvSeeds && parsed.environmental_seeds?.length
           ? parsed.environmental_seeds
+          : undefined,
+      layout_ground_truth:
+        includeInsiderKnowledge && parsed.layout_ground_truth
+          ? parsed.layout_ground_truth
+          : undefined,
+      site_areas:
+        includeInsiderKnowledge && parsed.site_areas?.length ? parsed.site_areas : undefined,
+      custom_facts:
+        includeInsiderKnowledge && parsed.custom_facts?.length ? parsed.custom_facts : undefined,
+      baseline_escalation_factors:
+        includeInsiderKnowledge && parsed.baseline_escalation_factors?.length
+          ? parsed.baseline_escalation_factors
           : undefined,
     };
   } catch (err) {
@@ -669,34 +869,45 @@ export async function warroomGenerateScenario(
     openAiApiKey,
     onProgress,
   );
-  const phase4 = await generateLocationsAndSeeds(input, openAiApiKey, onProgress);
+  const condition_driven_injects = await generateConditionDrivenInjects(
+    input,
+    teamNames,
+    openAiApiKey,
+    onProgress,
+  );
+  const phase4 = await generateLocationsAndSeeds(input, teamNames, openAiApiKey, onProgress);
+
+  const scenarioWithType = {
+    ...phase1.scenario,
+    initial_state: {
+      ...phase1.scenario.initial_state,
+      scenario_type: input.scenario_type,
+    },
+  };
 
   const insiderKnowledge: WarroomScenarioPayload['insider_knowledge'] = {};
   if (osm_vicinity) insiderKnowledge.osm_vicinity = osm_vicinity;
   if (input.researchContext?.standards_summary) {
     insiderKnowledge.sector_standards = input.researchContext.standards_summary;
   }
-  if (Object.keys(insiderKnowledge).length === 0) {
-    return {
-      scenario: phase1.scenario,
-      teams: phase1.teams,
-      objectives: phase1.objectives,
-      time_injects,
-      decision_injects,
-      locations: phase4.locations,
-      environmental_seeds: phase4.environmental_seeds,
-      insider_knowledge: undefined,
-    };
+  if (phase4.layout_ground_truth) insiderKnowledge.layout_ground_truth = phase4.layout_ground_truth;
+  if (phase4.site_areas?.length) insiderKnowledge.site_areas = phase4.site_areas;
+  if (phase4.custom_facts?.length) insiderKnowledge.custom_facts = phase4.custom_facts;
+  if (phase4.baseline_escalation_factors?.length) {
+    insiderKnowledge.baseline_escalation_factors = phase4.baseline_escalation_factors;
   }
 
+  const hasInsiderKnowledge = Object.keys(insiderKnowledge).length > 0;
+
   return {
-    scenario: phase1.scenario,
+    scenario: scenarioWithType,
     teams: phase1.teams,
     objectives: phase1.objectives,
     time_injects,
     decision_injects,
+    condition_driven_injects,
     locations: phase4.locations,
     environmental_seeds: phase4.environmental_seeds,
-    insider_knowledge: insiderKnowledge,
+    insider_knowledge: hasInsiderKnowledge ? insiderKnowledge : undefined,
   };
 }

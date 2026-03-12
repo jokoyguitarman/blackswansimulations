@@ -13,6 +13,7 @@ import {
   evaluateDecisionSemanticConditionKeys,
   DECISION_SEMANTIC_CONDITION_KEYS,
 } from './decisionEvaluationAiService.js';
+import { getConditionConfigForScenario } from './scenarioConditionConfigService.js';
 import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
 import type { Server as SocketServer } from 'socket.io';
@@ -567,6 +568,26 @@ export class InjectSchedulerService {
       if (aiResult !== null) precomputedDecisionKeys = aiResult;
     }
 
+    let scenarioConditionKeyDefs:
+      | Array<{ key: string; state_path?: string; negate?: boolean }>
+      | undefined;
+    try {
+      const config = await getConditionConfigForScenario(session.scenario_id);
+      const defsWithPath = config.condition_keys.filter((c) => c.state_path);
+      if (defsWithPath.length > 0) {
+        scenarioConditionKeyDefs = defsWithPath.map((c) => ({
+          key: c.key,
+          state_path: c.state_path,
+          negate: c.negate,
+        }));
+      }
+    } catch (configErr) {
+      logger.debug(
+        { sessionId: session.id, scenarioId: session.scenario_id, err: configErr },
+        'Condition config fetch failed; using registry only',
+      );
+    }
+
     const evaluationContext: EvaluationContext = {
       sessionId: session.id,
       scenarioId: session.scenario_id,
@@ -579,6 +600,7 @@ export class InjectSchedulerService {
       gateStatusByGateId:
         Object.keys(gateStatusByGateId).length > 0 ? gateStatusByGateId : undefined,
       precomputedDecisionKeys,
+      scenarioConditionKeyDefs,
     };
 
     // --- Time-based injects: publish and optionally run AI cancel for future injects ---

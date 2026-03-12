@@ -107,5 +107,102 @@
   ],
   "compatible_settings": ["mall"],
   "compatible_terrains": ["urban"],
-  "multi_storey": true
+  "multi_storey": true,
+  "condition_keys": [
+    {
+      "key": "evacuation_no_flow_control_decision",
+      "meaning": "No decision matches flow/bottleneck/exit capacity keywords",
+      "team": "evacuation"
+    },
+    {
+      "key": "evacuation_flow_control_decided",
+      "meaning": "evacuation_state.flow_control_decided === true",
+      "team": "evacuation"
+    },
+    {
+      "key": "evacuation_exit_bottleneck_active",
+      "meaning": "exits_congested non-empty (unmanaged)",
+      "team": "evacuation"
+    },
+    {
+      "key": "evacuation_coordination_established",
+      "meaning": "evacuation_state.coordination_with_triage === true",
+      "team": "evacuation"
+    },
+    {
+      "key": "triage_zone_established_as_incident_location",
+      "meaning": "Decision mentions triage zone",
+      "team": "triage"
+    },
+    {
+      "key": "triage_supply_critical",
+      "meaning": "triage_state.supply_level === critical",
+      "team": "triage"
+    },
+    {
+      "key": "triage_surge_active",
+      "meaning": "triage_state.surge_active === true",
+      "team": "triage"
+    },
+    {
+      "key": "triage_no_prioritisation_decision",
+      "meaning": "No decision matches prioritisation keywords",
+      "team": "triage"
+    },
+    {
+      "key": "triage_prioritisation_decided",
+      "meaning": "triage_state.prioritisation_decided === true",
+      "team": "triage"
+    },
+    {
+      "key": "media_statement_issued",
+      "meaning": "media_state.first_statement_issued === true",
+      "team": "media"
+    },
+    {
+      "key": "media_no_statement_by_T12",
+      "meaning": "elapsedMinutes >= 12 and no statement",
+      "team": "media"
+    },
+    {
+      "key": "media_misinformation_addressed",
+      "meaning": "media_state.misinformation_addressed === true",
+      "team": "media"
+    }
+  ],
+  "keyword_patterns": [
+    {
+      "category": "Flow control (evac)",
+      "keywords": ["flow", "bottleneck", "stagger", "congestion", "egress", "exit capacity"],
+      "state_key": "evacuation_state.flow_control_decided"
+    },
+    {
+      "category": "Supply/equipment (triage)",
+      "keywords": ["supply", "request", "tourniquet", "stretcher", "triage tag", "shortage"],
+      "state_key": "triage_state.supply_request_made"
+    },
+    {
+      "category": "Prioritisation (triage)",
+      "keywords": [
+        "prioritise",
+        "critical first",
+        "severity",
+        "triage protocol",
+        "red",
+        "yellow",
+        "green"
+      ],
+      "state_key": "triage_state.prioritisation_decided"
+    },
+    {
+      "category": "Statement (media)",
+      "keywords": ["statement", "press", "announce", "release"],
+      "state_key": "media_state.first_statement_issued"
+    },
+    {
+      "category": "Misinformation (media)",
+      "keywords": ["debunk", "counter", "correct", "misinformation", "rumour", "narrative"],
+      "state_key": "media_state.misinformation_addressed"
+    }
+  ]
 }

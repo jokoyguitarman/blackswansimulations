@@ -41,6 +41,8 @@ export interface EvaluationContext {
   gateStatusByGateId?: Record<string, 'pending' | 'met' | 'not_met'>;
   /** When set, decision-semantic condition keys use these values instead of registry (AI precomputed). */
   precomputedDecisionKeys?: Record<string, boolean>;
+  /** Keys with state_path for generic resolution from currentState (e.g. police_state.perimeter_established). */
+  scenarioConditionKeyDefs?: Array<{ key: string; state_path?: string; negate?: boolean }>;
 }
 
 export type EvaluatorResult =
@@ -388,8 +390,18 @@ conditionRegistry.media_no_regular_updates_decision = (ctx) =>
   getMediaState(ctx).regular_updates_planned !== true;
 
 // ---------------------------------------------------------------------------
-// Internal: resolve one condition key (prefix rules + registry)
+// Internal: resolve one condition key (prefix rules + state_path + registry)
 // ---------------------------------------------------------------------------
+
+function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split('.');
+  let current: unknown = obj;
+  for (const part of parts) {
+    if (current == null || typeof current !== 'object') return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+}
 
 function evaluateKey(key: string, context: EvaluationContext): boolean {
   const prefixPathway = 'prior_pathway_outcome_fired:';
@@ -417,6 +429,15 @@ function evaluateKey(key: string, context: EvaluationContext): boolean {
   if (key.startsWith(prefixGateMet) && context.gateStatusByGateId) {
     const gateId = key.slice(prefixGateMet.length);
     return context.gateStatusByGateId[gateId] === 'met';
+  }
+
+  if (context.scenarioConditionKeyDefs?.length) {
+    const def = context.scenarioConditionKeyDefs.find((d) => d.key === key);
+    if (def?.state_path) {
+      const value = getNestedValue(context.currentState, def.state_path);
+      const resolved = value === true || value === 'true';
+      return def.negate ? !resolved : resolved;
+    }
   }
 
   if (context.precomputedDecisionKeys != null && key in context.precomputedDecisionKeys) {

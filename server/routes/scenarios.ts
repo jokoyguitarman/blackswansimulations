@@ -7,6 +7,7 @@ import { validate } from '../lib/validation.js';
 import { refreshOsmVicinityForScenario } from '../services/osmVicinityService.js';
 import { generateScenarioMaps } from '../services/scenarioMapImageService.js';
 import { uploadScenarioMap } from '../lib/storage.js';
+import { getConditionConfigForScenario } from '../services/scenarioConditionConfigService.js';
 
 const router = Router();
 
@@ -154,6 +155,34 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     res.json({ data });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /scenarios/:id');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get condition config (condition_keys, keyword_patterns) for a scenario
+router.get('/:id/condition-config', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user!;
+
+    const { data: scenario } = await supabaseAdmin
+      .from('scenarios')
+      .select('id')
+      .eq('id', id)
+      .single();
+
+    if (!scenario) {
+      return res.status(404).json({ error: 'Scenario not found' });
+    }
+
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const config = await getConditionConfigForScenario(id);
+    res.json({ data: config });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /scenarios/:id/condition-config');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -92,5 +92,43 @@
     }
   },
   "compatible_settings": ["resort", "hotel", "open_field"],
-  "compatible_terrains": ["jungle", "coastal", "mountain", "urban"]
+  "compatible_terrains": ["jungle", "coastal", "mountain", "urban"],
+  "condition_keys": [
+    {
+      "key": "no_perimeter_establishment_decision",
+      "meaning": "No decision matches perimeter/cordon keywords",
+      "team": "police"
+    },
+    {
+      "key": "official_public_statement_issued",
+      "meaning": "At least one executed decision matches statement/public",
+      "team": "media"
+    },
+    {
+      "key": "police_perimeter_not_established",
+      "meaning": "police_state.perimeter_established !== true",
+      "team": "police",
+      "state_path": "police_state.perimeter_established",
+      "negate": true
+    },
+    {
+      "key": "negotiation_not_initiated",
+      "meaning": "negotiation_state.negotiation_initiated !== true",
+      "team": "negotiation",
+      "state_path": "negotiation_state.negotiation_initiated",
+      "negate": true
+    }
+  ],
+  "keyword_patterns": [
+    {
+      "category": "Perimeter (police)",
+      "keywords": ["perimeter", "cordon", "secure", "contain"],
+      "state_key": "police_state.perimeter_established"
+    },
+    {
+      "category": "Negotiation",
+      "keywords": ["negotiate", "hostage", "ransom", "communicate"],
+      "state_key": "negotiation_state.negotiation_initiated"
+    }
+  ]
 }

@@ -122,6 +122,17 @@ export const api = {
         }),
       );
     },
+    /** Get condition_keys and keyword_patterns for scenario (for TrainerEnvironmentalTruths). */
+    getConditionConfig: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: {
+          condition_keys: Array<{ key: string; meaning: string; team?: string }>;
+          keyword_patterns: Array<{ category: string; keywords: string[]; state_key?: string }>;
+          scenario_type?: string;
+        };
+      }>(await fetch(apiUrl(`/api/scenarios/${id}/condition-config`), { headers }));
+    },
   },
 
   // Sessions

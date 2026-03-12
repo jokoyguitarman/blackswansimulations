@@ -55,6 +55,7 @@ export async function persistWarroomScenario(
     objectives,
     time_injects,
     decision_injects,
+    condition_driven_injects,
     locations,
     environmental_seeds,
     insider_knowledge,
@@ -117,6 +118,11 @@ export async function persistWarroomScenario(
         target_teams: inj.target_teams || [],
         requires_response: inj.requires_response ?? false,
         requires_coordination: inj.requires_coordination ?? false,
+        conditions_to_appear: inj.conditions_to_appear ?? null,
+        conditions_to_cancel: inj.conditions_to_cancel ?? null,
+        eligible_after_minutes: inj.eligible_after_minutes ?? null,
+        objective_penalty: inj.objective_penalty ?? null,
+        state_effect: inj.state_effect ?? null,
         ai_generated: true,
       });
       if (injError) throw new Error(`scenario_injects (time): ${injError.message}`);
@@ -188,9 +194,40 @@ export async function persistWarroomScenario(
           target_teams: inj.target_teams || [],
           requires_response: inj.requires_response ?? false,
           requires_coordination: inj.requires_coordination ?? false,
+          conditions_to_appear: inj.conditions_to_appear ?? null,
+          conditions_to_cancel: inj.conditions_to_cancel ?? null,
+          eligible_after_minutes: inj.eligible_after_minutes ?? null,
+          objective_penalty: inj.objective_penalty ?? null,
+          state_effect: inj.state_effect ?? null,
           ai_generated: true,
         });
         if (injError) throw new Error(`scenario_injects (decision): ${injError.message}`);
+      }
+    }
+
+    if (condition_driven_injects && condition_driven_injects.length > 0) {
+      for (const inj of condition_driven_injects) {
+        const { error: injError } = await supabaseAdmin.from('scenario_injects').insert({
+          scenario_id: scenarioId,
+          trigger_time_minutes: null,
+          trigger_condition: null,
+          type: normalizeInjectType(inj.type),
+          title: inj.title,
+          content: inj.content,
+          affected_roles: [],
+          severity: inj.severity || 'high',
+          inject_scope: normalizeInjectScope(inj.inject_scope),
+          target_teams: inj.target_teams || [],
+          requires_response: true,
+          requires_coordination: false,
+          conditions_to_appear: inj.conditions_to_appear,
+          conditions_to_cancel: inj.conditions_to_cancel?.length ? inj.conditions_to_cancel : null,
+          eligible_after_minutes: inj.eligible_after_minutes ?? null,
+          objective_penalty: inj.objective_penalty ?? null,
+          state_effect: inj.state_effect ?? null,
+          ai_generated: true,
+        });
+        if (injError) throw new Error(`scenario_injects (condition-driven): ${injError.message}`);
       }
     }
 
@@ -213,7 +250,10 @@ export async function persistWarroomScenario(
       {
         scenarioId,
         teams: teams.length,
-        injects: time_injects.length + (decision_injects?.length ?? 0),
+        injects:
+          time_injects.length +
+          (decision_injects?.length ?? 0) +
+          (condition_driven_injects?.length ?? 0),
       },
       'War Room scenario persisted',
     );

@@ -63,9 +63,13 @@ function getAddress(element: { tags?: Record<string, string> }): string | undefi
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
+const OVERPASS_MAX_RETRIES = 3;
+const OVERPASS_BACKOFF_MS = 2000;
+
 /**
  * Build and run Overpass query for a radius around (lat, lng).
  * Returns raw elements (nodes, ways) for hospitals, police, highways, surveillance.
+ * Retries up to 3 times with exponential backoff on 5xx errors.
  */
 async function runOverpassQuery(
   lat: number,
@@ -90,16 +94,44 @@ async function runOverpassQuery(
 );
 out body center;
 `;
-  const res = await fetch(OVERPASS_ENDPOINT, {
-    method: 'POST',
-    body: query,
-    headers: { 'Content-Type': 'text/plain' },
-  });
-  if (!res.ok) {
-    throw new Error(`Overpass API error: ${res.status} ${res.statusText}`);
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < OVERPASS_MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(OVERPASS_ENDPOINT, {
+        method: 'POST',
+        body: query,
+        headers: { 'Content-Type': 'text/plain' },
+      });
+      if (res.ok) {
+        const json = (await res.json()) as { elements?: Array<Record<string, unknown>> };
+        return { elements: json.elements || [] };
+      }
+      lastError = new Error(`Overpass API error: ${res.status} ${res.statusText}`);
+      if (res.status >= 500 && attempt < OVERPASS_MAX_RETRIES - 1) {
+        const delay = OVERPASS_BACKOFF_MS * Math.pow(2, attempt);
+        logger.warn(
+          { attempt: attempt + 1, maxRetries: OVERPASS_MAX_RETRIES, delayMs: delay },
+          'Overpass API 5xx, retrying',
+        );
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw lastError;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < OVERPASS_MAX_RETRIES - 1) {
+        const delay = OVERPASS_BACKOFF_MS * Math.pow(2, attempt);
+        logger.warn(
+          { attempt: attempt + 1, maxRetries: OVERPASS_MAX_RETRIES, delayMs: delay, err },
+          'Overpass API request failed, retrying',
+        );
+        await new Promise((r) => setTimeout(r, delay));
+      } else {
+        throw lastError;
+      }
+    }
   }
-  const json = (await res.json()) as { elements?: Array<Record<string, unknown>> };
-  return { elements: json.elements || [] };
+  throw lastError ?? new Error('Overpass API failed after retries');
 }
 
 /**

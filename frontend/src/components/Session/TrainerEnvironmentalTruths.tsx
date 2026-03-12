@@ -265,6 +265,10 @@ export const TrainerEnvironmentalTruths = ({
     triage_state?: TeamState;
     media_state?: TeamState;
   } | null>(null);
+  const [conditionKeys, setConditionKeys] =
+    useState<Array<{ key: string; meaning: string; team?: string }>>(CONDITION_KEYS);
+  const [keywordPatterns, setKeywordPatterns] =
+    useState<Array<{ category: string; keywords: string[] }>>(KEYWORD_PATTERNS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -283,6 +287,13 @@ export const TrainerEnvironmentalTruths = ({
         .then(
           (r) => (r.data as { insider_knowledge?: InsiderKnowledge })?.insider_knowledge ?? null,
         ),
+      api.scenarios.getConditionConfig(scenarioId).then((r) => {
+        const d = r.data;
+        return {
+          condition_keys: d?.condition_keys ?? CONDITION_KEYS,
+          keyword_patterns: d?.keyword_patterns ?? KEYWORD_PATTERNS,
+        };
+      }),
       api.sessions.getLocations(sessionId).then((r) => {
         const data = r.data as LocationRow[] | undefined;
         return Array.isArray(data) ? data : [];
@@ -307,9 +318,15 @@ export const TrainerEnvironmentalTruths = ({
         };
       }),
     ])
-      .then(([ik, locs, sessionData]) => {
+      .then(([ik, conditionConfig, locs, sessionData]) => {
         if (!cancelled) {
           setInsiderKnowledge((ik as InsiderKnowledge) ?? null);
+          const cc = conditionConfig as {
+            condition_keys: Array<{ key: string; meaning: string; team?: string }>;
+            keyword_patterns: Array<{ category: string; keywords: string[] }>;
+          };
+          if (cc?.condition_keys?.length) setConditionKeys(cc.condition_keys);
+          if (cc?.keyword_patterns?.length) setKeywordPatterns(cc.keyword_patterns);
           setLocations(locs ?? []);
           const sd = sessionData as {
             routes: SessionRoute[];
@@ -667,7 +684,7 @@ export const TrainerEnvironmentalTruths = ({
                 </tr>
               </thead>
               <tbody>
-                {CONDITION_KEYS.map((c) => (
+                {conditionKeys.map((c) => (
                   <tr key={c.key} className="border-b border-robotic-gray-700/50">
                     <td className="py-1 pr-2 font-mono">{c.key}</td>
                     <td className="py-1 pr-2">{c.team ?? '—'}</td>
@@ -692,7 +709,7 @@ export const TrainerEnvironmentalTruths = ({
         </button>
         {expandedSections.keywords && (
           <div className="text-robotic-gray-50 text-xs space-y-2">
-            {KEYWORD_PATTERNS.map((p) => (
+            {keywordPatterns.map((p) => (
               <div key={p.category}>
                 <div className="text-robotic-yellow/70 font-medium">{p.category}</div>
                 <div className="font-mono text-robotic-gray-400 mt-0.5">
