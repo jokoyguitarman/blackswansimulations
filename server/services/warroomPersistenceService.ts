@@ -23,6 +23,15 @@ function normalizeInjectType(type: string): string {
   return VALID_INJECT_TYPES.includes(t) ? t : 'field_update';
 }
 
+function normalizeInjectScope(
+  scope: string | undefined,
+): 'universal' | 'role_specific' | 'team_specific' {
+  const s = (scope ?? 'universal').toLowerCase().replace(/\s+/g, '_');
+  if (s === 'team_specific' || s === 'team') return 'team_specific';
+  if (s === 'role_specific' || s === 'role') return 'role_specific';
+  return 'universal';
+}
+
 export interface PersistOptions {
   center_lat?: number;
   center_lng?: number;
@@ -104,7 +113,7 @@ export async function persistWarroomScenario(
         content: inj.content,
         affected_roles: [],
         severity: inj.severity || 'high',
-        inject_scope: inj.inject_scope || 'universal',
+        inject_scope: normalizeInjectScope(inj.inject_scope),
         target_teams: inj.target_teams || [],
         requires_response: inj.requires_response ?? false,
         requires_coordination: inj.requires_coordination ?? false,
@@ -175,7 +184,7 @@ export async function persistWarroomScenario(
           content,
           affected_roles: [],
           severity: inj.severity || 'high',
-          inject_scope: inj.inject_scope || 'universal',
+          inject_scope: normalizeInjectScope(inj.inject_scope),
           target_teams: inj.target_teams || [],
           requires_response: inj.requires_response ?? false,
           requires_coordination: inj.requires_coordination ?? false,
@@ -190,7 +199,14 @@ export async function persistWarroomScenario(
       options.center_lng != null &&
       options.vicinity_radius_meters != null
     ) {
-      await refreshOsmVicinityForScenario(scenarioId);
+      try {
+        await refreshOsmVicinityForScenario(scenarioId);
+      } catch (osmErr) {
+        logger.warn(
+          { err: osmErr, scenarioId },
+          'OSM vicinity refresh failed during persist; scenario created without real facility data',
+        );
+      }
     }
 
     logger.info(
