@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
 import { CreateSessionModal } from '../components/Forms/CreateSessionModal';
@@ -119,6 +119,14 @@ export const Sessions = () => {
   return (
     <div className="min-h-screen scanline">
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center gap-4 mb-4">
+          <Link
+            to="/dashboard"
+            className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow"
+          >
+            ← [HOME]
+          </Link>
+        </div>
         {/* Header */}
         <div className="military-border p-6 mb-6">
           <div className="flex justify-between items-center">

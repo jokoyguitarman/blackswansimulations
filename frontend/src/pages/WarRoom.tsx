@@ -190,6 +190,12 @@ export const WarRoom = () => {
       <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-4 mb-4">
           <Link
+            to="/dashboard"
+            className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow"
+          >
+            ← [HOME]
+          </Link>
+          <Link
             to="/scenarios"
             className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow"
           >
