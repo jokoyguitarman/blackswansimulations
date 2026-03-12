@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
+import { MapContainer, TileLayer } from 'react-leaflet';
 import { api } from '../../lib/api';
+import { ScenarioLocationMarker, type ScenarioLocationPin } from '../COP/ScenarioLocationMarker';
 
 interface ScenarioFull {
   id: string;
@@ -403,49 +405,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
           )}
 
           {/* ─── MAP PINS ─── */}
-          {activeTab === 'Map Pins' && (
-            <div>
-              {locations.length === 0 ? (
-                <p className="text-sm terminal-text text-robotic-yellow/50">[NO LOCATIONS]</p>
-              ) : (
-                <div className="space-y-2">
-                  {locations.map((loc) => {
-                    const pinCat = loc.conditions?.pin_category as string | undefined;
-                    const narrativeDesc = loc.conditions?.narrative_description as
-                      | string
-                      | undefined;
-                    return (
-                      <div key={loc.id} className="military-border p-4 flex gap-4">
-                        <div className="shrink-0 w-28">
-                          <div className="text-xs terminal-text text-robotic-yellow/50 uppercase">
-                            {pinCat ?? loc.location_type.replace(/_/g, ' ')}
-                          </div>
-                          {loc.coordinates.lat && (
-                            <div className="text-xs terminal-text text-robotic-yellow/30 mt-0.5">
-                              {loc.coordinates.lat.toFixed(4)}, {loc.coordinates.lng?.toFixed(4)}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-sm terminal-text text-robotic-yellow font-medium">
-                            {loc.label}
-                          </div>
-                          {narrativeDesc && (
-                            <p className="text-xs terminal-text text-robotic-yellow/70 mt-0.5">
-                              {narrativeDesc}
-                            </p>
-                          )}
-                          <div className="text-xs terminal-text text-robotic-yellow/40 mt-0.5">
-                            type: {loc.location_type}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+          {activeTab === 'Map Pins' && <MapPinsTab locations={locations} />}
 
           {/* ─── ENV SEEDS ─── */}
           {activeTab === 'Env Seeds' && (
@@ -527,6 +487,114 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
 };
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
+
+const PIN_LEGEND: Array<{ color: string; label: string }> = [
+  { color: '#b91c1c', label: 'Incident site' },
+  { color: '#7c3aed', label: 'Cordon' },
+  { color: '#d97706', label: 'Triage' },
+  { color: '#059669', label: 'Access / route' },
+  { color: '#0284c7', label: 'Command' },
+  { color: '#0891b2', label: 'Staging' },
+  { color: '#4338ca', label: 'POI' },
+  { color: '#4b5563', label: 'Other' },
+];
+
+const MapPinsTab = ({ locations }: { locations: LocationPin[] }) => {
+  if (locations.length === 0) {
+    return <p className="text-sm terminal-text text-robotic-yellow/50">[NO LOCATIONS]</p>;
+  }
+
+  const validPins: ScenarioLocationPin[] = locations
+    .filter((loc) => loc.coordinates.lat != null && loc.coordinates.lng != null)
+    .map((loc) => ({
+      id: loc.id,
+      location_type: loc.location_type,
+      label: loc.label,
+      coordinates: loc.coordinates,
+      conditions: loc.conditions,
+      pin_category: loc.conditions?.pin_category as string | undefined,
+      narrative_description: loc.conditions?.narrative_description as string | undefined,
+    }));
+
+  const mapCenter: [number, number] =
+    validPins.length > 0
+      ? [validPins[0].coordinates.lat!, validPins[0].coordinates.lng!]
+      : [1.2931, 103.8558];
+
+  return (
+    <div className="space-y-4">
+      {/* OSM map */}
+      <div className="military-border overflow-hidden" style={{ height: 440 }}>
+        <MapContainer
+          center={mapCenter}
+          zoom={14}
+          style={{ height: '100%', width: '100%' }}
+          scrollWheelZoom
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          {validPins.map((pin) => (
+            <ScenarioLocationMarker
+              key={pin.id}
+              location={pin}
+              position={[pin.coordinates.lat!, pin.coordinates.lng!]}
+            />
+          ))}
+        </MapContainer>
+      </div>
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-3">
+        {PIN_LEGEND.map((item) => (
+          <div key={item.label} className="flex items-center gap-1.5">
+            <span
+              className="inline-block w-3 h-3 rounded-full border border-white/40 shrink-0"
+              style={{ backgroundColor: item.color }}
+            />
+            <span className="text-xs terminal-text text-robotic-yellow/60">{item.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Pin list */}
+      <div className="space-y-2">
+        {locations.map((loc) => {
+          const pinCat = loc.conditions?.pin_category as string | undefined;
+          const narrativeDesc = loc.conditions?.narrative_description as string | undefined;
+          return (
+            <div key={loc.id} className="military-border p-4 flex gap-4">
+              <div className="shrink-0 w-28">
+                <div className="text-xs terminal-text text-robotic-yellow/50 uppercase">
+                  {pinCat ?? loc.location_type.replace(/_/g, ' ')}
+                </div>
+                {loc.coordinates.lat != null && (
+                  <div className="text-xs terminal-text text-robotic-yellow/30 mt-0.5">
+                    {loc.coordinates.lat.toFixed(4)}, {loc.coordinates.lng?.toFixed(4)}
+                  </div>
+                )}
+              </div>
+              <div className="flex-1">
+                <div className="text-sm terminal-text text-robotic-yellow font-medium">
+                  {loc.label}
+                </div>
+                {narrativeDesc && (
+                  <p className="text-xs terminal-text text-robotic-yellow/70 mt-0.5">
+                    {narrativeDesc}
+                  </p>
+                )}
+                <div className="text-xs terminal-text text-robotic-yellow/40 mt-0.5">
+                  type: {loc.location_type}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 const SEVERITY_BADGE: Record<string, string> = {
   critical: 'bg-red-900/40 text-red-400 border-red-400/50',

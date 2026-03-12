@@ -1,6 +1,10 @@
-# C2E Bombing Scenario Demo
+# Demo Scenarios
 
-This folder contains a pre-configured demo scenario based on the "C2E Bombing at Community Event" document.
+This folder contains pre-configured demo scenarios.
+
+## C2E Bombing at Community Event
+
+Based on the "C2E Bombing at Community Event" document.
 
 ## What's Included
 
@@ -163,9 +167,42 @@ WHERE scenario_id IN (
 );
 ```
 
+---
+
+## Jurong Point Mall Bombing
+
+Based on the "Jurong Point Bombing" document. Same structure as C2E with the addition of a **Fire Department** team and mall-specific challenges (9 storeys, vertical evacuation, fire/smoke).
+
+### Setup
+
+1. Run the seed script in Supabase SQL Editor:
+
+   ```
+   demo/seed_jurong_point_scenario.sql
+   ```
+
+2. (Optional) Run migrations for map/Insider support:
+
+   ```
+   migrations/106_jurong_point_locations_and_env_seeds.sql
+   migrations/107_jurong_point_decision_based_injects.sql
+   ```
+
+3. Create a session and assign 4 teams: **Evacuation**, **Triage**, **Media**, **Fire**
+
+### What's Included
+
+- **4 teams**: Evacuation, Triage, Media, Fire
+- **19 time-based injects** (6 universal + 13 team-specific)
+- **4 Fire Department injects**: Secondary fire, escalator/elevator hazard, smoke spread, structural concern
+- **15 decision-based injects** (via migration 107)
+- **5 objectives**
+
+---
+
 ## Notes
 
-- The scenario is **reusable** - you can create multiple sessions from it
+- Scenarios are **reusable** - you can create multiple sessions from each
 - All injects are **time-based** and will trigger automatically
 - Team assignments are **per-session** - assign teams for each new session
 - The scenario is **inactive by default** - activate it if needed
