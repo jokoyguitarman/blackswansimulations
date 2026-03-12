@@ -118,6 +118,36 @@ const DEFAULT_MEDIA_STATE: MediaStateSeed = {
   robustness_boost: 0,
 };
 
+/** Default states for non-MCI team archetypes. Spread with seed values so richer seeds override. */
+const DEFAULT_POLICE_STATE: Record<string, unknown> = {
+  perimeter_established: false,
+  tactical_team_ready: false,
+  armed_units: 0,
+  inner_cordon_radius_m: 200,
+};
+
+const DEFAULT_NEGOTIATION_STATE: Record<string, unknown> = {
+  contact_established: false,
+  demands_received: false,
+  active_session: false,
+  sessions_count: 0,
+  last_contact_minutes_ago: null,
+};
+
+const DEFAULT_INTELLIGENCE_STATE: Record<string, unknown> = {
+  hostage_count_confirmed: null,
+  threat_level: 'high',
+  perpetrator_count_known: false,
+  inside_intel: false,
+};
+
+const DEFAULT_FIRE_STATE: Record<string, unknown> = {
+  fire_contained: false,
+  entry_safe: false,
+  units_deployed: 0,
+  hotspots: [],
+};
+
 /**
  * Load environmental seed variants for the session's scenario, pick one (at random),
  * merge into current_state.environmental_state, persist and broadcast.
@@ -191,6 +221,26 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
         nextState.media_state = {
           ...DEFAULT_MEDIA_STATE,
           ...(seed.media_state as MediaStateSeed),
+        };
+      } else if (stateKey === 'police_state') {
+        nextState.police_state = {
+          ...DEFAULT_POLICE_STATE,
+          ...(seed.police_state as Record<string, unknown> | undefined),
+        };
+      } else if (stateKey === 'negotiation_state') {
+        nextState.negotiation_state = {
+          ...DEFAULT_NEGOTIATION_STATE,
+          ...(seed.negotiation_state as Record<string, unknown> | undefined),
+        };
+      } else if (stateKey === 'intelligence_state') {
+        nextState.intelligence_state = {
+          ...DEFAULT_INTELLIGENCE_STATE,
+          ...(seed.intelligence_state as Record<string, unknown> | undefined),
+        };
+      } else if (stateKey === 'fire_state') {
+        nextState.fire_state = {
+          ...DEFAULT_FIRE_STATE,
+          ...(seed.fire_state as Record<string, unknown> | undefined),
         };
       } else {
         const teamSeed = seed[stateKey] as Record<string, unknown> | undefined;
