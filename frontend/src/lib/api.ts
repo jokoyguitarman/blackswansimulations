@@ -133,6 +133,73 @@ export const api = {
         };
       }>(await fetch(apiUrl(`/api/scenarios/${id}/condition-config`), { headers }));
     },
+    /** Get all injects for a scenario (trainer only). */
+    getInjects: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          scenario_id: string;
+          trigger_time_minutes: number | null;
+          trigger_condition: string | null;
+          type: string;
+          title: string;
+          content: string;
+          severity: string;
+          inject_scope: string;
+          target_teams: string[] | null;
+          requires_response: boolean;
+          conditions_to_appear: unknown;
+          conditions_to_cancel: string[] | null;
+          eligible_after_minutes: number | null;
+          objective_penalty: unknown;
+          state_effect: unknown;
+          display_order: number | null;
+        }>;
+      }>(await fetch(apiUrl(`/api/scenarios/${id}/injects`), { headers }));
+    },
+    /** Get all teams for a scenario (trainer only). */
+    getTeams: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          scenario_id: string;
+          team_name: string;
+          team_description: string;
+          min_participants: number;
+          max_participants: number;
+        }>;
+      }>(await fetch(apiUrl(`/api/scenarios/${id}/teams`), { headers }));
+    },
+    /** Get all map pin locations for a scenario (trainer only). */
+    getScenarioLocations: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          scenario_id: string;
+          location_type: string;
+          label: string;
+          coordinates: { lat?: number; lng?: number };
+          conditions?: Record<string, unknown>;
+          display_order: number;
+        }>;
+      }>(await fetch(apiUrl(`/api/scenarios/${id}/locations`), { headers }));
+    },
+    /** Get all environmental seeds for a scenario (trainer only). */
+    getSeeds: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          scenario_id: string;
+          variant_label: string;
+          seed_data: Record<string, unknown>;
+          display_order: number;
+        }>;
+      }>(await fetch(apiUrl(`/api/scenarios/${id}/seeds`), { headers }));
+    },
   },
 
   // Sessions

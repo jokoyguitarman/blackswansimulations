@@ -6,6 +6,7 @@
 
 import { logger } from '../lib/logger.js';
 import type { OsmVicinity } from './osmVicinityService.js';
+import { standardsToPromptBlock } from './warroomResearchService.js';
 
 export interface WarroomScenarioPayload {
   scenario: {
@@ -94,6 +95,7 @@ export interface WarroomScenarioPayload {
   insider_knowledge?: {
     osm_vicinity?: OsmVicinity;
     sector_standards?: string;
+    sector_standards_structured?: import('./warroomResearchService.js').StandardsFinding[];
     layout_ground_truth?: Record<string, unknown>;
     site_areas?: Array<Record<string, unknown>>;
     custom_facts?: Array<{ topic: string; summary: string; detail?: string }>;
@@ -108,7 +110,9 @@ export interface WarroomScenarioPayload {
 
 export interface WarroomResearchContext {
   area_summary?: string;
+  /** @deprecated use standards_findings instead */
   standards_summary?: string;
+  standards_findings?: import('./warroomResearchService.js').StandardsFinding[];
 }
 
 export interface WarroomUserTeam {
@@ -116,6 +120,12 @@ export interface WarroomUserTeam {
   team_description: string;
   min_participants: number;
   max_participants: number;
+}
+
+export interface Phase1Result {
+  scenario: WarroomScenarioPayload['scenario'];
+  teams: WarroomScenarioPayload['teams'];
+  objectives: WarroomScenarioPayload['objectives'];
 }
 
 export interface WarroomGenerateInput {
@@ -132,6 +142,8 @@ export interface WarroomGenerateInput {
   terrainSpec: Record<string, unknown>;
   researchContext?: WarroomResearchContext;
   userTeams?: WarroomUserTeam[];
+  /** Pre-computed Phase 1 result; if provided, warroomGenerateScenario skips Phase 1. */
+  phase1Preview?: Phase1Result;
 }
 
 export type WarroomAiProgressCallback = (message: string) => void;
@@ -244,9 +256,15 @@ async function generateTeamsAndCore(
     userTeams,
   } = input;
   const venue = venue_name || location || setting;
+  const standardsBlock =
+    researchContext?.standards_findings && researchContext.standards_findings.length > 0
+      ? `\n\nRESPONSE STANDARDS (use these to make injects and objectives realistic):\n${standardsToPromptBlock(researchContext.standards_findings)}`
+      : researchContext?.standards_summary
+        ? `\nStandards: ${researchContext.standards_summary}`
+        : '';
   const researchBlock =
-    researchContext?.area_summary || researchContext?.standards_summary
-      ? `\nResearch context:\n${researchContext?.area_summary || ''}\n${researchContext?.standards_summary || ''}`
+    researchContext?.area_summary || standardsBlock
+      ? `\nResearch context:\n${researchContext?.area_summary || ''}${standardsBlock}`
       : '';
 
   const teamsBlock = hasUserTeams
@@ -419,9 +437,15 @@ async function generateTimeInjects(
   const osmBlock = osm_vicinity
     ? `\nReal facilities: Hospitals: ${osm_vicinity.hospitals?.map((h) => h.name).join(', ') || 'None'}; Police: ${osm_vicinity.police?.map((p) => p.name).join(', ') || 'None'}; Fire: ${osm_vicinity.fire_stations?.map((f) => f.name).join(', ') || 'None'}`
     : '';
+  const injectStandardsBlock =
+    researchContext?.standards_findings && researchContext.standards_findings.length > 0
+      ? `\n\nSTANDARDS TO GROUND INJECTS IN:\n${standardsToPromptBlock(researchContext.standards_findings)}`
+      : researchContext?.standards_summary
+        ? `\nStandards: ${researchContext.standards_summary}`
+        : '';
   const researchBlock =
-    researchContext?.area_summary || researchContext?.standards_summary
-      ? `\nResearch: ${(researchContext.area_summary || '').slice(0, 500)}`
+    researchContext?.area_summary || injectStandardsBlock
+      ? `\nResearch: ${(researchContext?.area_summary || '').slice(0, 400)}${injectStandardsBlock}`
       : '';
 
   const injectTemplates =
@@ -877,6 +901,12 @@ RULES:
 }
 
 /**
+ * Exported alias so warroomService can run Phase 1 before standards research
+ * and then pass the result back in via input.phase1Preview.
+ */
+export const generateTeamsAndCoreForResearch = generateTeamsAndCore;
+
+/**
  * Generate full scenario payload using multi-phase AI (teams+core → injects → decisions → locations).
  */
 export async function warroomGenerateScenario(
@@ -886,7 +916,9 @@ export async function warroomGenerateScenario(
 ): Promise<WarroomScenarioPayload> {
   const { osm_vicinity } = input;
 
-  const phase1 = await generateTeamsAndCore(input, openAiApiKey, onProgress);
+  // Use pre-computed Phase 1 if provided (narrative-first flow where standards research runs between P1 and P2)
+  const phase1 =
+    input.phase1Preview ?? (await generateTeamsAndCore(input, openAiApiKey, onProgress));
   const teamNames = phase1.teams.map((t) => t.team_name);
 
   const time_injects = await generateTimeInjects(input, teamNames, openAiApiKey, onProgress);
@@ -918,7 +950,15 @@ export async function warroomGenerateScenario(
 
   const insiderKnowledge: WarroomScenarioPayload['insider_knowledge'] = {};
   if (osm_vicinity) insiderKnowledge.osm_vicinity = osm_vicinity;
-  if (input.researchContext?.standards_summary) {
+  if (
+    input.researchContext?.standards_findings &&
+    input.researchContext.standards_findings.length > 0
+  ) {
+    insiderKnowledge.sector_standards_structured = input.researchContext.standards_findings;
+    insiderKnowledge.sector_standards = standardsToPromptBlock(
+      input.researchContext.standards_findings,
+    );
+  } else if (input.researchContext?.standards_summary) {
     insiderKnowledge.sector_standards = input.researchContext.standards_summary;
   }
   if (phase4.layout_ground_truth) insiderKnowledge.layout_ground_truth = phase4.layout_ground_truth;

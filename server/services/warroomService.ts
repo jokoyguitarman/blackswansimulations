@@ -16,7 +16,11 @@ import {
 } from './warroomPromptParser.js';
 import { warroomGenerateScenario, type WarroomScenarioPayload } from './warroomAiService.js';
 import { persistWarroomScenario } from './warroomPersistenceService.js';
-import { researchArea, researchStandards } from './warroomResearchService.js';
+import {
+  researchArea,
+  researchStandards,
+  type StandardsFinding,
+} from './warroomResearchService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -217,23 +221,15 @@ export async function generateAndPersistWarroomScenario(
   const venueName = parsed.location || parsed.setting;
   const teamNames = options.teams?.map((t) => t.team_name) ?? [];
 
-  const [areaSummary, standardsSummary] = await Promise.all([
-    parsed.location
-      ? (() => {
-          onProgress?.('area_research', 'Researching area: geography, agencies...');
-          return researchArea(openAiApiKey, parsed.location!, venueName).catch(() => '');
-        })()
-      : Promise.resolve(''),
-    (() => {
-      onProgress?.('standards_research', 'Researching response standards...');
-      return researchStandards(
-        openAiApiKey,
-        parsed.scenario_type,
-        teamNames.length > 0 ? teamNames : undefined,
-      ).catch(() => '');
-    })(),
-  ]);
+  // Phase A: area research (runs independently of standards)
+  const areaSummary = parsed.location
+    ? await (() => {
+        onProgress?.('area_research', 'Researching area: geography, agencies...');
+        return researchArea(openAiApiKey, parsed.location!, venueName).catch(() => '');
+      })()
+    : '';
 
+  // Phase B: generate core scenario first (Phase 1) so standards research can read the narrative
   onProgress?.('ai', 'Generating scenario world: teams, injects, objectives, locations...');
   const aiProgress = (msg: string) => onProgress?.('ai', msg);
   const userTeams = options.teams?.map((t) => ({
@@ -242,6 +238,54 @@ export async function generateAndPersistWarroomScenario(
     min_participants: t.min_participants ?? 1,
     max_participants: t.max_participants ?? 10,
   }));
+
+  // Run Phase 1 (core + teams) to get the narrative before standards research
+  const { generateTeamsAndCoreForResearch } = await import('./warroomAiService.js');
+  const phase1Preview = await generateTeamsAndCoreForResearch(
+    {
+      scenario_type: parsed.scenario_type,
+      setting: parsed.setting,
+      terrain: parsed.terrain,
+      location: parsed.location,
+      venue_name: parsed.location || parsed.setting,
+      osm_vicinity: osmVicinity,
+      geocode: geocodeResult
+        ? {
+            lat: geocodeResult.lat,
+            lng: geocodeResult.lng,
+            display_name: geocodeResult.display_name,
+          }
+        : undefined,
+      complexity_tier,
+      typeSpec,
+      settingSpec,
+      terrainSpec,
+      userTeams,
+    },
+    openAiApiKey,
+    aiProgress,
+  );
+
+  // Phase C: narrative-driven standards research using the real story
+  onProgress?.(
+    'standards_research',
+    'Researching response standards for this specific scenario...',
+  );
+  let standardsFindings: StandardsFinding[] = [];
+  try {
+    standardsFindings = await researchStandards(
+      openAiApiKey,
+      parsed.scenario_type,
+      teamNames.length > 0 ? teamNames : phase1Preview.teams.map((t) => t.team_name),
+      {
+        title: phase1Preview.scenario.title,
+        description: phase1Preview.scenario.description,
+        briefing: phase1Preview.scenario.briefing,
+      },
+    );
+  } catch (err) {
+    logger.warn({ err }, 'Standards research failed; continuing without');
+  }
 
   const payload = await warroomGenerateScenario(
     {
@@ -263,13 +307,14 @@ export async function generateAndPersistWarroomScenario(
       settingSpec,
       terrainSpec,
       researchContext:
-        areaSummary || standardsSummary
+        areaSummary || standardsFindings.length > 0
           ? {
               area_summary: areaSummary || undefined,
-              standards_summary: standardsSummary || undefined,
+              standards_findings: standardsFindings.length > 0 ? standardsFindings : undefined,
             }
           : undefined,
       userTeams,
+      phase1Preview,
     },
     openAiApiKey,
     aiProgress,

@@ -187,6 +187,102 @@ router.get('/:id/condition-config', requireAuth, async (req: AuthenticatedReques
   }
 });
 
+// Get all injects for a scenario (trainer only)
+router.get('/:id/injects', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const { data, error } = await supabaseAdmin
+      .from('scenario_injects')
+      .select('*')
+      .eq('scenario_id', id)
+      .order('trigger_time_minutes', { ascending: true, nullsFirst: false });
+    if (error) {
+      logger.error({ error, scenarioId: id }, 'Failed to fetch scenario injects');
+      return res.status(500).json({ error: 'Failed to fetch injects' });
+    }
+    res.json({ data: data ?? [] });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /scenarios/:id/injects');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get all teams for a scenario (trainer only)
+router.get('/:id/teams', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const { data, error } = await supabaseAdmin
+      .from('scenario_teams')
+      .select('*')
+      .eq('scenario_id', id)
+      .order('team_name', { ascending: true });
+    if (error) {
+      logger.error({ error, scenarioId: id }, 'Failed to fetch scenario teams');
+      return res.status(500).json({ error: 'Failed to fetch teams' });
+    }
+    res.json({ data: data ?? [] });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /scenarios/:id/teams');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get all locations for a scenario (trainer only)
+router.get('/:id/locations', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const { data, error } = await supabaseAdmin
+      .from('scenario_locations')
+      .select('*')
+      .eq('scenario_id', id)
+      .order('display_order', { ascending: true });
+    if (error) {
+      logger.error({ error, scenarioId: id }, 'Failed to fetch scenario locations');
+      return res.status(500).json({ error: 'Failed to fetch locations' });
+    }
+    res.json({ data: data ?? [] });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /scenarios/:id/locations');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get all environmental seeds for a scenario (trainer only)
+router.get('/:id/seeds', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const { data, error } = await supabaseAdmin
+      .from('scenario_environmental_seeds')
+      .select('*')
+      .eq('scenario_id', id)
+      .order('display_order', { ascending: true });
+    if (error) {
+      logger.error({ error, scenarioId: id }, 'Failed to fetch scenario seeds');
+      return res.status(500).json({ error: 'Failed to fetch seeds' });
+    }
+    res.json({ data: data ?? [] });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /scenarios/:id/seeds');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Create scenario (trainers only)
 router.post(
   '/',
