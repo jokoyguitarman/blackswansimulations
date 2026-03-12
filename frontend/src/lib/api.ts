@@ -158,6 +158,7 @@ export const api = {
           location_type: string;
           label: string;
           coordinates: { lat?: number; lng?: number };
+          conditions?: Record<string, unknown>;
           display_order?: number;
         }>;
         /** Insider categories the user has asked about this session; only those POI pins are shown. */

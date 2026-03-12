@@ -3,15 +3,20 @@ import { DivIcon } from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
 
 /**
- * Scenario location pin (map pin from DB) — label only, no condition details.
- * Step 6: blast_site, exit, triage_site, cordon, pathway, parking.
+ * Scenario location pin (map pin from DB).
+ * Supports narrative-derived location_type (free-form) with pin_category for visual grouping.
  */
 
 export interface ScenarioLocationPin {
   id: string;
   location_type: string;
+  /** Structural category for color/symbol; stored in conditions.pin_category */
+  pin_category?: string;
+  /** One-sentence narrative significance; stored in conditions.narrative_description */
+  narrative_description?: string;
   label: string;
   coordinates: { lat?: number; lng?: number };
+  conditions?: Record<string, unknown>;
 }
 
 interface ScenarioLocationMarkerProps {
@@ -19,45 +24,121 @@ interface ScenarioLocationMarkerProps {
   position: LatLngExpression;
 }
 
-const getPinColor = (locationType: string): string => {
-  const t = locationType.toLowerCase();
-  if (t.includes('blast') || t.includes('epicentre')) return '#b91c1c';
-  if (t.includes('exit')) return '#059669';
-  if (t.includes('triage')) return '#d97706';
-  if (t.includes('cordon')) return '#7c3aed';
-  if (t.includes('evacuation_holding') || t.includes('evac_holding')) return '#0284c7';
-  if (t.includes('area')) return '#6b7280';
-  if (t.includes('pathway')) return '#2563eb';
-  if (t.includes('parking')) return '#6b7280';
-  if (t.includes('police')) return '#4338ca';
-  if (t.includes('fire_station') || t.includes('scdf')) return '#ea580c';
-  if (t.includes('hospital')) return '#0891b2';
-  if (t.includes('community_center') || t.includes('community centre')) return '#0d9488';
+const getPinColor = (pin: ScenarioLocationPin): string => {
+  const cat = pin.pin_category?.toLowerCase() ?? '';
+  const t = pin.location_type.toLowerCase();
+
+  if (
+    cat === 'incident_site' ||
+    t.includes('blast') ||
+    t.includes('epicentre') ||
+    t.includes('device') ||
+    t.includes('attack')
+  )
+    return '#b91c1c';
+  if (
+    cat === 'cordon' ||
+    t.includes('cordon') ||
+    t.includes('perimeter') ||
+    t.includes('exclusion')
+  )
+    return '#7c3aed';
+  if (cat === 'triage' || t.includes('triage') || t.includes('casualty') || t.includes('medical'))
+    return '#d97706';
+  if (
+    cat === 'access' ||
+    t.includes('exit') ||
+    t.includes('entry') ||
+    t.includes('route') ||
+    t.includes('pathway') ||
+    t.includes('ingress') ||
+    t.includes('egress')
+  )
+    return '#059669';
+  if (
+    cat === 'command' ||
+    t.includes('command') ||
+    t.includes('icp') ||
+    t.includes('ops') ||
+    t.includes('negotiat')
+  )
+    return '#0284c7';
+  if (
+    cat === 'staging' ||
+    t.includes('staging') ||
+    t.includes('holding') ||
+    t.includes('assembly') ||
+    t.includes('pool')
+  )
+    return '#0891b2';
+  if (
+    cat === 'poi' ||
+    t.includes('hospital') ||
+    t.includes('police') ||
+    t.includes('fire') ||
+    t.includes('scdf') ||
+    t.includes('media') ||
+    t.includes('press')
+  )
+    return '#4338ca';
   if (t.includes('cctv')) return '#a855f7';
+  if (t.includes('community')) return '#0d9488';
   return '#4b5563';
 };
 
-/** Symbol per establishment/type so pins are distinguishable at a glance. */
-const getSymbol = (locationType: string): string => {
-  const t = locationType.toLowerCase();
-  if (t.includes('blast') || t.includes('epicentre')) return '💥';
-  if (t.includes('exit')) return '🚪';
-  if (t.includes('triage')) return '⚕';
-  if (t.includes('evacuation_holding') || t.includes('evac_holding')) return '⛺';
-  if (t.includes('area')) return '▢';
-  if (t.includes('pathway')) return '→';
-  if (t.includes('parking')) return 'P';
-  if (t.includes('police')) return '🛡';
-  if (t.includes('fire_station') || t.includes('scdf')) return '🚒';
+const getSymbol = (pin: ScenarioLocationPin): string => {
+  const cat = pin.pin_category?.toLowerCase() ?? '';
+  const t = pin.location_type.toLowerCase();
+
+  if (
+    cat === 'incident_site' ||
+    t.includes('blast') ||
+    t.includes('device') ||
+    t.includes('epicentre') ||
+    t.includes('attack')
+  )
+    return '💥';
+  if (
+    cat === 'cordon' ||
+    t.includes('cordon') ||
+    t.includes('perimeter') ||
+    t.includes('exclusion')
+  )
+    return '⛔';
+  if (cat === 'triage' || t.includes('triage') || t.includes('casualty')) return '⚕';
+  if (t.includes('negotiat') || t.includes('ops') || t.includes('command') || t.includes('icp'))
+    return '🎯';
+  if (cat === 'command') return '🎯';
+  if (
+    cat === 'access' ||
+    t.includes('exit') ||
+    t.includes('entry') ||
+    t.includes('route') ||
+    t.includes('pathway') ||
+    t.includes('ingress') ||
+    t.includes('egress')
+  )
+    return '🚪';
+  if (
+    cat === 'staging' ||
+    t.includes('staging') ||
+    t.includes('holding') ||
+    t.includes('assembly') ||
+    t.includes('pool')
+  )
+    return '⛺';
+  if (t.includes('media') || t.includes('press')) return '📡';
   if (t.includes('hospital')) return '🏥';
-  if (t.includes('community_center') || t.includes('community centre')) return '🏛';
+  if (t.includes('police')) return '🛡';
+  if (t.includes('fire') || t.includes('scdf')) return '🚒';
   if (t.includes('cctv')) return '📹';
+  if (t.includes('community')) return '🏛';
   return '📍';
 };
 
-const createPinIcon = (locationType: string): DivIcon => {
-  const color = getPinColor(locationType);
-  const symbol = getSymbol(locationType);
+const createPinIcon = (pin: ScenarioLocationPin): DivIcon => {
+  const color = getPinColor(pin);
+  const symbol = getSymbol(pin);
   return new DivIcon({
     className: 'scenario-location-marker',
     html: `
@@ -84,18 +165,24 @@ const createPinIcon = (locationType: string): DivIcon => {
 };
 
 export const ScenarioLocationMarker = ({ location, position }: ScenarioLocationMarkerProps) => {
-  const icon = createPinIcon(location.location_type);
+  const icon = createPinIcon(location);
+  const narrativeDesc =
+    location.narrative_description ??
+    (location.conditions?.narrative_description as string | undefined);
 
   return (
     <Marker position={position} icon={icon}>
       <Popup>
-        <div className="p-2 min-w-[120px]">
+        <div className="p-2 min-w-[150px] max-w-[220px]">
           <div className="text-sm font-medium terminal-text text-robotic-yellow">
             {location.label}
           </div>
-          <div className="text-xs text-robotic-yellow/70 mt-0.5 capitalize">
+          <div className="text-xs text-robotic-yellow/60 mt-0.5 capitalize">
             {location.location_type.replace(/_/g, ' ')}
           </div>
+          {narrativeDesc && (
+            <div className="text-xs text-robotic-yellow/80 mt-1 leading-snug">{narrativeDesc}</div>
+          )}
         </div>
       </Popup>
     </Marker>

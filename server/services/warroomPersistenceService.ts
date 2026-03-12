@@ -149,7 +149,11 @@ export async function persistWarroomScenario(
           location_type: loc.location_type,
           label: loc.label,
           coordinates: loc.coordinates,
-          conditions: loc.conditions ?? {},
+          conditions: {
+            ...(loc.conditions ?? {}),
+            ...(loc.pin_category ? { pin_category: loc.pin_category } : {}),
+            ...(loc.description ? { narrative_description: loc.description } : {}),
+          },
           display_order: loc.display_order ?? i,
         })),
       );

@@ -63,25 +63,49 @@ interface EvacuationZoneData {
   title: string;
 }
 
-/** Map pins for incident geography (blast, exits, triage areas, evacuation holding) are always shown. */
-const ALWAYS_SHOW_LOCATION_TYPES = [
-  'blast_site',
+/**
+ * pin_category values that are always visible to all players.
+ * Legacy location_type keywords are also checked for backward compatibility.
+ */
+const ALWAYS_SHOW_PIN_CATEGORIES = new Set([
+  'incident_site',
+  'access',
+  'triage',
+  'command',
+  'staging',
+]);
+
+const ALWAYS_SHOW_LOCATION_TYPE_KEYWORDS = [
+  'blast',
   'exit',
-  'triage_site',
-  'area',
+  'triage',
   'evacuation_holding',
+  'evac_holding',
   'pathway',
   'parking',
-] as const;
+  'epicentre',
+  'device',
+];
 
-/** Establishment/POI pins only show after the user has asked the Insider about that category. */
-const LOCATION_TYPE_TO_INSIDER_CATEGORY: Record<string, string> = {
+/** poi pin_category maps to insider-revealed category. Legacy exact-match also supported. */
+const POI_INSIDER_CATEGORY_MAP: Record<string, string> = {
   hospital: 'hospitals',
   police_station: 'police',
   fire_station: 'fire_stations',
   cctv: 'cctv',
   community_center: 'community_centres',
 };
+
+function isAlwaysShowPin(locationType: string, pinCategory?: string): boolean {
+  if (pinCategory && ALWAYS_SHOW_PIN_CATEGORIES.has(pinCategory)) return true;
+  const t = locationType.toLowerCase();
+  return ALWAYS_SHOW_LOCATION_TYPE_KEYWORDS.some((kw) => t.includes(kw));
+}
+
+function getInsiderCategory(locationType: string, pinCategory?: string): string | undefined {
+  if (pinCategory === 'poi') return 'poi';
+  return POI_INSIDER_CATEGORY_MAP[locationType];
+}
 
 interface MapViewProps {
   sessionId: string;
@@ -398,12 +422,18 @@ export const MapView = ({
         if (cancelled) return;
         if (Array.isArray(res.data)) {
           setScenarioLocations(
-            res.data.map((loc) => ({
-              id: loc.id,
-              location_type: loc.location_type,
-              label: loc.label,
-              coordinates: loc.coordinates ?? {},
-            })),
+            res.data.map((loc) => {
+              const conds = (loc.conditions as Record<string, unknown>) ?? {};
+              return {
+                id: loc.id,
+                location_type: loc.location_type,
+                pin_category: conds.pin_category as string | undefined,
+                narrative_description: conds.narrative_description as string | undefined,
+                label: loc.label,
+                coordinates: loc.coordinates ?? {},
+                conditions: conds,
+              };
+            }),
           );
         }
         setMapRevealedCategories(res.map_revealed_categories ?? []);
@@ -458,18 +488,20 @@ export const MapView = ({
   const scenarioLocationsWithCoords = scenarioLocations.filter(
     (loc) => typeof loc.coordinates?.lat === 'number' && typeof loc.coordinates?.lng === 'number',
   );
-  // When showAllPins (trainer): show all pins except cordon; otherwise hide cordon and show geography + POIs only when Insider-revealed
+  // Trainer sees all pins except cordon. Players see incident/access/triage/command/staging always;
+  // poi only after Insider reveals it; cordon always hidden from players.
   const scenarioLocationsForMap = scenarioLocationsWithCoords.filter((loc) => {
-    if (loc.location_type === 'cordon') return false;
+    const isCordon =
+      loc.pin_category === 'cordon' ||
+      loc.location_type === 'cordon' ||
+      loc.location_type.toLowerCase().includes('cordon') ||
+      loc.location_type.toLowerCase().includes('perimeter');
+    if (isCordon) return showAllPins;
     if (showAllPins) return true;
-    if (
-      ALWAYS_SHOW_LOCATION_TYPES.includes(
-        loc.location_type as (typeof ALWAYS_SHOW_LOCATION_TYPES)[number],
-      )
-    )
-      return true;
-    const category = LOCATION_TYPE_TO_INSIDER_CATEGORY[loc.location_type];
-    return category ? mapRevealedCategories.includes(category) : false;
+    if (isAlwaysShowPin(loc.location_type, loc.pin_category)) return true;
+    const insiderCat = getInsiderCategory(loc.location_type, loc.pin_category);
+    if (!insiderCat) return true; // unknown types default to visible
+    return mapRevealedCategories.includes(insiderCat);
   });
 
   const unmanagedRoutes = Array.isArray(environmentalState?.routes)

@@ -79,6 +79,8 @@ export interface WarroomScenarioPayload {
   }>;
   locations?: Array<{
     location_type: string;
+    pin_category?: string;
+    description?: string;
     label: string;
     coordinates: { lat: number; lng: number };
     conditions?: Record<string, unknown>;
@@ -743,12 +745,14 @@ RULES:
 
 /**
  * Phase 4: Generate locations, environmental seeds, layout_ground_truth, site_areas, custom_facts.
+ * Narrative-first: the AI reads the full story and derives map pins organically from it.
  */
 async function generateLocationsAndSeeds(
   input: WarroomGenerateInput,
   teamNames: string[],
   openAiApiKey: string,
   onProgress?: WarroomAiProgressCallback,
+  narrative?: { title?: string; description?: string; briefing?: string },
 ): Promise<{
   locations?: WarroomScenarioPayload['locations'];
   environmental_seeds?: WarroomScenarioPayload['environmental_seeds'];
@@ -773,7 +777,7 @@ async function generateLocationsAndSeeds(
 
   const { scenario_type, setting, terrain, venue_name, location, geocode } = input;
   const venue = venue_name || location || setting;
-  const coords = geocode ? `Center: ${geocode.lat}, ${geocode.lng}` : 'No coordinates';
+  const coords = geocode ? `Center coordinates: ${geocode.lat}, ${geocode.lng}` : 'No coordinates';
 
   const isMCI = /bombing|mci|mass.?casualty|evacuation|triage|media/i.test(scenario_type);
   const teamStateKeys = isMCI
@@ -783,31 +787,54 @@ async function generateLocationsAndSeeds(
     ? 'evacuation_state, triage_state, media_state with exits_congested, flow_control_decided, supply_level, surge_active, first_statement_issued, journalist_arrived'
     : 'team state keys: ' + teamStateKeys;
 
-  const systemPrompt = `You are an expert crisis management scenario designer.
+  const narrativeBlock = narrative
+    ? `\n\nSCENARIO NARRATIVE:\nTitle: ${narrative.title || ''}\nDescription: ${narrative.description || ''}\nBriefing: ${narrative.briefing || ''}`
+    : '';
 
-Scenario: ${scenario_type} at ${venue}
+  const systemPrompt = `You are an expert crisis management scenario designer tasked with mapping out the physical environment for an exercise.
+
+Scenario type: ${scenario_type}
+Venue: ${venue}
 Setting: ${setting}
 Terrain: ${terrain}
 Teams: ${teamNames.join(', ')}
-${coords}
+${coords}${narrativeBlock}
+
+Your job is to read the scenario narrative above and derive the map pins organically from the story — do NOT default to a generic checklist.
+Ask yourself: "Given this specific incident, what locations would teams actually need to know about, coordinate around, or contest control of?"
+
+Each location pin must have:
+- location_type: a short snake_case narrative label specific to this scenario (e.g. "negotiation_perimeter", "press_exclusion_zone", "secondary_device_site", "hostage_holding_wing", "casualty_collection_point"). Do NOT default to generic labels like "area" or "exit".
+- pin_category: one of "incident_site" | "access" | "triage" | "command" | "staging" | "poi" | "cordon"
+  - incident_site: the primary crisis location and any secondary sites
+  - access: entry/exit points, routes, corridors
+  - triage: medical treatment, casualty staging
+  - command: ICP, forward command post, joint ops center
+  - staging: holding areas, resource marshalling points
+  - poi: external establishments (hospitals, police HQ, fire station, media pool point)
+  - cordon: inner/outer perimeter, exclusion zone
+- description: one sentence explaining WHY this location matters to this specific scenario's story
+- label: short display name (max 5 words)
+- coordinates: {lat, lng} derived from the venue and scenario context
+- display_order: integer
 
 Return ONLY valid JSON with these keys:
-- locations: array of { location_type, label, coordinates: {lat,lng}, conditions, display_order }
+- locations: array of { location_type, pin_category, description, label, coordinates: {lat,lng}, conditions, display_order }
 - environmental_seeds: array of { variant_label, seed_data, display_order }. seed_data MUST include: routes (array of {label, problem?, managed?, travel_time_minutes?}), areas (array of {area_id, label, type?, at_capacity?, capacity?}), and team state: ${teamStateHints}
 - layout_ground_truth: { evacuee_count?, exits: [{id, label, flow_per_min, status, width_m}], zones?, blast_site?: {description} }
 - site_areas: array of { label, capacity_lying?, capacity_standing?, area_m2?, hazards?, vehicle_access?, stretcher_route? }
 - custom_facts: array of { topic, summary, detail? }
-- baseline_escalation_factors: array of { id, name, description, severity } (optional, 2-4 factors that may escalate during the scenario)
+- baseline_escalation_factors: array of { id, name, description, severity }
 
 RULES:
-- locations: ${includeLocations ? 'Include blast_site, exits, triage_sites (or area/cordon for non-MCI); add hospitals/police if coordinates available. 4-8 locations.' : 'Empty array []'}
+- locations: ${includeLocations ? '4-8 pins. Derive them from the narrative. Each pin must be specific to THIS scenario — avoid generic labels.' : 'Empty array []'}
 - environmental_seeds: ${includeEnvSeeds ? `2 variants. seed_data MUST include routes, areas, and ${teamStateHints}.` : 'Empty array []'}
-- layout_ground_truth: ${includeInsiderKnowledge ? 'For MCI/bombing: evacuee_count, exits with flow_per_min/status, zones, blast_site. For kidnapping: perimeter, ingress/egress, negotiation zones. Omit if not applicable.' : 'null'}
-- site_areas: ${includeInsiderKnowledge ? 'Areas for triage/casualty staging or team operations. Include capacity_lying, capacity_standing, hazards, vehicle_access.' : 'Empty array []'}
-- custom_facts: ${includeInsiderKnowledge ? '3-6 facts: event/incident, verified casualties, information environment, sensitivities, official sources.' : 'Empty array []'}
-- baseline_escalation_factors: ${includeInsiderKnowledge ? '2-4 factors that may escalate (e.g. crowd panic, secondary device, misinformation spread, supply shortage).' : 'Empty array []'}`;
+- layout_ground_truth: ${includeInsiderKnowledge ? 'Derive from narrative. Include capacity, flow, or key structural details relevant to this incident type.' : 'null'}
+- site_areas: ${includeInsiderKnowledge ? 'Areas for team operations derived from the scenario. Include capacity, hazards, access.' : 'Empty array []'}
+- custom_facts: ${includeInsiderKnowledge ? '3-6 facts grounded in the narrative: incident details, casualty estimates, information environment, sensitivities.' : 'Empty array []'}
+- baseline_escalation_factors: ${includeInsiderKnowledge ? '2-4 escalation risks specific to this scenario (e.g. secondary device, hostage panic, crowd surge, media breach).' : 'Empty array []'}`;
 
-  const userPrompt = `Create locations and environmental seeds for ${scenario_type} at ${venue}. Teams: ${teamNames.join(', ')}.`;
+  const userPrompt = `Read the scenario narrative and derive the map pins and environmental data for "${narrative?.title || scenario_type}" at ${venue}. Teams involved: ${teamNames.join(', ')}. Make every location specific to this story.`;
 
   try {
     const parsed = await callOpenAi<{
@@ -875,7 +902,11 @@ export async function warroomGenerateScenario(
     openAiApiKey,
     onProgress,
   );
-  const phase4 = await generateLocationsAndSeeds(input, teamNames, openAiApiKey, onProgress);
+  const phase4 = await generateLocationsAndSeeds(input, teamNames, openAiApiKey, onProgress, {
+    title: phase1.scenario.title,
+    description: phase1.scenario.description,
+    briefing: phase1.scenario.briefing,
+  });
 
   const scenarioWithType = {
     ...phase1.scenario,
