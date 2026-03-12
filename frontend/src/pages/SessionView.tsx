@@ -96,6 +96,9 @@ export const SessionView = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showTeamAssignmentModal, setShowTeamAssignmentModal] = useState(false);
   const [myTeams, setMyTeams] = useState<Array<{ team_name: string; team_role?: string }>>([]);
+  const [scenarioTeams, setScenarioTeams] = useState<
+    Array<{ team_name: string; team_description?: string }>
+  >([]);
   const [backendDecisions, setBackendDecisions] = useState<
     Array<{
       id: string;
@@ -180,6 +183,16 @@ export const SessionView = () => {
       loadMyTeams();
     }
   }, [id, user?.id]);
+
+  // Load scenario teams when session has scenario (for dynamic team counters)
+  useEffect(() => {
+    const scenarioId = session?.scenarios?.id ?? session?.scenario_id;
+    if (!scenarioId) return;
+    api.teams
+      .getScenarioTeams(scenarioId)
+      .then((r) => setScenarioTeams(r.data || []))
+      .catch(() => setScenarioTeams([]));
+  }, [session?.scenarios?.id, session?.scenario_id]);
 
   // Backend/AI activity log for trainers (poll every 8s when in progress, load once when completed)
   useEffect(() => {
@@ -635,98 +648,156 @@ export const SessionView = () => {
         </div>
       )}
 
-      {/* Team Counters Panel - during active session and after completion for review: trainer sees all teams, participant sees own team(s) */}
+      {/* Team Counters Panel - dynamic per scenario teams; trainer sees all, participant sees own team(s) */}
       {(session.status === 'in_progress' || session.status === 'completed') &&
         (() => {
           const cs = session.current_state as Record<string, unknown> | undefined;
-          const evac = (cs?.evacuation_state as Record<string, unknown> | undefined) ?? {};
-          const triage = (cs?.triage_state as Record<string, unknown> | undefined) ?? {};
-          const media = (cs?.media_state as Record<string, unknown> | undefined) ?? {};
-          const showEvac = isTrainer || myTeams.some((t) => /evacuation/i.test(t.team_name ?? ''));
-          const showTriage = isTrainer || myTeams.some((t) => /triage/i.test(t.team_name ?? ''));
-          const showMedia = isTrainer || myTeams.some((t) => /media/i.test(t.team_name ?? ''));
-          if (!showEvac && !showTriage && !showMedia) return null;
+
+          // Map team_name to current_state key (backward compat: Evacuation/Triage/Media)
+          const teamToStateKey = (name: string): string => {
+            const n = (name ?? '').toLowerCase();
+            if (/evacuation|evac/.test(n)) return 'evacuation_state';
+            if (/triage/.test(n)) return 'triage_state';
+            if (/media/.test(n)) return 'media_state';
+            return `${n.replace(/\s+/g, '_')}_state`;
+          };
+
+          // Use scenario teams when available; fallback to legacy evac/triage/media if no teams
+          const teamsToShow =
+            scenarioTeams.length > 0
+              ? scenarioTeams
+              : [{ team_name: 'Evacuation' }, { team_name: 'Triage' }, { team_name: 'Media' }];
+
+          const blocks: React.ReactNode[] = [];
+          for (const team of teamsToShow) {
+            const stateKey = teamToStateKey(team.team_name);
+            const state = (cs?.[stateKey] as Record<string, unknown> | undefined) ?? {};
+            const showBlock =
+              isTrainer ||
+              myTeams.some((t) => t.team_name?.toLowerCase() === team.team_name?.toLowerCase());
+            if (!showBlock) continue;
+            if (Object.keys(state).length === 0 && !isTrainer) continue;
+
+            const displayName =
+              team.team_name.charAt(0).toUpperCase() + (team.team_name?.slice(1) ?? '');
+
+            if (stateKey === 'evacuation_state') {
+              blocks.push(
+                <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
+                  <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                    {displayName}
+                  </div>
+                  <div className="text-sm terminal-text text-robotic-gray-50">
+                    Evacuated: {Math.max(0, Number(state.evacuated_count) || 0)} /{' '}
+                    {Math.max(0, Number(state.total_evacuees) || 1000)}
+                    {(Number(state.total_evacuees) || 1000) > 0 && (
+                      <span className="text-robotic-yellow/70 ml-1">
+                        (
+                        {Math.round(
+                          ((Number(state.evacuated_count) || 0) /
+                            (Number(state.total_evacuees) || 1000)) *
+                            100,
+                        )}
+                        %)
+                      </span>
+                    )}
+                  </div>
+                </div>,
+              );
+            } else if (stateKey === 'triage_state') {
+              blocks.push(
+                <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
+                  <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                    {displayName}
+                  </div>
+                  <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
+                    <div>
+                      Patients being treated:{' '}
+                      {Math.max(0, Number(state.patients_being_treated) || 0)}
+                    </div>
+                    <div>
+                      Patients waiting medical attention:{' '}
+                      {Math.max(0, Number(state.patients_waiting) || 0)}
+                    </div>
+                    <div>
+                      Handed over to hospital:{' '}
+                      {Math.max(0, Number(state.handed_over_to_hospital) || 0)}
+                    </div>
+                    <div>Casualties: {Math.max(0, Number(state.casualties) || 0)}</div>
+                    <div>Deaths on site: {Math.max(0, Number(state.deaths_on_site) || 0)}</div>
+                  </div>
+                </div>,
+              );
+            } else if (stateKey === 'media_state') {
+              blocks.push(
+                <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
+                  <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                    {displayName}
+                  </div>
+                  <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
+                    <div>
+                      Statements issued: {Math.max(0, Number(state.statements_issued) || 0)}
+                    </div>
+                    <div>
+                      Misinformation addressed:{' '}
+                      {Math.max(0, Number(state.misinformation_addressed_count) || 0)}
+                    </div>
+                    <div>
+                      Public sentiment:{' '}
+                      {state.public_sentiment != null ? Number(state.public_sentiment) : '–'} / 10
+                      {state.sentiment_label != null ? (
+                        <span
+                          className="ml-1 text-robotic-yellow/70"
+                          title={String(state.sentiment_reason ?? '')}
+                        >
+                          ({String(state.sentiment_label)})
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>,
+              );
+            } else {
+              // Generic team: show counter-like keys (numbers, booleans as yes/no)
+              const entries = Object.entries(state).filter(
+                ([_, v]) =>
+                  typeof v === 'number' ||
+                  typeof v === 'boolean' ||
+                  (typeof v === 'string' && v.length < 50),
+              );
+              if (entries.length > 0 || isTrainer) {
+                blocks.push(
+                  <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
+                    <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                      {displayName}
+                    </div>
+                    <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
+                      {entries.length > 0 ? (
+                        entries.map(([k, v]) => (
+                          <div key={k}>
+                            {k.replace(/_/g, ' ')}:{' '}
+                            {typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v)}
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-robotic-gray-500 text-xs">No metrics yet</span>
+                      )}
+                    </div>
+                  </div>,
+                );
+              }
+            }
+          }
+
+          if (blocks.length === 0) return null;
           return (
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
               <div className="military-border p-4 bg-robotic-gray-200">
                 <h3 className="text-sm terminal-text uppercase text-robotic-yellow mb-3">
                   [TEAM METRICS]
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {showEvac && (
-                    <div className="military-border p-3 bg-robotic-gray-300">
-                      <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
-                        Evacuation
-                      </div>
-                      <div className="text-sm terminal-text text-robotic-gray-50">
-                        Evacuated: {Math.max(0, Number(evac.evacuated_count) || 0)} /{' '}
-                        {Math.max(0, Number(evac.total_evacuees) || 1000)}
-                        {(Number(evac.total_evacuees) || 1000) > 0 && (
-                          <span className="text-robotic-yellow/70 ml-1">
-                            (
-                            {Math.round(
-                              ((Number(evac.evacuated_count) || 0) /
-                                (Number(evac.total_evacuees) || 1000)) *
-                                100,
-                            )}
-                            %)
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {showTriage && (
-                    <div className="military-border p-3 bg-robotic-gray-300">
-                      <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
-                        Triage
-                      </div>
-                      <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
-                        <div>
-                          Patients being treated:{' '}
-                          {Math.max(0, Number(triage.patients_being_treated) || 0)}
-                        </div>
-                        <div>
-                          Patients waiting medical attention:{' '}
-                          {Math.max(0, Number(triage.patients_waiting) || 0)}
-                        </div>
-                        <div>
-                          Handed over to hospital:{' '}
-                          {Math.max(0, Number(triage.handed_over_to_hospital) || 0)}
-                        </div>
-                        <div>Casualties: {Math.max(0, Number(triage.casualties) || 0)}</div>
-                        <div>Deaths on site: {Math.max(0, Number(triage.deaths_on_site) || 0)}</div>
-                      </div>
-                    </div>
-                  )}
-                  {showMedia && (
-                    <div className="military-border p-3 bg-robotic-gray-300">
-                      <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
-                        Media
-                      </div>
-                      <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
-                        <div>
-                          Statements issued: {Math.max(0, Number(media.statements_issued) || 0)}
-                        </div>
-                        <div>
-                          Misinformation addressed:{' '}
-                          {Math.max(0, Number(media.misinformation_addressed_count) || 0)}
-                        </div>
-                        <div>
-                          Public sentiment:{' '}
-                          {media.public_sentiment != null ? Number(media.public_sentiment) : '–'} /
-                          10
-                          {media.sentiment_label != null ? (
-                            <span
-                              className="ml-1 text-robotic-yellow/70"
-                              title={String(media.sentiment_reason ?? '')}
-                            >
-                              ({String(media.sentiment_label)})
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {blocks}
                 </div>
               </div>
             </div>

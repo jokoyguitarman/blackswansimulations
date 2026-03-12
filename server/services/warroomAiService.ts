@@ -68,6 +68,7 @@ export interface WarroomScenarioPayload {
   }>;
   insider_knowledge?: {
     osm_vicinity?: OsmVicinity;
+    sector_standards?: string;
     layout_ground_truth?: Record<string, unknown>;
     custom_facts?: Record<string, unknown>;
   };
@@ -670,6 +671,24 @@ export async function warroomGenerateScenario(
   );
   const phase4 = await generateLocationsAndSeeds(input, openAiApiKey, onProgress);
 
+  const insiderKnowledge: WarroomScenarioPayload['insider_knowledge'] = {};
+  if (osm_vicinity) insiderKnowledge.osm_vicinity = osm_vicinity;
+  if (input.researchContext?.standards_summary) {
+    insiderKnowledge.sector_standards = input.researchContext.standards_summary;
+  }
+  if (Object.keys(insiderKnowledge).length === 0) {
+    return {
+      scenario: phase1.scenario,
+      teams: phase1.teams,
+      objectives: phase1.objectives,
+      time_injects,
+      decision_injects,
+      locations: phase4.locations,
+      environmental_seeds: phase4.environmental_seeds,
+      insider_knowledge: undefined,
+    };
+  }
+
   return {
     scenario: phase1.scenario,
     teams: phase1.teams,
@@ -678,6 +697,6 @@ export async function warroomGenerateScenario(
     decision_injects,
     locations: phase4.locations,
     environmental_seeds: phase4.environmental_seeds,
-    insider_knowledge: osm_vicinity ? { osm_vicinity } : undefined,
+    insider_knowledge: insiderKnowledge,
   };
 }

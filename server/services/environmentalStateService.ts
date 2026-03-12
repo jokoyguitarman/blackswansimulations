@@ -74,7 +74,17 @@ export interface EnvironmentalSeedRow {
     evacuation_state?: EvacuationStateSeed;
     triage_state?: TriageStateSeed;
     media_state?: MediaStateSeed;
+    [key: string]: unknown;
   };
+}
+
+/** Map team name to current_state key. */
+function teamToStateKey(teamName: string): string {
+  const n = (teamName ?? '').toLowerCase();
+  if (/evacuation|evac/.test(n)) return 'evacuation_state';
+  if (/triage/.test(n)) return 'triage_state';
+  if (/media/.test(n)) return 'media_state';
+  return `${n.replace(/\s+/g, '_')}_state`;
 }
 
 /** Default team state when seed does not provide it. */
@@ -133,31 +143,60 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
     }
 
     // Fetch all variants for this scenario; pick one at random (no ORDER BY RANDOM() in client)
-    const { data: allSeeds, error: allSeedsError } = await supabaseAdmin
+    const { data: allSeeds } = await supabaseAdmin
       .from('scenario_environmental_seeds')
       .select('id, scenario_id, variant_label, seed_data')
       .eq('scenario_id', scenarioId);
 
-    if (allSeedsError || !allSeeds?.length) {
-      logger.debug({ sessionId, scenarioId }, 'No environmental seeds for scenario; skipping');
-      return;
+    let chosen: EnvironmentalSeedRow | null = null;
+    let seed: Record<string, unknown> = {};
+    if (allSeeds?.length) {
+      chosen = allSeeds[Math.floor(Math.random() * allSeeds.length)] as EnvironmentalSeedRow;
+      seed = (chosen.seed_data ?? {}) as Record<string, unknown>;
     }
-
-    const chosen = allSeeds[Math.floor(Math.random() * allSeeds.length)] as EnvironmentalSeedRow;
-    const seed = chosen.seed_data ?? {};
     const currentState = (session.current_state as Record<string, unknown>) || {};
+
+    // Fetch scenario teams to only write state for teams that exist
+    const { data: scenarioTeams } = await supabaseAdmin
+      .from('scenario_teams')
+      .select('team_name')
+      .eq('scenario_id', scenarioId);
+    const teamNames = (scenarioTeams ?? []).map((t) => (t as { team_name: string }).team_name);
 
     const nextState: Record<string, unknown> = {
       ...currentState,
       environmental_state: {
-        routes: seed.routes ?? [],
-        areas: seed.areas ?? [],
+        routes: (seed.routes as unknown[]) ?? [],
+        areas: (seed.areas as EnvironmentalAreaSeed[]) ?? [],
       },
-      evacuation_state: { ...DEFAULT_EVACUATION_STATE, ...seed.evacuation_state },
-      triage_state: { ...DEFAULT_TRIAGE_STATE, ...seed.triage_state },
-      media_state: { ...DEFAULT_MEDIA_STATE, ...seed.media_state },
-      environmental_variant: chosen.variant_label,
+      ...(chosen ? { environmental_variant: chosen.variant_label } : {}),
     };
+
+    // Add team state only for teams in the scenario (backward compat: if no teams, use evac/triage/media)
+    const teamsToInit = teamNames.length > 0 ? teamNames : ['Evacuation', 'Triage', 'Media'];
+
+    for (const teamName of teamsToInit) {
+      const stateKey = teamToStateKey(teamName);
+      if (stateKey === 'evacuation_state') {
+        nextState.evacuation_state = {
+          ...DEFAULT_EVACUATION_STATE,
+          ...(seed.evacuation_state as EvacuationStateSeed),
+        };
+      } else if (stateKey === 'triage_state') {
+        nextState.triage_state = {
+          ...DEFAULT_TRIAGE_STATE,
+          ...(seed.triage_state as TriageStateSeed),
+        };
+      } else if (stateKey === 'media_state') {
+        nextState.media_state = {
+          ...DEFAULT_MEDIA_STATE,
+          ...(seed.media_state as MediaStateSeed),
+        };
+      } else {
+        const teamSeed = seed[stateKey] as Record<string, unknown> | undefined;
+        nextState[stateKey] = teamSeed && typeof teamSeed === 'object' ? { ...teamSeed } : {};
+      }
+    }
 
     const { error: updateError } = await supabaseAdmin
       .from('sessions')
@@ -173,7 +212,7 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
     }
 
     logger.info(
-      { sessionId, scenarioId, variant: chosen.variant_label },
+      { sessionId, scenarioId, variant: chosen?.variant_label, teams: teamsToInit.length },
       'Environmental state loaded and applied',
     );
 
