@@ -1400,6 +1400,7 @@ Return ONLY valid JSON:
 
 RULES:
 - 1–2 injects for the ${teamA} and ${teamB} interface.
+- Each title MUST be unique and specific to the coordination failure — include both team names and the failure type. Never reuse the same title across injects.
 - conditions_to_appear must reference state keys from BOTH teams (not just one).
 - Content describes the specific interface failure between ${teamA} and ${teamB}.
 - eligible_after_minutes: minimum 15.`;

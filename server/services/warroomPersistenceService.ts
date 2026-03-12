@@ -210,13 +210,28 @@ export async function persistWarroomScenario(
     }
 
     if (condition_driven_injects && condition_driven_injects.length > 0) {
+      const usedTitles = new Set<string>(
+        [
+          ...time_injects.map((i) => i.title),
+          ...(decision_injects ?? []).map(
+            (i) => i.title || i.trigger_condition?.slice(0, 100) || 'Decision point',
+          ),
+        ].filter(Boolean),
+      );
       for (const inj of condition_driven_injects) {
+        let title = inj.title || 'Condition-driven inject';
+        if (usedTitles.has(title)) {
+          let suffix = 1;
+          while (usedTitles.has(`${title} (${suffix})`)) suffix++;
+          title = `${title} (${suffix})`;
+        }
+        usedTitles.add(title);
         const { error: injError } = await supabaseAdmin.from('scenario_injects').insert({
           scenario_id: scenarioId,
           trigger_time_minutes: null,
           trigger_condition: null,
           type: normalizeInjectType(inj.type),
-          title: inj.title,
+          title,
           content: inj.content,
           affected_roles: [],
           severity: inj.severity || 'high',
