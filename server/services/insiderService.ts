@@ -15,6 +15,7 @@ export type InsiderCategory =
   | 'crowd_density'
   | 'triage_site'
   | 'evacuation_holding'
+  | 'space_status'
   | 'layout'
   | 'other';
 
@@ -53,6 +54,7 @@ export interface InsiderKnowledgeBlob {
     zones?: Array<{ id: string; label: string; capacity?: number; type?: string }>;
   };
   site_areas?: SiteAreaEntry[];
+  site_requirements?: Record<string, import('./warroomResearchService.js').SiteRequirement>;
   osm_vicinity?: OsmVicinity;
   custom_facts?: Array<{ topic: string; summary: string; detail?: string }>;
 }
@@ -129,6 +131,13 @@ export function classifyInsiderQuestion(question: string): InsiderCategory {
     return 'evacuation_holding';
   }
   if (
+    /\b(what|which)\s+(spaces?|lots?|areas?)\s+(are\s+)?(available|free|open|taken|claimed)\b|\bis\s+(lot|space|bay|area)\s+\w+\s+(taken|free|available|claimed)\b|\bwho\s+is\s+using\b|\bspace\s+status\b|\bavailable\s+(spaces?|lots?|areas?)\b/i.test(
+      q,
+    )
+  ) {
+    return 'space_status';
+  }
+  if (
     /\bexit(s)?\b|\bflow\s+rate\b|\bevacuee(s)?\b|\bcapacity\b|\btriage\s+zone\b|\bground\s+zero\b|\blayout\b/i.test(
       q,
     )
@@ -148,6 +157,7 @@ const VALID_INSIDER_CATEGORIES: InsiderCategory[] = [
   'crowd_density',
   'triage_site',
   'evacuation_holding',
+  'space_status',
   'layout',
   'other',
 ];
@@ -186,6 +196,7 @@ Valid categories and what they mean:
 - crowd_density: crowd density, population around the area, people near the blast/site
 - triage_site: where to set up triage, triage zones/sites/tents, vacant lots for casualties, suitable areas for triage
 - evacuation_holding: where to send or hold evacuees after they exit, evacuation holding zones, assembly areas, staging areas
+- space_status: what spaces/lots/areas are available or taken, who is using a space, is a space claimed, space availability
 - layout: exits, flow rate, evacuees, capacity, ground zero, general layout (not map image)
 - other: none of the above or unclear
 
@@ -542,4 +553,218 @@ export function buildSliceAnswer(
     answer: "I don't have that information for this scenario.",
     sources_used: 'none',
   };
+}
+
+// ---------------------------------------------------------------------------
+// New-model builders for physical-space pins and enriched POIs
+// ---------------------------------------------------------------------------
+
+export interface PhysicalSpaceLocationRow {
+  label: string;
+  conditions?: Record<string, unknown>;
+  claim?: { claimed_by?: string; claimed_as?: string; claimed_at_minutes?: number };
+}
+
+export function buildPhysicalSpaceAnswer(
+  locations: PhysicalSpaceLocationRow[],
+  useType: string,
+  siteRequirements?: Record<string, import('./warroomResearchService.js').SiteRequirement>,
+): { answer: string; sources_used: string } {
+  if (!locations.length) {
+    return {
+      answer: `No candidate spaces with potential for "${useType}" were found for this scenario. Check the map for available areas.`,
+      sources_used: 'scenario_locations',
+    };
+  }
+
+  const req = siteRequirements?.[useType];
+  const reqBlock = req
+    ? `\n\n**Requirements for ${useType}** (per standards):\n` +
+      [
+        req.min_area_m2 != null ? `- Min area: ${req.min_area_m2}m²` : null,
+        req.min_capacity != null ? `- Min capacity: ${req.min_capacity} persons` : null,
+        req.requires_water ? '- Requires water access' : null,
+        req.requires_electricity ? '- Requires electricity' : null,
+        req.requires_shelter ? '- Requires shelter/cover' : null,
+        req.requires_vehicle_access ? '- Requires vehicle access' : null,
+        req.max_distance_from_incident_m != null
+          ? `- Max ${req.max_distance_from_incident_m}m from incident`
+          : null,
+        req.notes ? `- ${req.notes}` : null,
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : '';
+
+  const lines = locations.map((loc) => {
+    const cond = loc.conditions ?? {};
+    const parts: string[] = [];
+    if (cond.area_m2 != null) parts.push(`${cond.area_m2}m²`);
+    if (cond.capacity_persons != null) parts.push(`capacity ${cond.capacity_persons}`);
+    if (cond.has_water !== undefined) parts.push(cond.has_water ? 'water: yes' : 'no water');
+    if (cond.has_electricity !== undefined)
+      parts.push(cond.has_electricity ? 'electricity: yes' : 'no electricity');
+    if (cond.has_shelter !== undefined) parts.push(cond.has_shelter ? 'sheltered' : 'unsheltered');
+    if (cond.vehicle_access !== undefined)
+      parts.push(cond.vehicle_access ? 'vehicle access' : 'no vehicle access');
+    if (cond.distance_from_incident_m != null)
+      parts.push(`${cond.distance_from_incident_m}m from incident`);
+    if (cond.surface) parts.push(`surface: ${cond.surface}`);
+    const propText = parts.length ? ` — ${parts.join('; ')}` : '';
+
+    const shortfalls: string[] = [];
+    if (req) {
+      if (
+        req.min_area_m2 != null &&
+        typeof cond.area_m2 === 'number' &&
+        cond.area_m2 < req.min_area_m2
+      )
+        shortfalls.push(`area below min ${req.min_area_m2}m²`);
+      if (
+        req.min_capacity != null &&
+        typeof cond.capacity_persons === 'number' &&
+        cond.capacity_persons < req.min_capacity
+      )
+        shortfalls.push(`capacity below min ${req.min_capacity}`);
+      if (req.requires_water && cond.has_water === false) shortfalls.push('no water (required)');
+      if (req.requires_electricity && cond.has_electricity === false)
+        shortfalls.push('no electricity (required)');
+      if (req.requires_shelter && cond.has_shelter === false)
+        shortfalls.push('no shelter (required)');
+      if (req.requires_vehicle_access && cond.vehicle_access === false)
+        shortfalls.push('no vehicle access (required)');
+      if (
+        req.max_distance_from_incident_m != null &&
+        typeof cond.distance_from_incident_m === 'number' &&
+        cond.distance_from_incident_m > req.max_distance_from_incident_m
+      )
+        shortfalls.push(
+          `too far (${cond.distance_from_incident_m}m, max ${req.max_distance_from_incident_m}m)`,
+        );
+    }
+    const shortfallText = shortfalls.length ? ` ⚠ ${shortfalls.join('; ')}` : '';
+
+    const claimText = loc.claim?.claimed_by
+      ? ` [CLAIMED by ${loc.claim.claimed_by} as ${loc.claim.claimed_as ?? 'unknown'} since T+${loc.claim.claimed_at_minutes ?? '?'}]`
+      : '';
+
+    const notes = cond.notes ? ` ${cond.notes}` : '';
+
+    return `- **${loc.label}**${propText}.${notes}${shortfallText}${claimText}`;
+  });
+
+  const answer = `These candidate spaces could potentially be used for ${useType}:\n\n${lines.join('\n\n')}${reqBlock}\n\nUse the map to see their exact positions.`;
+  return { answer, sources_used: 'scenario_locations' };
+}
+
+export interface EnrichedPoiRow {
+  label: string;
+  location_type: string;
+  conditions?: Record<string, unknown>;
+}
+
+export function buildEnrichedPoiAnswer(
+  locations: EnrichedPoiRow[],
+  poiType: 'hospital' | 'police_station' | 'fire_station',
+): { answer: string; sources_used: string } {
+  if (!locations.length) {
+    const typeLabel =
+      poiType === 'hospital'
+        ? 'hospitals'
+        : poiType === 'police_station'
+          ? 'police stations'
+          : 'fire stations';
+    return {
+      answer: `No ${typeLabel} with detailed data are available for this scenario.`,
+      sources_used: 'none',
+    };
+  }
+
+  const lines = locations.map((loc) => {
+    const cond = loc.conditions ?? {};
+    const parts: string[] = [];
+
+    if (cond.distance_from_incident_m != null)
+      parts.push(`${cond.distance_from_incident_m}m from incident`);
+    if (cond.estimated_response_time_min != null)
+      parts.push(`~${cond.estimated_response_time_min} min response`);
+
+    if (poiType === 'hospital') {
+      if (cond.facility_type) parts.push(String(cond.facility_type).replace(/_/g, ' '));
+      if (cond.trauma_center_level) parts.push(String(cond.trauma_center_level));
+      if (cond.bed_capacity != null) parts.push(`${cond.bed_capacity} beds`);
+      if (cond.emergency_beds_available != null)
+        parts.push(`${cond.emergency_beds_available} emergency beds available`);
+      if (cond.has_helipad) parts.push('helipad');
+      if (cond.ambulance_bays != null) parts.push(`${cond.ambulance_bays} ambulance bays`);
+      if (Array.isArray(cond.specializations) && cond.specializations.length > 0)
+        parts.push(`specializations: ${(cond.specializations as string[]).join(', ')}`);
+    } else if (poiType === 'police_station') {
+      if (cond.facility_type) parts.push(String(cond.facility_type).replace(/_/g, ' '));
+      if (cond.available_officers_estimate != null)
+        parts.push(`~${cond.available_officers_estimate} officers`);
+      if (cond.has_tactical_unit) parts.push('tactical unit available');
+      if (cond.has_negotiation_team) parts.push('negotiation team');
+      if (cond.has_k9_unit) parts.push('K9 unit');
+    } else {
+      if (cond.facility_type) parts.push(String(cond.facility_type).replace(/_/g, ' '));
+      if (cond.appliance_count != null) parts.push(`${cond.appliance_count} appliances`);
+      if (cond.has_hazmat_unit) parts.push('hazmat');
+      if (cond.has_rescue_unit) parts.push('rescue');
+      if (cond.has_aerial_platform) parts.push('aerial platform');
+    }
+
+    const notes = cond.notes ? ` ${cond.notes}` : '';
+    const propText = parts.length ? ` — ${parts.join('; ')}` : '';
+    return `- **${loc.label}**${propText}.${notes}`;
+  });
+
+  const typeLabel =
+    poiType === 'hospital'
+      ? 'hospital(s)'
+      : poiType === 'police_station'
+        ? 'police station(s)/outpost(s)'
+        : 'fire station(s)';
+
+  const answer = `There are ${locations.length} ${typeLabel} in the vicinity:\n\n${lines.join('\n\n')}`;
+  return { answer, sources_used: 'scenario_locations (enriched POI pins)' };
+}
+
+export function buildSpaceStatusAnswer(locations: PhysicalSpaceLocationRow[]): {
+  answer: string;
+  sources_used: string;
+} {
+  if (!locations.length) {
+    return {
+      answer: 'No candidate spaces are available for this scenario.',
+      sources_used: 'scenario_locations',
+    };
+  }
+
+  const claimed = locations.filter((l) => l.claim?.claimed_by);
+  const available = locations.filter((l) => !l.claim?.claimed_by);
+
+  const lines: string[] = [];
+  if (available.length > 0) {
+    lines.push(`**Available spaces (${available.length}):**`);
+    for (const loc of available) {
+      const cond = loc.conditions ?? {};
+      const parts: string[] = [];
+      if (cond.area_m2 != null) parts.push(`${cond.area_m2}m²`);
+      if (cond.capacity_persons != null) parts.push(`capacity ${cond.capacity_persons}`);
+      if (cond.has_shelter !== undefined) parts.push(cond.has_shelter ? 'sheltered' : 'open');
+      const propText = parts.length ? ` (${parts.join(', ')})` : '';
+      lines.push(`- ${loc.label}${propText}`);
+    }
+  }
+  if (claimed.length > 0) {
+    lines.push(`\n**Claimed spaces (${claimed.length}):**`);
+    for (const loc of claimed) {
+      lines.push(
+        `- ${loc.label} — claimed by **${loc.claim!.claimed_by}** as **${loc.claim!.claimed_as ?? 'unknown'}** since T+${loc.claim!.claimed_at_minutes ?? '?'}`,
+      );
+    }
+  }
+
+  return { answer: lines.join('\n'), sources_used: 'scenario_locations, session_state' };
 }

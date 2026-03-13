@@ -14,7 +14,11 @@ import {
   validateCompatibility,
   type ParsedWarroomInput,
 } from './warroomPromptParser.js';
-import { warroomGenerateScenario, type WarroomScenarioPayload } from './warroomAiService.js';
+import {
+  warroomGenerateScenario,
+  generatePoiPinsFromOsm,
+  type WarroomScenarioPayload,
+} from './warroomAiService.js';
 import { persistWarroomScenario } from './warroomPersistenceService.js';
 import {
   researchArea,
@@ -228,7 +232,11 @@ export async function generateAndPersistWarroomScenario(
   if (geocodeResult) {
     onProgress?.('osm', 'Fetching hospitals, police, fire stations, and routes nearby...');
     try {
-      osmVicinity = await fetchOsmVicinityByCoordinates(geocodeResult.lat, geocodeResult.lng, 3000);
+      osmVicinity = await fetchOsmVicinityByCoordinates(
+        geocodeResult.lat,
+        geocodeResult.lng,
+        10000,
+      );
     } catch (osmErr) {
       logger.warn(
         { err: osmErr, location: parsed.location },
@@ -343,11 +351,45 @@ export async function generateAndPersistWarroomScenario(
     aiProgress,
   );
 
+  // Generate POI pins from OSM data (hospitals, police, fire stations) with AI-enriched conditions
+  if (osmVicinity) {
+    onProgress?.('ai', 'Enriching nearby facility data...');
+    try {
+      const poiPins = await generatePoiPinsFromOsm(
+        osmVicinity,
+        parsed.scenario_type,
+        parsed.location || parsed.setting,
+        geocodeResult ? { lat: geocodeResult.lat, lng: geocodeResult.lng } : undefined,
+        openAiApiKey,
+      );
+      if (poiPins.length > 0) {
+        payload.locations = [...(payload.locations ?? []), ...poiPins];
+        logger.info({ poiCount: poiPins.length }, 'POI pins generated from OSM');
+      }
+    } catch (err) {
+      logger.warn({ err }, 'POI pin generation failed; continuing without');
+    }
+  }
+
+  // Persist site_requirements into insider_knowledge for runtime use
+  if (standardsFindings.length > 0) {
+    const allSiteReqs: Record<string, import('./warroomResearchService.js').SiteRequirement> = {};
+    for (const f of standardsFindings) {
+      if (f.site_requirements) {
+        Object.assign(allSiteReqs, f.site_requirements);
+      }
+    }
+    if (Object.keys(allSiteReqs).length > 0) {
+      if (!payload.insider_knowledge) payload.insider_knowledge = {};
+      (payload.insider_knowledge as Record<string, unknown>).site_requirements = allSiteReqs;
+    }
+  }
+
   onProgress?.('persist', 'Saving scenario to database: teams, injects, objectives...');
   const scenarioId = await persistWarroomScenario(payload, createdBy, {
     center_lat: geocodeResult?.lat,
     center_lng: geocodeResult?.lng,
-    vicinity_radius_meters: geocodeResult ? 3000 : undefined,
+    vicinity_radius_meters: geocodeResult ? 10000 : undefined,
   });
 
   return { scenarioId, payload };

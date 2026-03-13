@@ -41,9 +41,7 @@ function isBadLocation(conditions: LocationConditions): boolean {
  * Build list of unmanaged conditions: routes with managed === false, and bad scenario_locations
  * not yet in location_state.managed.
  */
-async function buildUnmanagedConditions(
-  sessionId: string,
-): Promise<{
+async function buildUnmanagedConditions(sessionId: string): Promise<{
   conditions: UnmanagedCondition[];
   currentState: Record<string, unknown>;
   scenarioId: string;
@@ -241,11 +239,11 @@ function applyConditionUpdates(
     nextState.environmental_state = { ...envState, routes };
   }
 
-  let locationState = (nextState.location_state as Record<string, { managed?: boolean }>) ?? {};
+  let locationState = (nextState.location_state as Record<string, LocationStateEntry>) ?? {};
   let locationUpdated = false;
   for (const { type, id } of conditionsAddressed) {
     if (type === 'location') {
-      locationState = { ...locationState, [id]: { managed: true } };
+      locationState = { ...locationState, [id]: { ...locationState[id], managed: true } };
       locationUpdated = true;
     }
   }
@@ -254,6 +252,72 @@ function applyConditionUpdates(
   }
 
   return nextState;
+}
+
+// ---------------------------------------------------------------------------
+// Space claim management
+// ---------------------------------------------------------------------------
+
+export interface LocationStateEntry {
+  managed?: boolean;
+  claimed_by?: string;
+  claimed_as?: string;
+  claimed_at_minutes?: number;
+}
+
+/**
+ * Record a space claim when a team assigns a candidate space to a function.
+ */
+export async function recordSpaceClaim(
+  sessionId: string,
+  locationId: string,
+  claimedBy: string,
+  claimedAs: string,
+  gameMinutes: number,
+): Promise<void> {
+  const { data: session, error: sessionErr } = await supabaseAdmin
+    .from('sessions')
+    .select('current_state')
+    .eq('id', sessionId)
+    .single();
+
+  if (sessionErr || !session) {
+    logger.warn({ sessionId, error: sessionErr }, 'Session not found for space claim');
+    return;
+  }
+
+  const currentState = ((session as { current_state?: Record<string, unknown> }).current_state ??
+    {}) as Record<string, unknown>;
+  const locationState = (currentState.location_state as Record<string, LocationStateEntry>) ?? {};
+
+  const nextLocationState = {
+    ...locationState,
+    [locationId]: {
+      ...locationState[locationId],
+      claimed_by: claimedBy,
+      claimed_as: claimedAs,
+      claimed_at_minutes: gameMinutes,
+    },
+  };
+
+  const nextState = { ...currentState, location_state: nextLocationState };
+
+  const { error: updateError } = await supabaseAdmin
+    .from('sessions')
+    .update({ current_state: nextState })
+    .eq('id', sessionId);
+
+  if (updateError) {
+    logger.error({ sessionId, locationId, error: updateError }, 'Failed to persist space claim');
+    return;
+  }
+
+  logger.info({ sessionId, locationId, claimedBy, claimedAs, gameMinutes }, 'Space claim recorded');
+
+  getWebSocketService().stateUpdated?.(sessionId, {
+    state: nextState,
+    timestamp: new Date().toISOString(),
+  });
 }
 
 /**

@@ -25,7 +25,10 @@ import {
 import { gradeDecisionBand } from '../services/incidentDecisionGradingService.js';
 import { evaluateDecisionAgainstEnvironment } from '../services/environmentalConsistencyService.js';
 import { evaluateEnvironmentalPrerequisite } from '../services/environmentalPrerequisiteService.js';
-import { evaluateEnvironmentalManagementIntentAndUpdateState } from '../services/environmentalConditionManagementService.js';
+import {
+  evaluateEnvironmentalManagementIntentAndUpdateState,
+  recordSpaceClaim,
+} from '../services/environmentalConditionManagementService.js';
 import { evaluateStateEffectManagementAndUpdateState } from '../services/stateEffectManagementService.js';
 import { publishInjectToSession } from './injects.js';
 import { evaluateDecisionBasedTriggers } from '../services/injectTriggerService.js';
@@ -1207,7 +1210,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         env.openAiApiKey,
         incidentContext,
       );
-      // Step 5: Environmental prerequisite (corridor traffic + location-condition gate); overrides AI result when failed
+      // Step 5: Environmental prerequisite (corridor traffic + location-condition + space contention gate); overrides AI result when failed
       const { result: prereqResult, evaluationReason: envPrereqReason } =
         await evaluateEnvironmentalPrerequisite(
           decision.session_id,
@@ -1216,6 +1219,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
             title: decision.title,
             description: decision.description,
             type: decision.type ?? null,
+            team_name: authorTeamNames[0] ?? undefined,
           },
           incidentContext,
           env.openAiApiKey,
@@ -1308,6 +1312,90 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         { error: envMgmtErr, decisionId: id },
         'Env condition management check failed, continuing',
       );
+    }
+
+    // Space claim recording: if decision references a candidate space and assigns a function, record the claim
+    if (authorTeamNames.length > 0) {
+      try {
+        const decisionLower = `${decision.title ?? ''} ${decision.description ?? ''}`.toLowerCase();
+        const { data: claimSession } = await supabaseAdmin
+          .from('sessions')
+          .select('scenario_id')
+          .eq('id', decision.session_id)
+          .single();
+        const claimScenarioId = (claimSession as { scenario_id?: string } | null)?.scenario_id;
+        const { data: scLocations } = claimScenarioId
+          ? await supabaseAdmin
+              .from('scenario_locations')
+              .select('id, label, conditions')
+              .eq('scenario_id', claimScenarioId)
+          : { data: null };
+
+        if (scLocations && scLocations.length > 0) {
+          // Assignment keywords that suggest a team is assigning a function to a space
+          const assignmentPatterns =
+            /\b(set\s+up|establish|designate|use\s+as|deploy\s+at|create|place|position|station\s+at|locate|assign|convert|transform|operate)\b/i;
+          if (assignmentPatterns.test(decisionLower)) {
+            for (const loc of scLocations) {
+              const cond = (loc.conditions as Record<string, unknown>) ?? {};
+              const isCandidateSpace =
+                cond.pin_category === 'candidate_space' || Array.isArray(cond.potential_uses);
+              if (!isCandidateSpace) continue;
+
+              const label = (loc.label ?? '').toLowerCase();
+              if (!label || !decisionLower.includes(label)) continue;
+
+              // Determine what the space is being used as
+              const usePatterns: Array<[RegExp, string]> = [
+                [/triage/i, 'triage'],
+                [/command\s*(post|center|centre)/i, 'command_post'],
+                [/staging/i, 'staging'],
+                [/evacuation|assembly/i, 'evacuation_assembly'],
+                [/media/i, 'media_center'],
+                [/negotiation/i, 'negotiation_post'],
+                [/decontamination|decon/i, 'decontamination'],
+                [/morgue|mortuary|casualty\s*collection/i, 'casualty_collection'],
+                [/logistics|supply/i, 'logistics'],
+              ];
+              let claimedAs = 'designated_area';
+              for (const [pattern, name] of usePatterns) {
+                if (pattern.test(decisionLower)) {
+                  claimedAs = name;
+                  break;
+                }
+              }
+
+              // Get current game time (minutes into scenario) from session state
+              const { data: sessionForTime } = await supabaseAdmin
+                .from('sessions')
+                .select('current_state')
+                .eq('id', decision.session_id)
+                .single();
+              const gameMinutes =
+                ((
+                  (sessionForTime as Record<string, unknown>)?.current_state as Record<
+                    string,
+                    unknown
+                  >
+                )?.game_time_minutes as number) ?? 0;
+
+              await recordSpaceClaim(
+                decision.session_id,
+                loc.id as string,
+                authorTeamNames[0],
+                claimedAs,
+                typeof gameMinutes === 'number' ? gameMinutes : 0,
+              );
+              break;
+            }
+          }
+        }
+      } catch (claimErr) {
+        logger.error(
+          { error: claimErr, decisionId: id },
+          'Space claim recording failed, continuing',
+        );
+      }
     }
 
     // State effect management: if decision credibly addresses an active state effect (e.g. exit congestion), mark it managed

@@ -83,7 +83,13 @@ export interface EnvironmentalPrerequisiteEvaluationResult {
  */
 export async function evaluateEnvironmentalPrerequisite(
   sessionId: string,
-  decision: { id: string; title: string; description: string; type: string | null },
+  decision: {
+    id: string;
+    title: string;
+    description: string;
+    type: string | null;
+    team_name?: string;
+  },
   incident?: IncidentContext,
   openAiApiKey?: string,
 ): Promise<EnvironmentalPrerequisiteEvaluationResult> {
@@ -156,12 +162,52 @@ export async function evaluateEnvironmentalPrerequisite(
       };
     }
 
-    // --- (2) Location-condition gate: decision references a bad location not yet managed ---
+    // --- (1b) Space contention gate: decision references a candidate space claimed by another team ---
     const { data: locations, error: locErr } = await supabaseAdmin
       .from('scenario_locations')
       .select('id, scenario_id, location_type, label, conditions')
       .eq('scenario_id', scenarioId);
 
+    if (locations && locations.length > 0) {
+      const teamName = decision.team_name;
+      for (const loc of locations) {
+        const label = (loc as { label?: string }).label ?? '';
+        const cond = (loc.conditions as Record<string, unknown>) ?? {};
+        const isCandidateSpace =
+          cond.pin_category === 'candidate_space' || Array.isArray(cond.potential_uses);
+
+        if (!isCandidateSpace) continue;
+        if (!label || !decisionLower.includes(label.toLowerCase())) continue;
+        if (decisionMentionsLocationNegatively(decisionText, label)) continue;
+
+        const locId = (loc as { id: string }).id;
+        const claim = (
+          locationState as
+            | Record<
+                string,
+                { claimed_by?: string; claimed_as?: string; claimed_at_minutes?: number }
+              >
+            | undefined
+        )?.[locId];
+        if (
+          claim?.claimed_by &&
+          teamName &&
+          claim.claimed_by.toLowerCase() !== teamName.toLowerCase()
+        ) {
+          const reason = `${label} is already being used as a ${claim.claimed_as ?? 'designated area'} by ${claim.claimed_by}${claim.claimed_at_minutes != null ? ` (claimed at T+${claim.claimed_at_minutes})` : ''}. You need to coordinate with them or choose a different location.`;
+          return {
+            result: {
+              consistent: false,
+              severity: 'medium',
+              error_type: 'space_contention',
+              reason,
+            },
+          };
+        }
+      }
+    }
+
+    // --- (2) Location-condition gate: decision references a bad location not yet managed ---
     if (locErr || !locations?.length) return { result: null, evaluationReason };
 
     const badLocationsInScope: Array<{ label: string; location_type: string }> = [];
@@ -187,7 +233,14 @@ export async function evaluateEnvironmentalPrerequisite(
         (locType === 'cordon' && /\bcordon\b/.test(decisionLower)) ||
         (locType === 'parking' && /\bparking\b/.test(decisionLower));
 
-      if (!labelMatch && !typeMatch) continue;
+      // New-model: check if potential_uses matches the decision context
+      const potentialUses = (conditions as Record<string, unknown>).potential_uses;
+      const usesMatch =
+        !typeMatch &&
+        Array.isArray(potentialUses) &&
+        (potentialUses as string[]).some((use) => decisionLower.includes(use.replace(/_/g, ' ')));
+
+      if (!labelMatch && !typeMatch && !usesMatch) continue;
 
       const managed = locationState?.[loc.id]?.managed === true;
       if (managed) continue;
@@ -243,7 +296,13 @@ export async function evaluateEnvironmentalPrerequisite(
         (locType === 'cordon' && /\bcordon\b/.test(decisionLower)) ||
         (locType === 'parking' && /\bparking\b/.test(decisionLower));
 
-      if (!labelMatch && !typeMatch) continue;
+      const potentialUses = (conditions as Record<string, unknown>).potential_uses;
+      const usesMatch =
+        !typeMatch &&
+        Array.isArray(potentialUses) &&
+        (potentialUses as string[]).some((use) => decisionLower.includes(use.replace(/_/g, ' ')));
+
+      if (!labelMatch && !typeMatch && !usesMatch) continue;
 
       const managed = locationState?.[loc.id]?.managed === true;
       if (managed) continue;

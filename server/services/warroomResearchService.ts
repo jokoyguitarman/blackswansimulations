@@ -21,11 +21,23 @@ export interface SimilarCase {
   outcome: string;
 }
 
+export interface SiteRequirement {
+  min_area_m2?: number;
+  requires_water?: boolean;
+  requires_shelter?: boolean;
+  requires_vehicle_access?: boolean;
+  requires_electricity?: boolean;
+  min_capacity?: number;
+  max_distance_from_incident_m?: number;
+  notes?: string;
+}
+
 export interface StandardsFinding {
   domain: string;
   source: string;
   key_points: string[];
   decision_thresholds?: string;
+  site_requirements?: Record<string, SiteRequirement>;
 }
 
 /**
@@ -152,10 +164,24 @@ Return ONLY valid JSON:
   "domain": "${discipline}",
   "source": "${standard_name}",
   "key_points": ["specific protocol or threshold 1", "specific protocol or threshold 2", "..."],
-  "decision_thresholds": "any numeric thresholds or decision gates (e.g. triage colour criteria, response time targets, resource ratios)"
+  "decision_thresholds": "any numeric thresholds or decision gates (e.g. triage colour criteria, response time targets, resource ratios)",
+  "site_requirements": {
+    "operational_area_type": {
+      "min_area_m2": 100,
+      "requires_water": true,
+      "requires_shelter": false,
+      "requires_vehicle_access": true,
+      "requires_electricity": false,
+      "min_capacity": 20,
+      "max_distance_from_incident_m": 150,
+      "notes": "why these requirements matter"
+    }
+  }
 }
 
 Focus on: decision gates, time thresholds, role responsibilities, command structure, and any criteria that determine correct vs incorrect team responses.
+
+For site_requirements: extract the PHYSICAL requirements for any operational area types governed by this standard. What does a site need to function as a triage area, evacuation assembly point, command post, negotiation post, decontamination zone, etc.? Include min area, water/power/shelter needs, vehicle access, capacity, and maximum distance from incident. Only include area types relevant to THIS standard and THIS incident — do not invent generic requirements.
 Context for why this matters here: ${reason}`;
 
       try {
@@ -182,6 +208,13 @@ Context for why this matters here: ${reason}`;
 
         const finding = JSON.parse(jsonMatch[0]) as StandardsFinding;
         if (finding.domain && finding.source && Array.isArray(finding.key_points)) {
+          if (
+            finding.site_requirements &&
+            typeof finding.site_requirements === 'object' &&
+            Object.keys(finding.site_requirements).length === 0
+          ) {
+            delete finding.site_requirements;
+          }
           findings.push(finding);
         }
       } catch (err) {
@@ -319,4 +352,33 @@ export function standardsToPromptBlock(findings: StandardsFinding[]): string {
         (f.decision_thresholds ? `\n  Thresholds: ${f.decision_thresholds}` : ''),
     )
     .join('\n\n');
+}
+
+/**
+ * Extract and serialize all site_requirements from findings into a prompt block.
+ */
+export function siteRequirementsToPromptBlock(findings: StandardsFinding[]): string {
+  const allReqs: Array<{ useType: string; req: SiteRequirement; source: string }> = [];
+  for (const f of findings) {
+    if (!f.site_requirements) continue;
+    for (const [useType, req] of Object.entries(f.site_requirements)) {
+      allReqs.push({ useType, req, source: f.source });
+    }
+  }
+  if (allReqs.length === 0) return '';
+  return allReqs
+    .map(({ useType, req, source }) => {
+      const parts: string[] = [];
+      if (req.min_area_m2 != null) parts.push(`min area: ${req.min_area_m2}m²`);
+      if (req.min_capacity != null) parts.push(`min capacity: ${req.min_capacity} persons`);
+      if (req.requires_water) parts.push('requires water');
+      if (req.requires_electricity) parts.push('requires electricity');
+      if (req.requires_shelter) parts.push('requires shelter');
+      if (req.requires_vehicle_access) parts.push('requires vehicle access');
+      if (req.max_distance_from_incident_m != null)
+        parts.push(`max ${req.max_distance_from_incident_m}m from incident`);
+      if (req.notes) parts.push(req.notes);
+      return `${useType} [${source}]: ${parts.join(', ')}`;
+    })
+    .join('\n');
 }

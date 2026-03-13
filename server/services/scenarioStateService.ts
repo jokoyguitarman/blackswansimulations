@@ -244,13 +244,28 @@ async function extractTriageChoice(
     .eq('scenario_id', scenarioId)
     .in('location_type', ['area', 'triage_site']);
 
-  const loc = locs?.find(
+  let loc = locs?.find(
     (l) =>
       l.label === matchedLabel ||
       l.label?.toLowerCase() === matchedLabel.toLowerCase() ||
       (l.label?.toLowerCase().includes('lot') &&
         l.label?.toUpperCase().endsWith(matchedLabel.slice(-1))),
   );
+
+  // Fallback: if no typed pins found, search ALL pins by label
+  if (!loc) {
+    const { data: allLocs } = await supabaseAdmin
+      .from('scenario_locations')
+      .select('label, conditions')
+      .eq('scenario_id', scenarioId);
+    loc = allLocs?.find(
+      (l) =>
+        l.label === matchedLabel ||
+        l.label?.toLowerCase() === matchedLabel.toLowerCase() ||
+        (l.label?.toLowerCase().includes('lot') &&
+          l.label?.toUpperCase().endsWith(matchedLabel.slice(-1))),
+    );
+  }
   if (!loc) return null;
 
   const cond = (loc.conditions as Record<string, unknown>) || {};
@@ -285,19 +300,33 @@ async function extractEvacChoice(
         .eq('scenario_id', scenarioId)
         .eq('location_type', 'evacuation_holding');
 
-      const loc = locs?.find(
+      let loc = locs?.find(
         (l) =>
           l.label?.toLowerCase().includes(pattern.toLowerCase()) ||
           pattern.toLowerCase().includes(l.label?.toLowerCase() ?? ''),
       );
+
+      // Fallback: if no typed pins found, search ALL pins by label
+      if (!loc) {
+        const { data: allLocs } = await supabaseAdmin
+          .from('scenario_locations')
+          .select('label, conditions')
+          .eq('scenario_id', scenarioId);
+        loc = allLocs?.find(
+          (l) =>
+            l.label?.toLowerCase().includes(pattern.toLowerCase()) ||
+            pattern.toLowerCase().includes(l.label?.toLowerCase() ?? ''),
+        );
+      }
+
       if (loc) {
         const cond = (loc.conditions as Record<string, unknown>) || {};
         return {
           label: loc.label ?? pattern,
           properties: {
-            capacity: cond.capacity,
-            water: cond.water,
-            has_cover: cond.has_cover,
+            capacity: cond.capacity ?? cond.capacity_persons,
+            water: cond.water ?? cond.has_water,
+            has_cover: cond.has_cover ?? cond.has_shelter,
           },
         };
       }

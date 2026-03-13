@@ -9,6 +9,7 @@ import type { OsmVicinity } from './osmVicinityService.js';
 import {
   standardsToPromptBlock,
   similarCasesToPromptBlock,
+  siteRequirementsToPromptBlock,
   type SimilarCase,
 } from './warroomResearchService.js';
 
@@ -656,6 +657,11 @@ async function generateMapPins(
     ? `\n\nSCENARIO NARRATIVE:\nTitle: ${narrative.title || ''}\nDescription: ${narrative.description || ''}\nBriefing: ${narrative.briefing || ''}`
     : '';
 
+  const siteReqBlock =
+    researchContext?.standards_findings && researchContext.standards_findings.length > 0
+      ? `\nSITE REQUIREMENTS (from standards research — use when assigning potential_uses):\n${siteRequirementsToPromptBlock(researchContext.standards_findings)}`
+      : '';
+
   const systemPrompt = `You are an expert crisis management scenario designer mapping the physical environment.
 
 Scenario type: ${scenario_type}
@@ -667,21 +673,49 @@ ${coords}
 ${osmBlock}
 ${standardsBlock}
 ${similarCasesBlock}
+${siteReqBlock}
 ${narrativeBlock}
 
-Read the scenario narrative and derive map pins ORGANICALLY from the story. Ask: "Given this specific incident, what locations would teams actually coordinate around or contest?"
+IMPORTANT: This is a ${scenario_type} scenario. ALL pins must be specific to how a ${scenario_type} actually unfolds. Do NOT default to mass-casualty-incident terminology (triage zones, casualty collection points, stretcher routes) unless this scenario genuinely involves mass casualties.
 
-Each pin:
-- location_type: short snake_case narrative label SPECIFIC to this scenario (e.g. "negotiation_perimeter", "secondary_device_site", "casualty_collection_point"). Do NOT use generic labels like "area" or "exit".
-- pin_category: one of "incident_site" | "access" | "triage" | "command" | "staging" | "poi" | "cordon"
+You must generate TWO GROUPS of pins:
+
+=== GROUP A: SCENARIO-FIXED PINS (4–6 pins) ===
+Locations inherent to the scenario geography whose function is self-evident.
+- location_type: functional label specific to this scenario (e.g. "blast_origin", "main_entrance", "inner_cordon", "service_tunnel_exit")
+- pin_category: one of "incident_site" | "access" | "cordon" | "command"
   - incident_site: primary crisis location and secondary sites
-  - access: entry/exit points, corridors, evacuation routes
-  - triage: medical treatment and casualty staging areas
-  - command: ICP, forward command post, joint ops center
-  - staging: holding areas, resource marshalling points
-  - poi: external establishments (hospitals, police HQ, fire station, media pool point)
+  - access: entry/exit points, corridors, escape/evacuation routes
   - cordon: inner/outer perimeter, exclusion zones
-- description: one sentence explaining WHY this location matters to THIS scenario's story
+  - command: ONLY if the scenario dictates a fixed command location
+- conditions: RICH environmental detail appropriate to the pin type:
+  - Exits/routes: { width_m, surface, capacity_flow_per_min, is_blocked, lighting, accessibility, distance_from_incident_m, notes }
+  - Incident site: { area_m2, structural_damage, hazards[], accessibility, casualty_density, notes }
+  - Cordons: { radius_m, terrain, breach_points, notes }
+- Do NOT generate hospital, police station, or fire station pins — those are provided separately from real-world data.
+
+=== GROUP B: NEUTRAL CANDIDATE SPACES (8–15 pins) ===
+Physical spaces that players must evaluate and ASSIGN a purpose to (triage, staging, command post, negotiation area, evacuation assembly, etc.). These carry physical properties but NO functional label.
+- location_type: physical descriptor (e.g. "open_lot", "covered_bay", "basement_hall", "rooftop_terrace", "parking_level", "corridor_junction", "warehouse", "courtyard", "grassy_field")
+- pin_category: always "candidate_space"
+- label: neutral physical name (e.g. "Lot A", "Loading Bay B", "Basement Hall 3", "Open Field North") — NEVER "Triage Area" or "Command Post" or any operational function name
+- conditions: {
+    area_m2: number,
+    capacity_persons: number,
+    has_water: boolean,
+    has_electricity: boolean,
+    has_shelter: boolean,
+    vehicle_access: boolean,
+    distance_from_incident_m: number,
+    surface: "concrete" | "asphalt" | "grass" | "gravel" | "mud" | "tiled" | etc.,
+    potential_uses: ["use1", "use2", ...] — 2-4 operational functions this space COULD serve based on its physical properties and the scenario type,
+    notes: "1 sentence about constraints or advantages"
+  }
+- potential_uses must reflect functions relevant to THIS ${scenario_type} — not generic MCI defaults.
+- Vary the spaces: mix of large/small, covered/open, with/without water and power. Some should be clearly suitable for certain uses, others should be marginal or have trade-offs.
+
+ALL PINS (both groups):
+- description: one sentence explaining WHY this location matters
 - label: short display name (max 5 words)
 - coordinates: {lat, lng} derived from venue and scenario context
 - display_order: integer (1 = most important)
@@ -690,8 +724,10 @@ Return ONLY valid JSON:
 { "locations": [ { "location_type": "string", "pin_category": "string", "description": "string", "label": "string", "coordinates": { "lat": 0.0, "lng": 0.0 }, "conditions": {}, "display_order": 1 } ] }
 
 RULES:
-- 4–8 pins. Every pin must be specific to THIS scenario — no generic placeholders.
-- Cover the primary incident site, at least one command/ICP, and relevant operational/support locations.`;
+- 12–21 pins total: 4–6 scenario-fixed (Group A) + 8–15 neutral candidate spaces (Group B).
+- Every pin must be specific to THIS scenario — no generic placeholders.
+- Group A must cover the primary incident site and relevant access/cordon points.
+- Group B must provide enough variety and quantity to create real decision pressure — players should feel the need to quickly evaluate many options.`;
 
   const userPrompt = `Derive map pins for "${narrative?.title || scenario_type}" at ${venue}. Teams: ${teamNames.join(', ')}.`;
 
@@ -700,12 +736,149 @@ RULES:
       systemPrompt,
       userPrompt,
       openAiApiKey,
-      2000,
+      5000,
     );
     return parsed.locations?.length ? parsed.locations : undefined;
   } catch (err) {
     logger.warn({ err }, 'Phase 4a map pins failed; continuing without');
     return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4a-POI — Generate POI pins from OSM data with AI-enriched conditions
+// ---------------------------------------------------------------------------
+
+interface PoiStub {
+  location_type: 'hospital' | 'police_station' | 'fire_station';
+  pin_category: 'poi';
+  label: string;
+  coordinates: { lat: number; lng: number };
+  distance_from_incident_m: number;
+}
+
+function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export async function generatePoiPinsFromOsm(
+  osmVicinity: OsmVicinity | undefined,
+  scenarioType: string,
+  venue: string,
+  incidentCoords: { lat: number; lng: number } | undefined,
+  openAiApiKey: string,
+): Promise<NonNullable<WarroomScenarioPayload['locations']>> {
+  if (!osmVicinity) return [];
+
+  const stubs: PoiStub[] = [];
+  const center = incidentCoords ?? osmVicinity.center ?? { lat: 0, lng: 0 };
+
+  for (const h of osmVicinity.hospitals ?? []) {
+    stubs.push({
+      location_type: 'hospital',
+      pin_category: 'poi',
+      label: h.name || 'Hospital',
+      coordinates: { lat: h.lat, lng: h.lng },
+      distance_from_incident_m: Math.round(haversineDistance(center.lat, center.lng, h.lat, h.lng)),
+    });
+  }
+  for (const p of osmVicinity.police ?? []) {
+    stubs.push({
+      location_type: 'police_station',
+      pin_category: 'poi',
+      label: p.name || 'Police Station',
+      coordinates: { lat: p.lat, lng: p.lng },
+      distance_from_incident_m: Math.round(haversineDistance(center.lat, center.lng, p.lat, p.lng)),
+    });
+  }
+  for (const f of osmVicinity.fire_stations ?? []) {
+    stubs.push({
+      location_type: 'fire_station',
+      pin_category: 'poi',
+      label: f.name || 'Fire Station',
+      coordinates: { lat: f.lat, lng: f.lng },
+      distance_from_incident_m: Math.round(haversineDistance(center.lat, center.lng, f.lat, f.lng)),
+    });
+  }
+
+  if (stubs.length === 0) return [];
+
+  const stubSummary = stubs
+    .map(
+      (s, i) =>
+        `${i + 1}. [${s.location_type}] "${s.label}" — ${s.distance_from_incident_m}m from incident`,
+    )
+    .join('\n');
+
+  const systemPrompt = `You are an expert in emergency facility capabilities. Given a list of real facilities near a ${scenarioType} incident at ${venue}, estimate realistic operational conditions for each.
+
+Facilities:
+${stubSummary}
+
+For each facility (by index), return conditions as JSON:
+
+For hospitals: { facility_type: "tertiary_hospital"|"general_hospital"|"community_hospital"|"clinic", trauma_center_level?: "Level 1"|"Level 2"|"Level 3", bed_capacity: number, emergency_beds_available: number, has_helipad: boolean, ambulance_bays: number, specializations: string[], estimated_response_time_min: number, notes: string }
+
+For police_station: { facility_type: "division_hq"|"district_station"|"neighbourhood_post"|"tactical_base", available_officers_estimate: number, has_tactical_unit: boolean, has_k9_unit: boolean, has_negotiation_team: boolean, estimated_response_time_min: number, notes: string }
+
+For fire_station: { facility_type: "headquarters"|"standard_station"|"substation", appliance_count: number, has_hazmat_unit: boolean, has_rescue_unit: boolean, has_aerial_platform: boolean, estimated_response_time_min: number, notes: string }
+
+Return ONLY valid JSON: { "facilities": [ { "index": 1, "conditions": { ... } } ] }
+Base response times on distance. Use the facility name to infer size/capabilities where possible.`;
+
+  try {
+    const parsed = await callOpenAi<{
+      facilities?: Array<{ index: number; conditions: Record<string, unknown> }>;
+    }>(
+      systemPrompt,
+      `Enrich ${stubs.length} facilities for a ${scenarioType} response.`,
+      openAiApiKey,
+      4000,
+    );
+
+    const enriched = parsed.facilities ?? [];
+    const conditionsMap = new Map<number, Record<string, unknown>>();
+    for (const f of enriched) {
+      if (typeof f.index === 'number' && f.conditions) {
+        conditionsMap.set(f.index, f.conditions);
+      }
+    }
+
+    return stubs.map((stub, i) => {
+      const aiConditions = conditionsMap.get(i + 1) ?? {};
+      return {
+        location_type: stub.location_type,
+        pin_category: stub.pin_category as string,
+        label: stub.label,
+        description: `${stub.location_type.replace(/_/g, ' ')} — ${stub.distance_from_incident_m}m from incident`,
+        coordinates: stub.coordinates,
+        conditions: {
+          distance_from_incident_m: stub.distance_from_incident_m,
+          ...aiConditions,
+        },
+        display_order: 100 + i,
+      };
+    });
+  } catch (err) {
+    logger.warn(
+      { err, count: stubs.length },
+      'POI enrichment failed; using stubs with distance only',
+    );
+    return stubs.map((stub, i) => ({
+      location_type: stub.location_type,
+      pin_category: stub.pin_category as string,
+      label: stub.label,
+      description: `${stub.location_type.replace(/_/g, ' ')} — ${stub.distance_from_incident_m}m from incident`,
+      coordinates: stub.coordinates,
+      conditions: { distance_from_incident_m: stub.distance_from_incident_m },
+      display_order: 100 + i,
+    }));
   }
 }
 
@@ -879,7 +1052,7 @@ Return ONLY valid JSON with these keys:
 
 RULES:
 - layout_ground_truth: the physical venue structure as it relates to THIS ${scenario_type}. Zones and exits should reflect the scenario (e.g. for kidnapping: "Perimeter Zone", "Negotiation Approach Corridor"; for fire: "Stairwell B", "Roof Access").
-- site_areas: 3–5 operational areas that teams in THIS scenario actually use. Name them for this incident type — NOT generic MCI area names unless this is an MCI.
+- site_areas: If the scenario locations already carry rich conditions (capacity_persons, has_water, has_electricity, area_m2, potential_uses, etc.), return an EMPTY site_areas array [] — the location conditions are the source of truth. Otherwise, generate 3–5 operational areas that teams in THIS scenario actually use. Name them for this incident type — NOT generic MCI area names unless this is an MCI.
 - custom_facts: 4–6 trainer-only insider facts that are specific to this ${scenario_type} — intelligence gaps, political sensitivities, known perpetrator behaviours, environmental constraints, known unknowns.
 - baseline_escalation_factors: 2–4 risks specific to THIS ${scenario_type} that escalate if teams perform poorly. Examples must match the incident type (e.g. for kidnapping: "Hostage Transfer", "Ransom Deadline", "Intelligence Leak"; for fire: "Structural Collapse", "Civilian Entrapment"; for bombing: "Secondary Device", "Crowd Surge"). Do NOT use bombing/MCI examples for non-bombing scenarios.`;
 

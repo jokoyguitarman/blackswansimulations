@@ -9,7 +9,11 @@ import {
   buildSliceAnswer,
   buildTriageSiteAnswerFromLocations,
   buildEvacuationHoldingAnswerFromLocations,
+  buildPhysicalSpaceAnswer,
+  buildEnrichedPoiAnswer,
+  buildSpaceStatusAnswer,
   type InsiderKnowledgeBlob,
+  type PhysicalSpaceLocationRow,
 } from '../services/insiderService.js';
 import { env } from '../env.js';
 import { getWebSocketService } from '../services/websocketService.js';
@@ -53,7 +57,7 @@ router.post(
 
       const { data: session } = await supabaseAdmin
         .from('sessions')
-        .select('id, scenario_id, trainer_id')
+        .select('id, scenario_id, trainer_id, current_state')
         .eq('id', sessionId)
         .single();
 
@@ -96,37 +100,180 @@ router.post(
         answer = `You can view the interactive map (with labels and pins) using the link below.\n\n[Open interactive map](/sessions/${sessionId}#show-map)`;
         sources_used = 'interactive_map';
       } else if (category === 'triage_site') {
-        // Triage tent/zone candidates: map pins (Vacant lot A–E) enriched with insider_knowledge.site_areas when present.
+        // Legacy path: typed triage pins
         const { data: locations } = await supabaseAdmin
           .from('scenario_locations')
           .select('label, conditions')
           .eq('scenario_id', session.scenario_id)
           .in('location_type', ['area', 'triage_site'])
           .order('display_order', { ascending: true });
-        const siteAreas = (knowledge.site_areas ?? []) as Array<Record<string, unknown>>;
-        const rows = (locations ?? []).map((loc, i) => ({
-          label: loc.label ?? 'Unknown',
-          conditions: (loc.conditions as Record<string, unknown> | null) ?? undefined,
-          site_area: siteAreas[i] ?? null,
-        }));
-        const result = buildTriageSiteAnswerFromLocations(rows);
-        answer = result.answer;
-        sources_used = result.sources_used;
+
+        if (locations && locations.length > 0) {
+          const siteAreas = (knowledge.site_areas ?? []) as Array<Record<string, unknown>>;
+          const rows = locations.map((loc, i) => ({
+            label: loc.label ?? 'Unknown',
+            conditions: (loc.conditions as Record<string, unknown> | null) ?? undefined,
+            site_area: siteAreas[i] ?? null,
+          }));
+          const result = buildTriageSiteAnswerFromLocations(rows);
+          answer = result.answer;
+          sources_used = result.sources_used;
+        } else {
+          // Fallback: new-model pins with potential_uses containing 'triage'
+          const { data: allLocs } = await supabaseAdmin
+            .from('scenario_locations')
+            .select('id, label, conditions')
+            .eq('scenario_id', session.scenario_id)
+            .order('display_order', { ascending: true });
+          const locationState = (
+            (session as Record<string, unknown>).current_state as
+              | Record<string, unknown>
+              | undefined
+          )?.location_state as
+            | Record<
+                string,
+                { claimed_by?: string; claimed_as?: string; claimed_at_minutes?: number }
+              >
+            | undefined;
+          const triageLocs: PhysicalSpaceLocationRow[] = (allLocs ?? [])
+            .filter((loc) => {
+              const cond = loc.conditions as Record<string, unknown> | null;
+              const uses = cond?.potential_uses;
+              return Array.isArray(uses) && uses.includes('triage');
+            })
+            .map((loc) => ({
+              label: loc.label ?? 'Unknown',
+              conditions: (loc.conditions as Record<string, unknown> | null) ?? undefined,
+              claim: locationState?.[(loc as { id: string }).id] ?? undefined,
+            }));
+          const result = buildPhysicalSpaceAnswer(
+            triageLocs,
+            'triage',
+            knowledge.site_requirements,
+          );
+          answer = result.answer;
+          sources_used = result.sources_used;
+        }
       } else if (category === 'evacuation_holding') {
-        // Evacuation holding / assembly zones: where to send or hold evacuees after they exit.
+        // Legacy path: typed evacuation pins
         const { data: locations } = await supabaseAdmin
           .from('scenario_locations')
           .select('label, conditions')
           .eq('scenario_id', session.scenario_id)
           .eq('location_type', 'evacuation_holding')
           .order('display_order', { ascending: true });
-        const rows = (locations ?? []).map((loc) => ({
-          label: loc.label ?? 'Unknown',
-          conditions: (loc.conditions as Record<string, unknown> | null) ?? undefined,
-        }));
-        const result = buildEvacuationHoldingAnswerFromLocations(rows);
+
+        if (locations && locations.length > 0) {
+          const rows = locations.map((loc) => ({
+            label: loc.label ?? 'Unknown',
+            conditions: (loc.conditions as Record<string, unknown> | null) ?? undefined,
+          }));
+          const result = buildEvacuationHoldingAnswerFromLocations(rows);
+          answer = result.answer;
+          sources_used = result.sources_used;
+        } else {
+          // Fallback: new-model pins with potential_uses containing evacuation/staging
+          const { data: allLocs } = await supabaseAdmin
+            .from('scenario_locations')
+            .select('id, label, conditions')
+            .eq('scenario_id', session.scenario_id)
+            .order('display_order', { ascending: true });
+          const locationState = (
+            (session as Record<string, unknown>).current_state as
+              | Record<string, unknown>
+              | undefined
+          )?.location_state as
+            | Record<
+                string,
+                { claimed_by?: string; claimed_as?: string; claimed_at_minutes?: number }
+              >
+            | undefined;
+          const evacLocs: PhysicalSpaceLocationRow[] = (allLocs ?? [])
+            .filter((loc) => {
+              const cond = loc.conditions as Record<string, unknown> | null;
+              const uses = cond?.potential_uses;
+              return (
+                Array.isArray(uses) &&
+                (uses.includes('evacuation_assembly') || uses.includes('staging'))
+              );
+            })
+            .map((loc) => ({
+              label: loc.label ?? 'Unknown',
+              conditions: (loc.conditions as Record<string, unknown> | null) ?? undefined,
+              claim: locationState?.[(loc as { id: string }).id] ?? undefined,
+            }));
+          const result = buildPhysicalSpaceAnswer(
+            evacLocs,
+            'evacuation_assembly',
+            knowledge.site_requirements,
+          );
+          answer = result.answer;
+          sources_used = result.sources_used;
+        }
+      } else if (category === 'space_status') {
+        // Show all candidate spaces with claim status
+        const { data: allLocs } = await supabaseAdmin
+          .from('scenario_locations')
+          .select('id, label, conditions')
+          .eq('scenario_id', session.scenario_id)
+          .order('display_order', { ascending: true });
+        const locationState = (
+          (session as Record<string, unknown>).current_state as Record<string, unknown> | undefined
+        )?.location_state as
+          | Record<
+              string,
+              { claimed_by?: string; claimed_as?: string; claimed_at_minutes?: number }
+            >
+          | undefined;
+        const candidateLocs: PhysicalSpaceLocationRow[] = (allLocs ?? [])
+          .filter((loc) => {
+            const cond = loc.conditions as Record<string, unknown> | null;
+            return (
+              cond?.pin_category === 'candidate_space' ||
+              (cond && Array.isArray(cond.potential_uses))
+            );
+          })
+          .map((loc) => ({
+            label: loc.label ?? 'Unknown',
+            conditions: (loc.conditions as Record<string, unknown> | null) ?? undefined,
+            claim: locationState?.[(loc as { id: string }).id] ?? undefined,
+          }));
+        const result = buildSpaceStatusAnswer(candidateLocs);
         answer = result.answer;
         sources_used = result.sources_used;
+      } else if (
+        category === 'hospitals' ||
+        category === 'police' ||
+        category === 'fire_stations'
+      ) {
+        // Check for enriched POI pins first, fall back to bare OSM data
+        const poiType =
+          category === 'hospitals'
+            ? 'hospital'
+            : category === 'police'
+              ? 'police_station'
+              : 'fire_station';
+        const { data: poiLocs } = await supabaseAdmin
+          .from('scenario_locations')
+          .select('label, location_type, conditions')
+          .eq('scenario_id', session.scenario_id)
+          .eq('location_type', poiType)
+          .order('display_order', { ascending: true });
+
+        if (poiLocs && poiLocs.length > 0) {
+          const rows = poiLocs.map((loc) => ({
+            label: loc.label ?? 'Unknown',
+            location_type: loc.location_type ?? poiType,
+            conditions: (loc.conditions as Record<string, unknown> | null) ?? undefined,
+          }));
+          const result = buildEnrichedPoiAnswer(rows, poiType);
+          answer = result.answer;
+          sources_used = result.sources_used;
+        } else {
+          const result = buildSliceAnswer(knowledge, category);
+          answer = result.answer;
+          sources_used = result.sources_used;
+        }
       } else {
         const result = buildSliceAnswer(knowledge, category);
         answer = result.answer;

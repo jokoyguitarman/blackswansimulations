@@ -10,7 +10,12 @@ import { publishInjectToSession } from '../routes/injects.js';
 import type { Server as SocketServer } from 'socket.io';
 
 export type EnvironmentalConsistencySeverity = 'low' | 'medium' | 'high';
-export type EnvironmentalConsistencyErrorType = 'capacity' | 'location' | 'flow' | 'other';
+export type EnvironmentalConsistencyErrorType =
+  | 'capacity'
+  | 'location'
+  | 'flow'
+  | 'space_contention'
+  | 'other';
 
 /** When consistent is false: "contradiction" = wrong vs ground truth; "below_standard" = correct but short of sector standard. */
 export type EnvironmentalMismatchKind = 'contradiction' | 'below_standard';
@@ -133,6 +138,85 @@ function buildGroundTruthSummary(
     parts.push(`Evacuation holding areas (valid for decisions): ${evacLines.join('; ')}`);
   }
 
+  // 2b) Fallback: new-model candidate spaces with potential_uses (when no typed pins found)
+  if (triageLocations.length === 0 && evacHolding.length === 0) {
+    const candidateSpaces = (scenarioLocations ?? []).filter((loc) => {
+      const cond = (loc.conditions ?? {}) as Record<string, unknown>;
+      return Array.isArray(cond.potential_uses);
+    });
+    if (candidateSpaces.length > 0) {
+      const spaceLines = candidateSpaces.map((loc) => {
+        const label = loc.label ?? 'Space';
+        const cond = (loc.conditions ?? {}) as Record<string, unknown>;
+        const propParts: string[] = [];
+        if (cond.area_m2 != null) propParts.push(`${cond.area_m2}m²`);
+        if (cond.capacity_persons != null) propParts.push(`cap ${cond.capacity_persons}`);
+        if (cond.has_water !== undefined) propParts.push(cond.has_water ? 'water' : 'no water');
+        if (cond.has_electricity !== undefined)
+          propParts.push(cond.has_electricity ? 'power' : 'no power');
+        if (cond.has_shelter !== undefined) propParts.push(cond.has_shelter ? 'sheltered' : 'open');
+        if (cond.vehicle_access !== undefined)
+          propParts.push(cond.vehicle_access ? 'vehicle access' : 'no vehicle access');
+        if (cond.distance_from_incident_m != null)
+          propParts.push(`${cond.distance_from_incident_m}m from incident`);
+        const uses = Array.isArray(cond.potential_uses)
+          ? (cond.potential_uses as string[]).join('/')
+          : '';
+        const inner = propParts.join(', ');
+        return `${label} (${inner})${uses ? ` [potential: ${uses}]` : ''}`;
+      });
+      parts.push(`Candidate operational spaces: ${spaceLines.join('; ')}`);
+    }
+  }
+
+  // 2c) Site requirements from standards (what each operational area type needs physically)
+  const siteReqs = insiderKnowledge.site_requirements as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  if (siteReqs && Object.keys(siteReqs).length > 0) {
+    const reqLines = Object.entries(siteReqs).map(([useType, req]) => {
+      const props: string[] = [];
+      if (req.min_area_m2 != null) props.push(`min ${req.min_area_m2}m²`);
+      if (req.min_capacity != null) props.push(`min cap ${req.min_capacity}`);
+      if (req.requires_water) props.push('needs water');
+      if (req.requires_electricity) props.push('needs power');
+      if (req.requires_shelter) props.push('needs shelter');
+      if (req.requires_vehicle_access) props.push('needs vehicle access');
+      if (req.max_distance_from_incident_m != null)
+        props.push(`max ${req.max_distance_from_incident_m}m from incident`);
+      return `${useType}: ${props.join(', ')}`;
+    });
+    parts.push(`Site requirements (standards): ${reqLines.join('; ')}`);
+  }
+
+  // 2d) POI pin conditions (hospital capacities, police capabilities)
+  const poiPins = (scenarioLocations ?? []).filter(
+    (loc) =>
+      loc.location_type === 'hospital' ||
+      loc.location_type === 'police_station' ||
+      loc.location_type === 'fire_station',
+  );
+  if (poiPins.length > 0) {
+    const poiLines = poiPins.map((loc) => {
+      const label = loc.label ?? 'Facility';
+      const cond = (loc.conditions ?? {}) as Record<string, unknown>;
+      const propParts: string[] = [];
+      if (cond.distance_from_incident_m != null)
+        propParts.push(`${cond.distance_from_incident_m}m`);
+      if (cond.estimated_response_time_min != null)
+        propParts.push(`~${cond.estimated_response_time_min}min response`);
+      if (cond.bed_capacity != null) propParts.push(`${cond.bed_capacity} beds`);
+      if (cond.emergency_beds_available != null)
+        propParts.push(`${cond.emergency_beds_available} emergency beds`);
+      if (cond.trauma_center_level) propParts.push(String(cond.trauma_center_level));
+      if (cond.available_officers_estimate != null)
+        propParts.push(`~${cond.available_officers_estimate} officers`);
+      if (cond.appliance_count != null) propParts.push(`${cond.appliance_count} appliances`);
+      return propParts.length ? `${label} (${propParts.join(', ')})` : label;
+    });
+    parts.push(`Nearby facilities (enriched): ${poiLines.join('; ')}`);
+  }
+
   // 4) Emergency routes (same as Insider routes)
   const osm = insiderKnowledge.osm_vicinity as
     | {
@@ -151,8 +235,8 @@ function buildGroundTruthSummary(
     parts.push(`Emergency routes: ${routeLines.join('; ')}`);
   }
 
-  // 5) Hospitals (same as Insider hospitals) so decisions referring to hospitals match known list
-  if (osm?.hospitals?.length) {
+  // 5) Hospitals from OSM (fallback when no enriched POI pins)
+  if (poiPins.length === 0 && osm?.hospitals?.length) {
     const hospitalNames = osm.hospitals.map((h) => h.name ?? 'Unknown').join(', ');
     parts.push(`Nearby hospitals: ${hospitalNames}`);
   }
@@ -351,7 +435,9 @@ Is this decision consistent with the environment? Return JSON only.`;
     const severity = ['low', 'medium', 'high'].includes(parsed.severity ?? '')
       ? (parsed.severity as EnvironmentalConsistencySeverity)
       : 'medium';
-    const error_type = ['capacity', 'location', 'flow', 'other'].includes(parsed.error_type ?? '')
+    const error_type = ['capacity', 'location', 'flow', 'space_contention', 'other'].includes(
+      parsed.error_type ?? '',
+    )
       ? (parsed.error_type as EnvironmentalConsistencyErrorType)
       : 'other';
     const reason =

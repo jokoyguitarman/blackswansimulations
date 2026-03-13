@@ -49,9 +49,21 @@ interface CustomFact {
   detail?: string;
 }
 
+interface SiteRequirement {
+  min_area_m2?: number;
+  requires_water?: boolean;
+  requires_shelter?: boolean;
+  requires_vehicle_access?: boolean;
+  requires_electricity?: boolean;
+  min_capacity?: number;
+  max_distance_from_incident_m?: number;
+  notes?: string;
+}
+
 interface InsiderKnowledge {
   layout_ground_truth?: LayoutGroundTruth;
   site_areas?: SiteArea[];
+  site_requirements?: Record<string, SiteRequirement>;
   osm_vicinity?: OsmVicinity;
   sector_standards?: string;
   baseline_escalation_factors?: EscalationFactor[];
@@ -382,6 +394,20 @@ export const TrainerEnvironmentalTruths = ({
   const hospitalLocs = groupByType('hospital');
   const blastLocs = groupByType('blast_site');
   const cordonLocs = groupByType('cordon');
+
+  // New-model pin groups (pin_category is stored inside conditions JSON)
+  const getPinCategory = (l: LocationRow) =>
+    (l.conditions as Record<string, unknown> | null)?.pin_category as string | undefined;
+  const candidateSpaceLocs = locations.filter((l) => {
+    const cond = l.conditions as Record<string, unknown> | null;
+    return getPinCategory(l) === 'candidate_space' || (cond && Array.isArray(cond.potential_uses));
+  });
+  const poiHospitals = locations.filter((l) => l.location_type === 'hospital');
+  const poiPolice = locations.filter((l) => l.location_type === 'police_station');
+  const poiFire = locations.filter((l) => l.location_type === 'fire_station');
+  const hasNewModel = candidateSpaceLocs.length > 0 || poiPolice.length > 0 || poiFire.length > 0;
+  const siteRequirements = insiderKnowledge?.site_requirements;
+
   const otherLocs = locations.filter(
     (l) =>
       ![
@@ -392,7 +418,9 @@ export const TrainerEnvironmentalTruths = ({
         'hospital',
         'blast_site',
         'cordon',
-      ].includes(l.location_type ?? ''),
+        'police_station',
+        'fire_station',
+      ].includes(l.location_type ?? '') && !candidateSpaceLocs.includes(l),
   );
 
   const hospitalAreas = envAreas.filter((a) => a.type === 'hospital');
@@ -535,6 +563,177 @@ export const TrainerEnvironmentalTruths = ({
         )}
         {locations.length === 0 && <span className="text-robotic-gray-500">None</span>}
       </Section>
+
+      {/* New-model: Candidate Spaces */}
+      {hasNewModel && candidateSpaceLocs.length > 0 && (
+        <Section title="Candidate spaces (neutral, for player assignment)">
+          <p className="text-robotic-gray-400 text-xs mb-1">
+            Physical spaces players can assign a purpose to (triage, staging, command post, etc.)
+          </p>
+          {candidateSpaceLocs.map((loc, i) => {
+            const cond = (loc.conditions ?? {}) as Record<string, unknown>;
+            const uses = Array.isArray(cond.potential_uses)
+              ? (cond.potential_uses as string[])
+              : [];
+            return (
+              <div key={loc.id ?? i} className="mb-2 border-l-2 border-robotic-yellow/20 pl-2">
+                <span className="font-medium">{loc.label ?? 'Space'}</span>
+                {uses.length > 0 && (
+                  <span className="ml-2">
+                    {uses.map((u) => (
+                      <span
+                        key={u}
+                        className="inline-block text-xs bg-robotic-yellow/10 text-robotic-yellow/80 px-1.5 py-0.5 rounded mr-1"
+                      >
+                        {u.replace(/_/g, ' ')}
+                      </span>
+                    ))}
+                  </span>
+                )}
+                <div className="text-xs text-robotic-gray-400 mt-0.5">
+                  {[
+                    cond.area_m2 != null && `${cond.area_m2}m²`,
+                    cond.capacity_persons != null && `cap ${cond.capacity_persons}`,
+                    cond.has_water !== undefined && (cond.has_water ? 'water' : 'no water'),
+                    cond.has_electricity !== undefined &&
+                      (cond.has_electricity ? 'power' : 'no power'),
+                    cond.has_shelter !== undefined && (cond.has_shelter ? 'sheltered' : 'open'),
+                    cond.vehicle_access !== undefined &&
+                      (cond.vehicle_access ? 'vehicle access' : 'no vehicle access'),
+                    cond.distance_from_incident_m != null &&
+                      `${cond.distance_from_incident_m}m from incident`,
+                    cond.surface && `surface: ${cond.surface}`,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+                {cond.notes != null && (
+                  <div className="text-xs text-robotic-gray-500 italic">{String(cond.notes)}</div>
+                )}
+              </div>
+            );
+          })}
+          {siteRequirements && Object.keys(siteRequirements).length > 0 && (
+            <div className="mt-3 pt-2 border-t border-robotic-yellow/10">
+              <div className="text-robotic-yellow/70 text-xs mb-1">
+                Site requirements (from standards)
+              </div>
+              {Object.entries(siteRequirements).map(([useType, req]) => (
+                <div key={useType} className="text-xs text-robotic-gray-400 mb-1">
+                  <span className="text-robotic-yellow/60">{useType.replace(/_/g, ' ')}:</span>{' '}
+                  {[
+                    req.min_area_m2 != null && `min ${req.min_area_m2}m²`,
+                    req.min_capacity != null && `min cap ${req.min_capacity}`,
+                    req.requires_water && 'water',
+                    req.requires_electricity && 'electricity',
+                    req.requires_shelter && 'shelter',
+                    req.requires_vehicle_access && 'vehicle access',
+                    req.max_distance_from_incident_m != null &&
+                      `max ${req.max_distance_from_incident_m}m`,
+                  ]
+                    .filter(Boolean)
+                    .join(', ')}
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+      )}
+
+      {/* New-model: Nearby Facilities (enriched POIs) */}
+      {hasNewModel && (poiHospitals.length > 0 || poiPolice.length > 0 || poiFire.length > 0) && (
+        <Section title="Nearby facilities (enriched POI pins)">
+          {poiHospitals.length > 0 && (
+            <div className="mb-2">
+              <div className="text-robotic-yellow/70 text-xs mb-0.5">
+                Hospitals ({poiHospitals.length})
+              </div>
+              {poiHospitals.map((loc, i) => {
+                const cond = (loc.conditions ?? {}) as Record<string, unknown>;
+                return (
+                  <div key={loc.id ?? i} className="mb-1 text-xs">
+                    <span className="font-medium">{loc.label}</span>
+                    <span className="text-robotic-gray-400">
+                      {' — '}
+                      {[
+                        cond.distance_from_incident_m != null &&
+                          `${cond.distance_from_incident_m}m`,
+                        cond.trauma_center_level,
+                        cond.bed_capacity != null && `${cond.bed_capacity} beds`,
+                        cond.emergency_beds_available != null &&
+                          `${cond.emergency_beds_available} emergency`,
+                        cond.estimated_response_time_min != null &&
+                          `~${cond.estimated_response_time_min}min`,
+                      ]
+                        .filter(Boolean)
+                        .join(', ')}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {poiPolice.length > 0 && (
+            <div className="mb-2">
+              <div className="text-robotic-yellow/70 text-xs mb-0.5">
+                Police ({poiPolice.length})
+              </div>
+              {poiPolice.map((loc, i) => {
+                const cond = (loc.conditions ?? {}) as Record<string, unknown>;
+                return (
+                  <div key={loc.id ?? i} className="mb-1 text-xs">
+                    <span className="font-medium">{loc.label}</span>
+                    <span className="text-robotic-gray-400">
+                      {' — '}
+                      {[
+                        cond.distance_from_incident_m != null &&
+                          `${cond.distance_from_incident_m}m`,
+                        cond.facility_type && String(cond.facility_type).replace(/_/g, ' '),
+                        cond.available_officers_estimate != null &&
+                          `~${cond.available_officers_estimate} officers`,
+                        cond.has_tactical_unit && 'tactical',
+                        cond.estimated_response_time_min != null &&
+                          `~${cond.estimated_response_time_min}min`,
+                      ]
+                        .filter(Boolean)
+                        .join(', ')}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {poiFire.length > 0 && (
+            <div className="mb-2">
+              <div className="text-robotic-yellow/70 text-xs mb-0.5">
+                Fire stations ({poiFire.length})
+              </div>
+              {poiFire.map((loc, i) => {
+                const cond = (loc.conditions ?? {}) as Record<string, unknown>;
+                return (
+                  <div key={loc.id ?? i} className="mb-1 text-xs">
+                    <span className="font-medium">{loc.label}</span>
+                    <span className="text-robotic-gray-400">
+                      {' — '}
+                      {[
+                        cond.distance_from_incident_m != null &&
+                          `${cond.distance_from_incident_m}m`,
+                        cond.appliance_count != null && `${cond.appliance_count} appliances`,
+                        cond.has_hazmat_unit && 'hazmat',
+                        cond.has_rescue_unit && 'rescue',
+                        cond.estimated_response_time_min != null &&
+                          `~${cond.estimated_response_time_min}min`,
+                      ]
+                        .filter(Boolean)
+                        .join(', ')}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Section>
+      )}
 
       {/* Routes */}
       {(sessionRoutes.length > 0 || (osm?.emergency_routes?.length ?? 0) > 0) && (
