@@ -584,9 +584,15 @@ export const TrainerEnvironmentalTruths = ({
       )}
 
       {/* Sector standards */}
-      {sectorStandards && (
+      {sectorStandards != null && (
         <Section title="Sector standards">
-          <p className="text-xs whitespace-pre-wrap break-words">{sectorStandards}</p>
+          {typeof sectorStandards === 'string' ? (
+            <p className="text-xs whitespace-pre-wrap break-words">{sectorStandards}</p>
+          ) : (
+            <pre className="text-xs whitespace-pre-wrap break-words font-mono">
+              {JSON.stringify(sectorStandards, null, 2)}
+            </pre>
+          )}
         </Section>
       )}
 

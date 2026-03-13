@@ -167,8 +167,10 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
   }
 
   const ik = scenario.insider_knowledge;
-  const structuredStandards = ik?.sector_standards_structured;
-  const flatStandards = ik?.sector_standards;
+  const structuredStandards = Array.isArray(ik?.sector_standards_structured)
+    ? ik.sector_standards_structured
+    : null;
+  const flatStandards = typeof ik?.sector_standards === 'string' ? ik.sector_standards : null;
 
   return (
     <div className="fixed inset-0 bg-black/85 flex items-start justify-center z-50 p-4 overflow-y-auto">
@@ -434,44 +436,69 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
             <div>
               {structuredStandards && structuredStandards.length > 0 ? (
                 <div className="space-y-4">
-                  {structuredStandards.map((finding, i) => (
-                    <div key={i} className="military-border p-4">
-                      <div className="flex gap-3 items-start mb-3">
-                        <div>
-                          <div className="text-sm terminal-text text-robotic-yellow font-medium">
-                            {finding.source}
-                          </div>
-                          <div className="text-xs terminal-text text-robotic-yellow/60 uppercase">
-                            {finding.domain}
+                  {structuredStandards.map((finding, i) => {
+                    const keyPoints = Array.isArray(finding.key_points)
+                      ? finding.key_points
+                      : finding.key_points && typeof finding.key_points === 'object'
+                        ? Object.entries(finding.key_points).map(
+                            ([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`,
+                          )
+                        : [];
+                    const source =
+                      typeof finding.source === 'string'
+                        ? finding.source
+                        : JSON.stringify(finding.source ?? '');
+                    const domain =
+                      typeof finding.domain === 'string'
+                        ? finding.domain
+                        : JSON.stringify(finding.domain ?? '');
+                    return (
+                      <div key={i} className="military-border p-4">
+                        <div className="flex gap-3 items-start mb-3">
+                          <div>
+                            <div className="text-sm terminal-text text-robotic-yellow font-medium">
+                              {source}
+                            </div>
+                            <div className="text-xs terminal-text text-robotic-yellow/60 uppercase">
+                              {domain}
+                            </div>
                           </div>
                         </div>
+                        <ul className="space-y-1 mb-2">
+                          {keyPoints.map((pt, j) => (
+                            <li key={j} className="text-xs terminal-text flex gap-2">
+                              <span className="text-robotic-yellow/40 shrink-0">▸</span>
+                              {typeof pt === 'string' ? pt : JSON.stringify(pt)}
+                            </li>
+                          ))}
+                        </ul>
+                        {finding.decision_thresholds && (
+                          <div className="mt-2 border-t border-robotic-yellow/20 pt-2">
+                            <span className="text-xs terminal-text text-robotic-yellow/50 uppercase">
+                              Decision thresholds:{' '}
+                            </span>
+                            <span className="text-xs terminal-text">
+                              {typeof finding.decision_thresholds === 'string'
+                                ? finding.decision_thresholds
+                                : JSON.stringify(finding.decision_thresholds, null, 2)}
+                            </span>
+                          </div>
+                        )}
                       </div>
-                      <ul className="space-y-1 mb-2">
-                        {finding.key_points.map((pt, j) => (
-                          <li key={j} className="text-xs terminal-text flex gap-2">
-                            <span className="text-robotic-yellow/40 shrink-0">▸</span>
-                            {pt}
-                          </li>
-                        ))}
-                      </ul>
-                      {finding.decision_thresholds && (
-                        <div className="mt-2 border-t border-robotic-yellow/20 pt-2">
-                          <span className="text-xs terminal-text text-robotic-yellow/50 uppercase">
-                            Decision thresholds:{' '}
-                          </span>
-                          <span className="text-xs terminal-text">
-                            {finding.decision_thresholds}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : flatStandards ? (
                 <Section title="Sector standards">
                   <p className="text-xs terminal-text whitespace-pre-wrap break-words">
                     {flatStandards}
                   </p>
+                </Section>
+              ) : ik?.sector_standards != null && typeof ik.sector_standards !== 'string' ? (
+                <Section title="Sector standards">
+                  <pre className="text-xs terminal-text whitespace-pre-wrap break-words font-mono">
+                    {JSON.stringify(ik.sector_standards, null, 2)}
+                  </pre>
                 </Section>
               ) : (
                 <p className="text-sm terminal-text text-robotic-yellow/50">
