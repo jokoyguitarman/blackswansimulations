@@ -19,7 +19,9 @@ import { persistWarroomScenario } from './warroomPersistenceService.js';
 import {
   researchArea,
   researchStandards,
+  researchSimilarCases,
   type StandardsFinding,
+  type SimilarCase,
 } from './warroomResearchService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -52,6 +54,7 @@ export interface WarroomSuggestTeamsResult {
 export type WarroomProgressPhase =
   | 'parsing'
   | 'geocoding'
+  | 'case_research'
   | 'osm'
   | 'area_research'
   | 'standards_research'
@@ -193,33 +196,46 @@ export async function generateAndPersistWarroomScenario(
 
   const complexity_tier = options.complexity_tier || 'full';
 
-  let geocodeResult = null;
-  let osmVicinity = undefined;
-
-  if (parsed.location) {
-    onProgress?.('geocoding', `Resolving coordinates for "${parsed.location}"...`);
-    geocodeResult = await geocode(parsed.location);
-    if (geocodeResult) {
-      onProgress?.('osm', 'Fetching hospitals, police, fire stations, and routes nearby...');
-      try {
-        osmVicinity = await fetchOsmVicinityByCoordinates(
-          geocodeResult.lat,
-          geocodeResult.lng,
-          3000,
-        );
-      } catch (osmErr) {
-        logger.warn(
-          { err: osmErr, location: parsed.location },
-          'OSM vicinity fetch failed; continuing without',
-        );
-      }
-    }
-  } else {
-    onProgress?.('geocoding', 'No location specified; skipping geocoding.');
-  }
-
   const venueName = parsed.location || parsed.setting;
   const teamNames = options.teams?.map((t) => t.team_name) ?? [];
+
+  // Run geocoding and similar-cases research in parallel (both can start right after parsing)
+  onProgress?.(
+    'geocoding',
+    parsed.location
+      ? `Resolving coordinates for "${parsed.location}"...`
+      : 'No location specified; skipping geocoding.',
+  );
+  onProgress?.('case_research', 'Researching similar real-world incidents...');
+
+  let geocodeResult = null;
+  let similarCases: SimilarCase[] = [];
+
+  [geocodeResult, similarCases] = await Promise.all([
+    parsed.location ? geocode(parsed.location) : Promise.resolve(null),
+    researchSimilarCases(
+      openAiApiKey,
+      parsed.scenario_type,
+      parsed.location ?? undefined,
+      venueName,
+      parsed.setting,
+    ).catch(() => []),
+  ]);
+
+  logger.info({ found: similarCases.length }, 'Similar cases research done');
+
+  let osmVicinity = undefined;
+  if (geocodeResult) {
+    onProgress?.('osm', 'Fetching hospitals, police, fire stations, and routes nearby...');
+    try {
+      osmVicinity = await fetchOsmVicinityByCoordinates(geocodeResult.lat, geocodeResult.lng, 3000);
+    } catch (osmErr) {
+      logger.warn(
+        { err: osmErr, location: parsed.location },
+        'OSM vicinity fetch failed; continuing without',
+      );
+    }
+  }
 
   // Phase A: area research (runs independently of standards)
   const areaSummary = parsed.location
@@ -260,6 +276,12 @@ export async function generateAndPersistWarroomScenario(
       typeSpec,
       settingSpec,
       terrainSpec,
+      researchContext:
+        similarCases.length > 0
+          ? { area_summary: areaSummary || undefined, similar_cases: similarCases }
+          : areaSummary
+            ? { area_summary: areaSummary }
+            : undefined,
       userTeams,
     },
     openAiApiKey,
@@ -307,10 +329,11 @@ export async function generateAndPersistWarroomScenario(
       settingSpec,
       terrainSpec,
       researchContext:
-        areaSummary || standardsFindings.length > 0
+        areaSummary || standardsFindings.length > 0 || similarCases.length > 0
           ? {
               area_summary: areaSummary || undefined,
               standards_findings: standardsFindings.length > 0 ? standardsFindings : undefined,
+              similar_cases: similarCases.length > 0 ? similarCases : undefined,
             }
           : undefined,
       userTeams,

@@ -6,7 +6,11 @@
 
 import { logger } from '../lib/logger.js';
 import type { OsmVicinity } from './osmVicinityService.js';
-import { standardsToPromptBlock } from './warroomResearchService.js';
+import {
+  standardsToPromptBlock,
+  similarCasesToPromptBlock,
+  type SimilarCase,
+} from './warroomResearchService.js';
 
 export interface WarroomScenarioPayload {
   scenario: {
@@ -113,6 +117,7 @@ export interface WarroomResearchContext {
   /** @deprecated use standards_findings instead */
   standards_summary?: string;
   standards_findings?: import('./warroomResearchService.js').StandardsFinding[];
+  similar_cases?: SimilarCase[];
 }
 
 export interface WarroomUserTeam {
@@ -262,9 +267,13 @@ async function generateTeamsAndCore(
       : researchContext?.standards_summary
         ? `\nStandards: ${researchContext.standards_summary}`
         : '';
+  const similarCasesBlock =
+    researchContext?.similar_cases && researchContext.similar_cases.length > 0
+      ? `\n\nSIMILAR REAL INCIDENTS (how events like this have unfolded — use for realistic dynamics):\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
+      : '';
   const researchBlock =
-    researchContext?.area_summary || standardsBlock
-      ? `\nResearch context:\n${researchContext?.area_summary || ''}${standardsBlock}`
+    researchContext?.area_summary || standardsBlock || similarCasesBlock
+      ? `\nResearch context:\n${researchContext?.area_summary || ''}${standardsBlock}${similarCasesBlock}`
       : '';
 
   const teamsBlock = hasUserTeams
@@ -639,6 +648,10 @@ async function generateMapPins(
     researchContext?.standards_findings && researchContext.standards_findings.length > 0
       ? `\nResponse standards context:\n${standardsToPromptBlock(researchContext.standards_findings)}`
       : '';
+  const similarCasesBlock =
+    researchContext?.similar_cases && researchContext.similar_cases.length > 0
+      ? `\nSIMILAR REAL INCIDENTS:\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
+      : '';
   const narrativeBlock = narrative
     ? `\n\nSCENARIO NARRATIVE:\nTitle: ${narrative.title || ''}\nDescription: ${narrative.description || ''}\nBriefing: ${narrative.briefing || ''}`
     : '';
@@ -653,6 +666,7 @@ Teams: ${teamNames.join(', ')}
 ${coords}
 ${osmBlock}
 ${standardsBlock}
+${similarCasesBlock}
 ${narrativeBlock}
 
 Read the scenario narrative and derive map pins ORGANICALLY from the story. Ask: "Given this specific incident, what locations would teams actually coordinate around or contest?"
@@ -724,6 +738,10 @@ async function generateEnvironmentalSeeds(
     researchContext?.standards_findings && researchContext.standards_findings.length > 0
       ? `\nResponse standards:\n${standardsToPromptBlock(researchContext.standards_findings)}`
       : '';
+  const similarCasesBlock =
+    researchContext?.similar_cases && researchContext.similar_cases.length > 0
+      ? `\nSIMILAR REAL INCIDENTS:\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
+      : '';
   const narrativeBlock = narrative
     ? `\nNARRATIVE:\nTitle: ${narrative.title || ''}\nDescription: ${narrative.description || ''}\nBriefing: ${narrative.briefing || ''}`
     : '';
@@ -737,6 +755,7 @@ Teams: ${teamNames.join(', ')}
 ${narrativeBlock}
 ${locationsBlock}
 ${standardsBlock}
+${similarCasesBlock}
 
 IMPORTANT: This is a ${scenario_type} scenario. Every route, area, and state value you generate MUST be appropriate to how a ${scenario_type} actually unfolds. Do NOT use mass-casualty-incident terminology (triage zones, casualty collection points, stretcher routes, crowd evacuation) unless this scenario genuinely involves those elements.
 
@@ -924,6 +943,10 @@ async function generateUniversalTimeInjects(
       : researchContext?.standards_summary
         ? `\nStandards: ${researchContext.standards_summary}`
         : '';
+  const similarCasesBlock =
+    researchContext?.similar_cases && researchContext.similar_cases.length > 0
+      ? `\nSIMILAR REAL INCIDENTS:\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
+      : '';
   const narrativeBlock = narrative
     ? `\nNARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}`
     : '';
@@ -939,6 +962,7 @@ Setting: ${setting} | Terrain: ${terrain}
 Teams: ${teamNames.join(', ')}
 ${osmBlock}
 ${standardsBlock}
+${similarCasesBlock}
 ${narrativeBlock}
 
 Universal injects are shared operational events: breaking news, environmental changes, senior command directives, political pressure, resource status updates affecting the entire operation. Every team sees them at the same moment.
@@ -1019,7 +1043,8 @@ async function generateTeamTimeInjects(
 ): Promise<WarroomScenarioPayload['time_injects']> {
   if (assignedSlots.length === 0) return [];
 
-  const { scenario_type, setting, terrain, venue_name, location, typeSpec } = input;
+  const { scenario_type, setting, terrain, venue_name, location, typeSpec, researchContext } =
+    input;
   const venue = venue_name || location || setting;
   const injectTemplates =
     (typeSpec.inject_templates as Array<{
@@ -1032,6 +1057,10 @@ async function generateTeamTimeInjects(
   const narrativeBlock = narrative
     ? `\nNARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}\n${(narrative.briefing || '').slice(0, 300)}`
     : '';
+  const similarCasesBlock =
+    researchContext?.similar_cases && researchContext.similar_cases.length > 0
+      ? `\nSIMILAR REAL INCIDENTS:\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
+      : '';
 
   const slotsWithPhase = assignedSlots.map((t) => `T+${t} [${getPhaseLabelShort(t)}]`).join(', ');
 
@@ -1042,6 +1071,7 @@ Setting: ${setting} | Terrain: ${terrain}
 All teams in this exercise: ${allTeamNames.join(', ')}
 THIS inject set is ONLY for: ${teamName}
 ${narrativeBlock}
+${similarCasesBlock}
 
 Inject style reference (tone and specificity):
 ${JSON.stringify(injectTemplates.slice(0, 3))}
@@ -1216,7 +1246,7 @@ async function generateTeamConditionInjects(
   seeds?: WarroomScenarioPayload['environmental_seeds'],
   siteAreas?: Array<Record<string, unknown>>,
 ): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
-  const { scenario_type, venue_name, location, typeSpec } = input;
+  const { scenario_type, venue_name, location, typeSpec, researchContext } = input;
   const venue = venue_name || location || input.setting;
 
   const templateConditionKeys = (typeSpec.condition_keys as Array<{ key: string }>) ?? [];
@@ -1244,6 +1274,10 @@ async function generateTeamConditionInjects(
   const narrativeBlock = narrative
     ? `\nNARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}`
     : '';
+  const similarCasesBlock =
+    researchContext?.similar_cases && researchContext.similar_cases.length > 0
+      ? `\nSIMILAR REAL INCIDENTS:\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
+      : '';
 
   const systemPrompt = `You are an expert crisis management scenario designer writing condition-driven failure injects for the ${teamName} team.
 
@@ -1251,6 +1285,7 @@ Scenario: ${scenario_type} at ${venue}
 All teams: ${allTeamNames.join(', ')}
 Focus team: ${teamName}
 ${narrativeBlock}
+${similarCasesBlock}
 ${locationsBlock}
 ${areasBlock}
 ${seedBlock}
@@ -1345,7 +1380,7 @@ async function generatePairConditionInjects(
   seeds?: WarroomScenarioPayload['environmental_seeds'],
   siteAreas?: Array<Record<string, unknown>>,
 ): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
-  const { scenario_type, venue_name, location } = input;
+  const { scenario_type, venue_name, location, researchContext } = input;
   const venue = venue_name || location || input.setting;
 
   const stateSchema = buildTeamStateSchemaHint(allTeamNames);
@@ -1361,6 +1396,10 @@ async function generatePairConditionInjects(
   const narrativeBlock = narrative
     ? `\nNARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}`
     : '';
+  const similarCasesBlock =
+    researchContext?.similar_cases && researchContext.similar_cases.length > 0
+      ? `\nSIMILAR REAL INCIDENTS:\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
+      : '';
 
   const systemPrompt = `You are an expert crisis management scenario designer writing cross-team coordination failure injects.
 
@@ -1368,6 +1407,7 @@ Scenario: ${scenario_type} at ${venue}
 Team pair: ${teamA} and ${teamB}
 All teams: ${allTeamNames.join(', ')}
 ${narrativeBlock}
+${similarCasesBlock}
 ${locationsBlock}
 ${areasBlock}
 ${seedBlock}

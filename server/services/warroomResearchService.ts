@@ -1,13 +1,25 @@
 /**
  * War Room Research Service
- * Uses OpenAI web search models for area and standards research.
+ * Uses OpenAI web search models for area, standards, and similar-cases research.
  * Standards research is narrative-driven: first identifies relevant domains from the
  * scenario story, then fetches specific protocols per domain.
+ * Similar-cases research runs right after parsing (concurrent with geocoding) and
+ * provides structured real-world incident context for every AI generation phase.
  */
 
 import { logger } from '../lib/logger.js';
 
 const SEARCH_MODEL = 'gpt-4o-search-preview';
+
+export interface SimilarCase {
+  name: string;
+  summary: string;
+  timeline: string;
+  adversary_behavior: string;
+  other_actors: string;
+  environment: string;
+  outcome: string;
+}
 
 export interface StandardsFinding {
   domain: string;
@@ -184,6 +196,114 @@ Context for why this matters here: ${reason}`;
   );
 
   return findings;
+}
+
+/**
+ * Research 2–4 real-world incidents similar to the given scenario type and venue.
+ * Runs right after parsing, concurrent with geocoding, before any AI generation.
+ * Returns [] on any failure so generation always proceeds.
+ */
+export async function researchSimilarCases(
+  openAiApiKey: string,
+  scenarioType: string,
+  location?: string,
+  venueName?: string,
+  setting?: string,
+): Promise<SimilarCase[]> {
+  const venueContext = venueName || location || setting || scenarioType;
+  const locationHint = location ? ` in or near ${location}` : '';
+  const settingHint = setting ? ` (setting: ${setting})` : '';
+
+  const prompt = `You are an expert in crisis management and emergency response history.
+
+Find 2–4 real-world incidents that are similar to: ${scenarioType}${locationHint}${settingHint}.
+
+For each incident, extract a structured summary focused on HOW the event unfolded — the dynamics between the threat, responders, environment, and other actors. This will be used to make a crisis simulation scenario more realistic.
+
+Return ONLY valid JSON:
+{
+  "cases": [
+    {
+      "name": "incident name, location, year (e.g. 'Nairobi Westgate Mall Attack, 2013')",
+      "summary": "2–3 sentence overview of what happened",
+      "timeline": "How the event evolved: key phases, escalation points, turning points (2–4 sentences)",
+      "adversary_behavior": "What the threat actor(s) did: tactics, adaptations, objectives (2–3 sentences)",
+      "other_actors": "How the public, media, bystanders, or other third parties behaved and influenced events (1–2 sentences)",
+      "environment": "How location, infrastructure, crowd density, or environmental factors shaped the response (1–2 sentences)",
+      "outcome": "How it resolved, key lessons for responders (1–2 sentences)"
+    }
+  ]
+}
+
+RULES:
+- Use ONLY real, documented incidents — no fictional or hypothetical cases.
+- If no closely similar real incidents can be found, return an empty cases array: { "cases": [] }
+- Focus on incidents where the response dynamics (coordination, timing, actor behavior) are most instructive.
+- Prioritise incidents from the past 30 years with documented after-action reviews.
+
+Scenario context: ${scenarioType} at ${venueContext}`;
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
+      body: JSON.stringify({
+        model: SEARCH_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 2000,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const msg = (err as { error?: { message?: string } }).error?.message || res.statusText;
+      logger.warn({ status: res.status, msg }, 'Similar cases research failed');
+      return [];
+    }
+
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content as string | undefined;
+    if (!raw) return [];
+
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return [];
+
+    const parsed = JSON.parse(jsonMatch[0]) as { cases?: unknown[] };
+    const cases = parsed.cases ?? [];
+
+    const valid = cases.filter(
+      (c): c is SimilarCase =>
+        typeof c === 'object' &&
+        c !== null &&
+        typeof (c as SimilarCase).name === 'string' &&
+        typeof (c as SimilarCase).summary === 'string',
+    );
+
+    logger.info({ scenarioType, location, found: valid.length }, 'Similar cases research complete');
+    return valid;
+  } catch (err) {
+    logger.warn({ err, scenarioType }, 'Similar cases research error');
+    return [];
+  }
+}
+
+/**
+ * Serialize SimilarCase[] to a compact string for embedding in AI prompts.
+ */
+export function similarCasesToPromptBlock(cases: SimilarCase[]): string {
+  if (cases.length === 0) return '';
+  return cases
+    .map(
+      (c) =>
+        `[${c.name}]\n` +
+        `  Overview: ${c.summary}\n` +
+        `  Timeline: ${c.timeline}\n` +
+        `  Adversary: ${c.adversary_behavior}\n` +
+        `  Other actors: ${c.other_actors}\n` +
+        `  Environment: ${c.environment}\n` +
+        `  Outcome: ${c.outcome}`,
+    )
+    .join('\n\n');
 }
 
 /**

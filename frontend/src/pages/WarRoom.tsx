@@ -50,6 +50,7 @@ const COMPLEXITY_TIERS = [
 const GENERATION_PHASES: { id: string; label: string; desc: string }[] = [
   { id: 'parsing', label: 'Parsing', desc: 'Classifying scenario type, setting, terrain' },
   { id: 'geocoding', label: 'Geocoding', desc: 'Resolving location coordinates' },
+  { id: 'case_research', label: 'Case research', desc: 'Similar real-world incidents' },
   { id: 'osm', label: 'Map data', desc: 'Hospitals, police, fire stations, routes' },
   { id: 'area_research', label: 'Area research', desc: 'Geography, agencies, access' },
   { id: 'standards_research', label: 'Standards research', desc: 'ICS, triage, protocols' },
