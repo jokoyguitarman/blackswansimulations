@@ -70,7 +70,7 @@
       "inject_template": "Decon site selection. Upwind? Capacity? Access for ambulances?"
     }
   ],
-  "compatible_settings": ["train", "subway", "mall"],
+  "compatible_settings": ["train", "subway", "mall", "office", "stadium", "airport", "government"],
   "compatible_terrains": ["urban", "mountain"],
   "team_counter_definitions": {
     "evacuation": [

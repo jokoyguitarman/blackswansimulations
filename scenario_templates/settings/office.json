@@ -1,0 +1,25 @@
+{
+  "id": "office",
+  "display_name": "Corporate building / office",
+  "compatible_terrains": ["urban"],
+  "location_types": [
+    "lobby",
+    "office_floor",
+    "conference_room",
+    "elevator",
+    "stairwell",
+    "parking_garage",
+    "server_room",
+    "cafeteria"
+  ],
+  "access_routes": [
+    "main_entrance",
+    "service_entrance",
+    "parking_garage",
+    "stairwells",
+    "elevators",
+    "fire_escape"
+  ],
+  "multi_storey": true,
+  "environmental_seed_variants": ["occupancy", "floor_count", "access_control", "evacuation_flow"]
+}

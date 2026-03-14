@@ -1,0 +1,22 @@
+{
+  "id": "park",
+  "display_name": "Public park / garden",
+  "compatible_terrains": ["urban", "coastal", "rural", "mountain"],
+  "location_types": [
+    "playground",
+    "pavilion",
+    "walking_path",
+    "lake_pond",
+    "entrance_gate",
+    "restroom",
+    "parking"
+  ],
+  "access_routes": ["main_gate", "side_entrance", "footpath", "parking", "perimeter_fence"],
+  "multi_storey": false,
+  "environmental_seed_variants": [
+    "visitor_count",
+    "event_in_progress",
+    "cover_availability",
+    "weather"
+  ]
+}

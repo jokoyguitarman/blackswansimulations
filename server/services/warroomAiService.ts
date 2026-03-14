@@ -172,6 +172,10 @@ export interface WarroomGenerateInput {
   terrain: string;
   location: string | null;
   venue_name?: string;
+  /** The user's original free-text prompt, preserved for AI narrative generation. */
+  original_prompt?: string;
+  /** Nearby landmarks the user mentioned (e.g. "Ateneo de Davao University"). */
+  landmarks?: string[];
   osm_vicinity?: OsmVicinity;
   osmOpenSpaces?: OsmOpenSpace[];
   osmBuildings?: OsmBuilding[];
@@ -289,6 +293,8 @@ async function generateTeamsAndCore(
     terrain,
     location,
     venue_name,
+    original_prompt,
+    landmarks,
     typeSpec,
     settingSpec,
     terrainSpec,
@@ -322,12 +328,20 @@ async function generateTeamsAndCore(
     ? ''
     : '\n- You MUST include at least 4 teams. Use required_teams from the scenario type template as a base; you may add or adapt.';
 
+  const originalPromptBlock = original_prompt
+    ? `\nUser's original request: "${original_prompt}"\nIMPORTANT: The scenario title, description, and briefing MUST reference the specific venue/location the user described. Do NOT substitute a different venue type or name.`
+    : '';
+  const landmarksBlock =
+    landmarks && landmarks.length > 0
+      ? `\nNearby landmarks mentioned by user: ${landmarks.join(', ')}\nIncorporate these landmarks into the scenario narrative where appropriate.`
+      : '';
+
   const systemPrompt = `You are an expert crisis management scenario designer.
 
 Scenario type: ${scenario_type}
 Setting: ${setting}
 Terrain: ${terrain}
-Venue: ${venue}
+Venue: ${venue}${originalPromptBlock}${landmarksBlock}
 ${researchBlock}
 
 Template context:

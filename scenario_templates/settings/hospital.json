@@ -1,0 +1,30 @@
+{
+  "id": "hospital",
+  "display_name": "Hospital / medical facility",
+  "compatible_terrains": ["urban", "rural"],
+  "location_types": [
+    "emergency_department",
+    "ward",
+    "operating_theatre",
+    "lobby",
+    "pharmacy",
+    "parking",
+    "helipad",
+    "morgue"
+  ],
+  "access_routes": [
+    "main_entrance",
+    "emergency_entrance",
+    "ambulance_bay",
+    "service_entrance",
+    "parking",
+    "helipad"
+  ],
+  "multi_storey": true,
+  "environmental_seed_variants": [
+    "patient_count",
+    "staff_count",
+    "icu_capacity",
+    "vulnerable_population"
+  ]
+}

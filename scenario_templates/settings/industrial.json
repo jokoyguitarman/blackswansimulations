@@ -1,0 +1,22 @@
+{
+  "id": "industrial",
+  "display_name": "Industrial facility (refinery, plant, factory)",
+  "compatible_terrains": ["urban", "coastal", "rural", "desert"],
+  "location_types": [
+    "control_room",
+    "processing_unit",
+    "storage_tank",
+    "loading_bay",
+    "administration",
+    "perimeter_fence",
+    "cooling_tower"
+  ],
+  "access_routes": ["main_gate", "security_checkpoint", "service_road", "rail_access", "perimeter"],
+  "multi_storey": false,
+  "environmental_seed_variants": [
+    "hazmat_presence",
+    "worker_count",
+    "process_status",
+    "wind_direction"
+  ]
+}

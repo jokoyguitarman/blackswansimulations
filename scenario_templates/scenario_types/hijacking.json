@@ -1,0 +1,262 @@
+{
+  "id": "hijacking",
+  "display_name": "Hijacking",
+  "category": "terrorism",
+  "required_teams": [
+    {
+      "team_name": "police",
+      "team_description": "Tactical response, perimeter, interception, armed intervention options",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "negotiation",
+      "team_description": "Hostage/hijacker negotiation, communication relay, demand assessment",
+      "min_participants": 1,
+      "max_participants": 4
+    },
+    {
+      "team_name": "intelligence",
+      "team_description": "Perpetrator identification, real-time surveillance, threat assessment",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "media",
+      "team_description": "Public communication, media management, misinformation control",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "triage",
+      "team_description": "Standby medical support, hostage medical assessment post-resolution",
+      "min_participants": 2,
+      "max_participants": 6
+    }
+  ],
+  "environmental_factors": [
+    "vehicle_type",
+    "passenger_count",
+    "route_trajectory",
+    "fuel_status",
+    "hostage_conditions"
+  ],
+  "adversary_behaviors": [
+    "demand_escalation",
+    "route_diversion",
+    "hostage_threat",
+    "media_exploitation"
+  ],
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "field_update",
+      "template": "Hijacking reported at {venue}. Vehicle/aircraft seized. Number of hostages and perpetrators unknown.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+5",
+      "type": "intel_brief",
+      "template": "Initial demands received. Perpetrators appear organised. Hostage count being confirmed.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+10",
+      "type": "field_update",
+      "template": "Perpetrators threaten escalation if demands not met within deadline. Hostage welfare concerns rising.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+15",
+      "type": "media_report",
+      "template": "News outlets broadcasting live. Social media speculation on perpetrator identity. Public anxiety growing.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+20",
+      "type": "field_update",
+      "template": "Hostage released as goodwill gesture — or hostage condition deteriorating. Tactical window assessment needed.",
+      "severity": "high"
+    }
+  ],
+  "decision_branches": [
+    {
+      "branch_id": "negotiate",
+      "keywords": ["negotiate", "talk", "demand", "communicate"],
+      "trigger_condition": "when negotiation team establishes contact with hijackers",
+      "inject_template": "Contact established. Hijackers present demands. Negotiation strategy must be decided."
+    },
+    {
+      "branch_id": "tactical_entry",
+      "keywords": ["breach", "assault", "tactical", "storm", "entry"],
+      "trigger_condition": "when command authorises tactical intervention",
+      "inject_template": "Tactical intervention authorised. Entry team preparing. Risk to hostages assessed."
+    },
+    {
+      "branch_id": "media_statement",
+      "keywords": ["statement", "press", "public"],
+      "trigger_condition": "when media team issues public statement",
+      "inject_template": "Public statement issued. Media scrutiny intensifies."
+    }
+  ],
+  "compatible_settings": ["airport", "train", "subway", "street", "hotel", "open_field"],
+  "compatible_terrains": ["urban", "coastal", "rural", "desert"],
+  "multi_storey": false,
+  "condition_keys": [
+    {
+      "key": "police_no_perimeter_decision",
+      "meaning": "No decision matches perimeter/cordon keywords",
+      "team": "police"
+    },
+    {
+      "key": "police_perimeter_established",
+      "meaning": "police_state.perimeter_established === true",
+      "team": "police"
+    },
+    {
+      "key": "negotiation_not_initiated",
+      "meaning": "negotiation_state.contact_established !== true",
+      "team": "negotiation"
+    },
+    {
+      "key": "media_no_statement_by_T12",
+      "meaning": "elapsedMinutes >= 12 and no statement",
+      "team": "media"
+    }
+  ],
+  "keyword_patterns": [
+    {
+      "category": "Perimeter (police)",
+      "keywords": ["perimeter", "cordon", "secure", "contain", "lockdown"],
+      "state_key": "police_state.perimeter_established"
+    },
+    {
+      "category": "Contact (negotiation)",
+      "keywords": ["contact", "negotiate", "talk", "communicate", "demand"],
+      "state_key": "negotiation_state.contact_established"
+    },
+    {
+      "category": "Statement (media)",
+      "keywords": ["statement", "press", "announce", "release"],
+      "state_key": "media_state.first_statement_issued"
+    }
+  ],
+  "team_counter_definitions": {
+    "police": [
+      {
+        "key": "perimeter_established",
+        "label": "Perimeter Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["perimeter", "cordon", "secure", "contain", "lockdown"] }
+      },
+      {
+        "key": "tactical_team_ready",
+        "label": "Tactical Team Ready",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["tactical", "armed", "ready", "breach", "assault"] }
+      },
+      {
+        "key": "armed_units",
+        "label": "Armed Units",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ],
+    "negotiation": [
+      {
+        "key": "contact_established",
+        "label": "Contact Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["contact", "negotiate", "communicate", "talk"] }
+      },
+      {
+        "key": "demands_received",
+        "label": "Demands Received",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["demand", "ransom", "request", "condition"] }
+      },
+      {
+        "key": "sessions_count",
+        "label": "Negotiation Sessions",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": { "keywords": ["session", "negotiation", "round", "talk"] }
+      }
+    ],
+    "intelligence": [
+      {
+        "key": "perpetrator_count_known",
+        "label": "Perpetrator Count Confirmed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["count", "confirm", "identified", "perpetrator"] }
+      },
+      {
+        "key": "inside_intel",
+        "label": "Inside Intelligence Available",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": { "keywords": ["inside", "intel", "surveillance", "camera", "feed"] }
+      }
+    ],
+    "media": [
+      {
+        "key": "statements_issued",
+        "label": "Statements Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": { "keywords": ["statement", "press", "announce", "release"] }
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": { "keywords": ["statement", "press", "announce", "release"] }
+      }
+    ],
+    "triage": [
+      {
+        "key": "medical_standby",
+        "label": "Medical Standby Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["standby", "medical", "ambulance", "triage", "prepare"] }
+      },
+      {
+        "key": "casualties",
+        "label": "Casualties",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ]
+  }
+}

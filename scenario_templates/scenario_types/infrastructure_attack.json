@@ -1,0 +1,266 @@
+{
+  "id": "infrastructure_attack",
+  "display_name": "Critical infrastructure attack",
+  "category": "terrorism",
+  "required_teams": [
+    {
+      "team_name": "police",
+      "team_description": "Perimeter security, threat neutralisation, evidence preservation",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "fire_hazmat",
+      "team_description": "Fire suppression, HAZMAT containment, structural assessment, search and rescue",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "evacuation",
+      "team_description": "Worker and community evacuation from hazard zones, shelter-in-place coordination",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "media",
+      "team_description": "Public communication, community advisory, counter misinformation",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "operations",
+      "team_description": "Facility shutdown, process isolation, damage assessment, continuity planning",
+      "min_participants": 2,
+      "max_participants": 8
+    }
+  ],
+  "environmental_factors": [
+    "hazardous_material_release",
+    "fire_explosion_risk",
+    "environmental_contamination",
+    "supply_chain_disruption",
+    "community_proximity",
+    "wind_direction"
+  ],
+  "adversary_behaviors": ["sabotage", "insider_threat", "coordinated_multi_point_attack"],
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "field_update",
+      "template": "Attack on {venue}. Explosion/breach reported. Fire and possible hazardous material release. Extent of damage unknown.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+5",
+      "type": "field_update",
+      "template": "Toxic plume visible. Wind carrying contaminants towards nearby community. Shelter-in-place or evacuation decision needed.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+10",
+      "type": "intel_brief",
+      "template": "Attack appears deliberate. Possible insider involvement. Secondary systems may be compromised.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+15",
+      "type": "media_report",
+      "template": "Community alarm spreading. Residents reporting respiratory symptoms. Demand for information intense.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+20",
+      "type": "field_update",
+      "template": "Supply disruption affecting wider area. Downstream facilities impacted. Cascading effects emerging.",
+      "severity": "high"
+    }
+  ],
+  "decision_branches": [
+    {
+      "branch_id": "shelter_in_place",
+      "keywords": ["shelter", "stay indoors", "shelter in place"],
+      "trigger_condition": "when shelter-in-place order is issued instead of evacuation",
+      "inject_template": "Shelter-in-place ordered. Compliance varies. Vulnerable populations need direct outreach."
+    },
+    {
+      "branch_id": "facility_shutdown",
+      "keywords": ["shutdown", "isolate", "emergency stop"],
+      "trigger_condition": "when operations team initiates emergency shutdown",
+      "inject_template": "Emergency shutdown initiated. Process isolation underway. Secondary hazards possible during shutdown."
+    },
+    {
+      "branch_id": "media_statement",
+      "keywords": ["statement", "press", "advisory"],
+      "trigger_condition": "when public advisory is issued",
+      "inject_template": "Public advisory issued. Community demands more information. Environmental groups mobilising."
+    }
+  ],
+  "compatible_settings": ["industrial", "government", "open_field"],
+  "compatible_terrains": ["urban", "coastal", "rural", "desert"],
+  "multi_storey": false,
+  "condition_keys": [
+    {
+      "key": "hazmat_containment_not_started",
+      "meaning": "No containment decision made",
+      "team": "fire_hazmat"
+    },
+    {
+      "key": "evacuation_no_decision",
+      "meaning": "No evacuation or shelter-in-place decision",
+      "team": "evacuation"
+    },
+    {
+      "key": "media_no_statement_by_T12",
+      "meaning": "elapsedMinutes >= 12 and no statement",
+      "team": "media"
+    }
+  ],
+  "keyword_patterns": [
+    {
+      "category": "Containment (hazmat)",
+      "keywords": ["contain", "isolate", "suppress", "seal", "foam"],
+      "state_key": "fire_hazmat_state.containment_started"
+    },
+    {
+      "category": "Shutdown (operations)",
+      "keywords": ["shutdown", "emergency stop", "isolate", "valve"],
+      "state_key": "operations_state.emergency_shutdown"
+    },
+    {
+      "category": "Statement (media)",
+      "keywords": ["statement", "press", "announce", "advisory"],
+      "state_key": "media_state.first_statement_issued"
+    }
+  ],
+  "team_counter_definitions": {
+    "police": [
+      {
+        "key": "perimeter_established",
+        "label": "Perimeter Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["perimeter", "cordon", "secure", "lockdown"] }
+      },
+      {
+        "key": "armed_units",
+        "label": "Armed Units",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ],
+    "fire_hazmat": [
+      {
+        "key": "containment_started",
+        "label": "Containment Started",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["contain", "suppress", "foam", "isolate", "seal"] }
+      },
+      {
+        "key": "hazmat_level",
+        "label": "HAZMAT Level",
+        "type": "enum",
+        "initial_value": "unknown",
+        "behavior": "state_effect",
+        "visible_to": "all",
+        "config": { "values": ["unknown", "low", "medium", "high", "critical"] }
+      },
+      {
+        "key": "units_deployed",
+        "label": "Units Deployed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ],
+    "evacuation": [
+      {
+        "key": "total_evacuees",
+        "label": "Total to Evacuate",
+        "type": "number",
+        "initial_value": 500,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "evacuated_count",
+        "label": "Evacuated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 30,
+          "cap_key": "total_evacuees",
+          "requires_flag": "evacuation_ordered",
+          "robustness_affects": true
+        }
+      },
+      {
+        "key": "evacuation_ordered",
+        "label": "Evacuation Ordered",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["evacuate", "evacuation", "clear", "move out"] }
+      },
+      {
+        "key": "shelter_in_place",
+        "label": "Shelter-in-Place Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["shelter", "stay indoors", "shelter in place"] }
+      }
+    ],
+    "media": [
+      {
+        "key": "statements_issued",
+        "label": "Statements Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": { "keywords": ["statement", "press", "announce", "advisory"] }
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": { "keywords": ["statement", "press", "announce", "advisory"] }
+      }
+    ],
+    "operations": [
+      {
+        "key": "emergency_shutdown",
+        "label": "Emergency Shutdown",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["shutdown", "emergency stop", "isolate process", "valve close"] }
+      },
+      {
+        "key": "damage_assessed",
+        "label": "Damage Assessed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["assess", "damage", "inspect", "structural"] }
+      }
+    ]
+  }
+}

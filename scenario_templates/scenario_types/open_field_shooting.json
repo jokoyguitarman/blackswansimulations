@@ -70,7 +70,15 @@
       "inject_template": "Public statement needed. Avoid revealing tactical information. Calm public."
     }
   ],
-  "compatible_settings": ["beach", "open_field"],
+  "compatible_settings": [
+    "beach",
+    "open_field",
+    "park",
+    "stadium",
+    "waterfront",
+    "market",
+    "street"
+  ],
   "compatible_terrains": ["coastal", "urban", "rural", "desert"],
   "team_counter_definitions": {
     "evacuation": [

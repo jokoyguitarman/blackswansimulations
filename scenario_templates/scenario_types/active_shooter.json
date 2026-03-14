@@ -1,0 +1,259 @@
+{
+  "id": "active_shooter",
+  "display_name": "Active shooter (enclosed venue)",
+  "category": "terrorism",
+  "required_teams": [
+    {
+      "team_name": "police",
+      "team_description": "Active shooter response, room clearance, neutralisation, perimeter",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "evacuation",
+      "team_description": "Run-Hide-Fight coordination, floor-by-floor evacuation, lockdown management",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "triage",
+      "team_description": "Gunshot wound triage, tourniquet distribution, warm-zone medical response",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "media",
+      "team_description": "Public communication, family reunification info, counter misinformation",
+      "min_participants": 2,
+      "max_participants": 6
+    }
+  ],
+  "environmental_factors": [
+    "building_layout",
+    "shooter_location",
+    "lockdown_status",
+    "room_clearance_progress",
+    "civilian_density_per_floor"
+  ],
+  "adversary_behaviors": [
+    "room_to_room_movement",
+    "barricade",
+    "hostage_taking",
+    "possible_accomplice"
+  ],
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "field_update",
+      "template": "Active shooter reported at {venue}. Shots fired. Location of shooter uncertain. Lockdown initiated.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+3",
+      "type": "intel_brief",
+      "template": "Shooter may have moved floors. Reports of casualties. People sheltering in locked rooms.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+8",
+      "type": "field_update",
+      "template": "People attempting to self-evacuate. Risk of running into shooter's path. Guidance needed.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+12",
+      "type": "media_report",
+      "template": "Live social media posts from inside the building. Family members flooding emergency lines.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+15",
+      "type": "field_update",
+      "template": "Reports of barricaded individuals needing medical attention. Warm-zone extraction decision needed.",
+      "severity": "critical"
+    }
+  ],
+  "decision_branches": [
+    {
+      "branch_id": "lockdown",
+      "keywords": ["lockdown", "lock", "shelter", "barricade"],
+      "trigger_condition": "when building lockdown is confirmed active",
+      "inject_template": "Full lockdown active. Occupants sheltering. Communication with trapped individuals limited."
+    },
+    {
+      "branch_id": "room_clearance",
+      "keywords": ["clear", "sweep", "room by room", "advance"],
+      "trigger_condition": "when police begin systematic room clearance",
+      "inject_template": "Room clearance underway. Each room must be checked. Occupants panicking when doors open."
+    },
+    {
+      "branch_id": "media_statement",
+      "keywords": ["statement", "press", "families"],
+      "trigger_condition": "when first public communication is issued",
+      "inject_template": "Statement issued. Families demanding updates. Reunification point needed."
+    }
+  ],
+  "compatible_settings": ["office", "mall", "campus", "hotel", "worship", "hospital", "government"],
+  "compatible_terrains": ["urban"],
+  "multi_storey": true,
+  "condition_keys": [
+    {
+      "key": "police_no_entry_decision",
+      "meaning": "No decision matches room clearance/entry keywords",
+      "team": "police"
+    },
+    {
+      "key": "evacuation_no_lockdown_decision",
+      "meaning": "No lockdown/shelter decision made",
+      "team": "evacuation"
+    },
+    {
+      "key": "media_no_statement_by_T12",
+      "meaning": "elapsedMinutes >= 12 and no statement",
+      "team": "media"
+    }
+  ],
+  "keyword_patterns": [
+    {
+      "category": "Room clearance (police)",
+      "keywords": ["clear", "sweep", "room", "advance", "breach", "entry"],
+      "state_key": "police_state.clearance_started"
+    },
+    {
+      "category": "Lockdown (evac)",
+      "keywords": ["lockdown", "lock", "shelter", "barricade", "secure"],
+      "state_key": "evacuation_state.lockdown_active"
+    },
+    {
+      "category": "Statement (media)",
+      "keywords": ["statement", "press", "announce", "families"],
+      "state_key": "media_state.first_statement_issued"
+    }
+  ],
+  "team_counter_definitions": {
+    "police": [
+      {
+        "key": "clearance_started",
+        "label": "Room Clearance Started",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["clear", "sweep", "room", "advance", "entry"] }
+      },
+      {
+        "key": "shooter_neutralised",
+        "label": "Shooter Neutralised",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "rooms_cleared",
+        "label": "Rooms Cleared",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": { "keywords": ["cleared", "room clear", "floor clear"] }
+      },
+      {
+        "key": "armed_units",
+        "label": "Armed Units",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ],
+    "evacuation": [
+      {
+        "key": "lockdown_active",
+        "label": "Lockdown Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["lockdown", "lock", "shelter", "barricade"] }
+      },
+      {
+        "key": "total_occupants",
+        "label": "Total Occupants",
+        "type": "number",
+        "initial_value": 300,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "evacuated_count",
+        "label": "People Evacuated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 20,
+          "cap_key": "total_occupants",
+          "robustness_affects": true
+        }
+      }
+    ],
+    "triage": [
+      {
+        "key": "casualties",
+        "label": "Casualties",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "patients_being_treated",
+        "label": "Patients Being Treated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "warm_zone_entry",
+        "label": "Warm-Zone Medical Entry",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["warm zone", "enter", "extraction", "forward triage"] }
+      }
+    ],
+    "media": [
+      {
+        "key": "statements_issued",
+        "label": "Statements Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": { "keywords": ["statement", "press", "announce", "release"] }
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": { "keywords": ["statement", "press", "announce", "release"] }
+      },
+      {
+        "key": "reunification_announced",
+        "label": "Reunification Point Announced",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["reunification", "family", "meeting point", "pickup"] }
+      }
+    ]
+  }
+}

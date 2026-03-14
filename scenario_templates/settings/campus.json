@@ -1,0 +1,23 @@
+{
+  "id": "campus",
+  "display_name": "School / university campus",
+  "compatible_terrains": ["urban", "rural"],
+  "location_types": [
+    "classroom",
+    "lecture_hall",
+    "library",
+    "cafeteria",
+    "dormitory",
+    "sports_field",
+    "parking",
+    "administration"
+  ],
+  "access_routes": ["main_gate", "side_gate", "parking", "pedestrian_path", "service_road"],
+  "multi_storey": true,
+  "environmental_seed_variants": [
+    "student_count",
+    "class_in_session",
+    "campus_layout",
+    "lockdown_capability"
+  ]
+}

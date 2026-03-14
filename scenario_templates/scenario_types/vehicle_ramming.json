@@ -1,0 +1,266 @@
+{
+  "id": "vehicle_ramming",
+  "display_name": "Vehicle ramming attack",
+  "category": "terrorism",
+  "required_teams": [
+    {
+      "team_name": "evacuation",
+      "team_description": "Clear the vehicle path, manage crowd flow away from danger zone",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "triage",
+      "team_description": "Mass casualty triage for blunt trauma and crush injuries, ambulance coordination",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "police",
+      "team_description": "Vehicle immobilisation, driver neutralisation, perimeter, secondary threat assessment",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "media",
+      "team_description": "Public communication, counter misinformation, community tensions management",
+      "min_participants": 2,
+      "max_participants": 6
+    }
+  ],
+  "environmental_factors": [
+    "vehicle_trajectory",
+    "pedestrian_density",
+    "bollard_availability",
+    "secondary_weapon_risk",
+    "crowd_panic_direction"
+  ],
+  "adversary_behaviors": ["high_speed_approach", "secondary_weapon_exit", "multiple_pass_attempts"],
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "field_update",
+      "template": "Vehicle has driven into crowd at {venue}. Multiple casualties. Vehicle may still be moving or driver may have exited.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+3",
+      "type": "intel_brief",
+      "template": "Driver status unknown. Reports of individual with weapon near vehicle. Armed response needed.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+8",
+      "type": "field_update",
+      "template": "Casualties spread over wide area along vehicle path. Triage sites needed at multiple points.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+12",
+      "type": "media_report",
+      "template": "Dashcam and CCTV footage spreading online. False reports of multiple vehicles. Public anxiety intense.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+15",
+      "type": "field_update",
+      "template": "Copycat threat reported at nearby location. Police must assess credibility while managing primary scene.",
+      "severity": "high"
+    }
+  ],
+  "decision_branches": [
+    {
+      "branch_id": "vehicle_immobilisation",
+      "keywords": ["immobilise", "block", "disable", "stop vehicle"],
+      "trigger_condition": "when police attempt to stop the vehicle",
+      "inject_template": "Vehicle immobilised. Driver may still be a threat. Approach with caution."
+    },
+    {
+      "branch_id": "armed_response",
+      "keywords": ["armed", "shoot", "neutralise", "lethal"],
+      "trigger_condition": "when armed response is authorised",
+      "inject_template": "Armed response deployed. Area must be cleared of civilians first."
+    },
+    {
+      "branch_id": "media_statement",
+      "keywords": ["statement", "press", "announce"],
+      "trigger_condition": "when public statement is issued",
+      "inject_template": "Statement issued. Does it confirm vehicle attack? How does it address community tensions?"
+    }
+  ],
+  "compatible_settings": ["street", "market", "open_field", "park", "waterfront", "stadium"],
+  "compatible_terrains": ["urban", "coastal"],
+  "multi_storey": false,
+  "condition_keys": [
+    {
+      "key": "police_no_perimeter_decision",
+      "meaning": "No perimeter/cordon decision",
+      "team": "police"
+    },
+    {
+      "key": "triage_no_prioritisation_decision",
+      "meaning": "No triage prioritisation decision",
+      "team": "triage"
+    },
+    {
+      "key": "media_no_statement_by_T12",
+      "meaning": "elapsedMinutes >= 12 and no statement",
+      "team": "media"
+    }
+  ],
+  "keyword_patterns": [
+    {
+      "category": "Perimeter (police)",
+      "keywords": ["perimeter", "cordon", "secure", "block", "bollard"],
+      "state_key": "police_state.perimeter_established"
+    },
+    {
+      "category": "Flow control (evac)",
+      "keywords": ["flow", "clear path", "redirect", "away from road"],
+      "state_key": "evacuation_state.flow_control_decided"
+    },
+    {
+      "category": "Statement (media)",
+      "keywords": ["statement", "press", "announce", "release"],
+      "state_key": "media_state.first_statement_issued"
+    }
+  ],
+  "team_counter_definitions": {
+    "evacuation": [
+      {
+        "key": "total_evacuees",
+        "label": "Total Evacuees",
+        "type": "number",
+        "initial_value": 500,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "evacuated_count",
+        "label": "People Evacuated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 60,
+          "cap_key": "total_evacuees",
+          "requires_flag": "flow_control_decided",
+          "robustness_affects": true
+        }
+      },
+      {
+        "key": "flow_control_decided",
+        "label": "Flow Control Decided",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["flow", "clear", "redirect", "away", "crowd control"] }
+      }
+    ],
+    "triage": [
+      {
+        "key": "patients_being_treated",
+        "label": "Patients Being Treated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all",
+        "config": {
+          "source_pool_key": "total_evacuees",
+          "pool_fraction": 0.15,
+          "split_fractions": { "deaths_on_site": 0.1, "handed_over_to_hospital": 0.5 }
+        }
+      },
+      {
+        "key": "patients_waiting",
+        "label": "Patients Waiting",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "handed_over_to_hospital",
+        "label": "Handed Over",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "deaths_on_site",
+        "label": "Deaths on Site",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "casualties",
+        "label": "Casualties",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      }
+    ],
+    "police": [
+      {
+        "key": "perimeter_established",
+        "label": "Perimeter Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["perimeter", "cordon", "secure", "block"] }
+      },
+      {
+        "key": "driver_neutralised",
+        "label": "Driver Neutralised",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "armed_units",
+        "label": "Armed Units",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ],
+    "media": [
+      {
+        "key": "statements_issued",
+        "label": "Statements Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": { "keywords": ["statement", "press", "announce", "release"] }
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": { "keywords": ["statement", "press", "announce", "release"] }
+      },
+      {
+        "key": "misinformation_addressed_count",
+        "label": "Misinformation Addressed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": { "keywords": ["debunk", "counter", "correct", "misinformation"] }
+      }
+    ]
+  }
+}

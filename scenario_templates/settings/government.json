@@ -1,0 +1,23 @@
+{
+  "id": "government",
+  "display_name": "Government building / civic centre",
+  "compatible_terrains": ["urban"],
+  "location_types": [
+    "lobby",
+    "council_chamber",
+    "office_wing",
+    "public_area",
+    "parking",
+    "courtyard",
+    "basement"
+  ],
+  "access_routes": [
+    "main_entrance",
+    "service_entrance",
+    "parking",
+    "emergency_exit",
+    "underground"
+  ],
+  "multi_storey": true,
+  "environmental_seed_variants": ["public_hours", "occupancy", "security_level", "vip_presence"]
+}

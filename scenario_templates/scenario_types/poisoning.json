@@ -1,0 +1,278 @@
+{
+  "id": "poisoning",
+  "display_name": "Poisoning / water-supply contamination",
+  "category": "terrorism",
+  "required_teams": [
+    {
+      "team_name": "triage",
+      "team_description": "Mass casualty triage, decontamination, toxicology assessment, hospital coordination",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "fire_hazmat",
+      "team_description": "HAZMAT containment, water sampling, decontamination stations, source isolation",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "police",
+      "team_description": "Crime scene, evidence preservation, suspect identification, public order",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "media",
+      "team_description": "Public health advisory, water-safety announcements, counter misinformation",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "public_health",
+      "team_description": "Epidemiological investigation, hospital surge coordination, alternative water supply",
+      "min_participants": 2,
+      "max_participants": 6
+    }
+  ],
+  "environmental_factors": [
+    "contaminant_type",
+    "distribution_network_reach",
+    "population_exposure_window",
+    "symptom_onset_delay",
+    "alternative_supply_availability"
+  ],
+  "adversary_behaviors": [
+    "delayed_effect_exploitation",
+    "multiple_contamination_points",
+    "false_claims"
+  ],
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "field_update",
+      "template": "Multiple residents presenting with unexplained symptoms. Common source suspected. Water supply contamination possible at {venue}.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+5",
+      "type": "intel_brief",
+      "template": "Lab samples underway. Initial indicators suggest deliberate contamination. Scale of exposure unknown.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+10",
+      "type": "field_update",
+      "template": "Hospital emergency departments reporting surge. Symptom pattern consistent with toxic agent. Decontamination advised.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+15",
+      "type": "media_report",
+      "template": "Social media panic. Residents bulk-buying bottled water. False reports of contamination at other sites.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+20",
+      "type": "field_update",
+      "template": "Second contamination point suspected. HAZMAT team stretched. Alternative water distribution needed urgently.",
+      "severity": "critical"
+    }
+  ],
+  "decision_branches": [
+    {
+      "branch_id": "water_shutdown",
+      "keywords": ["shutdown", "isolate", "valve", "cut supply"],
+      "trigger_condition": "when decision to shut down water supply is made",
+      "inject_template": "Water supply isolated. Thousands without water. Alternative distribution must begin."
+    },
+    {
+      "branch_id": "public_advisory",
+      "keywords": ["advisory", "boil", "warning", "do not drink"],
+      "trigger_condition": "when public health advisory is issued",
+      "inject_template": "Public advisory issued. Compliance varies. Vulnerable populations need direct outreach."
+    },
+    {
+      "branch_id": "media_statement",
+      "keywords": ["statement", "press", "announce"],
+      "trigger_condition": "when media team issues public statement",
+      "inject_template": "Public statement issued. Does it provide clear safety instructions?"
+    }
+  ],
+  "compatible_settings": ["industrial", "government", "street", "open_field"],
+  "compatible_terrains": ["urban", "rural", "coastal", "desert"],
+  "multi_storey": false,
+  "condition_keys": [
+    {
+      "key": "hazmat_containment_not_started",
+      "meaning": "No decision matches containment keywords",
+      "team": "fire_hazmat"
+    },
+    {
+      "key": "public_advisory_not_issued",
+      "meaning": "No public advisory decision made",
+      "team": "public_health"
+    },
+    {
+      "key": "media_no_statement_by_T12",
+      "meaning": "elapsedMinutes >= 12 and no statement",
+      "team": "media"
+    }
+  ],
+  "keyword_patterns": [
+    {
+      "category": "Containment (hazmat)",
+      "keywords": ["contain", "isolate", "shutdown", "valve", "seal", "sample"],
+      "state_key": "fire_hazmat_state.containment_started"
+    },
+    {
+      "category": "Advisory (public_health)",
+      "keywords": ["advisory", "boil", "warning", "do not drink", "alternative supply"],
+      "state_key": "public_health_state.advisory_issued"
+    },
+    {
+      "category": "Statement (media)",
+      "keywords": ["statement", "press", "announce", "release"],
+      "state_key": "media_state.first_statement_issued"
+    }
+  ],
+  "team_counter_definitions": {
+    "triage": [
+      {
+        "key": "patients_presenting",
+        "label": "Patients Presenting",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": { "base_rate_per_min": 15, "robustness_affects": false }
+      },
+      {
+        "key": "patients_decontaminated",
+        "label": "Patients Decontaminated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 8,
+          "robustness_affects": true,
+          "requires_flag": "decontamination_active"
+        }
+      },
+      {
+        "key": "decontamination_active",
+        "label": "Decontamination Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["decontamination", "decon", "wash", "rinse"] }
+      },
+      {
+        "key": "deaths_on_site",
+        "label": "Deaths",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ],
+    "fire_hazmat": [
+      {
+        "key": "containment_started",
+        "label": "Containment Started",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["contain", "isolate", "shutdown", "valve", "seal"] }
+      },
+      {
+        "key": "source_identified",
+        "label": "Source Identified",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["source", "identified", "origin", "entry point"] }
+      },
+      {
+        "key": "samples_collected",
+        "label": "Samples Collected",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": { "keywords": ["sample", "collect", "test", "lab"] }
+      }
+    ],
+    "police": [
+      {
+        "key": "crime_scene_secured",
+        "label": "Crime Scene Secured",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["secure", "crime scene", "preserve", "evidence"] }
+      },
+      {
+        "key": "suspect_identified",
+        "label": "Suspect Identified",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": { "keywords": ["suspect", "identified", "CCTV", "witness"] }
+      }
+    ],
+    "media": [
+      {
+        "key": "statements_issued",
+        "label": "Statements Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": { "keywords": ["statement", "press", "announce", "release"] }
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": { "keywords": ["statement", "press", "announce", "release"] }
+      }
+    ],
+    "public_health": [
+      {
+        "key": "advisory_issued",
+        "label": "Public Advisory Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["advisory", "boil", "warning", "do not drink", "alert"] }
+      },
+      {
+        "key": "alternative_supply_active",
+        "label": "Alternative Supply Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["alternative", "bottled", "tanker", "distribution", "supply"] }
+      },
+      {
+        "key": "population_exposed",
+        "label": "Est. Population Exposed",
+        "type": "number",
+        "initial_value": 5000,
+        "behavior": "static",
+        "visible_to": "all"
+      }
+    ]
+  }
+}

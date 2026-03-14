@@ -91,7 +91,7 @@
       "additional_env_factors": ["floor_layout", "room_access"]
     }
   },
-  "compatible_settings": ["resort", "hotel", "open_field"],
+  "compatible_settings": ["resort", "hotel", "open_field", "office", "campus", "street"],
   "compatible_terrains": ["jungle", "coastal", "mountain", "urban"],
   "condition_keys": [
     {

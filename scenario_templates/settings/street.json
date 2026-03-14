@@ -1,0 +1,21 @@
+{
+  "id": "street",
+  "display_name": "Street / roadside",
+  "compatible_terrains": ["urban", "rural", "coastal"],
+  "location_types": [
+    "intersection",
+    "sidewalk",
+    "building_frontage",
+    "parking",
+    "alley",
+    "bus_stop"
+  ],
+  "access_routes": ["main_road", "side_street", "alley", "footpath", "overpass"],
+  "multi_storey": false,
+  "environmental_seed_variants": [
+    "traffic_density",
+    "pedestrian_volume",
+    "vehicle_access",
+    "weather"
+  ]
+}

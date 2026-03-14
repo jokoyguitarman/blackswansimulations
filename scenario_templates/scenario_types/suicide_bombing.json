@@ -1,76 +1,78 @@
 {
-  "id": "car_bomb",
-  "display_name": "Car bomb / suicide bomber",
+  "id": "suicide_bombing",
+  "display_name": "Suicide bombing (person-borne IED)",
   "category": "terrorism",
   "required_teams": [
     {
       "team_name": "evacuation",
-      "team_description": "Evacuate participants, manage bottlenecks, prevent discriminatory segregation",
+      "team_description": "Immediate crowd evacuation from blast zone, manage panic and stampede risk",
       "min_participants": 2,
       "max_participants": 10
     },
     {
       "team_name": "triage",
-      "team_description": "Establish triage, prioritize injuries",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "media",
-      "team_description": "Manage media, counter misinformation",
-      "min_participants": 2,
-      "max_participants": 6
-    },
-    {
-      "team_name": "fire",
-      "team_description": "Fire containment, structural assessment",
+      "team_description": "Mass casualty triage, blast/shrapnel injuries, coordinate ambulance handover",
       "min_participants": 2,
       "max_participants": 8
     },
     {
       "team_name": "police",
-      "team_description": "Cordon, EOD coordination, security",
+      "team_description": "Cordon, identify possible accomplices, secondary threat sweep, evidence preservation",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "media",
+      "team_description": "Public communication, counter misinformation, manage community tensions",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "fire",
+      "team_description": "Fire suppression, debris clearance, search and rescue",
       "min_participants": 2,
       "max_participants": 8
     }
   ],
   "environmental_factors": [
     "blast_radius",
-    "secondary_collapse",
-    "vehicle_access",
-    "secondary_fire_risk"
+    "shrapnel_pattern",
+    "crowd_density_at_detonation",
+    "secondary_attacker_risk",
+    "structural_damage",
+    "panic_stampede_risk"
   ],
-  "adversary_behaviors": ["vehicle_approach", "pedestrian_approach", "possible_second_attacker"],
+  "adversary_behaviors": ["crowd_targeting", "secondary_attacker", "accomplice_surveillance"],
   "inject_templates": [
     {
       "timing": "T+0",
       "type": "field_update",
-      "template": "Explosion at {venue}. Smoke, debris, casualties. Extent unknown. Blast radius unclear.",
+      "template": "Explosion at {venue}. Suicide bomber confirmed or suspected. Mass casualties. Panic and stampede risk.",
       "severity": "critical"
     },
     {
-      "timing": "T+5",
-      "type": "field_update",
-      "template": "Conflicting reports. Possible second device. Suspect may have fled. Vehicle or pedestrian approach?",
-      "severity": "high"
+      "timing": "T+3",
+      "type": "intel_brief",
+      "template": "Intelligence suggests possible second attacker in the crowd. Immediate sweep needed. CCTV review underway.",
+      "severity": "critical"
     },
     {
-      "timing": "T+10",
-      "type": "intel_brief",
-      "template": "Emergency services delayed. Traffic congestion. Self-manage extended. Ambulance ETA unclear.",
+      "timing": "T+8",
+      "type": "field_update",
+      "template": "Casualty count rising. Walking wounded overwhelming triage. Ambulance access blocked by crowd.",
       "severity": "high"
     },
     {
       "timing": "T+12",
-      "type": "field_update",
-      "template": "Secondary fire risk. Structural damage to nearby buildings. Cordon expansion may be needed.",
-      "severity": "high"
+      "type": "media_report",
+      "template": "Graphic footage circulating online. Community blame narratives emerging. Hate incidents reported nearby.",
+      "severity": "critical"
     },
     {
       "timing": "T+15",
-      "type": "media_report",
-      "template": "Viral misinformation: false claims about perpetrator identity. Community tensions rising.",
-      "severity": "critical"
+      "type": "field_update",
+      "template": "Suspicious individual spotted near cordon. Police must assess: genuine threat or panicked bystander?",
+      "severity": "high"
     }
   ],
   "decision_branches": [
@@ -78,40 +80,39 @@
       "branch_id": "evacuate_together",
       "keywords": ["evacuate", "together", "everyone"],
       "trigger_condition": "when evacuation proceeds without demographic segregation",
-      "inject_template": "Evacuation proceeds without segregation. All evacuees use same routes and assembly points."
+      "inject_template": "Evacuation proceeds without segregation. All evacuees use same routes."
     },
     {
-      "branch_id": "segregate",
-      "keywords": ["separate", "segregate", "demographic"],
-      "trigger_condition": "when evacuation team receives request to segregate by demographic",
-      "inject_template": "Fearful resident requests segregation. Evacuation team must decide: comply or refuse."
+      "branch_id": "secondary_sweep",
+      "keywords": ["sweep", "secondary", "attacker", "accomplice"],
+      "trigger_condition": "when police initiate secondary threat sweep",
+      "inject_template": "Secondary sweep initiated. Crowd must be held at distance. Routes may need rerouting."
     },
     {
       "branch_id": "media_statement",
-      "keywords": ["statement", "misinformation", "counter"],
-      "trigger_condition": "when media team submits first public statement",
-      "inject_template": "Public statement submitted. Does it address misinformation? Verified facts?"
+      "keywords": ["statement", "press", "announce"],
+      "trigger_condition": "when media team issues first statement",
+      "inject_template": "Public statement issued. Does it address community tensions? Verified information only?"
     }
   ],
   "compatible_settings": [
-    "mall",
-    "open_field",
-    "beach",
-    "hotel",
     "market",
     "street",
-    "office",
-    "government",
+    "mall",
+    "subway",
+    "train",
+    "open_field",
     "worship",
     "stadium",
     "airport",
-    "waterfront"
+    "park"
   ],
-  "compatible_terrains": ["urban", "coastal", "rural", "desert"],
+  "compatible_terrains": ["urban", "coastal", "rural"],
+  "multi_storey": false,
   "condition_keys": [
     {
       "key": "evacuation_no_flow_control_decision",
-      "meaning": "No decision matches flow/bottleneck/exit capacity keywords",
+      "meaning": "No decision matches flow/crowd control keywords",
       "team": "evacuation"
     },
     {
@@ -120,71 +121,31 @@
       "team": "evacuation"
     },
     {
-      "key": "evacuation_exit_bottleneck_active",
-      "meaning": "exits_congested non-empty (unmanaged)",
-      "team": "evacuation"
-    },
-    {
-      "key": "evacuation_coordination_established",
-      "meaning": "evacuation_state.coordination_with_triage === true",
-      "team": "evacuation"
-    },
-    {
-      "key": "triage_zone_established_as_incident_location",
-      "meaning": "Decision mentions triage zone",
-      "team": "triage"
-    },
-    {
-      "key": "triage_supply_critical",
-      "meaning": "triage_state.supply_level === critical",
-      "team": "triage"
-    },
-    {
-      "key": "triage_surge_active",
-      "meaning": "triage_state.surge_active === true",
-      "team": "triage"
-    },
-    {
       "key": "triage_no_prioritisation_decision",
       "meaning": "No decision matches prioritisation keywords",
       "team": "triage"
     },
     {
-      "key": "triage_prioritisation_decided",
-      "meaning": "triage_state.prioritisation_decided === true",
-      "team": "triage"
-    },
-    {
-      "key": "media_statement_issued",
-      "meaning": "media_state.first_statement_issued === true",
-      "team": "media"
+      "key": "police_no_perimeter_decision",
+      "meaning": "No decision matches perimeter/cordon keywords",
+      "team": "police"
     },
     {
       "key": "media_no_statement_by_T12",
       "meaning": "elapsedMinutes >= 12 and no statement",
-      "team": "media"
-    },
-    {
-      "key": "media_misinformation_addressed",
-      "meaning": "media_state.misinformation_addressed === true",
       "team": "media"
     }
   ],
   "keyword_patterns": [
     {
       "category": "Flow control (evac)",
-      "keywords": ["flow", "bottleneck", "stagger", "congestion", "egress", "exit capacity"],
+      "keywords": ["flow", "bottleneck", "stagger", "congestion", "crowd control", "stampede"],
       "state_key": "evacuation_state.flow_control_decided"
     },
     {
-      "category": "Supply/equipment (triage)",
-      "keywords": ["supply", "request", "tourniquet", "stretcher", "shortage"],
-      "state_key": "triage_state.supply_request_made"
-    },
-    {
-      "category": "Prioritisation (triage)",
-      "keywords": ["prioritise", "critical first", "severity", "triage protocol"],
-      "state_key": "triage_state.prioritisation_decided"
+      "category": "Perimeter (police)",
+      "keywords": ["perimeter", "cordon", "secure", "contain", "lockdown"],
+      "state_key": "police_state.perimeter_established"
     },
     {
       "category": "Statement (media)",
@@ -203,7 +164,7 @@
         "key": "total_evacuees",
         "label": "Total Evacuees",
         "type": "number",
-        "initial_value": 1000,
+        "initial_value": 600,
         "behavior": "static",
         "visible_to": "all"
       },
@@ -215,12 +176,10 @@
         "behavior": "time_rate",
         "visible_to": "all",
         "config": {
-          "base_rate_per_min": 40,
+          "base_rate_per_min": 50,
           "cap_key": "total_evacuees",
           "requires_flag": "flow_control_decided",
           "robustness_affects": true,
-          "robustness_low_mult": 0.25,
-          "robustness_high_mult": 1.25,
           "congestion_halves": true,
           "impact_sensitive": true
         }
@@ -232,9 +191,7 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": {
-          "keywords": ["flow", "bottleneck", "stagger", "egress", "congestion", "exit capacity"]
-        }
+        "config": { "keywords": ["flow", "crowd control", "stagger", "stampede", "egress"] }
       },
       {
         "key": "coordination_with_triage",
@@ -256,8 +213,8 @@
         "visible_to": "all",
         "config": {
           "source_pool_key": "total_evacuees",
-          "pool_fraction": 0.25,
-          "split_fractions": { "deaths_on_site": 0.12, "handed_over_to_hospital": 0.4 }
+          "pool_fraction": 0.3,
+          "split_fractions": { "deaths_on_site": 0.15, "handed_over_to_hospital": 0.4 }
         }
       },
       {
@@ -293,15 +250,6 @@
         "visible_to": "all"
       },
       {
-        "key": "supply_request_made",
-        "label": "Supply Request Made",
-        "type": "boolean",
-        "initial_value": false,
-        "behavior": "decision_toggle",
-        "visible_to": "trainer_only",
-        "config": { "keywords": ["supply", "request", "tourniquet", "stretcher", "shortage"] }
-      },
-      {
         "key": "prioritisation_decided",
         "label": "Prioritisation Decided",
         "type": "boolean",
@@ -309,6 +257,34 @@
         "behavior": "decision_toggle",
         "visible_to": "trainer_only",
         "config": { "keywords": ["prioritise", "critical first", "severity", "triage protocol"] }
+      }
+    ],
+    "police": [
+      {
+        "key": "perimeter_established",
+        "label": "Perimeter Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["perimeter", "cordon", "secure", "contain"] }
+      },
+      {
+        "key": "secondary_sweep_done",
+        "label": "Secondary Threat Sweep Done",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["sweep", "secondary", "accomplice", "check"] }
+      },
+      {
+        "key": "armed_units",
+        "label": "Armed Units",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
       }
     ],
     "media": [
@@ -338,15 +314,6 @@
         "behavior": "decision_toggle",
         "visible_to": "trainer_only",
         "config": { "keywords": ["statement", "press", "announce", "release"] }
-      },
-      {
-        "key": "spokesperson_designated",
-        "label": "Spokesperson Designated",
-        "type": "boolean",
-        "initial_value": false,
-        "behavior": "decision_toggle",
-        "visible_to": "all",
-        "config": { "keywords": ["spokesperson", "one voice", "single spokesperson"] }
       }
     ],
     "fire": [
@@ -357,48 +324,20 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["contained", "controlled", "extinguished", "suppressed"] }
+        "config": { "keywords": ["contained", "controlled", "extinguished"] }
       },
       {
-        "key": "entry_safe",
-        "label": "Entry Safe",
+        "key": "debris_clearance_started",
+        "label": "Debris Clearance Started",
         "type": "boolean",
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["entry safe", "clear to enter", "structural safe"] }
+        "config": { "keywords": ["debris", "clearance", "rubble", "search and rescue"] }
       },
       {
         "key": "units_deployed",
         "label": "Units Deployed",
-        "type": "number",
-        "initial_value": 0,
-        "behavior": "state_effect",
-        "visible_to": "all"
-      }
-    ],
-    "police": [
-      {
-        "key": "perimeter_established",
-        "label": "Perimeter Established",
-        "type": "boolean",
-        "initial_value": false,
-        "behavior": "decision_toggle",
-        "visible_to": "all",
-        "config": { "keywords": ["perimeter", "cordon", "secure", "contain"] }
-      },
-      {
-        "key": "tactical_team_ready",
-        "label": "Tactical Team Ready",
-        "type": "boolean",
-        "initial_value": false,
-        "behavior": "decision_toggle",
-        "visible_to": "all",
-        "config": { "keywords": ["tactical", "armed response", "ready"] }
-      },
-      {
-        "key": "armed_units",
-        "label": "Armed Units",
         "type": "number",
         "initial_value": 0,
         "behavior": "state_effect",

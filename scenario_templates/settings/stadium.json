@@ -1,0 +1,24 @@
+{
+  "id": "stadium",
+  "display_name": "Stadium / concert venue",
+  "compatible_terrains": ["urban", "coastal"],
+  "location_types": [
+    "main_bowl",
+    "concourse",
+    "entrance_gate",
+    "vip_area",
+    "backstage",
+    "parking",
+    "media_area"
+  ],
+  "access_routes": [
+    "main_gate",
+    "turnstiles",
+    "vip_entrance",
+    "service_entrance",
+    "parking",
+    "emergency_exit"
+  ],
+  "multi_storey": true,
+  "environmental_seed_variants": ["capacity", "event_type", "crowd_density", "exit_gate_count"]
+}

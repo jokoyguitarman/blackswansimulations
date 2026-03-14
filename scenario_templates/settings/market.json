@@ -1,0 +1,16 @@
+{
+  "id": "market",
+  "display_name": "Outdoor market / night market",
+  "compatible_terrains": ["urban", "coastal", "rural"],
+  "location_types": [
+    "stall_area",
+    "entrance",
+    "parking",
+    "loading_bay",
+    "perimeter",
+    "food_court_area"
+  ],
+  "access_routes": ["main_entrance", "side_street", "parking", "perimeter", "alley"],
+  "multi_storey": false,
+  "environmental_seed_variants": ["crowd_density", "stall_congestion", "exit_capacity", "weather"]
+}

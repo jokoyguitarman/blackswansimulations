@@ -1,0 +1,17 @@
+{
+  "id": "waterfront",
+  "display_name": "Waterfront / port / harbour",
+  "compatible_terrains": ["coastal", "urban"],
+  "location_types": [
+    "pier",
+    "dock",
+    "terminal_building",
+    "warehouse",
+    "promenade",
+    "parking",
+    "ferry_berth"
+  ],
+  "access_routes": ["main_road", "pier_access", "parking", "waterside", "service_road"],
+  "multi_storey": false,
+  "environmental_seed_variants": ["vessel_count", "pedestrian_volume", "tide_conditions", "weather"]
+}

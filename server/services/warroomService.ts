@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../lib/logger.js';
-import { geocode } from './geocodingService.js';
+import { geocode, geocodeBest } from './geocodingService.js';
 import {
   fetchOsmVicinityByCoordinates,
   fetchOsmOpenSpaces,
@@ -53,6 +53,8 @@ export interface WarroomSuggestTeamsResult {
   setting?: string;
   terrain?: string;
   location?: string | null;
+  venue_name?: string;
+  landmarks?: string[];
 }
 
 export type WarroomProgressPhase =
@@ -152,6 +154,8 @@ export async function suggestWarroomTeams(
     setting: parsed.setting,
     terrain: parsed.terrain,
     location: parsed.location,
+    venue_name: parsed.venue_name,
+    landmarks: parsed.landmarks,
   };
 }
 
@@ -200,7 +204,7 @@ export async function generateAndPersistWarroomScenario(
 
   const complexity_tier = options.complexity_tier || 'full';
 
-  const venueName = parsed.location || parsed.setting;
+  const venueName = parsed.venue_name || parsed.location || parsed.setting;
   const teamNames = options.teams?.map((t) => t.team_name) ?? [];
 
   // Run geocoding and similar-cases research in parallel (both can start right after parsing)
@@ -215,8 +219,22 @@ export async function generateAndPersistWarroomScenario(
   let geocodeResult = null;
   let similarCases: SimilarCase[] = [];
 
+  const geocodePromise = parsed.location
+    ? (() => {
+        const alternates: string[] = [];
+        if (parsed.venue_name && parsed.location) {
+          alternates.push(`${parsed.venue_name}, ${parsed.location}`);
+        }
+        if (alternates.length > 0) {
+          const hint = parsed.venue_name || parsed.location || '';
+          return geocodeBest(parsed.location, alternates, hint);
+        }
+        return geocode(parsed.location);
+      })()
+    : Promise.resolve(null);
+
   [geocodeResult, similarCases] = await Promise.all([
-    parsed.location ? geocode(parsed.location) : Promise.resolve(null),
+    geocodePromise,
     researchSimilarCases(
       openAiApiKey,
       parsed.scenario_type,
@@ -282,7 +300,9 @@ export async function generateAndPersistWarroomScenario(
       setting: parsed.setting,
       terrain: parsed.terrain,
       location: parsed.location,
-      venue_name: parsed.location || parsed.setting,
+      venue_name: venueName,
+      original_prompt: options.prompt || undefined,
+      landmarks: parsed.landmarks,
       osm_vicinity: osmVicinity,
       geocode: geocodeResult
         ? {
@@ -334,7 +354,9 @@ export async function generateAndPersistWarroomScenario(
       setting: parsed.setting,
       terrain: parsed.terrain,
       location: parsed.location,
-      venue_name: parsed.location || parsed.setting,
+      venue_name: venueName,
+      original_prompt: options.prompt || undefined,
+      landmarks: parsed.landmarks,
       osm_vicinity: osmVicinity,
       osmOpenSpaces,
       osmBuildings,

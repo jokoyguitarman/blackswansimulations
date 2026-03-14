@@ -1,0 +1,30 @@
+{
+  "id": "airport",
+  "display_name": "Airport terminal",
+  "compatible_terrains": ["urban", "coastal", "rural", "desert"],
+  "location_types": [
+    "terminal_building",
+    "check_in_hall",
+    "departure_lounge",
+    "arrivals_hall",
+    "baggage_claim",
+    "runway_apron",
+    "parking",
+    "control_tower"
+  ],
+  "access_routes": [
+    "main_entrance",
+    "departure_drop_off",
+    "arrivals_pickup",
+    "service_road",
+    "airside_access",
+    "parking"
+  ],
+  "multi_storey": true,
+  "environmental_seed_variants": [
+    "passenger_volume",
+    "flight_schedule",
+    "security_checkpoint_load",
+    "aircraft_on_ground"
+  ]
+}

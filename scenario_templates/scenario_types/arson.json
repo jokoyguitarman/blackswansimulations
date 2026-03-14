@@ -1,0 +1,282 @@
+{
+  "id": "arson",
+  "display_name": "Arson / deliberate fire",
+  "category": "terrorism",
+  "required_teams": [
+    {
+      "team_name": "fire",
+      "team_description": "Fire suppression, structural assessment, search and rescue, arson investigation",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "evacuation",
+      "team_description": "Building evacuation, smoke-free routing, floor-by-floor sweep",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "triage",
+      "team_description": "Burns and smoke inhalation triage, oxygen supply, hospital coordination",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "police",
+      "team_description": "Arson investigation, witness management, suspect identification, scene preservation",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "media",
+      "team_description": "Public communication, safety advisories, counter speculation",
+      "min_participants": 2,
+      "max_participants": 6
+    }
+  ],
+  "environmental_factors": [
+    "fire_spread_rate",
+    "smoke_density",
+    "structural_integrity",
+    "wind_conditions",
+    "accelerant_presence",
+    "occupancy_level"
+  ],
+  "adversary_behaviors": ["multiple_ignition_points", "exit_blocking", "accelerant_use"],
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "field_update",
+      "template": "Fire reported at {venue}. Possible deliberate ignition. Smoke spreading rapidly. Occupants self-evacuating.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+5",
+      "type": "field_update",
+      "template": "Multiple ignition points suspected. Fire behaviour inconsistent with accidental cause. Accelerant odour reported.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+10",
+      "type": "field_update",
+      "template": "Smoke filling upper floors. People trapped. Stairwell visibility near zero in some areas.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+12",
+      "type": "media_report",
+      "template": "Dramatic footage of flames spreading. Speculation about cause. Community demanding answers.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+15",
+      "type": "field_update",
+      "template": "Structural concerns. Partial collapse risk in affected wing. Firefighters must reassess approach.",
+      "severity": "critical"
+    }
+  ],
+  "decision_branches": [
+    {
+      "branch_id": "offensive_attack",
+      "keywords": ["offensive", "interior", "attack fire", "advance"],
+      "trigger_condition": "when fire team decides offensive interior attack",
+      "inject_template": "Interior attack initiated. Crews advancing. Heat and smoke conditions intense."
+    },
+    {
+      "branch_id": "defensive_mode",
+      "keywords": ["defensive", "exterior", "pull back", "surround"],
+      "trigger_condition": "when fire team switches to defensive operations",
+      "inject_template": "Defensive mode. Exterior suppression only. Building considered lost. Focus on exposure protection."
+    },
+    {
+      "branch_id": "media_statement",
+      "keywords": ["statement", "press", "announce"],
+      "trigger_condition": "when public statement is issued",
+      "inject_template": "Statement issued. Does it confirm arson suspicion or withhold pending investigation?"
+    }
+  ],
+  "compatible_settings": [
+    "office",
+    "mall",
+    "hotel",
+    "worship",
+    "campus",
+    "industrial",
+    "government",
+    "hospital"
+  ],
+  "compatible_terrains": ["urban", "rural"],
+  "multi_storey": true,
+  "condition_keys": [
+    {
+      "key": "fire_not_contained",
+      "meaning": "fire_state.fire_contained !== true",
+      "team": "fire"
+    },
+    {
+      "key": "evacuation_no_flow_control_decision",
+      "meaning": "No flow control decision made",
+      "team": "evacuation"
+    },
+    {
+      "key": "media_no_statement_by_T12",
+      "meaning": "elapsedMinutes >= 12 and no statement",
+      "team": "media"
+    }
+  ],
+  "keyword_patterns": [
+    {
+      "category": "Fire suppression",
+      "keywords": ["suppress", "extinguish", "contain", "attack fire", "hose"],
+      "state_key": "fire_state.fire_contained"
+    },
+    {
+      "category": "Flow control (evac)",
+      "keywords": ["flow", "bottleneck", "stagger", "stairwell", "smoke-free"],
+      "state_key": "evacuation_state.flow_control_decided"
+    },
+    {
+      "category": "Statement (media)",
+      "keywords": ["statement", "press", "announce", "release"],
+      "state_key": "media_state.first_statement_issued"
+    }
+  ],
+  "team_counter_definitions": {
+    "fire": [
+      {
+        "key": "fire_contained",
+        "label": "Fire Contained",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["contained", "controlled", "extinguished", "suppressed"] }
+      },
+      {
+        "key": "structural_assessment_done",
+        "label": "Structural Assessment Done",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["structural", "assessment", "integrity", "collapse risk"] }
+      },
+      {
+        "key": "ignition_points_found",
+        "label": "Ignition Points Found",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": { "keywords": ["ignition", "origin", "accelerant", "point of origin"] }
+      },
+      {
+        "key": "units_deployed",
+        "label": "Units Deployed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ],
+    "evacuation": [
+      {
+        "key": "total_occupants",
+        "label": "Total Occupants",
+        "type": "number",
+        "initial_value": 500,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "evacuated_count",
+        "label": "People Evacuated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 30,
+          "cap_key": "total_occupants",
+          "requires_flag": "flow_control_decided",
+          "robustness_affects": true,
+          "congestion_halves": true
+        }
+      },
+      {
+        "key": "flow_control_decided",
+        "label": "Flow Control Decided",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["flow", "bottleneck", "stagger", "stairwell", "smoke-free route"] }
+      }
+    ],
+    "triage": [
+      {
+        "key": "patients_being_treated",
+        "label": "Patients Being Treated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "casualties",
+        "label": "Casualties",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "smoke_inhalation_cases",
+        "label": "Smoke Inhalation Cases",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ],
+    "police": [
+      {
+        "key": "scene_preserved",
+        "label": "Scene Preserved",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["preserve", "evidence", "scene", "secure"] }
+      },
+      {
+        "key": "arson_confirmed",
+        "label": "Arson Confirmed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      }
+    ],
+    "media": [
+      {
+        "key": "statements_issued",
+        "label": "Statements Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": { "keywords": ["statement", "press", "announce", "release"] }
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": { "keywords": ["statement", "press", "announce", "release"] }
+      }
+    ]
+  }
+}

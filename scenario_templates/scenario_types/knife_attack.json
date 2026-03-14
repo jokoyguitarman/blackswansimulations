@@ -75,7 +75,16 @@
       "inject_template": "Multiple platforms. Which to evacuate first? Attacker location unknown."
     }
   ],
-  "compatible_settings": ["subway", "foot_bridge", "mall"],
+  "compatible_settings": [
+    "subway",
+    "mall",
+    "street",
+    "market",
+    "train",
+    "park",
+    "waterfront",
+    "worship"
+  ],
   "compatible_terrains": ["urban"],
   "team_counter_definitions": {
     "evacuation": [

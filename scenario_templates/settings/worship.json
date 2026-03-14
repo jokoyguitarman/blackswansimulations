@@ -1,0 +1,22 @@
+{
+  "id": "worship",
+  "display_name": "Place of worship (church, mosque, temple)",
+  "compatible_terrains": ["urban", "rural", "coastal"],
+  "location_types": [
+    "main_hall",
+    "entrance",
+    "courtyard",
+    "office",
+    "basement",
+    "balcony",
+    "parking"
+  ],
+  "access_routes": ["main_entrance", "side_entrance", "courtyard", "parking", "emergency_exit"],
+  "multi_storey": false,
+  "environmental_seed_variants": [
+    "congregation_size",
+    "service_in_progress",
+    "building_age",
+    "exit_capacity"
+  ]
+}
