@@ -8,17 +8,17 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../lib/logger.js';
 import { geocode } from './geocodingService.js';
-import { fetchOsmVicinityByCoordinates } from './osmVicinityService.js';
+import {
+  fetchOsmVicinityByCoordinates,
+  fetchOsmOpenSpaces,
+  fetchVenueBuilding,
+} from './osmVicinityService.js';
 import {
   parseFreeTextPrompt,
   validateCompatibility,
   type ParsedWarroomInput,
 } from './warroomPromptParser.js';
-import {
-  warroomGenerateScenario,
-  generatePoiPinsFromOsm,
-  type WarroomScenarioPayload,
-} from './warroomAiService.js';
+import { warroomGenerateScenario, type WarroomScenarioPayload } from './warroomAiService.js';
 import { persistWarroomScenario } from './warroomPersistenceService.js';
 import {
   researchArea,
@@ -229,14 +229,25 @@ export async function generateAndPersistWarroomScenario(
   logger.info({ found: similarCases.length }, 'Similar cases research done');
 
   let osmVicinity = undefined;
+  let osmOpenSpaces: import('./osmVicinityService.js').OsmOpenSpace[] | undefined;
+  let osmBuildings: import('./osmVicinityService.js').OsmBuilding[] | undefined;
   if (geocodeResult) {
-    onProgress?.('osm', 'Fetching hospitals, police, fire stations, and routes nearby...');
+    onProgress?.('osm', 'Fetching nearby facilities, open spaces, and building outlines...');
     try {
-      osmVicinity = await fetchOsmVicinityByCoordinates(
-        geocodeResult.lat,
-        geocodeResult.lng,
-        10000,
-      );
+      const [vicinity, spaces, buildings] = await Promise.all([
+        fetchOsmVicinityByCoordinates(geocodeResult.lat, geocodeResult.lng, 10000),
+        fetchOsmOpenSpaces(geocodeResult.lat, geocodeResult.lng, 1500).catch((err) => {
+          logger.warn({ err }, 'OSM open spaces fetch failed; continuing without');
+          return [] as import('./osmVicinityService.js').OsmOpenSpace[];
+        }),
+        fetchVenueBuilding(geocodeResult.lat, geocodeResult.lng, 300).catch((err) => {
+          logger.warn({ err }, 'OSM venue building fetch failed; continuing without');
+          return [] as import('./osmVicinityService.js').OsmBuilding[];
+        }),
+      ]);
+      osmVicinity = vicinity;
+      osmOpenSpaces = spaces.length > 0 ? spaces : undefined;
+      osmBuildings = buildings.length > 0 ? buildings : undefined;
     } catch (osmErr) {
       logger.warn(
         { err: osmErr, location: parsed.location },
@@ -325,6 +336,8 @@ export async function generateAndPersistWarroomScenario(
       location: parsed.location,
       venue_name: parsed.location || parsed.setting,
       osm_vicinity: osmVicinity,
+      osmOpenSpaces,
+      osmBuildings,
       geocode: geocodeResult
         ? {
             lat: geocodeResult.lat,
@@ -350,26 +363,6 @@ export async function generateAndPersistWarroomScenario(
     openAiApiKey,
     aiProgress,
   );
-
-  // Generate POI pins from OSM data (hospitals, police, fire stations) with AI-enriched conditions
-  if (osmVicinity) {
-    onProgress?.('ai', 'Enriching nearby facility data...');
-    try {
-      const poiPins = await generatePoiPinsFromOsm(
-        osmVicinity,
-        parsed.scenario_type,
-        parsed.location || parsed.setting,
-        geocodeResult ? { lat: geocodeResult.lat, lng: geocodeResult.lng } : undefined,
-        openAiApiKey,
-      );
-      if (poiPins.length > 0) {
-        payload.locations = [...(payload.locations ?? []), ...poiPins];
-        logger.info({ poiCount: poiPins.length }, 'POI pins generated from OSM');
-      }
-    } catch (err) {
-      logger.warn({ err }, 'POI pin generation failed; continuing without');
-    }
-  }
 
   // Persist site_requirements into insider_knowledge for runtime use
   if (standardsFindings.length > 0) {

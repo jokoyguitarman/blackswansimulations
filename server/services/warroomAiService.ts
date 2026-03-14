@@ -5,7 +5,7 @@
  */
 
 import { logger } from '../lib/logger.js';
-import type { OsmVicinity } from './osmVicinityService.js';
+import type { OsmVicinity, OsmOpenSpace, OsmBuilding } from './osmVicinityService.js';
 import {
   standardsToPromptBlock,
   similarCasesToPromptBlock,
@@ -141,6 +141,8 @@ export interface WarroomGenerateInput {
   location: string | null;
   venue_name?: string;
   osm_vicinity?: OsmVicinity;
+  osmOpenSpaces?: OsmOpenSpace[];
+  osmBuildings?: OsmBuilding[];
   geocode?: { lat: number; lng: number; display_name: string };
   complexity_tier: 'minimal' | 'standard' | 'full' | 'rich';
   typeSpec: Record<string, unknown>;
@@ -616,10 +618,10 @@ export function buildTeamStateSchemaHint(
 }
 
 // ---------------------------------------------------------------------------
-// Phase 4a — Map Pins  (narrative-first, 2 000 tokens)
+// Phase 4a-1 — Scenario-Fixed Pins  (incident, exits, cordons — anchored to building outline)
 // ---------------------------------------------------------------------------
 
-async function generateMapPins(
+async function generateScenarioFixedPins(
   input: WarroomGenerateInput,
   teamNames: string[],
   openAiApiKey: string,
@@ -628,7 +630,94 @@ async function generateMapPins(
 ): Promise<WarroomScenarioPayload['locations']> {
   if (input.complexity_tier === 'minimal') return undefined;
 
-  onProgress?.('Generating map pins...');
+  onProgress?.('Generating scenario-fixed map pins...');
+
+  const { scenario_type, setting, terrain, venue_name, location, geocode, osmBuildings } = input;
+  const venue = venue_name || location || setting;
+  const coords = geocode ? `Incident center coordinates: ${geocode.lat}, ${geocode.lng}` : '';
+
+  let buildingBlock = '';
+  if (osmBuildings && osmBuildings.length > 0) {
+    const lines = osmBuildings.map((b, i) => {
+      const nameStr = b.name ? `"${b.name}"` : '(unnamed)';
+      const boundsStr = b.bounds
+        ? `spans [${b.bounds.minlat.toFixed(5)},${b.bounds.minlon.toFixed(5)}] to [${b.bounds.maxlat.toFixed(5)},${b.bounds.maxlon.toFixed(5)}]`
+        : `center [${b.lat.toFixed(5)},${b.lng.toFixed(5)}]`;
+      return `  ${i + 1}. ${nameStr} — ${boundsStr}, ${b.distance_from_center_m}m from incident`;
+    });
+    buildingBlock = `\nREAL BUILDING OUTLINES (from OpenStreetMap — use these to place exit pins at the actual building perimeter):\n${lines.join('\n')}`;
+  }
+
+  const narrativeBlock = narrative
+    ? `\n\nSCENARIO NARRATIVE:\nTitle: ${narrative.title || ''}\nDescription: ${narrative.description || ''}\nBriefing: ${narrative.briefing || ''}`
+    : '';
+
+  const systemPrompt = `You are an expert crisis management scenario designer placing scenario-fixed pins on a real map.
+
+Scenario type: ${scenario_type}
+Venue: ${venue}
+Setting: ${setting}
+Terrain: ${terrain}
+Teams: ${teamNames.join(', ')}
+${coords}
+${buildingBlock}
+${narrativeBlock}
+
+Generate 4–6 SCENARIO-FIXED pins: locations inherent to the scenario geography.
+
+PIN CATEGORIES:
+- incident_site: primary crisis location. Place AT or ON the venue building (use the building center or a point within the building bounds).
+- access: entry/exit points, corridors, escape routes. Place at the PERIMETER of the building — where the building edge meets a road, sidewalk, or open area. These must be within 100m of the incident center. If building bounds are provided, place exit coordinates ON or VERY NEAR the building boundary edges, NOT in the middle of open areas.
+- cordon: inner/outer perimeter, exclusion zones. Place at road intersections or natural choke points 150–300m from the incident center.
+- command: ONLY if the scenario dictates a fixed command location. Place 200–400m from incident.
+
+CONDITIONS per pin type:
+- Exits/routes: { width_m, surface, capacity_flow_per_min, is_blocked, lighting, accessibility, distance_from_incident_m, notes }
+- Incident site: { area_m2, structural_damage, hazards[], accessibility, casualty_density, notes }
+- Cordons: { radius_m, terrain, breach_points, notes }
+
+Do NOT generate hospital, police station, fire station, or candidate-space pins.
+
+SPATIAL RULES:
+- Incident site pins: use building center coordinates or a point inside the building bounds
+- Exit/access pins: MUST be at the building perimeter edge, NOT floating in open space. Use the building bounds to find edge coordinates.
+- Cordon pins: place at a realistic perimeter distance (150–300m) on roads or intersections
+- All coordinates must be realistic for the venue geography
+
+Return ONLY valid JSON:
+{ "locations": [ { "location_type": "string", "pin_category": "string", "description": "string", "label": "string (max 5 words)", "coordinates": { "lat": 0.0, "lng": 0.0 }, "conditions": {}, "display_order": 1 } ] }`;
+
+  const userPrompt = `Place scenario-fixed pins (incident site, exits, cordons) for "${narrative?.title || scenario_type}" at ${venue}.`;
+
+  try {
+    const parsed = await callOpenAi<{ locations?: WarroomScenarioPayload['locations'] }>(
+      systemPrompt,
+      userPrompt,
+      openAiApiKey,
+      2000,
+    );
+    return parsed.locations?.length ? parsed.locations : undefined;
+  } catch (err) {
+    logger.warn({ err }, 'Phase 4a-1 scenario-fixed pins failed; continuing without');
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4a-2 — Candidate Space Pins  (selected from real OSM open spaces)
+// ---------------------------------------------------------------------------
+
+async function generateCandidateSpacePins(
+  input: WarroomGenerateInput,
+  teamNames: string[],
+  openAiApiKey: string,
+  onProgress?: WarroomAiProgressCallback,
+  narrative?: { title?: string; description?: string; briefing?: string },
+  scenarioFixedPins?: WarroomScenarioPayload['locations'],
+): Promise<WarroomScenarioPayload['locations']> {
+  if (input.complexity_tier === 'minimal') return undefined;
+
+  onProgress?.('Selecting candidate spaces from real map data...');
 
   const {
     scenario_type,
@@ -637,32 +726,73 @@ async function generateMapPins(
     venue_name,
     location,
     geocode,
-    osm_vicinity,
+    osmOpenSpaces,
     researchContext,
   } = input;
   const venue = venue_name || location || setting;
-  const coords = geocode ? `Center coordinates: ${geocode.lat}, ${geocode.lng}` : '';
-  const osmBlock = osm_vicinity
-    ? `Nearby facilities: hospitals: ${osm_vicinity.hospitals?.map((h) => h.name).join(', ') || 'none'}; police: ${osm_vicinity.police?.map((p) => p.name).join(', ') || 'none'}; fire: ${osm_vicinity.fire_stations?.map((f) => f.name).join(', ') || 'none'}`
-    : '';
-  const standardsBlock =
-    researchContext?.standards_findings && researchContext.standards_findings.length > 0
-      ? `\nResponse standards context:\n${standardsToPromptBlock(researchContext.standards_findings)}`
-      : '';
-  const similarCasesBlock =
-    researchContext?.similar_cases && researchContext.similar_cases.length > 0
-      ? `\nSIMILAR REAL INCIDENTS:\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
-      : '';
-  const narrativeBlock = narrative
-    ? `\n\nSCENARIO NARRATIVE:\nTitle: ${narrative.title || ''}\nDescription: ${narrative.description || ''}\nBriefing: ${narrative.briefing || ''}`
-    : '';
+  const coords = geocode ? `Incident center: ${geocode.lat}, ${geocode.lng}` : '';
+
+  // Determine the outermost exit distance for topology enforcement
+  let maxExitDistance = 100;
+  if (scenarioFixedPins && geocode) {
+    for (const pin of scenarioFixedPins) {
+      if (pin.pin_category === 'access' || pin.conditions?.pin_category === 'access') {
+        const dist = haversineDistance(
+          geocode.lat,
+          geocode.lng,
+          pin.coordinates.lat,
+          pin.coordinates.lng,
+        );
+        if (dist > maxExitDistance) maxExitDistance = Math.round(dist);
+      }
+    }
+  }
+  const minCandidateDistance = Math.max(150, maxExitDistance + 50);
+
+  // Build exit positions context for the AI
+  let exitContext = '';
+  if (scenarioFixedPins?.length) {
+    const exitLines = scenarioFixedPins
+      .filter((p) => p.pin_category === 'access' || p.conditions?.pin_category === 'access')
+      .map(
+        (p) =>
+          `  - "${p.label}" at [${p.coordinates.lat.toFixed(5)}, ${p.coordinates.lng.toFixed(5)}]`,
+      );
+    if (exitLines.length > 0) {
+      exitContext = `\nSCENARIO EXIT POSITIONS (for spatial reference — candidate spaces must be OUTSIDE this perimeter):\n${exitLines.join('\n')}\nOutermost exit is ~${maxExitDistance}m from incident center.`;
+    }
+  }
+
+  // Build open spaces menu
+  let openSpacesBlock = '';
+  const hasRealSpaces = osmOpenSpaces && osmOpenSpaces.length > 0;
+  if (hasRealSpaces) {
+    const lines = osmOpenSpaces.map((s, i) => {
+      const areaStr = s.area_m2 != null ? `~${s.area_m2}m²` : 'area unknown';
+      return `  ${i + 1}. "${s.name}" [${s.type}] at ${s.lat.toFixed(5)}, ${s.lng.toFixed(5)} — ${areaStr}, ${s.distance_from_center_m}m from incident`;
+    });
+    openSpacesBlock = `\nREAL OPEN SPACES (from OpenStreetMap — select candidate spaces from this list):\n${lines.join('\n')}`;
+  }
 
   const siteReqBlock =
     researchContext?.standards_findings && researchContext.standards_findings.length > 0
       ? `\nSITE REQUIREMENTS (from standards research — use when assigning potential_uses):\n${siteRequirementsToPromptBlock(researchContext.standards_findings)}`
       : '';
 
-  const systemPrompt = `You are an expert crisis management scenario designer mapping the physical environment.
+  const narrativeBlock = narrative
+    ? `\nSCENARIO: ${narrative.title || ''} — ${narrative.description || ''}`
+    : '';
+
+  const selectionRule = hasRealSpaces
+    ? `You MUST select 8–15 spaces from the REAL OPEN SPACES list above.
+- Use the EXACT coordinates from the list — do NOT invent coordinates.
+- You may rename spaces with neutral physical labels (e.g. "Lot A", "Field North", "Bay C").
+- Only select spaces that are at least ${minCandidateDistance}m from the incident center.
+- If fewer than 8 real spaces are available beyond ${minCandidateDistance}m, you may generate additional candidate spaces with estimated coordinates beyond ${minCandidateDistance + 150}m from the incident center.`
+    : `Generate 8–15 candidate spaces with coordinates at least ${minCandidateDistance}m from the incident center (${coords}).
+- Place them on plausible open areas: parking lots, fields, covered bays, courtyards — NOT on roads or inside buildings.`;
+
+  const systemPrompt = `You are an expert crisis management scenario designer selecting physical spaces that players must evaluate and assign operational purposes to.
 
 Scenario type: ${scenario_type}
 Venue: ${venue}
@@ -670,38 +800,22 @@ Setting: ${setting}
 Terrain: ${terrain}
 Teams: ${teamNames.join(', ')}
 ${coords}
-${osmBlock}
-${standardsBlock}
-${similarCasesBlock}
+${exitContext}
+${openSpacesBlock}
 ${siteReqBlock}
 ${narrativeBlock}
 
-IMPORTANT: This is a ${scenario_type} scenario. ALL pins must be specific to how a ${scenario_type} actually unfolds. Do NOT default to mass-casualty-incident terminology (triage zones, casualty collection points, stretcher routes) unless this scenario genuinely involves mass casualties.
+IMPORTANT: This is a ${scenario_type} scenario. potential_uses must reflect functions relevant to THIS scenario type — not generic MCI defaults.
 
-You must generate TWO GROUPS of pins:
+${selectionRule}
 
-=== GROUP A: SCENARIO-FIXED PINS (4–6 pins) ===
-Locations inherent to the scenario geography whose function is self-evident.
-- location_type: functional label specific to this scenario (e.g. "blast_origin", "main_entrance", "inner_cordon", "service_tunnel_exit")
-- pin_category: one of "incident_site" | "access" | "cordon" | "command"
-  - incident_site: primary crisis location and secondary sites
-  - access: entry/exit points, corridors, escape/evacuation routes
-  - cordon: inner/outer perimeter, exclusion zones
-  - command: ONLY if the scenario dictates a fixed command location
-- conditions: RICH environmental detail appropriate to the pin type:
-  - Exits/routes: { width_m, surface, capacity_flow_per_min, is_blocked, lighting, accessibility, distance_from_incident_m, notes }
-  - Incident site: { area_m2, structural_damage, hazards[], accessibility, casualty_density, notes }
-  - Cordons: { radius_m, terrain, breach_points, notes }
-- Do NOT generate hospital, police station, or fire station pins — those are provided separately from real-world data.
-
-=== GROUP B: NEUTRAL CANDIDATE SPACES (8–15 pins) ===
-Physical spaces that players must evaluate and ASSIGN a purpose to (triage, staging, command post, negotiation area, evacuation assembly, etc.). These carry physical properties but NO functional label.
-- location_type: physical descriptor (e.g. "open_lot", "covered_bay", "basement_hall", "rooftop_terrace", "parking_level", "corridor_junction", "warehouse", "courtyard", "grassy_field")
+Each candidate space must have:
+- location_type: physical descriptor (e.g. "parking", "open_lot", "park", "covered_bay", "courtyard", "grassy_field", "warehouse", "plaza")
 - pin_category: always "candidate_space"
-- label: neutral physical name (e.g. "Lot A", "Loading Bay B", "Basement Hall 3", "Open Field North") — NEVER "Triage Area" or "Command Post" or any operational function name
+- label: neutral physical name — NEVER an operational function name like "Triage Area" or "Command Post"
 - conditions: {
     area_m2: number,
-    capacity_persons: number,
+    capacity_persons: number (estimate from area),
     has_water: boolean,
     has_electricity: boolean,
     has_shelter: boolean,
@@ -711,38 +825,106 @@ Physical spaces that players must evaluate and ASSIGN a purpose to (triage, stag
     potential_uses: ["use1", "use2", ...] — 2-4 operational functions this space COULD serve based on its physical properties and the scenario type,
     notes: "1 sentence about constraints or advantages"
   }
-- potential_uses must reflect functions relevant to THIS ${scenario_type} — not generic MCI defaults.
-- Vary the spaces: mix of large/small, covered/open, with/without water and power. Some should be clearly suitable for certain uses, others should be marginal or have trade-offs.
+- description: one sentence explaining the space
+- display_order: integer
 
-ALL PINS (both groups):
-- description: one sentence explaining WHY this location matters
-- label: short display name (max 5 words)
-- coordinates: {lat, lng} derived from venue and scenario context
-- display_order: integer (1 = most important)
+SPATIAL TOPOLOGY RULE: EVERY candidate space MUST be further from the incident center than ${minCandidateDistance}m. These are spaces where responders work AFTER exiting the danger zone. No candidate space should be inside the cordon or exit perimeter.
+
+Vary the spaces: mix of large/small, covered/open, with/without water and power. Some should clearly suit certain uses; others should be marginal or involve trade-offs.
 
 Return ONLY valid JSON:
-{ "locations": [ { "location_type": "string", "pin_category": "string", "description": "string", "label": "string", "coordinates": { "lat": 0.0, "lng": 0.0 }, "conditions": {}, "display_order": 1 } ] }
+{ "locations": [ { "location_type": "string", "pin_category": "candidate_space", "description": "string", "label": "string", "coordinates": { "lat": 0.0, "lng": 0.0 }, "conditions": {}, "display_order": 1 } ] }`;
 
-RULES:
-- 12–21 pins total: 4–6 scenario-fixed (Group A) + 8–15 neutral candidate spaces (Group B).
-- Every pin must be specific to THIS scenario — no generic placeholders.
-- Group A must cover the primary incident site and relevant access/cordon points.
-- Group B must provide enough variety and quantity to create real decision pressure — players should feel the need to quickly evaluate many options.`;
-
-  const userPrompt = `Derive map pins for "${narrative?.title || scenario_type}" at ${venue}. Teams: ${teamNames.join(', ')}.`;
+  const userPrompt = `Select candidate spaces for "${narrative?.title || scenario_type}" at ${venue}. Teams: ${teamNames.join(', ')}.`;
 
   try {
     const parsed = await callOpenAi<{ locations?: WarroomScenarioPayload['locations'] }>(
       systemPrompt,
       userPrompt,
       openAiApiKey,
-      5000,
+      4000,
     );
     return parsed.locations?.length ? parsed.locations : undefined;
   } catch (err) {
-    logger.warn({ err }, 'Phase 4a map pins failed; continuing without');
+    logger.warn({ err }, 'Phase 4a-2 candidate space pins failed; continuing without');
     return undefined;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Post-processing — validate pin spatial topology
+// ---------------------------------------------------------------------------
+
+function validatePinTopology(
+  pins: NonNullable<WarroomScenarioPayload['locations']>,
+  incidentCenter?: { lat: number; lng: number },
+  osmOpenSpaces?: OsmOpenSpace[],
+): NonNullable<WarroomScenarioPayload['locations']> {
+  if (!incidentCenter || pins.length === 0) return pins;
+
+  // Compute distance_from_incident_m for every pin
+  for (const pin of pins) {
+    const dist = Math.round(
+      haversineDistance(
+        incidentCenter.lat,
+        incidentCenter.lng,
+        pin.coordinates.lat,
+        pin.coordinates.lng,
+      ),
+    );
+    if (!pin.conditions) pin.conditions = {};
+    if (pin.conditions.distance_from_incident_m == null) {
+      pin.conditions.distance_from_incident_m = dist;
+    }
+  }
+
+  // Find the outermost exit pin distance
+  let maxExitDist = 0;
+  for (const pin of pins) {
+    const cat = pin.pin_category || (pin.conditions?.pin_category as string);
+    if (cat === 'access') {
+      const d = pin.conditions?.distance_from_incident_m as number;
+      if (d > maxExitDist) maxExitDist = d;
+    }
+  }
+
+  // Validate candidate spaces are further than exits
+  let topologyWarnings = 0;
+  for (const pin of pins) {
+    const cat = pin.pin_category || (pin.conditions?.pin_category as string);
+    if (cat !== 'candidate_space') continue;
+    const d = pin.conditions?.distance_from_incident_m as number;
+    if (maxExitDist > 0 && d < maxExitDist) {
+      topologyWarnings++;
+    }
+  }
+  if (topologyWarnings > 0) {
+    logger.warn(
+      { count: topologyWarnings, maxExitDist },
+      'Candidate spaces closer to incident than outermost exit — topology violation',
+    );
+  }
+
+  // Validate candidate space coordinates match an OSM open space within 50m
+  if (osmOpenSpaces && osmOpenSpaces.length > 0) {
+    let matchCount = 0;
+    let missCount = 0;
+    for (const pin of pins) {
+      const cat = pin.pin_category || (pin.conditions?.pin_category as string);
+      if (cat !== 'candidate_space') continue;
+      const matched = osmOpenSpaces.some(
+        (s) => haversineDistance(pin.coordinates.lat, pin.coordinates.lng, s.lat, s.lng) < 50,
+      );
+      if (matched) matchCount++;
+      else missCount++;
+    }
+    logger.info(
+      { matched: matchCount, unmatched: missCount },
+      'Candidate space OSM coordinate matching',
+    );
+  }
+
+  return pins;
 }
 
 // ---------------------------------------------------------------------------
@@ -1665,13 +1847,15 @@ export const generateTeamsAndCoreForResearch = generateTeamsAndCore;
 /**
  * Generate full scenario payload using multi-phase AI.
  *
- * Phase 1  (sequential) : teams + core scenario
- * Batch A  (parallel)   : universal time injects + per-team time injects + per-team decision injects
- * Phase 4a (sequential) : map pins
- * Phase 4b (sequential) : environmental seeds
- * Phase 4c (sequential) : layout + site knowledge
- * Batch B  (parallel)   : per-team condition injects + per-pair condition injects
- * Post-process          : normalizeInjectTiming (gap fill)
+ * Phase 1      (sequential) : teams + core scenario
+ * Batch A      (parallel)   : universal time injects + per-team time injects + per-team decision injects
+ * Phase 4a-1   (parallel)   : scenario-fixed pins (anchored to building outline)
+ *   + POI enrichment        : (runs in parallel with 4a-1)
+ * Phase 4a-2   (sequential) : candidate-space pins (selected from OSM open spaces, after 4a-1)
+ * Phase 4b     (sequential) : environmental seeds
+ * Phase 4c     (sequential) : layout + site knowledge
+ * Batch B      (parallel)   : per-team condition injects + per-pair condition injects
+ * Post-process              : normalizeInjectTiming + validatePinTopology
  */
 export async function warroomGenerateScenario(
   input: WarroomGenerateInput,
@@ -1704,7 +1888,6 @@ export async function warroomGenerateScenario(
       undefined,
       narrative,
     ),
-    // Per-team time: for standard/full/rich (minimal gets only universal injects)
     Promise.all(
       teamNames.map((t) =>
         input.complexity_tier === 'minimal'
@@ -1719,7 +1902,6 @@ export async function warroomGenerateScenario(
             ),
       ),
     ),
-    // Per-team decision: only for full/rich (function gates internally on tier)
     Promise.all(
       teamNames.map((t) =>
         generateTeamDecisionInjects(input, t, teamNames, openAiApiKey, narrative),
@@ -1737,8 +1919,53 @@ export async function warroomGenerateScenario(
   const decisionFlat = perTeamDecisionResults.flat();
   const decision_injects = decisionFlat.length > 0 ? decisionFlat : undefined;
 
-  // World creation phases — each feeds context into the next (unchanged)
-  const locations = await generateMapPins(input, teamNames, openAiApiKey, onProgress, narrative);
+  // Phase 4a-1 (scenario-fixed pins) + POI enrichment run in PARALLEL
+  const venue = input.venue_name || input.location || input.setting;
+  const [scenarioFixedPins, poiPins] = await Promise.all([
+    generateScenarioFixedPins(input, teamNames, openAiApiKey, onProgress, narrative),
+    osm_vicinity
+      ? generatePoiPinsFromOsm(
+          osm_vicinity,
+          input.scenario_type,
+          venue,
+          input.geocode ? { lat: input.geocode.lat, lng: input.geocode.lng } : undefined,
+          openAiApiKey,
+        ).catch((err) => {
+          logger.warn({ err }, 'POI pin generation failed; continuing without');
+          return [] as NonNullable<WarroomScenarioPayload['locations']>;
+        })
+      : Promise.resolve([] as NonNullable<WarroomScenarioPayload['locations']>),
+  ]);
+
+  // Phase 4a-2 — candidate-space pins (needs exit positions from 4a-1)
+  const candidateSpacePins = await generateCandidateSpacePins(
+    input,
+    teamNames,
+    openAiApiKey,
+    onProgress,
+    narrative,
+    scenarioFixedPins,
+  );
+
+  // Merge and validate all pins
+  const mergedPins: NonNullable<WarroomScenarioPayload['locations']> = [
+    ...(scenarioFixedPins ?? []),
+    ...(candidateSpacePins ?? []),
+    ...poiPins,
+  ];
+  const locations =
+    mergedPins.length > 0
+      ? validatePinTopology(
+          mergedPins,
+          input.geocode ? { lat: input.geocode.lat, lng: input.geocode.lng } : undefined,
+          input.osmOpenSpaces,
+        )
+      : undefined;
+
+  if (poiPins.length > 0) {
+    logger.info({ poiCount: poiPins.length }, 'POI pins generated from OSM');
+  }
+
   const environmental_seeds = await generateEnvironmentalSeeds(
     input,
     teamNames,

@@ -225,6 +225,218 @@ function normalizeToOsmVicinity(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Haversine helper (metres)
+// ---------------------------------------------------------------------------
+
+function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// ---------------------------------------------------------------------------
+// Generic Overpass runner (accepts arbitrary query text)
+// ---------------------------------------------------------------------------
+
+async function runRawOverpassQuery(query: string): Promise<Array<Record<string, unknown>>> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < OVERPASS_MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(OVERPASS_ENDPOINT, {
+        method: 'POST',
+        body: query,
+        headers: { 'Content-Type': 'text/plain' },
+      });
+      if (res.ok) {
+        const json = (await res.json()) as { elements?: Array<Record<string, unknown>> };
+        return json.elements || [];
+      }
+      lastError = new Error(`Overpass API error: ${res.status} ${res.statusText}`);
+      if (res.status >= 500 && attempt < OVERPASS_MAX_RETRIES - 1) {
+        const delay = OVERPASS_BACKOFF_MS * Math.pow(2, attempt);
+        logger.warn({ attempt: attempt + 1, delayMs: delay }, 'Overpass 5xx, retrying');
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw lastError;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < OVERPASS_MAX_RETRIES - 1) {
+        const delay = OVERPASS_BACKOFF_MS * Math.pow(2, attempt);
+        logger.warn(
+          { attempt: attempt + 1, delayMs: delay, err },
+          'Overpass request failed, retrying',
+        );
+        await new Promise((r) => setTimeout(r, delay));
+      } else {
+        throw lastError;
+      }
+    }
+  }
+  throw lastError ?? new Error('Overpass API failed after retries');
+}
+
+// ---------------------------------------------------------------------------
+// Open Spaces query — parking, parks, fields, plazas within a radius
+// ---------------------------------------------------------------------------
+
+export interface OsmOpenSpace {
+  name: string;
+  lat: number;
+  lng: number;
+  type: string;
+  osm_tag: string;
+  area_m2: number | null;
+  distance_from_center_m: number;
+}
+
+function estimateAreaM2(bounds: {
+  minlat: number;
+  minlon: number;
+  maxlat: number;
+  maxlon: number;
+}): number {
+  const dLat = (bounds.maxlat - bounds.minlat) * 111320;
+  const midLatRad = (((bounds.minlat + bounds.maxlat) / 2) * Math.PI) / 180;
+  const dLng = (bounds.maxlon - bounds.minlon) * 111320 * Math.cos(midLatRad);
+  return Math.round(dLat * dLng);
+}
+
+export async function fetchOsmOpenSpaces(
+  lat: number,
+  lng: number,
+  radiusMeters: number = 1500,
+): Promise<OsmOpenSpace[]> {
+  const radius = Math.min(radiusMeters, 5000);
+  const query = `
+[out:json][timeout:25];
+(
+  node["amenity"="parking"](around:${radius},${lat},${lng});
+  way["amenity"="parking"](around:${radius},${lat},${lng});
+  way["leisure"~"^(park|pitch|playground|garden|common|recreation_ground)$"](around:${radius},${lat},${lng});
+  way["landuse"~"^(grass|meadow|recreation_ground|brownfield|commercial|retail|industrial)$"](around:${radius},${lat},${lng});
+  way["place"="square"](around:${radius},${lat},${lng});
+);
+out body center;
+`;
+
+  const elements = await runRawOverpassQuery(query);
+  const seen = new Set<string>();
+  const results: OsmOpenSpace[] = [];
+
+  for (const el of elements) {
+    const tags = (el.tags as Record<string, string>) || {};
+    const pos = extractLatLng(el as Parameters<typeof extractLatLng>[0]);
+    if (!pos) continue;
+
+    const dedup = `${pos.lat.toFixed(4)}-${pos.lng.toFixed(4)}`;
+    if (seen.has(dedup)) continue;
+    seen.add(dedup);
+
+    let type: string;
+    let osmTag: string;
+    if (tags.amenity === 'parking') {
+      type = 'parking';
+      osmTag = 'amenity=parking';
+    } else if (tags.leisure) {
+      type = tags.leisure;
+      osmTag = `leisure=${tags.leisure}`;
+    } else if (tags.landuse) {
+      type = tags.landuse;
+      osmTag = `landuse=${tags.landuse}`;
+    } else if (tags.place === 'square') {
+      type = 'square';
+      osmTag = 'place=square';
+    } else {
+      continue;
+    }
+
+    const bounds = (
+      el as { bounds?: { minlat: number; minlon: number; maxlat: number; maxlon: number } }
+    ).bounds;
+    const area = bounds ? estimateAreaM2(bounds) : null;
+    const dist = Math.round(haversine(lat, lng, pos.lat, pos.lng));
+
+    results.push({
+      name: getName(el as { tags?: Record<string, string> }),
+      lat: pos.lat,
+      lng: pos.lng,
+      type,
+      osm_tag: osmTag,
+      area_m2: area,
+      distance_from_center_m: dist,
+    });
+  }
+
+  results.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
+
+  const MAX_RESULTS = 40;
+  logger.info(
+    { total: results.length, returned: Math.min(results.length, MAX_RESULTS), radius },
+    'OSM open spaces fetched',
+  );
+  return results.slice(0, MAX_RESULTS);
+}
+
+// ---------------------------------------------------------------------------
+// Venue Building query — building outlines near the incident center
+// ---------------------------------------------------------------------------
+
+export interface OsmBuilding {
+  name: string | null;
+  lat: number;
+  lng: number;
+  bounds: { minlat: number; minlon: number; maxlat: number; maxlon: number } | null;
+  distance_from_center_m: number;
+}
+
+export async function fetchVenueBuilding(
+  lat: number,
+  lng: number,
+  radiusMeters: number = 300,
+): Promise<OsmBuilding[]> {
+  const radius = Math.min(radiusMeters, 1000);
+  const query = `
+[out:json][timeout:15];
+(
+  way["building"](around:${radius},${lat},${lng});
+  relation["building"](around:${radius},${lat},${lng});
+);
+out body center bb;
+`;
+
+  const elements = await runRawOverpassQuery(query);
+  const results: OsmBuilding[] = [];
+
+  for (const el of elements) {
+    const tags = (el.tags as Record<string, string>) || {};
+    const pos = extractLatLng(el as Parameters<typeof extractLatLng>[0]);
+    if (!pos) continue;
+
+    const bounds =
+      (el as { bounds?: { minlat: number; minlon: number; maxlat: number; maxlon: number } })
+        .bounds ?? null;
+    const dist = Math.round(haversine(lat, lng, pos.lat, pos.lng));
+    const name = tags.name || null;
+
+    results.push({ name, lat: pos.lat, lng: pos.lng, bounds, distance_from_center_m: dist });
+  }
+
+  results.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
+
+  const MAX_BUILDINGS = 5;
+  logger.info(
+    { total: results.length, returned: Math.min(results.length, MAX_BUILDINGS), radius },
+    'OSM venue buildings fetched',
+  );
+  return results.slice(0, MAX_BUILDINGS);
+}
+
 /**
  * Fetch OSM vicinity by coordinates (no DB update).
  * Used by War Room to get facility data before scenario exists.

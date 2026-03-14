@@ -25,6 +25,19 @@ interface ScenarioFull {
     }>;
     layout_ground_truth?: Record<string, unknown>;
     site_areas?: Array<Record<string, unknown>>;
+    site_requirements?: Record<
+      string,
+      {
+        min_area_m2?: number;
+        requires_water?: boolean;
+        requires_shelter?: boolean;
+        requires_vehicle_access?: boolean;
+        requires_electricity?: boolean;
+        min_capacity?: number;
+        max_distance_from_incident_m?: number;
+        notes?: string;
+      }
+    >;
     custom_facts?: Array<{ topic: string; summary: string; detail?: string }>;
     baseline_escalation_factors?: Array<{
       id: string;
@@ -102,7 +115,15 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
   </div>
 );
 
-const tabs = ['Overview', 'Teams', 'Injects', 'Map Pins', 'Env Seeds', 'Standards'] as const;
+const tabs = [
+  'Overview',
+  'Teams',
+  'Injects',
+  'Map Pins',
+  'Env Truths',
+  'Env Seeds',
+  'Standards',
+] as const;
 type Tab = (typeof tabs)[number];
 
 export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
@@ -409,6 +430,11 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
           {/* ─── MAP PINS ─── */}
           {activeTab === 'Map Pins' && <MapPinsTab locations={locations} />}
 
+          {/* ─── ENV TRUTHS ─── */}
+          {activeTab === 'Env Truths' && (
+            <EnvTruthsTab locations={locations} siteRequirements={ik?.site_requirements} />
+          )}
+
           {/* ─── ENV SEEDS ─── */}
           {activeTab === 'Env Seeds' && (
             <div>
@@ -527,6 +553,8 @@ const PIN_LEGEND: Array<{ color: string; label: string }> = [
 ];
 
 const MapPinsTab = ({ locations }: { locations: LocationPin[] }) => {
+  const [expandedPin, setExpandedPin] = useState<string | null>(null);
+
   if (locations.length === 0) {
     return <p className="text-sm terminal-text text-robotic-yellow/50">[NO LOCATIONS]</p>;
   }
@@ -590,31 +618,83 @@ const MapPinsTab = ({ locations }: { locations: LocationPin[] }) => {
         {locations.map((loc) => {
           const pinCat = loc.conditions?.pin_category as string | undefined;
           const narrativeDesc = loc.conditions?.narrative_description as string | undefined;
+          const cond = loc.conditions ?? {};
+          const hasConditions = Object.keys(cond).some(
+            (k) => k !== 'pin_category' && k !== 'narrative_description',
+          );
+          const isExpanded = expandedPin === loc.id;
+          const potentialUses = Array.isArray(cond.potential_uses)
+            ? (cond.potential_uses as string[])
+            : [];
+          const quickFacts = [
+            cond.area_m2 != null && `${cond.area_m2}m²`,
+            cond.capacity_persons != null && `cap ${cond.capacity_persons}`,
+            cond.has_water !== undefined && (cond.has_water ? '💧' : 'no water'),
+            cond.has_electricity !== undefined && (cond.has_electricity ? '⚡' : 'no power'),
+            cond.bed_capacity != null && `${cond.bed_capacity} beds`,
+            cond.available_officers_estimate != null &&
+              `~${cond.available_officers_estimate} officers`,
+            cond.appliance_count != null && `${cond.appliance_count} appliances`,
+            cond.distance_from_incident_m != null && `${cond.distance_from_incident_m}m away`,
+          ].filter(Boolean) as string[];
+
           return (
-            <div key={loc.id} className="military-border p-4 flex gap-4">
-              <div className="shrink-0 w-28">
-                <div className="text-xs terminal-text text-robotic-yellow/50 uppercase">
-                  {pinCat ?? loc.location_type.replace(/_/g, ' ')}
-                </div>
-                {loc.coordinates.lat != null && (
-                  <div className="text-xs terminal-text text-robotic-yellow/30 mt-0.5">
-                    {loc.coordinates.lat.toFixed(4)}, {loc.coordinates.lng?.toFixed(4)}
+            <div key={loc.id} className="military-border">
+              <div className="p-4 flex gap-4">
+                <div className="shrink-0 w-28">
+                  <div className="text-xs terminal-text text-robotic-yellow/50 uppercase">
+                    {pinCat ?? loc.location_type.replace(/_/g, ' ')}
                   </div>
+                  {loc.coordinates.lat != null && (
+                    <div className="text-xs terminal-text text-robotic-yellow/30 mt-0.5">
+                      {loc.coordinates.lat.toFixed(4)}, {loc.coordinates.lng?.toFixed(4)}
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm terminal-text text-robotic-yellow font-medium">
+                    {loc.label}
+                  </div>
+                  {narrativeDesc && (
+                    <p className="text-xs terminal-text text-robotic-yellow/70 mt-0.5">
+                      {narrativeDesc}
+                    </p>
+                  )}
+                  {quickFacts.length > 0 && (
+                    <div className="text-xs terminal-text text-robotic-yellow/50 mt-0.5">
+                      {quickFacts.join(' · ')}
+                    </div>
+                  )}
+                  {potentialUses.length > 0 && (
+                    <div className="flex gap-1 flex-wrap mt-1">
+                      {potentialUses.map((u) => (
+                        <span
+                          key={u}
+                          className="text-xs terminal-text bg-robotic-yellow/10 text-robotic-yellow/70 px-1 py-0.5 rounded"
+                        >
+                          {u.replace(/_/g, ' ')}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="text-xs terminal-text text-robotic-yellow/40 mt-0.5">
+                    type: {loc.location_type}
+                  </div>
+                </div>
+                {hasConditions && (
+                  <button
+                    onClick={() => setExpandedPin(isExpanded ? null : loc.id)}
+                    className="text-robotic-yellow/40 hover:text-robotic-yellow terminal-text text-xs shrink-0 self-start"
+                  >
+                    {isExpanded ? '▲' : '▼'}
+                  </button>
                 )}
               </div>
-              <div className="flex-1">
-                <div className="text-sm terminal-text text-robotic-yellow font-medium">
-                  {loc.label}
+              {isExpanded && hasConditions && (
+                <div className="px-4 pb-3 border-t border-robotic-yellow/15 pt-2">
+                  <ConditionsSummary conditions={loc.conditions} />
                 </div>
-                {narrativeDesc && (
-                  <p className="text-xs terminal-text text-robotic-yellow/70 mt-0.5">
-                    {narrativeDesc}
-                  </p>
-                )}
-                <div className="text-xs terminal-text text-robotic-yellow/40 mt-0.5">
-                  type: {loc.location_type}
-                </div>
-              </div>
+              )}
             </div>
           );
         })}
@@ -744,6 +824,304 @@ const InjectRow = ({
             )}
         </div>
       )}
+    </div>
+  );
+};
+
+// ─── Env Truths Tab ─────────────────────────────────────────────────────────
+
+interface SiteReqMap {
+  [useType: string]: {
+    min_area_m2?: number;
+    requires_water?: boolean;
+    requires_shelter?: boolean;
+    requires_vehicle_access?: boolean;
+    requires_electricity?: boolean;
+    min_capacity?: number;
+    max_distance_from_incident_m?: number;
+    notes?: string;
+  };
+}
+
+const EnvTruthsTab = ({
+  locations,
+  siteRequirements,
+}: {
+  locations: LocationPin[];
+  siteRequirements?: SiteReqMap;
+}) => {
+  const getPinCat = (l: LocationPin) => l.conditions?.pin_category as string | undefined;
+
+  const candidateSpaces = locations.filter(
+    (l) =>
+      getPinCat(l) === 'candidate_space' ||
+      (l.conditions && Array.isArray(l.conditions.potential_uses)),
+  );
+  const poiHospitals = locations.filter((l) => l.location_type === 'hospital');
+  const poiPolice = locations.filter((l) => l.location_type === 'police_station');
+  const poiFire = locations.filter((l) => l.location_type === 'fire_station');
+  const scenarioFixed = locations.filter((l) => {
+    const isCandidateSpace =
+      getPinCat(l) === 'candidate_space' ||
+      (l.conditions && Array.isArray(l.conditions.potential_uses));
+    const isPoi =
+      l.location_type === 'hospital' ||
+      l.location_type === 'police_station' ||
+      l.location_type === 'fire_station';
+    return !isCandidateSpace && !isPoi;
+  });
+
+  const hasNewModel = candidateSpaces.length > 0 || poiPolice.length > 0 || poiFire.length > 0;
+
+  if (!hasNewModel && locations.length === 0) {
+    return (
+      <p className="text-sm terminal-text text-robotic-yellow/50">[NO ENVIRONMENTAL TRUTH DATA]</p>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Scenario Infrastructure */}
+      {scenarioFixed.length > 0 && (
+        <Section title={`Scenario infrastructure (${scenarioFixed.length})`}>
+          <div className="space-y-2">
+            {scenarioFixed.map((loc) => (
+              <div key={loc.id} className="military-border p-3">
+                <div className="flex items-start gap-3">
+                  <div className="shrink-0 w-24">
+                    <div className="text-xs terminal-text text-robotic-yellow/50 uppercase">
+                      {getPinCat(loc) ?? loc.location_type.replace(/_/g, ' ')}
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-sm terminal-text text-robotic-yellow font-medium">
+                      {loc.label}
+                    </div>
+                    <ConditionsSummary conditions={loc.conditions} />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {/* Candidate Spaces */}
+      {candidateSpaces.length > 0 && (
+        <Section title={`Candidate spaces (${candidateSpaces.length})`}>
+          <p className="text-xs terminal-text text-robotic-yellow/50 mb-3">
+            Physical spaces players must evaluate and assign a purpose to.
+          </p>
+          <div className="space-y-3">
+            {candidateSpaces.map((loc) => {
+              const cond = loc.conditions ?? {};
+              const uses = Array.isArray(cond.potential_uses)
+                ? (cond.potential_uses as string[])
+                : [];
+              return (
+                <div
+                  key={loc.id}
+                  className="military-border p-3 border-l-2 border-l-robotic-yellow/30"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <span className="text-sm terminal-text text-robotic-yellow font-medium">
+                      {loc.label}
+                    </span>
+                    {uses.length > 0 && (
+                      <div className="flex gap-1 flex-wrap justify-end">
+                        {uses.map((u) => (
+                          <span
+                            key={u}
+                            className="text-xs terminal-text bg-robotic-yellow/10 text-robotic-yellow/80 px-1.5 py-0.5 rounded"
+                          >
+                            {u.replace(/_/g, ' ')}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-xs terminal-text text-robotic-yellow/60">
+                    {[
+                      cond.area_m2 != null && `${cond.area_m2}m²`,
+                      cond.capacity_persons != null && `capacity ${cond.capacity_persons}`,
+                      cond.has_water !== undefined && (cond.has_water ? 'water: yes' : 'no water'),
+                      cond.has_electricity !== undefined &&
+                        (cond.has_electricity ? 'electricity: yes' : 'no electricity'),
+                      cond.has_shelter !== undefined &&
+                        (cond.has_shelter ? 'sheltered' : 'unsheltered'),
+                      cond.vehicle_access !== undefined &&
+                        (cond.vehicle_access ? 'vehicle access' : 'no vehicle access'),
+                      cond.distance_from_incident_m != null &&
+                        `${cond.distance_from_incident_m}m from incident`,
+                      cond.surface && `surface: ${String(cond.surface)}`,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </div>
+                  {cond.notes != null && (
+                    <div className="text-xs terminal-text text-robotic-yellow/40 italic mt-1">
+                      {String(cond.notes)}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Site requirements comparison */}
+          {siteRequirements && Object.keys(siteRequirements).length > 0 && (
+            <div className="mt-4 pt-3 border-t border-robotic-yellow/15">
+              <div className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
+                Site requirements (from standards)
+              </div>
+              <div className="space-y-1">
+                {Object.entries(siteRequirements).map(([useType, req]) => (
+                  <div key={useType} className="text-xs terminal-text text-robotic-yellow/50">
+                    <span className="text-robotic-yellow/70">{useType.replace(/_/g, ' ')}:</span>{' '}
+                    {[
+                      req.min_area_m2 != null && `min ${req.min_area_m2}m²`,
+                      req.min_capacity != null && `min cap ${req.min_capacity}`,
+                      req.requires_water && 'water',
+                      req.requires_electricity && 'electricity',
+                      req.requires_shelter && 'shelter',
+                      req.requires_vehicle_access && 'vehicle access',
+                      req.max_distance_from_incident_m != null &&
+                        `max ${req.max_distance_from_incident_m}m`,
+                    ]
+                      .filter(Boolean)
+                      .join(', ')}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Section>
+      )}
+
+      {/* Nearby Facilities (POI) */}
+      {(poiHospitals.length > 0 || poiPolice.length > 0 || poiFire.length > 0) && (
+        <Section
+          title={`Nearby facilities (${poiHospitals.length + poiPolice.length + poiFire.length})`}
+        >
+          {poiHospitals.length > 0 && (
+            <div className="mb-3">
+              <div className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-1">
+                Hospitals ({poiHospitals.length})
+              </div>
+              <div className="space-y-1">
+                {poiHospitals.map((loc) => {
+                  const c = loc.conditions ?? {};
+                  return (
+                    <div key={loc.id} className="text-xs terminal-text flex gap-2 items-baseline">
+                      <span className="text-robotic-yellow/80 font-medium">{loc.label}</span>
+                      <span className="text-robotic-yellow/50">
+                        {[
+                          c.distance_from_incident_m != null && `${c.distance_from_incident_m}m`,
+                          c.trauma_center_level && String(c.trauma_center_level),
+                          c.bed_capacity != null && `${c.bed_capacity} beds`,
+                          c.emergency_beds_available != null &&
+                            `${c.emergency_beds_available} emergency`,
+                          c.estimated_response_time_min != null &&
+                            `~${c.estimated_response_time_min}min`,
+                        ]
+                          .filter(Boolean)
+                          .join(', ')}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {poiPolice.length > 0 && (
+            <div className="mb-3">
+              <div className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-1">
+                Police ({poiPolice.length})
+              </div>
+              <div className="space-y-1">
+                {poiPolice.map((loc) => {
+                  const c = loc.conditions ?? {};
+                  return (
+                    <div key={loc.id} className="text-xs terminal-text flex gap-2 items-baseline">
+                      <span className="text-robotic-yellow/80 font-medium">{loc.label}</span>
+                      <span className="text-robotic-yellow/50">
+                        {[
+                          c.distance_from_incident_m != null && `${c.distance_from_incident_m}m`,
+                          c.facility_type && String(c.facility_type).replace(/_/g, ' '),
+                          c.available_officers_estimate != null &&
+                            `~${c.available_officers_estimate} officers`,
+                          c.has_tactical_unit && 'tactical',
+                          c.estimated_response_time_min != null &&
+                            `~${c.estimated_response_time_min}min`,
+                        ]
+                          .filter(Boolean)
+                          .join(', ')}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {poiFire.length > 0 && (
+            <div className="mb-3">
+              <div className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-1">
+                Fire stations ({poiFire.length})
+              </div>
+              <div className="space-y-1">
+                {poiFire.map((loc) => {
+                  const c = loc.conditions ?? {};
+                  return (
+                    <div key={loc.id} className="text-xs terminal-text flex gap-2 items-baseline">
+                      <span className="text-robotic-yellow/80 font-medium">{loc.label}</span>
+                      <span className="text-robotic-yellow/50">
+                        {[
+                          c.distance_from_incident_m != null && `${c.distance_from_incident_m}m`,
+                          c.appliance_count != null && `${c.appliance_count} appliances`,
+                          c.has_hazmat_unit && 'hazmat',
+                          c.has_rescue_unit && 'rescue',
+                          c.estimated_response_time_min != null &&
+                            `~${c.estimated_response_time_min}min`,
+                        ]
+                          .filter(Boolean)
+                          .join(', ')}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </Section>
+      )}
+    </div>
+  );
+};
+
+const ConditionsSummary = ({ conditions }: { conditions?: Record<string, unknown> | null }) => {
+  if (!conditions) return null;
+  const skip = new Set(['pin_category', 'narrative_description']);
+  const entries = Object.entries(conditions).filter(
+    ([k, v]) => !skip.has(k) && v != null && v !== '' && v !== false,
+  );
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="mt-1 text-xs terminal-text text-robotic-yellow/50 space-y-0.5">
+      {entries.map(([key, val]) => (
+        <div key={key}>
+          <span className="text-robotic-yellow/40">{key.replace(/_/g, ' ')}: </span>
+          {Array.isArray(val) ? (
+            <span>{(val as string[]).join(', ')}</span>
+          ) : typeof val === 'boolean' ? (
+            <span>{val ? 'yes' : 'no'}</span>
+          ) : (
+            <span>{String(val)}</span>
+          )}
+        </div>
+      ))}
     </div>
   );
 };
