@@ -1,0 +1,164 @@
+Prison Siege to Caliphate Declaration
+Strategic Frame
+This exercise examines how localized tactical success, when combined with population coercion, ideological mobilisation, regional synchronisation, and foreign fighter inflows, can generate a rapid morale cascade among fragmented jihadist groups, producing consolidation effects that overwhelm conventional counterterrorism timelines.
+The AI engine controls insurgent decision-making, morale shifts, recruitment dynamics, and propaganda exploitation, while retaining freedom to deviate tactically so long as it pursues the strategic trajectory from prison siege → consolidation → transnationalisation → urban siege.
+Geographical Setting
+Primary node (choose one):
+Sulu
+Basilan
+Marawi
+Maguindanao
+Secondary spillover theatres: Java, Peninsular Malaysia, Sabah, Kalimantan.
+Adversary Ecosystem
+Local affiliates with dominant influence depending on geography:
+Abu Sayyaf (Sulu/Basilan)
+Dawlah Islamiyah (Marawi)
+Bangsamoro Islamic Freedom Fighters (Maguindanao)
+Regional linkages (latent until activated):
+Jemaah Ansharut Daulah
+ISIS-aligned micro-cells across Southeast Asia.
+Exercise Opening State
+A coordinated prison assault occurs at a neighbourhood detention facility.Attackers:
+Kill police officers on duty.
+Breach cell blocks.
+Free inmates, selectively recruiting ideologically primed detainees.
+Seize automatic rifles, machine guns, and ammunition.
+Withdraw into surrounding communities.
+The state response is delayed and fragmented, while the local population initially displays overwhelming passive and active support.
+Participants are informed that:
+Some villages shelter militants for ideological-religious reasons.
+Others comply due to fear, coercion, or economic dependency.
+Cash, food, fuel, and intelligence are voluntarily or involuntarily provided.
+Protests emerge alleging discrimination, abuse, and collective punishment.
+The AI tracks population sentiment as a dynamic variable, not a binary condition.
+Phase 1: Prison Siege
+Disseminates propaganda framing the siege as divine vindication.
+Portrays freed prisoners as “returned mujahidin.”
+Exploits funerals of slain police to inflame grievances.
+Tests state red lines through small armed probes.
+Phase 2: Insurgent Coordination
+Fighters migrate internally within Mindanao toward the initial siege node.
+AI Options (Non-Linear):
+Immediate second prison siege.
+Ambush of responding security forces to seize weapons.
+Targeted assassinations to paralyse local governance.
+Regardless of path, the AI is incentivised to achieve critical mass and execute a second detention facility breach, amplifying recruitment and firepower.
+Phase 3: Regional Synchronisation
+While Mindanao escalates, concurrent external actions occur:
+Suicide bombings in Java.
+Knife attacks against police or symbolic minority targets in Kuala Lumpur or Johor.
+Armed violence in Sabah or Kalimantan.
+These acts are designed to:
+Signal regional momentum.
+Stretch intelligence bandwidth.
+Reinforce inevitability narratives.
+The AI dynamically adjusts tempo based on regional responses.
+Phase 4: First Wave Foreign Fighter Influx
+Foreign fighters arrive via:
+Commercial flights with clean travel histories.
+Maritime smuggling routes through the Sulu and Celebes Seas.
+Overland infiltration via porous borders.
+Profiles include Malaysians, Indonesians, Singaporeans, and Thais, many with prior organisational affiliation.
+AI Adaptation:
+Allocates foreigners to training, media, or specialist combat roles.
+Tests interoperability between disparate groups.
+Begins proto-governance experiments.
+Phase 5: Declaration of Satellite Caliphate
+The insurgent coalition declares an Islamic polity and seizes a city or district.
+Participants are not informed that militants:
+Occupy evacuated civilian homes.
+Loot supplies to sustain fighters.
+Use civilians symbolically rather than administratively.
+Local support begins to fracture.
+Phase 6: Second Wave of Foreign Fighter Influx + Militarisation
+Foreign fighters from outside the region arrive (UK, EU, Australia, Middle East).
+Capabilities increase:
+Tunnel construction to negate air power.
+Snipers controlling urban high ground.
+Sophisticated IED belts and booby traps.
+Hostage-taking for strategic leverage.
+At this stage, political support collapses, but coercive control peaks.
+Exercise Objectives
+The AI continuously evaluates:
+Morale gradients across insurgent factions.
+Population compliance vs resentment thresholds.
+State operational tempo and cohesion.
+Narrative dominance in regional media spaces.
+The AI may delay, accelerate, fragment, or reconsolidate insurgent actions if state behaviour produces unexpected friction.
+Universal Injects
+Universal Inject 1 – Prison Overrun (T+0)Police units report loss of control at a detention facility. Unknown number of inmates have escaped. Weapons are missing.
+Universal Inject 2 – Community Shielding (T+6 hours)Local officials report villages refusing entry to security forces, citing fear of abuse.
+Universal Inject 3 – Propaganda Surge (T+24 hours)Videos circulate portraying the siege as a liberation of the oppressed.
+Universal Inject 4 – Second Prison Target Identified (T+5 days)Intelligence suggests reconnaissance activity around another detention centre.
+Role Specific Injects
+Armed Forces of the Philippines
+Primary Role: Kinetic containment, territorial denial, siege response, escalation control.
+Structural Constraints to Simulate:
+Civilian density and displacement.
+Air–ground coordination delays.
+Political sensitivity to heavy force after siege.
+Inject Logic (AI-Reactive):
+AFP-1: Fragmented Battlespace (Early Phase)Intelligence indicates multiple armed groups moving independently toward the siege area. Numbers are unclear. Some appear poorly trained; others display discipline.AI response: Uses dispersion to avoid decisive engagement, testing AFP ISR thresholds.
+AFP-2: Civilian Interference (Mid Phase)Units report villagers blocking access roads and filming troop movements, claiming “community defence.”AI response: Encourages population shielding, embeds fighters deeper.
+AFP-3: Airstrike Dilemma (Urban Siege Phase)Precision strike options emerge, but intelligence suggests fighters are occupying evacuated civilian homes.AI response: Relocates command elements, weaponised civilian harm narratives.
+Philippines National Police
+Primary Role: Internal security, investigations, detainee control, population interface.
+Structural Constraints to Simulate:
+Prison system vulnerability.
+Local political pressure.
+Corruption and insider threat risk.
+Inject Logic:
+PNP-1: Prison Network Panic (Immediate Aftermath)Wardens nationwide request reinforcements, citing fear of copycat sieges.AI response: Amplifies fear narratives to stretch PNP thin.
+PNP-2: Intelligence Leakage (Consolidation Phase)An internal memo appears on extremist channels hours after circulation.AI response: Accelerates second siege timeline.
+PNP-3: Community Backlash (Post-Caliphate Declaration)Arrest operations trigger protests accusing PNP of targeting Muslims collectively.AI response: Exploits grievances to deter arrests.
+Eastern Sabah Security Command
+Primary Role: Maritime interdiction, border security, Sabah littoral defence.
+Structural Constraints to Simulate:
+Porous maritime borders.
+Civilian maritime traffic.
+Overlapping agency jurisdictions.
+Inject Logic:
+ESSCOM-1: Maritime Anomalies (Pre-Foreign Fighter Phase)Increased small-boat traffic detected at night, but no clear contraband evidence.AI response: Tests enforcement thresholds with mixed legal/illicit movement.
+ESSCOM-2: Armed Encounter at Sea (Escalation Phase)A patrol is fired upon by unknown militants who retreat into Philippine waters.AI response: Exploits jurisdictional seams to maintain routes.
+ESSCOM-3: Sabah Spillover Fear (Urban Siege Phase)Local leaders warn of panic and rumours of imminent attacks in Sabah.AI response: Uses threat of expansion as deterrence signal.
+Malaysian Special Branch
+Primary Role: Counter-radicalisation, intelligence fusion, foreign fighter interdiction.
+Structural Constraints to Simulate:
+Legal evidentiary thresholds.
+Reliance on HUMINT.
+Sensitivity of ethnic relations.
+Inject Logic:
+SB-1: Travel Pattern Anomalies (Early Regional Phase)Individuals with clean records book one-way flights to Mindanao-adjacent hubs.AI response: Diversifies travel methods to evade profiling.
+SB-2: Encrypted Network Expansion (Mid Phase)New Bahasa-Malay Telegram channels emerge glorifying the prison siege.AI response: Pushes recruitment faster than takedowns.
+SB-3: Returnee Risk (Late Phase)Intelligence suggests some fighters may return to Malaysia for attacks.AI response: Maintains ambiguity to overstretch monitoring.
+Densus 88
+Primary Role: Tactical counterterrorism, network disruption, arrests.
+Structural Constraints to Simulate:
+Legal arrest timelines.
+Risk of martyrdom narratives.
+Urban operating environment.
+Inject Logic:
+D88-1: Spike in Domestic Attacks (Parallel Escalation Phase)Stabbings and suicide plots emerge, loosely inspired by Mindanao events.AI response: Forces D88 to prioritise domestic defence over external focus.
+D88-2: Shared Operatives (Foreign Fighter Phase)Some Indonesians entering Mindanao have previous arrest histories.AI response: Uses experienced operatives to train others.
+D88-3: Premature Arrest Dilemma (Late Phase)Acting too early risks exposing sources; waiting risks an attack.AI response: Exploits hesitation windows.
+Badan Nasional Penanggulangan Terorisme
+Primary Role: Strategic coordination, prevention, counter-narratives, regional diplomacy.
+Structural Constraints to Simulate:
+Non-kinetic mandate.
+Inter-agency coordination limits.
+Dependence on political messaging.
+Inject Logic:
+BNPT-1: Narrative Contagion (Early Phase)Indonesian online discourse frames the siege as “defensive jihad.”AI response: Amplifies grievance framing across platforms.
+BNPT-2: ASEAN Coordination Gap (Mid Phase)No unified regional position emerges on foreign fighter travel.AI response: Accelerates recruitment while policy lags.
+BNPT-3: Radicalisation vs Suppression Trade-off (Late Phase)Hard messaging risks backlash; soft messaging appears weak.AI response: Frames restraint as ideological victory.
+Cross Agency Interdependency
+AFP kinetic pressure → alters ESSCOM maritime tempo.
+PNP prison security failures → accelerate BNPT narrative risk.
+Densus 88 domestic load → reduces pressure on Mindanao routes.
+Special Branch travel interdiction → forces AI to test ESSCOM gaps.
+The AI continuously reallocates fighters, propaganda effort, and escalation timing based on which agency acts fastest, slowest, or most visibly.
+Key Notes
+This case deliberately moves beyond attack-centric TTX design, forcing participants to confront morale dynamics, population behaviour, insurgent learning, and AI-driven adaptation, rather than linear “detect-disrupt-detain” logic. Additionally, the exercise should ensure that:
+No single participant holds a full operational picture.
+Strategic success depends on coordination under asymmetric information.
+The AI adversary behaves as a learning insurgent system, not a scripted enemy.

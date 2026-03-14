@@ -836,7 +836,10 @@ export const TrainerEnvironmentalTruths = ({
                   </ul>
                   {f.decision_thresholds && (
                     <div className="text-xs terminal-text text-robotic-yellow/50 mt-1">
-                      Thresholds: {f.decision_thresholds}
+                      Thresholds:{' '}
+                      {typeof f.decision_thresholds === 'string'
+                        ? f.decision_thresholds
+                        : JSON.stringify(f.decision_thresholds, null, 2)}
                     </div>
                   )}
                 </div>

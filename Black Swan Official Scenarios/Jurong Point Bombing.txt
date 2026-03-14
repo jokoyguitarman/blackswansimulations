@@ -1,0 +1,307 @@
+Black Swan Simulations: Bombing at Jurong Point Mall
+Scenario
+
+A bombing occurs at Jurong Point shopping mall during a community event. An unattended bag detonates near the central atrium on Level 2, causing casualties, panic, and secondary fires. The Community Emergency and Engagement (C2E) Committee and Fire Department become the first organised response for at least 15 minutes due to delayed emergency services.
+
+Unknown to responders, two terrorists remain on site:
+•	One discreetly records the aftermath for propaganda.
+•	One intends to conduct a suicide attack at a moment of maximum crowd density.
+
+The situation is complicated by misinformation, communal tensions, and the unique challenges of a 9-storey enclosed mall—vertical evacuation, smoke spread, and fire containment.
+
+Immediate Aftermath
+
+Operational Conditions
+
+The blast produces:
+•	Dense smoke and dust in the enclosed atrium.
+•	Secondary fires in retail units near the blast.
+•	Debris, overturned fixtures, and tripping hazards.
+•	Screams, chaotic movement, and contradictory accounts across multiple floors.
+•	Significant obstruction of visibility; smoke migrating via atrium to upper floors.
+
+C2E and Fire have no reliable sense of:
+•	Number of casualties (spread across floors).
+•	Severity of injuries.
+•	Whether the incident is accidental or intentional.
+•	Whether multiple devices exist.
+•	Structural integrity of blast-affected areas.
+•	Safety of escalators and elevators post-blast.
+
+Volunteer Deployment
+
+C2E and Fire dispatch volunteers to perform rapid visual sweeps across floors. They will be given limited, zone-specific observable information. No volunteer sees the entire picture.
+
+This introduces natural reporting gaps:
+•	Some see multiple casualties on Level 2.
+•	Others only see smoke and panicked movement.
+•	Some report smoke spreading to Level 3 or 4.
+•	Others overhear rumours about a second device.
+•	Some report people still using escalators or elevators.
+
+These discrepancies form the core of the fog of war.
+
+Media Environment
+
+Even before volunteers return:
+•	Attendees begin recording videos.
+•	Short, low-quality clips are uploaded to TikTok, Instagram, Telegram.
+•	Comments speculate wildly: "gas canister", "bomb", "electrical explosion".
+•	First racialised accusations emerge online, e.g.: "I saw Malay boys near the bag before it exploded." These are unverified and appear without evidence.
+
+C2E is not immediately aware of these posts, but they shape the unfolding crisis.
+
+Initial Volunteer Sweep
+
+Operational Reports
+
+Volunteers return with fragmented, partially inaccurate reports:
+•	Casualties lying motionless on Level 2, unsure if unconscious or seeking cover.
+•	Blood observed in some zones but no full count.
+•	Smoke obscuring injuries; smoke spreading to upper floors via atrium.
+•	Choke points forming at stairwells and exits.
+•	People shouting about a "second bomb" based on panic, not fact.
+•	Claims that "someone saw a suspicious person running away."
+•	Small fire in retail unit near blast; smoke spreading.
+
+C2E and Fire must synthesise these inconsistent accounts into an actionable plan.
+
+Fire-Specific Observations
+
+•	Secondary fire in retail unit; smoke migrating to Level 3.
+•	People using escalators and elevators—structural damage suspected.
+•	Smoke spreading via central atrium to Levels 4–5.
+•	Cracking observed near blast zone; structural assessment needed.
+
+Media-Related Observations from Volunteers
+
+Some volunteers report:
+•	Individuals filming injured victims up close.
+•	A resident livestreaming inflammatory claim.
+•	A bystander accusing Malay Muslim attendees of involvement.
+•	Arguments breaking out between groups after racialised accusations spread.
+•	A rumour circulating that the "suspect bag belonged to a Malay participant."
+
+None of this is confirmed. C2E must decide what is credible, what requires intervention, and what risks inflaming tensions.
+
+Escalation of Media and Communal Tension
+
+Emergency Services Delay
+
+At the 10-minute mark, 995 and 999 inform C2E:
+•	Traffic congestion near Boon Lay is severe. Ambulances and police cannot arrive on time.
+•	C2E and Fire must manage the crisis longer and more independently.
+
+Viral Misinformation
+
+A video uploaded online—distorted by smoke and movement—appears to show a group of Malay youths near the blast site at Jurong Point. It goes viral rapidly.
+
+Consequences:
+•	Comments call the incident "Islamist terrorism".
+•	Angry posts circulate urging security to "separate the Malays".
+•	Old social media posts about unrelated local incidents resurface to reinforce prejudice.
+
+On-Site Racial Tension
+
+Inside the mall:
+•	Some non-Malay attendees begin avoiding Malay families.
+•	A minor altercation occurs when someone yells, "The attackers are among us."
+•	A Malay volunteer assigned to evacuation is confronted by a frightened resident.
+
+These tensions directly interfere with evacuation, triage, and crowd management.
+
+Journalists Arriving Early
+
+Freelance journalists or bloggers appear earlier than first responders:
+•	Filming casualty zones.
+•	Asking volunteers for statements.
+•	Posting unverified observations.
+•	Photographing visibly Malay families disproportionately.
+
+The C2E must manage these interactions while protecting affected groups.
+
+Hidden Adversaries
+
+Propaganda Operative
+
+One terrorist blends into the crowd:
+•	Filming the chaos.
+•	Capturing footage of racial confrontations.
+•	Intending to use edited clips to present the event as a communal conflict.
+•	Benefitting from every instance of misinformation or public accusation.
+
+Suicide Attacker
+
+The second terrorist:
+•	Waits for opportunities created by disorder.
+•	Targets crowded stairwells, evacuation routes, choke points, or triage clusters.
+•	Benefits from any uncontrolled congregation caused by misinformation, panic, or media activity.
+
+Neither is initially observable to volunteers.
+
+Core Objectives for the C2E and Fire Teams
+
+Objective 1: Evacuate Participants Safely (Vertical and Horizontal)
+
+•	Manage stairwell bottlenecks; coordinate floor-by-floor priority with Fire.
+•	Prevent discriminatory or chaotic self-segregation.
+•	Keep evacuees calm despite misinformation.
+•	Use stairwells only (escalators/elevators may be unsafe).
+
+Objective 2: Establish a Medical Triage
+
+•	Based on incomplete, evolving data from volunteers across multiple floors.
+•	Prioritise severely injured despite unclear casualty numbers.
+•	Shield casualty zones from intrusive filming.
+•	Coordinate with Fire for smoke-free triage sites.
+
+Objective 3: Manage Media and Mitigate Communal Tension
+
+•	Address online racialised misinformation.
+•	Prevent on-site harassment of Malay Muslim attendees.
+•	Guide volunteers on what they may or may not say.
+•	De-escalate emerging ethnic or religious confrontation.
+•	Counter the narrative that the attack is linked to any community without evidence.
+
+Objective 4: Contain Fire and Smoke Risks
+
+•	Fire containment and secondary fire assessment.
+•	Smoke control and ventilation coordination.
+•	Structural integrity assessment.
+•	Search and rescue across floors.
+•	Coordinate safe evacuation routes and triage access with Evacuation and Triage.
+
+Objective 5: Coordinate with Fire Department and Emergency Services
+
+•	Maintain accurate updates despite fog of war.
+•	Identify safe access points for delayed responders.
+•	Report potential secondary threats based on volunteer observations.
+
+Universal Injects
+
+(Delivered to all groups simultaneously. These shape the overall operational environment.)
+
+Universal Inject 1 – Initial Explosion (T+0)
+
+A sudden explosion occurs at the central atrium on Level 2. Smoke, dust, and debris obscure visibility. Panic spreads rapidly across multiple floors. People run toward stairwells and exits, screaming. The extent of casualties is unknown.
+
+Universal Inject 2 – Fragmented Early Reports (T+5)
+
+Volunteers sent to assess the situation return with inconsistent information:
+•	"I saw five people down on Level 2."
+•	"I only saw smoke."
+•	"Someone said there is a second device."
+•	"A man ran away after the blast."
+•	"Smoke is spreading to Level 3."
+
+No two accounts match.
+
+Universal Inject 3 – Emergency Services Delay (T+10)
+
+Dispatch (995 and 999) informs the coordination centre:
+"Traffic congestion near Boon Lay is severe. Ambulances and police cannot reach your location within the initial 15-minute estimate."
+
+Universal Inject 4 – Viral Video Circulates (T+10)
+
+A short clip showing the explosion aftermath at Jurong Point appears online. Due to poor visibility, it appears that Malay youths are standing near the blast area. Online commenters claim:
+•	"Malay boys planted the bomb."
+•	"This is extremist terrorism."
+•	"Keep the Malays away from the exits."
+
+Universal Inject 5 – Journalist Arrives (T+12)
+
+A freelance journalist arrives before emergency services. He begins filming casualties and asks:
+"Is it true the attacker was a radicalised Malay youth?"
+
+Universal Inject 6 – Crowd Tension Escalation (T+15)
+
+A dispute erupts near the evacuation zone. An attendee shouts:
+"The attackers are among us! The Malays are responsible!"
+
+Fear and confusion escalate.
+
+Role-Specific Injects
+
+(Delivered only to the relevant functional team.)
+
+Evacuation Team Injects
+
+Evacuation Inject E1 – Stairwell Congestion (T+6)
+
+The main stairwell becomes clogged as more than 150 people attempt to descend simultaneously. A child has fallen, and several attendees are at risk of trampling. Coordinate with Fire on alternative routes if available.
+
+Evacuation Inject E2 – Request to Segregate Malays (T+11)
+
+A fearful resident approaches the Evacuation Team:
+"For safety, please separate the Malays from the rest."
+
+Evacuation Inject E3 – Suspicious Individual (T+14)
+
+A volunteer reports:
+"There is a man standing near Stairwell B with a backpack. He isn't evacuating."
+
+(This is the suicide attacker's location in the scenario.)
+
+Triage Team Injects
+
+Triage Inject T1 – Unclear Casualty Count (T+6)
+
+Volunteers report conflicting casualty numbers across multiple floors:
+•	"Three critical injuries on Level 2."
+•	"I saw at least seven."
+•	"One person has stopped moving."
+•	"Smoke is obscuring injuries on Level 3."
+
+Triage Inject T2 – On-Site Filming at Triage Area (T+12)
+
+A bystander films traumatised victims receiving first aid. A family pleads for privacy.
+
+Triage Inject T3 – Accusations from a Patient (T+15)
+
+An injured attendee becomes agitated and shouts:
+"I saw the Malay boys laughing before the explosion! They did this!"
+
+Media/Communications Team Injects
+
+Media Inject M1 – Fake Voice Note (T+9)
+
+A viral WhatsApp audio note begins circulating:
+"There is a second bomb. The attacker was a Malay male. Stay away from the mall."
+
+Media Inject M2 – Amplified Online Claims (T+11)
+
+A Telegram channel posts:
+"Confirmed: Islamist terror attack at Jurong Point Mall."
+"This is why we must separate communities."
+
+Media Inject M3 – Press Demand for Confirmation (T+12)
+
+The journalist asks again:
+"Can you confirm the attacker was Malay? The public deserves transparency."
+
+Fire Department Team Injects
+
+Fire Inject F1 – Secondary Fire Reported (T+4)
+
+A small fire has been reported in a retail unit near the blast site. Smoke is spreading toward Level 3 via the atrium. Immediate assessment and containment required. Coordinate with Evacuation on affected routes.
+
+Fire Inject F2 – Escalator/Elevator Hazard (T+7)
+
+Volunteers report that people are still using escalators and elevators to evacuate. Structural damage from the blast is suspected. Escalators may have stopped or become unstable. Elevators could trap occupants if power fails. Fire must advise Evacuation: use stairwells only.
+
+Fire Inject F3 – Smoke Spread to Upper Floors (T+9)
+
+Smoke is migrating via the central atrium to Levels 4 and 5. Visibility is deteriorating. A ventilation decision is needed: evacuate upper floors first, or attempt to contain smoke? Coordinate with Evacuation on floor priority and with Triage on casualty access routes.
+
+Fire Inject F4 – Structural Concern (T+13)
+
+Cracking has been observed in the ceiling near the blast zone. Fire must assess before Triage and Evacuation use certain routes. A corridor may need to be cordoned. Communicate assessment to other teams immediately.
+
+Optional: Interdependencies (Recommended for Realism)
+
+To produce a richer simulation:
+•	Inject E3 (suspicious man with backpack) should trigger an internal alert to Media/Comms, Triage, and Fire teams.
+•	Inject M1–M3 should influence Evacuation decisions when residents refuse to stand near Malay families.
+•	Inject T3 should prompt Media/Comms to prepare a counter-narrative and Evacuation to adjust crowd flow.
+•	Inject F1–F4 require coordination between Fire, Evacuation, and Triage on routes, floor priority, and triage site selection.
+•	Inject Universal 6 should require multi-team coordination.
