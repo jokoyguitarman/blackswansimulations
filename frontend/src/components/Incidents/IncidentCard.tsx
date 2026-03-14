@@ -54,6 +54,8 @@ interface IncidentCardProps {
   onDecisionClick?: (incidentId: string) => void;
   /** True if this incident already has an executed decision (show "Done" instead of "Decision") */
   hasExecutedDecision?: boolean;
+  /** Trainers can see the decision indicator but cannot click it */
+  isTrainer?: boolean;
 }
 
 export const IncidentCard = ({
@@ -63,6 +65,7 @@ export const IncidentCard = ({
   onSelect,
   onDecisionClick,
   hasExecutedDecision,
+  isTrainer,
 }: IncidentCardProps) => {
   // const { user } = useAuth(); // Unused - keeping for potential future use
   const [updating, setUpdating] = useState(false);
@@ -171,6 +174,13 @@ export const IncidentCard = ({
               title="This incident has already been addressed with a decision"
             >
               [DONE]
+            </span>
+          ) : isTrainer ? (
+            <span
+              className="px-3 py-1 text-xs terminal-text border border-robotic-yellow/40 text-robotic-yellow/40 whitespace-nowrap cursor-not-allowed"
+              title="Requires a player decision"
+            >
+              [DECISION]
             </span>
           ) : (
             <button

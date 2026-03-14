@@ -53,12 +53,14 @@ interface IncidentsPanelProps {
   sessionId: string;
   selectedIncidentId?: string | null;
   onIncidentSelect?: (incidentId: string | null) => void;
+  isTrainer?: boolean;
 }
 
 export const IncidentsPanel = ({
   sessionId,
   selectedIncidentId,
   onIncidentSelect,
+  isTrainer,
 }: IncidentsPanelProps) => {
   const { user } = useAuth();
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -500,6 +502,7 @@ export const IncidentsPanel = ({
               setShowDecisionModal(true);
             }}
             hasExecutedDecision={incidentIdsWithExecutedDecision.has(incident.id)}
+            isTrainer={isTrainer}
           />
         ))}
         {filteredIncidents.length === 0 && (

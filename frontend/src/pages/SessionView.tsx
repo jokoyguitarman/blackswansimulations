@@ -945,6 +945,7 @@ export const SessionView = () => {
                   sessionId={id}
                   selectedIncidentId={selectedIncidentId}
                   onIncidentSelect={(incidentId) => setSelectedIncidentId(incidentId)}
+                  isTrainer={isTrainer}
                 />
               </div>
             </div>
