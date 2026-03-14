@@ -1108,9 +1108,7 @@ export class AIInjectSchedulerService {
           const { io } = await import('../index.js');
           this.io = io;
         }
-        let publishedCount = 0;
         for (const row of rowsToProcess) {
-          if (publishedCount >= 1) break; // At most one outcome inject per cycle for inaction
           const outcomes = parseOutcomes(row.outcomes);
           if (outcomes.length === 0) continue;
           const firstOutcome = outcomes[0];
@@ -1160,7 +1158,6 @@ export class AIInjectSchedulerService {
               session.trainer_id,
               this.io!,
             );
-            publishedCount += 1;
             logger.info(
               {
                 sessionId: session.id,

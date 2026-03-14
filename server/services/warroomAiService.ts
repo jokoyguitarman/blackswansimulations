@@ -66,6 +66,7 @@ export interface WarroomScenarioPayload {
     severity: string;
     inject_scope: string;
     target_teams: string[];
+    requires_response?: boolean;
     conditions_to_appear: { threshold?: number; conditions?: string[] } | { all: string[] };
     conditions_to_cancel?: string[];
     eligible_after_minutes?: number;
@@ -483,7 +484,11 @@ function getPhaseLabelShort(minute: number): string {
 function buildTimingManifest(
   teamNames: string[],
   durationMinutes = 60,
-): { universalSlots: number[]; teamSlots: Record<string, number[]> } {
+): {
+  universalSlots: number[];
+  teamSlots: Record<string, number[]>;
+  chaosSlots: Record<string, number[]>;
+} {
   const SLOT_STEP = 5;
   const allSlots = Array.from(
     { length: Math.floor(durationMinutes / SLOT_STEP) },
@@ -499,7 +504,9 @@ function buildTimingManifest(
   // Every team gets ALL available time slots with per-team jitter so they
   // don't all fire at the exact same second.
   const JITTER = [0, 2, -1, 3, 1, -2, 2, -1, 1, 0];
+  const CHAOS_JITTER = [1, -2, 3, 0, -1, 2, -1, 3, 0, 1];
   const teamSlots: Record<string, number[]> = {};
+  const chaosSlots: Record<string, number[]> = {};
 
   for (let i = 0; i < teamNames.length; i++) {
     const jitter = JITTER[i % JITTER.length];
@@ -508,9 +515,16 @@ function buildTimingManifest(
       return Math.max(1, Math.min(durationMinutes - 1, raw));
     });
     teamSlots[teamNames[i]] = slots;
+
+    const cJitter = CHAOS_JITTER[i % CHAOS_JITTER.length];
+    const cSlots: number[] = baseTeamSlots.map((s) => {
+      const raw = s + cJitter;
+      return Math.max(1, Math.min(durationMinutes - 1, raw));
+    });
+    chaosSlots[teamNames[i]] = cSlots;
   }
 
-  return { universalSlots, teamSlots };
+  return { universalSlots, teamSlots, chaosSlots };
 }
 
 /**
@@ -1713,6 +1727,120 @@ RULES:
 }
 
 // ---------------------------------------------------------------------------
+// Phase 2c — Per-team chaos/wildcard injects  (1 call per team · 3 000 tokens)
+// ---------------------------------------------------------------------------
+
+/**
+ * Generates non-procedural, socially volatile, emotionally charged wildcard events
+ * specific to each team's domain. These test composure, judgment, and soft skills
+ * rather than operational procedure.
+ */
+async function generateChaosInjects(
+  input: WarroomGenerateInput,
+  teamName: string,
+  allTeamNames: string[],
+  openAiApiKey: string,
+  assignedSlots: number[],
+  narrative?: { title?: string; description?: string; briefing?: string },
+): Promise<WarroomScenarioPayload['time_injects']> {
+  if (assignedSlots.length === 0) return [];
+
+  const { scenario_type, setting, venue_name, location, researchContext } = input;
+  const venue = venue_name || location || setting;
+  const durationMinutes = input.duration_minutes ?? 60;
+
+  const narrativeBlock = narrative
+    ? `\nNARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}`
+    : '';
+  const similarCasesBlock =
+    researchContext?.similar_cases && researchContext.similar_cases.length > 0
+      ? `\nSIMILAR REAL INCIDENTS (use for inspiration on realistic chaos events):\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
+      : '';
+
+  const chaosSlotCount = Math.min(
+    assignedSlots.length,
+    Math.max(4, Math.floor(durationMinutes / 10)),
+  );
+  const slotList = assignedSlots.slice(0, chaosSlotCount);
+  const slotsWithPhase = slotList.map((t) => `T+${t} [${getPhaseLabelShort(t)}]`).join(', ');
+
+  const systemPrompt = `You are a crisis simulation chaos designer. Your job is to generate unpredictable, socially volatile, emotionally charged wildcard events for the ${teamName} team. These are NOT operational or procedural events — they are the messy human reality of a crisis.
+
+Scenario: ${scenario_type} at ${venue}
+All teams: ${allTeamNames.join(', ')}
+Focus team: ${teamName}
+${narrativeBlock}
+${similarCasesBlock}
+
+These events represent the HUMAN CHAOS that overwhelms responders in real crises — the irrational behavior, social tensions, cultural flashpoints, media intrusions, emotional breakdowns, and political interference that no procedure manual covers. They should feel visceral, uncomfortable, and force the team to make judgment calls under pressure.
+
+Generate events from categories like these (tailored to ${teamName}'s domain):
+- SOCIAL TENSION: Ethnic or religious accusations between victims/bystanders, communal blame, hate speech, sectarian conflict triggered by the incident
+- CROWD PSYCHOLOGY: Mob mentality, stampede risk, mass hysteria, people refusing to cooperate, vigilante behavior, self-appointed "helpers" causing harm
+- MEDIA INTRUSION: Bystanders livestreaming casualties, journalists sneaking past cordons, deepfake footage going viral, hostile ambush interviews, unauthorized drone footage
+- FAMILY & GRIEF: Distraught families storming restricted areas, parents searching for children, cultural/religious rites conflicting with procedures, VIPs demanding special treatment for relatives
+- POLITICAL INTERFERENCE: Politicians arriving for photo opportunities, conflicting orders from political vs operational chains, blame game starting before the crisis is resolved
+- MISINFORMATION: Conspiracy theories going viral in real-time, false second-attack rumors, fake authority figures giving contradictory instructions
+- ETHICAL DILEMMAS: Patient refusing treatment on religious grounds, triage decisions with ethical dimensions, choosing between saving evidence and saving lives
+- CULTURAL SENSITIVITY: Body handling conflicts, prayer time during evacuation, language barriers creating dangerous misunderstandings, dietary/medical restrictions in mass care
+
+The game runs for ${durationMinutes} minutes. Spread chaos events across the timeline — some early (confusion/shock), some mid-game (tensions building), some late (exhaustion/blame).
+
+Return ONLY valid JSON:
+{
+  "time_injects": [
+    {
+      "trigger_time_minutes": <exact value from: ${slotList.join(', ')}>,
+      "type": "citizen_call|field_update|media_report|intel_brief",
+      "title": "string — vivid, specific headline of the chaos event",
+      "content": "string — 2-4 sentences describing the situation viscerally, with specific details (names, locations, what people are doing/saying)",
+      "severity": "critical|high|medium",
+      "inject_scope": "team_specific",
+      "target_teams": ["${teamName}"],
+      "requires_response": true,
+      "requires_coordination": false
+    }
+  ]
+}
+
+RULES:
+- Exactly ${slotList.length} injects using EXACTLY these times: ${slotsWithPhase}.
+- inject_scope always "team_specific". target_teams always ["${teamName}"].
+- Every inject must be a NON-PROCEDURAL chaos event — NOT a resource shortage, equipment failure, or operational status update.
+- Each inject must be a distinct type of chaos — no two addressing the same social dynamic.
+- requires_response: true when the event is confrontational and demands a judgment call (e.g. angry mob, journalist confrontation, family demanding access). false ONLY when it is pure atmospheric pressure that adds stress but needs no direct action (e.g. distant shouting, background social media chatter).
+- Make events culturally and geographically specific to ${venue} and the scenario context.
+- Be bold and uncomfortable — real crises involve racism, grief, anger, and panic. Do not sanitize.`;
+
+  const userPrompt = `Write ${slotList.length} chaos/wildcard injects for ${teamName} at: ${slotsWithPhase} in "${narrative?.title || scenario_type}" at ${venue}. Each must be a distinct, non-procedural social/human chaos event.`;
+
+  try {
+    const parsed = await callOpenAi<{ time_injects?: WarroomScenarioPayload['time_injects'] }>(
+      systemPrompt,
+      userPrompt,
+      openAiApiKey,
+      3000,
+    );
+    const raw = parsed.time_injects || [];
+    return raw.map((inj) => ({
+      ...inj,
+      trigger_time_minutes: inj.trigger_time_minutes ?? slotList[0],
+      type: normalizeInjectType(inj.type || 'citizen_call'),
+      title: inj.title || `${teamName} wildcard event`,
+      content: inj.content || '',
+      severity: inj.severity || 'high',
+      inject_scope: 'team_specific',
+      target_teams: [teamName],
+      requires_response: inj.requires_response ?? true,
+      requires_coordination: inj.requires_coordination ?? false,
+    }));
+  } catch (err) {
+    logger.warn({ err, teamName }, 'Chaos injects failed; continuing without');
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Phase 3 — Per-team decision-based injects  (1 call per team · 1 000 tokens)
 // ---------------------------------------------------------------------------
 
@@ -2510,6 +2638,7 @@ Return ONLY valid JSON:
       "conditions_to_appear": { "threshold": 2, "conditions": ["key_a", "key_b", "key_c"] },
       "conditions_to_cancel": ["cancellation_key"],
       "eligible_after_minutes": 12,
+      "requires_response": true,
       "objective_penalty": { "objective_id": "string", "reason": "string", "points": 10 },
       "state_effect": { "state_key": { "counter": 1 } }
     }
@@ -2523,7 +2652,8 @@ RULES:
 - eligible_after_minutes: vary between 5 and 30 to cover early, mid, and late-game failures.
 - Use different thresholds (1, 2, 3) for different severity levels — low-threshold for early warnings, high-threshold for catastrophic cascades.
 - objective_penalty only for genuine failure consequences.
-- No two injects should cover the same failure mode.`;
+- No two injects should cover the same failure mode.
+- requires_response: true when this inject presents a problem, failure, or crisis that the team must act on or make a decision about. false when it is a status update, positive acknowledgment, or informational update that does not demand a new action.`;
 
   const userPrompt = `Write 8-12 condition-driven injects for ${teamName}'s failure modes in "${narrative?.title || scenario_type}" at ${venue}. Cover operational, resource, communication, environmental, escalation, public impact, coordination, and intelligence failures.`;
 
@@ -2548,6 +2678,7 @@ RULES:
         severity: inj.severity || 'high',
         inject_scope: 'team_specific',
         target_teams: [teamName],
+        requires_response: inj.requires_response,
         conditions_to_appear: inj.conditions_to_appear,
         conditions_to_cancel: inj.conditions_to_cancel,
         eligible_after_minutes: inj.eligible_after_minutes,
@@ -2637,6 +2768,7 @@ Return ONLY valid JSON:
       "conditions_to_appear": { "threshold": 2, "conditions": ["key_teamA", "key_teamB", "key_third"] },
       "conditions_to_cancel": ["resolution_key"],
       "eligible_after_minutes": 15,
+      "requires_response": true,
       "objective_penalty": { "objective_id": "obj_coordination", "reason": "string", "points": 15 },
       "state_effect": {}
     }
@@ -2649,7 +2781,8 @@ RULES:
 - conditions_to_appear must reference state keys from BOTH teams (not just one).
 - Content describes the specific interface failure between ${teamA} and ${teamB}.
 - eligible_after_minutes: vary between 10 and 35 to cover different phases of the exercise.
-- Use different thresholds (1, 2, 3) for different severity cascades.`;
+- Use different thresholds (1, 2, 3) for different severity cascades.
+- requires_response: true when this inject presents a coordination failure or problem the teams must act on. false when it is a status update or positive acknowledgment (e.g. improved coordination) that does not demand a new action.`;
 
   const userPrompt = `Write 4-6 cross-team coordination failure injects for ${teamA} and ${teamB} in "${narrative?.title || scenario_type}" at ${venue}. Cover information sharing failures, resource handoff delays, conflicting directives, missed requests, duplicated efforts, and cascading bottlenecks.`;
 
@@ -2674,6 +2807,7 @@ RULES:
         severity: inj.severity || 'high',
         inject_scope: 'team_specific',
         target_teams: [teamA, teamB],
+        requires_response: inj.requires_response,
         conditions_to_appear: inj.conditions_to_appear,
         conditions_to_cancel: inj.conditions_to_cancel,
         eligible_after_minutes: inj.eligible_after_minutes ?? 15,
@@ -2699,7 +2833,7 @@ export const generateTeamsAndCoreForResearch = generateTeamsAndCore;
  * Generate full scenario payload using multi-phase AI.
  *
  * Phase 1      (sequential) : teams + core scenario
- * Batch A      (parallel)   : universal time injects + per-team time injects + per-team decision injects
+ * Batch A      (parallel)   : universal time injects + per-team time injects + per-team decision injects + per-team chaos injects
  * Phase 4a-1   (parallel)   : scenario-fixed pins (anchored to building outline)
  *   + POI enrichment        : (runs in parallel with 4a-1)
  * Phase 4a-2   (sequential) : candidate-space pins (selected from OSM open spaces, after 4a-1)
@@ -2729,40 +2863,54 @@ export async function warroomGenerateScenario(
   const durationMinutes = input.duration_minutes ?? 60;
   const timingManifest = buildTimingManifest(teamNames, durationMinutes);
 
-  // Batch A — time injects + decision injects, all parallel (no world context needed)
+  // Batch A — time injects + decision injects + chaos injects, all parallel (no world context needed)
   onProgress?.('Generating injects (parallel batch A)...');
-  const [universalTimeInjects, perTeamTimeResults, perTeamDecisionResults] = await Promise.all([
-    generateUniversalTimeInjects(
-      input,
-      teamNames,
-      openAiApiKey,
-      timingManifest.universalSlots,
-      undefined,
-      narrative,
-    ),
-    Promise.all(
-      teamNames.map((t) =>
-        generateTeamTimeInjects(
-          input,
-          t,
-          teamNames,
-          openAiApiKey,
-          timingManifest.teamSlots[t] ?? [],
-          narrative,
+  const [universalTimeInjects, perTeamTimeResults, perTeamDecisionResults, perTeamChaosResults] =
+    await Promise.all([
+      generateUniversalTimeInjects(
+        input,
+        teamNames,
+        openAiApiKey,
+        timingManifest.universalSlots,
+        undefined,
+        narrative,
+      ),
+      Promise.all(
+        teamNames.map((t) =>
+          generateTeamTimeInjects(
+            input,
+            t,
+            teamNames,
+            openAiApiKey,
+            timingManifest.teamSlots[t] ?? [],
+            narrative,
+          ),
         ),
       ),
-    ),
-    Promise.all(
-      teamNames.map((t) =>
-        generateTeamDecisionInjects(input, t, teamNames, openAiApiKey, narrative),
+      Promise.all(
+        teamNames.map((t) =>
+          generateTeamDecisionInjects(input, t, teamNames, openAiApiKey, narrative),
+        ),
       ),
-    ),
-  ]);
+      Promise.all(
+        teamNames.map((t) =>
+          generateChaosInjects(
+            input,
+            t,
+            teamNames,
+            openAiApiKey,
+            timingManifest.chaosSlots[t] ?? [],
+            narrative,
+          ),
+        ),
+      ),
+    ]);
 
   // Merge and normalise time injects — guarantees no 5-min gap in 0–60
   const rawTimeInjects: WarroomScenarioPayload['time_injects'] = [
     ...universalTimeInjects,
     ...perTeamTimeResults.flat(),
+    ...perTeamChaosResults.flat(),
   ];
   const time_injects = normalizeInjectTiming(rawTimeInjects, durationMinutes);
 

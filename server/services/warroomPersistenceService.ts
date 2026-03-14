@@ -238,7 +238,7 @@ export async function persistWarroomScenario(
           severity: inj.severity || 'high',
           inject_scope: normalizeInjectScope(inj.inject_scope),
           target_teams: inj.target_teams || [],
-          requires_response: true,
+          requires_response: inj.requires_response ?? true,
           requires_coordination: false,
           conditions_to_appear: inj.conditions_to_appear,
           conditions_to_cancel: inj.conditions_to_cancel?.length ? inj.conditions_to_cancel : null,
