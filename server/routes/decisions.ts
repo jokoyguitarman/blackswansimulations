@@ -1013,6 +1013,34 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
               (r: { user_id: string }) => r.user_id,
             );
 
+            let gradingSectorStandards: string | undefined;
+            try {
+              const { data: scenarioRow } = await supabaseAdmin
+                .from('scenarios')
+                .select('insider_knowledge')
+                .eq('id', sessionScenarioId)
+                .single();
+              const ik = (scenarioRow as { insider_knowledge?: Record<string, unknown> } | null)
+                ?.insider_knowledge;
+              if (ik) {
+                const teamDoctrines = ik.team_doctrines as Record<string, unknown[]> | undefined;
+                const primaryTeam = teamNames[0];
+                if (teamDoctrines && primaryTeam && teamDoctrines[primaryTeam]) {
+                  const { standardsToPromptBlock } =
+                    await import('../services/warroomResearchService.js');
+                  gradingSectorStandards = standardsToPromptBlock(
+                    teamDoctrines[
+                      primaryTeam
+                    ] as import('../services/warroomResearchService.js').StandardsFinding[],
+                  );
+                } else if (typeof ik.sector_standards === 'string') {
+                  gradingSectorStandards = ik.sector_standards as string;
+                }
+              }
+            } catch {
+              // non-critical: grading proceeds without doctrine context
+            }
+
             const executedAt =
               (updatedDecision as { executed_at?: string } | null)?.executed_at ??
               new Date().toISOString();
@@ -1025,6 +1053,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
                 sessionId: decision.session_id,
                 teamUserIds: authorTeamUserIds,
                 executedAt,
+                sectorStandards: gradingSectorStandards,
               },
               env.openAiApiKey,
             );
@@ -1209,6 +1238,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         },
         env.openAiApiKey,
         incidentContext,
+        authorTeamNames[0],
       );
       // Step 5: Environmental prerequisite (corridor traffic + location-condition + space contention gate); overrides AI result when failed
       const { result: prereqResult, evaluationReason: envPrereqReason } =

@@ -1235,6 +1235,7 @@ export const computeInterTeamImpactMatrix = async (
   escalationPathways?: EscalationPathway[],
   responseTaxonomy?: Record<string, 'textual' | 'absent'>,
   recentInjects?: RecentInjectForMatrix[],
+  teamDoctrines?: Record<string, string>,
 ): Promise<ImpactMatrixResult> => {
   const empty: ImpactMatrixResult = { matrix: {}, robustnessByDecisionId: {} };
   try {
@@ -1316,14 +1317,23 @@ Team names must match exactly the input team list. Include as matrix actors only
             .join('\n')}\n`
         : '';
 
+    const teamDoctrineBlock =
+      teamDoctrines && Object.keys(teamDoctrines).length > 0
+        ? `\n\nPer-team doctrine/standards (use to calibrate robustness for each team's decisions — a decision that meets its own team's doctrine thresholds should score higher; one that ignores them should score lower):\n${Object.entries(
+            teamDoctrines,
+          )
+            .map(([team, doc]) => `--- ${team} ---\n${doc}`)
+            .join('\n\n')}\n`
+        : '';
+
     const userPrompt = `Teams in this session: ${teams.join(', ')}
 
 ${scenarioContext ? `Scenario context: ${scenarioContext.substring(0, 500)}\n\n` : ''}Decisions (last 5 minutes):
 
 ${decisionsText}
-${recentOutcomesBlock}${escalationContext}
+${recentOutcomesBlock}${escalationContext}${teamDoctrineBlock}
 ---
-Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and robustness per decision_id (required; use the strict calibration above). When escalation context is provided, reference it in your analysis reasoning. When recent outcomes are provided, use them to set impact and robustness. Return JSON only.`;
+Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and robustness per decision_id (required; use the strict calibration above). When escalation context is provided, reference it in your analysis reasoning. When recent outcomes are provided, use them to set impact and robustness. When per-team doctrine is provided, calibrate each decision's robustness against its own team's standards. Return JSON only.`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -1975,10 +1985,16 @@ export const generateInjectFromDecision = async (
     inactionCycle?: boolean;
     /** Override instruction for inject (e.g. inaction punishment) */
     instructionsOverride?: string;
+    /** Sector standards / doctrine text for doctrine-aware consequence generation */
+    sectorStandards?: string;
   },
   openAiApiKey: string,
 ): Promise<GeneratedInject | null> => {
   try {
+    const doctrineInstruction = sessionContext.sectorStandards
+      ? `\n6. Align consequences with doctrinal expectations. When a decision violates or ignores applicable standards, the inject should reflect realistic doctrinal consequences (e.g. delayed triage → increased mortality, missing perimeter → crowd contamination of scene).\n\nApplicable doctrine/standards:\n${sessionContext.sectorStandards}\n`
+      : '';
+
     const systemPrompt = `You are an expert crisis management scenario designer. Your task is to generate realistic injects (events, updates, or developments) that would naturally occur as consequences or reactions to decisions made during emergency response scenarios.
 
 An inject should:
@@ -1986,7 +2002,7 @@ An inject should:
 2. Challenge players with new information or complications
 3. Be appropriate for the scenario context
 4. Have appropriate severity based on the decision's impact
-5. Target relevant roles that would be affected
+5. Target relevant roles that would be affected${doctrineInstruction}
 
 Available inject types:
 - media_report: News reports, press coverage, social media reactions

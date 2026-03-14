@@ -64,6 +64,12 @@ export const setupWebSocket = (httpServer: Server): SocketServer => {
       'WebSocket connected',
     );
 
+    // Join user-specific room for targeted notifications
+    if (socket.userId) {
+      socket.join(`user:${socket.userId}`);
+      logger.debug({ socketId: socket.id, userId: socket.userId }, 'Joined user room');
+    }
+
     // Join session room
     socket.on('join_session', async (sessionId: string) => {
       // Verify user has access to session

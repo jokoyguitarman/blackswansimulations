@@ -205,6 +205,18 @@ export class WebSocketService {
   }
 
   /**
+   * Session lifecycle events
+   */
+  sessionStarted(sessionId: string, sessionData: Record<string, unknown>): void {
+    this.broadcastToSession(sessionId, {
+      type: 'session.started',
+      data: sessionData,
+      timestamp: new Date().toISOString(),
+    });
+    logger.info({ sessionId }, 'Session started event broadcasted');
+  }
+
+  /**
    * State update events
    */
   stateUpdated(sessionId: string, stateUpdate: Record<string, unknown>): void {

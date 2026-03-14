@@ -1208,6 +1208,22 @@ router.patch(
         }
       }
 
+      // Broadcast session start event so lobby clients auto-transition
+      if (status === 'in_progress' && previousStatus === 'scheduled') {
+        try {
+          getWebSocketService().sessionStarted(id, {
+            session_id: id,
+            status: 'in_progress',
+            start_time: (data as Record<string, unknown>).start_time,
+          });
+        } catch (broadcastError) {
+          logger.error(
+            { error: broadcastError, sessionId: id },
+            'Failed to broadcast session started event',
+          );
+        }
+      }
+
       logger.info({ sessionId: id, status, userId: user.id }, 'Session updated');
       res.json({ data });
     } catch (err) {

@@ -10,6 +10,7 @@ import {
   standardsToPromptBlock,
   similarCasesToPromptBlock,
   siteRequirementsToPromptBlock,
+  mapStandardsToTeams,
   type SimilarCase,
 } from './warroomResearchService.js';
 
@@ -101,6 +102,7 @@ export interface WarroomScenarioPayload {
     osm_vicinity?: OsmVicinity;
     sector_standards?: string;
     sector_standards_structured?: import('./warroomResearchService.js').StandardsFinding[];
+    team_doctrines?: Record<string, import('./warroomResearchService.js').StandardsFinding[]>;
     layout_ground_truth?: Record<string, unknown>;
     site_areas?: Array<Record<string, unknown>>;
     custom_facts?: Array<{ topic: string; summary: string; detail?: string }>;
@@ -634,7 +636,9 @@ async function generateScenarioFixedPins(
 
   const { scenario_type, setting, terrain, venue_name, location, geocode, osmBuildings } = input;
   const venue = venue_name || location || setting;
-  const coords = geocode ? `Incident center coordinates: ${geocode.lat}, ${geocode.lng}` : '';
+  const coords = geocode
+    ? `Venue geocode (approximate center of the venue — NOT necessarily the incident location): ${geocode.lat}, ${geocode.lng}`
+    : '';
 
   let buildingBlock = '';
   if (osmBuildings && osmBuildings.length > 0) {
@@ -665,11 +669,13 @@ ${narrativeBlock}
 
 Generate 4–6 SCENARIO-FIXED pins: locations inherent to the scenario geography.
 
+IMPORTANT: Before generating pins, read the scenario narrative carefully to determine WHERE the incident actually occurs within the venue. The venue geocode is just the approximate center of the venue — the actual incident may be in a car park, a specific wing, an outdoor area, or any sub-location described in the narrative. Place pins relative to the ACTUAL incident location, not the venue center.
+
 PIN CATEGORIES:
-- incident_site: primary crisis location. Place AT or ON the venue building (use the building center or a point within the building bounds).
-- access: entry/exit points, corridors, escape routes. Place at the PERIMETER of the building — where the building edge meets a road, sidewalk, or open area. These must be within 100m of the incident center. If building bounds are provided, place exit coordinates ON or VERY NEAR the building boundary edges, NOT in the middle of open areas.
-- cordon: inner/outer perimeter, exclusion zones. Place at road intersections or natural choke points 150–300m from the incident center.
-- command: ONLY if the scenario dictates a fixed command location. Place 200–400m from incident.
+- incident_site: Determine the EXACT crisis location from the scenario narrative. If the narrative describes an incident at a specific part of the venue (e.g. "car bomb in the car park", "explosion on the runway", "fire in the loading dock", "shooting in the lobby"), place the pin at THAT specific location — not at the main building center. Use the building outlines to identify which structure or area matches the narrative. Only default to the main building center if the narrative does not specify a sub-location within the venue.
+- access: exits/access points people would use to LEAVE the danger zone described in the narrative. For building incidents: place at the building perimeter where doors meet roads or open areas. For outdoor incidents (car park, runway, open area): place at vehicle exits, pedestrian gates, or emergency paths leading away from the incident site. These must be within 150m of the incident site pin (not the venue geocode center). If building bounds are provided, place exit coordinates ON or VERY NEAR the building boundary edges, NOT in the middle of open areas.
+- cordon: inner/outer perimeter, exclusion zones. Place at road intersections or natural choke points 150–300m from the incident site pin.
+- command: ONLY if the scenario dictates a fixed command location. Place 200–400m from incident site pin.
 
 CONDITIONS per pin type:
 - Exits/routes: { width_m, surface, capacity_flow_per_min, is_blocked, lighting, accessibility, distance_from_incident_m, notes }
@@ -679,9 +685,9 @@ CONDITIONS per pin type:
 Do NOT generate hospital, police station, fire station, or candidate-space pins.
 
 SPATIAL RULES:
-- Incident site pins: use building center coordinates or a point inside the building bounds
-- Exit/access pins: MUST be at the building perimeter edge, NOT floating in open space. Use the building bounds to find edge coordinates.
-- Cordon pins: place at a realistic perimeter distance (150–300m) on roads or intersections
+- Incident site pins: first read the scenario narrative to determine WHERE exactly the incident occurs, then place the pin at that specific location. This may be inside a building, in a car park, on an airfield, at a loading dock, or any location described in the briefing — do NOT default to the main building center.
+- Exit/access pins: MUST be at exits people use to leave the danger zone. For building incidents, place at the building perimeter edge. For outdoor incidents, place at vehicle/pedestrian exits from the affected area. NOT floating in open space away from any structure.
+- Cordon pins: place at a realistic perimeter distance (150–300m from the incident site) on roads or intersections
 - All coordinates must be realistic for the venue geography
 
 Return ONLY valid JSON:
@@ -1633,6 +1639,10 @@ async function generateTeamConditionInjects(
     researchContext?.similar_cases && researchContext.similar_cases.length > 0
       ? `\nSIMILAR REAL INCIDENTS:\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
       : '';
+  const standardsBlock =
+    researchContext?.standards_findings && researchContext.standards_findings.length > 0
+      ? `\nRESPONSE STANDARDS:\n${standardsToPromptBlock(researchContext.standards_findings)}`
+      : '';
 
   const systemPrompt = `You are an expert crisis management scenario designer writing condition-driven failure injects for the ${teamName} team.
 
@@ -1641,6 +1651,7 @@ All teams: ${allTeamNames.join(', ')}
 Focus team: ${teamName}
 ${narrativeBlock}
 ${similarCasesBlock}
+${standardsBlock}
 ${locationsBlock}
 ${areasBlock}
 ${seedBlock}
@@ -1755,6 +1766,10 @@ async function generatePairConditionInjects(
     researchContext?.similar_cases && researchContext.similar_cases.length > 0
       ? `\nSIMILAR REAL INCIDENTS:\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
       : '';
+  const standardsBlock =
+    researchContext?.standards_findings && researchContext.standards_findings.length > 0
+      ? `\nRESPONSE STANDARDS:\n${standardsToPromptBlock(researchContext.standards_findings)}`
+      : '';
 
   const systemPrompt = `You are an expert crisis management scenario designer writing cross-team coordination failure injects.
 
@@ -1763,6 +1778,7 @@ Team pair: ${teamA} and ${teamB}
 All teams: ${allTeamNames.join(', ')}
 ${narrativeBlock}
 ${similarCasesBlock}
+${standardsBlock}
 ${locationsBlock}
 ${areasBlock}
 ${seedBlock}
@@ -2040,6 +2056,18 @@ export async function warroomGenerateScenario(
     insiderKnowledge.sector_standards = standardsToPromptBlock(
       input.researchContext.standards_findings,
     );
+
+    const teamNames = phase1.teams.map((t) => t.team_name);
+    if (teamNames.length > 0) {
+      const teamDoctrines = await mapStandardsToTeams(
+        openAiApiKey,
+        teamNames,
+        input.researchContext.standards_findings,
+      );
+      if (Object.keys(teamDoctrines).length > 0) {
+        insiderKnowledge.team_doctrines = teamDoctrines;
+      }
+    }
   } else if (input.researchContext?.standards_summary) {
     insiderKnowledge.sector_standards = input.researchContext.standards_summary;
   }

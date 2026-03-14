@@ -57,6 +57,7 @@ export interface InsiderKnowledgeBlob {
   site_requirements?: Record<string, import('./warroomResearchService.js').SiteRequirement>;
   osm_vicinity?: OsmVicinity;
   custom_facts?: Array<{ topic: string; summary: string; detail?: string }>;
+  team_doctrines?: Record<string, import('./warroomResearchService.js').StandardsFinding[]>;
 }
 
 function normalizeQuestion(q: string): string {

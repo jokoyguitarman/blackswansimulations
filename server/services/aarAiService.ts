@@ -65,6 +65,7 @@ interface SessionData {
     analysis?: { overall?: string; matrix_reasoning?: string; robustness_reasoning?: string };
   }>;
   storedAarMetrics?: Array<{ metric_type: string; metric_name: string; metric_value: unknown }>;
+  sectorStandards?: string;
 }
 
 /**
@@ -95,7 +96,7 @@ The summary must include these six sections with the following focus:
 
 3. Coordination and communication effectiveness: Judge coordination from inter_agency_messages and participation (shared channels, messages_per_participant)—not from cross-agency approvals. Use keyMetrics.communication: total_messages, messages_per_participant, avg_response_time_minutes, inter_agency_message_count, communication_delays. Assess whether participants communicated in line with scenario demands; note response times vs inject timing; note channel use and participation balance.
 
-4. Compliance and process adherence: Do not use approval-based compliance. Judge by: decision latency (were decisions executed in a timely way relative to injects and scenario?); alignment of decisions with scenario and injects. State where execution was timely and aligned vs delayed or misaligned.
+4. Compliance and process adherence: Do not use approval-based compliance. Judge by: decision latency (were decisions executed in a timely way relative to injects and scenario?); alignment of decisions with scenario and injects; and where sector standards/doctrine are provided, evaluate decisions against specific doctrinal thresholds (e.g. triage response times, command span-of-control limits, evacuation ratios). Cite the specific standard violated or met. State where execution was timely and aligned vs delayed or misaligned.
 
 5. Overall performance assessment: Synthesise alignment with scenario; strengths and gaps. When escalation data is provided: use the impact matrix (inter-team impact scores), robustness by decision (1–10 per decision), escalation factors (risks identified), and escalation pathways (trajectories and trigger behaviours). Judge whether the team did well enough to avoid escalations (e.g. positive impact, higher robustness, decisions that did not align with pathway triggers) or whether things turned for the worse (e.g. negative inter-team impact, low robustness, or decisions/behaviours that matched pathway triggers). Use the matrix analysis field (overall, matrix_reasoning, robustness_reasoning) if present.
 
@@ -112,6 +113,13 @@ Injects that occurred (timeline; reference specific inject text when assessing r
 ${(sessionData.injectsOccurred ?? []).map((i) => `- At ${i.at}: [${i.type ?? 'update'}] ${i.title ?? 'Untitled'}${i.content ? ` — ${i.content.slice(0, 500)}` : ''}`).join('\n')}
 `
         : '\nNo scenario/injects data provided.\n';
+
+    const sectorStandardsBlock = sessionData.sectorStandards
+      ? `
+Applicable doctrine / sector standards (use to evaluate doctrinal compliance in section 4 and recommendations in section 6):
+${sessionData.sectorStandards}
+`
+      : '';
 
     const escalationBlock =
       (sessionData.escalationFactors?.length ?? 0) > 0 ||
@@ -185,7 +193,7 @@ Session Overview:
 - Total Events: ${sessionData.eventCount}
 - Total Decisions: ${sessionData.decisionCount}
 ${scenarioBlock}
-
+${sectorStandardsBlock}
 Full key metrics (use for coordination, communication, process adherence):
 ${keyMetricsJson}
 ${(sessionData.storedAarMetrics?.length ?? 0) > 0 ? `\nStored AAR metrics (same as in exports; cite these where relevant):\n${sessionData.storedAarMetrics!.map((m) => `${m.metric_type}/${m.metric_name}: ${JSON.stringify(m.metric_value)}`).join('\n')}\n` : ''}
@@ -283,11 +291,15 @@ Focus on actionable, specific insights. Cite roles and numbers when participant 
         ? `Escalation data: ${sessionData.impactMatrices?.length ?? 0} impact matrix evaluations, ${sessionData.escalationFactors?.length ?? 0} factor snapshots, ${sessionData.escalationPathways?.length ?? 0} pathway snapshots. Use to assess if team avoided escalations or things turned for the worse.`
         : 'No escalation data provided.';
 
+    const insightsSectorBlock = sessionData.sectorStandards
+      ? `\nApplicable doctrine / sector standards:\n${sessionData.sectorStandards}\n`
+      : '';
+
     const userPrompt = `Generate structured insights for this training exercise.
 
 ${scenarioSummary}
 ${escalationSummary}
-
+${insightsSectorBlock}
 Full key metrics:
 ${JSON.stringify(sessionData.keyMetrics, null, 2)}
 

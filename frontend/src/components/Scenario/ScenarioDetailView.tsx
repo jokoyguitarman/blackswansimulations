@@ -1,7 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer } from 'react-leaflet';
 import { api } from '../../lib/api';
 import { ScenarioLocationMarker, type ScenarioLocationPin } from '../COP/ScenarioLocationMarker';
+
+interface StandardsFinding {
+  domain: string;
+  source: string;
+  key_points: string[];
+  decision_thresholds?: string;
+}
 
 interface ScenarioFull {
   id: string;
@@ -17,12 +24,8 @@ interface ScenarioFull {
   role_specific_briefs?: Record<string, string>;
   insider_knowledge?: {
     sector_standards?: string;
-    sector_standards_structured?: Array<{
-      domain: string;
-      source: string;
-      key_points: string[];
-      decision_thresholds?: string;
-    }>;
+    sector_standards_structured?: StandardsFinding[];
+    team_doctrines?: Record<string, StandardsFinding[]>;
     layout_ground_truth?: Record<string, unknown>;
     site_areas?: Array<Record<string, unknown>>;
     site_requirements?: Record<
@@ -135,6 +138,47 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('Overview');
   const [expandedInject, setExpandedInject] = useState<string | null>(null);
+  const [editingStandard, setEditingStandard] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState<StandardsFinding | null>(null);
+  const [addingStandard, setAddingStandard] = useState(false);
+  const [newStandard, setNewStandard] = useState<StandardsFinding>({
+    domain: '',
+    source: '',
+    key_points: [''],
+  });
+  const [savingDoctrine, setSavingDoctrine] = useState(false);
+
+  const saveDoctrine = useCallback(
+    async (updated: StandardsFinding[]) => {
+      if (!scenario) return;
+      setSavingDoctrine(true);
+      try {
+        const textBlock = updated
+          .map(
+            (f) =>
+              `[${f.source}] ${f.domain}:\n` +
+              f.key_points.map((p) => `  - ${p}`).join('\n') +
+              (f.decision_thresholds ? `\n  Thresholds: ${f.decision_thresholds}` : ''),
+          )
+          .join('\n\n');
+
+        const ik = scenario.insider_knowledge ?? {};
+        const updatedIk = {
+          ...ik,
+          sector_standards_structured: updated,
+          sector_standards: textBlock || undefined,
+        };
+
+        await api.scenarios.update(scenarioId, { insider_knowledge: updatedIk });
+        setScenario({ ...scenario, insider_knowledge: updatedIk });
+      } catch (err) {
+        console.error('Failed to save doctrine', err);
+      } finally {
+        setSavingDoctrine(false);
+      }
+    },
+    [scenario, scenarioId],
+  );
 
   useEffect(() => {
     const load = async () => {
@@ -457,12 +501,39 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
             </div>
           )}
 
-          {/* ─── STANDARDS ─── */}
+          {/* ─── STANDARDS / DOCTRINE ─── */}
           {activeTab === 'Standards' && (
             <div>
+              {/* Team doctrine mapping */}
+              {ik?.team_doctrines && Object.keys(ik.team_doctrines).length > 0 && (
+                <Section title="Doctrine by team">
+                  <div className="space-y-3 mb-6">
+                    {Object.entries(ik.team_doctrines).map(([teamName, findings]) => (
+                      <div key={teamName} className="military-border p-3">
+                        <div className="text-sm terminal-text text-robotic-yellow font-medium uppercase mb-2">
+                          {teamName}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {(findings as StandardsFinding[]).map((f, i) => (
+                            <span
+                              key={i}
+                              className="text-xs terminal-text bg-robotic-yellow/10 border border-robotic-yellow/20 px-2 py-1"
+                            >
+                              {f.source}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              )}
+
+              {/* Editable standards list */}
               {structuredStandards && structuredStandards.length > 0 ? (
                 <div className="space-y-4">
                   {structuredStandards.map((finding, i) => {
+                    const isEditing = editingStandard === i;
                     const keyPoints = Array.isArray(finding.key_points)
                       ? finding.key_points
                       : finding.key_points && typeof finding.key_points === 'object'
@@ -478,9 +549,128 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                       typeof finding.domain === 'string'
                         ? finding.domain
                         : JSON.stringify(finding.domain ?? '');
+
+                    if (isEditing && editDraft) {
+                      return (
+                        <div key={i} className="military-border p-4 border-robotic-yellow/60">
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-xs terminal-text text-robotic-yellow/50 uppercase block mb-1">
+                                  Source
+                                </label>
+                                <input
+                                  className="w-full bg-black/40 border border-robotic-yellow/30 text-xs terminal-text p-2"
+                                  value={editDraft.source}
+                                  onChange={(e) =>
+                                    setEditDraft({ ...editDraft, source: e.target.value })
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs terminal-text text-robotic-yellow/50 uppercase block mb-1">
+                                  Domain
+                                </label>
+                                <input
+                                  className="w-full bg-black/40 border border-robotic-yellow/30 text-xs terminal-text p-2"
+                                  value={editDraft.domain}
+                                  onChange={(e) =>
+                                    setEditDraft({ ...editDraft, domain: e.target.value })
+                                  }
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-xs terminal-text text-robotic-yellow/50 uppercase block mb-1">
+                                Key Points
+                              </label>
+                              {editDraft.key_points.map((pt, j) => (
+                                <div key={j} className="flex gap-2 mb-1">
+                                  <input
+                                    className="flex-1 bg-black/40 border border-robotic-yellow/30 text-xs terminal-text p-2"
+                                    value={pt}
+                                    onChange={(e) => {
+                                      const pts = [...editDraft.key_points];
+                                      pts[j] = e.target.value;
+                                      setEditDraft({ ...editDraft, key_points: pts });
+                                    }}
+                                  />
+                                  <button
+                                    className="text-red-400 text-xs px-2"
+                                    onClick={() => {
+                                      const pts = editDraft.key_points.filter((_, k) => k !== j);
+                                      setEditDraft({
+                                        ...editDraft,
+                                        key_points: pts.length > 0 ? pts : [''],
+                                      });
+                                    }}
+                                  >
+                                    X
+                                  </button>
+                                </div>
+                              ))}
+                              <button
+                                className="text-xs terminal-text text-robotic-yellow/60 mt-1"
+                                onClick={() =>
+                                  setEditDraft({
+                                    ...editDraft,
+                                    key_points: [...editDraft.key_points, ''],
+                                  })
+                                }
+                              >
+                                + Add point
+                              </button>
+                            </div>
+                            <div>
+                              <label className="text-xs terminal-text text-robotic-yellow/50 uppercase block mb-1">
+                                Decision Thresholds
+                              </label>
+                              <textarea
+                                className="w-full bg-black/40 border border-robotic-yellow/30 text-xs terminal-text p-2 h-16"
+                                value={editDraft.decision_thresholds ?? ''}
+                                onChange={(e) =>
+                                  setEditDraft({
+                                    ...editDraft,
+                                    decision_thresholds: e.target.value || undefined,
+                                  })
+                                }
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                className="military-button px-3 py-1 text-xs"
+                                disabled={savingDoctrine}
+                                onClick={() => {
+                                  const updated = [...structuredStandards];
+                                  updated[i] = {
+                                    ...editDraft,
+                                    key_points: editDraft.key_points.filter((p) => p.trim()),
+                                  };
+                                  setEditingStandard(null);
+                                  setEditDraft(null);
+                                  saveDoctrine(updated);
+                                }}
+                              >
+                                [SAVE]
+                              </button>
+                              <button
+                                className="text-xs terminal-text text-robotic-yellow/50 px-3 py-1"
+                                onClick={() => {
+                                  setEditingStandard(null);
+                                  setEditDraft(null);
+                                }}
+                              >
+                                [CANCEL]
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div key={i} className="military-border p-4">
-                        <div className="flex gap-3 items-start mb-3">
+                        <div className="flex gap-3 items-start mb-3 justify-between">
                           <div>
                             <div className="text-sm terminal-text text-robotic-yellow font-medium">
                               {source}
@@ -488,6 +678,27 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                             <div className="text-xs terminal-text text-robotic-yellow/60 uppercase">
                               {domain}
                             </div>
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <button
+                              className="text-xs terminal-text text-robotic-yellow/50 hover:text-robotic-yellow"
+                              onClick={() => {
+                                setEditingStandard(i);
+                                setEditDraft({ ...finding, key_points: [...keyPoints] });
+                              }}
+                            >
+                              [EDIT]
+                            </button>
+                            <button
+                              className="text-xs terminal-text text-red-400/60 hover:text-red-400"
+                              disabled={savingDoctrine}
+                              onClick={() => {
+                                const updated = structuredStandards.filter((_, k) => k !== i);
+                                saveDoctrine(updated);
+                              }}
+                            >
+                              [REMOVE]
+                            </button>
                           </div>
                         </div>
                         <ul className="space-y-1 mb-2">
@@ -530,6 +741,148 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                 <p className="text-sm terminal-text text-robotic-yellow/50">
                   [NO STANDARDS DATA] — Standards are researched during scenario generation.
                 </p>
+              )}
+
+              {/* Add new standard */}
+              {addingStandard ? (
+                <div className="military-border p-4 mt-4 border-robotic-yellow/60">
+                  <div className="text-sm terminal-text text-robotic-yellow mb-3 uppercase">
+                    Add Doctrine / Standard
+                  </div>
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs terminal-text text-robotic-yellow/50 uppercase block mb-1">
+                          Source
+                        </label>
+                        <input
+                          className="w-full bg-black/40 border border-robotic-yellow/30 text-xs terminal-text p-2"
+                          placeholder="e.g. AIIMS, START Triage Protocol"
+                          value={newStandard.source}
+                          onChange={(e) =>
+                            setNewStandard({ ...newStandard, source: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs terminal-text text-robotic-yellow/50 uppercase block mb-1">
+                          Domain
+                        </label>
+                        <input
+                          className="w-full bg-black/40 border border-robotic-yellow/30 text-xs terminal-text p-2"
+                          placeholder="e.g. Incident Command, Medical Triage"
+                          value={newStandard.domain}
+                          onChange={(e) =>
+                            setNewStandard({ ...newStandard, domain: e.target.value })
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs terminal-text text-robotic-yellow/50 uppercase block mb-1">
+                        Key Points
+                      </label>
+                      {newStandard.key_points.map((pt, j) => (
+                        <div key={j} className="flex gap-2 mb-1">
+                          <input
+                            className="flex-1 bg-black/40 border border-robotic-yellow/30 text-xs terminal-text p-2"
+                            placeholder="Protocol point or procedure"
+                            value={pt}
+                            onChange={(e) => {
+                              const pts = [...newStandard.key_points];
+                              pts[j] = e.target.value;
+                              setNewStandard({ ...newStandard, key_points: pts });
+                            }}
+                          />
+                          {newStandard.key_points.length > 1 && (
+                            <button
+                              className="text-red-400 text-xs px-2"
+                              onClick={() =>
+                                setNewStandard({
+                                  ...newStandard,
+                                  key_points: newStandard.key_points.filter((_, k) => k !== j),
+                                })
+                              }
+                            >
+                              X
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      <button
+                        className="text-xs terminal-text text-robotic-yellow/60 mt-1"
+                        onClick={() =>
+                          setNewStandard({
+                            ...newStandard,
+                            key_points: [...newStandard.key_points, ''],
+                          })
+                        }
+                      >
+                        + Add point
+                      </button>
+                    </div>
+                    <div>
+                      <label className="text-xs terminal-text text-robotic-yellow/50 uppercase block mb-1">
+                        Decision Thresholds (optional)
+                      </label>
+                      <textarea
+                        className="w-full bg-black/40 border border-robotic-yellow/30 text-xs terminal-text p-2 h-16"
+                        placeholder="e.g. Category 1: immediate treatment, Category 2: within 10 minutes"
+                        value={newStandard.decision_thresholds ?? ''}
+                        onChange={(e) =>
+                          setNewStandard({
+                            ...newStandard,
+                            decision_thresholds: e.target.value || undefined,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        className="military-button px-3 py-1 text-xs"
+                        disabled={
+                          savingDoctrine || !newStandard.source.trim() || !newStandard.domain.trim()
+                        }
+                        onClick={() => {
+                          const cleaned = {
+                            ...newStandard,
+                            key_points: newStandard.key_points.filter((p) => p.trim()),
+                          };
+                          if (cleaned.key_points.length === 0)
+                            cleaned.key_points = [newStandard.key_points[0] || ''];
+                          const updated = [...(structuredStandards ?? []), cleaned];
+                          saveDoctrine(updated);
+                          setAddingStandard(false);
+                          setNewStandard({ domain: '', source: '', key_points: [''] });
+                        }}
+                      >
+                        [ADD STANDARD]
+                      </button>
+                      <button
+                        className="text-xs terminal-text text-robotic-yellow/50 px-3 py-1"
+                        onClick={() => {
+                          setAddingStandard(false);
+                          setNewStandard({ domain: '', source: '', key_points: [''] });
+                        }}
+                      >
+                        [CANCEL]
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  className="military-button px-4 py-2 text-xs mt-4"
+                  onClick={() => setAddingStandard(true)}
+                >
+                  [+ ADD DOCTRINE / STANDARD]
+                </button>
+              )}
+
+              {savingDoctrine && (
+                <div className="text-xs terminal-text text-robotic-yellow/60 mt-2 animate-pulse">
+                  [SAVING...]
+                </div>
               )}
             </div>
           )}

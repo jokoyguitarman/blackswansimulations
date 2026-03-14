@@ -556,6 +556,11 @@ export class AIInjectSchedulerService {
         : 'absent';
     }
 
+    const sectorStandardsText =
+      typeof insiderKnowledge.sector_standards === 'string'
+        ? (insiderKnowledge.sector_standards as string)
+        : undefined;
+
     // Build base context (used for both universal and team-specific injects)
     const baseContext = {
       scenarioDescription: scenarioDescriptionWithLayout,
@@ -571,6 +576,7 @@ export class AIInjectSchedulerService {
         Object.keys(themeUsageThisSession).length > 0 ? themeUsageThisSession : undefined,
       themeUsageByScope: Object.keys(themeUsageByScope).length > 0 ? themeUsageByScope : undefined,
       decisionsSummaryLine: decisionsSummaryLine || undefined,
+      sectorStandards: sectorStandardsText,
     };
 
     // Load latest escalation factors and pathways (written by pathwayOutcomesService on inject publish)
@@ -682,6 +688,24 @@ export class AIInjectSchedulerService {
           ].filter(Boolean) as string[];
           const scenarioContext =
             scenarioContextParts.length > 0 ? scenarioContextParts.join('\n\n') : undefined;
+
+          let impactTeamDoctrines: Record<string, string> | undefined;
+          const rawTeamDoctrines = insiderKnowledge.team_doctrines as
+            | Record<string, unknown[]>
+            | undefined;
+          if (rawTeamDoctrines && Object.keys(rawTeamDoctrines).length > 0) {
+            const { standardsToPromptBlock } = await import('./warroomResearchService.js');
+            impactTeamDoctrines = {};
+            for (const [team, findings] of Object.entries(rawTeamDoctrines)) {
+              if (Array.isArray(findings) && findings.length > 0) {
+                impactTeamDoctrines[team] = standardsToPromptBlock(
+                  findings as import('./warroomResearchService.js').StandardsFinding[],
+                );
+              }
+            }
+            if (Object.keys(impactTeamDoctrines).length === 0) impactTeamDoctrines = undefined;
+          }
+
           const impactResult = await computeInterTeamImpactMatrix(
             teamsArray,
             decisionsWithTeam,
@@ -691,6 +715,7 @@ export class AIInjectSchedulerService {
             escalationPathwaysSnapshot.length > 0 ? escalationPathwaysSnapshot : undefined,
             Object.keys(responseTaxonomy).length > 0 ? responseTaxonomy : undefined,
             formattedInjects.length > 0 ? formattedInjects : undefined,
+            impactTeamDoctrines,
           );
           const decisionIds = formattedDecisions.map((d: Record<string, unknown>) => String(d.id));
           const capResult = await applyEnvironmentalConsistencyCap(
@@ -1296,6 +1321,27 @@ export class AIInjectSchedulerService {
       type: 'coordination_order',
     };
 
+    // Use per-team doctrine if available, otherwise fall back to full sector_standards
+    let teamSectorStandards = context.sectorStandards as string | undefined;
+    try {
+      const { data: scenarioRow } = await supabaseAdmin
+        .from('scenarios')
+        .select('insider_knowledge')
+        .eq('id', session.scenario_id)
+        .single();
+      const ik = (scenarioRow as { insider_knowledge?: Record<string, unknown> } | null)
+        ?.insider_knowledge;
+      const teamDoctrines = ik?.team_doctrines as Record<string, unknown[]> | undefined;
+      if (teamDoctrines && teamDoctrines[teamName]) {
+        const { standardsToPromptBlock } = await import('./warroomResearchService.js');
+        teamSectorStandards = standardsToPromptBlock(
+          teamDoctrines[teamName] as import('./warroomResearchService.js').StandardsFinding[],
+        );
+      }
+    } catch {
+      // non-critical
+    }
+
     // Enhanced context for team-specific inject
     const teamContext = {
       ...context,
@@ -1303,6 +1349,7 @@ export class AIInjectSchedulerService {
       focus: 'team_actions',
       teamName: teamName,
       teamDecisions: teamDecisions,
+      sectorStandards: teamSectorStandards,
       instructions: `Generate a detailed, team-specific inject for ${teamName} based on decisions made by team members. This should be more specific and detailed than the universal inject, focusing on the consequences and implications of this team's actions. Only visible to ${teamName} members.`,
     } as typeof context & {
       injectType: string;
@@ -1310,6 +1357,7 @@ export class AIInjectSchedulerService {
       teamName: string;
       teamDecisions: Array<Record<string, unknown>>;
       instructions: string;
+      sectorStandards?: string;
     };
 
     const generatedInject = await generateInjectFromDecision(

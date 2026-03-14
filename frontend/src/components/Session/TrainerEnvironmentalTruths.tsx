@@ -60,12 +60,21 @@ interface SiteRequirement {
   notes?: string;
 }
 
+interface StandardsFindingDisplay {
+  domain: string;
+  source: string;
+  key_points: string[];
+  decision_thresholds?: string;
+}
+
 interface InsiderKnowledge {
   layout_ground_truth?: LayoutGroundTruth;
   site_areas?: SiteArea[];
   site_requirements?: Record<string, SiteRequirement>;
   osm_vicinity?: OsmVicinity;
   sector_standards?: string;
+  sector_standards_structured?: StandardsFindingDisplay[];
+  team_doctrines?: Record<string, StandardsFindingDisplay[]>;
   baseline_escalation_factors?: EscalationFactor[];
   custom_facts?: CustomFact[];
 }
@@ -782,16 +791,67 @@ export const TrainerEnvironmentalTruths = ({
         </Section>
       )}
 
-      {/* Sector standards */}
-      {sectorStandards != null && (
-        <Section title="Sector standards">
-          {typeof sectorStandards === 'string' ? (
+      {/* Doctrine / Sector standards */}
+      {(insiderKnowledge?.sector_standards_structured?.length ||
+        insiderKnowledge?.team_doctrines ||
+        sectorStandards != null) && (
+        <Section title="Doctrine / Sector standards">
+          {/* Per-team doctrine mapping */}
+          {insiderKnowledge?.team_doctrines &&
+            Object.keys(insiderKnowledge.team_doctrines).length > 0 && (
+              <div className="mb-4">
+                <div className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
+                  Doctrine by team
+                </div>
+                <div className="space-y-2">
+                  {Object.entries(insiderKnowledge.team_doctrines).map(([teamName, findings]) => (
+                    <div key={teamName} className="border border-robotic-yellow/20 p-2">
+                      <span className="text-xs terminal-text text-robotic-yellow font-medium uppercase">
+                        {teamName}:
+                      </span>{' '}
+                      <span className="text-xs terminal-text">
+                        {findings.map((f) => f.source).join(', ')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          {/* Structured standards */}
+          {insiderKnowledge?.sector_standards_structured?.length ? (
+            <div className="space-y-3">
+              {insiderKnowledge.sector_standards_structured.map((f, i) => (
+                <div key={i} className="border border-robotic-yellow/15 p-3">
+                  <div className="text-xs terminal-text text-robotic-yellow font-medium">
+                    {f.source}
+                  </div>
+                  <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-1">
+                    {f.domain}
+                  </div>
+                  <ul className="space-y-0.5">
+                    {f.key_points.map((pt, j) => (
+                      <li key={j} className="text-xs terminal-text flex gap-1">
+                        <span className="text-robotic-yellow/30 shrink-0">▸</span>
+                        {pt}
+                      </li>
+                    ))}
+                  </ul>
+                  {f.decision_thresholds && (
+                    <div className="text-xs terminal-text text-robotic-yellow/50 mt-1">
+                      Thresholds: {f.decision_thresholds}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : typeof sectorStandards === 'string' ? (
             <p className="text-xs whitespace-pre-wrap break-words">{sectorStandards}</p>
-          ) : (
+          ) : sectorStandards != null ? (
             <pre className="text-xs whitespace-pre-wrap break-words font-mono">
               {JSON.stringify(sectorStandards, null, 2)}
             </pre>
-          )}
+          ) : null}
         </Section>
       )}
 
@@ -929,6 +989,8 @@ export const TrainerEnvironmentalTruths = ({
       {locations.length === 0 &&
         !layout &&
         !sectorStandards &&
+        !insiderKnowledge?.sector_standards_structured?.length &&
+        !insiderKnowledge?.team_doctrines &&
         escalationFactors.length === 0 &&
         customFacts.length === 0 &&
         sessionRoutes.length === 0 &&

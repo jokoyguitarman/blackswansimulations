@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { websocketClient, type WebSocketEvent } from '../lib/websocketClient';
 
 /**
@@ -18,74 +18,80 @@ export interface UseWebSocketOptions {
 }
 
 /**
- * Hook to subscribe to WebSocket events
+ * Hook to subscribe to WebSocket events.
+ * Uses a ref for onEvent so the effect only re-runs when sessionId,
+ * channelId, enabled, or eventTypes change — not on every render.
  */
 export const useWebSocket = (options: UseWebSocketOptions = {}) => {
   const { sessionId, channelId, eventTypes = [], onEvent, enabled = true } = options;
 
+  const onEventRef = useRef(onEvent);
+  onEventRef.current = onEvent;
+
   const handlersRef = useRef<Map<string, () => void>>(new Map());
+
+  const stableOnEvent = useCallback((event: WebSocketEvent) => {
+    onEventRef.current?.(event);
+  }, []);
+
+  // Memoize eventTypes join so a new array with same contents doesn't re-trigger
+  const eventTypesKey = eventTypes.join(',');
 
   useEffect(() => {
     if (!enabled) {
       return;
     }
 
+    let cancelled = false;
+    const unsubscribers: (() => void)[] = [];
+
     const setup = async () => {
       try {
-        // Connect to WebSocket
         await websocketClient.connect();
 
-        // Join session room if provided
+        if (cancelled) return;
+
         if (sessionId) {
           await websocketClient.joinSession(sessionId);
         }
 
-        // Join channel room if provided
         if (channelId) {
           await websocketClient.joinChannel(channelId);
         }
 
-        // Subscribe to specific event types
-        const unsubscribers: (() => void)[] = [];
+        if (cancelled) return;
 
-        if (onEvent) {
-          // Subscribe to all specified event types
-          eventTypes.forEach((eventType) => {
-            const unsubscribe = websocketClient.on(eventType, onEvent);
+        const types = eventTypesKey ? eventTypesKey.split(',') : [];
+
+        if (types.length > 0) {
+          types.forEach((eventType) => {
+            const unsubscribe = websocketClient.on(eventType, stableOnEvent);
             unsubscribers.push(unsubscribe);
             handlersRef.current.set(eventType, unsubscribe);
           });
-
-          // If no specific event types, subscribe to all events
-          if (eventTypes.length === 0) {
-            const unsubscribe = websocketClient.onAll(onEvent);
-            unsubscribers.push(unsubscribe);
-            handlersRef.current.set('*', unsubscribe);
-          }
+        } else {
+          const unsubscribe = websocketClient.onAll(stableOnEvent);
+          unsubscribers.push(unsubscribe);
+          handlersRef.current.set('*', unsubscribe);
         }
-
-        // Cleanup function
-        return () => {
-          unsubscribers.forEach((unsubscribe) => unsubscribe());
-          handlersRef.current.clear();
-
-          if (sessionId) {
-            websocketClient.leaveSession(sessionId);
-          }
-        };
       } catch (error) {
         console.error('[useWebSocket] Error setting up WebSocket:', error);
       }
     };
 
-    const cleanup = setup();
+    setup();
 
     return () => {
-      cleanup.then((cleanupFn) => cleanupFn?.());
-    };
-  }, [sessionId, channelId, enabled, onEvent, eventTypes.join(',')]);
+      cancelled = true;
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+      handlersRef.current.clear();
 
-  // Return connection status
+      if (sessionId) {
+        websocketClient.leaveSession(sessionId);
+      }
+    };
+  }, [sessionId, channelId, enabled, eventTypesKey, stableOnEvent]);
+
   return {
     isConnected: websocketClient.isConnected(),
   };

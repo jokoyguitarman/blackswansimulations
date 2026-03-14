@@ -340,6 +340,111 @@ export function similarCasesToPromptBlock(cases: SimilarCase[]): string {
 }
 
 /**
+ * Map each StandardsFinding to the team(s) it applies to.
+ * Shared command doctrines (e.g. AIIMS/ICS) are mapped to every team.
+ * Returns Record<team_name, StandardsFinding[]>.
+ */
+export async function mapStandardsToTeams(
+  openAiApiKey: string,
+  teams: string[],
+  findings: StandardsFinding[],
+): Promise<Record<string, StandardsFinding[]>> {
+  if (teams.length === 0 || findings.length === 0) return {};
+
+  const findingsSummary = findings.map((f, i) => ({
+    index: i,
+    domain: f.domain,
+    source: f.source,
+  }));
+
+  const prompt = `You are an expert in emergency management and crisis response.
+
+Given these response TEAMS:
+${teams.map((t) => `- ${t}`).join('\n')}
+
+And these operational STANDARDS/DOCTRINES:
+${findingsSummary.map((f) => `[${f.index}] ${f.source} (${f.domain})`).join('\n')}
+
+Map each standard to the team(s) it primarily governs. Shared command frameworks (e.g. incident command systems like AIIMS, ICS, NIMS) should be mapped to ALL teams.
+
+Return ONLY valid JSON:
+{
+  "mapping": {
+    "team_name": [0, 2],
+    "other_team": [1, 3]
+  }
+}
+
+Where values are arrays of standard indices. Every standard must appear in at least one team. Every team must have at least one standard.`;
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 500,
+        temperature: 0,
+      }),
+    });
+
+    if (!res.ok) {
+      logger.warn({ status: res.status }, 'Standards-to-teams mapping failed');
+      return {};
+    }
+
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content as string | undefined;
+    if (!raw) return {};
+
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return {};
+
+    const parsed = JSON.parse(jsonMatch[0]) as {
+      mapping?: Record<string, number[]>;
+    };
+    if (!parsed.mapping) return {};
+
+    const result: Record<string, StandardsFinding[]> = {};
+    for (const [team, indices] of Object.entries(parsed.mapping)) {
+      const normalizedTeam = teams.find((t) => t.toLowerCase() === team.toLowerCase()) || team;
+      result[normalizedTeam] = indices
+        .filter((i) => i >= 0 && i < findings.length)
+        .map((i) => findings[i]);
+    }
+
+    logger.info(
+      { teamCount: Object.keys(result).length, standardsCount: findings.length },
+      'Standards-to-teams mapping complete',
+    );
+    return result;
+  } catch (err) {
+    logger.warn({ err }, 'Standards-to-teams mapping error');
+    return {};
+  }
+}
+
+/**
+ * Serialize a team_doctrines record into a prompt block grouped by team.
+ */
+export function teamDoctrinesToPromptBlock(
+  teamDoctrines: Record<string, StandardsFinding[]>,
+  teamFilter?: string,
+): string {
+  const entries = teamFilter
+    ? [[teamFilter, teamDoctrines[teamFilter] ?? []] as const]
+    : Object.entries(teamDoctrines);
+
+  return entries
+    .filter(([, findings]) => findings.length > 0)
+    .map(
+      ([team, findings]) => `[${team}]\n` + standardsToPromptBlock(findings as StandardsFinding[]),
+    )
+    .join('\n\n');
+}
+
+/**
  * Serialize StandardsFinding[] to a compact string for embedding in AI prompts.
  */
 export function standardsToPromptBlock(findings: StandardsFinding[]): string {

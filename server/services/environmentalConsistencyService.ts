@@ -267,6 +267,7 @@ export async function evaluateDecisionAgainstEnvironment(
   decision: { id: string; title: string; description: string; type: string | null },
   openAiApiKey: string | undefined,
   incident?: { title: string; description: string } | null,
+  teamName?: string,
 ): Promise<EnvironmentalConsistencyResult> {
   const consistentDefault: EnvironmentalConsistencyResult = { consistent: true };
   if (!openAiApiKey) return consistentDefault;
@@ -322,10 +323,25 @@ export async function evaluateDecisionAgainstEnvironment(
       scenarioLocations ?? null,
       sessionRoutes,
     );
-    const sectorStandards =
-      typeof insiderKnowledge.sector_standards === 'string'
-        ? insiderKnowledge.sector_standards
-        : undefined;
+    let sectorStandards: string | undefined;
+    if (teamName) {
+      const teamDoctrines = insiderKnowledge.team_doctrines as
+        | Record<string, unknown[]>
+        | undefined;
+      if (
+        teamDoctrines &&
+        Array.isArray(teamDoctrines[teamName]) &&
+        teamDoctrines[teamName].length > 0
+      ) {
+        const { standardsToPromptBlock } = await import('./warroomResearchService.js');
+        sectorStandards = standardsToPromptBlock(
+          teamDoctrines[teamName] as import('./warroomResearchService.js').StandardsFinding[],
+        );
+      }
+    }
+    if (!sectorStandards && typeof insiderKnowledge.sector_standards === 'string') {
+      sectorStandards = insiderKnowledge.sector_standards;
+    }
     if (!groundTruthSummary) {
       logger.debug(
         { sessionId, scenarioId: (scenario as { id: string }).id },

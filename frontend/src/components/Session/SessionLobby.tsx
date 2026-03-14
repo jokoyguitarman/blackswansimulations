@@ -55,7 +55,7 @@ export const SessionLobby = ({
   const [wsConnected, setWsConnected] = useState(false);
 
   useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
+    const unsubscribers: Array<() => void> = [];
     let isMounted = true;
 
     const setupWebSocket = async () => {
@@ -69,37 +69,47 @@ export const SessionLobby = ({
         setWsConnected(true);
 
         // Subscribe to ready status updates
-        unsubscribe = websocketClient.on('participant.ready_status_updated', (event) => {
-          if (!isMounted) return;
+        unsubscribers.push(
+          websocketClient.on('participant.ready_status_updated', (event) => {
+            if (!isMounted) return;
 
-          if (event.data) {
-            setReadyStatus({
-              total: event.data.total as number,
-              ready: event.data.ready as number,
-              all_ready: event.data.all_ready as boolean,
-              participants: (event.data.participants || []) as Array<{
-                user_id: string;
-                is_ready: boolean;
-                user?: { full_name: string };
-              }>,
-            });
+            if (event.data) {
+              setReadyStatus({
+                total: event.data.total as number,
+                ready: event.data.ready as number,
+                all_ready: event.data.all_ready as boolean,
+                participants: (event.data.participants || []) as Array<{
+                  user_id: string;
+                  is_ready: boolean;
+                  user?: { full_name: string };
+                }>,
+              });
 
-            // Update current user's ready status from participants
-            if (user?.id && Array.isArray(event.data.participants)) {
-              const currentParticipant = event.data.participants.find(
-                (p: { user_id: string; is_ready: boolean }) => p.user_id === user.id,
-              );
-              if (currentParticipant) {
-                setIsReady(currentParticipant.is_ready || false);
+              // Update current user's ready status from participants
+              if (user?.id && Array.isArray(event.data.participants)) {
+                const currentParticipant = event.data.participants.find(
+                  (p: { user_id: string; is_ready: boolean }) => p.user_id === user.id,
+                );
+                if (currentParticipant) {
+                  setIsReady(currentParticipant.is_ready || false);
+                }
               }
             }
-          }
-        });
+          }),
+        );
+
+        // Subscribe to session start — auto-transition out of lobby
+        unsubscribers.push(
+          websocketClient.on('session.started', () => {
+            if (!isMounted) return;
+            if (onSessionUpdate) {
+              onSessionUpdate();
+            }
+          }),
+        );
       } catch (error) {
         console.error('Failed to setup WebSocket:', error);
         setWsConnected(false);
-        // No polling fallback - WebSocket is required for real-time updates
-        // User will need to refresh if WebSocket fails
       }
     };
 
@@ -107,12 +117,25 @@ export const SessionLobby = ({
 
     return () => {
       isMounted = false;
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      unsubscribers.forEach((unsub) => unsub());
       websocketClient.leaveSession(sessionId);
     };
   }, [sessionId, isTrainer, user?.id]);
+
+  // Polling fallback: check session status every 5s in case WebSocket misses the start event
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const result = await api.sessions.get(sessionId);
+        if (result?.data?.status === 'in_progress') {
+          if (onSessionUpdate) onSessionUpdate();
+        }
+      } catch {
+        // Non-blocking; WebSocket is the primary mechanism
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [sessionId, onSessionUpdate]);
 
   // Load team assignments for current user
   useEffect(() => {

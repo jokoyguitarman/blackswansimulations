@@ -138,6 +138,7 @@ export interface BuildSectionsInput {
     chosenBand?: string;
     linkedDecisionId?: string;
   }>;
+  sectorStandards?: string;
 }
 
 /**
@@ -426,20 +427,31 @@ const SECTION_INSTRUCTIONS: Partial<Record<AARSectionKey, string>> = {
 export async function generateSectionAnalysis(
   sectionKey: AARSectionKey,
   sectionData: unknown,
-  context: { sessionId: string; scenarioTitle?: string },
+  context: { sessionId: string; scenarioTitle?: string; sectorStandards?: string },
   openAiApiKey: string,
 ): Promise<string> {
   const label = SECTION_LABELS[sectionKey];
   const extra =
     SECTION_INSTRUCTIONS[sectionKey] ?? 'Interpret and assess; cite specific numbers and times.';
 
+  const doctrineRelevantSections: AARSectionKey[] = [
+    'decisions',
+    'incident_response',
+    'recommendations',
+    'team_metrics',
+  ];
+  const doctrineClause =
+    context.sectorStandards && doctrineRelevantSections.includes(sectionKey)
+      ? ` Where applicable, evaluate against these sector standards/doctrine and cite specific doctrinal thresholds or procedures:\n${context.sectorStandards}\n`
+      : '';
+
   const isRecommendations = sectionKey === 'recommendations';
   const isInformationAnalysis = sectionKey === 'information_analysis';
   const systemPrompt = isRecommendations
-    ? `You are an expert crisis management analyst. Below you will receive the analyses from the other AAR sections (executive overview, decisions, matrices, injects, coordination, escalation, incident_response, insider_usage, team_metrics, resource_requests, pathway_outcomes, information_analysis). Synthesise them into 3–5 actionable key takeaways and recommendations. Reference specific sections where relevant. Be concrete and practical. ${extra}`
+    ? `You are an expert crisis management analyst. Below you will receive the analyses from the other AAR sections (executive overview, decisions, matrices, injects, coordination, escalation, incident_response, insider_usage, team_metrics, resource_requests, pathway_outcomes, information_analysis). Synthesise them into 3–5 actionable key takeaways and recommendations. Reference specific sections where relevant. Be concrete and practical.${doctrineClause} ${extra}`
     : isInformationAnalysis
       ? `You are an expert crisis management analyst. Below you will receive the analyses from the insider_usage and coordination sections. Synthesise them into an information-sharing analysis: how well did the team use and share information? Were there missed opportunities to consult Insider or coordinate? Be concise (1–2 paragraphs). ${extra}`
-      : `You are an expert crisis management analyst. Below is the "${label}" data for a training exercise AAR. Write a concise analysis (1–2 paragraphs) that cites specific numbers, times, and names. Do not repeat the raw data; interpret and assess. ${extra}`;
+      : `You are an expert crisis management analyst. Below is the "${label}" data for a training exercise AAR. Write a concise analysis (1–2 paragraphs) that cites specific numbers, times, and names. Do not repeat the raw data; interpret and assess.${doctrineClause} ${extra}`;
 
   const dataJson =
     typeof sectionData === 'string'

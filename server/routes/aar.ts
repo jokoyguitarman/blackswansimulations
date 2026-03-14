@@ -360,7 +360,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
           scenarioId
             ? supabaseAdmin
                 .from('scenarios')
-                .select('id, title, description')
+                .select('id, title, description, insider_knowledge')
                 .eq('id', scenarioId)
                 .single()
             : { data: null },
@@ -463,6 +463,14 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
           }),
         );
 
+        const aarInsiderKnowledge = (
+          scenario as { insider_knowledge?: Record<string, unknown> } | null
+        )?.insider_knowledge;
+        const aarSectorStandards =
+          typeof aarInsiderKnowledge?.sector_standards === 'string'
+            ? (aarInsiderKnowledge.sector_standards as string)
+            : undefined;
+
         const sessionDataForAI = {
           sessionId,
           durationMinutes,
@@ -472,6 +480,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
           eventTimeline,
           participantSummary,
           storedAarMetrics,
+          sectorStandards: aarSectorStandards,
           decisions: (decisions || []).map(
             (d: {
               title: string;
@@ -864,6 +873,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
               created_at: r.created_at as string | undefined,
             })),
             pathwayOutcomes,
+            sectorStandards: aarSectorStandards,
           };
 
           let sections: SectionsMap = buildSectionsData(sectionsInput);
@@ -875,7 +885,11 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
             })
             .eq('id', aar.id);
 
-          const sectionContext = { sessionId, scenarioTitle: scenario?.title ?? undefined };
+          const sectionContext = {
+            sessionId,
+            scenarioTitle: scenario?.title ?? undefined,
+            sectorStandards: aarSectorStandards,
+          };
           for (const key of AAR_SECTION_KEYS) {
             const entry = sections[key];
             if (!entry?.data) continue;

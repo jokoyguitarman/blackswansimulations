@@ -120,8 +120,14 @@ export async function aiGradeRelevanceOnly(
   incidentDescription: string,
   decisionDescription: string,
   openAiApiKey: string | undefined,
+  sectorStandards?: string,
 ): Promise<DecisionBand> {
   if (!openAiApiKey) return 'lowest';
+
+  const sectorNormsInstruction = sectorStandards
+    ? `When judging whether the decision is sufficiently detailed, use these sector-specific standards as the benchmark:\n${sectorStandards}\nMore specific on these points counts as more detailed; vague or absent on them counts as less detailed.`
+    : `When judging whether the decision is sufficiently detailed, consider whether the decision provides actionable specifics appropriate to the incident type (e.g. concrete resource allocations, named locations, time targets, role assignments). More specific counts as more detailed; vague or absent counts as less detailed.`;
+
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -139,7 +145,7 @@ Return ONLY a JSON object with one key "band": "top" | "medium" | "lowest".
 - top: decision is clearly relevant and sufficiently detailed for the situation.
 - medium: partly relevant or somewhat vague.
 - lowest: vague, off-topic, or unhelpful.
-When judging whether the decision is sufficiently detailed, consider sector norms where relevant to the incident: evacuation (marshal-to-evacuee ratio, assembly/holding capacity); triage (staff-to-critical 1:5, START protocol, zone layout Red/Yellow/Green, Red transport first, hospital distribution: trauma center for Red, community for Yellow, clinic for Green); media (designated spokesperson, one voice, verify before release, avoid speculation on perpetrators, media zone 100–150 m, victim dignity/no names until family notified, regular updates 30–60 min). More specific on these points counts as more detailed; vague or absent on them counts as less detailed.`,
+${sectorNormsInstruction}`,
           },
           {
             role: 'user',
@@ -178,6 +184,7 @@ export async function gradeDecisionBand(
     sessionId: string;
     teamUserIds: string[];
     executedAt: string;
+    sectorStandards?: string;
   },
   openAiApiKey: string | undefined,
 ): Promise<DecisionBand> {
@@ -189,6 +196,7 @@ export async function gradeDecisionBand(
     sessionId,
     teamUserIds,
     executedAt,
+    sectorStandards,
   } = context;
 
   const hasInsiderInfo = insiderHasInfoForIncident(incidentTitle, incidentDescription);
@@ -198,6 +206,7 @@ export async function gradeDecisionBand(
       incidentDescription,
       decisionDescription,
       openAiApiKey,
+      sectorStandards,
     );
   }
 
