@@ -1255,6 +1255,19 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
           env.openAiApiKey,
         );
       const envResult = prereqResult && !prereqResult.consistent ? prereqResult : aiEnvResult;
+      logger.info(
+        {
+          sessionId: decision.session_id,
+          decisionId: decision.id,
+          consistent: envResult.consistent,
+          mismatch_kind: envResult.mismatch_kind ?? null,
+          severity: envResult.severity ?? null,
+          error_type: envResult.error_type ?? null,
+          reason: envResult.reason ?? null,
+          route_effect: envResult.route_effect ?? null,
+        },
+        `Environmental consistency: ${envResult.consistent ? 'consistent' : (envResult.mismatch_kind ?? 'inconsistent')}`,
+      );
       await supabaseAdmin
         .from('decisions')
         .update({ environmental_consistency: envResult })

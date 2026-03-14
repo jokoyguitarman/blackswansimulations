@@ -93,10 +93,14 @@ async function applyEnvironmentalConsistencyCap(
     };
     if (r.environmental_consistency && typeof r.environmental_consistency === 'object') {
       const ec = r.environmental_consistency;
+      const normalizedKind = (typeof ec.mismatch_kind === 'string' ? ec.mismatch_kind : '')
+        .toLowerCase()
+        .trim()
+        .replace(/[\s-]+/g, '_');
       const kind =
-        ec.mismatch_kind === 'below_standard'
+        normalizedKind === 'below_standard'
           ? ('below_standard' as const)
-          : ec.mismatch_kind === 'contradiction'
+          : normalizedKind === 'contradiction'
             ? ('contradiction' as const)
             : undefined;
       envByDecision.set(r.id, {

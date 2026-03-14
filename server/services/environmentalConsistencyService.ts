@@ -363,7 +363,7 @@ Rules:
 - Contradiction: Use mismatch_kind "contradiction" ONLY when the decision explicitly states a fact about a specific location, exit, or route that differs from ground truth (e.g. "North has capacity 200" when ground truth says 50; "use Exit X" when X does not exist). Do NOT infer a stated fact from other numbers in the text (e.g. "1000 evacuees" or "100" elsewhere); only attribute a capacity or location claim to a place if the decision clearly assigns that number to that place.
 - Below_standard: Use mismatch_kind "below_standard" when the decision uses correct names and capacities from ground truth but total capacity is below evacuee count or sector standard, or when the decision describes mitigation (waves, overflow, staging) without claiming total capacity is adequate. Do NOT treat "using available areas and managing in waves/overflow" as claiming adequate capacity; treat shortfall as below_standard.
 - Do not invent contradictions: If the decision correctly states a capacity for a location (e.g. "Vacant Lot E standing capacity 500" and ground truth says Lot E has standing 500), set consistent: true. Only set contradiction if the decision states a different number for that location (e.g. "Lot E has 100 lying" when ground truth says Lot E has 50 lying).
-- severity: "low" = minor (e.g. 60 in 50-capacity area); "medium" = clear contradiction (e.g. wrong exit, 100 in 50); "high" = dangerous/impossible (e.g. 200 in 50, non-existent exit). For below_standard use "low" or "medium" only.
+- severity: "low" = minor (e.g. 60 in 50-capacity area); "medium" = clear contradiction (e.g. wrong exit, 100 in 50); "high" = dangerous/impossible (e.g. 200 in 50, non-existent exit). For below_standard use "low" or "medium" only. NEVER combine severity "high" with mismatch_kind "below_standard".
 - error_type: "capacity" | "location" | "flow" | "other" (if consistent is false).
 - reason: one clear sentence (e.g. for contradiction: "The assembly area North has a safe capacity of 50; your plan assumed 100." For below_standard: "The assembly area you designated (North capacity 200) is below the sector guideline of 125% of expected evacuees (1250); your plan uses the available option.").
 - Routes: If "Current route status" is in the ground truth, use it. If the decision uses a route that is congested, blocked, or unmanaged without proposing to manage/clear it first, set consistent: false with appropriate severity and error_type "flow" or "location". If the decision chooses a significantly slower route when a faster one is available, set consistent: false (or below_standard) with severity and reason.
@@ -371,7 +371,9 @@ Rules:
 
 Sector standards (e.g. 125% assembly capacity, triage ratios) are best-practice targets, not absolute requirements. Only use them to set consistent false when the decision also contradicts ground truth or is clearly dangerous. If the decision correctly uses a real area/capacity from ground truth but that capacity is below the standard, set mismatch_kind "below_standard" and severity "low" or "medium".
 
-Examples: (1) Decision says "Vacant Lot E standing capacity 500" and ground truth says Lot E (standing 500). Result: consistent true. (2) Decision says "Assembly North capacity 300" and ground truth says Assembly North capacity 200. Result: consistent false, mismatch_kind contradiction.
+CRITICAL: If a location EXISTS in ground truth and the decision uses its CORRECT capacity but that capacity is insufficient for the need, that is ALWAYS "below_standard", NEVER "contradiction". "contradiction" is reserved for factual errors (wrong numbers, non-existent locations).
+
+Examples: (1) Decision says "Vacant Lot E standing capacity 500" and ground truth says Lot E (standing 500). Result: consistent true. (2) Decision says "Assembly North capacity 300" and ground truth says Assembly North capacity 200. Result: consistent false, mismatch_kind "contradiction". (3) Decision says "use Commercial Area for triage" and ground truth says Commercial Area capacity 80 but triage needs 100. Result: consistent false, mismatch_kind "below_standard", severity "medium".
 
 Return ONLY valid JSON: { "consistent": boolean, "mismatch_kind": "contradiction"|"below_standard" (if consistent is false), "severity": "low"|"medium"|"high" (if consistent is false), "error_type": "capacity"|"location"|"flow"|"other" (if consistent is false), "reason": "..." (if consistent is false), "route_effect": "clear"|"slow"|"congested"|null (when decision is route-related) }`;
 
@@ -444,13 +446,18 @@ Is this decision consistent with the environment? Return JSON only.`;
       return { consistent: true, route_effect: routeEffect ?? null };
     }
 
-    const mismatch_kind =
-      parsed.mismatch_kind === 'below_standard'
-        ? ('below_standard' as const)
-        : ('contradiction' as const); // default contradiction for backward compat and prerequisite
-    const severity = ['low', 'medium', 'high'].includes(parsed.severity ?? '')
+    const rawKind = (typeof parsed.mismatch_kind === 'string' ? parsed.mismatch_kind : '')
+      .toLowerCase()
+      .trim()
+      .replace(/[\s-]+/g, '_');
+    const mismatch_kind: EnvironmentalMismatchKind =
+      rawKind === 'below_standard' ? 'below_standard' : 'contradiction';
+    let severity = ['low', 'medium', 'high'].includes(parsed.severity ?? '')
       ? (parsed.severity as EnvironmentalConsistencySeverity)
       : 'medium';
+    if (mismatch_kind === 'below_standard' && severity === 'high') {
+      severity = 'medium';
+    }
     const error_type = ['capacity', 'location', 'flow', 'space_contention', 'other'].includes(
       parsed.error_type ?? '',
     )
