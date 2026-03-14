@@ -127,7 +127,8 @@ export const SessionLobby = ({
     const interval = setInterval(async () => {
       try {
         const result = await api.sessions.get(sessionId);
-        if (result?.data?.status === 'in_progress') {
+        const session = result?.data as { status?: string } | undefined;
+        if (session?.status === 'in_progress') {
           if (onSessionUpdate) onSessionUpdate();
         }
       } catch {
