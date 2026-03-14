@@ -182,9 +182,17 @@ export async function persistWarroomScenario(
       if (updError) throw new Error(`insider_knowledge update: ${updError.message}`);
     }
 
+    const usedTitles = new Set<string>(time_injects.map((i) => i.title).filter(Boolean));
+
     if (decision_injects && decision_injects.length > 0) {
       for (const inj of decision_injects) {
-        const title = inj.title || inj.trigger_condition?.slice(0, 100) || 'Decision point';
+        let title = inj.title || inj.trigger_condition?.slice(0, 100) || 'Decision point';
+        if (usedTitles.has(title)) {
+          let suffix = 1;
+          while (usedTitles.has(`${title} (${suffix})`)) suffix++;
+          title = `${title} (${suffix})`;
+        }
+        usedTitles.add(title);
         const content = inj.content || inj.trigger_condition || '';
         const { error: injError } = await supabaseAdmin.from('scenario_injects').insert({
           scenario_id: scenarioId,
@@ -211,14 +219,6 @@ export async function persistWarroomScenario(
     }
 
     if (condition_driven_injects && condition_driven_injects.length > 0) {
-      const usedTitles = new Set<string>(
-        [
-          ...time_injects.map((i) => i.title),
-          ...(decision_injects ?? []).map(
-            (i) => i.title || i.trigger_condition?.slice(0, 100) || 'Decision point',
-          ),
-        ].filter(Boolean),
-      );
       for (const inj of condition_driven_injects) {
         let title = inj.title || 'Condition-driven inject';
         if (usedTitles.has(title)) {
