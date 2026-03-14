@@ -456,7 +456,7 @@ RULES:${teamsRule}
       role_specific_briefs: parsed.scenario?.role_specific_briefs || {},
       category: parsed.scenario?.category || 'terrorism',
       difficulty: parsed.scenario?.difficulty || 'advanced',
-      duration_minutes: parsed.scenario?.duration_minutes || 60,
+      duration_minutes: input.duration_minutes ?? parsed.scenario?.duration_minutes ?? 60,
     },
     teams,
     objectives,
@@ -1657,9 +1657,9 @@ Write DEEP, DETAILED, ROLE-SPECIFIC injects that reflect the real operational ch
 
 The game runs for ${input.duration_minutes ?? 60} minutes and is solvable if teams perform optimally. Arc the ${teamName} narrative deliberately:
 - Setup (T+0–${Math.round((input.duration_minutes ?? 60) * 0.25)}): The ${teamName} faces their initial operational challenge in this crisis.
-- Escalation (T+15–35): A complication specific to the ${teamName} role raises the stakes.
-- Peak (T+35–50): The worst-case pressure on ${teamName} — requires urgent decision.
-- Resolution (T+50–60): Consequence or relief based on how ${teamName} has performed.
+- Escalation (T+${Math.round((input.duration_minutes ?? 60) * 0.25)}–${Math.round((input.duration_minutes ?? 60) * 0.55)}): A complication specific to the ${teamName} role raises the stakes.
+- Peak (T+${Math.round((input.duration_minutes ?? 60) * 0.55)}–${Math.round((input.duration_minutes ?? 60) * 0.85)}): The worst-case pressure on ${teamName} — requires urgent decision.
+- Resolution (T+${Math.round((input.duration_minutes ?? 60) * 0.85)}–${input.duration_minutes ?? 60}): Consequence or relief based on how ${teamName} has performed.
 
 Return ONLY valid JSON:
 {
