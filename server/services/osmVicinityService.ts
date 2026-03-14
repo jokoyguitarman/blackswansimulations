@@ -321,6 +321,11 @@ export async function fetchOsmOpenSpaces(
   way["leisure"~"^(park|pitch|playground|garden|common|recreation_ground)$"](around:${radius},${lat},${lng});
   way["landuse"~"^(grass|meadow|recreation_ground|brownfield|commercial|retail|industrial)$"](around:${radius},${lat},${lng});
   way["place"="square"](around:${radius},${lat},${lng});
+  way["highway"="pedestrian"](around:${radius},${lat},${lng});
+  way["highway"="living_street"](around:${radius},${lat},${lng});
+  way["highway"="service"]["service"="alley"](around:${radius},${lat},${lng});
+  way["amenity"="marketplace"](around:${radius},${lat},${lng});
+  way["covered"="yes"]["highway"~"^(footway|pedestrian|path)$"](around:${radius},${lat},${lng});
 );
 out body center;
 `;
@@ -343,6 +348,9 @@ out body center;
     if (tags.amenity === 'parking') {
       type = 'parking';
       osmTag = 'amenity=parking';
+    } else if (tags.amenity === 'marketplace') {
+      type = 'marketplace';
+      osmTag = 'amenity=marketplace';
     } else if (tags.leisure) {
       type = tags.leisure;
       osmTag = `leisure=${tags.leisure}`;
@@ -352,6 +360,18 @@ out body center;
     } else if (tags.place === 'square') {
       type = 'square';
       osmTag = 'place=square';
+    } else if (tags.highway === 'pedestrian') {
+      type = 'pedestrian_street';
+      osmTag = 'highway=pedestrian';
+    } else if (tags.highway === 'living_street') {
+      type = 'living_street';
+      osmTag = 'highway=living_street';
+    } else if (tags.highway === 'service' && tags.service === 'alley') {
+      type = 'alley';
+      osmTag = 'highway=service+service=alley';
+    } else if (tags.covered === 'yes' && tags.highway) {
+      type = 'covered_walkway';
+      osmTag = `highway=${tags.highway}+covered=yes`;
     } else {
       continue;
     }

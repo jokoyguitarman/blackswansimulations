@@ -796,7 +796,7 @@ async function generateCandidateSpacePins(
 - Only select spaces that are at least ${minCandidateDistance}m from the incident center.
 - If fewer than 8 real spaces are available beyond ${minCandidateDistance}m, you may generate additional candidate spaces with estimated coordinates beyond ${minCandidateDistance + 150}m from the incident center.`
     : `Generate 8–15 candidate spaces with coordinates at least ${minCandidateDistance}m from the incident center (${coords}).
-- Place them on plausible open areas: parking lots, fields, covered bays, courtyards — NOT on roads or inside buildings.`;
+- Place them on plausible usable areas: parking lots, fields, covered bays, courtyards, alleyways, street segments that can be cordoned, covered walkways, void decks — any space that could physically accommodate an operational function.`;
 
   const systemPrompt = `You are an expert crisis management scenario designer selecting physical spaces that players must evaluate and assign operational purposes to.
 
@@ -816,7 +816,7 @@ IMPORTANT: This is a ${scenario_type} scenario. potential_uses must reflect func
 ${selectionRule}
 
 Each candidate space must have:
-- location_type: physical descriptor (e.g. "parking", "open_lot", "park", "covered_bay", "courtyard", "grassy_field", "warehouse", "plaza")
+- location_type: physical descriptor (e.g. "parking", "open_lot", "park", "covered_bay", "courtyard", "grassy_field", "warehouse", "plaza", "alley", "street_segment", "pedestrian_street", "covered_walkway", "void_deck", "marketplace")
 - pin_category: always "candidate_space"
 - label: neutral physical name — NEVER an operational function name like "Triage Area" or "Command Post"
 - conditions: {
@@ -834,9 +834,11 @@ Each candidate space must have:
 - description: one sentence explaining the space
 - display_order: integer
 
+STREET & LINEAR SPACES: In dense urban environments, alleyways, pedestrian streets, covered walkways, void decks, and street segments that can be cordoned are valid candidate spaces — often more practical than a distant parking lot. Include them when they appear in the open spaces list or when the area is urban and open lots are scarce or far away. For linear spaces, estimate area_m2 from length × typical width (e.g. 100m alley × 4m width = 400m²) and note vehicle access limitations.
+
 SPATIAL TOPOLOGY RULE: EVERY candidate space MUST be further from the incident center than ${minCandidateDistance}m. These are spaces where responders work AFTER exiting the danger zone. No candidate space should be inside the cordon or exit perimeter.
 
-Vary the spaces: mix of large/small, covered/open, with/without water and power. Some should clearly suit certain uses; others should be marginal or involve trade-offs.
+Vary the spaces: mix of large/small, covered/open, with/without water and power, lots and linear spaces. Some should clearly suit certain uses; others should be marginal or involve trade-offs.
 
 Return ONLY valid JSON:
 { "locations": [ { "location_type": "string", "pin_category": "candidate_space", "description": "string", "label": "string", "coordinates": { "lat": 0.0, "lng": 0.0 }, "conditions": {}, "display_order": 1 } ] }`;
