@@ -69,6 +69,7 @@ export const WarRoom = () => {
   const [complexityTier, setComplexityTier] = useState<'minimal' | 'standard' | 'full' | 'rich'>(
     'full',
   );
+  const [durationMinutes, setDurationMinutes] = useState(60);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [useStructured, setUseStructured] = useState(false);
@@ -94,6 +95,7 @@ export const WarRoom = () => {
   const buildOptions = () => {
     const opts: Parameters<typeof api.warroom.generateStream>[0] = {
       complexity_tier: complexityTier,
+      duration_minutes: durationMinutes,
     };
     if (useStructured && scenarioType) {
       opts.scenario_type = scenarioType;
@@ -346,6 +348,26 @@ export const WarRoom = () => {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="mt-6">
+            <label className="block text-xs terminal-text text-robotic-yellow/70 mb-2">
+              [DURATION] Game length in minutes
+            </label>
+            <select
+              value={durationMinutes}
+              onChange={(e) => setDurationMinutes(Number(e.target.value))}
+              className="w-full px-4 py-3 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm focus:outline-none focus:border-robotic-yellow appearance-none"
+              disabled={loading}
+            >
+              {Array.from({ length: Math.floor((240 - 20) / 5) + 1 }, (_, i) => 20 + i * 5).map(
+                (m) => (
+                  <option key={m} value={m}>
+                    {m} minutes{m === 60 ? ' (default)' : m >= 120 ? ` (${m / 60}h)` : ''}
+                  </option>
+                ),
+              )}
+            </select>
           </div>
         </div>
 

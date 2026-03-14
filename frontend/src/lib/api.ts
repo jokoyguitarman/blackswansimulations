@@ -939,6 +939,7 @@ export const api = {
       terrain?: string;
       location?: string;
       complexity_tier?: 'minimal' | 'standard' | 'full' | 'rich';
+      duration_minutes?: number;
       teams?: Array<{
         team_name: string;
         team_description?: string;
@@ -964,6 +965,7 @@ export const api = {
         terrain?: string;
         location?: string;
         complexity_tier?: 'minimal' | 'standard' | 'full' | 'rich';
+        duration_minutes?: number;
         teams?: Array<{
           team_name: string;
           team_description?: string;

@@ -48,6 +48,7 @@ const generateSchema = z.object({
       .optional(),
     location: z.string().max(500).optional(),
     complexity_tier: z.enum(['minimal', 'standard', 'full', 'rich']).optional(),
+    duration_minutes: z.number().int().min(20).max(240).optional(),
     teams: z.array(teamSchema).optional(),
   }),
 });
@@ -124,8 +125,16 @@ router.post(
   async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      const { prompt, scenario_type, setting, terrain, location, complexity_tier, teams } =
-        req.body;
+      const {
+        prompt,
+        scenario_type,
+        setting,
+        terrain,
+        location,
+        complexity_tier,
+        duration_minutes,
+        teams,
+      } = req.body;
 
       if (user.role !== 'trainer' && user.role !== 'admin') {
         return res.status(403).json({ error: 'Only trainers can use the War Room' });
@@ -154,6 +163,7 @@ router.post(
           terrain,
           location,
           complexity_tier,
+          duration_minutes,
           teams,
         },
         env.openAiApiKey,
@@ -187,8 +197,16 @@ router.post(
   async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      const { prompt, scenario_type, setting, terrain, location, complexity_tier, teams } =
-        req.body;
+      const {
+        prompt,
+        scenario_type,
+        setting,
+        terrain,
+        location,
+        complexity_tier,
+        duration_minutes,
+        teams,
+      } = req.body;
 
       if (user.role !== 'trainer' && user.role !== 'admin') {
         return res.status(403).json({ error: 'Only trainers can use the War Room' });
@@ -226,6 +244,7 @@ router.post(
           terrain,
           location,
           complexity_tier,
+          duration_minutes,
           teams,
         },
         env.openAiApiKey,

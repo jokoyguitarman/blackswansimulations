@@ -44,6 +44,7 @@ export interface WarroomGenerateOptions {
   terrain?: string;
   location?: string;
   complexity_tier?: 'minimal' | 'standard' | 'full' | 'rich';
+  duration_minutes?: number;
   teams?: WarroomTeamInput[];
 }
 
@@ -203,6 +204,7 @@ export async function generateAndPersistWarroomScenario(
   }
 
   const complexity_tier = options.complexity_tier || 'full';
+  const duration_minutes = options.duration_minutes || 60;
 
   const venueName = parsed.venue_name || parsed.location || parsed.setting;
   const teamNames = options.teams?.map((t) => t.team_name) ?? [];
@@ -368,6 +370,7 @@ export async function generateAndPersistWarroomScenario(
           }
         : undefined,
       complexity_tier,
+      duration_minutes,
       typeSpec,
       settingSpec,
       terrainSpec,

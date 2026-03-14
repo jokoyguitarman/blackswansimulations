@@ -181,6 +181,8 @@ export interface WarroomGenerateInput {
   osmBuildings?: OsmBuilding[];
   geocode?: { lat: number; lng: number; display_name: string };
   complexity_tier: 'minimal' | 'standard' | 'full' | 'rich';
+  /** Game duration in minutes (20–240, default 60). Drives inject volume and timing. */
+  duration_minutes?: number;
   typeSpec: Record<string, unknown>;
   settingSpec: Record<string, unknown>;
   terrainSpec: Record<string, unknown>;
@@ -360,7 +362,7 @@ Return ONLY valid JSON in this exact structure (no markdown, no explanation):
     "role_specific_briefs": {},
     "category": "terrorism",
     "difficulty": "advanced",
-    "duration_minutes": 60
+    "duration_minutes": ${input.duration_minutes ?? 60}
   }${teamsBlock},
   "objectives": [
     { "objective_id": "id", "objective_name": "name", "description": "string", "weight": 25 },
@@ -487,26 +489,24 @@ function buildTimingManifest(
     { length: Math.floor(durationMinutes / SLOT_STEP) },
     (_, i) => i * SLOT_STEP,
   );
-  const universalSlots = [0, 20, 40, durationMinutes - 5];
+  // Universal slots spread proportionally across the duration
+  const universalSlots = Array.from(
+    { length: Math.max(4, Math.floor(durationMinutes / 10) + 1) },
+    (_, i) => Math.min(i * 10, durationMinutes - 5),
+  ).filter((v, i, a) => a.indexOf(v) === i);
   const baseTeamSlots = allSlots.filter((s) => !universalSlots.includes(s));
 
-  // Deterministic per-team jitter (minutes) prevents all teams clustering at exact 5-min multiples
+  // Every team gets ALL available time slots with per-team jitter so they
+  // don't all fire at the exact same second.
   const JITTER = [0, 2, -1, 3, 1, -2, 2, -1, 1, 0];
-  const n = Math.max(1, teamNames.length);
   const teamSlots: Record<string, number[]> = {};
 
   for (let i = 0; i < teamNames.length; i++) {
     const jitter = JITTER[i % JITTER.length];
-    const slots: number[] = [];
-    for (let j = i; j < baseTeamSlots.length; j += n) {
-      const raw = baseTeamSlots[j] + jitter;
-      slots.push(Math.max(1, Math.min(durationMinutes - 1, raw)));
-    }
-    // Guarantee at least one slot for very large team counts
-    if (slots.length === 0) {
-      const fallback = ((i * 7) % (durationMinutes - 10)) + 5;
-      slots.push(fallback);
-    }
+    const slots: number[] = baseTeamSlots.map((s) => {
+      const raw = s + jitter;
+      return Math.max(1, Math.min(durationMinutes - 1, raw));
+    });
     teamSlots[teamNames[i]] = slots;
   }
 
@@ -568,14 +568,14 @@ function buildPairs(
   teamNames: string[],
   tier: WarroomGenerateInput['complexity_tier'],
 ): [string, string][] {
-  if (tier === 'minimal' || tier === 'standard') return [];
+  if (tier === 'minimal') return [];
   const all: [string, string][] = [];
   for (let i = 0; i < teamNames.length; i++) {
     for (let j = i + 1; j < teamNames.length; j++) {
       all.push([teamNames[i], teamNames[j]]);
     }
   }
-  return tier === 'full' ? all.slice(0, 3) : all;
+  return all;
 }
 
 // ---------------------------------------------------------------------------
@@ -1547,11 +1547,7 @@ ${narrativeBlock}
 
 Universal injects are shared operational events: breaking news, environmental changes, senior command directives, political pressure, resource status updates affecting the entire operation. Every team sees them at the same moment.
 
-The game must be solvable in 60 minutes if teams perform optimally. Arc the narrative deliberately:
-- T+0 [setup]: Establish the crisis — initial situation report, conditions on the ground.
-- T+20 [escalation]: A complication or new intelligence that raises the stakes.
-- T+40 [peak]: The crisis reaches maximum pressure — a turning point that demands coordinated action.
-- T+55 [resolution]: The window closes — decisive outcome or catastrophic failure depending on team performance.
+The game runs for ${input.duration_minutes ?? 60} minutes and must be solvable if teams perform optimally. Arc the narrative across the full duration — distribute setup, escalation, peak, and resolution phases proportionally.
 
 Return ONLY valid JSON:
 {
@@ -1585,7 +1581,7 @@ RULES:
       systemPrompt,
       userPrompt,
       openAiApiKey,
-      1500,
+      5000,
     );
     const raw = parsed.time_injects || [];
     return raw.map((inj) => ({
@@ -1659,8 +1655,8 @@ ${JSON.stringify(injectTemplates.slice(0, 3))}
 
 Write DEEP, DETAILED, ROLE-SPECIFIC injects that reflect the real operational challenges of the ${teamName} in THIS exact crisis. Do not write generic status updates — write what a ${teamName} team leader actually receives: a specific field report, resource complication, civilian interaction, or command pressure unique to their role.
 
-The game is solvable in 60 minutes if teams perform optimally. Arc the ${teamName} narrative deliberately:
-- Setup (T+0–15): The ${teamName} faces their initial operational challenge in this crisis.
+The game runs for ${input.duration_minutes ?? 60} minutes and is solvable if teams perform optimally. Arc the ${teamName} narrative deliberately:
+- Setup (T+0–${Math.round((input.duration_minutes ?? 60) * 0.25)}): The ${teamName} faces their initial operational challenge in this crisis.
 - Escalation (T+15–35): A complication specific to the ${teamName} role raises the stakes.
 - Peak (T+35–50): The worst-case pressure on ${teamName} — requires urgent decision.
 - Resolution (T+50–60): Consequence or relief based on how ${teamName} has performed.
@@ -1695,7 +1691,7 @@ RULES:
       systemPrompt,
       userPrompt,
       openAiApiKey,
-      1200,
+      5000,
     );
     const raw = parsed.time_injects || [];
     return raw.map((inj) => ({
@@ -1731,8 +1727,6 @@ async function generateTeamDecisionInjects(
   openAiApiKey: string,
   narrative?: { title?: string; description?: string; briefing?: string },
 ): Promise<NonNullable<WarroomScenarioPayload['decision_injects']>> {
-  if (input.complexity_tier === 'minimal' || input.complexity_tier === 'standard') return [];
-
   const { scenario_type, setting, venue_name, location, typeSpec } = input;
   const venue = venue_name || location || setting;
   const decisionBranches =
@@ -1755,7 +1749,17 @@ ${narrativeBlock}
 Decision branch templates (inspiration):
 ${JSON.stringify(decisionBranches.slice(0, 3))}
 
-Decision injects fire when the ${teamName} makes a specific operational choice. They branch the scenario based on that decision — they are NOT time-based. Write injects that capture the critical decision points a ${teamName} team leader must navigate in this specific crisis.
+Decision injects fire when the ${teamName} makes a specific operational choice. They branch the scenario based on that decision — they are NOT time-based. Write injects that capture EVERY critical decision point a ${teamName} team leader must navigate in this specific crisis.
+
+Cover a WIDE range of decision categories for ${teamName}:
+- Resource allocation decisions (where to deploy personnel, equipment, vehicles)
+- Location/site selection decisions (triage areas, staging areas, command posts, evacuation routes)
+- Communication decisions (public statements, inter-agency coordination, media handling)
+- Tactical decisions (perimeter setup, access control, search procedures)
+- Escalation/de-escalation decisions (requesting additional resources, changing alert levels)
+- Prioritisation decisions (which casualties first, which threats first, which areas first)
+- Environmental mismatch decisions (choosing locations with wrong capacity, blocked routes, non-existent exits)
+- Coordination decisions (handoffs to other teams, joint operations, information sharing)
 
 Return ONLY valid JSON:
 {
@@ -1770,23 +1774,24 @@ Return ONLY valid JSON:
       "target_teams": ["${teamName}"],
       "requires_response": true,
       "requires_coordination": false,
-      "eligible_after_minutes": 15
+      "eligible_after_minutes": 10
     }
   ]
 }
 
 RULES:
-- Exactly 2 decision injects for ${teamName}.
+- Write 8–12 decision injects for ${teamName}, covering as many distinct decision categories as possible.
 - trigger_condition must describe a REAL operational decision ${teamName} faces in this crisis — not generic.
-- eligible_after_minutes minimum 15 — decisions should not fire in the opening phase.
-- Content shows the direct consequence of that decision.`;
+- eligible_after_minutes: vary between 5 and 40 to cover early, mid, and late-game decisions.
+- Content shows the direct consequence of that decision.
+- No two injects should cover the same decision category.`;
 
-  const userPrompt = `Write 2 decision-branch injects for ${teamName} in "${narrative?.title || scenario_type}" at ${venue}.`;
+  const userPrompt = `Write 8-12 decision-branch injects for ${teamName} in "${narrative?.title || scenario_type}" at ${venue}. Cover resource allocation, location selection, communication, tactical, escalation, prioritisation, environmental mismatch, and coordination decisions.`;
 
   try {
     const parsed = await callOpenAi<{
       decision_injects?: WarroomScenarioPayload['decision_injects'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 1000);
+    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
     const raw = parsed.decision_injects || [];
     return raw
       .filter((inj) => inj.trigger_condition)
@@ -1884,7 +1889,17 @@ ${conditionKeysHint}
 
 Condition-driven injects fire automatically when ${teamName}'s performance has been poor — when multiple negative state conditions are simultaneously true. They represent "perfect storm" cascading failures: if ${teamName} fails to manage their responsibilities, these injects compound the consequences.
 
-The game is solvable in 60 minutes if teams play well. These injects should NOT fire on optimal runs — they are the penalty path.
+The game runs for ${input.duration_minutes ?? 60} minutes and is solvable if teams play well. These injects should NOT fire on optimal runs — they are the penalty path.
+
+Cover a COMPREHENSIVE range of failure modes for ${teamName}:
+- Operational failures (delayed response, wrong procedures, missed protocols)
+- Resource mismanagement (overcommitted assets, equipment failures, personnel shortages)
+- Communication breakdowns (missed updates, conflicting orders, information silos)
+- Environmental/site failures (capacity overflows, route blockages, unsafe conditions)
+- Escalation failures (threat level changes ignored, cascading incidents)
+- Public impact failures (civilian complaints, media exposure, community harm)
+- Coordination failures (handoff delays, duplicated efforts, missed requests from other teams)
+- Intelligence/assessment failures (missed threat indicators, wrong threat assessment)
 
 Return ONLY valid JSON:
 {
@@ -1906,18 +1921,20 @@ Return ONLY valid JSON:
 }
 
 RULES:
-- 2–3 injects covering distinct ${teamName} failure modes.
+- 8–12 injects covering as many distinct ${teamName} failure modes as possible.
 - conditions_to_appear keys MUST match the state schema above.
 - Reference SPECIFIC location labels from map pins.
-- eligible_after_minutes: 10–20.
-- objective_penalty only for genuine failure consequences.`;
+- eligible_after_minutes: vary between 5 and 30 to cover early, mid, and late-game failures.
+- Use different thresholds (1, 2, 3) for different severity levels — low-threshold for early warnings, high-threshold for catastrophic cascades.
+- objective_penalty only for genuine failure consequences.
+- No two injects should cover the same failure mode.`;
 
-  const userPrompt = `Write 2-3 condition-driven injects for ${teamName}'s failure modes in "${narrative?.title || scenario_type}" at ${venue}.`;
+  const userPrompt = `Write 8-12 condition-driven injects for ${teamName}'s failure modes in "${narrative?.title || scenario_type}" at ${venue}. Cover operational, resource, communication, environmental, escalation, public impact, coordination, and intelligence failures.`;
 
   try {
     const parsed = await callOpenAi<{
       condition_driven_injects?: WarroomScenarioPayload['condition_driven_injects'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 1200);
+    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
     const raw = parsed.condition_driven_injects || [];
     return raw
       .filter(
@@ -2009,7 +2026,7 @@ ${JSON.stringify(stateSchema, null, 2)}
 
 Cross-team injects fire when BOTH ${teamA} and ${teamB} have failed to coordinate at their operational interface. They represent cascading failures caused specifically by the breakdown between these two teams — e.g. ${teamA} holding a bottleneck that overwhelms ${teamB}, contradictory instructions to the public, or a critical handover that was missed.
 
-The game is solvable in 60 minutes on the optimal path — these injects fire ONLY if both teams are underperforming.
+The game runs for ${input.duration_minutes ?? 60} minutes on the optimal path — these injects fire ONLY if both teams are underperforming.
 
 Return ONLY valid JSON:
 {
@@ -2031,18 +2048,19 @@ Return ONLY valid JSON:
 }
 
 RULES:
-- 1–2 injects for the ${teamA} and ${teamB} interface.
+- 4–6 injects for the ${teamA} and ${teamB} interface, covering distinct coordination failure modes.
 - Each title MUST be unique and specific to the coordination failure — include both team names and the failure type. Never reuse the same title across injects.
 - conditions_to_appear must reference state keys from BOTH teams (not just one).
 - Content describes the specific interface failure between ${teamA} and ${teamB}.
-- eligible_after_minutes: minimum 15.`;
+- eligible_after_minutes: vary between 10 and 35 to cover different phases of the exercise.
+- Use different thresholds (1, 2, 3) for different severity cascades.`;
 
-  const userPrompt = `Write 1-2 cross-team coordination failure injects for ${teamA} and ${teamB} in "${narrative?.title || scenario_type}" at ${venue}.`;
+  const userPrompt = `Write 4-6 cross-team coordination failure injects for ${teamA} and ${teamB} in "${narrative?.title || scenario_type}" at ${venue}. Cover information sharing failures, resource handoff delays, conflicting directives, missed requests, duplicated efforts, and cascading bottlenecks.`;
 
   try {
     const parsed = await callOpenAi<{
       condition_driven_injects?: WarroomScenarioPayload['condition_driven_injects'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 1000);
+    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
     const raw = parsed.condition_driven_injects || [];
     return raw
       .filter(
@@ -2112,7 +2130,8 @@ export async function warroomGenerateScenario(
   };
 
   // Pre-assign timing slots before any AI call fires
-  const timingManifest = buildTimingManifest(teamNames);
+  const durationMinutes = input.duration_minutes ?? 60;
+  const timingManifest = buildTimingManifest(teamNames, durationMinutes);
 
   // Batch A — time injects + decision injects, all parallel (no world context needed)
   onProgress?.('Generating injects (parallel batch A)...');
@@ -2127,16 +2146,14 @@ export async function warroomGenerateScenario(
     ),
     Promise.all(
       teamNames.map((t) =>
-        input.complexity_tier === 'minimal'
-          ? Promise.resolve([] as WarroomScenarioPayload['time_injects'])
-          : generateTeamTimeInjects(
-              input,
-              t,
-              teamNames,
-              openAiApiKey,
-              timingManifest.teamSlots[t] ?? [],
-              narrative,
-            ),
+        generateTeamTimeInjects(
+          input,
+          t,
+          teamNames,
+          openAiApiKey,
+          timingManifest.teamSlots[t] ?? [],
+          narrative,
+        ),
       ),
     ),
     Promise.all(
@@ -2151,7 +2168,7 @@ export async function warroomGenerateScenario(
     ...universalTimeInjects,
     ...perTeamTimeResults.flat(),
   ];
-  const time_injects = normalizeInjectTiming(rawTimeInjects);
+  const time_injects = normalizeInjectTiming(rawTimeInjects, durationMinutes);
 
   const decisionFlat = perTeamDecisionResults.flat();
   const decision_injects = decisionFlat.length > 0 ? decisionFlat : undefined;
@@ -2248,7 +2265,7 @@ export async function warroomGenerateScenario(
   );
 
   // Batch B — condition injects with full world context, all parallel
-  const includeCondition = input.complexity_tier === 'full' || input.complexity_tier === 'rich';
+  const includeCondition = input.complexity_tier !== 'minimal';
   let condition_driven_injects: WarroomScenarioPayload['condition_driven_injects'];
 
   if (includeCondition) {
