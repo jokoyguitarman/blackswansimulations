@@ -767,21 +767,28 @@ Return ONLY valid JSON:
         delete parsed.counter_definitions[team];
         continue;
       }
-      parsed.counter_definitions[team] = defs.filter(
-        (d) =>
-          d &&
-          typeof d.key === 'string' &&
-          typeof d.label === 'string' &&
-          ['number', 'boolean', 'enum'].includes(d.type) &&
-          [
-            'time_rate',
-            'decision_toggle',
-            'decision_increment',
-            'derived',
-            'state_effect',
-            'static',
-          ].includes(d.behavior),
-      );
+      parsed.counter_definitions[team] = defs
+        .filter(
+          (d) =>
+            d &&
+            typeof d.key === 'string' &&
+            typeof d.label === 'string' &&
+            ['number', 'boolean', 'enum'].includes(d.type) &&
+            [
+              'time_rate',
+              'decision_toggle',
+              'decision_increment',
+              'derived',
+              'state_effect',
+              'static',
+            ].includes(d.behavior),
+        )
+        .map((d) => {
+          if (d.initial_value != null && typeof d.initial_value === 'object') {
+            d.initial_value = d.type === 'number' ? 0 : d.type === 'boolean' ? false : '';
+          }
+          return d;
+        });
     }
 
     return Object.keys(parsed.counter_definitions).length > 0

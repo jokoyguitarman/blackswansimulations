@@ -226,13 +226,21 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
         // Data-driven initialization from counter definitions
         const teamState: Record<string, unknown> = {};
         for (const def of defs) {
-          teamState[def.key] = def.initial_value;
+          const iv = def.initial_value;
+          teamState[def.key] =
+            iv != null && typeof iv === 'object'
+              ? def.type === 'number'
+                ? 0
+                : def.type === 'boolean'
+                  ? false
+                  : ''
+              : iv;
         }
         // Overlay with seed values (seed variant can override initial_value per key)
         const seedForTeam = seed[stateKey] as Record<string, unknown> | undefined;
         if (seedForTeam && typeof seedForTeam === 'object') {
           for (const [k, v] of Object.entries(seedForTeam)) {
-            if (k in teamState) {
+            if (k in teamState && (v == null || typeof v !== 'object')) {
               teamState[k] = v;
             }
           }

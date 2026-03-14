@@ -77,9 +77,14 @@ export async function applyInjectPublishEffects(
               exits_congested: deduped,
             };
           } else {
+            const flatEffect: Record<string, unknown> = {};
+            for (const [ek, ev] of Object.entries(effect)) {
+              if (ev != null && typeof ev === 'object' && !Array.isArray(ev)) continue;
+              flatEffect[ek] = ev;
+            }
             (nextState as Record<string, unknown>)[key] = {
               ...current,
-              ...effect,
+              ...flatEffect,
             };
           }
         }

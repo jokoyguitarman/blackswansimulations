@@ -740,7 +740,12 @@ export const SessionView = () => {
                       } else {
                         return (
                           <div key={def.key}>
-                            {def.label}: {val != null ? String(val) : '–'}
+                            {def.label}:{' '}
+                            {val == null
+                              ? '–'
+                              : typeof val === 'object'
+                                ? JSON.stringify(val)
+                                : String(val)}
                           </div>
                         );
                       }
@@ -844,7 +849,13 @@ export const SessionView = () => {
                         entries.map(([k, v]) => (
                           <div key={k}>
                             {k.replace(/_/g, ' ')}:{' '}
-                            {typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v)}
+                            {typeof v === 'boolean'
+                              ? v
+                                ? 'Yes'
+                                : 'No'
+                              : typeof v === 'object' && v !== null
+                                ? JSON.stringify(v)
+                                : String(v)}
                           </div>
                         ))
                       ) : (
@@ -1318,7 +1329,8 @@ export const SessionView = () => {
                                       key={team}
                                       className="bg-robotic-gray-400 px-1 rounded text-robotic-green/90"
                                     >
-                                      {team}: {cat}
+                                      {team}:{' '}
+                                      {typeof cat === 'object' ? JSON.stringify(cat) : String(cat)}
                                     </span>
                                   ))}
                                 </div>
@@ -1342,11 +1354,16 @@ export const SessionView = () => {
                                               className="ml-2 mb-1 border-l-2 border-robotic-yellow/30 pl-2"
                                             >
                                               <span className="font-medium">
-                                                {acting} → {team}: {score}
+                                                {acting} → {team}:{' '}
+                                                {typeof score === 'object'
+                                                  ? JSON.stringify(score)
+                                                  : String(score)}
                                               </span>
                                               {cellReason && (
                                                 <p className="text-robotic-green/80 text-xs mt-0.5 italic break-words whitespace-pre-wrap">
-                                                  {cellReason}
+                                                  {typeof cellReason === 'object'
+                                                    ? JSON.stringify(cellReason)
+                                                    : String(cellReason)}
                                                 </p>
                                               )}
                                             </div>
@@ -1377,7 +1394,10 @@ export const SessionView = () => {
                                             className="bg-robotic-gray-400 px-1 rounded break-all text-xs"
                                             title={dec?.title ?? decId}
                                           >
-                                            {label}:{score}
+                                            {label}:
+                                            {typeof score === 'object'
+                                              ? JSON.stringify(score)
+                                              : String(score)}
                                           </span>
                                         );
                                       },
@@ -1410,9 +1430,9 @@ export const SessionView = () => {
                                               : decLabel}
                                           </span>
                                           {' — raw: '}
-                                          {rawScore != null ? rawScore : '—'}
+                                          {rawScore != null ? String(rawScore) : '—'}
                                           {' → capped (used): '}
-                                          {cappedScore}
+                                          {String(cappedScore)}
                                           {capDetail && (
                                             <div className="mt-0.5 text-robotic-yellow/80 italic">
                                               Below standard / mismatch — {capDetail.severity}{' '}
