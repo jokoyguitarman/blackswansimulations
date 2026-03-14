@@ -1564,7 +1564,7 @@ Return ONLY valid JSON:
       "severity": "critical|high|medium|low",
       "inject_scope": "universal",
       "target_teams": [],
-      "requires_response": false,
+      "requires_response": true,
       "requires_coordination": false
     }
   ]
@@ -1575,7 +1575,8 @@ RULES:
 - Each inject MUST use its exact assigned trigger_time_minutes — no substitutions.
 - inject_scope is always "universal". target_teams is always [].
 - Each inject must reference the specific scenario title, venue, and narrative details.
-- No generic filler — every inject advances the story.`;
+- No generic filler — every inject advances the story.
+- requires_response: true if the inject demands a player decision or action, false only for purely informational updates (e.g. weather change, background intel) that require no response.`;
 
   const userPrompt = `Write ${universalSlots.length} universal injects for "${narrative?.title || scenario_type}" at ${venue} at times: ${slotDescriptions}.`;
 
@@ -1596,7 +1597,7 @@ RULES:
       severity: inj.severity || 'high',
       inject_scope: 'universal',
       target_teams: [] as string[],
-      requires_response: inj.requires_response ?? false,
+      requires_response: inj.requires_response ?? true,
       requires_coordination: inj.requires_coordination ?? false,
     }));
   } catch (err) {
@@ -1675,7 +1676,7 @@ Return ONLY valid JSON:
       "severity": "critical|high|medium|low",
       "inject_scope": "team_specific",
       "target_teams": ["${teamName}"],
-      "requires_response": false,
+      "requires_response": true,
       "requires_coordination": false
     }
   ]
@@ -1684,7 +1685,8 @@ Return ONLY valid JSON:
 RULES:
 - Exactly ${assignedSlots.length} injects using EXACTLY these times: ${slotsWithPhase}.
 - inject_scope always "team_specific". target_teams always ["${teamName}"].
-- No two injects should address the same challenge — each one advances the ${teamName} sub-story.`;
+- No two injects should address the same challenge — each one advances the ${teamName} sub-story.
+- requires_response: true if the inject demands a player decision or action, false only for purely informational updates (e.g. weather change, background intel) that require no response.`;
 
   const userPrompt = `Write ${assignedSlots.length} deep team-specific injects for ${teamName} at: ${slotsWithPhase} in "${narrative?.title || scenario_type}" at ${venue}.`;
 
@@ -1705,7 +1707,7 @@ RULES:
       severity: inj.severity || 'medium',
       inject_scope: 'team_specific',
       target_teams: [teamName],
-      requires_response: inj.requires_response ?? false,
+      requires_response: inj.requires_response ?? true,
       requires_coordination: inj.requires_coordination ?? false,
     }));
   } catch (err) {

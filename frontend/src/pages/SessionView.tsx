@@ -79,6 +79,35 @@ interface ScenarioTeamWithCounters {
   counter_definitions?: CounterDefinition[] | null;
 }
 
+/**
+ * Flatten any nested objects inside *_state entries of current_state to primitives.
+ * Prevents React error #31 when AI-generated state contains objects as counter values.
+ */
+function sanitizeCurrentState(state: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(state)) {
+    if (
+      key.endsWith('_state') &&
+      value != null &&
+      typeof value === 'object' &&
+      !Array.isArray(value)
+    ) {
+      const teamState: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (v != null && typeof v === 'object' && !Array.isArray(v)) {
+          teamState[k] = JSON.stringify(v);
+        } else {
+          teamState[k] = v;
+        }
+      }
+      result[key] = teamState;
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 export const SessionView = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -359,8 +388,9 @@ export const SessionView = () => {
     ],
     onEvent: (event: WebSocketEvent) => {
       if (event.type === 'state.updated') {
-        const state = (event.data as { state?: Record<string, unknown> })?.state;
-        if (state) {
+        const rawState = (event.data as { state?: Record<string, unknown> })?.state;
+        if (rawState) {
+          const state = sanitizeCurrentState(rawState);
           setSession((prev) => (prev ? { ...prev, current_state: state } : null));
         }
         return;
@@ -423,6 +453,11 @@ export const SessionView = () => {
 
       const result = await api.sessions.get(id);
       const sessionData = result.data as Session;
+      if (sessionData.current_state && typeof sessionData.current_state === 'object') {
+        sessionData.current_state = sanitizeCurrentState(
+          sessionData.current_state as Record<string, unknown>,
+        ) as Session['current_state'];
+      }
       // Add currentUserId for lobby component
       (sessionData as unknown as { currentUserId?: string }).currentUserId = user?.id;
       setSession(sessionData);

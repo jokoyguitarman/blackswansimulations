@@ -62,6 +62,13 @@ const getHospitalIdFromDM = (id: string | null) =>
 
 /** Renders Insider message content with markdown-style [text](url) links as clickable anchors. */
 function ContentWithLinks({ content }: { content: string }) {
+  if (typeof content !== 'string') {
+    const safe =
+      content != null && typeof content === 'object'
+        ? JSON.stringify(content, null, 2)
+        : String(content ?? '');
+    return <>{safe}</>;
+  }
   const re = /\[([^\]]+)\]\(([^)]+)\)/g;
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
@@ -181,10 +188,11 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
             content: row.question_text,
             created_at: row.asked_at,
           });
+          const snippet = row.answer_snippet;
           mapped.push({
             id: `${row.id}-a`,
             role: 'insider',
-            content: row.answer_snippet ?? '',
+            content: typeof snippet === 'string' ? snippet : JSON.stringify(snippet ?? ''),
             created_at: row.asked_at,
           });
         }
@@ -1205,7 +1213,8 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
       try {
         const result = await api.sessions.insiderAsk(sessionId, { content: messageContent });
         const data = result.data as { answer: string; show_map?: boolean };
-        const answer = data.answer;
+        const rawAnswer = data.answer;
+        const answer = typeof rawAnswer === 'string' ? rawAnswer : JSON.stringify(rawAnswer ?? '');
         const insiderMsg: InsiderMessage = {
           id: `insider-${Date.now()}`,
           role: 'insider',
@@ -1255,11 +1264,15 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
           hospital_id: hospitalId,
           content: messageContent,
         });
-        const answer = (result.data as { answer: string }).answer;
+        const rawHospitalAnswer = (result.data as { answer: string }).answer;
+        const hospitalAnswer =
+          typeof rawHospitalAnswer === 'string'
+            ? rawHospitalAnswer
+            : JSON.stringify(rawHospitalAnswer ?? '');
         const hospitalMsg: InsiderMessage = {
           id: `hospital-${Date.now()}`,
           role: 'insider',
-          content: answer,
+          content: hospitalAnswer,
           created_at: new Date().toISOString(),
         };
         setHospitalMessagesByHospitalId((prev) => ({
@@ -1646,7 +1659,9 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                       <p
                         className={`text-sm terminal-text ${selectedDM ? 'text-green-400/90' : 'text-robotic-yellow/90'}`}
                       >
-                        {message.content}
+                        {typeof message.content === 'string'
+                          ? message.content
+                          : JSON.stringify(message.content)}
                       </p>
                     </div>
                   );

@@ -57,36 +57,34 @@ export async function applyInjectPublishEffects(
         .single();
       const currentState = (sessionForState?.current_state as Record<string, unknown>) || {};
       const nextState = { ...currentState };
-      for (const key of ['evacuation_state', 'triage_state', 'media_state']) {
-        if (stateEffect[key] && typeof stateEffect[key] === 'object') {
-          const current = (nextState[key] as Record<string, unknown>) || {};
-          const effect = stateEffect[key] as Record<string, unknown>;
-          if (
-            key === 'evacuation_state' &&
-            Array.isArray(current.exits_congested) &&
-            Array.isArray(effect.exits_congested)
-          ) {
-            // Append effect exits to current, dedupe by string value
-            const combined = [...current.exits_congested, ...effect.exits_congested].filter(
-              (v): v is string => typeof v === 'string',
-            );
-            const deduped = [...new Set(combined)];
-            (nextState as Record<string, unknown>)[key] = {
-              ...current,
-              ...effect,
-              exits_congested: deduped,
-            };
-          } else {
-            const flatEffect: Record<string, unknown> = {};
-            for (const [ek, ev] of Object.entries(effect)) {
-              if (ev != null && typeof ev === 'object' && !Array.isArray(ev)) continue;
-              flatEffect[ek] = ev;
-            }
-            (nextState as Record<string, unknown>)[key] = {
-              ...current,
-              ...flatEffect,
-            };
+      for (const [key, effectVal] of Object.entries(stateEffect)) {
+        if (!key.endsWith('_state') || !effectVal || typeof effectVal !== 'object') continue;
+        const current = (nextState[key] as Record<string, unknown>) || {};
+        const effect = effectVal as Record<string, unknown>;
+        if (
+          key === 'evacuation_state' &&
+          Array.isArray(current.exits_congested) &&
+          Array.isArray(effect.exits_congested)
+        ) {
+          const combined = [...current.exits_congested, ...effect.exits_congested].filter(
+            (v): v is string => typeof v === 'string',
+          );
+          const deduped = [...new Set(combined)];
+          (nextState as Record<string, unknown>)[key] = {
+            ...current,
+            ...effect,
+            exits_congested: deduped,
+          };
+        } else {
+          const flatEffect: Record<string, unknown> = {};
+          for (const [ek, ev] of Object.entries(effect)) {
+            if (ev != null && typeof ev === 'object' && !Array.isArray(ev)) continue;
+            flatEffect[ek] = ev;
           }
+          (nextState as Record<string, unknown>)[key] = {
+            ...current,
+            ...flatEffect,
+          };
         }
       }
       await supabaseAdmin.from('sessions').update({ current_state: nextState }).eq('id', sessionId);

@@ -172,7 +172,10 @@ export const ResourceMarketplace = ({ sessionId }: ResourceMarketplaceProps) => 
                     </p>
                     {request.conditions && (
                       <p className="text-xs terminal-text text-robotic-yellow/50 mt-1">
-                        Conditions: {request.conditions}
+                        Conditions:{' '}
+                        {typeof request.conditions === 'string'
+                          ? request.conditions
+                          : JSON.stringify(request.conditions)}
                       </p>
                     )}
                   </div>
