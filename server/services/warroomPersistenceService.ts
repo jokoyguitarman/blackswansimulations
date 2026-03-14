@@ -99,6 +99,7 @@ export async function persistWarroomScenario(
           required_roles: [],
           min_participants: t.min_participants ?? 1,
           max_participants: t.max_participants ?? 10,
+          ...(t.counter_definitions?.length ? { counter_definitions: t.counter_definitions } : {}),
         })),
       );
       if (teamsError) throw new Error(`scenario_teams: ${teamsError.message}`);

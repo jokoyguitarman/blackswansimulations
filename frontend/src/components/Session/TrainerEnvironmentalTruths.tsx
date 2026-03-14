@@ -281,11 +281,7 @@ export const TrainerEnvironmentalTruths = ({
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [sessionRoutes, setSessionRoutes] = useState<SessionRoute[]>([]);
   const [envAreas, setEnvAreas] = useState<EnvArea[]>([]);
-  const [currentState, setCurrentState] = useState<{
-    evacuation_state?: TeamState;
-    triage_state?: TeamState;
-    media_state?: TeamState;
-  } | null>(null);
+  const [currentState, setCurrentState] = useState<Record<string, TeamState> | null>(null);
   const [conditionKeys, setConditionKeys] =
     useState<Array<{ key: string; meaning: string; team?: string }>>(CONDITION_KEYS);
   const [keywordPatterns, setKeywordPatterns] =
@@ -321,21 +317,28 @@ export const TrainerEnvironmentalTruths = ({
       }),
       api.sessions.get(sessionId).then((r) => {
         const data = r.data as {
-          current_state?: {
-            environmental_state?: { routes?: SessionRoute[]; areas?: EnvArea[] };
-            evacuation_state?: TeamState;
-            triage_state?: TeamState;
-            media_state?: TeamState;
-          };
+          current_state?: Record<string, unknown>;
         };
-        const cs = data?.current_state;
-        const env = cs?.environmental_state;
+        const cs = data?.current_state ?? {};
+        const env = cs.environmental_state as
+          | { routes?: SessionRoute[]; areas?: EnvArea[] }
+          | undefined;
+        // Extract all *_state keys as team states
+        const teamStates: Record<string, TeamState> = {};
+        for (const [k, v] of Object.entries(cs)) {
+          if (
+            k.endsWith('_state') &&
+            k !== 'environmental_state' &&
+            typeof v === 'object' &&
+            v !== null
+          ) {
+            teamStates[k] = v as TeamState;
+          }
+        }
         return {
           routes: Array.isArray(env?.routes) ? env.routes : [],
           areas: Array.isArray(env?.areas) ? env.areas : [],
-          evacuation_state: cs?.evacuation_state ?? null,
-          triage_state: cs?.triage_state ?? null,
-          media_state: cs?.media_state ?? null,
+          teamStates,
         };
       }),
     ])
@@ -352,17 +355,11 @@ export const TrainerEnvironmentalTruths = ({
           const sd = sessionData as {
             routes: SessionRoute[];
             areas: EnvArea[];
-            evacuation_state?: TeamState;
-            triage_state?: TeamState;
-            media_state?: TeamState;
+            teamStates: Record<string, TeamState>;
           };
           setSessionRoutes(sd.routes ?? []);
           setEnvAreas(sd.areas ?? []);
-          setCurrentState({
-            evacuation_state: sd.evacuation_state ?? undefined,
-            triage_state: sd.triage_state ?? undefined,
-            media_state: sd.media_state ?? undefined,
-          });
+          setCurrentState(Object.keys(sd.teamStates ?? {}).length > 0 ? sd.teamStates : null);
         }
       })
       .catch((e) => {
@@ -894,37 +891,22 @@ export const TrainerEnvironmentalTruths = ({
           <p className="text-robotic-gray-400 text-xs mb-2">
             Used by condition evaluator and inject scheduler.
           </p>
-          {currentState.evacuation_state &&
-            Object.keys(currentState.evacuation_state).length > 0 && (
-              <div className="mb-2">
-                <div className="text-robotic-yellow/70 text-xs mb-0.5">evacuation_state</div>
+          {Object.entries(currentState).map(([stateKey, stateVal]) => {
+            if (!stateVal || typeof stateVal !== 'object' || Object.keys(stateVal).length === 0)
+              return null;
+            return (
+              <div key={stateKey} className="mb-2">
+                <div className="text-robotic-yellow/70 text-xs mb-0.5">{stateKey}</div>
                 <pre className="text-xs font-mono bg-robotic-gray-800/50 p-2 rounded overflow-x-auto">
-                  {JSON.stringify(currentState.evacuation_state, null, 2)}
+                  {JSON.stringify(stateVal, null, 2)}
                 </pre>
               </div>
-            )}
-          {currentState.triage_state && Object.keys(currentState.triage_state).length > 0 && (
-            <div className="mb-2">
-              <div className="text-robotic-yellow/70 text-xs mb-0.5">triage_state</div>
-              <pre className="text-xs font-mono bg-robotic-gray-800/50 p-2 rounded overflow-x-auto">
-                {JSON.stringify(currentState.triage_state, null, 2)}
-              </pre>
-            </div>
-          )}
-          {currentState.media_state && Object.keys(currentState.media_state).length > 0 && (
-            <div className="mb-2">
-              <div className="text-robotic-yellow/70 text-xs mb-0.5">media_state</div>
-              <pre className="text-xs font-mono bg-robotic-gray-800/50 p-2 rounded overflow-x-auto">
-                {JSON.stringify(currentState.media_state, null, 2)}
-              </pre>
-            </div>
-          )}
-          {(!currentState.evacuation_state ||
-            Object.keys(currentState.evacuation_state).length === 0) &&
-            (!currentState.triage_state || Object.keys(currentState.triage_state).length === 0) &&
-            (!currentState.media_state || Object.keys(currentState.media_state).length === 0) && (
-              <span className="text-robotic-gray-500">Empty or not yet initialized</span>
-            )}
+            );
+          })}
+          {Object.values(currentState).every(
+            (v) =>
+              !v || typeof v !== 'object' || Object.keys(v as Record<string, unknown>).length === 0,
+          ) && <span className="text-robotic-gray-500">Empty or not yet initialized</span>}
         </Section>
       )}
 

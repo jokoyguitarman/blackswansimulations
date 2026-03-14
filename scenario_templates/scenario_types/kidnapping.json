@@ -130,5 +130,120 @@
       "keywords": ["negotiate", "hostage", "ransom", "communicate"],
       "state_key": "negotiation_state.negotiation_initiated"
     }
-  ]
+  ],
+  "team_counter_definitions": {
+    "police": [
+      {
+        "key": "perimeter_established",
+        "label": "Perimeter Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["perimeter", "cordon", "secure", "contain"] }
+      },
+      {
+        "key": "tactical_team_ready",
+        "label": "Tactical Team Ready",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["tactical", "assault team", "ready", "standby"] }
+      },
+      {
+        "key": "armed_units",
+        "label": "Armed Units Deployed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ],
+    "negotiation": [
+      {
+        "key": "contact_established",
+        "label": "Contact Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["contact", "communicate", "negotiate", "call"] }
+      },
+      {
+        "key": "demands_received",
+        "label": "Demands Received",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "sessions_count",
+        "label": "Negotiation Sessions",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": { "keywords": ["negotiate", "session", "call", "communicate"] }
+      },
+      {
+        "key": "active_session",
+        "label": "Active Session",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["negotiate", "call", "session"] }
+      }
+    ],
+    "intelligence": [
+      {
+        "key": "inside_intel",
+        "label": "Inside Intel Obtained",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["intel", "intelligence", "surveillance", "recon"] }
+      },
+      {
+        "key": "perpetrator_count_known",
+        "label": "Perpetrator Count Known",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "threat_level",
+        "label": "Threat Level",
+        "type": "enum",
+        "initial_value": "high",
+        "behavior": "state_effect",
+        "visible_to": "all",
+        "config": { "values": ["low", "medium", "high", "critical"] }
+      }
+    ],
+    "resort_security": [
+      {
+        "key": "perimeter_secured",
+        "label": "Perimeter Secured",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["secure", "lockdown", "perimeter", "access control"] }
+      },
+      {
+        "key": "evacuation_of_non_targets",
+        "label": "Non-Target Evacuation",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["evacuate", "guests", "staff", "non-target"] }
+      }
+    ]
+  }
 }

@@ -17,6 +17,7 @@ import { getConditionConfigForScenario } from './scenarioConditionConfigService.
 import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
 import type { Server as SocketServer } from 'socket.io';
+import type { CounterDefinition } from '../counterDefinitions.js';
 
 /**
  * Inject Scheduler Service
@@ -245,89 +246,195 @@ export class InjectSchedulerService {
       };
       stateChanged = true;
     }
-    // Evacuation counter: when flow_control_decided, advance evacuated_count by time and rate (capped at total_evacuees).
-    // Robustness modifier: <=7 → ×0.25, >=8 → ×1.25, else ×1.0 (applied to current rate).
-    const BASE_EVAC_RATE_PER_MIN = 40;
-    const evacState = (nextState.evacuation_state as Record<string, unknown>) || {};
-    const totalEvacuees = Math.max(0, Number(evacState.total_evacuees) || 1000);
-    if (evacState.flow_control_decided === true) {
-      let rate = BASE_EVAC_RATE_PER_MIN;
-      const exitsCongested = evacState.exits_congested as string[] | undefined;
-      const managedEffects =
-        (nextState.managed_effects as Record<string, { managed?: boolean }> | undefined) ?? {};
-      const hasUnmanagedCongestedExit =
-        Array.isArray(exitsCongested) &&
-        exitsCongested.some((e) => {
-          if (typeof e !== 'string' || !e.trim()) return false;
-          const key = `evacuation.exits_congested:${e.trim()}`;
-          return managedEffects[key]?.managed !== true;
-        });
-      if (hasUnmanagedCongestedExit) rate = Math.floor(rate / 2);
-      const evacRobustness = robustnessByTeam.Evacuation ?? robustnessByTeam.evacuation ?? null;
-      if (evacRobustness !== null && typeof evacRobustness === 'number') {
-        const mod = evacRobustness <= 7 ? 0.25 : evacRobustness >= 8 ? 1.25 : 1;
-        rate = rate * mod;
-      }
-      // Incoming impact penalty: other teams hurting evacuation slows evac rate
-      const incomingOnEvac = incomingImpactOn(impactMatrix, 'evacuation');
-      if (incomingOnEvac < 0) {
-        rate = rate * Math.max(0.5, 1 + incomingOnEvac * 0.15);
-      }
-      // Route pressure: recent decision used slow/congested route → slow evac rate
-      if (hasSuboptimalRoute) {
-        rate = rate * 0.85;
-      }
-      const evacuated = Math.min(totalEvacuees, Math.floor(rate * elapsedMinutes));
-      const currentEvacuated = Math.max(0, Number(evacState.evacuated_count) || 0);
-      if (evacuated > currentEvacuated) {
-        (nextState.evacuation_state as Record<string, unknown>) = {
-          ...evacState,
-          evacuated_count: evacuated,
-        };
-        stateChanged = true;
-      }
-    }
+    // --- Generic counter engine (data-driven from counter_definitions) ---
+    const counterDefsMap = (nextState._counter_definitions ?? {}) as Record<
+      string,
+      CounterDefinition[]
+    >;
+    const hasCounterDefs = Object.keys(counterDefsMap).length > 0;
 
-    // Triage counters: predetermined rates driven by Triage team robustness; pool aligned with evac.
-    const triageStateNext = (nextState.triage_state as Record<string, unknown>) || {};
-    const pool =
-      typeof triageStateNext.initial_patients_at_site === 'number'
-        ? Math.max(0, triageStateNext.initial_patients_at_site)
-        : Math.max(0, Math.floor(totalEvacuees * 0.25));
-    const baseRobustness = robustnessByTeam.Triage ?? robustnessByTeam.triage ?? 5.5;
-    const boost = (triageStateNext.robustness_boost as number) ?? 0;
-    const triageRobustness = Math.max(1, Math.min(10, baseRobustness + boost));
-    let band: 'low' | 'mid' | 'high' =
-      triageRobustness <= 4 ? 'low' : triageRobustness <= 7 ? 'mid' : 'high';
-    // Incoming impact penalty: other teams hurting triage worsens effective band (more deaths, more waiting)
-    const incomingOnTriage = incomingImpactOn(impactMatrix, 'triage');
-    if (incomingOnTriage < 0 && band === 'high') band = 'mid';
-    else if (incomingOnTriage < 0 && band === 'mid') band = 'low';
-    // Route pressure: recent decision used slow/congested route → worsen triage band one step
-    if (hasSuboptimalRoute && band === 'high') band = 'mid';
-    else if (hasSuboptimalRoute && band === 'mid') band = 'low';
-    const BASE_TRIAGE_PROCESSED_PER_MIN = 8;
-    const throughputMult = band === 'low' ? 0.5 : band === 'high' ? 1.25 : 1;
-    const processed = Math.min(
-      pool,
-      Math.floor(BASE_TRIAGE_PROCESSED_PER_MIN * throughputMult * elapsedMinutes),
-    );
-    const deathFrac = band === 'low' ? 0.25 : band === 'high' ? 0.05 : 0.12;
-    const deaths = Math.min(processed, Math.floor(processed * deathFrac));
-    const remaining = processed - deaths;
-    const transportFrac = band === 'low' ? 0.2 : band === 'high' ? 0.6 : 0.4;
-    const handedOver = Math.floor(remaining * transportFrac);
-    const beingTreated = Math.max(0, remaining - handedOver);
-    const patientsWaiting = Math.max(0, pool - processed);
-    (nextState.triage_state as Record<string, unknown>) = {
-      ...triageStateNext,
-      deaths_on_site: deaths,
-      handed_over_to_hospital: handedOver,
-      patients_being_treated: beingTreated,
-      patients_waiting: patientsWaiting,
-      casualties: deaths,
-    };
-    stateChanged = true;
+    if (hasCounterDefs) {
+      for (const [stateKey, defs] of Object.entries(counterDefsMap)) {
+        const teamState = (nextState[stateKey] as Record<string, unknown>) ?? {};
+        const teamNameRaw = stateKey.replace(/_state$/, '');
+
+        // Resolve team robustness (try Title-case and lowercase)
+        const teamRobustness =
+          robustnessByTeam[teamNameRaw.charAt(0).toUpperCase() + teamNameRaw.slice(1)] ??
+          robustnessByTeam[teamNameRaw] ??
+          null;
+
+        // Process time_rate counters
+        for (const def of defs) {
+          if (def.behavior !== 'time_rate' || def.type !== 'number') continue;
+          const cfg = def.config ?? {};
+
+          // Check requires_flag
+          if (cfg.requires_flag && teamState[cfg.requires_flag] !== true) continue;
+
+          let rate = cfg.base_rate_per_min ?? 10;
+
+          // Robustness modifier
+          if (
+            cfg.robustness_affects &&
+            teamRobustness !== null &&
+            typeof teamRobustness === 'number'
+          ) {
+            const lowMult = cfg.robustness_low_mult ?? 0.25;
+            const highMult = cfg.robustness_high_mult ?? 1.25;
+            const mod = teamRobustness <= 4 ? lowMult : teamRobustness >= 8 ? highMult : 1;
+            rate = rate * mod;
+          }
+
+          // Congestion penalty
+          if (cfg.congestion_halves) {
+            const exitsCongested = teamState.exits_congested as string[] | undefined;
+            const managedEffects =
+              (nextState.managed_effects as Record<string, { managed?: boolean }> | undefined) ??
+              {};
+            const hasUnmanagedCongestion =
+              Array.isArray(exitsCongested) &&
+              exitsCongested.some((e) => {
+                if (typeof e !== 'string' || !e.trim()) return false;
+                const key = `${teamNameRaw}.exits_congested:${e.trim()}`;
+                return managedEffects[key]?.managed !== true;
+              });
+            if (hasUnmanagedCongestion) rate = Math.floor(rate / 2);
+          }
+
+          // Cross-team impact penalty
+          if (cfg.impact_sensitive) {
+            const incoming = incomingImpactOn(impactMatrix, teamNameRaw);
+            if (incoming < 0) {
+              rate = rate * Math.max(0.5, 1 + incoming * 0.15);
+            }
+          }
+
+          // Route pressure
+          if (hasSuboptimalRoute) {
+            rate = rate * 0.85;
+          }
+
+          // Compute new value
+          const cap = cfg.cap_key ? Math.max(0, Number(teamState[cfg.cap_key]) || 0) : Infinity;
+          const newVal = Math.min(
+            cap === Infinity ? Infinity : cap,
+            Math.floor(rate * elapsedMinutes),
+          );
+          const curVal = Math.max(0, Number(teamState[def.key]) || 0);
+          if (newVal > curVal) {
+            teamState[def.key] = newVal;
+            stateChanged = true;
+          }
+        }
+
+        // Process derived counters
+        for (const def of defs) {
+          if (def.behavior !== 'derived' || def.type !== 'number') continue;
+          const cfg = def.config ?? {};
+
+          if (cfg.source_pool_key && cfg.split_fractions) {
+            const poolVal = Math.max(0, Number(teamState[cfg.source_pool_key]) || 0);
+            const pool = cfg.pool_fraction ? Math.floor(poolVal * cfg.pool_fraction) : poolVal;
+
+            // Use the rate_key counter to determine how many have been processed
+            const processedKey = cfg.rate_key;
+            const processed = processedKey
+              ? Math.min(pool, Math.max(0, Number(teamState[processedKey]) || 0))
+              : pool;
+
+            // Apply split fractions to compute derived values
+            for (const [fracKey, frac] of Object.entries(cfg.split_fractions)) {
+              const derivedVal = Math.floor(processed * (frac as number));
+              teamState[fracKey] = derivedVal;
+            }
+            // The current counter itself (e.g. patients_waiting) = pool - processed
+            teamState[def.key] = Math.max(0, pool - processed);
+            stateChanged = true;
+          }
+        }
+
+        nextState[stateKey] = teamState;
+      }
+    } else {
+      // Legacy hardcoded evacuation/triage counter logic (backward compatibility)
+      const BASE_EVAC_RATE_PER_MIN = 40;
+      const evacState = (nextState.evacuation_state as Record<string, unknown>) || {};
+      const totalEvacuees = Math.max(0, Number(evacState.total_evacuees) || 1000);
+      if (evacState.flow_control_decided === true) {
+        let rate = BASE_EVAC_RATE_PER_MIN;
+        const exitsCongested = evacState.exits_congested as string[] | undefined;
+        const managedEffects =
+          (nextState.managed_effects as Record<string, { managed?: boolean }> | undefined) ?? {};
+        const hasUnmanagedCongestedExit =
+          Array.isArray(exitsCongested) &&
+          exitsCongested.some((e) => {
+            if (typeof e !== 'string' || !e.trim()) return false;
+            const key = `evacuation.exits_congested:${e.trim()}`;
+            return managedEffects[key]?.managed !== true;
+          });
+        if (hasUnmanagedCongestedExit) rate = Math.floor(rate / 2);
+        const evacRobustness = robustnessByTeam.Evacuation ?? robustnessByTeam.evacuation ?? null;
+        if (evacRobustness !== null && typeof evacRobustness === 'number') {
+          const mod = evacRobustness <= 7 ? 0.25 : evacRobustness >= 8 ? 1.25 : 1;
+          rate = rate * mod;
+        }
+        const incomingOnEvac = incomingImpactOn(impactMatrix, 'evacuation');
+        if (incomingOnEvac < 0) {
+          rate = rate * Math.max(0.5, 1 + incomingOnEvac * 0.15);
+        }
+        if (hasSuboptimalRoute) {
+          rate = rate * 0.85;
+        }
+        const evacuated = Math.min(totalEvacuees, Math.floor(rate * elapsedMinutes));
+        const currentEvacuated = Math.max(0, Number(evacState.evacuated_count) || 0);
+        if (evacuated > currentEvacuated) {
+          (nextState.evacuation_state as Record<string, unknown>) = {
+            ...evacState,
+            evacuated_count: evacuated,
+          };
+          stateChanged = true;
+        }
+      }
+
+      const triageStateNext = (nextState.triage_state as Record<string, unknown>) || {};
+      const pool =
+        typeof triageStateNext.initial_patients_at_site === 'number'
+          ? Math.max(0, triageStateNext.initial_patients_at_site)
+          : Math.max(0, Math.floor(totalEvacuees * 0.25));
+      const baseRobustness = robustnessByTeam.Triage ?? robustnessByTeam.triage ?? 5.5;
+      const boost = (triageStateNext.robustness_boost as number) ?? 0;
+      const triageRobustness = Math.max(1, Math.min(10, baseRobustness + boost));
+      let band: 'low' | 'mid' | 'high' =
+        triageRobustness <= 4 ? 'low' : triageRobustness <= 7 ? 'mid' : 'high';
+      const incomingOnTriage = incomingImpactOn(impactMatrix, 'triage');
+      if (incomingOnTriage < 0 && band === 'high') band = 'mid';
+      else if (incomingOnTriage < 0 && band === 'mid') band = 'low';
+      if (hasSuboptimalRoute && band === 'high') band = 'mid';
+      else if (hasSuboptimalRoute && band === 'mid') band = 'low';
+      const BASE_TRIAGE_PROCESSED_PER_MIN = 8;
+      const throughputMult = band === 'low' ? 0.5 : band === 'high' ? 1.25 : 1;
+      const processed = Math.min(
+        pool,
+        Math.floor(BASE_TRIAGE_PROCESSED_PER_MIN * throughputMult * elapsedMinutes),
+      );
+      const deathFrac = band === 'low' ? 0.25 : band === 'high' ? 0.05 : 0.12;
+      const deaths = Math.min(processed, Math.floor(processed * deathFrac));
+      const remaining = processed - deaths;
+      const transportFrac = band === 'low' ? 0.2 : band === 'high' ? 0.6 : 0.4;
+      const handedOver = Math.floor(remaining * transportFrac);
+      const beingTreated = Math.max(0, remaining - handedOver);
+      const patientsWaiting = Math.max(0, pool - processed);
+      (nextState.triage_state as Record<string, unknown>) = {
+        ...triageStateNext,
+        deaths_on_site: deaths,
+        handed_over_to_hospital: handedOver,
+        patients_being_treated: beingTreated,
+        patients_waiting: patientsWaiting,
+        casualties: deaths,
+      };
+      stateChanged = true;
+    }
 
     if (stateChanged) {
       try {

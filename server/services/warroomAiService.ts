@@ -4,6 +4,8 @@
  * Each phase has its own prompt with explicit schema and fallbacks from templates.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { logger } from '../lib/logger.js';
 import type { OsmVicinity, OsmOpenSpace, OsmBuilding } from './osmVicinityService.js';
 import {
@@ -13,6 +15,7 @@ import {
   mapStandardsToTeams,
   type SimilarCase,
 } from './warroomResearchService.js';
+import type { CounterDefinition } from '../counterDefinitions.js';
 
 export interface WarroomScenarioPayload {
   scenario: {
@@ -31,6 +34,7 @@ export interface WarroomScenarioPayload {
     team_description: string;
     min_participants: number;
     max_participants: number;
+    counter_definitions?: CounterDefinition[];
   }>;
   objectives: Array<{
     objective_id: string;
@@ -134,6 +138,32 @@ export interface Phase1Result {
   scenario: WarroomScenarioPayload['scenario'];
   teams: WarroomScenarioPayload['teams'];
   objectives: WarroomScenarioPayload['objectives'];
+}
+
+/**
+ * Load counter definitions from the scenario type JSON template.
+ * Returns null if the template doesn't exist or has no team_counter_definitions.
+ */
+function loadTemplateCounterDefs(scenarioType: string): Record<string, CounterDefinition[]> | null {
+  try {
+    const filePath = path.join(
+      process.cwd(),
+      'scenario_templates/scenario_types',
+      `${scenarioType}.json`,
+    );
+    if (fs.existsSync(filePath)) {
+      const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      if (
+        content.team_counter_definitions &&
+        typeof content.team_counter_definitions === 'object'
+      ) {
+        return content.team_counter_definitions as Record<string, CounterDefinition[]>;
+      }
+    }
+  } catch {
+    // Template loading is best-effort
+  }
+  return null;
 }
 
 export interface WarroomGenerateInput {
@@ -620,6 +650,136 @@ export function buildTeamStateSchemaHint(
 }
 
 // ---------------------------------------------------------------------------
+// Phase: Counter Definitions per team (scenario-specific metrics)
+// ---------------------------------------------------------------------------
+
+const COUNTER_BEHAVIOR_CATALOG = `BEHAVIOR TYPES (you MUST pick from this list — do NOT invent new ones):
+
+1. "time_rate" — a numeric counter that advances automatically each game tick.
+   Config: base_rate_per_min (number), cap_key (key of another counter that is the ceiling),
+   requires_flag (key of a boolean counter that must be true before ticking starts),
+   robustness_affects (bool — team robustness score modifies rate),
+   robustness_low_mult (multiplier when robustness<=4, default 0.25),
+   robustness_high_mult (multiplier when robustness>=8, default 1.25),
+   congestion_halves (bool — halved when unmanaged congested exits exist),
+   impact_sensitive (bool — cross-team impact score modifies rate).
+
+2. "decision_toggle" — a boolean counter flipped to true when a matching player decision is detected.
+   Config: keywords (string[]), categories (string[]).
+
+3. "decision_increment" — a numeric counter incremented by 1 each time a matching decision is made.
+   Config: keywords (string[]), categories (string[]).
+
+4. "derived" — a numeric counter recomputed each tick from other counters (e.g. patients_waiting = pool - processed).
+   Config: source_pool_key (key whose value is the pool), pool_fraction (fraction of pool, e.g. 0.25),
+   rate_key (key of a time_rate counter this derives from),
+   split_fractions (object mapping output counter keys to fractions, e.g. {"deaths": 0.12, "transported": 0.4}).
+
+5. "state_effect" — changed only by inject state_effects (external events). The engine never auto-updates it.
+
+6. "static" — set at scenario start, never changes (e.g. total_evacuees). Used as caps or reference values.`;
+
+/**
+ * Generate scenario-appropriate CounterDefinition[] for each team using AI.
+ * For minimal complexity, returns undefined (template-based fallback used instead).
+ */
+async function generateCounterDefinitions(
+  input: WarroomGenerateInput,
+  teamNames: string[],
+  openAiApiKey: string,
+  onProgress?: WarroomAiProgressCallback,
+  narrative?: { title?: string; description?: string; briefing?: string },
+): Promise<Record<string, CounterDefinition[]> | undefined> {
+  if (input.complexity_tier === 'minimal') return undefined;
+
+  onProgress?.('Generating team counter definitions...');
+
+  const { scenario_type, setting, venue_name, location } = input;
+  const venue = venue_name || location || setting;
+
+  const systemPrompt = `You are an expert crisis management scenario designer. You must define the METRICS (counters) that each team will track during a "${scenario_type}" training exercise.
+
+Scenario: ${narrative?.title || scenario_type}
+Venue: ${venue}
+Setting: ${setting}
+Teams: ${teamNames.join(', ')}
+${narrative?.description ? `\nDescription: ${narrative.description}` : ''}
+
+${COUNTER_BEHAVIOR_CATALOG}
+
+RULES:
+- Each team should have 3–8 counters that are RELEVANT to this specific scenario type and team role.
+- Do NOT include counters that don't make sense (e.g. "evacuated_count" for a negotiation team in a kidnapping, or "inner_cordon_radius_m" for a media team).
+- Every team MUST have at least one "decision_toggle" counter (a key milestone the team should achieve).
+- Teams that manage people/resources over time should have "time_rate" counters.
+- Use "static" for fixed reference values (caps, totals).
+- Use "derived" for counters computed from others (e.g. patients_waiting = pool - processed).
+- visible_to should be "all" for most counters; use "trainer_only" for internal flags players shouldn't see.
+- Counter keys must be snake_case, unique within each team.
+- Labels should be short, human-readable (e.g. "People Evacuated", "Perimeter Established").
+- For decision_toggle and decision_increment, provide realistic keywords that would appear in a player's decision text.
+
+Return ONLY valid JSON:
+{
+  "counter_definitions": {
+    "<team_name>": [
+      {
+        "key": "snake_case_key",
+        "label": "Human Readable Label",
+        "type": "number|boolean|enum",
+        "initial_value": 0,
+        "behavior": "time_rate|decision_toggle|decision_increment|derived|state_effect|static",
+        "visible_to": "all|trainer_only",
+        "config": { ... }
+      }
+    ]
+  }
+}`;
+
+  const userPrompt = `Define counter definitions for each team in "${narrative?.title || scenario_type}" at ${venue}. Teams: ${teamNames.join(', ')}.`;
+
+  try {
+    const parsed = await callOpenAi<{
+      counter_definitions?: Record<string, CounterDefinition[]>;
+    }>(systemPrompt, userPrompt, openAiApiKey, 4000);
+
+    if (!parsed.counter_definitions || typeof parsed.counter_definitions !== 'object') {
+      return undefined;
+    }
+
+    // Validate: ensure every definition has required fields
+    for (const [team, defs] of Object.entries(parsed.counter_definitions)) {
+      if (!Array.isArray(defs)) {
+        delete parsed.counter_definitions[team];
+        continue;
+      }
+      parsed.counter_definitions[team] = defs.filter(
+        (d) =>
+          d &&
+          typeof d.key === 'string' &&
+          typeof d.label === 'string' &&
+          ['number', 'boolean', 'enum'].includes(d.type) &&
+          [
+            'time_rate',
+            'decision_toggle',
+            'decision_increment',
+            'derived',
+            'state_effect',
+            'static',
+          ].includes(d.behavior),
+      );
+    }
+
+    return Object.keys(parsed.counter_definitions).length > 0
+      ? parsed.counter_definitions
+      : undefined;
+  } catch (err) {
+    logger.warn({ err }, 'Counter definitions generation failed; continuing without');
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Phase 4a-1 — Scenario-Fixed Pins  (incident, exits, cordons — anchored to building outline)
 // ---------------------------------------------------------------------------
 
@@ -1083,6 +1243,7 @@ async function generateEnvironmentalSeeds(
   onProgress?: WarroomAiProgressCallback,
   narrative?: { title?: string; description?: string; briefing?: string },
   locations?: WarroomScenarioPayload['locations'],
+  counterDefsMap?: Record<string, CounterDefinition[]>,
 ): Promise<WarroomScenarioPayload['environmental_seeds']> {
   const includeSeeds = input.complexity_tier === 'full' || input.complexity_tier === 'rich';
   if (!includeSeeds) return undefined;
@@ -1091,8 +1252,43 @@ async function generateEnvironmentalSeeds(
 
   const { scenario_type, setting, terrain, venue_name, location, researchContext } = input;
   const venue = venue_name || location || setting;
-  const stateSchema = buildTeamStateSchemaHint(teamNames);
-  const stateSchemaJson = JSON.stringify(stateSchema, null, 2);
+
+  // Build state schema from counter_definitions when available, else fall back to legacy hint
+  let stateSchemaJson: string;
+  if (counterDefsMap && Object.keys(counterDefsMap).length > 0) {
+    const schema: Record<string, Record<string, unknown>> = {};
+    const teamToStateKey = (name: string): string => {
+      const n = (name ?? '').toLowerCase();
+      if (/evacuation|evac/.test(n)) return 'evacuation_state';
+      if (/triage/.test(n)) return 'triage_state';
+      if (/media/.test(n)) return 'media_state';
+      return `${n.replace(/\s+/g, '_')}_state`;
+    };
+    for (const teamName of teamNames) {
+      const stateKey = teamToStateKey(teamName);
+      const defs =
+        counterDefsMap[teamName] ??
+        counterDefsMap[teamName.toLowerCase()] ??
+        Object.entries(counterDefsMap).find(
+          ([k]) => k.toLowerCase() === teamName.toLowerCase(),
+        )?.[1];
+      if (defs?.length) {
+        const obj: Record<string, unknown> = {};
+        for (const d of defs) {
+          obj[d.key] = d.initial_value;
+        }
+        schema[stateKey] = obj;
+      }
+    }
+    stateSchemaJson = JSON.stringify(
+      Object.keys(schema).length > 0 ? schema : buildTeamStateSchemaHint(teamNames),
+      null,
+      2,
+    );
+  } else {
+    const stateSchema = buildTeamStateSchemaHint(teamNames);
+    stateSchemaJson = JSON.stringify(stateSchema, null, 2);
+  }
 
   const locationsBlock = locations?.length
     ? `\nMap pins for this scenario:\n${locations.map((l) => `- ${l.label} (${l.location_type}, category: ${l.pin_category}): ${l.description || ''}`).join('\n')}`
@@ -1984,6 +2180,15 @@ export async function warroomGenerateScenario(
     logger.info({ poiCount: poiPins.length }, 'POI pins generated from OSM');
   }
 
+  // Counter definitions first, then environmental seeds (seeds reference counter keys)
+  const counterDefsMap = await generateCounterDefinitions(
+    input,
+    teamNames,
+    openAiApiKey,
+    onProgress,
+    narrative,
+  );
+
   const environmental_seeds = await generateEnvironmentalSeeds(
     input,
     teamNames,
@@ -1991,7 +2196,24 @@ export async function warroomGenerateScenario(
     onProgress,
     narrative,
     locations,
+    counterDefsMap,
   );
+
+  // Attach counter definitions to teams (AI-generated or template fallback)
+  const effectiveDefsMap = counterDefsMap ?? loadTemplateCounterDefs(input.scenario_type);
+  if (effectiveDefsMap) {
+    for (const team of phase1.teams) {
+      const n = team.team_name.toLowerCase();
+      const defs =
+        effectiveDefsMap[team.team_name] ??
+        effectiveDefsMap[n] ??
+        Object.entries(effectiveDefsMap).find(([k]) => k.toLowerCase() === n)?.[1];
+      if (defs?.length) {
+        team.counter_definitions = defs;
+      }
+    }
+  }
+
   const phase4c = await generateLayoutAndSiteKnowledge(
     input,
     teamNames,

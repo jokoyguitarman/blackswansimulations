@@ -76,5 +76,150 @@
     }
   ],
   "compatible_settings": ["subway", "foot_bridge", "mall"],
-  "compatible_terrains": ["urban"]
+  "compatible_terrains": ["urban"],
+  "team_counter_definitions": {
+    "evacuation": [
+      {
+        "key": "total_evacuees",
+        "label": "Total Evacuees",
+        "type": "number",
+        "initial_value": 500,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "evacuated_count",
+        "label": "People Evacuated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 35,
+          "cap_key": "total_evacuees",
+          "requires_flag": "flow_control_decided",
+          "robustness_affects": true,
+          "congestion_halves": true,
+          "impact_sensitive": true
+        }
+      },
+      {
+        "key": "flow_control_decided",
+        "label": "Flow Control Decided",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["flow", "bottleneck", "stagger", "egress", "congestion", "choke point"]
+        }
+      }
+    ],
+    "triage": [
+      {
+        "key": "patients_being_treated",
+        "label": "Patients Being Treated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all",
+        "config": {
+          "source_pool_key": "total_evacuees",
+          "pool_fraction": 0.15,
+          "split_fractions": { "deaths_on_site": 0.15, "handed_over_to_hospital": 0.35 }
+        }
+      },
+      {
+        "key": "patients_waiting",
+        "label": "Patients Waiting",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "handed_over_to_hospital",
+        "label": "Handed Over to Hospital",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "deaths_on_site",
+        "label": "Deaths on Site",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "supply_request_made",
+        "label": "Supply Request Made",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": { "keywords": ["supply", "request", "tourniquet", "stretcher"] }
+      }
+    ],
+    "media": [
+      {
+        "key": "statements_issued",
+        "label": "Statements Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": { "keywords": ["statement", "press", "announce", "release"] }
+      },
+      {
+        "key": "misinformation_addressed_count",
+        "label": "Misinformation Addressed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": { "keywords": ["debunk", "counter", "correct", "misinformation"] }
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": { "keywords": ["statement", "press", "announce", "release"] }
+      }
+    ],
+    "transit_security": [
+      {
+        "key": "service_halted",
+        "label": "Service Halted",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["halt", "stop", "suspend", "service"] }
+      },
+      {
+        "key": "attacker_contained",
+        "label": "Attacker Contained",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["contained", "neutralised", "apprehended", "subdued"] }
+      },
+      {
+        "key": "area_secured",
+        "label": "Area Secured",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": { "keywords": ["secure", "lockdown", "cleared"] }
+      }
+    ]
+  }
 }

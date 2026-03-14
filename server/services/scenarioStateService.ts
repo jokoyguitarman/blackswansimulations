@@ -5,6 +5,7 @@ import {
   getConditionConfigForScenario,
   type KeywordPatternDef,
 } from './scenarioConditionConfigService.js';
+import type { CounterDefinition } from '../counterDefinitions.js';
 
 /**
  * Scenario State Service - Server-side only
@@ -381,16 +382,13 @@ export async function updateTeamStateFromDecision(
       (session.current_state as Record<string, unknown>) || {};
     const scenarioId = options?.scenarioId ?? (session.scenario_id as string | undefined) ?? null;
 
-    const evacuationState = (currentState.evacuation_state as Record<string, unknown>) || {};
-    const triageState = (currentState.triage_state as Record<string, unknown>) || {};
-    const mediaState = (currentState.media_state as Record<string, unknown>) || {};
+    const title = options?.decisionTitle ?? '';
+    const description = options?.decisionDescription ?? '';
+    const decisionText = `${title} ${description}`.toLowerCase();
 
     const isEvacuation = authorTeamNames.some((t) => /evacuation/i.test(t));
     const isTriage = authorTeamNames.some((t) => /triage/i.test(t));
     const isMedia = authorTeamNames.some((t) => /media/i.test(t));
-
-    const title = options?.decisionTitle ?? '';
-    const description = options?.decisionDescription ?? '';
 
     // Triage: extract zone choice and store properties for condition evaluator
     if (isTriage && scenarioId && (title || description)) {
@@ -414,86 +412,61 @@ export async function updateTeamStateFromDecision(
       }
     }
 
-    if (isEvacuation) {
-      if (
-        hasCategory('flow_control') ||
-        hasCategory('evacuation_flow_control') ||
-        hasKeyword(
-          'flow',
-          'bottleneck',
-          'stagger',
-          'egress',
-          'congestion',
-          'exit capacity',
-          'exit width',
-          'flow rate',
-          'people per minute',
-          'capacity per exit',
-        )
-      ) {
-        evacuationState.flow_control_decided = true;
+    // --- Data-driven counter updates from counter_definitions ---
+    const counterDefsMap = (currentState._counter_definitions ?? {}) as Record<
+      string,
+      CounterDefinition[]
+    >;
+    const hasCounterDefs = Object.keys(counterDefsMap).length > 0;
+
+    if (hasCounterDefs) {
+      // Map author team names to state keys
+      const teamToStateKey = (name: string): string => {
+        const n = (name ?? '').toLowerCase();
+        if (/evacuation|evac/.test(n)) return 'evacuation_state';
+        if (/triage/.test(n)) return 'triage_state';
+        if (/media/.test(n)) return 'media_state';
+        return `${n.replace(/\s+/g, '_')}_state`;
+      };
+
+      for (const teamName of authorTeamNames) {
+        const stateKey = teamToStateKey(teamName);
+        const defs = counterDefsMap[stateKey];
+        if (!defs?.length) continue;
+
+        const teamState = (currentState[stateKey] as Record<string, unknown>) ?? {};
+
+        for (const def of defs) {
+          if (def.behavior === 'decision_toggle' && def.type === 'boolean') {
+            const cfg = def.config ?? {};
+            const kwMatch = cfg.keywords?.some((kw) => decisionText.includes(kw.toLowerCase()));
+            const catMatch = cfg.categories?.some((c) => hasCategory(c) || categories.includes(c));
+            if (kwMatch || catMatch) {
+              teamState[def.key] = true;
+            }
+          } else if (def.behavior === 'decision_increment' && def.type === 'number') {
+            const cfg = def.config ?? {};
+            const kwMatch = cfg.keywords?.some((kw) => decisionText.includes(kw.toLowerCase()));
+            const catMatch = cfg.categories?.some((c) => hasCategory(c) || categories.includes(c));
+            if (kwMatch || catMatch) {
+              teamState[def.key] = Math.max(0, Number(teamState[def.key]) || 0) + 1;
+            }
+          }
+        }
+
+        currentState[stateKey] = teamState;
       }
-      if (
-        hasCategory('coordination_order') ||
-        hasCategory('coordination') ||
-        hasCategory('evacuation_coordination') ||
-        hasKeyword('coordinate', 'triage')
-      ) {
-        evacuationState.coordination_with_triage = true;
-      }
-    }
-    if (isTriage) {
-      if (
-        hasCategory('supply_management') ||
-        hasKeyword(
-          'supply',
-          'request',
-          'ration',
-          'equipment',
-          'shortage',
-          'tourniquet',
-          'stretcher',
-          'triage tag',
-          'airway kit',
-          'oxygen',
-          'iv fluid',
-          'trauma kit',
-          'gauze',
-          'bandage',
-          'first aid kit',
-          'medical kit',
-        )
-      ) {
-        triageState.supply_request_made = true;
-      }
-      if (
-        hasCategory('prioritisation') ||
-        hasCategory('triage_protocol') ||
-        hasKeyword('prioritise', 'critical first', 'severity', 'triage protocol')
-      ) {
-        triageState.prioritisation_decided = true;
-      }
-      // Triage counters (handed_over, patients_being_treated, patients_waiting, casualties) are now
-      // driven by predetermined rates and robustness in the inject scheduler; no keyword-based bumps.
-    }
-    // Config-driven keyword patterns (from scenario type template)
-    if (scenarioId) {
-      try {
-        const config = await getConditionConfigForScenario(scenarioId);
-        const text = `${title} ${description}`.toLowerCase();
-        for (const pattern of config.keyword_patterns as KeywordPatternDef[]) {
-          if (!pattern.state_key || !pattern.keywords?.length) continue;
-          const matches = pattern.keywords.some((kw) => text.includes(kw.toLowerCase()));
-          if (!matches) continue;
-          const [parent, child] = pattern.state_key.split('.');
-          if (!parent || !child) continue;
-          if (parent === 'evacuation_state') {
-            (evacuationState as Record<string, unknown>)[child] = true;
-          } else if (parent === 'triage_state') {
-            (triageState as Record<string, unknown>)[child] = true;
-          } else if (parent === 'media_state') {
-            (mediaState as Record<string, unknown>)[child] = true;
-          } else {
+
+      // Also run config-driven keyword patterns (from scenario type template) for non-counter state
+      if (scenarioId) {
+        try {
+          const config = await getConditionConfigForScenario(scenarioId);
+          for (const pattern of config.keyword_patterns as KeywordPatternDef[]) {
+            if (!pattern.state_key || !pattern.keywords?.length) continue;
+            const matches = pattern.keywords.some((kw) => decisionText.includes(kw.toLowerCase()));
+            if (!matches) continue;
+            const [parent, child] = pattern.state_key.split('.');
+            if (!parent || !child) continue;
             let target = currentState[parent] as Record<string, unknown>;
             if (typeof target !== 'object' || target === null) {
               target = {};
@@ -501,70 +474,162 @@ export async function updateTeamStateFromDecision(
             }
             (target as Record<string, unknown>)[child] = true;
           }
+        } catch (configErr) {
+          logger.debug({ scenarioId, err: configErr }, 'Condition config fetch failed');
         }
-      } catch (configErr) {
-        logger.debug(
-          { scenarioId, err: configErr },
-          'Condition config fetch failed; using defaults',
-        );
       }
+    } else {
+      // Legacy hardcoded decision handling (backward compatibility)
+      const evacuationState = (currentState.evacuation_state as Record<string, unknown>) || {};
+      const triageState = (currentState.triage_state as Record<string, unknown>) || {};
+      const mediaState = (currentState.media_state as Record<string, unknown>) || {};
+
+      if (isEvacuation) {
+        if (
+          hasCategory('flow_control') ||
+          hasCategory('evacuation_flow_control') ||
+          hasKeyword(
+            'flow',
+            'bottleneck',
+            'stagger',
+            'egress',
+            'congestion',
+            'exit capacity',
+            'exit width',
+            'flow rate',
+            'people per minute',
+            'capacity per exit',
+          )
+        ) {
+          evacuationState.flow_control_decided = true;
+        }
+        if (
+          hasCategory('coordination_order') ||
+          hasCategory('coordination') ||
+          hasCategory('evacuation_coordination') ||
+          hasKeyword('coordinate', 'triage')
+        ) {
+          evacuationState.coordination_with_triage = true;
+        }
+      }
+      if (isTriage) {
+        if (
+          hasCategory('supply_management') ||
+          hasKeyword(
+            'supply',
+            'request',
+            'ration',
+            'equipment',
+            'shortage',
+            'tourniquet',
+            'stretcher',
+            'triage tag',
+            'airway kit',
+            'oxygen',
+            'iv fluid',
+            'trauma kit',
+            'gauze',
+            'bandage',
+            'first aid kit',
+            'medical kit',
+          )
+        ) {
+          triageState.supply_request_made = true;
+        }
+        if (
+          hasCategory('prioritisation') ||
+          hasCategory('triage_protocol') ||
+          hasKeyword('prioritise', 'critical first', 'severity', 'triage protocol')
+        ) {
+          triageState.prioritisation_decided = true;
+        }
+      }
+      if (scenarioId) {
+        try {
+          const config = await getConditionConfigForScenario(scenarioId);
+          for (const pattern of config.keyword_patterns as KeywordPatternDef[]) {
+            if (!pattern.state_key || !pattern.keywords?.length) continue;
+            const matches = pattern.keywords.some((kw) => decisionText.includes(kw.toLowerCase()));
+            if (!matches) continue;
+            const [parent, child] = pattern.state_key.split('.');
+            if (!parent || !child) continue;
+            if (parent === 'evacuation_state') {
+              (evacuationState as Record<string, unknown>)[child] = true;
+            } else if (parent === 'triage_state') {
+              (triageState as Record<string, unknown>)[child] = true;
+            } else if (parent === 'media_state') {
+              (mediaState as Record<string, unknown>)[child] = true;
+            } else {
+              let target = currentState[parent] as Record<string, unknown>;
+              if (typeof target !== 'object' || target === null) {
+                target = {};
+                currentState[parent] = target;
+              }
+              (target as Record<string, unknown>)[child] = true;
+            }
+          }
+        } catch (configErr) {
+          logger.debug(
+            { scenarioId, err: configErr },
+            'Condition config fetch failed; using defaults',
+          );
+        }
+      }
+      if (isMedia) {
+        if (
+          hasCategory('public_statement') ||
+          hasKeyword('statement', 'press', 'announce', 'release')
+        ) {
+          mediaState.first_statement_issued = true;
+          mediaState.statement_issued_at_minute = elapsedMinutes;
+          mediaState.statements_issued = Math.max(0, Number(mediaState.statements_issued) || 0) + 1;
+        }
+        if (
+          hasCategory('misinformation_management') ||
+          hasCategory('misinformation_response') ||
+          hasKeyword('debunk', 'counter', 'correct', 'misinformation', 'rumour', 'narrative')
+        ) {
+          mediaState.misinformation_addressed = true;
+          mediaState.misinformation_addressed_count =
+            Math.max(0, Number(mediaState.misinformation_addressed_count) || 0) + 1;
+        }
+        if (
+          hasKeyword('spokesperson', 'one voice', 'single spokesperson', 'designated spokesperson')
+        ) {
+          mediaState.spokesperson_designated = true;
+        }
+        if (
+          hasKeyword(
+            'no names',
+            'family first',
+            'notify family',
+            'victim dignity',
+            'do not release names',
+          )
+        ) {
+          mediaState.victim_dignity_respected = true;
+        }
+        if (
+          hasKeyword(
+            '30 min',
+            '60 min',
+            '30 minutes',
+            '60 minutes',
+            'next update',
+            'regular updates',
+            'update every',
+          )
+        ) {
+          mediaState.regular_updates_planned = true;
+        }
+      }
+
+      currentState.evacuation_state = evacuationState;
+      currentState.triage_state = triageState;
+      currentState.media_state = mediaState;
     }
 
-    if (isMedia) {
-      if (
-        hasCategory('public_statement') ||
-        hasKeyword('statement', 'press', 'announce', 'release')
-      ) {
-        mediaState.first_statement_issued = true;
-        mediaState.statement_issued_at_minute = elapsedMinutes;
-        mediaState.statements_issued = Math.max(0, Number(mediaState.statements_issued) || 0) + 1;
-      }
-      if (
-        hasCategory('misinformation_management') ||
-        hasCategory('misinformation_response') ||
-        hasKeyword('debunk', 'counter', 'correct', 'misinformation', 'rumour', 'narrative')
-      ) {
-        mediaState.misinformation_addressed = true;
-        mediaState.misinformation_addressed_count =
-          Math.max(0, Number(mediaState.misinformation_addressed_count) || 0) + 1;
-      }
-      if (
-        hasKeyword('spokesperson', 'one voice', 'single spokesperson', 'designated spokesperson')
-      ) {
-        mediaState.spokesperson_designated = true;
-      }
-      if (
-        hasKeyword(
-          'no names',
-          'family first',
-          'notify family',
-          'victim dignity',
-          'do not release names',
-        )
-      ) {
-        mediaState.victim_dignity_respected = true;
-      }
-      if (
-        hasKeyword(
-          '30 min',
-          '60 min',
-          '30 minutes',
-          '60 minutes',
-          'next update',
-          'regular updates',
-          'update every',
-        )
-      ) {
-        mediaState.regular_updates_planned = true;
-      }
-    }
-
-    const nextState = {
-      ...currentState,
-      evacuation_state: evacuationState,
-      triage_state: triageState,
-      media_state: mediaState,
-    };
+    const nextState = { ...currentState };
 
     const { error } = await supabaseAdmin
       .from('sessions')

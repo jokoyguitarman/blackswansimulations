@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from './websocketService.js';
+import type { CounterDefinition } from '../counterDefinitions.js';
 
 /**
  * Environmental State Service — Step 2
@@ -186,12 +187,17 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
     }
     const currentState = (session.current_state as Record<string, unknown>) || {};
 
-    // Fetch scenario teams to only write state for teams that exist
+    // Fetch scenario teams (including counter_definitions) to write state for teams that exist
     const { data: scenarioTeams } = await supabaseAdmin
       .from('scenario_teams')
-      .select('team_name')
+      .select('team_name, counter_definitions')
       .eq('scenario_id', scenarioId);
-    const teamNames = (scenarioTeams ?? []).map((t) => (t as { team_name: string }).team_name);
+
+    interface ScenarioTeamRow {
+      team_name: string;
+      counter_definitions?: CounterDefinition[] | null;
+    }
+    const teamRows = (scenarioTeams ?? []) as ScenarioTeamRow[];
 
     const nextState: Record<string, unknown> = {
       ...currentState,
@@ -203,49 +209,89 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
     };
 
     // Add team state only for teams in the scenario (backward compat: if no teams, use evac/triage/media)
-    const teamsToInit = teamNames.length > 0 ? teamNames : ['Evacuation', 'Triage', 'Media'];
+    const teamsToInit: ScenarioTeamRow[] =
+      teamRows.length > 0
+        ? teamRows
+        : [
+            { team_name: 'Evacuation', counter_definitions: null },
+            { team_name: 'Triage', counter_definitions: null },
+            { team_name: 'Media', counter_definitions: null },
+          ];
 
-    for (const teamName of teamsToInit) {
-      const stateKey = teamToStateKey(teamName);
-      if (stateKey === 'evacuation_state') {
-        nextState.evacuation_state = {
-          ...DEFAULT_EVACUATION_STATE,
-          ...(seed.evacuation_state as EvacuationStateSeed),
-        };
-      } else if (stateKey === 'triage_state') {
-        nextState.triage_state = {
-          ...DEFAULT_TRIAGE_STATE,
-          ...(seed.triage_state as TriageStateSeed),
-        };
-      } else if (stateKey === 'media_state') {
-        nextState.media_state = {
-          ...DEFAULT_MEDIA_STATE,
-          ...(seed.media_state as MediaStateSeed),
-        };
-      } else if (stateKey === 'police_state') {
-        nextState.police_state = {
-          ...DEFAULT_POLICE_STATE,
-          ...(seed.police_state as Record<string, unknown> | undefined),
-        };
-      } else if (stateKey === 'negotiation_state') {
-        nextState.negotiation_state = {
-          ...DEFAULT_NEGOTIATION_STATE,
-          ...(seed.negotiation_state as Record<string, unknown> | undefined),
-        };
-      } else if (stateKey === 'intelligence_state') {
-        nextState.intelligence_state = {
-          ...DEFAULT_INTELLIGENCE_STATE,
-          ...(seed.intelligence_state as Record<string, unknown> | undefined),
-        };
-      } else if (stateKey === 'fire_state') {
-        nextState.fire_state = {
-          ...DEFAULT_FIRE_STATE,
-          ...(seed.fire_state as Record<string, unknown> | undefined),
-        };
+    for (const teamRow of teamsToInit) {
+      const stateKey = teamToStateKey(teamRow.team_name);
+      const defs = teamRow.counter_definitions;
+
+      if (defs && Array.isArray(defs) && defs.length > 0) {
+        // Data-driven initialization from counter definitions
+        const teamState: Record<string, unknown> = {};
+        for (const def of defs) {
+          teamState[def.key] = def.initial_value;
+        }
+        // Overlay with seed values (seed variant can override initial_value per key)
+        const seedForTeam = seed[stateKey] as Record<string, unknown> | undefined;
+        if (seedForTeam && typeof seedForTeam === 'object') {
+          for (const [k, v] of Object.entries(seedForTeam)) {
+            if (k in teamState) {
+              teamState[k] = v;
+            }
+          }
+        }
+        nextState[stateKey] = teamState;
       } else {
-        const teamSeed = seed[stateKey] as Record<string, unknown> | undefined;
-        nextState[stateKey] = teamSeed && typeof teamSeed === 'object' ? { ...teamSeed } : {};
+        // Legacy hardcoded defaults (backward compatibility)
+        if (stateKey === 'evacuation_state') {
+          nextState.evacuation_state = {
+            ...DEFAULT_EVACUATION_STATE,
+            ...(seed.evacuation_state as EvacuationStateSeed),
+          };
+        } else if (stateKey === 'triage_state') {
+          nextState.triage_state = {
+            ...DEFAULT_TRIAGE_STATE,
+            ...(seed.triage_state as TriageStateSeed),
+          };
+        } else if (stateKey === 'media_state') {
+          nextState.media_state = {
+            ...DEFAULT_MEDIA_STATE,
+            ...(seed.media_state as MediaStateSeed),
+          };
+        } else if (stateKey === 'police_state') {
+          nextState.police_state = {
+            ...DEFAULT_POLICE_STATE,
+            ...(seed.police_state as Record<string, unknown> | undefined),
+          };
+        } else if (stateKey === 'negotiation_state') {
+          nextState.negotiation_state = {
+            ...DEFAULT_NEGOTIATION_STATE,
+            ...(seed.negotiation_state as Record<string, unknown> | undefined),
+          };
+        } else if (stateKey === 'intelligence_state') {
+          nextState.intelligence_state = {
+            ...DEFAULT_INTELLIGENCE_STATE,
+            ...(seed.intelligence_state as Record<string, unknown> | undefined),
+          };
+        } else if (stateKey === 'fire_state') {
+          nextState.fire_state = {
+            ...DEFAULT_FIRE_STATE,
+            ...(seed.fire_state as Record<string, unknown> | undefined),
+          };
+        } else {
+          const teamSeed = seed[stateKey] as Record<string, unknown> | undefined;
+          nextState[stateKey] = teamSeed && typeof teamSeed === 'object' ? { ...teamSeed } : {};
+        }
       }
+    }
+
+    // Store counter_definitions lookup on the session for the game engine
+    const counterDefsMap: Record<string, CounterDefinition[]> = {};
+    for (const teamRow of teamsToInit) {
+      if (teamRow.counter_definitions?.length) {
+        const stateKey = teamToStateKey(teamRow.team_name);
+        counterDefsMap[stateKey] = teamRow.counter_definitions;
+      }
+    }
+    if (Object.keys(counterDefsMap).length > 0) {
+      nextState._counter_definitions = counterDefsMap;
     }
 
     const { error: updateError } = await supabaseAdmin

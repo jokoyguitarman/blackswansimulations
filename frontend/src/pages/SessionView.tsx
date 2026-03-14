@@ -60,6 +60,25 @@ interface Session {
   }>;
 }
 
+interface CounterDefinition {
+  key: string;
+  label: string;
+  type: 'number' | 'boolean' | 'enum';
+  initial_value: number | boolean | string;
+  behavior: string;
+  visible_to?: 'all' | 'trainer_only';
+  config?: {
+    cap_key?: string;
+    [k: string]: unknown;
+  };
+}
+
+interface ScenarioTeamWithCounters {
+  team_name: string;
+  team_description?: string;
+  counter_definitions?: CounterDefinition[] | null;
+}
+
 export const SessionView = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -96,9 +115,7 @@ export const SessionView = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showTeamAssignmentModal, setShowTeamAssignmentModal] = useState(false);
   const [myTeams, setMyTeams] = useState<Array<{ team_name: string; team_role?: string }>>([]);
-  const [scenarioTeams, setScenarioTeams] = useState<
-    Array<{ team_name: string; team_description?: string }>
-  >([]);
+  const [scenarioTeams, setScenarioTeams] = useState<ScenarioTeamWithCounters[]>([]);
   const [backendDecisions, setBackendDecisions] = useState<
     Array<{
       id: string;
@@ -681,7 +698,58 @@ export const SessionView = () => {
             const displayName =
               team.team_name.charAt(0).toUpperCase() + (team.team_name?.slice(1) ?? '');
 
-            if (stateKey === 'evacuation_state') {
+            const defs = (team as ScenarioTeamWithCounters).counter_definitions;
+
+            if (defs && Array.isArray(defs) && defs.length > 0) {
+              // Data-driven rendering from counter_definitions
+              const visibleDefs = defs.filter((d) => d.visible_to !== 'trainer_only' || isTrainer);
+              if (visibleDefs.length === 0 && !isTrainer) continue;
+
+              blocks.push(
+                <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
+                  <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                    {displayName}
+                  </div>
+                  <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
+                    {visibleDefs.map((def) => {
+                      const val = state[def.key];
+                      if (def.type === 'number') {
+                        const numVal = Math.max(0, Number(val) || 0);
+                        const capKey = def.config?.cap_key;
+                        const capVal = capKey ? Math.max(0, Number(state[capKey]) || 0) : null;
+                        return (
+                          <div key={def.key}>
+                            {def.label}: {numVal}
+                            {capVal != null && capVal > 0 && (
+                              <>
+                                {' / '}
+                                {capVal}
+                                <span className="text-robotic-yellow/70 ml-1">
+                                  ({Math.round((numVal / capVal) * 100)}%)
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        );
+                      } else if (def.type === 'boolean') {
+                        return (
+                          <div key={def.key}>
+                            {def.label}: {val === true ? 'Yes' : 'No'}
+                          </div>
+                        );
+                      } else {
+                        return (
+                          <div key={def.key}>
+                            {def.label}: {val != null ? String(val) : '–'}
+                          </div>
+                        );
+                      }
+                    })}
+                  </div>
+                </div>,
+              );
+            } else if (stateKey === 'evacuation_state') {
+              // Legacy hardcoded rendering
               blocks.push(
                 <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
                   <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
