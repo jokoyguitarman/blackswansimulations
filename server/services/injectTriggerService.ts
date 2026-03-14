@@ -311,9 +311,7 @@ export async function evaluateDecisionBasedTriggers(
       return;
     }
 
-    // Limit the number of injects published per decision (default: 2)
-    // This prevents flooding the screen with too many injects at once
-    const maxInjectsPerDecision = Number(process.env.MAX_DECISION_INJECTS_PER_TRIGGER) || 2;
+    const maxInjectsPerDecision = Number(process.env.MAX_DECISION_INJECTS_PER_TRIGGER) || 3;
     let publishedCount = 0;
 
     // Publish each matching inject (up to the limit)

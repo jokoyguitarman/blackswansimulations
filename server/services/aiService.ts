@@ -201,10 +201,10 @@ Analyze the decision and classify it into one or more of these categories:
 Extract:
 1. Primary category (most relevant)
 2. All applicable categories
-3. Key keywords from the decision
+3. Key keywords from the decision — IMPORTANT: include any LOCATION NAMES, PLACE NAMES, or SITE LABELS mentioned in the decision (e.g. "parking_lot_a", "gate_3", "exit_b", "field_north"). Lowercase them and replace spaces with underscores.
 4. Semantic tags that describe the decision's meaning
 
-Include relevant keywords (e.g. supply, ration, prioritise, critical first, flow, stagger, coordinate, triage, statement, press, debunk). Return ONLY valid JSON in this exact format:
+Include relevant keywords (e.g. supply, ration, prioritise, critical first, flow, stagger, coordinate, triage, statement, press, debunk) AND any specific location/site names referenced. Return ONLY valid JSON in this exact format:
 {
   "primary_category": "emergency_declaration",
   "categories": ["emergency_declaration", "operational_action"],
@@ -314,12 +314,26 @@ Provide a detailed classification with high confidence.`;
     );
 
     // Validate and normalize
+    const rawKeywords: string[] = Array.isArray(parsed.keywords) ? parsed.keywords : [];
+
+    // Ensure location-like proper nouns from the decision text appear as keywords
+    // (lowercased, spaces → underscores) so trigger_condition matching can find them.
+    const combinedText = `${decision.title} ${decision.description}`.toLowerCase();
+    const locationTokens = combinedText
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((t) => t.length > 2);
+    const kwSet = new Set(rawKeywords.map((k) => k.toLowerCase().replace(/\s+/g, '_')));
+    for (const token of locationTokens) {
+      kwSet.add(token);
+    }
+
     return {
       primary_category: parsed.primary_category || 'operational_action',
       categories: Array.isArray(parsed.categories)
         ? parsed.categories
         : [parsed.primary_category || 'operational_action'],
-      keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [],
+      keywords: Array.from(kwSet),
       semantic_tags: Array.isArray(parsed.semantic_tags) ? parsed.semantic_tags : [],
       confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.8,
     };
