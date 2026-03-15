@@ -18,6 +18,7 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { type WebSocketEvent } from '../lib/websocketClient';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { useAuth } from '../contexts/AuthContext';
+import { BackgroundMusic } from '../components/Session/BackgroundMusic';
 
 interface Session {
   id: string;
@@ -647,6 +648,9 @@ export const SessionView = () => {
               )}
             </div>
             <div className="flex items-center gap-2">
+              {session.status === 'in_progress' && (
+                <BackgroundMusic src="/audio/detective-bgm.mp3" />
+              )}
               <NotificationBell />
               {isTrainer && session.status === 'in_progress' && (
                 <button

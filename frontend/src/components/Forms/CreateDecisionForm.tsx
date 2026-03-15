@@ -3,8 +3,8 @@ import { api } from '../../lib/api';
 
 interface CreateDecisionFormProps {
   sessionId: string;
-  /** Incident this decision responds to (required; decisions are created from incident card). */
-  incidentId: string;
+  /** Incident this decision responds to. Omit for pre-emptive decisions. */
+  incidentId?: string;
   onClose: () => void;
   onSuccess?: () => void;
 }
@@ -18,17 +18,23 @@ export const CreateDecisionForm = ({
   const [loading, setLoading] = useState(false);
   const [description, setDescription] = useState('');
 
+  const isPreemptive = !incidentId;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const result = await api.decisions.create({
+      const payload: Record<string, unknown> = {
         session_id: sessionId,
-        response_to_incident_id: incidentId,
         description,
-        required_approvers: [], // No approval steps; creator executes from this form
-      });
+        required_approvers: [],
+      };
+      if (incidentId) {
+        payload.response_to_incident_id = incidentId;
+      }
+
+      const result = await api.decisions.create(payload);
       const created = result?.data as { id: string } | undefined;
       if (!created?.id) {
         alert('Decision was created but could not execute. Please execute it from the list.');
@@ -53,7 +59,15 @@ export const CreateDecisionForm = ({
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
       <div className="military-border bg-robotic-gray-300 p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <h2 className="text-xl terminal-text uppercase mb-6">[RESPOND_TO_INCIDENT]</h2>
+        <h2 className="text-xl terminal-text uppercase mb-6">
+          {isPreemptive ? '[PRE-EMPTIVE_DECISION]' : '[RESPOND_TO_INCIDENT]'}
+        </h2>
+        {isPreemptive && (
+          <p className="text-xs terminal-text text-robotic-yellow/60 mb-4">
+            This decision is not in response to a specific incident. Use this to establish
+            pre-emptive measures, protocols, or resource allocations proactively.
+          </p>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
@@ -65,7 +79,11 @@ export const CreateDecisionForm = ({
               onChange={(e) => setDescription(e.target.value)}
               className="w-full px-4 py-3 military-input terminal-text"
               rows={4}
-              placeholder="Detailed decision description..."
+              placeholder={
+                isPreemptive
+                  ? 'Describe your pre-emptive decision, protocol, or resource allocation...'
+                  : 'Detailed decision description...'
+              }
             />
           </div>
 

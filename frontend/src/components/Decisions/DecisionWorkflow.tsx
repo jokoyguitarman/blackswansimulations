@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { CreateDecisionForm } from '../Forms/CreateDecisionForm';
 
 interface DecisionStep {
   id: string;
@@ -47,6 +48,7 @@ export const DecisionWorkflow = ({ sessionId }: DecisionWorkflowProps) => {
   const [loading, setLoading] = useState(true);
   const [selectedDecision, setSelectedDecision] = useState<Decision | null>(null);
   const [expandedDecisions, setExpandedDecisions] = useState<Set<string>>(new Set());
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   // Initial load
   useEffect(() => {
@@ -155,11 +157,32 @@ export const DecisionWorkflow = ({ sessionId }: DecisionWorkflowProps) => {
   return (
     <div className="space-y-4">
       <div className="military-border p-4">
-        <h3 className="text-lg terminal-text uppercase">[DECISIONS] Decision Queue</h3>
-        <p className="text-xs terminal-text text-robotic-yellow/70 mt-1">
-          Create decisions from the Incidents panel by clicking [DECISION] on an incident.
-        </p>
+        <div className="flex justify-between items-start gap-4">
+          <div>
+            <h3 className="text-lg terminal-text uppercase">[DECISIONS] Decision Queue</h3>
+            <p className="text-xs terminal-text text-robotic-yellow/70 mt-1">
+              Respond to incidents from the Incidents panel, or create pre-emptive decisions below.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="military-button px-4 py-2 text-xs terminal-text whitespace-nowrap border-green-400 text-green-400 hover:bg-green-400/10"
+          >
+            [CREATE_DECISION]
+          </button>
+        </div>
       </div>
+
+      {showCreateForm && (
+        <CreateDecisionForm
+          sessionId={sessionId}
+          onClose={() => setShowCreateForm(false)}
+          onSuccess={() => {
+            loadDecisions();
+            setShowCreateForm(false);
+          }}
+        />
+      )}
 
       <div className="space-y-3">
         {decisions.map((decision) => (

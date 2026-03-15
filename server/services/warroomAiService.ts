@@ -117,6 +117,14 @@ export interface WarroomScenarioPayload {
       description: string;
       severity: string;
     }>;
+    team_intelligence_dossiers?: Record<
+      string,
+      Array<{
+        question: string;
+        category: string;
+        answer: string;
+      }>
+    >;
   };
 }
 
@@ -1506,6 +1514,170 @@ RULES:
 }
 
 // ---------------------------------------------------------------------------
+// Phase 4d — Team Intelligence Dossiers  (1 call per team · ~2 500 tokens each)
+// ---------------------------------------------------------------------------
+
+interface TeamDossierEntry {
+  question: string;
+  category: string;
+  answer: string;
+}
+
+async function generateSingleTeamDossier(
+  teamName: string,
+  teamDescription: string,
+  input: WarroomGenerateInput,
+  allTeamNames: string[],
+  openAiApiKey: string,
+  narrative?: { title?: string; description?: string; briefing?: string },
+  locations?: WarroomScenarioPayload['locations'],
+  seeds?: WarroomScenarioPayload['environmental_seeds'],
+  phase4c?: {
+    layout_ground_truth?: Record<string, unknown>;
+    site_areas?: Array<Record<string, unknown>>;
+    custom_facts?: Array<{ topic: string; summary: string; detail?: string }>;
+    baseline_escalation_factors?: Array<{
+      id: string;
+      name: string;
+      description: string;
+      severity: string;
+    }>;
+  },
+): Promise<TeamDossierEntry[]> {
+  const { scenario_type, setting, terrain, venue_name, location, osm_vicinity } = input;
+  const venue = venue_name || location || setting;
+
+  const narrativeBlock = narrative
+    ? `\nNARRATIVE:\nTitle: ${narrative.title || ''}\nDescription: ${narrative.description || ''}\nBriefing: ${narrative.briefing || ''}`
+    : '';
+  const locationsBlock = locations?.length
+    ? `\nMap pins:\n${locations.map((l) => `- ${l.label} (${l.location_type}): ${l.description || ''}`).join('\n')}`
+    : '';
+  const osmBlock = osm_vicinity
+    ? `\nNearby facilities — Hospitals: ${osm_vicinity.hospitals?.map((h) => h.name).join(', ') || 'None'}; Police: ${osm_vicinity.police?.map((p) => p.name).join(', ') || 'None'}; Fire: ${osm_vicinity.fire_stations?.map((f) => f.name).join(', ') || 'None'}`
+    : '';
+  const seedSummary = seeds?.[0]
+    ? `\nBaseline seed "${seeds[0].variant_label}":\n${JSON.stringify(seeds[0].seed_data, null, 1).slice(0, 800)}`
+    : '';
+  const factsBlock = phase4c?.custom_facts?.length
+    ? `\nScenario facts:\n${phase4c.custom_facts.map((f) => `- ${f.topic}: ${f.detail || f.summary}`).join('\n')}`
+    : '';
+  const escalationBlock = phase4c?.baseline_escalation_factors?.length
+    ? `\nEscalation risks:\n${phase4c.baseline_escalation_factors.map((e) => `- ${e.name} (${e.severity}): ${e.description}`).join('\n')}`
+    : '';
+  const layoutBlock = phase4c?.layout_ground_truth
+    ? `\nLayout: ${JSON.stringify(phase4c.layout_ground_truth, null, 1).slice(0, 600)}`
+    : '';
+
+  const systemPrompt = `You are an expert crisis management scenario designer building a detailed INTELLIGENCE DOSSIER for one specific team in a training exercise.
+
+Scenario type: ${scenario_type}
+Venue: ${venue}
+Setting: ${setting} | Terrain: ${terrain}
+All teams: ${allTeamNames.join(', ')}
+${narrativeBlock}
+${locationsBlock}
+${osmBlock}
+${seedSummary}
+${factsBlock}
+${escalationBlock}
+${layoutBlock}
+
+TARGET TEAM: "${teamName}"
+TEAM ROLE: ${teamDescription}
+
+Your task: Think about what a "${teamName}" team would ACTUALLY need to know from a well-informed insider during a ${scenario_type} incident. Generate 10–15 questions they would realistically ask, along with rich, detailed answers grounded in this specific scenario.
+
+Each answer must be 3–6 sentences with SPECIFIC details: names of people, organizations, locations, numbers, timestamps, conditions, sentiments. Invent realistic details that are CONSISTENT with the scenario context — real-sounding names, plausible organizations, concrete numbers.
+
+Return ONLY valid JSON:
+{
+  "dossier": [
+    {
+      "question": "string — a natural question this team would ask the insider",
+      "category": "string — short snake_case category (e.g. public_sentiment, media_presence, resource_status, suspect_profile, witness_accounts, infrastructure_status, weather_conditions, crowd_behavior, political_pressure, supply_chain, communication_lines, legal_authority, chain_of_command, intelligence_feeds, hazmat_status, structural_integrity, casualty_profile, transport_availability, community_relations, misinformation, vip_presence)",
+      "answer": "string — 3-6 sentences of rich, specific, scenario-grounded intelligence"
+    }
+  ]
+}
+
+RULES:
+- Questions must be specific to what a "${teamName}" team needs during a ${scenario_type}. Think about their operational concerns, information gaps, and decision-making needs.
+- Answers must reference specific scenario details: the venue name, location, nearby facilities, scenario narrative.
+- Invent realistic supporting details (people names, organization names, specific numbers, timestamps) that are consistent with the scenario but add depth.
+- Cover a WIDE range of information needs — don't cluster around one topic. Include situational awareness, resource status, stakeholder dynamics, environmental conditions, and operational constraints.
+- Do NOT repeat information verbatim from the scenario briefing — add NEW intelligence that enriches the picture.
+- Every answer should give the team something ACTIONABLE or help them make better decisions.`;
+
+  const userPrompt = `Build the intelligence dossier for the "${teamName}" team in "${narrative?.title || scenario_type}" at ${venue}.`;
+
+  const parsed = await callOpenAi<{ dossier?: TeamDossierEntry[] }>(
+    systemPrompt,
+    userPrompt,
+    openAiApiKey,
+    3000,
+  );
+  return parsed.dossier?.length ? parsed.dossier : [];
+}
+
+async function generateTeamIntelligenceDossiers(
+  input: WarroomGenerateInput,
+  teamNames: string[],
+  teams: WarroomScenarioPayload['teams'],
+  openAiApiKey: string,
+  onProgress?: WarroomAiProgressCallback,
+  narrative?: { title?: string; description?: string; briefing?: string },
+  locations?: WarroomScenarioPayload['locations'],
+  seeds?: WarroomScenarioPayload['environmental_seeds'],
+  phase4c?: {
+    layout_ground_truth?: Record<string, unknown>;
+    site_areas?: Array<Record<string, unknown>>;
+    custom_facts?: Array<{ topic: string; summary: string; detail?: string }>;
+    baseline_escalation_factors?: Array<{
+      id: string;
+      name: string;
+      description: string;
+      severity: string;
+    }>;
+  },
+): Promise<Record<string, TeamDossierEntry[]> | undefined> {
+  const includeDossiers = input.complexity_tier === 'full' || input.complexity_tier === 'rich';
+  if (!includeDossiers) return undefined;
+
+  onProgress?.('Generating team intelligence dossiers...');
+
+  try {
+    const results = await Promise.all(
+      teams.map((t) =>
+        generateSingleTeamDossier(
+          t.team_name,
+          t.team_description,
+          input,
+          teamNames,
+          openAiApiKey,
+          narrative,
+          locations,
+          seeds,
+          phase4c,
+        ),
+      ),
+    );
+
+    const dossiers: Record<string, TeamDossierEntry[]> = {};
+    for (let i = 0; i < teams.length; i++) {
+      if (results[i].length > 0) {
+        dossiers[teams[i].team_name] = results[i];
+      }
+    }
+
+    return Object.keys(dossiers).length > 0 ? dossiers : undefined;
+  } catch (err) {
+    logger.warn({ err }, 'Phase 4d team intelligence dossiers failed; continuing without');
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Phase 2a — Universal time-based injects  (1 call · 1 500 tokens)
 // ---------------------------------------------------------------------------
 
@@ -2730,6 +2902,7 @@ export const generateTeamsAndCoreForResearch = generateTeamsAndCore;
  * Phase 4a-2   (sequential) : candidate-space pins (selected from OSM open spaces, after 4a-1)
  * Phase 4b     (sequential) : environmental seeds
  * Phase 4c     (sequential) : layout + site knowledge
+ * Phase 4d     (parallel)   : team intelligence dossiers (one call per team)
  * Batch B      (parallel)   : per-team condition injects + per-pair condition injects
  * Post-process              : normalizeInjectTiming + validatePinTopology
  */
@@ -2890,6 +3063,19 @@ export async function warroomGenerateScenario(
     environmental_seeds,
   );
 
+  // Phase 4d — Team Intelligence Dossiers (one AI call per team, in parallel)
+  const teamDossiers = await generateTeamIntelligenceDossiers(
+    input,
+    teamNames,
+    phase1.teams,
+    openAiApiKey,
+    onProgress,
+    narrative,
+    locations,
+    environmental_seeds,
+    phase4c,
+  );
+
   // Batch B — condition injects + environment-grounded decision injects, all parallel
   const includeCondition = input.complexity_tier !== 'minimal';
   let condition_driven_injects: WarroomScenarioPayload['condition_driven_injects'];
@@ -2990,6 +3176,9 @@ export async function warroomGenerateScenario(
   if (phase4c.custom_facts?.length) insiderKnowledge.custom_facts = phase4c.custom_facts;
   if (phase4c.baseline_escalation_factors?.length) {
     insiderKnowledge.baseline_escalation_factors = phase4c.baseline_escalation_factors;
+  }
+  if (teamDossiers && Object.keys(teamDossiers).length > 0) {
+    insiderKnowledge.team_intelligence_dossiers = teamDossiers;
   }
 
   const hasInsiderKnowledge = Object.keys(insiderKnowledge).length > 0;

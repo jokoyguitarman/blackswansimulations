@@ -44,7 +44,7 @@ const router = Router();
 const createDecisionSchema = z.object({
   body: z.object({
     session_id: z.string().uuid(),
-    response_to_incident_id: z.string().uuid(), // Required: decision is always created from an incident card
+    response_to_incident_id: z.string().uuid().optional(),
     title: z.string().max(200).optional(),
     description: z.string().min(1),
     decision_type: z
@@ -55,8 +55,8 @@ const createDecisionSchema = z.object({
         'policy_change',
         'coordination_order',
       ])
-      .optional(), // Make optional - AI will classify on execution
-    required_approvers: z.array(z.string().uuid()).default([]), // Now accepts user IDs instead of roles
+      .optional(),
+    required_approvers: z.array(z.string().uuid()).default([]),
     resources_needed: z.record(z.string(), z.unknown()).optional(),
   }),
 });
@@ -334,35 +334,35 @@ router.post(
         return res.status(400).json({ error: 'Session is not active' });
       }
 
-      // Verify incident belongs to this session
-      const { data: incident, error: incidentError } = await supabaseAdmin
-        .from('incidents')
-        .select('id')
-        .eq('id', response_to_incident_id)
-        .eq('session_id', session_id)
-        .single();
+      if (response_to_incident_id) {
+        const { data: incident, error: incidentError } = await supabaseAdmin
+          .from('incidents')
+          .select('id')
+          .eq('id', response_to_incident_id)
+          .eq('session_id', session_id)
+          .single();
 
-      if (incidentError || !incident) {
-        return res
-          .status(400)
-          .json({ error: 'Incident not found or does not belong to this session' });
-      }
+        if (incidentError || !incident) {
+          return res
+            .status(400)
+            .json({ error: 'Incident not found or does not belong to this session' });
+        }
 
-      // Only one decision per incident per player (this user); other players may also respond
-      const { data: existingByUser } = await supabaseAdmin
-        .from('decisions')
-        .select('id')
-        .eq('session_id', session_id)
-        .eq('response_to_incident_id', response_to_incident_id)
-        .eq('proposed_by', user.id)
-        .limit(1)
-        .maybeSingle();
+        const { data: existingByUser } = await supabaseAdmin
+          .from('decisions')
+          .select('id')
+          .eq('session_id', session_id)
+          .eq('response_to_incident_id', response_to_incident_id)
+          .eq('proposed_by', user.id)
+          .limit(1)
+          .maybeSingle();
 
-      if (existingByUser) {
-        return res.status(409).json({
-          error:
-            'You have already created a decision for this incident. Only one decision per incident per player is allowed.',
-        });
+        if (existingByUser) {
+          return res.status(409).json({
+            error:
+              'You have already created a decision for this incident. Only one decision per incident per player is allowed.',
+          });
+        }
       }
 
       // Title is optional; derive from description when missing or empty (DB requires NOT NULL)
@@ -376,10 +376,10 @@ router.post(
         .insert({
           session_id,
           proposed_by: user.id,
-          response_to_incident_id,
+          response_to_incident_id: response_to_incident_id || null,
           title,
           description,
-          type: decision_type || null, // Allow null - AI will populate on execution
+          type: decision_type || null,
           status: 'proposed',
         })
         .select()

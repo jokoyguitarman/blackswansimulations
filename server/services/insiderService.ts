@@ -58,6 +58,14 @@ export interface InsiderKnowledgeBlob {
   osm_vicinity?: OsmVicinity;
   custom_facts?: Array<{ topic: string; summary: string; detail?: string }>;
   team_doctrines?: Record<string, import('./warroomResearchService.js').StandardsFinding[]>;
+  team_intelligence_dossiers?: Record<
+    string,
+    Array<{
+      question: string;
+      category: string;
+      answer: string;
+    }>
+  >;
 }
 
 function normalizeQuestion(q: string): string {
@@ -795,6 +803,7 @@ export interface InsiderContext {
     { claimed_by?: string; claimed_as?: string; claimed_at_minutes?: number }
   >;
   elapsedMinutes?: number;
+  askingTeamName?: string;
 }
 
 function truncateJson(obj: unknown, maxChars: number): string {
@@ -870,6 +879,25 @@ function buildInsiderContextBlock(ctx: InsiderContext): string {
 
   if (k.team_doctrines && Object.keys(k.team_doctrines).length > 0) {
     parts.push(`TEAM DOCTRINES/STANDARDS:\n${truncateJson(k.team_doctrines, 1500)}`);
+  }
+
+  if (k.team_intelligence_dossiers && Object.keys(k.team_intelligence_dossiers).length > 0) {
+    if (ctx.askingTeamName && k.team_intelligence_dossiers[ctx.askingTeamName]?.length) {
+      const dossier = k.team_intelligence_dossiers[ctx.askingTeamName];
+      const dossierLines = dossier.map((d) => `Q: ${d.question}\nA: ${d.answer}`);
+      parts.push(
+        `INTELLIGENCE DOSSIER FOR ${ctx.askingTeamName.toUpperCase()}:\n${dossierLines.join('\n\n')}`,
+      );
+    } else {
+      const allLines: string[] = [];
+      for (const [team, entries] of Object.entries(k.team_intelligence_dossiers)) {
+        const teamLines = entries.slice(0, 5).map((d) => `Q: ${d.question}\nA: ${d.answer}`);
+        allLines.push(`[${team}]\n${teamLines.join('\n\n')}`);
+      }
+      if (allLines.length > 0) {
+        parts.push(`INTELLIGENCE DOSSIERS (all teams, summary):\n${allLines.join('\n\n')}`);
+      }
+    }
   }
 
   if (ctx.environmentalSeeds.length > 0) {

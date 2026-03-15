@@ -96,7 +96,7 @@ router.post(
         sources_used = 'interactive_map';
       } else {
         // Gather all scenario context for the AI
-        const [locationsResult, seedsResult, teamsResult] = await Promise.all([
+        const [locationsResult, seedsResult, teamsResult, userTeamResult] = await Promise.all([
           supabaseAdmin
             .from('scenario_locations')
             .select('label, location_type, description, conditions')
@@ -112,6 +112,12 @@ router.post(
             .select('team_name, team_description')
             .eq('scenario_id', session.scenario_id)
             .order('team_name', { ascending: true }),
+          supabaseAdmin
+            .from('session_teams')
+            .select('team_name')
+            .eq('session_id', sessionId)
+            .eq('user_id', user.id)
+            .maybeSingle(),
         ]);
 
         const currentState = (session.current_state as Record<string, unknown>) ?? {};
@@ -176,6 +182,8 @@ router.post(
           currentState,
           locationState,
           elapsedMinutes,
+          askingTeamName:
+            (userTeamResult.data as { team_name?: string } | null)?.team_name ?? undefined,
         };
 
         if (!env.openAiApiKey) {
