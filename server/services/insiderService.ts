@@ -769,3 +769,198 @@ export function buildSpaceStatusAnswer(locations: PhysicalSpaceLocationRow[]): {
 
   return { answer: lines.join('\n'), sources_used: 'scenario_locations, session_state' };
 }
+
+// ---------------------------------------------------------------------------
+// AI-powered contextual answer — accepts any question, searches all data
+// ---------------------------------------------------------------------------
+
+export interface InsiderContext {
+  scenarioTitle?: string;
+  scenarioDescription?: string;
+  scenarioBriefing?: string;
+  scenarioType?: string;
+  durationMinutes?: number;
+  knowledge: InsiderKnowledgeBlob;
+  locations: Array<{
+    label: string;
+    location_type: string;
+    description?: string;
+    conditions?: Record<string, unknown>;
+  }>;
+  environmentalSeeds: Array<{ variant_label: string; seed_data: Record<string, unknown> }>;
+  teams: Array<{ team_name: string; team_description: string }>;
+  currentState?: Record<string, unknown>;
+  locationState?: Record<
+    string,
+    { claimed_by?: string; claimed_as?: string; claimed_at_minutes?: number }
+  >;
+  elapsedMinutes?: number;
+}
+
+function truncateJson(obj: unknown, maxChars: number): string {
+  const full = JSON.stringify(obj, null, 0);
+  if (full.length <= maxChars) return full;
+  return full.slice(0, maxChars) + '... (truncated)';
+}
+
+function buildInsiderContextBlock(ctx: InsiderContext): string {
+  const parts: string[] = [];
+
+  if (ctx.scenarioTitle) parts.push(`SCENARIO: ${ctx.scenarioTitle}`);
+  if (ctx.scenarioType) parts.push(`TYPE: ${ctx.scenarioType}`);
+  if (ctx.scenarioDescription) parts.push(`DESCRIPTION: ${ctx.scenarioDescription}`);
+  if (ctx.scenarioBriefing) parts.push(`BRIEFING: ${ctx.scenarioBriefing.slice(0, 2000)}`);
+  if (ctx.durationMinutes) parts.push(`DURATION: ${ctx.durationMinutes} minutes`);
+  if (ctx.elapsedMinutes != null) parts.push(`TIME ELAPSED: ${ctx.elapsedMinutes} minutes`);
+
+  if (ctx.teams.length > 0) {
+    parts.push(
+      `TEAMS:\n${ctx.teams.map((t) => `- ${t.team_name}: ${t.team_description}`).join('\n')}`,
+    );
+  }
+
+  if (ctx.locations.length > 0) {
+    const locLines = ctx.locations.map((l) => {
+      const cond = l.conditions ? ` | Properties: ${truncateJson(l.conditions, 300)}` : '';
+      return `- ${l.label} (${l.location_type})${l.description ? `: ${l.description}` : ''}${cond}`;
+    });
+    parts.push(`MAP LOCATIONS (${ctx.locations.length} pins):\n${locLines.join('\n')}`);
+  }
+
+  if (ctx.locationState && Object.keys(ctx.locationState).length > 0) {
+    const claimLines = Object.entries(ctx.locationState)
+      .filter(([, v]) => v.claimed_by)
+      .map(
+        ([id, v]) =>
+          `- ${id}: claimed by ${v.claimed_by} as ${v.claimed_as ?? '?'} at T+${v.claimed_at_minutes ?? '?'}`,
+      );
+    if (claimLines.length > 0) {
+      parts.push(`CLAIMED LOCATIONS:\n${claimLines.join('\n')}`);
+    }
+  }
+
+  const k = ctx.knowledge;
+
+  if (k.layout_ground_truth) {
+    parts.push(`LAYOUT GROUND TRUTH:\n${truncateJson(k.layout_ground_truth, 1500)}`);
+  }
+
+  if (k.site_areas?.length) {
+    parts.push(`SITE AREAS (triage/staging candidates):\n${truncateJson(k.site_areas, 2000)}`);
+  }
+
+  if (k.osm_vicinity) {
+    const osm = k.osm_vicinity;
+    const osmParts: string[] = [];
+    if (osm.hospitals?.length) osmParts.push(`Hospitals: ${truncateJson(osm.hospitals, 800)}`);
+    if (osm.police?.length) osmParts.push(`Police: ${truncateJson(osm.police, 800)}`);
+    if (osm.fire_stations?.length)
+      osmParts.push(`Fire stations: ${truncateJson(osm.fire_stations, 800)}`);
+    if (osm.emergency_routes?.length)
+      osmParts.push(`Emergency routes: ${truncateJson(osm.emergency_routes, 800)}`);
+    if (osm.cctv_or_surveillance?.length)
+      osmParts.push(`CCTV: ${truncateJson(osm.cctv_or_surveillance, 500)}`);
+    if (osmParts.length > 0) parts.push(`NEARBY FACILITIES (OSM):\n${osmParts.join('\n')}`);
+  }
+
+  if (k.custom_facts?.length) {
+    const factLines = k.custom_facts.map((f) => `- ${f.topic}: ${f.detail || f.summary}`);
+    parts.push(`SCENARIO FACTS:\n${factLines.join('\n')}`);
+  }
+
+  if (k.team_doctrines && Object.keys(k.team_doctrines).length > 0) {
+    parts.push(`TEAM DOCTRINES/STANDARDS:\n${truncateJson(k.team_doctrines, 1500)}`);
+  }
+
+  if (ctx.environmentalSeeds.length > 0) {
+    for (const seed of ctx.environmentalSeeds.slice(0, 2)) {
+      parts.push(
+        `ENVIRONMENTAL SEED (${seed.variant_label}):\n${truncateJson(seed.seed_data, 2000)}`,
+      );
+    }
+  }
+
+  if (ctx.currentState && Object.keys(ctx.currentState).length > 0) {
+    const stateToShow = { ...ctx.currentState };
+    delete stateToShow._counter_definitions;
+    delete stateToShow.location_state;
+    parts.push(`CURRENT GAME STATE:\n${truncateJson(stateToShow, 2000)}`);
+  }
+
+  return parts.join('\n\n');
+}
+
+export async function buildAIContextualAnswer(
+  question: string,
+  ctx: InsiderContext,
+  openAiApiKey: string,
+): Promise<{ answer: string; sources_used: string }> {
+  const contextBlock = buildInsiderContextBlock(ctx);
+
+  const systemPrompt = `You are the "Insider" — a knowledgeable intelligence operative embedded in a crisis management simulation. You have deep knowledge of the area, the scenario, the facilities, the environment, and the current game state.
+
+Your job: answer the player's question using ONLY the context provided below. Be specific, cite actual location names, distances, capacities, and conditions from the data. If the data contains the answer, give it clearly and concisely. If the data does not contain enough information to answer, say so honestly.
+
+RULES:
+- Answer in a professional, concise intelligence-briefing style
+- Use markdown formatting (bold for location names, bullet points for lists)
+- Reference specific data: names, numbers, distances, capacities, conditions
+- If the question is about a location, include its properties (capacity, water, electricity, distance, etc.)
+- If locations have been claimed by teams, mention that
+- If environmental conditions (routes, weather, crowd density) are relevant, include them
+- Do NOT make up information that isn't in the context
+- Do NOT reveal internal game mechanics (condition keys, state schema, inject triggers)
+- Keep answers focused — 2-6 sentences for simple questions, longer with structured data for complex ones
+- If the player asks about the map, tell them to use the interactive map in the session view
+
+CONTEXT:
+${contextBlock}`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: question.slice(0, 2000) },
+        ],
+        temperature: 0.3,
+        max_tokens: 1000,
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      logger.warn({ status: response.status, body: text }, 'Insider AI contextual answer failed');
+      return {
+        answer: "I'm having trouble processing that question right now. Try asking again.",
+        sources_used: 'none',
+      };
+    }
+
+    const json = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = json.choices?.[0]?.message?.content;
+
+    if (!content?.trim()) {
+      return {
+        answer: "I don't have enough information to answer that question for this scenario.",
+        sources_used: 'none',
+      };
+    }
+
+    return { answer: content.trim(), sources_used: 'ai_contextual' };
+  } catch (err) {
+    logger.error({ err }, 'Insider AI contextual answer threw');
+    return {
+      answer: "I'm having trouble processing that question right now. Try asking again.",
+      sources_used: 'none',
+    };
+  }
+}
