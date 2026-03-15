@@ -2574,6 +2574,18 @@ async function generateEnvironmentDecisionInjects(
 }
 
 // ---------------------------------------------------------------------------
+// Phase 4d — Condition key validation helper
+// ---------------------------------------------------------------------------
+
+function extractConditionKeys(
+  cta: { threshold?: number; conditions?: string[] } | { all: string[] },
+): string[] {
+  if ('all' in cta && Array.isArray(cta.all)) return cta.all;
+  if ('conditions' in cta && Array.isArray(cta.conditions)) return cta.conditions;
+  return [];
+}
+
+// ---------------------------------------------------------------------------
 // Phase 4d-solo — Per-team condition-driven injects  (1 call per team · 1 200 tokens)
 // ---------------------------------------------------------------------------
 
@@ -2597,16 +2609,23 @@ async function generateTeamConditionInjects(
 
   const templateConditionKeys = (typeSpec.condition_keys as Array<{ key: string }>) ?? [];
   const keyNames = templateConditionKeys.map((c) => c.key);
-  const conditionKeysHint =
-    keyNames.length > 0
-      ? `Use ONLY these condition keys (unknown keys evaluate to false at runtime): ${keyNames.join(', ')}`
-      : `Use condition keys from the team state schema below (e.g. police_state.perimeter_established, triage_state.supply_level).`;
 
   const stateSchema = buildTeamStateSchemaHint(allTeamNames);
   const teamStateKey = Object.keys(stateSchema).find((k) =>
     k.toLowerCase().startsWith(teamName.toLowerCase().replace(/\s+/g, '_').split('_')[0]),
   );
   const relevantSchema = teamStateKey ? { [teamStateKey]: stateSchema[teamStateKey] } : stateSchema;
+
+  const validSchemaKeys = teamStateKey
+    ? Object.keys(stateSchema[teamStateKey] || {}).map((k) => `${teamStateKey}.${k}`)
+    : [];
+
+  const conditionKeysHint =
+    keyNames.length > 0
+      ? `Use ONLY these condition keys (unknown keys evaluate to false at runtime): ${keyNames.join(', ')}`
+      : validSchemaKeys.length > 0
+        ? `Use ONLY condition keys from ${teamName}'s state schema. Valid keys: ${validSchemaKeys.join(', ')}. Do NOT use keys from other teams' schemas — those will never be flipped by ${teamName}'s actions and the inject will never fire.`
+        : `Use condition keys from the team state schema below. Only use keys that ${teamName} would logically flip through their own actions.`;
 
   const locationsBlock = locations?.length
     ? `\nMap pins:\n${locations.map((l) => `- ${l.label} (${l.location_type}): ${l.description || ''}`).join('\n')}`
@@ -2698,6 +2717,7 @@ Return ONLY valid JSON:
 
 RULES:
 - Write ${injectCount} injects. At least 40% should be failure/consequence injects, at least 20% positive outcomes, and at least 20% escalation/branching.
+- CRITICAL: conditions_to_appear keys must ONLY reference keys from ${teamStateKey || teamName.toLowerCase().replace(/\\s+/g, '_') + '_state'} (the focus team's schema). Using keys from other teams (e.g. triage_state keys for a fire team inject, or media_state keys for an evacuation inject) will cause the inject to NEVER fire because ${teamName} cannot flip those keys. The only exception is location_claimed:<label> keys.
 - conditions_to_appear keys MUST match the state schema above. You may also use location_claimed:<label> keys (these evaluate to true when a team claims that map pin as a location).
 - Reference SPECIFIC location labels from map pins whenever possible.
 - eligible_after_minutes: vary across the full game duration (5 to ${Math.round(durationMins * 0.8)}) — early-game, mid-game, and late-game injects.
@@ -2710,6 +2730,8 @@ RULES:
 - Make content specific, vivid, and grounded in the scenario's locations and context.`;
 
   const userPrompt = `Write ${injectCount} condition-driven injects for ${teamName} in "${narrative?.title || scenario_type}" at ${venue}. Include failure consequences, positive outcomes, escalation triggers, and decision consequences. Cover operational, resource, communication, environmental, escalation, public impact, coordination, intelligence, morale, and reinforcement categories.`;
+
+  const allowedKeyPrefix = teamStateKey ? teamStateKey + '.' : null;
 
   try {
     const parsed = await callOpenAi<{
@@ -2725,6 +2747,21 @@ RULES:
             inj.conditions_to_appear.conditions?.length) ||
             ('all' in inj.conditions_to_appear && inj.conditions_to_appear.all?.length)),
       )
+      .filter((inj) => {
+        if (!allowedKeyPrefix) return true;
+        const keys = extractConditionKeys(inj.conditions_to_appear!);
+        const invalid = keys.filter(
+          (k) => !k.startsWith('location_claimed:') && !k.startsWith(allowedKeyPrefix),
+        );
+        if (invalid.length > 0) {
+          logger.warn(
+            { teamName, title: inj.title, invalidKeys: invalid, allowedPrefix: allowedKeyPrefix },
+            'Dropping condition inject with mismatched team keys',
+          );
+          return false;
+        }
+        return true;
+      })
       .map((inj) => ({
         title: inj.title,
         content: inj.content || inj.title,
@@ -2768,7 +2805,29 @@ async function generatePairConditionInjects(
   const { scenario_type, venue_name, location, researchContext } = input;
   const venue = venue_name || location || input.setting;
 
-  const stateSchema = buildTeamStateSchemaHint(allTeamNames);
+  const fullStateSchema = buildTeamStateSchemaHint(allTeamNames);
+
+  const findTeamStateKey = (name: string) =>
+    Object.keys(fullStateSchema).find((k) =>
+      k.toLowerCase().startsWith(name.toLowerCase().replace(/\s+/g, '_').split('_')[0]),
+    );
+  const teamAStateKey = findTeamStateKey(teamA);
+  const teamBStateKey = findTeamStateKey(teamB);
+
+  const pairSchema: Record<string, Record<string, unknown>> = {};
+  if (teamAStateKey) pairSchema[teamAStateKey] = fullStateSchema[teamAStateKey];
+  if (teamBStateKey) pairSchema[teamBStateKey] = fullStateSchema[teamBStateKey];
+  const pairSchemaToUse = Object.keys(pairSchema).length > 0 ? pairSchema : fullStateSchema;
+
+  const allowedPairPrefixes = [teamAStateKey, teamBStateKey].filter(Boolean) as string[];
+
+  const validKeysA = teamAStateKey
+    ? Object.keys(fullStateSchema[teamAStateKey] || {}).map((k) => `${teamAStateKey}.${k}`)
+    : [];
+  const validKeysB = teamBStateKey
+    ? Object.keys(fullStateSchema[teamBStateKey] || {}).map((k) => `${teamBStateKey}.${k}`)
+    : [];
+
   const locationsBlock = locations?.length
     ? `\nMap pins:\n${locations.map((l) => `- ${l.label} (${l.location_type})`).join('\n')}`
     : '';
@@ -2794,6 +2853,11 @@ async function generatePairConditionInjects(
   const pairInjectCount =
     pairDurationMins <= 30 ? '6–8' : pairDurationMins <= 90 ? '8–12' : '12–16';
 
+  const pairValidKeysBlock =
+    validKeysA.length > 0 || validKeysB.length > 0
+      ? `\nValid condition keys for ${teamA}: ${validKeysA.join(', ') || 'none'}\nValid condition keys for ${teamB}: ${validKeysB.join(', ') || 'none'}`
+      : '';
+
   const systemPrompt = `You are an expert crisis management scenario designer writing cross-team coordination injects.
 
 Scenario: ${scenario_type} at ${venue}
@@ -2807,8 +2871,9 @@ ${locationsBlock}
 ${areasBlock}
 ${seedBlock}
 
-Full team state schema:
-${JSON.stringify(stateSchema, null, 2)}
+State schema for ${teamA} and ${teamB} ONLY:
+${JSON.stringify(pairSchemaToUse, null, 2)}
+${pairValidKeysBlock}
 
 Cross-team injects fire based on the combined state of ${teamA} and ${teamB}. They come in TWO flavours:
 
@@ -2839,6 +2904,7 @@ Return ONLY valid JSON:
 RULES:
 - Write ${pairInjectCount} injects for the ${teamA} and ${teamB} interface. At least 60% should be failure injects, at least 25% should be success/positive injects.
 - Each title MUST be unique and specific — include both team names and the event type. Never reuse the same title across injects.
+- CRITICAL: conditions_to_appear keys must ONLY reference keys from ${teamAStateKey || teamA} and/or ${teamBStateKey || teamB} schemas. Do NOT use keys from any other team's schema — those are irrelevant to this pair and will cause broken injects. The only exception is location_claimed:<label> keys.
 - conditions_to_appear must reference state keys from BOTH teams (not just one).
 - Content describes the specific interface outcome between ${teamA} and ${teamB}, referencing location labels.
 - eligible_after_minutes: vary between 5 and ${Math.round(pairDurationMins * 0.8)} to cover different phases.
@@ -2863,6 +2929,29 @@ RULES:
             inj.conditions_to_appear.conditions?.length) ||
             ('all' in inj.conditions_to_appear && inj.conditions_to_appear.all?.length)),
       )
+      .filter((inj) => {
+        if (allowedPairPrefixes.length === 0) return true;
+        const keys = extractConditionKeys(inj.conditions_to_appear!);
+        const invalid = keys.filter(
+          (k) =>
+            !k.startsWith('location_claimed:') &&
+            !allowedPairPrefixes.some((prefix) => k.startsWith(prefix + '.')),
+        );
+        if (invalid.length > 0) {
+          logger.warn(
+            {
+              teamA,
+              teamB,
+              title: inj.title,
+              invalidKeys: invalid,
+              allowedPrefixes: allowedPairPrefixes,
+            },
+            'Dropping pair condition inject with keys outside the team pair',
+          );
+          return false;
+        }
+        return true;
+      })
       .map((inj) => ({
         title: inj.title,
         content: inj.content || inj.title,

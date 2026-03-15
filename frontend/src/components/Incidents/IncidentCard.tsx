@@ -22,6 +22,8 @@ interface Incident {
   for_teams_display?: string;
   /** When false, incident is status-update only; do not show [DECISION] button. */
   requires_response?: boolean;
+  /** Origin of the inject that created this incident */
+  generation_source?: string | null;
   reported_by?: {
     id: string;
     full_name: string;
@@ -57,6 +59,23 @@ interface IncidentCardProps {
   /** Trainers can see the decision indicator but cannot click it */
   isTrainer?: boolean;
 }
+
+const SOURCE_BADGE: Record<string, { label: string; color: string }> = {
+  pathway_outcome: {
+    label: 'PATHWAY',
+    color: 'border-amber-400/60 text-amber-400/80 bg-amber-400/10',
+  },
+  inaction_penalty: { label: 'INACTION', color: 'border-red-400/60 text-red-400/80 bg-red-400/10' },
+  decision_response: {
+    label: 'CONSEQUENCE',
+    color: 'border-cyan-400/60 text-cyan-400/80 bg-cyan-400/10',
+  },
+  war_room: {
+    label: 'WAR ROOM',
+    color: 'border-purple-400/60 text-purple-400/80 bg-purple-400/10',
+  },
+  trainer: { label: 'TRAINER', color: 'border-blue-400/60 text-blue-400/80 bg-blue-400/10' },
+};
 
 export const IncidentCard = ({
   incident,
@@ -101,8 +120,15 @@ export const IncidentCard = ({
     >
       <div className="flex justify-between items-start mb-2">
         <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <h4 className="text-sm terminal-text font-semibold">{incident.title}</h4>
+            {incident.generation_source && SOURCE_BADGE[incident.generation_source] && (
+              <span
+                className={`px-1.5 py-0.5 text-[10px] terminal-text border whitespace-nowrap ${SOURCE_BADGE[incident.generation_source].color}`}
+              >
+                {SOURCE_BADGE[incident.generation_source].label}
+              </span>
+            )}
           </div>
           <div ref={descriptionRef} className="text-xs terminal-text text-robotic-yellow/70 mb-2">
             {incident.description.length > 150 ? (

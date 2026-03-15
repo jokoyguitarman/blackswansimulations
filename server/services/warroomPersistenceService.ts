@@ -125,6 +125,7 @@ export async function persistWarroomScenario(
         objective_penalty: inj.objective_penalty ?? null,
         state_effect: inj.state_effect ?? null,
         ai_generated: true,
+        generation_source: 'war_room',
       });
       if (injError) throw new Error(`scenario_injects (time): ${injError.message}`);
     }
@@ -213,6 +214,7 @@ export async function persistWarroomScenario(
           objective_penalty: inj.objective_penalty ?? null,
           state_effect: inj.state_effect ?? null,
           ai_generated: true,
+          generation_source: 'war_room',
         });
         if (injError) throw new Error(`scenario_injects (decision): ${injError.message}`);
       }
@@ -246,6 +248,7 @@ export async function persistWarroomScenario(
           objective_penalty: inj.objective_penalty ?? null,
           state_effect: inj.state_effect ?? null,
           ai_generated: true,
+          generation_source: 'war_room',
         });
         if (injError) throw new Error(`scenario_injects (condition-driven): ${injError.message}`);
       }

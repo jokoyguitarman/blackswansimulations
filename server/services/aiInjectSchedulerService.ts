@@ -1027,6 +1027,7 @@ export class AIInjectSchedulerService {
               requires_coordination: false,
               ai_generated: true,
               triggered_by_user_id: null,
+              generation_source: 'pathway_outcome',
             })
             .select()
             .single();
@@ -1062,11 +1063,24 @@ export class AIInjectSchedulerService {
         }
 
         if (publishedCount === 0) {
-          await this.generateUniversalInject(session, baseContext, formattedDecisions);
+          const generated: Array<{ title: string; content: string }> = [];
+          const universalResult = await this.generateUniversalInject(
+            session,
+            baseContext,
+            formattedDecisions,
+          );
+          if (universalResult) generated.push(universalResult);
           for (const teamName of teamsWithMembers) {
             const teamDecisions = formattedDecisions.filter((d) => d.team === teamName);
             if (teamDecisions.length > 0) {
-              await this.generateTeamSpecificInject(session, baseContext, teamName, teamDecisions);
+              const teamResult = await this.generateTeamSpecificInject(
+                session,
+                baseContext,
+                teamName,
+                teamDecisions,
+                generated,
+              );
+              if (teamResult) generated.push(teamResult);
             }
           }
         }
@@ -1081,11 +1095,24 @@ export class AIInjectSchedulerService {
             metadata: { step: 'inject_generation' },
           });
         }
-        await this.generateUniversalInject(session, baseContext, formattedDecisions);
+        const generated: Array<{ title: string; content: string }> = [];
+        const universalResult = await this.generateUniversalInject(
+          session,
+          baseContext,
+          formattedDecisions,
+        );
+        if (universalResult) generated.push(universalResult);
         for (const teamName of teamsWithMembers) {
           const teamDecisions = formattedDecisions.filter((d) => d.team === teamName);
           if (teamDecisions.length > 0) {
-            await this.generateTeamSpecificInject(session, baseContext, teamName, teamDecisions);
+            const teamResult = await this.generateTeamSpecificInject(
+              session,
+              baseContext,
+              teamName,
+              teamDecisions,
+              generated,
+            );
+            if (teamResult) generated.push(teamResult);
           }
         }
         if (env.openAiApiKey) {
@@ -1148,6 +1175,7 @@ export class AIInjectSchedulerService {
               requires_coordination: false,
               ai_generated: true,
               triggered_by_user_id: null,
+              generation_source: 'inaction_penalty',
             })
             .select()
             .single();
@@ -1218,7 +1246,7 @@ export class AIInjectSchedulerService {
     session: { id: string; scenario_id: string; trainer_id: string },
     context: Record<string, unknown>,
     allDecisions: Array<Record<string, unknown>>,
-  ): Promise<void> {
+  ): Promise<{ title: string; content: string } | null> {
     const primaryDecision = allDecisions[0] || {
       id: 'aggregated',
       title: 'Recent Activity Summary',
@@ -1254,7 +1282,7 @@ export class AIInjectSchedulerService {
 
     if (!generatedInject) {
       logger.debug({ sessionId: session.id }, 'AI determined no universal inject needed');
-      return;
+      return null;
     }
 
     // Force universal scope
@@ -1275,6 +1303,7 @@ export class AIInjectSchedulerService {
         requires_coordination: generatedInject.requires_coordination ?? false,
         ai_generated: true,
         triggered_by_user_id: null, // Universal, not tied to a specific user
+        generation_source: 'decision_response',
       })
       .select()
       .single();
@@ -1284,7 +1313,7 @@ export class AIInjectSchedulerService {
         { error: createError, sessionId: session.id },
         'Failed to create universal AI-generated inject',
       );
-      return;
+      return null;
     }
 
     // Publish the inject
@@ -1304,6 +1333,8 @@ export class AIInjectSchedulerService {
       },
       'Universal AI inject generated and published',
     );
+
+    return { title: generatedInject.title, content: generatedInject.content };
   }
 
   /**
@@ -1314,7 +1345,8 @@ export class AIInjectSchedulerService {
     context: Record<string, unknown>,
     teamName: string,
     teamDecisions: Array<Record<string, unknown>>,
-  ): Promise<void> {
+    alreadyGeneratedThisCycle: Array<{ title: string; content: string }> = [],
+  ): Promise<{ title: string; content: string } | null> {
     const primaryDecision = teamDecisions[0] || {
       id: 'team_aggregated',
       title: `Team ${teamName} Activity Summary`,
@@ -1351,6 +1383,7 @@ export class AIInjectSchedulerService {
       teamName: teamName,
       teamDecisions: teamDecisions,
       sectorStandards: teamSectorStandards,
+      alreadyGeneratedThisCycle,
       instructions: `Generate a detailed, team-specific inject for ${teamName} based on decisions made by team members. This should be more specific and detailed than the universal inject, focusing on the consequences and implications of this team's actions. Only visible to ${teamName} members.`,
     } as typeof context & {
       injectType: string;
@@ -1359,6 +1392,7 @@ export class AIInjectSchedulerService {
       teamDecisions: Array<Record<string, unknown>>;
       instructions: string;
       sectorStandards?: string;
+      alreadyGeneratedThisCycle: Array<{ title: string; content: string }>;
     };
 
     const generatedInject = await generateInjectFromDecision(
@@ -1376,7 +1410,7 @@ export class AIInjectSchedulerService {
         { sessionId: session.id, teamName },
         'AI determined no team-specific inject needed',
       );
-      return;
+      return null;
     }
 
     // Force team-specific scope
@@ -1397,6 +1431,7 @@ export class AIInjectSchedulerService {
         requires_coordination: generatedInject.requires_coordination ?? false,
         ai_generated: true,
         triggered_by_user_id: null, // Team-based, not user-based
+        generation_source: 'decision_response',
       })
       .select()
       .single();
@@ -1406,7 +1441,7 @@ export class AIInjectSchedulerService {
         { error: createError, sessionId: session.id, teamName },
         'Failed to create team-specific AI-generated inject',
       );
-      return;
+      return null;
     }
 
     // Publish the inject
@@ -1427,6 +1462,8 @@ export class AIInjectSchedulerService {
       },
       'Team-specific AI inject generated and published',
     );
+
+    return { title: generatedInject.title, content: generatedInject.content };
   }
 }
 

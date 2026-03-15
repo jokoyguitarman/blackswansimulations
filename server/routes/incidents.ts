@@ -309,13 +309,14 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
         ai_generated?: boolean | null;
         triggered_by_user_id?: string | null;
         requires_response?: boolean | null;
+        generation_source?: string | null;
       }
     >();
     if (incidentInjectIds.length > 0) {
       const { data: injects, error: injectsError } = await supabaseAdmin
         .from('scenario_injects')
         .select(
-          'id, inject_scope, target_teams, affected_roles, ai_generated, triggered_by_user_id, requires_response',
+          'id, inject_scope, target_teams, affected_roles, ai_generated, triggered_by_user_id, requires_response, generation_source',
         )
         .in('id', [...new Set(incidentInjectIds)]);
 
@@ -335,6 +336,7 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
             ai_generated?: boolean | null;
             triggered_by_user_id?: string | null;
             requires_response?: boolean | null;
+            generation_source?: string | null;
           }) => {
             injectsMap.set(inject.id, inject);
           },
@@ -591,6 +593,7 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
         for_teams_display: getForTeamsDisplay(incident),
         requires_response:
           incident.requires_response ?? (inject ? inject.requires_response === true : true),
+        generation_source: inject?.generation_source ?? null,
       };
     });
     res.json({ data: enriched });

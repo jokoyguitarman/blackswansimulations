@@ -47,6 +47,8 @@ interface Incident {
   }>;
   /** When false, do not show [DECISION] button (status-update only). */
   requires_response?: boolean;
+  /** Origin of the inject that created this incident */
+  generation_source?: string | null;
 }
 
 interface IncidentsPanelProps {

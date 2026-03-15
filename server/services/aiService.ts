@@ -2001,6 +2001,8 @@ export const generateInjectFromDecision = async (
     instructionsOverride?: string;
     /** Sector standards / doctrine text for doctrine-aware consequence generation */
     sectorStandards?: string;
+    /** Injects already generated in this scheduling cycle (to avoid semantic overlap) */
+    alreadyGeneratedThisCycle?: Array<{ title: string; content: string }>;
   },
   openAiApiKey: string,
 ): Promise<GeneratedInject | null> => {
@@ -2144,6 +2146,18 @@ Important:
             .join('\n')}`
         : '\n\nNo recent injects have been published.';
 
+    // Already-generated injects this cycle (avoid semantic overlap with universal inject)
+    const alreadyGeneratedContext =
+      sessionContext.alreadyGeneratedThisCycle &&
+      sessionContext.alreadyGeneratedThisCycle.length > 0
+        ? `\n\nALREADY GENERATED THIS CYCLE (DO NOT REPEAT or closely paraphrase these — choose a completely different theme, angle, and subject):\n${sessionContext.alreadyGeneratedThisCycle
+            .map(
+              (inj, idx) =>
+                `${idx + 1}. "${inj.title}" — ${inj.content.substring(0, 120)}${inj.content.length > 120 ? '...' : ''}`,
+            )
+            .join('\n')}`
+        : '';
+
     // Participants context
     const participantsContext =
       sessionContext.participants && sessionContext.participants.length > 0
@@ -2264,7 +2278,7 @@ ${hasDeEscalationPathways ? `\nDe-escalation pathways (how situation improves wh
 CURRENT DECISION:
 Title: ${decision.title}
 Description: ${decision.description}
-Type: ${decision.type}${scenarioContext}${allDecisionsContext}${upcomingInjectsContext}${currentStateContext}${objectivesContext}${recentInjectsContext}${participantsContext}${injectTypeContext}${themeUsageContext}${decisionsSummaryContext}${escalationContext}
+Type: ${decision.type}${scenarioContext}${allDecisionsContext}${upcomingInjectsContext}${currentStateContext}${objectivesContext}${recentInjectsContext}${alreadyGeneratedContext}${participantsContext}${injectTypeContext}${themeUsageContext}${decisionsSummaryContext}${escalationContext}
 
 ${inactionInstruction || instructions}
 

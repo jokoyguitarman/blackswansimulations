@@ -756,6 +756,7 @@ router.post(
         severity,
         requires_response: requires_response ?? false,
         ai_generated: false,
+        generation_source: 'trainer',
       };
 
       logger.debug({ insertData, userId: user.id }, 'Inserting inject');

@@ -165,6 +165,49 @@ export async function initializeSessionGateProgress(sessionId: string): Promise<
 }
 
 /**
+ * Returns gates for this session that are still pending (not yet evaluated).
+ * Used by decision execution to fire vague injects immediately when a player
+ * submits a vague decision before the gate deadline.
+ */
+export async function getPendingGatesForSession(sessionId: string): Promise<NotMetGate[]> {
+  const sessionScenarioId = await getSessionScenarioId(sessionId);
+  if (!sessionScenarioId) return [];
+
+  const { data: progressRows, error: progressError } = await supabaseAdmin
+    .from('session_gate_progress')
+    .select('gate_id')
+    .eq('session_id', sessionId)
+    .eq('status', 'pending');
+
+  if (progressError || !progressRows?.length) {
+    return [];
+  }
+
+  const gateIds = progressRows.map((r: { gate_id: string }) => r.gate_id);
+
+  const { data: gates, error: gatesError } = await supabaseAdmin
+    .from('scenario_gates')
+    .select(
+      'id, gate_id, condition, objective_id, if_vague_decision_inject_id, if_medium_band_inject_id',
+    )
+    .eq('scenario_id', sessionScenarioId)
+    .in('gate_id', gateIds);
+
+  if (gatesError || !gates?.length) {
+    return [];
+  }
+
+  return (gates as NotMetGate[]).map((g) => ({
+    gate_id: g.gate_id,
+    id: g.id,
+    condition: (g.condition as GateCondition) ?? {},
+    objective_id: g.objective_id ?? null,
+    if_vague_decision_inject_id: g.if_vague_decision_inject_id ?? null,
+    if_medium_band_inject_id: g.if_medium_band_inject_id ?? null,
+  }));
+}
+
+/**
  * Check if the decision is "vague" for any of the not_met gates in scope
  * (author's team matches gate.team and decision.type in gate.decision_types, and content check fails).
  * Returns vague: true and the list of gate_ids for which the decision was vague (for firing if_vague_decision_inject_id).
@@ -290,6 +333,7 @@ export async function evaluateGate(
     condition: GateCondition;
     if_not_met_inject_ids: string[] | null;
     if_met_inject_id: string | null;
+    if_vague_decision_inject_id?: string | null;
   },
   elapsedMinutes: number,
   io: import('socket.io').Server | null,
@@ -326,28 +370,30 @@ export async function evaluateGate(
     return;
   }
 
-  // decision_types is optional: when empty, all team decisions are candidates
+  // Fetch ALL executed decisions from this team (including proactive ones)
   const decisionTypes = (gate.condition.decision_types ?? []) as string[];
-  const { data: decisions } = await supabaseAdmin
+  const { data: allTeamDecisions } = await supabaseAdmin
     .from('decisions')
     .select('id, description, type, response_to_incident_id, executed_at')
     .eq('session_id', sessionId)
     .eq('status', 'executed')
     .in('proposed_by', userIds)
-    .not('response_to_incident_id', 'is', null)
     .order('executed_at', { ascending: false });
 
-  const candidates = (decisions ?? []).filter(
+  const allCandidates = (allTeamDecisions ?? []).filter(
     (d: { type?: string }) =>
       !decisionTypes.length || decisionTypes.includes((d as { type?: string }).type ?? ''),
   );
 
-  // Build in-scope candidates: decisions whose incident's inject targets this team
+  // Build in-scope candidates from incident-linked decisions
+  const incidentLinked = allCandidates.filter(
+    (d: { response_to_incident_id?: string | null }) => d.response_to_incident_id != null,
+  );
   let inScopeCandidates: Array<{ id: string; description: string }> = [];
-  if (candidates.length > 0) {
+  if (incidentLinked.length > 0) {
     const incidentIds = [
       ...new Set(
-        (candidates as Array<{ response_to_incident_id?: string | null }>)
+        (incidentLinked as Array<{ response_to_incident_id?: string | null }>)
           .map((d) => d.response_to_incident_id)
           .filter(Boolean) as string[],
       ),
@@ -383,7 +429,7 @@ export async function evaluateGate(
         ]),
       );
       inScopeCandidates = (
-        candidates as Array<{
+        incidentLinked as Array<{
           id: string;
           description: string;
           response_to_incident_id?: string | null;
@@ -399,10 +445,19 @@ export async function evaluateGate(
     }
   }
 
-  // Content check: first decision that passes satisfies the gate (AI when key set, else substring fallback)
+  // Also include proactive decisions (no response_to_incident_id) as candidates
+  const proactiveCandidates = allCandidates
+    .filter((d: { response_to_incident_id?: string | null }) => d.response_to_incident_id == null)
+    .map((d: { id: string; description: string }) => ({
+      id: d.id,
+      description: d.description,
+    }));
+  const allContentCandidates = [...inScopeCandidates, ...proactiveCandidates];
+
+  // Content check: first decision that passes satisfies the gate
   const apiKey = openAiApiKey ?? env.openAiApiKey;
   let satisfying: { id: string } | undefined;
-  for (const candidate of inScopeCandidates) {
+  for (const candidate of allContentCandidates) {
     const passes = await decisionSatisfiesGateContentAsync(
       candidate.description,
       gate.condition,
@@ -434,7 +489,18 @@ export async function evaluateGate(
     }
   } else {
     await setGateNotMet(sessionId, gate.gate_id);
-    await fireInjects(sessionId, gate.if_not_met_inject_ids, io);
+    // Team submitted decisions but none were specific enough → vague inject
+    // No decisions from team at all → punishment inject
+    const teamTriedButVague = allContentCandidates.length > 0 && gate.if_vague_decision_inject_id;
+    if (teamTriedButVague) {
+      await fireInjects(sessionId, [gate.if_vague_decision_inject_id!], io);
+      logger.info(
+        { sessionId, gateId: gate.gate_id, candidateCount: allContentCandidates.length },
+        'Gate not met — team tried but vague, firing vague inject instead of punishment',
+      );
+    } else {
+      await fireInjects(sessionId, gate.if_not_met_inject_ids, io);
+    }
   }
 }
 
@@ -509,7 +575,7 @@ export async function runGateEvaluationForSession(
   const { data: gates } = await supabaseAdmin
     .from('scenario_gates')
     .select(
-      'id, gate_id, scenario_id, check_at_minutes, condition, if_not_met_inject_ids, if_met_inject_id',
+      'id, gate_id, scenario_id, check_at_minutes, condition, if_not_met_inject_ids, if_met_inject_id, if_vague_decision_inject_id',
     )
     .eq('scenario_id', session.scenario_id)
     .lte('check_at_minutes', elapsedMinutes);
@@ -532,6 +598,7 @@ export async function runGateEvaluationForSession(
     condition: GateCondition;
     if_not_met_inject_ids: string[] | null;
     if_met_inject_id: string | null;
+    if_vague_decision_inject_id: string | null;
   }>) {
     if (pendingGateIds.has(gate.gate_id)) {
       await evaluateGate(sessionId, gate, elapsedMinutes, io, env.openAiApiKey);

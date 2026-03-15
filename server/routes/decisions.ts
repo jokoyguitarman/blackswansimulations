@@ -18,6 +18,7 @@ import {
 } from '../services/objectiveTrackingService.js';
 import {
   getNotMetGatesForSession,
+  getPendingGatesForSession,
   getNotMetGatesInScopeForDecision,
   isDecisionVagueForNotMetGateAsync,
   objectiveIdForGate,
@@ -1217,6 +1218,75 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
               }
             }
           }
+        }
+      }
+
+      // Pending-gate vague check: fire vague inject immediately when a player
+      // submits a decision that touches a gate's area but lacks specificity.
+      // This gives parity with the specific-but-wrong path (environmental check).
+      if (authorTeamNames.length > 0) {
+        try {
+          const pendingGates = await getPendingGatesForSession(decision.session_id);
+          if (pendingGates.length > 0) {
+            const vagueResult = await isDecisionVagueForNotMetGateAsync(
+              {
+                description: decision.description,
+                type: decision.type || 'operational_action',
+              },
+              authorTeamNames,
+              pendingGates,
+              env.openAiApiKey,
+            );
+            if (vagueResult.vague) {
+              const { data: vagueFiredEvents } = await supabaseAdmin
+                .from('session_events')
+                .select('metadata')
+                .eq('session_id', decision.session_id)
+                .eq('event_type', 'gate_vague_inject_fired');
+              const alreadyFiredGateIds = new Set(
+                (vagueFiredEvents ?? [])
+                  .map(
+                    (e: { metadata?: { gate_id?: string } }) =>
+                      (e.metadata as { gate_id?: string })?.gate_id,
+                  )
+                  .filter(Boolean),
+              );
+              const trainerId = sessionTrainerId;
+              for (const gateId of vagueResult.gateIds) {
+                if (alreadyFiredGateIds.has(gateId)) continue;
+                const gate = pendingGates.find((g) => g.gate_id === gateId);
+                if (!gate?.if_vague_decision_inject_id) continue;
+                try {
+                  if (trainerId && io) {
+                    await publishInjectToSession(
+                      gate.if_vague_decision_inject_id,
+                      decision.session_id,
+                      trainerId,
+                      io,
+                    );
+                    await supabaseAdmin.from('session_events').insert({
+                      session_id: decision.session_id,
+                      event_type: 'gate_vague_inject_fired',
+                      description: `Gate vague inject fired (pending gate): ${gateId}`,
+                      actor_id: null,
+                      metadata: { gate_id: gateId },
+                    });
+                    alreadyFiredGateIds.add(gateId);
+                  }
+                } catch (injectErr) {
+                  logger.error(
+                    { err: injectErr, sessionId: decision.session_id, gateId },
+                    'Failed to publish pending-gate vague inject',
+                  );
+                }
+              }
+            }
+          }
+        } catch (pendingGateErr) {
+          logger.error(
+            { error: pendingGateErr, decisionId: id },
+            'Pending-gate vague check failed, continuing',
+          );
         }
       }
 
