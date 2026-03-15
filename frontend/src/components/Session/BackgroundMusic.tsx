@@ -11,11 +11,9 @@ export function BackgroundMusic({ src }: BackgroundMusicProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [volume, setVolume] = useState(() => {
     const stored = localStorage.getItem(STORAGE_KEY_VOLUME);
-    return stored !== null ? parseFloat(stored) : 0.3;
+    return stored !== null ? parseFloat(stored) : 0.5;
   });
-  const [isMuted, setIsMuted] = useState(() => {
-    return localStorage.getItem(STORAGE_KEY_MUTED) === 'true';
-  });
+  const [isMuted, setIsMuted] = useState(false);
   const [needsInteraction, setNeedsInteraction] = useState(false);
 
   const attemptPlay = useCallback(async () => {
