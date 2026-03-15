@@ -2252,9 +2252,21 @@ Two lenses for the current state of play:
 1. Robustness (per decision): How well each team's decisions mitigated escalation risks (1-10; higher = more mitigating). Use this to judge whether escalation is being contained or not.
 2. Inter-team impact matrix: Whether each team's decisions helped (+1, +2) or hurt (-1, -2) other teams. Use this to judge cross-team effects (e.g. one team's action making another team's job harder or easier).
 
-When robustness is high (e.g. 7-10), prefer injects that reflect de-escalation pathways (things improving for the areas the team addressed). When robustness is low, injects can reflect escalation pathways (risks materialising). Always ensure the inject also introduces or highlights at least one new or remaining challenge (from escalation factors or from emerging_challenges on de-escalation pathways) so the scenario stays engaging and does not feel fully under control.
+MANDATORY RULES for robustness:
+- Robustness 7-10: The inject MUST reflect improvement or de-escalation for the areas the team addressed (use de-escalation pathways). Still include at least one new or remaining challenge so the scenario stays engaging.
+- Robustness 4-6: The inject should reflect partial progress with complications — some things improving, but gaps or oversights creating new issues.
+- Robustness 1-3: The inject MUST reflect escalation — risks materialising, situation worsening because the team's response was inadequate or absent.
 
-Use BOTH lenses to paint a new picture of the scene. Create fresh, varied injects that advance the scenario in new directions—e.g. consequences of inter-team cooperation or friction, resource or operational outcomes, political/media/trust reactions, new intel or threats. Avoid defaulting to the same themes (panic, delays, misinformation) every time; only use them when they are the direct consequence of the current matrix and robustness. Prefer diversity so the scene keeps evolving.
+MANDATORY RULES for inter-team impact matrix:
+- Score -2 (strong negative): The inject MUST depict concrete inter-team friction or harm — e.g. one team's actions directly causing problems for another team (blocking access, overwhelming resources, conflicting instructions, delays caused by poor coordination). Name BOTH teams involved.
+- Score -1 (mild negative): The inject SHOULD show tension or emerging friction between the teams — e.g. complaints, coordination difficulties, resource competition, mixed signals.
+- Score +2 (strong positive): The inject MUST show concrete benefits of inter-team cooperation — e.g. smooth handoffs, shared resources, coordinated actions producing better outcomes. Name BOTH teams involved.
+- Score +1 (mild positive): The inject SHOULD show positive coordination effects — e.g. information sharing helping, slight efficiency gains.
+- Score 0: No inter-team effect needed for this pair.
+
+When generating a team-specific inject, prioritise matrix scores where that team is the affected_team (incoming impact) — show how other teams' actions are helping or hurting THIS team. For universal injects, highlight the most extreme matrix score (highest magnitude) as the primary narrative driver.
+
+Always ensure the inject also introduces or highlights at least one new or remaining challenge (from escalation factors or from emerging_challenges on de-escalation pathways) so the scenario stays engaging and does not feel fully under control. Avoid defaulting to the same themes (panic, delays, misinformation) every time; only use them when they are the direct consequence of the current matrix and robustness. Prefer diversity so the scene keeps evolving.
 
 ${hasMatrix ? `\nImpact matrix (acting_team -> affected_team -> score -2 to +2):\n${JSON.stringify(sessionContext.latestImpactMatrix, null, 2)}` : ''}
 ${sessionContext.latestRobustnessByDecision && Object.keys(sessionContext.latestRobustnessByDecision).length > 0 ? `\nRobustness by decision (1-10, higher = more mitigating):\n${JSON.stringify(sessionContext.latestRobustnessByDecision)}` : ''}
@@ -2288,7 +2300,7 @@ Generate a realistic inject that:
 - Doesn't contradict upcoming scheduled injects
 - Fits the current game state and objectives
 - Creates appropriate challenges or complications
-- When escalation/impact context is provided: use both robustness (how well decisions mitigated escalation) and the inter-team impact matrix (how decisions helped or hurt other teams) to paint a new picture of the scene. When robustness is high, show improvement for mitigated areas (use de-escalation pathways) but always include at least one new or remaining problem (from escalation factors or emerging_challenges) so players still have something to address. Create fresh, varied developments (e.g. inter-team dynamics, resource outcomes, political or media reactions, new intel)—avoid repeatedly using the same themes (panic, delays, misinformation) unless they are the direct result of the current matrix and robustness
+- When escalation/impact context is provided: you MUST follow the MANDATORY RULES above. Check every matrix score and apply the corresponding rule. If any score is -2 or -1, the inject MUST reflect that friction. If robustness is low (1-3), the inject MUST show escalation. Do not ignore negative matrix scores. Create fresh, varied developments—avoid repeating the same themes unless they are the direct result of the current matrix and robustness
 
 CRITICAL: Scope targeting:
 ${
@@ -2307,6 +2319,7 @@ Important considerations:
 - The inject should feel like a natural progression of the story, not forced or disconnected
 - Severity should match the decision's impact and the overall situation
 - Prefer injects that advance the scenario in new directions (e.g. inter-team friction or cooperation, resource reallocation, political fallout, new intel) rather than repeating the same type of development (e.g. yet another "panic spreads" or "misinformation" update) unless it is the direct consequence of the current robustness and matrix
+- If the impact matrix contains any score of -2 or -1, the inject MUST address the inter-team friction — do not ignore negative matrix scores in favour of generic themes
 - Do not produce a run of injects where everything is positive with no new complications; always leave at least one active problem area or emerging challenge so the scenario stays engaging
 
 If this decision doesn't warrant a meaningful inject, return null. Otherwise, return a well-crafted inject that fits seamlessly into the ongoing scenario.`;
