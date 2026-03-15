@@ -92,16 +92,14 @@ export function matchesTriggerCondition(
     matches.push(categoryMatch);
   }
 
-  // Check keywords (case-insensitive, partial matching)
+  // Check keywords (case-insensitive; classification keyword must contain trigger keyword)
   if (match_criteria.keywords && match_criteria.keywords.length > 0) {
     const allKeywords = [...classification.keywords, ...classification.primary_category.split('_')];
-    const keywordMatch = match_criteria.keywords.some((keyword) =>
-      allKeywords.some(
-        (k) =>
-          k.toLowerCase().includes(keyword.toLowerCase()) ||
-          keyword.toLowerCase().includes(k.toLowerCase()),
-      ),
-    );
+    const keywordMatch = match_criteria.keywords.some((keyword) => {
+      if (keyword.length < 4) return false;
+      const kw = keyword.toLowerCase();
+      return allKeywords.some((k) => k.toLowerCase().includes(kw));
+    });
     matches.push(keywordMatch);
   }
 

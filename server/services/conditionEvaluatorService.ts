@@ -431,6 +431,24 @@ function evaluateKey(key: string, context: EvaluationContext): boolean {
     return context.gateStatusByGateId[gateId] === 'met';
   }
 
+  const prefixLocationClaimed = 'location_claimed:';
+  if (key.startsWith(prefixLocationClaimed)) {
+    const targetLabel = key.slice(prefixLocationClaimed.length).toLowerCase().replace(/_/g, ' ');
+    const locationState = context.currentState?.location_state as
+      | Record<string, { claimed_by?: string; label?: string }>
+      | undefined;
+    if (!locationState) return false;
+    return Object.values(locationState).some((entry) => {
+      if (!entry?.claimed_by) return false;
+      const entryLabel = (entry.label ?? '').toLowerCase().replace(/_/g, ' ');
+      return (
+        entryLabel === targetLabel ||
+        entryLabel.includes(targetLabel) ||
+        targetLabel.includes(entryLabel)
+      );
+    });
+  }
+
   if (context.scenarioConditionKeyDefs?.length) {
     const def = context.scenarioConditionKeyDefs.find((d) => d.key === key);
     if (def?.state_path) {

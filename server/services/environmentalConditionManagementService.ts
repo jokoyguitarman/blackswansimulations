@@ -263,6 +263,7 @@ export interface LocationStateEntry {
   claimed_by?: string;
   claimed_as?: string;
   claimed_at_minutes?: number;
+  label?: string;
 }
 
 /**
@@ -274,6 +275,7 @@ export async function recordSpaceClaim(
   claimedBy: string,
   claimedAs: string,
   gameMinutes: number,
+  locationLabel?: string,
 ): Promise<void> {
   const { data: session, error: sessionErr } = await supabaseAdmin
     .from('sessions')
@@ -297,6 +299,7 @@ export async function recordSpaceClaim(
       claimed_by: claimedBy,
       claimed_as: claimedAs,
       claimed_at_minutes: gameMinutes,
+      ...(locationLabel ? { label: locationLabel } : {}),
     },
   };
 

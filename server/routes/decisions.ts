@@ -1439,6 +1439,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
                 authorTeamNames[0],
                 claimedAs,
                 typeof gameMinutes === 'number' ? gameMinutes : 0,
+                (loc as { label?: string }).label ?? undefined,
               );
               break;
             }

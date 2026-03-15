@@ -44,11 +44,33 @@ export const Scenarios = () => {
     setShowCreateModal(true);
   };
 
+  const [deleting, setDeleting] = useState<string | null>(null);
+
   const handleViewScenario = (scenario: Scenario) => {
     if (isTrainer) {
       setDetailScenarioId(scenario.id);
     } else {
       setSelectedScenario(scenario);
+    }
+  };
+
+  const handleDeleteScenario = async (e: React.MouseEvent, scenario: Scenario) => {
+    e.stopPropagation();
+    if (
+      !window.confirm(
+        `Delete "${scenario.title}" and ALL related sessions, injects, teams, and locations? This cannot be undone.`,
+      )
+    )
+      return;
+    setDeleting(scenario.id);
+    try {
+      await api.scenarios.delete(scenario.id);
+      setScenarios((prev) => prev.filter((s) => s.id !== scenario.id));
+    } catch (err) {
+      console.error('Failed to delete scenario:', err);
+      alert('Failed to delete scenario. Check the console for details.');
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -103,15 +125,27 @@ export const Scenarios = () => {
             >
               <div className="flex justify-between items-start mb-4">
                 <h3 className="text-lg terminal-text uppercase">{scenario.title}</h3>
-                <span
-                  className={`text-xs terminal-text px-2 py-1 ${
-                    scenario.is_active
-                      ? 'bg-robotic-yellow/20 text-robotic-yellow'
-                      : 'bg-robotic-gray-200 text-robotic-gray-50'
-                  }`}
-                >
-                  {scenario.is_active ? 'ACTIVE' : 'DRAFT'}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-xs terminal-text px-2 py-1 ${
+                      scenario.is_active
+                        ? 'bg-robotic-yellow/20 text-robotic-yellow'
+                        : 'bg-robotic-gray-200 text-robotic-gray-50'
+                    }`}
+                  >
+                    {scenario.is_active ? 'ACTIVE' : 'DRAFT'}
+                  </span>
+                  {isTrainer && (
+                    <button
+                      onClick={(e) => handleDeleteScenario(e, scenario)}
+                      disabled={deleting === scenario.id}
+                      className="text-xs terminal-text px-2 py-1 border border-red-600/50 text-red-500 hover:bg-red-600/20 hover:text-red-400 transition-all disabled:opacity-40"
+                      title="Delete scenario and all related data"
+                    >
+                      {deleting === scenario.id ? '...' : 'DEL'}
+                    </button>
+                  )}
+                </div>
               </div>
               <p className="text-sm terminal-text text-robotic-yellow/70 mb-4 line-clamp-3">
                 {scenario.description}

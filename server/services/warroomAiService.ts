@@ -575,8 +575,7 @@ function normalizeInjectTiming(
 
 /**
  * Build team pairings for cross-team condition injects, gated by complexity tier.
- * full  → at most the first 3 pairs
- * rich  → all C(N,2) pairs
+ * minimal → none; all other tiers → all C(N,2) pairs
  */
 function buildPairs(
   teamNames: string[],
@@ -1841,139 +1840,8 @@ RULES:
 }
 
 // ---------------------------------------------------------------------------
-// Phase 3 — Per-team decision-based injects  (1 call per team · 1 000 tokens)
+// Phase 3 — (removed: generic decision-based injects replaced by condition-driven injects)
 // ---------------------------------------------------------------------------
-
-/**
- * Generates decision-branch injects specific to a single team's key operational choices.
- * Skipped for minimal and standard tiers.
- */
-async function generateTeamDecisionInjects(
-  input: WarroomGenerateInput,
-  teamName: string,
-  allTeamNames: string[],
-  openAiApiKey: string,
-  narrative?: { title?: string; description?: string; briefing?: string },
-): Promise<NonNullable<WarroomScenarioPayload['decision_injects']>> {
-  const { scenario_type, setting, venue_name, location, typeSpec } = input;
-  const venue = venue_name || location || setting;
-  const decisionBranches =
-    (typeSpec.decision_branches as Array<{
-      trigger_condition?: string;
-      inject_template?: string;
-    }>) || [];
-  const narrativeBlock = narrative
-    ? `\nNARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}`
-    : '';
-
-  const systemPrompt = `You are an expert crisis management scenario designer writing decision-branch injects for the ${teamName} team.
-
-Scenario: ${scenario_type} at ${venue}
-Setting: ${setting}
-All teams: ${allTeamNames.join(', ')}
-This inject set is EXCLUSIVELY for: ${teamName}
-${narrativeBlock}
-
-Decision branch templates (inspiration):
-${JSON.stringify(decisionBranches.slice(0, 3))}
-
-Decision injects fire when the ${teamName} makes a specific operational choice. They branch the scenario based on that decision — they are NOT time-based. Write injects that capture EVERY critical decision point a ${teamName} team leader must navigate in this specific crisis.
-
-Cover a WIDE range of decision categories for ${teamName}:
-- Resource allocation decisions (where to deploy personnel, equipment, vehicles)
-- Location/site selection decisions (triage areas, staging areas, command posts, evacuation routes)
-- Communication decisions (public statements, inter-agency coordination, media handling)
-- Tactical decisions (perimeter setup, access control, search procedures)
-- Escalation/de-escalation decisions (requesting additional resources, changing alert levels)
-- Prioritisation decisions (which casualties first, which threats first, which areas first)
-- Environmental mismatch decisions (choosing locations with wrong capacity, blocked routes, non-existent exits)
-- Coordination decisions (handoffs to other teams, joint operations, information sharing)
-
-CRITICAL — trigger_condition format:
-Each inject's trigger_condition MUST be a JSON object (NOT a string) with this EXACT structure:
-{
-  "type": "decision_based",
-  "match_criteria": {
-    "categories": ["category1", "category2"],
-    "keywords": ["relevant_keyword"]
-  },
-  "match_mode": "any"
-}
-
-Categories to use (pick 1-3 most relevant):
-emergency_declaration, resource_allocation, public_statement, policy_change, coordination_order, operational_action, supply_management, prioritisation, flow_control, misinformation_management, triage_protocol, evacuation_flow_control, evacuation_coordination, misinformation_response
-
-Keywords should be specific operational terms that would appear in the decision text (e.g. "perimeter", "triage", "staging", "evacuate", "media", "statement").
-
-Return ONLY valid JSON:
-{
-  "decision_injects": [
-    {
-      "trigger_condition": { "type": "decision_based", "match_criteria": { "categories": ["resource_allocation"], "keywords": ["deploy", "personnel"] }, "match_mode": "any" },
-      "type": "field_update|intel_brief|media_report|citizen_call",
-      "title": "string",
-      "content": "string — 2-3 sentences: consequence or next challenge arising from that decision",
-      "severity": "critical|high|medium",
-      "inject_scope": "team_specific",
-      "target_teams": ["${teamName}"],
-      "requires_response": true,
-      "requires_coordination": false,
-      "eligible_after_minutes": 10
-    }
-  ]
-}
-
-RULES:
-- Write 8–12 decision injects for ${teamName}, covering as many distinct decision categories as possible.
-- trigger_condition MUST be a JSON object — NOT a plain-text string.
-- Keywords must be specific operational terms relevant to the decision, not vague.
-- eligible_after_minutes: vary between 5 and 40 to cover early, mid, and late-game decisions.
-- Content shows the direct consequence of that decision.
-- No two injects should cover the same decision category.`;
-
-  const userPrompt = `Write 8-12 decision-branch injects for ${teamName} in "${narrative?.title || scenario_type}" at ${venue}. Cover resource allocation, location selection, communication, tactical, escalation, prioritisation, environmental mismatch, and coordination decisions.`;
-
-  try {
-    const parsed = await callOpenAi<{
-      decision_injects?: Array<{
-        trigger_condition: Record<string, unknown> | string;
-        type?: string;
-        title?: string;
-        content?: string;
-        severity?: string;
-        inject_scope?: string;
-        target_teams?: string[];
-        requires_response?: boolean;
-        requires_coordination?: boolean;
-        eligible_after_minutes?: number;
-      }>;
-    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
-    const raw = parsed.decision_injects || [];
-    return raw
-      .filter((inj) => inj.trigger_condition)
-      .map((inj) => {
-        const tc =
-          typeof inj.trigger_condition === 'object'
-            ? JSON.stringify(inj.trigger_condition)
-            : inj.trigger_condition;
-        return {
-          trigger_condition: tc,
-          type: normalizeInjectType(inj.type || 'field_update'),
-          title: inj.title || tc.slice(0, 80),
-          content: inj.content || inj.title || '',
-          severity: inj.severity || 'high',
-          inject_scope: 'team_specific' as const,
-          target_teams: [teamName],
-          requires_response: inj.requires_response ?? true,
-          requires_coordination: inj.requires_coordination ?? false,
-          eligible_after_minutes: inj.eligible_after_minutes ?? 15,
-        };
-      });
-  } catch (err) {
-    logger.warn({ err, teamName }, 'Team decision injects failed; continuing without');
-    return [];
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Phase 4e — Environment-grounded decision injects  (4 parallel calls per team)
@@ -1981,7 +1849,9 @@ RULES:
 
 /** Raw AI response shape for all env-inject sub-generators. */
 interface EnvInjectRaw {
-  trigger_condition: Record<string, unknown> | string;
+  trigger_condition?: Record<string, unknown> | string;
+  conditions_to_appear?: { threshold?: number; conditions?: string[] } | { all: string[] };
+  conditions_to_cancel?: string[];
   type?: string;
   title?: string;
   content?: string;
@@ -2071,63 +1941,55 @@ function extractSeedData(seeds?: WarroomScenarioPayload['environmental_seeds']):
   return { routes, areas };
 }
 
-/** Normalizes raw AI inject output into the decision_injects format. */
-function normalizeEnvInjectResults(
+/** Normalizes raw AI env inject output into the condition_driven_injects format. */
+function normalizeEnvConditionInjectResults(
   raw: EnvInjectRaw[],
   teamName: string,
-): NonNullable<WarroomScenarioPayload['decision_injects']> {
+): NonNullable<WarroomScenarioPayload['condition_driven_injects']> {
   return raw
-    .filter((inj) => inj.trigger_condition && inj.title)
-    .map((inj) => {
-      const tc =
-        typeof inj.trigger_condition === 'object'
-          ? JSON.stringify(inj.trigger_condition)
-          : inj.trigger_condition;
-      return {
-        trigger_condition: tc,
-        type: normalizeInjectType(inj.type || 'field_update'),
-        title: inj.title || 'Environmental decision point',
-        content: inj.content || inj.title || '',
-        severity: inj.severity || 'high',
-        inject_scope: 'team_specific' as const,
-        target_teams: [teamName],
-        requires_response: inj.requires_response ?? true,
-        requires_coordination: inj.requires_coordination ?? false,
-        eligible_after_minutes: inj.eligible_after_minutes ?? 10,
-      };
-    });
+    .filter(
+      (inj) =>
+        inj.title &&
+        inj.conditions_to_appear &&
+        (('conditions' in inj.conditions_to_appear &&
+          inj.conditions_to_appear.conditions?.length) ||
+          ('all' in inj.conditions_to_appear && inj.conditions_to_appear.all?.length)),
+    )
+    .map((inj) => ({
+      title: inj.title || 'Environmental condition inject',
+      content: inj.content || inj.title || '',
+      type: normalizeInjectType(inj.type || 'field_update'),
+      severity: inj.severity || 'high',
+      inject_scope: 'team_specific' as const,
+      target_teams: [teamName],
+      requires_response: inj.requires_response ?? true,
+      conditions_to_appear: inj.conditions_to_appear!,
+      conditions_to_cancel: inj.conditions_to_cancel,
+      eligible_after_minutes: inj.eligible_after_minutes ?? 5,
+    }));
 }
 
-/** Shared trigger_condition format spec appended to every sub-generator prompt. */
+/** Shared condition-driven format spec appended to every env sub-generator prompt. */
 function envInjectFormatSpec(teamName: string, maxMinutes: number): string {
   return `
-CRITICAL — trigger_condition format:
-Each inject's trigger_condition MUST be a JSON object with this EXACT structure:
-{
-  "type": "decision_based",
-  "match_criteria": {
-    "categories": ["category1", "category2"],
-    "keywords": ["location_label_lowercased", "other_keyword"]
-  },
-  "match_mode": "any"
-}
-
-Categories to use (pick the most relevant):
-emergency_declaration, resource_allocation, public_statement, policy_change, coordination_order, operational_action, supply_management, prioritisation, flow_control, misinformation_management, triage_protocol, evacuation_flow_control, evacuation_coordination, misinformation_response
+CRITICAL — these injects are CONDITION-DRIVEN, not keyword-matched.
+Each inject fires when a player CLAIMS a specific location. The condition key format is:
+  location_claimed:<location_label_lowercased_with_underscores>
+For example: location_claimed:parking_lot_a, location_claimed:north_exit
 
 Return ONLY valid JSON:
 {
-  "decision_injects": [
+  "condition_driven_injects": [
     {
-      "trigger_condition": { "type": "decision_based", "match_criteria": { "categories": ["triage_protocol"], "keywords": ["parking_lot_a"] }, "match_mode": "any" },
-      "type": "field_update|media_report|intel_brief|citizen_call",
       "title": "string — names the specific environmental consequence or confirmation",
       "content": "string — 2-3 sentences describing what happens because the constraint was violated or respected",
+      "conditions_to_appear": { "all": ["location_claimed:parking_lot_a"] },
+      "conditions_to_cancel": [],
+      "type": "field_update|media_report|intel_brief|citizen_call",
       "severity": "critical|high|medium|low",
       "inject_scope": "team_specific",
       "target_teams": ["${teamName}"],
       "requires_response": true,
-      "requires_coordination": false,
       "location_ref": "exact label of the location this inject is about",
       "eligible_after_minutes": 5
     }
@@ -2136,11 +1998,10 @@ Return ONLY valid JSON:
 
 RULES:
 - For EACH relevant item, produce BOTH a contradiction AND a correct-choice inject.
-- trigger_condition MUST be a JSON object — NOT a string.
-- Keywords MUST include the location/route label (lowercased, underscores for spaces).
+- conditions_to_appear MUST use the location_claimed:<label> format where <label> is the location label lowercased with spaces replaced by underscores.
 - Content must reference the SPECIFIC environmental property being violated or respected with exact numbers.
 - eligible_after_minutes: vary between 3 and ${maxMinutes} to cover early, mid, and late decisions.
-- Contradiction injects: requires_response=true, severity high/critical, describe realistic consequences.
+- Contradiction injects: requires_response=true, severity high/critical, describe realistic consequences of using that location.
 - Correct-choice injects: requires_response=false, severity low/medium, brief status update (1-2 sentences).
 - No two injects should cover the exact same constraint for the same location.`;
 }
@@ -2155,7 +2016,7 @@ async function generateEnvInjects_Exits(
   exitPins: NonNullable<WarroomScenarioPayload['locations']>,
   routes: SeedRoute[],
   narrative?: { title?: string; description?: string; briefing?: string },
-): Promise<NonNullable<WarroomScenarioPayload['decision_injects']>> {
+): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
   if (!exitPins.length) return [];
   const { scenario_type, venue_name, location: loc, setting } = input;
   const venue = venue_name || loc || setting;
@@ -2194,13 +2055,13 @@ ${envInjectFormatSpec(teamName, maxMin)}`;
   const userPrompt = `Write exit-focused environment injects for ${teamName}. For each of the ${exitPins.length} exits, produce a contradiction and a correct-choice inject referencing specific capacity limits, widths, blockages, and connecting road conditions.`;
 
   try {
-    const parsed = await callOpenAi<{ decision_injects?: EnvInjectRaw[] }>(
+    const parsed = await callOpenAi<{ condition_driven_injects?: EnvInjectRaw[] }>(
       systemPrompt,
       userPrompt,
       openAiApiKey,
       4000,
     );
-    return normalizeEnvInjectResults(parsed.decision_injects || [], teamName);
+    return normalizeEnvConditionInjectResults(parsed.condition_driven_injects || [], teamName);
   } catch (err) {
     logger.warn({ err, teamName }, 'Env injects (exits) failed; continuing without');
     return [];
@@ -2218,7 +2079,7 @@ async function generateEnvInjects_CandidateSpaces(
   routes: SeedRoute[],
   siteAreas: Array<Record<string, unknown>>,
   narrative?: { title?: string; description?: string; briefing?: string },
-): Promise<NonNullable<WarroomScenarioPayload['decision_injects']>> {
+): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
   if (!candidatePins.length) return [];
   const { scenario_type, venue_name, location: loc, setting } = input;
   const venue = venue_name || loc || setting;
@@ -2281,13 +2142,13 @@ ${envInjectFormatSpec(teamName, maxMin)}`;
   const userPrompt = `Write candidate-space environment injects for ${teamName}. For each of the ${candidatePins.length} candidate spaces, produce a contradiction and a correct-choice inject referencing specific capacity, utilities, surface, vehicle access, distance, and access road conditions.`;
 
   try {
-    const parsed = await callOpenAi<{ decision_injects?: EnvInjectRaw[] }>(
+    const parsed = await callOpenAi<{ condition_driven_injects?: EnvInjectRaw[] }>(
       systemPrompt,
       userPrompt,
       openAiApiKey,
       4000,
     );
-    return normalizeEnvInjectResults(parsed.decision_injects || [], teamName);
+    return normalizeEnvConditionInjectResults(parsed.condition_driven_injects || [], teamName);
   } catch (err) {
     logger.warn({ err, teamName }, 'Env injects (candidate spaces) failed; continuing without');
     return [];
@@ -2304,7 +2165,7 @@ async function generateEnvInjects_POIs(
   poiPins: NonNullable<WarroomScenarioPayload['locations']>,
   routes: SeedRoute[],
   narrative?: { title?: string; description?: string; briefing?: string },
-): Promise<NonNullable<WarroomScenarioPayload['decision_injects']>> {
+): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
   if (!poiPins.length) return [];
   const { scenario_type, venue_name, location: loc, setting } = input;
   const venue = venue_name || loc || setting;
@@ -2365,13 +2226,13 @@ ${envInjectFormatSpec(teamName, maxMin)}`;
   const userPrompt = `Write POI-focused environment injects for ${teamName}. For each of the ${poiPins.length} facilities, produce a contradiction and a correct-choice inject referencing specific capacities, capabilities, distances, travel times, and road conditions.`;
 
   try {
-    const parsed = await callOpenAi<{ decision_injects?: EnvInjectRaw[] }>(
+    const parsed = await callOpenAi<{ condition_driven_injects?: EnvInjectRaw[] }>(
       systemPrompt,
       userPrompt,
       openAiApiKey,
       4000,
     );
-    return normalizeEnvInjectResults(parsed.decision_injects || [], teamName);
+    return normalizeEnvConditionInjectResults(parsed.condition_driven_injects || [], teamName);
   } catch (err) {
     logger.warn({ err, teamName }, 'Env injects (POIs) failed; continuing without');
     return [];
@@ -2388,7 +2249,7 @@ async function generateEnvInjects_Routes(
   routes: SeedRoute[],
   areas: SeedArea[],
   narrative?: { title?: string; description?: string; briefing?: string },
-): Promise<NonNullable<WarroomScenarioPayload['decision_injects']>> {
+): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
   if (!routes.length && !areas.length) return [];
   const { scenario_type, venue_name, location: loc, setting } = input;
   const venue = venue_name || loc || setting;
@@ -2448,13 +2309,13 @@ ${envInjectFormatSpec(teamName, maxMin)}`;
   const userPrompt = `Write route-and-area environment injects for ${teamName}. For each of the ${routes.length} routes and ${areas.length} operational areas, produce a contradiction and a correct-choice inject referencing specific road conditions, travel times, capacities, and problems.`;
 
   try {
-    const parsed = await callOpenAi<{ decision_injects?: EnvInjectRaw[] }>(
+    const parsed = await callOpenAi<{ condition_driven_injects?: EnvInjectRaw[] }>(
       systemPrompt,
       userPrompt,
       openAiApiKey,
       4000,
     );
-    return normalizeEnvInjectResults(parsed.decision_injects || [], teamName);
+    return normalizeEnvConditionInjectResults(parsed.condition_driven_injects || [], teamName);
   } catch (err) {
     logger.warn({ err, teamName }, 'Env injects (routes/areas) failed; continuing without');
     return [];
@@ -2464,9 +2325,11 @@ ${envInjectFormatSpec(teamName, maxMin)}`;
 // ── Wrapper: runs all 4 sub-generators in parallel per team ─────────────
 
 /**
- * Generates environment-grounded decision injects split by pin category.
+ * Generates environment-grounded condition-driven injects split by pin category.
  * Runs 4 focused AI calls in parallel (exits, candidate spaces, POIs,
  * routes/areas) so each call has concentrated context and ample output budget.
+ * Returns condition_driven_injects (not decision_injects) — they fire based on
+ * location_claimed:<label> game state, not keyword matching.
  */
 async function generateEnvironmentDecisionInjects(
   input: WarroomGenerateInput,
@@ -2477,7 +2340,7 @@ async function generateEnvironmentDecisionInjects(
   locations?: WarroomScenarioPayload['locations'],
   seeds?: WarroomScenarioPayload['environmental_seeds'],
   siteAreas?: Array<Record<string, unknown>>,
-): Promise<NonNullable<WarroomScenarioPayload['decision_injects']>> {
+): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
   const exitPins = (locations ?? []).filter((l) => l.pin_category === 'access');
   const candidatePins = (locations ?? []).filter((l) => l.pin_category === 'candidate_space');
   const poiPins = (locations ?? []).filter((l) => l.pin_category === 'poi');
@@ -2594,11 +2457,15 @@ async function generateTeamConditionInjects(
       ? `\nRESPONSE STANDARDS:\n${standardsToPromptBlock(researchContext.standards_findings)}`
       : '';
 
-  const systemPrompt = `You are an expert crisis management scenario designer writing condition-driven failure injects for the ${teamName} team.
+  const durationMins = input.duration_minutes ?? 60;
+  const injectCount = durationMins <= 30 ? '12–18' : durationMins <= 90 ? '18–25' : '25–35';
+
+  const systemPrompt = `You are an expert crisis management scenario designer writing condition-driven injects for the ${teamName} team.
 
 Scenario: ${scenario_type} at ${venue}
 All teams: ${allTeamNames.join(', ')}
 Focus team: ${teamName}
+Game duration: ${durationMins} minutes
 ${narrativeBlock}
 ${similarCasesBlock}
 ${standardsBlock}
@@ -2611,28 +2478,40 @@ ${JSON.stringify(relevantSchema, null, 2)}
 
 ${conditionKeysHint}
 
-Condition-driven injects fire automatically when ${teamName}'s performance has been poor — when multiple negative state conditions are simultaneously true. They represent "perfect storm" cascading failures: if ${teamName} fails to manage their responsibilities, these injects compound the consequences.
+Condition-driven injects fire automatically when ${teamName}'s game state meets specific conditions. They come in TWO flavours:
 
-The game runs for ${input.duration_minutes ?? 60} minutes and is solvable if teams play well. These injects should NOT fire on optimal runs — they are the penalty path.
+1. FAILURE / CONSEQUENCE injects — fire when ${teamName}'s performance has been poor (multiple negative state conditions simultaneously true). They represent cascading failures and compounding consequences. These make the game harder when teams underperform.
 
-Cover a COMPREHENSIVE range of failure modes for ${teamName}:
+2. POSITIVE OUTCOME / STATUS UPDATE injects — fire when ${teamName} has been performing well (positive state conditions met). They reward good decisions with favourable developments: reinforcements arriving, crowds cooperating, intel breakthroughs, media praise, route clearing, etc. These do NOT require a response — they are positive feedback.
+
+3. ESCALATION / BRANCHING injects — fire when game state hits critical thresholds that change the nature of the crisis: secondary explosions, hostage situations, structural failures, VIP arrivals, weather changes, crowd surges, etc. These represent turning points that demand new decisions.
+
+4. DECISION-CONSEQUENCE injects — fire when ${teamName} has claimed a specific location or taken a specific action (using location_claimed:<label> keys or state keys). They represent the consequences (positive or negative) of that specific decision.
+
+The game runs for ${durationMins} minutes. The scenario is solvable if teams play well. Failure injects fire only on poor runs. Positive injects fire on good runs. Escalation injects fire based on game progression.
+
+Cover ALL of these categories for ${teamName}:
 - Operational failures (delayed response, wrong procedures, missed protocols)
 - Resource mismanagement (overcommitted assets, equipment failures, personnel shortages)
 - Communication breakdowns (missed updates, conflicting orders, information silos)
 - Environmental/site failures (capacity overflows, route blockages, unsafe conditions)
-- Escalation failures (threat level changes ignored, cascading incidents)
-- Public impact failures (civilian complaints, media exposure, community harm)
-- Coordination failures (handoff delays, duplicated efforts, missed requests from other teams)
-- Intelligence/assessment failures (missed threat indicators, wrong threat assessment)
+- Escalation triggers (threat level changes, cascading incidents, secondary events)
+- Public impact (civilian complaints, media exposure, community harm OR praise)
+- Coordination (handoff delays, duplicated efforts, or successful joint operations)
+- Intelligence/assessment (missed threat indicators, wrong assessment, or breakthrough intel)
+- Positive outcomes (successful evacuations, contained threats, good media coverage)
+- Decision consequences (results of choosing specific locations, routes, or tactics)
+- Resource arrival/reinforcement (additional teams, equipment, specialists arriving)
+- Morale and fatigue (team burnout, civilian panic, or calm restored)
 
 Return ONLY valid JSON:
 {
   "condition_driven_injects": [
     {
-      "title": "string — names the specific failure mode for ${teamName}",
+      "title": "string — names the specific event/consequence for ${teamName}",
       "content": "string — 2-3 sentences referencing SPECIFIC location labels from the map pins above",
       "type": "field_update|media_report|intel_brief|citizen_call",
-      "severity": "critical|high|medium",
+      "severity": "critical|high|medium|low",
       "inject_scope": "team_specific",
       "target_teams": ["${teamName}"],
       "conditions_to_appear": { "threshold": 2, "conditions": ["key_a", "key_b", "key_c"] },
@@ -2646,21 +2525,24 @@ Return ONLY valid JSON:
 }
 
 RULES:
-- 8–12 injects covering as many distinct ${teamName} failure modes as possible.
-- conditions_to_appear keys MUST match the state schema above.
-- Reference SPECIFIC location labels from map pins.
-- eligible_after_minutes: vary between 5 and 30 to cover early, mid, and late-game failures.
-- Use different thresholds (1, 2, 3) for different severity levels — low-threshold for early warnings, high-threshold for catastrophic cascades.
+- Write ${injectCount} injects. At least 40% should be failure/consequence injects, at least 20% positive outcomes, and at least 20% escalation/branching.
+- conditions_to_appear keys MUST match the state schema above. You may also use location_claimed:<label> keys (these evaluate to true when a team claims that map pin as a location).
+- Reference SPECIFIC location labels from map pins whenever possible.
+- eligible_after_minutes: vary across the full game duration (5 to ${Math.round(durationMins * 0.8)}) — early-game, mid-game, and late-game injects.
+- Use different thresholds (1, 2, 3) for different severity levels — threshold 1 for early warnings, threshold 2-3 for catastrophic cascades.
+- conditions_to_cancel: provide cancellation keys so injects can be superseded when the situation changes.
 - objective_penalty only for genuine failure consequences.
-- No two injects should cover the same failure mode.
-- requires_response: true when this inject presents a problem, failure, or crisis that the team must act on or make a decision about. false when it is a status update, positive acknowledgment, or informational update that does not demand a new action.`;
+- No two injects should have the same title or cover identical conditions.
+- requires_response: true when this inject presents a problem, failure, escalation, or crisis that the team must act on. false when it is a positive status update, acknowledgment, or informational update that does not demand a new action.
+- For positive outcome injects: set requires_response to false and severity to "low" or "medium".
+- Make content specific, vivid, and grounded in the scenario's locations and context.`;
 
-  const userPrompt = `Write 8-12 condition-driven injects for ${teamName}'s failure modes in "${narrative?.title || scenario_type}" at ${venue}. Cover operational, resource, communication, environmental, escalation, public impact, coordination, and intelligence failures.`;
+  const userPrompt = `Write ${injectCount} condition-driven injects for ${teamName} in "${narrative?.title || scenario_type}" at ${venue}. Include failure consequences, positive outcomes, escalation triggers, and decision consequences. Cover operational, resource, communication, environmental, escalation, public impact, coordination, intelligence, morale, and reinforcement categories.`;
 
   try {
     const parsed = await callOpenAi<{
       condition_driven_injects?: WarroomScenarioPayload['condition_driven_injects'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
+    }>(systemPrompt, userPrompt, openAiApiKey, 8000);
     const raw = parsed.condition_driven_injects || [];
     return raw
       .filter(
@@ -2736,11 +2618,16 @@ async function generatePairConditionInjects(
       ? `\nRESPONSE STANDARDS:\n${standardsToPromptBlock(researchContext.standards_findings)}`
       : '';
 
-  const systemPrompt = `You are an expert crisis management scenario designer writing cross-team coordination failure injects.
+  const pairDurationMins = input.duration_minutes ?? 60;
+  const pairInjectCount =
+    pairDurationMins <= 30 ? '6–8' : pairDurationMins <= 90 ? '8–12' : '12–16';
+
+  const systemPrompt = `You are an expert crisis management scenario designer writing cross-team coordination injects.
 
 Scenario: ${scenario_type} at ${venue}
 Team pair: ${teamA} and ${teamB}
 All teams: ${allTeamNames.join(', ')}
+Game duration: ${pairDurationMins} minutes
 ${narrativeBlock}
 ${similarCasesBlock}
 ${standardsBlock}
@@ -2751,18 +2638,20 @@ ${seedBlock}
 Full team state schema:
 ${JSON.stringify(stateSchema, null, 2)}
 
-Cross-team injects fire when BOTH ${teamA} and ${teamB} have failed to coordinate at their operational interface. They represent cascading failures caused specifically by the breakdown between these two teams — e.g. ${teamA} holding a bottleneck that overwhelms ${teamB}, contradictory instructions to the public, or a critical handover that was missed.
+Cross-team injects fire based on the combined state of ${teamA} and ${teamB}. They come in TWO flavours:
 
-The game runs for ${input.duration_minutes ?? 60} minutes on the optimal path — these injects fire ONLY if both teams are underperforming.
+1. COORDINATION FAILURE injects — fire when BOTH teams have failed to coordinate. They represent cascading failures from breakdown between teams: bottlenecks, contradictory instructions, missed handovers, duplicated efforts, information gaps.
+
+2. COORDINATION SUCCESS injects — fire when both teams ARE coordinating well. They represent positive outcomes: smooth handoffs, effective joint operations, public confidence, efficient resource sharing. These do NOT require a response — they are rewards for good coordination.
 
 Return ONLY valid JSON:
 {
   "condition_driven_injects": [
     {
-      "title": "string — names the coordination failure between ${teamA} and ${teamB}",
-      "content": "string — 2-3 sentences: the specific cascading failure from both teams not coordinating, referencing location labels",
+      "title": "string — names the coordination event between ${teamA} and ${teamB}",
+      "content": "string — 2-3 sentences: the specific outcome from both teams' coordination (or lack thereof), referencing location labels",
       "type": "field_update|media_report|intel_brief|citizen_call",
-      "severity": "critical|high",
+      "severity": "critical|high|medium|low",
       "inject_scope": "team_specific",
       "target_teams": ["${teamA}", "${teamB}"],
       "conditions_to_appear": { "threshold": 2, "conditions": ["key_teamA", "key_teamB", "key_third"] },
@@ -2776,20 +2665,22 @@ Return ONLY valid JSON:
 }
 
 RULES:
-- 4–6 injects for the ${teamA} and ${teamB} interface, covering distinct coordination failure modes.
-- Each title MUST be unique and specific to the coordination failure — include both team names and the failure type. Never reuse the same title across injects.
+- Write ${pairInjectCount} injects for the ${teamA} and ${teamB} interface. At least 60% should be failure injects, at least 25% should be success/positive injects.
+- Each title MUST be unique and specific — include both team names and the event type. Never reuse the same title across injects.
 - conditions_to_appear must reference state keys from BOTH teams (not just one).
-- Content describes the specific interface failure between ${teamA} and ${teamB}.
-- eligible_after_minutes: vary between 10 and 35 to cover different phases of the exercise.
+- Content describes the specific interface outcome between ${teamA} and ${teamB}, referencing location labels.
+- eligible_after_minutes: vary between 5 and ${Math.round(pairDurationMins * 0.8)} to cover different phases.
 - Use different thresholds (1, 2, 3) for different severity cascades.
-- requires_response: true when this inject presents a coordination failure or problem the teams must act on. false when it is a status update or positive acknowledgment (e.g. improved coordination) that does not demand a new action.`;
+- conditions_to_cancel: provide cancellation keys so injects are superseded when the situation changes.
+- requires_response: true for coordination failures/problems teams must act on. false for positive status updates or acknowledgments.
+- For success injects: set requires_response to false and severity to "low" or "medium".`;
 
-  const userPrompt = `Write 4-6 cross-team coordination failure injects for ${teamA} and ${teamB} in "${narrative?.title || scenario_type}" at ${venue}. Cover information sharing failures, resource handoff delays, conflicting directives, missed requests, duplicated efforts, and cascading bottlenecks.`;
+  const userPrompt = `Write ${pairInjectCount} cross-team coordination injects for ${teamA} and ${teamB} in "${narrative?.title || scenario_type}" at ${venue}. Include both coordination failures (information sharing failures, resource handoff delays, conflicting directives, missed requests, duplicated efforts, cascading bottlenecks) AND coordination successes (smooth handoffs, effective joint operations, resource sharing, unified messaging).`;
 
   try {
     const parsed = await callOpenAi<{
       condition_driven_injects?: WarroomScenarioPayload['condition_driven_injects'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
+    }>(systemPrompt, userPrompt, openAiApiKey, 6000);
     const raw = parsed.condition_driven_injects || [];
     return raw
       .filter(
@@ -2863,48 +2754,42 @@ export async function warroomGenerateScenario(
   const durationMinutes = input.duration_minutes ?? 60;
   const timingManifest = buildTimingManifest(teamNames, durationMinutes);
 
-  // Batch A — time injects + decision injects + chaos injects, all parallel (no world context needed)
+  // Batch A — time injects + chaos injects, all parallel (no world context needed)
   onProgress?.('Generating injects (parallel batch A)...');
-  const [universalTimeInjects, perTeamTimeResults, perTeamDecisionResults, perTeamChaosResults] =
-    await Promise.all([
-      generateUniversalTimeInjects(
-        input,
-        teamNames,
-        openAiApiKey,
-        timingManifest.universalSlots,
-        undefined,
-        narrative,
-      ),
-      Promise.all(
-        teamNames.map((t) =>
-          generateTeamTimeInjects(
-            input,
-            t,
-            teamNames,
-            openAiApiKey,
-            timingManifest.teamSlots[t] ?? [],
-            narrative,
-          ),
+  const [universalTimeInjects, perTeamTimeResults, perTeamChaosResults] = await Promise.all([
+    generateUniversalTimeInjects(
+      input,
+      teamNames,
+      openAiApiKey,
+      timingManifest.universalSlots,
+      undefined,
+      narrative,
+    ),
+    Promise.all(
+      teamNames.map((t) =>
+        generateTeamTimeInjects(
+          input,
+          t,
+          teamNames,
+          openAiApiKey,
+          timingManifest.teamSlots[t] ?? [],
+          narrative,
         ),
       ),
-      Promise.all(
-        teamNames.map((t) =>
-          generateTeamDecisionInjects(input, t, teamNames, openAiApiKey, narrative),
+    ),
+    Promise.all(
+      teamNames.map((t) =>
+        generateChaosInjects(
+          input,
+          t,
+          teamNames,
+          openAiApiKey,
+          timingManifest.chaosSlots[t] ?? [],
+          narrative,
         ),
       ),
-      Promise.all(
-        teamNames.map((t) =>
-          generateChaosInjects(
-            input,
-            t,
-            teamNames,
-            openAiApiKey,
-            timingManifest.chaosSlots[t] ?? [],
-            narrative,
-          ),
-        ),
-      ),
-    ]);
+    ),
+  ]);
 
   // Merge and normalise time injects — guarantees no 5-min gap in 0–60
   const rawTimeInjects: WarroomScenarioPayload['time_injects'] = [
@@ -2913,10 +2798,6 @@ export async function warroomGenerateScenario(
     ...perTeamChaosResults.flat(),
   ];
   const time_injects = normalizeInjectTiming(rawTimeInjects, durationMinutes);
-
-  const decisionFlat = perTeamDecisionResults.flat();
-  let decision_injects: WarroomScenarioPayload['decision_injects'] =
-    decisionFlat.length > 0 ? decisionFlat : undefined;
 
   // Phase 4a-1 (scenario-fixed pins) + POI enrichment run in PARALLEL
   const venue = input.venue_name || input.location || input.setting;
@@ -3015,7 +2896,7 @@ export async function warroomGenerateScenario(
 
   if (includeCondition) {
     onProgress?.(
-      'Generating condition-driven & environment-grounded decision injects (parallel batch B)...',
+      'Generating condition-driven & environment-grounded injects (parallel batch B)...',
     );
     const pairs = buildPairs(teamNames, input.complexity_tier);
     const [condResults, envDecResults] = await Promise.all([
@@ -3064,9 +2945,9 @@ export async function warroomGenerateScenario(
     const condFlat = condResults.flat();
     if (condFlat.length > 0) condition_driven_injects = condFlat;
 
-    const envDecFlat = envDecResults.flat();
-    if (envDecFlat.length > 0) {
-      decision_injects = [...(decision_injects ?? []), ...envDecFlat];
+    const envCondFlat = envDecResults.flat();
+    if (envCondFlat.length > 0) {
+      condition_driven_injects = [...(condition_driven_injects ?? []), ...envCondFlat];
     }
   }
 
@@ -3118,7 +2999,6 @@ export async function warroomGenerateScenario(
     teams: phase1.teams,
     objectives: phase1.objectives,
     time_injects,
-    decision_injects,
     condition_driven_injects,
     locations,
     environmental_seeds,
