@@ -162,12 +162,15 @@ async function getPublishedInjectIds(sessionId: string): Promise<Set<string>> {
 }
 
 /**
- * Find injects that should be triggered based on decision classification
- * Only returns injects that haven't been published yet (one-time use)
+ * Find injects that should be triggered based on decision classification.
+ * Only returns injects that haven't been published yet (one-time use).
+ * When decisionMakerTeam is provided, team-specific injects are only matched
+ * if their target_teams includes the decision-maker's team.
  */
 export async function findMatchingInjects(
   sessionId: string,
   classification: DecisionClassification,
+  decisionMakerTeam?: string | null,
 ): Promise<Array<{ id: string; trigger_condition: string }>> {
   try {
     // Get session to find scenario_id
@@ -185,7 +188,7 @@ export async function findMatchingInjects(
     // Get all injects for this scenario with decision-based triggers
     const { data: injects, error } = await supabaseAdmin
       .from('scenario_injects')
-      .select('id, trigger_condition')
+      .select('id, trigger_condition, target_teams, inject_scope')
       .eq('scenario_id', session.scenario_id)
       .not('trigger_condition', 'is', null)
       .is('trigger_time_minutes', null); // Only decision-based, not time-based
@@ -213,6 +216,24 @@ export async function findMatchingInjects(
           'Skipping inject that has already been published (one-time use limit)',
         );
         continue;
+      }
+
+      // Team-scoping: only trigger team-specific injects if the decision-maker
+      // belongs to one of the inject's target teams
+      const injectScope = (inject as { inject_scope?: string }).inject_scope;
+      const targetTeams = (inject as { target_teams?: string[] | null }).target_teams;
+      if (
+        decisionMakerTeam &&
+        injectScope === 'team_specific' &&
+        Array.isArray(targetTeams) &&
+        targetTeams.length > 0
+      ) {
+        const teamMatch = targetTeams.some(
+          (t) => t.toLowerCase() === decisionMakerTeam.toLowerCase(),
+        );
+        if (!teamMatch) {
+          continue;
+        }
       }
 
       const condition = parseTriggerCondition(inject.trigger_condition);
@@ -271,23 +292,31 @@ export async function shouldTriggerInject(injectId: string, sessionId: string): 
 }
 
 /**
- * Evaluate decision-based triggers and auto-publish matching injects
- * Limits the number of injects published per decision to prevent flooding
+ * Evaluate decision-based triggers and auto-publish matching injects.
+ * Limits the number of injects published per decision to prevent flooding.
+ * When decisionMakerTeam is provided, team-specific injects only fire
+ * if they target the decision-maker's team.
  */
 export async function evaluateDecisionBasedTriggers(
   sessionId: string,
   decision: { id: string; title: string; description: string },
   classification: DecisionClassification,
   io?: SocketServer,
+  decisionMakerTeam?: string | null,
 ): Promise<void> {
   try {
     logger.info(
-      { sessionId, decisionId: decision.id, classification: classification.primary_category },
+      {
+        sessionId,
+        decisionId: decision.id,
+        classification: classification.primary_category,
+        team: decisionMakerTeam,
+      },
       'Evaluating decision-based inject triggers',
     );
 
-    // Find matching injects
-    const matchingInjects = await findMatchingInjects(sessionId, classification);
+    // Find matching injects (scoped to decision-maker's team)
+    const matchingInjects = await findMatchingInjects(sessionId, classification, decisionMakerTeam);
 
     if (matchingInjects.length === 0) {
       logger.debug({ sessionId, decisionId: decision.id }, 'No matching injects found');

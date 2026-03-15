@@ -919,7 +919,9 @@ export class InjectSchedulerService {
     // --- Condition-driven injects: evaluate appear/cancel and publish if appear_met ---
     const { data: conditionInjectsRaw, error: conditionError } = await supabaseAdmin
       .from('scenario_injects')
-      .select('id, title, conditions_to_appear, conditions_to_cancel, eligible_after_minutes')
+      .select(
+        'id, title, conditions_to_appear, conditions_to_cancel, eligible_after_minutes, target_teams, inject_scope',
+      )
       .eq('scenario_id', session.scenario_id)
       .not('conditions_to_appear', 'is', null);
 
@@ -930,6 +932,33 @@ export class InjectSchedulerService {
       );
     }
     if (!conditionError && conditionInjectsRaw && conditionInjectsRaw.length > 0) {
+      // Build set of teams that have submitted at least one executed decision (single query)
+      const teamsWithDecisions = new Set<string>();
+      if (executedDecisions.length > 0) {
+        const decisionIds = executedDecisions.map((d) => d.id);
+        const { data: decisionRows } = await supabaseAdmin
+          .from('decisions')
+          .select('proposed_by')
+          .in('id', decisionIds);
+        const proposerIds = [
+          ...new Set(
+            (decisionRows ?? [])
+              .map((r: { proposed_by?: string }) => r.proposed_by)
+              .filter(Boolean) as string[],
+          ),
+        ];
+        if (proposerIds.length > 0) {
+          const { data: teamRows } = await supabaseAdmin
+            .from('session_teams')
+            .select('team_name')
+            .eq('session_id', session.id)
+            .in('user_id', proposerIds);
+          for (const tr of teamRows ?? []) {
+            teamsWithDecisions.add((tr as { team_name: string }).team_name.toLowerCase());
+          }
+        }
+      }
+
       const conditionInjects = conditionInjectsRaw.filter(
         (inj) => !publishedInjectIds.has(inj.id) && !cancelledInjectIds.has(inj.id),
       );
@@ -937,6 +966,23 @@ export class InjectSchedulerService {
         const eligibleAfter = (inject as { eligible_after_minutes?: number | null })
           .eligible_after_minutes;
         if (eligibleAfter != null && elapsedMinutes < eligibleAfter) continue;
+
+        // Team guard: skip team-specific condition injects if the target team
+        // hasn't submitted any decisions yet (they haven't had a chance to act)
+        const injectScope = (inject as { inject_scope?: string }).inject_scope;
+        const targetTeams = (inject as { target_teams?: string[] | null }).target_teams;
+        if (
+          injectScope === 'team_specific' &&
+          Array.isArray(targetTeams) &&
+          targetTeams.length > 0
+        ) {
+          const anyTargetTeamActed = targetTeams.some((t) =>
+            teamsWithDecisions.has(t.toLowerCase()),
+          );
+          if (!anyTargetTeamActed) {
+            continue;
+          }
+        }
 
         const conditionsToAppear = (inject as { conditions_to_appear?: unknown })
           .conditions_to_appear;

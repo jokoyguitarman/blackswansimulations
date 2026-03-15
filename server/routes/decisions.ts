@@ -919,11 +919,22 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         // Phase 3: Evaluate decision-based triggers and auto-publish matching injects
         if (aiClassification && io) {
           try {
+            // Resolve the decision-maker's team for inject scoping
+            const { data: triggerAuthorTeams } = await supabaseAdmin
+              .from('session_teams')
+              .select('team_name')
+              .eq('session_id', decision.session_id)
+              .eq('user_id', decision.proposed_by);
+            const triggerTeamName =
+              (triggerAuthorTeams ?? []).length > 0
+                ? (triggerAuthorTeams![0] as { team_name: string }).team_name
+                : null;
             await evaluateDecisionBasedTriggers(
               decision.session_id,
               { id, title: decision.title, description: decision.description },
               aiClassification,
               io,
+              triggerTeamName,
             );
           } catch (triggerErr) {
             logger.error(
