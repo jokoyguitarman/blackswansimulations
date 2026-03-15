@@ -6,6 +6,7 @@ import {
   type KeywordPatternDef,
 } from './scenarioConditionConfigService.js';
 import type { CounterDefinition } from '../counterDefinitions.js';
+import { env } from '../env.js';
 
 /**
  * Scenario State Service - Server-side only
@@ -344,6 +345,130 @@ function indicatesSecondDeviceZoneCleared(title: string, description: string): b
   return SECOND_DEVICE_KEYWORDS.some((kw) => text.includes(kw.toLowerCase()));
 }
 
+interface StateKeyCandidate {
+  key: string;
+  label: string;
+  behavior: string;
+  type: string;
+  keywords?: string[];
+  categories?: string[];
+  stateKey: string;
+}
+
+interface AIStateKeyEvaluation {
+  keys_to_flip: Array<{ key: string; stateKey: string; reason: string }>;
+}
+
+/**
+ * Uses GPT-4o-mini to decide which counter-definition state keys should flip
+ * based on the actual meaning and specificity of the player's decision.
+ * Replaces raw keyword/substring matching to avoid false positives on vague decisions.
+ */
+async function evaluateStateKeysWithAI(
+  decisionTitle: string,
+  decisionDescription: string,
+  candidates: StateKeyCandidate[],
+  openAiApiKey: string,
+): Promise<AIStateKeyEvaluation> {
+  if (!candidates.length) return { keys_to_flip: [] };
+
+  const candidateList = candidates
+    .map(
+      (c, i) =>
+        `${i + 1}. key="${c.key}" (label: "${c.label}", type: ${c.type}, behavior: ${c.behavior})` +
+        (c.keywords?.length ? `\n   Expected keywords: [${c.keywords.join(', ')}]` : '') +
+        (c.categories?.length ? `\n   Expected categories: [${c.categories.join(', ')}]` : ''),
+    )
+    .join('\n');
+
+  const systemPrompt = `You are a crisis simulation game engine evaluating whether a player's decision is specific and actionable enough to flip game-state flags.
+
+You will receive:
+1. A player decision (title + description).
+2. A list of candidate state keys, each with a label describing what action it represents, and optional expected keywords/categories.
+
+RULES:
+- Only flip a key if the decision CLEARLY and SPECIFICALLY demonstrates the action the key represents.
+- Vague or generic decisions (e.g. "secure the area", "handle the situation") should NOT flip keys unless the key is very broadly defined.
+- The decision must show concrete, actionable intent that maps to the key's meaning.
+- If the decision is tangentially related but doesn't specifically address the key's action, do NOT flip it.
+- When in doubt, do NOT flip — false negatives are far better than false positives.
+
+Return ONLY valid JSON:
+{
+  "keys_to_flip": [
+    { "key": "the_key_name", "stateKey": "parent_state_key", "reason": "brief explanation" }
+  ]
+}
+
+If no keys should flip, return: { "keys_to_flip": [] }`;
+
+  const userPrompt = `Player decision:
+Title: ${decisionTitle}
+Description: ${decisionDescription}
+
+Candidate state keys to evaluate:
+${candidateList}
+
+Which keys should be flipped? Be strict — only flip keys where the decision specifically and clearly demonstrates the action.`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.1,
+        max_tokens: 800,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text().catch(() => 'unknown');
+      logger.warn(
+        { status: response.status, body: errBody },
+        'AI state-key evaluation failed; falling back to no flips',
+      );
+      return { keys_to_flip: [] };
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) return { keys_to_flip: [] };
+
+    const parsed = JSON.parse(content) as AIStateKeyEvaluation;
+    const validKeys = new Set(candidates.map((c) => c.key));
+    const validStateKeys = new Set(candidates.map((c) => c.stateKey));
+
+    const filtered = (parsed.keys_to_flip ?? []).filter(
+      (k) => validKeys.has(k.key) && validStateKeys.has(k.stateKey),
+    );
+
+    logger.info(
+      {
+        decisionTitle,
+        candidateCount: candidates.length,
+        flippedCount: filtered.length,
+        flipped: filtered.map((f) => `${f.stateKey}.${f.key}`),
+      },
+      'AI state-key evaluation complete',
+    );
+
+    return { keys_to_flip: filtered };
+  } catch (err) {
+    logger.error({ err, decisionTitle }, 'Error in AI state-key evaluation');
+    return { keys_to_flip: [] };
+  }
+}
+
 /**
  * Phase 3: Update team state (evacuation_state, triage_state, media_state) from an executed decision
  * using AI classification and author team. Called after classifyDecision and storing ai_classification.
@@ -420,7 +545,6 @@ export async function updateTeamStateFromDecision(
     const hasCounterDefs = Object.keys(counterDefsMap).length > 0;
 
     if (hasCounterDefs) {
-      // Map author team names to state keys
       const teamToStateKey = (name: string): string => {
         const n = (name ?? '').toLowerCase();
         if (/evacuation|evac/.test(n)) return 'evacuation_state';
@@ -429,54 +553,90 @@ export async function updateTeamStateFromDecision(
         return `${n.replace(/\s+/g, '_')}_state`;
       };
 
+      // Collect all candidate keys across all author teams for a single AI call
+      const allCandidates: StateKeyCandidate[] = [];
+      const teamStateKeyMap = new Map<string, string>();
+
       for (const teamName of authorTeamNames) {
         const stateKey = teamToStateKey(teamName);
+        teamStateKeyMap.set(teamName, stateKey);
         const defs = counterDefsMap[stateKey];
         if (!defs?.length) continue;
 
-        const teamState = (currentState[stateKey] as Record<string, unknown>) ?? {};
-
         for (const def of defs) {
-          if (def.behavior === 'decision_toggle' && def.type === 'boolean') {
-            const cfg = def.config ?? {};
-            const kwMatch = cfg.keywords?.some((kw) => decisionText.includes(kw.toLowerCase()));
-            const catMatch = cfg.categories?.some((c) => hasCategory(c) || categories.includes(c));
-            if (kwMatch || catMatch) {
-              teamState[def.key] = true;
-            }
-          } else if (def.behavior === 'decision_increment' && def.type === 'number') {
-            const cfg = def.config ?? {};
-            const kwMatch = cfg.keywords?.some((kw) => decisionText.includes(kw.toLowerCase()));
-            const catMatch = cfg.categories?.some((c) => hasCategory(c) || categories.includes(c));
-            if (kwMatch || catMatch) {
-              teamState[def.key] = Math.max(0, Number(teamState[def.key]) || 0) + 1;
-            }
+          if (
+            (def.behavior === 'decision_toggle' && def.type === 'boolean') ||
+            (def.behavior === 'decision_increment' && def.type === 'number')
+          ) {
+            allCandidates.push({
+              key: def.key,
+              label: def.label,
+              behavior: def.behavior,
+              type: def.type,
+              keywords: def.config?.keywords,
+              categories: def.config?.categories,
+              stateKey,
+            });
           }
         }
-
-        currentState[stateKey] = teamState;
       }
 
-      // Also run config-driven keyword patterns (from scenario type template) for non-counter state
+      // Also gather config-driven keyword patterns as candidates
       if (scenarioId) {
         try {
           const config = await getConditionConfigForScenario(scenarioId);
           for (const pattern of config.keyword_patterns as KeywordPatternDef[]) {
             if (!pattern.state_key || !pattern.keywords?.length) continue;
-            const matches = pattern.keywords.some((kw) => decisionText.includes(kw.toLowerCase()));
-            if (!matches) continue;
             const [parent, child] = pattern.state_key.split('.');
             if (!parent || !child) continue;
-            let target = currentState[parent] as Record<string, unknown>;
-            if (typeof target !== 'object' || target === null) {
-              target = {};
-              currentState[parent] = target;
-            }
-            (target as Record<string, unknown>)[child] = true;
+            allCandidates.push({
+              key: child,
+              label: child.replace(/_/g, ' '),
+              behavior: 'decision_toggle',
+              type: 'boolean',
+              keywords: pattern.keywords,
+              stateKey: parent,
+            });
           }
         } catch (configErr) {
           logger.debug({ scenarioId, err: configErr }, 'Condition config fetch failed');
         }
+      }
+
+      const apiKey = env.openAiApiKey;
+      if (allCandidates.length > 0 && apiKey) {
+        const result = await evaluateStateKeysWithAI(title, description, allCandidates, apiKey);
+
+        for (const flip of result.keys_to_flip) {
+          let target = currentState[flip.stateKey] as Record<string, unknown>;
+          if (typeof target !== 'object' || target === null) {
+            target = {};
+            currentState[flip.stateKey] = target;
+          }
+          const candidate = allCandidates.find(
+            (c) => c.key === flip.key && c.stateKey === flip.stateKey,
+          );
+          if (candidate?.behavior === 'decision_increment') {
+            target[flip.key] = Math.max(0, Number(target[flip.key]) || 0) + 1;
+          } else {
+            target[flip.key] = true;
+          }
+        }
+
+        logger.info(
+          {
+            sessionId,
+            authorTeamNames,
+            candidateCount: allCandidates.length,
+            flippedKeys: result.keys_to_flip.map((f) => `${f.stateKey}.${f.key}`),
+          },
+          'AI-evaluated state key flips from decision',
+        );
+      } else if (allCandidates.length > 0) {
+        logger.warn(
+          { sessionId },
+          'OpenAI API key not configured; skipping AI state-key evaluation',
+        );
       }
     } else {
       // Legacy hardcoded decision handling (backward compatibility)
