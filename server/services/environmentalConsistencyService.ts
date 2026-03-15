@@ -97,6 +97,29 @@ function buildGroundTruthSummary(
     }
   }
 
+  // 1b) Exits from scenario_locations (may include exits not in layout_ground_truth)
+  const exitLocations = (scenarioLocations ?? []).filter((loc) => loc.location_type === 'exit');
+  if (exitLocations.length > 0) {
+    const layoutExitLabels = new Set(
+      (layout?.exits ?? []).map((e) => (e.label ?? '').toLowerCase()).filter(Boolean),
+    );
+    const extraExits = exitLocations.filter(
+      (loc) => !layoutExitLabels.has((loc.label ?? '').toLowerCase()),
+    );
+    if (extraExits.length > 0) {
+      const extraLines = extraExits.map((loc) => {
+        const label = loc.label ?? 'Exit';
+        const cond = (loc.conditions ?? {}) as Record<string, unknown>;
+        const flowParts: string[] = [];
+        if (cond.flow_per_min != null) flowParts.push(`${cond.flow_per_min}/min`);
+        if (cond.status) flowParts.push(`[${cond.status}]`);
+        if (cond.width_m != null) flowParts.push(`width ${cond.width_m}m`);
+        return flowParts.length ? `${label} ${flowParts.join(' ')}` : label;
+      });
+      parts.push(`Additional exits (from map): ${extraLines.join('; ')}`);
+    }
+  }
+
   // 2) Triage zone candidates (same as Insider triage_site: scenario_locations area/triage_site + site_areas)
   const siteAreas = (insiderKnowledge.site_areas ?? []) as SiteAreaForGroundTruth[];
   const triageLocations = (scenarioLocations ?? []).filter(
