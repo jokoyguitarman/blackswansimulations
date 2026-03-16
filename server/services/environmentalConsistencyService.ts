@@ -444,15 +444,16 @@ Return ONLY valid JSON:
     const sectorStandardsLine = sectorStandards
       ? `Sector standards (if any): ${sectorStandards}\n\n`
       : '';
+    const teamRoleLine = teamName ? `TEAM ROLE: ${teamName}\n\n` : '';
     const userPrompt = `ENVIRONMENT GROUND TRUTH: ${groundTruthSummary}
 
-${sectorStandardsLine}${incidentUserBlock}DECISION:
+${sectorStandardsLine}${teamRoleLine}${incidentUserBlock}DECISION:
 Title: ${decision.title}
 Description: ${decision.description}
 
 Evaluate BOTH dimensions:
 (A) CONSISTENCY: Only treat as contradiction if the decision explicitly states a specific fact that contradicts the ground truth for that place or route; otherwise prefer consistent or below_standard.
-(B) SPECIFICITY: Does this decision contain enough operational detail (named locations, quantities, ratios, protocols, timelines) to be executed on-scene? If it gives general instructions without concrete specifics, set specific: false with missing_details and a detailed feedback paragraph.
+(B) SPECIFICITY: Does this decision contain enough operational detail (named locations, quantities, ratios, protocols, timelines) to be executed on-scene? Apply the specificity requirements for the TEAM ROLE specified above. If it gives general instructions without concrete specifics, set specific: false with missing_details and a detailed feedback paragraph.
 
 Return JSON only.`;
 
