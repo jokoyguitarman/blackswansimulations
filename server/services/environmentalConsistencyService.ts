@@ -297,6 +297,7 @@ export async function evaluateDecisionAgainstEnvironment(
   openAiApiKey: string | undefined,
   incident?: { title: string; description: string } | null,
   teamName?: string,
+  qualityFailureCount?: number,
 ): Promise<EnvironmentalConsistencyResult> {
   const consistentDefault: EnvironmentalConsistencyResult = { consistent: true };
   if (!openAiApiKey) return consistentDefault;
@@ -397,7 +398,10 @@ Rules:
 - Do not invent contradictions: If the decision correctly states a capacity for a location (e.g. "Vacant Lot E standing capacity 500" and ground truth says Lot E has standing 500), set consistent: true. Only set contradiction if the decision states a different number for that location (e.g. "Lot E has 100 lying" when ground truth says Lot E has 50 lying).
 - severity: "low" = minor (e.g. 60 in 50-capacity area); "medium" = clear contradiction (e.g. wrong exit, 100 in 50); "high" = dangerous/impossible (e.g. 200 in 50, non-existent exit). For below_standard use "low" or "medium" only. NEVER combine severity "high" with mismatch_kind "below_standard".
 - error_type: "capacity" | "location" | "flow" | "other" (if consistent is false).
-- reason: one clear sentence (e.g. for contradiction: "The assembly area North has a safe capacity of 50; your plan assumed 100." For below_standard: "The assembly area you designated (North capacity 200) is below the sector guideline of 125% of expected evacuees (1250); your plan uses the available option.").
+- reason: when consistent is false, write the reason following the ESCALATION LEVEL provided in the user prompt:
+  - ESCALATION 0: a factual, neutral statement of what is wrong (e.g. "The assembly area North has a safe capacity of 50; your plan assumed 100.").
+  - ESCALATION 1: describe in-world consequences now occurring because of the error (e.g. "Using the overcrowded North assembly area has caused a crush incident; casualties are being reported among evacuees."). Be scenario-specific.
+  - ESCALATION 2+: describe critical in-world damage from repeated errors (e.g. "Continued reliance on incorrect location data has led to preventable deaths and a complete breakdown of the evacuation corridor."). Be severe and scenario-specific.
 - Routes: If "Current route status" is in the ground truth, use it. If the decision uses a route that is congested, blocked, or unmanaged without proposing to manage/clear it first, set consistent: false with appropriate severity and error_type "flow" or "location". If the decision chooses a significantly slower route when a faster one is available, set consistent: false (or below_standard) with severity and reason.
 - route_effect (when the decision is route-related: evacuation, triage, transport, convoy): "clear" = uses a fast/managed route; "slow" = uses a slower or congested route but still valid; "congested" = uses a blocked/unmanaged route or clearly suboptimal. Omit or null when the decision does not involve route choice.
 
@@ -417,9 +421,14 @@ If sector standards or team doctrines are provided, the decision MUST address th
 
 Set "specific": false when the decision gives general/vague instructions without naming the concrete details above. Set "specific": true when the decision names enough specifics to be executed without further clarification.
 
+When "specific" is false, the "feedback" tone MUST match the ESCALATION LEVEL provided in the user prompt:
+- ESCALATION 0 (first offence): feedback is a polite but firm request from the field team asking for the missing operational details. Explain WHAT is missing and WHY it matters.
+- ESCALATION 1 (second offence): feedback describes IN-WORLD CONSEQUENCES that are now happening because orders were unclear. E.g. "Without designated triage zones, responders are improvising. Two critical patients were misrouted and their condition is deteriorating." Make it scenario-specific.
+- ESCALATION 2+ (third offence onward): feedback describes CRITICAL IN-WORLD DAMAGE — preventable casualties, operational failure, public backlash. E.g. "The continued absence of structured triage has led to preventable deaths. Field medics are overwhelmed and demoralised." Be severe and scenario-specific.
+
 When "specific" is false:
 - "missing_details": array of 2-5 short phrases naming what is missing (e.g. ["exit names and IDs", "marshal-to-evacuee ratio", "ground zero perimeter distance"])
-- "feedback": one paragraph (2-4 sentences) written as an in-world pressure message from the field team. Explain that the team on the ground cannot execute the order without the missing details. Be specific about WHAT is missing and WHY it matters operationally. Do NOT be generic — reference the actual scenario environment (e.g. "Which of the available exits should we direct evacuees to? We have multiple options and need a designation." not just "Please specify exits").
+- "feedback": one paragraph (2-4 sentences) following the ESCALATION LEVEL rules above. Reference the actual scenario environment — do NOT be generic.
 
 === OUTPUT FORMAT ===
 
@@ -445,15 +454,17 @@ Return ONLY valid JSON:
       ? `Sector standards (if any): ${sectorStandards}\n\n`
       : '';
     const teamRoleLine = teamName ? `TEAM ROLE: ${teamName}\n\n` : '';
+    const escalationLevel = qualityFailureCount ?? 0;
+    const escalationLine = `ESCALATION LEVEL: ${escalationLevel} (${escalationLevel === 0 ? 'first offence — request details' : escalationLevel === 1 ? 'second offence — describe in-world consequences' : 'third+ offence — describe critical in-world damage'})\n\n`;
     const userPrompt = `ENVIRONMENT GROUND TRUTH: ${groundTruthSummary}
 
-${sectorStandardsLine}${teamRoleLine}${incidentUserBlock}DECISION:
+${sectorStandardsLine}${teamRoleLine}${escalationLine}${incidentUserBlock}DECISION:
 Title: ${decision.title}
 Description: ${decision.description}
 
-Evaluate BOTH dimensions:
-(A) CONSISTENCY: Only treat as contradiction if the decision explicitly states a specific fact that contradicts the ground truth for that place or route; otherwise prefer consistent or below_standard.
-(B) SPECIFICITY: Does this decision contain enough operational detail (named locations, quantities, ratios, protocols, timelines) to be executed on-scene? Apply the specificity requirements for the TEAM ROLE specified above. If it gives general instructions without concrete specifics, set specific: false with missing_details and a detailed feedback paragraph.
+Evaluate BOTH dimensions — apply the ESCALATION LEVEL above to ALL feedback (both "reason" and "feedback"):
+(A) CONSISTENCY: Only treat as contradiction if the decision explicitly states a specific fact that contradicts the ground truth for that place or route; otherwise prefer consistent or below_standard. When consistent is false, write the "reason" following the ESCALATION LEVEL tone.
+(B) SPECIFICITY: Does this decision contain enough operational detail (named locations, quantities, ratios, protocols, timelines) to be executed on-scene? Apply the specificity requirements for the TEAM ROLE specified above. If it gives general instructions without concrete specifics, set specific: false with missing_details and feedback following the ESCALATION LEVEL rules.
 
 Return JSON only.`;
 

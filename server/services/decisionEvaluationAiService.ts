@@ -201,6 +201,115 @@ Return JSON only: { "satisfies": boolean, "reason": "optional one sentence" }
   }
 }
 
+// ---------------------------------------------------------------------------
+// Prerequisite reference detection (replaces keyword matching)
+// ---------------------------------------------------------------------------
+
+export interface PrerequisiteReferenceResult {
+  capacity_facility: { match: boolean; label?: string } | null;
+  claimed_space: { match: boolean; label?: string; claimed_by?: string } | null;
+  bad_location: { match: boolean; label?: string } | null;
+  reason?: string;
+}
+
+/**
+ * AI-based detection of whether a decision references at-capacity facilities,
+ * claimed spaces, or unsuitable locations. Returns null on failure so caller
+ * can fall back to keyword matching.
+ */
+export async function evaluatePrerequisiteReferences(
+  params: {
+    decisionText: string;
+    capacityFacilities: Array<{ label: string; type: string }>;
+    claimedSpaces: Array<{ label: string; claimed_by: string; claimed_as: string }>;
+    badLocations: Array<{ label: string; location_type: string; condition: string }>;
+    incidentContext?: { title: string; description: string };
+  },
+  openAiApiKey: string,
+): Promise<PrerequisiteReferenceResult | null> {
+  const { decisionText, capacityFacilities, claimedSpaces, badLocations, incidentContext } = params;
+  const hasItems =
+    capacityFacilities.length > 0 || claimedSpaces.length > 0 || badLocations.length > 0;
+  if (!hasItems) return null;
+
+  try {
+    const sections: string[] = [];
+    if (capacityFacilities.length > 0) {
+      sections.push(
+        'AT-CAPACITY FACILITIES (full, cannot accept more):\n' +
+          capacityFacilities.map((f) => `- ${f.label} (${f.type})`).join('\n'),
+      );
+    }
+    if (claimedSpaces.length > 0) {
+      sections.push(
+        'CLAIMED SPACES (already assigned to another team):\n' +
+          claimedSpaces
+            .map((s) => `- ${s.label} — claimed by ${s.claimed_by} as ${s.claimed_as}`)
+            .join('\n'),
+      );
+    }
+    if (badLocations.length > 0) {
+      sections.push(
+        'UNSUITABLE / UNCLEARED LOCATIONS:\n' +
+          badLocations.map((l) => `- ${l.label} (${l.location_type}): ${l.condition}`).join('\n'),
+      );
+    }
+    const incidentBlock = incidentContext
+      ? `\nIncident context: ${incidentContext.title} — ${incidentContext.description}`
+      : '';
+
+    const systemPrompt = `You are a crisis management evaluator. Given a decision and lists of problematic locations/facilities, determine whether the decision PROPOSES USING any of them. A decision that only mentions a location to reject, avoid, or suggest alternatives does NOT count as proposing use.
+Return JSON only:
+{
+  "capacity_facility": { "match": boolean, "label": "matched facility name or null" } | null,
+  "claimed_space": { "match": boolean, "label": "matched space name or null", "claimed_by": "team name or null" } | null,
+  "bad_location": { "match": boolean, "label": "matched location name or null" } | null,
+  "reason": "one sentence explaining the match or why no match"
+}
+Set the category to null if that category has no items to check. Set match to true only if the decision proposes USING that specific facility/space/location.`;
+
+    const userPrompt = `${sections.join('\n\n')}${incidentBlock}\n\nDECISION TEXT:\n${decisionText.slice(0, 1500)}\n\nDoes the decision propose using any of the listed items? JSON only.`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 300,
+        response_format: { type: 'json_object' },
+      }),
+    });
+    if (!response.ok) {
+      logger.warn(
+        { status: response.status },
+        'OpenAI API error in evaluatePrerequisiteReferences',
+      );
+      return null;
+    }
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) return null;
+    const parsed = JSON.parse(content) as PrerequisiteReferenceResult;
+    return {
+      capacity_facility: parsed.capacity_facility ?? null,
+      claimed_space: parsed.claimed_space ?? null,
+      bad_location: parsed.bad_location ?? null,
+      reason: typeof parsed.reason === 'string' ? parsed.reason.trim().slice(0, 400) : undefined,
+    };
+  } catch (err) {
+    logger.warn({ err }, 'evaluatePrerequisiteReferences failed, returning null for fallback');
+    return null;
+  }
+}
+
 /** Decision-semantic condition keys that can be precomputed by AI. */
 export const DECISION_SEMANTIC_CONDITION_KEYS = [
   'no_media_management_decision',

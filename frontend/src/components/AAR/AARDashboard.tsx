@@ -666,9 +666,27 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [heatMeter, setHeatMeter] = useState<Record<
+    string,
+    {
+      mistake_points: number;
+      cooldown_points: number;
+      total_decisions: number;
+      heat_percentage: number;
+    }
+  > | null>(null);
 
   useEffect(() => {
     loadAAR();
+    api.sessions
+      .get(sessionId)
+      .then((res) => {
+        const cs = (res.data as Record<string, unknown>)?.current_state as
+          | Record<string, unknown>
+          | undefined;
+        if (cs?.heat_meter) setHeatMeter(cs.heat_meter as typeof heatMeter);
+      })
+      .catch(() => {});
   }, [sessionId]);
 
   const loadAAR = async () => {
@@ -906,6 +924,76 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
               Generate an AAR report to review session performance
             </p>
           )}
+        </div>
+      )}
+
+      {/* Decision Quality Heat Meter */}
+      {heatMeter && Object.keys(heatMeter).length > 0 && (
+        <div className="military-border p-6">
+          <h4 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-4">
+            [DECISION_QUALITY]
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {Object.entries(heatMeter).map(([team, data]) => {
+              const pct = data.heat_percentage ?? 0;
+              const color =
+                pct >= 60
+                  ? 'text-red-400'
+                  : pct >= 40
+                    ? 'text-orange-400'
+                    : pct >= 20
+                      ? 'text-yellow-400'
+                      : 'text-green-400';
+              const barColor =
+                pct >= 60
+                  ? 'bg-red-500'
+                  : pct >= 40
+                    ? 'bg-orange-500'
+                    : pct >= 20
+                      ? 'bg-yellow-500'
+                      : 'bg-green-500';
+              const label =
+                pct >= 60
+                  ? 'POOR'
+                  : pct >= 40
+                    ? 'NEEDS IMPROVEMENT'
+                    : pct >= 20
+                      ? 'ADEQUATE'
+                      : 'GOOD';
+              const mistakes = data.mistake_points ?? 0;
+              return (
+                <div key={team} className="military-border p-4">
+                  <div className="text-sm terminal-text font-semibold mb-2">
+                    {team.toUpperCase()}
+                  </div>
+                  <div className="w-full h-3 bg-robotic-gray-100 rounded-sm overflow-hidden mb-2">
+                    <div
+                      className={`h-full ${barColor} transition-all`}
+                      style={{ width: `${Math.min(100, pct)}%` }}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs terminal-text">
+                    <div>
+                      <span className="text-robotic-yellow/70">Heat:</span>{' '}
+                      <span className={color}>{pct.toFixed(1)}%</span>
+                    </div>
+                    <div>
+                      <span className="text-robotic-yellow/70">Rating:</span>{' '}
+                      <span className={color}>{label}</span>
+                    </div>
+                    <div>
+                      <span className="text-robotic-yellow/70">Decisions:</span>{' '}
+                      <span className="text-robotic-yellow">{data.total_decisions}</span>
+                    </div>
+                    <div>
+                      <span className="text-robotic-yellow/70">Mistakes:</span>{' '}
+                      <span className="text-robotic-yellow">{mistakes}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

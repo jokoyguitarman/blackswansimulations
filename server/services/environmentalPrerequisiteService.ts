@@ -11,9 +11,10 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import type { EnvironmentalConsistencyResult } from './environmentalConsistencyService.js';
-import { evaluateLocationReferenceIntent } from './decisionEvaluationAiService.js';
-
-type RouteRow = { route_id?: string; label?: string; managed?: boolean; active?: boolean };
+import {
+  evaluatePrerequisiteReferences,
+  evaluateLocationReferenceIntent,
+} from './decisionEvaluationAiService.js';
 
 /** Facility (hospital/police/fire_station) in environmental_state.areas; used for capacity gate. */
 export type AreaRow = {
@@ -113,60 +114,37 @@ export async function evaluateEnvironmentalPrerequisite(
     if (!scenarioId) return { result: null };
 
     const currentState = (session.current_state as Record<string, unknown>) || {};
-    const envState = currentState.environmental_state as
-      | {
-          routes?: RouteRow[];
-          areas?: AreaRow[];
-        }
-      | undefined;
+    const envState = currentState.environmental_state as { areas?: AreaRow[] } | undefined;
     const locationState = currentState.location_state as
       | Record<string, { managed?: boolean }>
       | undefined;
 
     const decisionText = `${decision.title ?? ''} ${decision.description ?? ''}`.trim();
+    const decisionLower = decisionText.toLowerCase();
 
-    // --- (1) Facility-capacity gate: decision references a hospital/police area that is at capacity ---
+    // Build input lists for the AI prerequisite check
     const areasRaw = envState?.areas;
     const areas = Array.isArray(areasRaw) ? areasRaw : [];
-    const decisionLower = decisionText.toLowerCase();
+
+    const capacityFacilities: Array<{ label: string; type: string }> = [];
     for (const area of areas) {
       const type = area.type;
       const isFacility = type === 'hospital' || type === 'police' || type === 'fire_station';
       if (!isFacility) continue;
-
-      const label = (area.label ?? '').toLowerCase();
-      const aliases = Array.isArray(area.aliases)
-        ? area.aliases.map((a) => String(a).toLowerCase())
-        : [];
-      const mentioned =
-        (label && decisionLower.includes(label)) ||
-        aliases.some((a) => a && decisionLower.includes(a));
-
-      if (!mentioned) continue;
-
       const atCapacity = area.at_capacity === true;
       const hasProblem = Boolean(area.problem) && area.managed !== true;
       if (!atCapacity && !hasProblem) continue;
-
-      const displayLabel = area.label || area.area_id || 'facility';
-      // Use neutral wording without hints (e.g. no "divert to X or Y") so players must think of alternatives
-      const reason =
-        type === 'hospital'
-          ? `${displayLabel} is at full capacity at the moment, causing further delay to delivering your patients.`
-          : type === 'police' || type === 'fire_station'
-            ? `${displayLabel} is at full capacity; your plan cannot rely on this facility.`
-            : area.problem?.trim() ||
-              `${displayLabel} reports at full capacity. Your plan cannot rely on this facility; consider alternatives.`;
-      return {
-        result: { consistent: false, severity: 'medium', error_type: 'capacity', reason },
-      };
+      capacityFacilities.push({ label: area.label || area.area_id || 'facility', type: type! });
     }
 
-    // --- (1b) Space contention gate: decision references a candidate space claimed by another team ---
-    const { data: locations, error: locErr } = await supabaseAdmin
+    const { data: locations } = await supabaseAdmin
       .from('scenario_locations')
       .select('id, scenario_id, location_type, label, conditions')
       .eq('scenario_id', scenarioId);
+
+    const claimedSpaces: Array<{ label: string; claimed_by: string; claimed_as: string }> = [];
+    const badLocationsForAi: Array<{ label: string; location_type: string; condition: string }> =
+      [];
 
     if (locations && locations.length > 0) {
       const teamName = decision.team_name;
@@ -176,25 +154,93 @@ export async function evaluateEnvironmentalPrerequisite(
         const isCandidateSpace =
           cond.pin_category === 'candidate_space' || Array.isArray(cond.potential_uses);
 
-        if (!isCandidateSpace) continue;
-        if (!label || !decisionLower.includes(label.toLowerCase())) continue;
-        if (decisionMentionsLocationNegatively(decisionText, label)) continue;
+        if (isCandidateSpace && label) {
+          const locId = (loc as { id: string }).id;
+          const claim = (
+            locationState as
+              | Record<
+                  string,
+                  { claimed_by?: string; claimed_as?: string; claimed_at_minutes?: number }
+                >
+              | undefined
+          )?.[locId];
+          if (
+            claim?.claimed_by &&
+            teamName &&
+            claim.claimed_by.toLowerCase() !== teamName.toLowerCase()
+          ) {
+            claimedSpaces.push({
+              label,
+              claimed_by: claim.claimed_by,
+              claimed_as: claim.claimed_as ?? 'designated area',
+            });
+          }
+        }
 
-        const locId = (loc as { id: string }).id;
-        const claim = (
-          locationState as
-            | Record<
-                string,
-                { claimed_by?: string; claimed_as?: string; claimed_at_minutes?: number }
-              >
-            | undefined
-        )?.[locId];
-        if (
-          claim?.claimed_by &&
-          teamName &&
-          claim.claimed_by.toLowerCase() !== teamName.toLowerCase()
-        ) {
-          const reason = `${label} is already being used as a ${claim.claimed_as ?? 'designated area'} by ${claim.claimed_by}${claim.claimed_at_minutes != null ? ` (claimed at T+${claim.claimed_at_minutes})` : ''}. You need to coordinate with them or choose a different location.`;
+        const locType = (loc as { location_type?: string }).location_type ?? '';
+        const conditions = (loc.conditions as LocationConditions) ?? {};
+        const isBad =
+          conditions.suitability === 'low' ||
+          conditions.unsuitable === true ||
+          (conditions.cleared === false &&
+            (conditions.suitability === 'poor' || Boolean(conditions.unsuitable)));
+        if (isBad) {
+          const managed = locationState?.[loc.id]?.managed === true;
+          if (!managed) {
+            const condDesc =
+              conditions.suitability === 'low'
+                ? 'low suitability'
+                : conditions.unsuitable
+                  ? 'unsuitable conditions'
+                  : 'not cleared';
+            badLocationsForAi.push({ label, location_type: locType, condition: condDesc });
+          }
+        }
+      }
+    }
+
+    const hasItemsToCheck =
+      capacityFacilities.length > 0 || claimedSpaces.length > 0 || badLocationsForAi.length > 0;
+
+    // --- AI-based prerequisite check (primary path) ---
+    if (hasItemsToCheck && openAiApiKey) {
+      const aiResult = await evaluatePrerequisiteReferences(
+        {
+          decisionText,
+          capacityFacilities,
+          claimedSpaces,
+          badLocations: badLocationsForAi,
+          incidentContext: incident ?? undefined,
+        },
+        openAiApiKey,
+      );
+
+      if (aiResult !== null) {
+        if (aiResult.capacity_facility?.match && aiResult.capacity_facility.label) {
+          const matchedLabel = aiResult.capacity_facility.label;
+          const matchedArea = areas.find(
+            (a) => (a.label ?? '').toLowerCase() === matchedLabel.toLowerCase(),
+          );
+          const type = matchedArea?.type ?? 'facility';
+          const reason =
+            type === 'hospital'
+              ? `${matchedLabel} is at full capacity at the moment, causing further delay to delivering your patients.`
+              : `${matchedLabel} is at full capacity; your plan cannot rely on this facility.`;
+          evaluationReason = aiResult.reason ?? reason;
+          return {
+            result: { consistent: false, severity: 'medium', error_type: 'capacity', reason },
+            evaluationReason,
+          };
+        }
+
+        if (aiResult.claimed_space?.match && aiResult.claimed_space.label) {
+          const sp = claimedSpaces.find(
+            (s) => s.label.toLowerCase() === (aiResult.claimed_space!.label ?? '').toLowerCase(),
+          );
+          const reason = sp
+            ? `${sp.label} is already being used as a ${sp.claimed_as} by ${sp.claimed_by}. You need to coordinate with them or choose a different location.`
+            : `${aiResult.claimed_space.label} is already claimed by another team.`;
+          evaluationReason = aiResult.reason ?? reason;
           return {
             result: {
               consistent: false,
@@ -202,115 +248,86 @@ export async function evaluateEnvironmentalPrerequisite(
               error_type: 'space_contention',
               reason,
             },
+            evaluationReason,
           };
         }
+
+        if (aiResult.bad_location?.match && aiResult.bad_location.label) {
+          const reason =
+            aiResult.reason ??
+            `The location "${aiResult.bad_location.label}" has poor suitability or conditions that have not been cleared or managed.`;
+          evaluationReason = reason;
+          return {
+            result: { consistent: false, severity: 'medium', error_type: 'location', reason },
+            evaluationReason,
+          };
+        }
+
+        evaluationReason = aiResult.reason ?? 'Prerequisite: passed – no problematic references.';
+        return { result: null, evaluationReason };
       }
     }
 
-    // --- (2) Location-condition gate: decision references a bad location not yet managed ---
-    if (locErr || !locations?.length) return { result: null, evaluationReason };
-
-    const badLocationsInScope: Array<{ label: string; location_type: string }> = [];
-    for (const loc of locations) {
-      const label = (loc as { label?: string }).label ?? '';
-      const locType = (loc as { location_type?: string }).location_type ?? '';
-      const conditions = (loc.conditions as LocationConditions) ?? {};
-      const isBad =
-        conditions.suitability === 'low' ||
-        conditions.unsuitable === true ||
-        (conditions.cleared === false &&
-          (conditions.suitability === 'poor' || Boolean(conditions.unsuitable)));
-
-      if (!isBad) continue;
-
-      const labelMatch = label && decisionLower.includes(label.toLowerCase());
-      const typeMatch =
-        (locType === 'triage_site' && /triage|site/.test(decisionLower)) ||
-        (locType === 'evacuation' && /evacuat/.test(decisionLower)) ||
-        (locType === 'exit' && /\bexit\b/.test(decisionLower)) ||
-        (locType === 'blast_site' && /blast|epicentre|epicenter/.test(decisionLower)) ||
-        (locType === 'pathway' && /\bpathway\b/.test(decisionLower)) ||
-        (locType === 'cordon' && /\bcordon\b/.test(decisionLower)) ||
-        (locType === 'parking' && /\bparking\b/.test(decisionLower));
-
-      // New-model: check if potential_uses matches the decision context
-      const potentialUses = (conditions as Record<string, unknown>).potential_uses;
-      const usesMatch =
-        !typeMatch &&
-        Array.isArray(potentialUses) &&
-        (potentialUses as string[]).some((use) => decisionLower.includes(use.replace(/_/g, ' ')));
-
-      if (!labelMatch && !typeMatch && !usesMatch) continue;
-
-      const managed = locationState?.[loc.id]?.managed === true;
-      if (managed) continue;
-
-      badLocationsInScope.push({ label, location_type: locType });
+    // --- Keyword fallback (when AI unavailable or fails) ---
+    for (const fac of capacityFacilities) {
+      const label = fac.label.toLowerCase();
+      const area = areas.find((a) => (a.label ?? '').toLowerCase() === label);
+      const aliases = Array.isArray(area?.aliases)
+        ? area!.aliases!.map((a) => String(a).toLowerCase())
+        : [];
+      const mentioned =
+        decisionLower.includes(label) || aliases.some((a) => a && decisionLower.includes(a));
+      if (!mentioned) continue;
+      const reason =
+        fac.type === 'hospital'
+          ? `${fac.label} is at full capacity at the moment, causing further delay to delivering your patients.`
+          : `${fac.label} is at full capacity; your plan cannot rely on this facility.`;
+      return {
+        result: { consistent: false, severity: 'medium', error_type: 'capacity', reason },
+      };
     }
 
-    if (badLocationsInScope.length > 0 && openAiApiKey) {
-      const aiResult = await evaluateLocationReferenceIntent(
-        { decisionText, badLocations: badLocationsInScope, incidentContext: incident ?? undefined },
-        openAiApiKey,
-      );
-      if (aiResult !== null) {
-        if (aiResult.referencesBadLocationPositively) {
-          const firstLabel =
-            badLocationsInScope[0]?.label || badLocationsInScope[0]?.location_type || 'location';
+    for (const sp of claimedSpaces) {
+      if (!decisionLower.includes(sp.label.toLowerCase())) continue;
+      if (decisionMentionsLocationNegatively(decisionText, sp.label)) continue;
+      const reason = `${sp.label} is already being used as a ${sp.claimed_as} by ${sp.claimed_by}. You need to coordinate with them or choose a different location.`;
+      return {
+        result: { consistent: false, severity: 'medium', error_type: 'space_contention', reason },
+      };
+    }
+
+    if (badLocationsForAi.length > 0) {
+      const badLocsFallback: Array<{ label: string; location_type: string }> = [];
+      for (const bl of badLocationsForAi) {
+        const labelMatch = bl.label && decisionLower.includes(bl.label.toLowerCase());
+        if (!labelMatch) continue;
+        if (decisionMentionsLocationNegatively(decisionText, bl.label)) continue;
+        badLocsFallback.push(bl);
+      }
+      if (badLocsFallback.length > 0 && openAiApiKey) {
+        const legacyAi = await evaluateLocationReferenceIntent(
+          {
+            decisionText,
+            badLocations: badLocsFallback,
+            incidentContext: incident ?? undefined,
+          },
+          openAiApiKey,
+        );
+        if (legacyAi?.referencesBadLocationPositively) {
           const reason =
-            aiResult.reason?.slice(0, 400) ??
-            `The location "${firstLabel}" has poor suitability or conditions that have not been cleared or managed. The decision references this location without prior clearance.`;
+            legacyAi.reason ??
+            `The location "${badLocsFallback[0].label}" has poor conditions and has not been cleared.`;
           return {
             result: { consistent: false, severity: 'medium', error_type: 'location', reason },
             evaluationReason: reason,
           };
         }
-        evaluationReason =
-          (evaluationReason ? `${evaluationReason} ` : '') +
-          (aiResult.reason ??
-            'Location: passed – decision only references bad locations in a rejecting way.');
-        return { result: null, evaluationReason };
+      } else if (badLocsFallback.length > 0) {
+        const reason = `The location "${badLocsFallback[0].label}" has poor suitability or conditions that have not been cleared or managed.`;
+        return {
+          result: { consistent: false, severity: 'medium', error_type: 'location', reason },
+        };
       }
-    }
-
-    // Fallback: existing keyword logic per location
-    for (const loc of locations) {
-      const label = (loc as { label?: string }).label ?? '';
-      const locType = (loc as { location_type?: string }).location_type ?? '';
-      const conditions = (loc.conditions as LocationConditions) ?? {};
-      const isBad =
-        conditions.suitability === 'low' ||
-        conditions.unsuitable === true ||
-        (conditions.cleared === false &&
-          (conditions.suitability === 'poor' || Boolean(conditions.unsuitable)));
-
-      if (!isBad) continue;
-
-      const labelMatch = label && decisionLower.includes(label.toLowerCase());
-      const typeMatch =
-        (locType === 'triage_site' && /triage|site/.test(decisionLower)) ||
-        (locType === 'evacuation' && /evacuat/.test(decisionLower)) ||
-        (locType === 'exit' && /\bexit\b/.test(decisionLower)) ||
-        (locType === 'blast_site' && /blast|epicentre|epicenter/.test(decisionLower)) ||
-        (locType === 'pathway' && /\bpathway\b/.test(decisionLower)) ||
-        (locType === 'cordon' && /\bcordon\b/.test(decisionLower)) ||
-        (locType === 'parking' && /\bparking\b/.test(decisionLower));
-
-      const potentialUses = (conditions as Record<string, unknown>).potential_uses;
-      const usesMatch =
-        !typeMatch &&
-        Array.isArray(potentialUses) &&
-        (potentialUses as string[]).some((use) => decisionLower.includes(use.replace(/_/g, ' ')));
-
-      if (!labelMatch && !typeMatch && !usesMatch) continue;
-
-      const managed = locationState?.[loc.id]?.managed === true;
-      if (managed) continue;
-
-      if (labelMatch && decisionMentionsLocationNegatively(decisionText, label)) continue;
-
-      const reason = `The location "${label || locType}" has poor suitability or conditions that have not been cleared or managed. The decision references this location without prior clearance.`;
-      return { result: { consistent: false, severity: 'medium', error_type: 'location', reason } };
     }
 
     return { result: null, evaluationReason };

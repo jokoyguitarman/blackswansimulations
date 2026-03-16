@@ -202,43 +202,6 @@ async function teamsWithActionableIncidents(
  * 1. Universal injects based on all recent decisions and state (visible to all)
  * 2. Team-specific injects based on decisions from each team (visible only to that team)
  */
-/** Map robustness scores (1-10) to band for pathway outcome selection. */
-function computeRobustnessBand(
-  robustnessByDecision: Record<string, number> | null,
-): 'low' | 'medium' | 'high' {
-  if (!robustnessByDecision || Object.keys(robustnessByDecision).length === 0) return 'medium';
-  const values = Object.values(robustnessByDecision);
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  if (mean <= 3) return 'low';
-  if (mean >= 7) return 'high';
-  return 'medium';
-}
-
-/**
- * Band from only the given teams' decisions (for team-specific pathway outcomes).
- * If no decisions from those teams, returns 'medium'.
- */
-function computeRobustnessBandForTeams(
-  robustnessByDecision: Record<string, number> | null,
-  decisionsWithTeam: Array<{ id: string; team: string | null }>,
-  targetTeams: string[],
-): 'low' | 'medium' | 'high' {
-  if (!robustnessByDecision || targetTeams.length === 0)
-    return computeRobustnessBand(robustnessByDecision);
-  const teamSet = new Set(targetTeams);
-  const decisionIdsFromTeams = decisionsWithTeam
-    .filter((d) => d.team != null && teamSet.has(d.team))
-    .map((d) => d.id);
-  const values = decisionIdsFromTeams
-    .map((id) => robustnessByDecision[id])
-    .filter((v): v is number => typeof v === 'number');
-  if (values.length === 0) return 'medium';
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  if (mean <= 3) return 'low';
-  if (mean >= 7) return 'high';
-  return 'medium';
-}
-
 export class AIInjectSchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
@@ -910,12 +873,13 @@ export class AIInjectSchedulerService {
     // Teams that had actionable incidents (requires_response: true) in last 5 min – avoid penalizing when they had nothing to respond to
     const teamsWithActionable = await teamsWithActionableIncidents(session.id, fiveMinutesAgo);
 
-    // Load all pathway outcome rows from the last 5 minutes (one per trigger inject); publish one outcome inject per row
+    // Load unconsumed pathway outcome rows from the last 5 minutes (consumed rows were already published per-decision)
     const { data: pathwayOutcomesRows } = await supabaseAdmin
       .from('session_pathway_outcomes')
       .select('id, outcomes, trigger_inject_id, evaluated_at')
       .eq('session_id', session.id)
       .gte('evaluated_at', fiveMinutesAgo)
+      .is('consumed_at', null)
       .order('evaluated_at', { ascending: true });
 
     const rows = (pathwayOutcomesRows ?? []) as Array<{
@@ -945,156 +909,9 @@ export class AIInjectSchedulerService {
     const generatedThisCycle: Array<{ title: string; content: string }> = [];
 
     if (formattedDecisions.length > 0) {
-      if (hasPathwayOutcomes) {
-        // Pathway outcome selection uses only the robustness band (from per-decision robustness scores).
-        // Universal/multi-team rows use global band; team_specific rows use band from target_teams only.
-        if (!this.io) {
-          const { io } = await import('../index.js');
-          this.io = io;
-        }
-
-        let publishedCount = 0;
-        const pathwayTeamsCovered = new Set<string>();
-        let pathwayUniversalPublished = false;
-
-        for (const row of rowsToProcess) {
-          const outcomes = parseOutcomes(row.outcomes);
-          if (outcomes.length === 0) continue;
-
-          const firstOutcome = outcomes[0];
-          const scope = (firstOutcome?.inject_payload?.inject_scope as string) ?? 'universal';
-          const targetTeamsRaw = firstOutcome?.inject_payload?.target_teams;
-          const targetTeams = Array.isArray(targetTeamsRaw) ? targetTeamsRaw : [];
-
-          const useTeamBand = scope === 'team_specific' && targetTeams.length > 0;
-
-          // Skip if we already published a pathway outcome for this team/scope
-          if (!useTeamBand && pathwayUniversalPublished) continue;
-          if (useTeamBand && targetTeams.every((t) => pathwayTeamsCovered.has(t))) continue;
-
-          const rawBand = useTeamBand
-            ? computeRobustnessBandForTeams(
-                latestRobustnessByDecision,
-                formattedDecisions,
-                targetTeams,
-              )
-            : computeRobustnessBand(latestRobustnessByDecision);
-          let robustnessBand = effectiveRobustnessBand(rawBand, hasNotMetGates);
-
-          // Don't penalize teams that had no actionable incidents – use medium instead of low
-          if (useTeamBand && robustnessBand === 'low') {
-            const targetHadActionable = targetTeams.some((t) => teamsWithActionable.has(t));
-            if (!targetHadActionable) {
-              robustnessBand = 'medium';
-              logger.debug(
-                { sessionId: session.id, targetTeams },
-                'Pathway outcome: target team had no actionable incidents, using medium band',
-              );
-            }
-          }
-
-          if (useTeamBand) {
-            logger.debug(
-              {
-                sessionId: session.id,
-                trigger_inject_id: row.trigger_inject_id,
-                targetTeams,
-                robustnessBand,
-              },
-              'Pathway outcome row: using team-specific band',
-            );
-          }
-
-          const matching = outcomes.filter((o) => o.robustness_band === robustnessBand);
-          const toPublish =
-            matching.length > 0
-              ? matching[0]
-              : outcomes[Math.floor(Math.random() * outcomes.length)];
-
-          const requiresResponse =
-            robustnessBand === 'high'
-              ? false
-              : robustnessBand === 'low' || robustnessBand === 'medium'
-                ? true
-                : toPublish.inject_payload.requires_response === true;
-
-          const { data: createdInject, error: createError } = await supabaseAdmin
-            .from('scenario_injects')
-            .insert({
-              scenario_id: session.scenario_id,
-              trigger_time_minutes: null,
-              trigger_condition: null,
-              type: toPublish.inject_payload.type,
-              title: toPublish.inject_payload.title,
-              content: toPublish.inject_payload.content,
-              severity: toPublish.inject_payload.severity,
-              affected_roles: toPublish.inject_payload.affected_roles ?? [],
-              inject_scope: toPublish.inject_payload.inject_scope ?? 'universal',
-              target_teams: toPublish.inject_payload.target_teams ?? null,
-              requires_response: requiresResponse,
-              requires_coordination: false,
-              ai_generated: true,
-              triggered_by_user_id: null,
-              generation_source: 'pathway_outcome',
-            })
-            .select()
-            .single();
-
-          if (!createError && createdInject) {
-            await publishInjectToSession(
-              createdInject.id,
-              session.id,
-              session.trainer_id,
-              this.io!,
-            );
-            publishedCount += 1;
-            if (!useTeamBand) pathwayUniversalPublished = true;
-            for (const t of targetTeams) pathwayTeamsCovered.add(t);
-            logger.info(
-              {
-                sessionId: session.id,
-                injectId: createdInject.id,
-                robustnessBand,
-                outcomeId: toPublish.outcome_id,
-                trigger_inject_id: row.trigger_inject_id,
-              },
-              'Pathway outcome inject published',
-            );
-          } else {
-            logger.warn(
-              {
-                error: createError,
-                sessionId: session.id,
-                trigger_inject_id: row.trigger_inject_id,
-              },
-              'Failed to create outcome inject for row, continuing',
-            );
-          }
-        }
-
-        if (publishedCount === 0) {
-          const universalResult = await this.generateUniversalInject(
-            session,
-            baseContext,
-            formattedDecisions,
-          );
-          if (universalResult) generatedThisCycle.push(universalResult);
-          for (const teamName of teamsWithMembers) {
-            const teamDecisions = formattedDecisions.filter((d) => d.team === teamName);
-            if (teamDecisions.length > 0) {
-              const teamResult = await this.generateTeamSpecificInject(
-                session,
-                baseContext,
-                teamName,
-                teamDecisions,
-                generatedThisCycle,
-              );
-              if (teamResult) generatedThisCycle.push(teamResult);
-            }
-          }
-        }
-      } else {
-        // No pathway outcomes yet (e.g. first cycle before any inject published): fallback to generate from decision
+      // Pathway outcomes now fire per-decision (via selectAndPublishPathwayOutcome in decisions.ts).
+      // Fallback AI inject generation when no pathway outcomes were pre-generated (e.g. first cycle).
+      if (!hasPathwayOutcomes) {
         if (env.openAiApiKey) {
           await supabaseAdmin.from('session_events').insert({
             session_id: session.id,
@@ -1202,6 +1019,10 @@ export class AIInjectSchedulerService {
               session.trainer_id,
               this.io!,
             );
+            await supabaseAdmin
+              .from('session_pathway_outcomes')
+              .update({ consumed_at: new Date().toISOString() })
+              .eq('id', row.id);
             if (!isTeamSpecific) universalInactionPublished = true;
             for (const t of targetTeamsRow) inactionTeamsCovered.add(t);
             logger.info(

@@ -639,6 +639,62 @@ export const SessionView = () => {
                   </div>
                 </div>
               )}
+              {/* Heat Meter */}
+              {session.status === 'in_progress' &&
+                (() => {
+                  const heatMeter = (session.current_state as Record<string, unknown> | undefined)
+                    ?.heat_meter as Record<string, { heat_percentage?: number }> | undefined;
+                  const teamsToShow = isTrainer
+                    ? Object.keys(heatMeter ?? {})
+                    : myTeams.map((t) => t.team_name).filter((tn) => heatMeter?.[tn]);
+                  if (!heatMeter || teamsToShow.length === 0) return null;
+                  return (
+                    <div className="flex items-center gap-3">
+                      {teamsToShow.map((tn) => {
+                        const pct = heatMeter[tn]?.heat_percentage ?? 0;
+                        const color =
+                          pct >= 60
+                            ? 'bg-red-500'
+                            : pct >= 40
+                              ? 'bg-orange-500'
+                              : pct >= 20
+                                ? 'bg-yellow-500'
+                                : 'bg-green-500';
+                        const borderColor =
+                          pct >= 60
+                            ? 'border-red-500'
+                            : pct >= 40
+                              ? 'border-orange-500'
+                              : pct >= 20
+                                ? 'border-yellow-500'
+                                : 'border-green-500';
+                        return (
+                          <div
+                            key={tn}
+                            className={`military-border px-3 py-2 bg-robotic-gray-200 ${borderColor}`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs terminal-text text-robotic-yellow/70 uppercase whitespace-nowrap">
+                                {isTrainer ? tn.toUpperCase() : '[HEAT]'}
+                              </span>
+                              <div className="w-16 h-2 bg-robotic-gray-100 rounded-sm overflow-hidden">
+                                <div
+                                  className={`h-full ${color} transition-all duration-500`}
+                                  style={{ width: `${Math.min(100, pct)}%` }}
+                                />
+                              </div>
+                              <span
+                                className={`text-xs terminal-text font-mono font-bold ${pct >= 60 ? 'text-red-400' : pct >= 40 ? 'text-orange-400' : pct >= 20 ? 'text-yellow-400' : 'text-green-400'}`}
+                              >
+                                {pct.toFixed(0)}%
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               {session.status === 'completed' && (
                 <div className="military-border px-4 py-2 bg-robotic-green/20 border-robotic-green">
                   <span className="text-xs terminal-text text-robotic-green uppercase">

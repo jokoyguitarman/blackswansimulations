@@ -11,19 +11,9 @@ import {
   updateTeamStateFromDecision,
 } from '../services/scenarioStateService.js';
 import { classifyDecision } from '../services/aiService.js';
-import {
-  trackDecisionImpactOnObjectives,
-  evaluateAllObjectivesForSession,
-  addObjectivePenalty,
-} from '../services/objectiveTrackingService.js';
-import {
-  getNotMetGatesForSession,
-  getPendingGatesForSession,
-  getNotMetGatesInScopeForDecision,
-  isDecisionVagueForNotMetGateAsync,
-  objectiveIdForGate,
-} from '../services/gateEvaluationService.js';
-import { gradeDecisionBand } from '../services/incidentDecisionGradingService.js';
+import { evaluateAllObjectivesForSession } from '../services/objectiveTrackingService.js';
+// Gate evaluation imports removed — gates still evaluate on the scheduler for AAR,
+// but no longer drive player-facing inject publishing or objective skipping in the decision flow.
 import { evaluateDecisionAgainstEnvironment } from '../services/environmentalConsistencyService.js';
 import { evaluateEnvironmentalPrerequisite } from '../services/environmentalPrerequisiteService.js';
 import {
@@ -31,6 +21,12 @@ import {
   recordSpaceClaim,
 } from '../services/environmentalConditionManagementService.js';
 import { evaluateStateEffectManagementAndUpdateState } from '../services/stateEffectManagementService.js';
+import {
+  updateTeamHeatMeter,
+  selectAndPublishPathwayOutcome,
+  nudgePublicSentiment,
+} from '../services/heatMeterService.js';
+import { teamConsultedInsiderBefore } from '../services/incidentDecisionGradingService.js';
 import { publishInjectToSession } from './injects.js';
 import { evaluateDecisionBasedTriggers } from '../services/injectTriggerService.js';
 import {
@@ -974,7 +970,6 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
 
     logger.info({ decisionId: id }, 'AFTER_AI_BLOCK: Completed AI processing');
 
-    const skipPositiveForObjectiveIds: string[] = [];
     let authorTeamNames: string[] = [];
     try {
       const { data: authorTeams } = await supabaseAdmin
@@ -993,300 +988,17 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         (sessionRow as { scenario_id?: string } | null)?.scenario_id ?? null;
       const sessionTrainerId = (sessionRow as { trainer_id?: string } | null)?.trainer_id ?? null;
 
-      const notMetGates = await getNotMetGatesForSession(decision.session_id);
-      let gateContentReason: string | undefined;
-      if (notMetGates.length > 0) {
-        const responseToIncidentId = (decision as { response_to_incident_id?: string | null })
-          .response_to_incident_id;
-
-        if (responseToIncidentId && sessionScenarioId) {
-          // Incident-linked decision: band = gradeDecisionBand (Insider has info? match? consulted?)
-          const inScopeGates = await getNotMetGatesInScopeForDecision(
-            responseToIncidentId,
-            notMetGates,
-          );
-          if (inScopeGates.length > 0) {
-            const { data: incidentRow } = await supabaseAdmin
-              .from('incidents')
-              .select('title, description')
-              .eq('id', responseToIncidentId)
-              .single();
-            const incidentTitle = (incidentRow as { title?: string } | null)?.title ?? '';
-            const incidentDescription =
-              (incidentRow as { description?: string } | null)?.description ?? '';
-
-            const teamNames = authorTeamNames.length > 0 ? authorTeamNames : [];
-            const { data: teamUserRows } = await supabaseAdmin
-              .from('session_teams')
-              .select('user_id')
-              .eq('session_id', decision.session_id)
-              .in('team_name', teamNames);
-            const authorTeamUserIds = (teamUserRows ?? []).map(
-              (r: { user_id: string }) => r.user_id,
-            );
-
-            let gradingSectorStandards: string | undefined;
-            try {
-              const { data: scenarioRow } = await supabaseAdmin
-                .from('scenarios')
-                .select('insider_knowledge')
-                .eq('id', sessionScenarioId)
-                .single();
-              const ik = (scenarioRow as { insider_knowledge?: Record<string, unknown> } | null)
-                ?.insider_knowledge;
-              if (ik) {
-                const teamDoctrines = ik.team_doctrines as Record<string, unknown[]> | undefined;
-                const primaryTeam = teamNames[0];
-                if (teamDoctrines && primaryTeam && teamDoctrines[primaryTeam]) {
-                  const { standardsToPromptBlock } =
-                    await import('../services/warroomResearchService.js');
-                  gradingSectorStandards = standardsToPromptBlock(
-                    teamDoctrines[
-                      primaryTeam
-                    ] as import('../services/warroomResearchService.js').StandardsFinding[],
-                  );
-                } else if (typeof ik.sector_standards === 'string') {
-                  gradingSectorStandards = ik.sector_standards as string;
-                }
-              }
-            } catch {
-              // non-critical: grading proceeds without doctrine context
-            }
-
-            const executedAt =
-              (updatedDecision as { executed_at?: string } | null)?.executed_at ??
-              new Date().toISOString();
-            const band = await gradeDecisionBand(
-              {
-                incidentTitle,
-                incidentDescription,
-                decisionDescription: decision.description,
-                scenarioId: sessionScenarioId,
-                sessionId: decision.session_id,
-                teamUserIds: authorTeamUserIds,
-                executedAt,
-                sectorStandards: gradingSectorStandards,
-              },
-              env.openAiApiKey,
-            );
-
-            if (band !== 'top') {
-              for (const gate of inScopeGates) {
-                const objId = objectiveIdForGate(gate);
-                if (objId && !skipPositiveForObjectiveIds.includes(objId))
-                  skipPositiveForObjectiveIds.push(objId);
-              }
-            }
-
-            const { data: vagueFired } = await supabaseAdmin
-              .from('session_events')
-              .select('metadata')
-              .eq('session_id', decision.session_id)
-              .eq('event_type', 'gate_vague_inject_fired');
-            const vagueFiredGateIds = new Set(
-              (vagueFired ?? [])
-                .map(
-                  (e: { metadata?: { gate_id?: string } }) =>
-                    (e.metadata as { gate_id?: string })?.gate_id,
-                )
-                .filter(Boolean),
-            );
-            const { data: mediumFired } = await supabaseAdmin
-              .from('session_events')
-              .select('metadata')
-              .eq('session_id', decision.session_id)
-              .eq('event_type', 'gate_medium_inject_fired');
-            const mediumFiredGateIds = new Set(
-              (mediumFired ?? [])
-                .map(
-                  (e: { metadata?: { gate_id?: string } }) =>
-                    (e.metadata as { gate_id?: string })?.gate_id,
-                )
-                .filter(Boolean),
-            );
-
-            const trainerId = sessionTrainerId;
-            for (const gate of inScopeGates) {
-              if (
-                band === 'lowest' &&
-                !vagueFiredGateIds.has(gate.gate_id) &&
-                gate.if_vague_decision_inject_id
-              ) {
-                try {
-                  if (trainerId && io) {
-                    await publishInjectToSession(
-                      gate.if_vague_decision_inject_id,
-                      decision.session_id,
-                      trainerId,
-                      io,
-                    );
-                    await supabaseAdmin.from('session_events').insert({
-                      session_id: decision.session_id,
-                      event_type: 'gate_vague_inject_fired',
-                      description: `Gate vague inject fired: ${gate.gate_id}`,
-                      actor_id: null,
-                      metadata: { gate_id: gate.gate_id },
-                    });
-                  }
-                } catch (injectErr) {
-                  logger.error(
-                    { err: injectErr, sessionId: decision.session_id, gateId: gate.gate_id },
-                    'Failed to publish gate vague inject',
-                  );
-                }
-              }
-              const ifMediumId = gate.if_medium_band_inject_id ?? null;
-              if (band === 'medium' && ifMediumId && !mediumFiredGateIds.has(gate.gate_id)) {
-                try {
-                  if (trainerId && io) {
-                    await publishInjectToSession(ifMediumId, decision.session_id, trainerId, io);
-                    await supabaseAdmin.from('session_events').insert({
-                      session_id: decision.session_id,
-                      event_type: 'gate_medium_inject_fired',
-                      description: `Gate medium band inject fired: ${gate.gate_id}`,
-                      actor_id: null,
-                      metadata: { gate_id: gate.gate_id },
-                    });
-                  }
-                } catch (injectErr) {
-                  logger.error(
-                    { err: injectErr, sessionId: decision.session_id, gateId: gate.gate_id },
-                    'Failed to publish gate medium band inject',
-                  );
-                }
-              }
-            }
-          }
-        } else {
-          // Legacy: no response_to_incident_id — use vague check (AI when key set, else substring fallback)
-          const vagueResult = await isDecisionVagueForNotMetGateAsync(
-            {
-              description: decision.description,
-              type: decision.type || 'operational_action',
-            },
-            authorTeamNames,
-            notMetGates,
-            env.openAiApiKey,
-          );
-          gateContentReason = vagueResult.gateContentReason;
-          const { vague, gateIds } = vagueResult;
-          if (vague) {
-            const vagueGates = notMetGates.filter((g) => gateIds.includes(g.gate_id));
-            for (const gate of vagueGates) {
-              const objId = objectiveIdForGate(gate);
-              if (objId && !skipPositiveForObjectiveIds.includes(objId))
-                skipPositiveForObjectiveIds.push(objId);
-            }
-            const { data: vagueFired } = await supabaseAdmin
-              .from('session_events')
-              .select('metadata')
-              .eq('session_id', decision.session_id)
-              .eq('event_type', 'gate_vague_inject_fired');
-            const firedGateIds = new Set(
-              (vagueFired ?? [])
-                .map(
-                  (e: { metadata?: { gate_id?: string } }) =>
-                    (e.metadata as { gate_id?: string })?.gate_id,
-                )
-                .filter(Boolean),
-            );
-            const trainerId = sessionTrainerId;
-            for (const gate of vagueGates) {
-              if (firedGateIds.has(gate.gate_id) || !gate.if_vague_decision_inject_id) continue;
-              try {
-                if (trainerId && io) {
-                  await publishInjectToSession(
-                    gate.if_vague_decision_inject_id,
-                    decision.session_id,
-                    trainerId,
-                    io,
-                  );
-                  await supabaseAdmin.from('session_events').insert({
-                    session_id: decision.session_id,
-                    event_type: 'gate_vague_inject_fired',
-                    description: `Gate vague inject fired: ${gate.gate_id}`,
-                    actor_id: null,
-                    metadata: { gate_id: gate.gate_id },
-                  });
-                  firedGateIds.add(gate.gate_id);
-                }
-              } catch (injectErr) {
-                logger.error(
-                  { err: injectErr, sessionId: decision.session_id, gateId: gate.gate_id },
-                  'Failed to publish gate vague inject',
-                );
-              }
-            }
-          }
-        }
-      }
-
-      // Pending-gate vague check: fire vague inject immediately when a player
-      // submits a decision that touches a gate's area but lacks specificity.
-      // This gives parity with the specific-but-wrong path (environmental check).
+      // Count ALL previous quality failure injects for this team (unified escalation counter)
+      let qualityFailureCount = 0;
       if (authorTeamNames.length > 0) {
-        try {
-          const pendingGates = await getPendingGatesForSession(decision.session_id);
-          if (pendingGates.length > 0) {
-            const vagueResult = await isDecisionVagueForNotMetGateAsync(
-              {
-                description: decision.description,
-                type: decision.type || 'operational_action',
-              },
-              authorTeamNames,
-              pendingGates,
-              env.openAiApiKey,
-            );
-            if (vagueResult.vague) {
-              const { data: vagueFiredEvents } = await supabaseAdmin
-                .from('session_events')
-                .select('metadata')
-                .eq('session_id', decision.session_id)
-                .eq('event_type', 'gate_vague_inject_fired');
-              const alreadyFiredGateIds = new Set(
-                (vagueFiredEvents ?? [])
-                  .map(
-                    (e: { metadata?: { gate_id?: string } }) =>
-                      (e.metadata as { gate_id?: string })?.gate_id,
-                  )
-                  .filter(Boolean),
-              );
-              const trainerId = sessionTrainerId;
-              for (const gateId of vagueResult.gateIds) {
-                if (alreadyFiredGateIds.has(gateId)) continue;
-                const gate = pendingGates.find((g) => g.gate_id === gateId);
-                if (!gate?.if_vague_decision_inject_id) continue;
-                try {
-                  if (trainerId && io) {
-                    await publishInjectToSession(
-                      gate.if_vague_decision_inject_id,
-                      decision.session_id,
-                      trainerId,
-                      io,
-                    );
-                    await supabaseAdmin.from('session_events').insert({
-                      session_id: decision.session_id,
-                      event_type: 'gate_vague_inject_fired',
-                      description: `Gate vague inject fired (pending gate): ${gateId}`,
-                      actor_id: null,
-                      metadata: { gate_id: gateId },
-                    });
-                    alreadyFiredGateIds.add(gateId);
-                  }
-                } catch (injectErr) {
-                  logger.error(
-                    { err: injectErr, sessionId: decision.session_id, gateId },
-                    'Failed to publish pending-gate vague inject',
-                  );
-                }
-              }
-            }
-          }
-        } catch (pendingGateErr) {
-          logger.error(
-            { error: pendingGateErr, decisionId: id },
-            'Pending-gate vague check failed, continuing',
-          );
+        const { data: prevFailEvents, error: failCountErr } = await supabaseAdmin
+          .from('session_events')
+          .select('id')
+          .eq('session_id', decision.session_id)
+          .eq('event_type', 'quality_failure_inject_fired')
+          .filter('metadata->>team', 'eq', authorTeamNames[0]);
+        if (!failCountErr && prevFailEvents) {
+          qualityFailureCount = prevFailEvents.length;
         }
       }
 
@@ -1308,7 +1020,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         }
       }
 
-      // Checkpoint 2: Environmental consistency
+      // Checkpoint 2: Environmental consistency + specificity (escalation-aware)
       const aiEnvResult = await evaluateDecisionAgainstEnvironment(
         decision.session_id,
         {
@@ -1320,6 +1032,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         env.openAiApiKey,
         incidentContext,
         authorTeamNames[0],
+        qualityFailureCount,
       );
       // Step 5: Environmental prerequisite (corridor traffic + location-condition + space contention gate); overrides AI result when failed
       const { result: prereqResult, evaluationReason: envPrereqReason } =
@@ -1354,73 +1067,106 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         .update({ environmental_consistency: envResult })
         .eq('id', decision.id);
 
-      // Persist evaluation reasoning (gate content + env prerequisite) for AAR/trainer visibility
-      const evaluationReasoning =
-        envPrereqReason != null || gateContentReason != null
-          ? { gate_content: gateContentReason ?? null, env_prerequisite: envPrereqReason ?? null }
-          : null;
-      if (evaluationReasoning) {
+      // Persist evaluation reasoning (env prerequisite) for AAR/trainer visibility
+      if (envPrereqReason != null) {
         await supabaseAdmin
           .from('decisions')
-          .update({ evaluation_reasoning: evaluationReasoning })
+          .update({ evaluation_reasoning: { env_prerequisite: envPrereqReason } })
           .eq('id', decision.id);
       }
 
-      // Specificity feedback: fire a pressure inject when the decision lacks operational detail
-      logger.info(
-        {
-          decisionId: decision.id,
-          specific: envResult.specific,
-          hasFeedback: !!envResult.feedback,
-          authorTeamNames,
-          sessionScenarioId: !!sessionScenarioId,
-          sessionTrainerId: !!sessionTrainerId,
-          hasIo: !!io,
-        },
-        'SPECIFICITY_CHECK: conditions before inject block',
-      );
+      // Unified quality failure inject: fire an escalating consequence for ANY quality issue
+      type FailureType = 'vague' | 'contradiction' | 'below_standard' | 'prereq';
+      let failureType: FailureType | null = null;
+      let failureContent = '';
+
+      if (envResult.specific === false && envResult.feedback) {
+        failureType = 'vague';
+        const missingList = (envResult.missing_details ?? [])
+          .map((d: string) => `- ${d}`)
+          .join('\n');
+        failureContent = missingList
+          ? `${envResult.feedback}\n\nMissing details:\n${missingList}`
+          : envResult.feedback;
+      } else if (
+        !envResult.consistent &&
+        envResult.mismatch_kind !== 'below_standard' &&
+        envResult.reason
+      ) {
+        failureType = 'contradiction';
+        failureContent = envResult.reason;
+      } else if (
+        !envResult.consistent &&
+        envResult.mismatch_kind === 'below_standard' &&
+        envResult.reason
+      ) {
+        failureType = 'below_standard';
+        failureContent = envResult.reason;
+      } else if (prereqResult && !prereqResult.consistent && prereqResult.reason) {
+        failureType = 'prereq';
+        failureContent = prereqResult.reason;
+      }
+
+      const FAILURE_TITLES: Record<FailureType, [string, string, string]> = {
+        vague: [
+          'Operational detail needed',
+          'Field complications from unclear orders',
+          'Critical failures from inadequate direction',
+        ],
+        contradiction: [
+          'Decision contradicts ground conditions',
+          'Errors causing operational setbacks',
+          'Repeated errors causing operational damage',
+        ],
+        below_standard: [
+          'Decision falls short of operational standards',
+          'Standards gaps affecting operations',
+          'Continued standards violations causing harm',
+        ],
+        prereq: [
+          'Environmental constraint not addressed',
+          'Ignored constraints causing setbacks',
+          'Ignored constraints leading to failure',
+        ],
+      };
+
       if (
-        envResult.specific === false &&
-        envResult.feedback &&
+        failureType &&
+        failureContent &&
         authorTeamNames.length > 0 &&
         sessionScenarioId &&
         sessionTrainerId &&
         io
       ) {
         try {
-          const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-          const { data: recentSpecFired } = await supabaseAdmin
+          const thirtySecAgo = new Date(Date.now() - 30 * 1000).toISOString();
+          const { data: recentFired } = await supabaseAdmin
             .from('session_events')
             .select('id')
             .eq('session_id', decision.session_id)
-            .eq('event_type', 'specificity_inject_fired')
-            .gte('created_at', fiveMinAgo)
+            .eq('event_type', 'quality_failure_inject_fired')
+            .gte('created_at', thirtySecAgo)
             .filter('metadata->>team', 'eq', authorTeamNames[0])
             .limit(1);
 
-          if (!recentSpecFired || recentSpecFired.length === 0) {
-            logger.info(
-              { decisionId: decision.id, team: authorTeamNames[0] },
-              'SPECIFICITY_CHECK: cooldown clear – proceeding to insert inject',
-            );
-            const missingList = (envResult.missing_details ?? [])
-              .map((d: string) => `- ${d}`)
-              .join('\n');
-            const injectContent = missingList
-              ? `${envResult.feedback}\n\nMissing details:\n${missingList}`
-              : envResult.feedback;
+          if (!recentFired || recentFired.length === 0) {
+            const escalationIdx = Math.min(qualityFailureCount, 2);
+            const injectSeverity: 'medium' | 'high' | 'critical' =
+              escalationIdx >= 2 ? 'critical' : escalationIdx >= 1 ? 'high' : 'medium';
+            const titleBase = FAILURE_TITLES[failureType][escalationIdx];
+            const injectTitle = `${titleBase} – ${authorTeamNames[0]} (${decision.id.slice(0, 8)})`;
 
-            const { data: specInject, error: specInsertErr } = await supabaseAdmin
+            const { data: qualityInject, error: qualityInsertErr } = await supabaseAdmin
               .from('scenario_injects')
               .insert({
                 scenario_id: sessionScenarioId,
                 type: 'field_update',
-                title: `Insufficient operational detail in your plan – ${authorTeamNames[0]} (${decision.id.slice(0, 8)})`,
-                content: injectContent,
-                severity: 'high',
+                title: injectTitle,
+                content: failureContent,
+                severity: injectSeverity,
                 inject_scope: 'team_specific',
                 target_teams: [authorTeamNames[0]],
-                requires_response: true,
+                requires_response: failureType === 'vague',
                 requires_coordination: false,
                 ai_generated: true,
                 generation_source: 'specificity_feedback',
@@ -1428,99 +1174,174 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
               .select()
               .single();
 
-            if (specInsertErr) {
+            if (qualityInsertErr) {
               logger.warn(
-                { err: specInsertErr, decisionId: decision.id, team: authorTeamNames[0] },
-                'SPECIFICITY_CHECK: scenario_injects insert FAILED',
+                { err: qualityInsertErr, decisionId: decision.id, team: authorTeamNames[0] },
+                'Quality failure inject insert failed',
               );
             }
 
-            if (specInject) {
+            if (qualityInject) {
               await publishInjectToSession(
-                specInject.id,
+                qualityInject.id,
                 decision.session_id,
                 sessionTrainerId,
                 io,
               );
               await supabaseAdmin.from('session_events').insert({
                 session_id: decision.session_id,
-                event_type: 'specificity_inject_fired',
-                description: `Specificity feedback inject fired for ${authorTeamNames[0]}`,
+                event_type: 'quality_failure_inject_fired',
+                description: `Quality failure (${failureType}) for ${authorTeamNames[0]} (escalation ${qualityFailureCount + 1})`,
                 actor_id: null,
-                metadata: { team: authorTeamNames[0], decision_id: decision.id },
+                metadata: {
+                  team: authorTeamNames[0],
+                  decision_id: decision.id,
+                  failure_type: failureType,
+                  escalation: qualityFailureCount + 1,
+                },
               });
               logger.info(
                 {
                   sessionId: decision.session_id,
                   decisionId: decision.id,
                   team: authorTeamNames[0],
-                  missing: envResult.missing_details,
+                  failureType,
+                  escalation: qualityFailureCount + 1,
+                  severity: injectSeverity,
                 },
-                'Specificity feedback inject published',
+                'Quality failure inject published',
               );
             }
-          } else {
-            logger.info(
-              {
-                decisionId: decision.id,
-                team: authorTeamNames[0],
-                recentSpecFiredCount: recentSpecFired?.length,
-              },
-              'SPECIFICITY_CHECK: cooldown ACTIVE – skipping inject',
-            );
           }
-        } catch (specErr) {
+        } catch (qualityErr) {
           logger.warn(
-            { err: specErr, sessionId: decision.session_id, decisionId: decision.id },
-            'Failed to fire specificity feedback inject',
+            { err: qualityErr, sessionId: decision.session_id, decisionId: decision.id },
+            'Failed to fire quality failure inject',
           );
         }
       }
 
-      const isContradiction = !envResult.consistent && envResult.mismatch_kind !== 'below_standard';
-      if (!envResult.consistent && authorTeamNames.length > 0 && sessionScenarioId) {
-        const { data: scenarioObjectives } = await supabaseAdmin
-          .from('scenario_objectives')
-          .select('objective_id')
-          .eq('scenario_id', sessionScenarioId)
-          .in('objective_id', authorTeamNames);
-        const objectiveIdsToSkip = (scenarioObjectives ?? []).map(
-          (r: { objective_id: string }) => r.objective_id,
-        );
-        for (const objId of objectiveIdsToSkip) {
-          if (!skipPositiveForObjectiveIds.includes(objId)) skipPositiveForObjectiveIds.push(objId);
-        }
-      }
-      if (isContradiction && sessionScenarioId && sessionTrainerId && io) {
-        // Environmental mismatch inject removed: replaced by in-world location-choice problem injects.
-        // Robustness cap and objective penalty below are retained.
-        if (
-          (envResult.severity === 'medium' || envResult.severity === 'high') &&
-          authorTeamNames.length > 0 &&
-          envResult.reason
-        ) {
-          const penaltyPoints = envResult.severity === 'high' ? 15 : 10;
-          const { data: scenarioObjectives } = await supabaseAdmin
-            .from('scenario_objectives')
-            .select('objective_id')
-            .eq('scenario_id', sessionScenarioId)
-            .in('objective_id', authorTeamNames);
-          for (const row of scenarioObjectives ?? []) {
-            const objId = (row as { objective_id: string }).objective_id;
-            try {
-              await addObjectivePenalty(
-                decision.session_id,
-                objId,
-                envResult.reason.slice(0, 200),
-                penaltyPoints,
-              );
-            } catch (penaltyErr) {
-              logger.warn(
-                { err: penaltyErr, sessionId: decision.session_id, objectiveId: objId },
-                'Failed to add objective penalty for environmental mismatch',
-              );
+      // Insider knowledge consultation check
+      let noIntel = false;
+      if (authorTeamNames.length > 0) {
+        try {
+          const { data: teamUserRows } = await supabaseAdmin
+            .from('session_teams')
+            .select('user_id')
+            .eq('session_id', decision.session_id)
+            .in('team_name', authorTeamNames);
+          const teamUserIds = (teamUserRows ?? []).map((r: { user_id: string }) => r.user_id);
+          const consulted = await teamConsultedInsiderBefore(
+            decision.session_id,
+            teamUserIds,
+            new Date().toISOString(),
+          );
+          if (!consulted) {
+            noIntel = true;
+            // Count decisions made by this team to determine if nudge is warranted
+            const { data: teamDecisions } = await supabaseAdmin
+              .from('decisions')
+              .select('id')
+              .eq('session_id', decision.session_id)
+              .in('proposed_by', teamUserIds)
+              .eq('status', 'executed');
+            const decisionCount = teamDecisions?.length ?? 0;
+            if (decisionCount >= 2 && sessionScenarioId && sessionTrainerId && io) {
+              const { data: nudgeFired } = await supabaseAdmin
+                .from('session_events')
+                .select('id')
+                .eq('session_id', decision.session_id)
+                .eq('event_type', 'intel_nudge_fired')
+                .filter('metadata->>team', 'eq', authorTeamNames[0])
+                .limit(1);
+              if (!nudgeFired || nudgeFired.length === 0) {
+                const { data: nudgeInject } = await supabaseAdmin
+                  .from('scenario_injects')
+                  .insert({
+                    scenario_id: sessionScenarioId,
+                    type: 'field_update',
+                    title: `Intelligence reports not reviewed – ${authorTeamNames[0]} (${decision.id.slice(0, 8)})`,
+                    content:
+                      'Intelligence reports from the forward command post are available but your team has not reviewed them. Decision-making without available briefing materials increases operational risk. Recommend reviewing current intelligence before issuing further orders.',
+                    severity: 'medium',
+                    inject_scope: 'team_specific',
+                    target_teams: [authorTeamNames[0]],
+                    requires_response: false,
+                    requires_coordination: false,
+                    ai_generated: true,
+                    generation_source: 'specificity_feedback',
+                  })
+                  .select()
+                  .single();
+                if (nudgeInject) {
+                  await publishInjectToSession(
+                    nudgeInject.id,
+                    decision.session_id,
+                    sessionTrainerId,
+                    io,
+                  );
+                  await supabaseAdmin.from('session_events').insert({
+                    session_id: decision.session_id,
+                    event_type: 'intel_nudge_fired',
+                    description: `Intel nudge inject fired for ${authorTeamNames[0]}`,
+                    actor_id: null,
+                    metadata: { team: authorTeamNames[0] },
+                  });
+                  logger.info(
+                    { sessionId: decision.session_id, team: authorTeamNames[0] },
+                    'Intel nudge inject fired',
+                  );
+                }
+              }
             }
           }
+        } catch (intelErr) {
+          logger.warn(
+            { err: intelErr, sessionId: decision.session_id },
+            'Insider knowledge check failed, continuing',
+          );
+        }
+      }
+
+      // Heat meter: determine mistake type from evaluation results
+      if (authorTeamNames.length > 0) {
+        let mistakeType: 'vague' | 'contradiction' | 'prereq' | 'no_intel' | 'good' = 'good';
+        if (envResult.specific === false) {
+          mistakeType = 'vague';
+        } else if (!envResult.consistent && envResult.mismatch_kind !== 'below_standard') {
+          mistakeType = 'contradiction';
+        } else if (!envResult.consistent) {
+          mistakeType = 'prereq';
+        } else if (noIntel) {
+          mistakeType = 'no_intel';
+        }
+        try {
+          const { heat_percentage } = await updateTeamHeatMeter(
+            decision.session_id,
+            authorTeamNames[0],
+            mistakeType,
+            io,
+          );
+
+          if (sessionScenarioId && sessionTrainerId && io) {
+            await selectAndPublishPathwayOutcome(
+              decision.session_id,
+              authorTeamNames[0],
+              heat_percentage,
+              sessionScenarioId,
+              sessionTrainerId,
+              io,
+            );
+          }
+
+          if (authorTeamNames[0] === 'media') {
+            await nudgePublicSentiment(decision.session_id, mistakeType);
+          }
+        } catch (heatErr) {
+          logger.warn(
+            { err: heatErr, sessionId: decision.session_id, team: authorTeamNames[0] },
+            'Heat meter / pathway / sentiment update failed, continuing',
+          );
         }
       }
     } catch (antiGamingErr) {
@@ -1649,25 +1470,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       );
     }
 
-    // Track decision impact on objectives
-    try {
-      await trackDecisionImpactOnObjectives(
-        decision.session_id,
-        {
-          id: decision.id,
-          title: decision.title,
-          description: decision.description,
-          type: decision.type || 'operational_action',
-        },
-        { skipPositiveForObjectiveIds, authorTeamNames },
-      );
-    } catch (objectiveError) {
-      // Don't block decision execution if objective tracking fails
-      logger.error(
-        { error: objectiveError, decisionId: id },
-        'Error tracking decision impact on objectives, continuing with decision execution',
-      );
-    }
+    // Old keyword-based objective tracking removed — replaced by heat meter system above
 
     // Evaluate objectives with AI to determine if any are complete (non-blocking)
     try {
