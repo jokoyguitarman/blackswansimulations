@@ -208,14 +208,7 @@ export async function evaluateStateEffectManagementAndUpdateState(
     };
   }
 
-  // Re-read latest state to avoid clobbering concurrent writes (e.g. inject state_effects)
-  const { data: freshRow } = await supabaseAdmin
-    .from('sessions')
-    .select('current_state')
-    .eq('id', sessionId)
-    .single();
-  const freshState = (freshRow?.current_state as Record<string, unknown>) ?? currentState;
-  const nextState: Record<string, unknown> = { ...freshState, managed_effects: managedEffects };
+  const nextState: Record<string, unknown> = { ...currentState, managed_effects: managedEffects };
 
   const { error: updateErr } = await supabaseAdmin
     .from('sessions')

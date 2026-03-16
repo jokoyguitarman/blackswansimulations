@@ -86,14 +86,7 @@ export async function updateTeamHeatMeter(
   teamState.heat_percentage = computeHeatPercentage(teamState);
   heatMeterAll[teamName] = teamState;
 
-  // Re-read latest state to avoid clobbering concurrent writes (e.g. inject state_effects)
-  const { data: freshRow } = await supabaseAdmin
-    .from('sessions')
-    .select('current_state')
-    .eq('id', sessionId)
-    .single();
-  const freshState = (freshRow?.current_state as Record<string, unknown>) ?? currentState;
-  const nextState = { ...freshState, heat_meter: heatMeterAll };
+  const nextState = { ...currentState, heat_meter: heatMeterAll };
 
   await supabaseAdmin.from('sessions').update({ current_state: nextState }).eq('id', sessionId);
 
@@ -287,17 +280,9 @@ export async function nudgePublicSentiment(
     const delta = SENTIMENT_DELTAS[mistakeType];
     const nudged = Math.min(10, Math.max(1, Math.round((current + delta) * 10) / 10));
 
-    // Re-read latest state to avoid clobbering concurrent writes
-    const { data: freshRow } = await supabaseAdmin
-      .from('sessions')
-      .select('current_state')
-      .eq('id', sessionId)
-      .single();
-    const freshState = (freshRow?.current_state as Record<string, unknown>) ?? currentState;
-    const freshMedia = (freshState.media_state as Record<string, unknown>) ?? mediaState;
     const nextState = {
-      ...freshState,
-      media_state: { ...freshMedia, public_sentiment: nudged },
+      ...currentState,
+      media_state: { ...mediaState, public_sentiment: nudged },
     };
 
     await supabaseAdmin.from('sessions').update({ current_state: nextState }).eq('id', sessionId);
