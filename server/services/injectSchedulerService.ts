@@ -600,6 +600,7 @@ export class InjectSchedulerService {
       trigger_time_minutes: number | null;
       title: string | null;
       content?: string;
+      severity?: string | null;
       required_gate_id?: string | null;
       required_gate_not_met_id?: string | null;
       target_teams?: string[] | null;
