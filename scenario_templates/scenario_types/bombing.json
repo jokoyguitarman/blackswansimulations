@@ -248,8 +248,19 @@
           "robustness_low_mult": 0.25,
           "robustness_high_mult": 1.25,
           "congestion_halves": true,
-          "impact_sensitive": true
+          "impact_sensitive": true,
+          "rate_modifier_key": "evac_rate_modifier",
+          "marshal_boost_key": "marshals_deployed",
+          "marshal_boost_mult": 1.15
         }
+      },
+      {
+        "key": "evac_rate_modifier",
+        "label": "Evacuation Rate Modifier",
+        "type": "number",
+        "initial_value": 1.0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
       },
       {
         "key": "flow_control_decided",
@@ -271,6 +282,17 @@
         }
       },
       {
+        "key": "marshals_deployed",
+        "label": "Marshals / Stewards Deployed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["marshal", "steward", "guide", "warden", "usher", "crowd marshal"]
+        }
+      },
+      {
         "key": "coordination_with_triage",
         "label": "Coordination with Triage",
         "type": "boolean",
@@ -282,6 +304,39 @@
     ],
     "triage": [
       {
+        "key": "total_patients",
+        "label": "Total Patients",
+        "type": "number",
+        "initial_value": 160,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "triage_processed",
+        "label": "Patients Processed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "trainer_only",
+        "config": {
+          "base_rate_per_min": 8,
+          "cap_key": "total_patients",
+          "robustness_affects": true,
+          "robustness_low_mult": 0.5,
+          "robustness_high_mult": 1.25,
+          "impact_sensitive": true,
+          "rate_modifier_key": "treatment_rate_modifier"
+        }
+      },
+      {
+        "key": "treatment_rate_modifier",
+        "label": "Treatment Rate Modifier",
+        "type": "number",
+        "initial_value": 1.0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
         "key": "patients_being_treated",
         "label": "Patients Being Treated",
         "type": "number",
@@ -289,16 +344,18 @@
         "behavior": "derived",
         "visible_to": "all",
         "config": {
-          "source_pool_key": "total_evacuees",
-          "pool_fraction": 0.2,
-          "split_fractions": { "deaths_on_site": 0.1, "handed_over_to_hospital": 0.45 }
+          "source_pool_key": "total_patients",
+          "rate_key": "triage_processed",
+          "split_fractions": { "deaths_on_site": 0.12, "handed_over_to_hospital": 0.4 },
+          "split_fractions_low": { "deaths_on_site": 0.25, "handed_over_to_hospital": 0.2 },
+          "split_fractions_high": { "deaths_on_site": 0.05, "handed_over_to_hospital": 0.6 }
         }
       },
       {
         "key": "patients_waiting",
         "label": "Patients Waiting",
         "type": "number",
-        "initial_value": 0,
+        "initial_value": 160,
         "behavior": "derived",
         "visible_to": "all"
       },
@@ -347,6 +404,22 @@
     ],
     "media": [
       {
+        "key": "public_sentiment",
+        "label": "Public Sentiment",
+        "type": "number",
+        "initial_value": 5,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "media_protocol_score",
+        "label": "Protocol Adherence",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
         "key": "statements_issued",
         "label": "Statements Issued",
         "type": "number",
@@ -365,6 +438,14 @@
         "config": { "keywords": ["debunk", "counter", "correct", "misinformation", "rumour"] }
       },
       {
+        "key": "unaddressed_misinformation_count",
+        "label": "Unaddressed Misinformation",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
         "key": "first_statement_issued",
         "label": "First Statement Issued",
         "type": "boolean",
@@ -381,6 +462,34 @@
         "behavior": "decision_toggle",
         "visible_to": "all",
         "config": { "keywords": ["spokesperson", "one voice", "single spokesperson"] }
+      },
+      {
+        "key": "victim_dignity_respected",
+        "label": "Victim Dignity Respected",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": [
+            "no names",
+            "family first",
+            "notify family",
+            "victim dignity",
+            "do not release names"
+          ]
+        }
+      },
+      {
+        "key": "regular_updates_planned",
+        "label": "Regular Updates Planned",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["30 min", "60 min", "next update", "regular updates", "update every"]
+        }
       }
     ],
     "fire": [

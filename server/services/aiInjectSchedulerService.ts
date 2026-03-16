@@ -786,18 +786,35 @@ export class AIInjectSchedulerService {
       ]
         .filter(Boolean)
         .join('. ');
+      // Compute media protocol adherence score (0-10) from state flags
+      let mediaProtocolScore = 0;
+      if (media.first_statement_issued === true) mediaProtocolScore += 2;
+      if (media.spokesperson_designated === true) mediaProtocolScore += 2;
+      if (media.victim_dignity_respected === true) mediaProtocolScore += 2;
+      if (media.regular_updates_planned === true) mediaProtocolScore += 2;
+      const misinfoAddressed = Number(media.misinformation_addressed_count) || 0;
+      if (misinfoAddressed > 0) mediaProtocolScore += Math.min(2, misinfoAddressed);
+
+      const previousSentiment =
+        typeof media.public_sentiment === 'number' ? media.public_sentiment : 5;
+
       const sentimentResult = await computePublicSentiment(
         stateSummary,
         mediaSummary,
         env.openAiApiKey,
+        previousSentiment,
+        mediaProtocolScore,
       );
-      // Incoming impact penalty: other teams hurting media lowers public sentiment (scale 1-10)
+
       let sentimentToWrite = sentimentResult.public_sentiment;
-      // Media robustness boost (from crisis standards: spokesperson, verify, victim dignity, etc.)
+
+      // Media robustness boost
       const mediaBoost = (media.robustness_boost as number) ?? 0;
       if (mediaBoost > 0) {
         sentimentToWrite = Math.min(10, sentimentToWrite + mediaBoost * 0.5);
       }
+
+      // Incoming impact penalty from other teams
       if (latestImpactMatrix && typeof latestImpactMatrix === 'object') {
         let incomingOnMedia = 0;
         for (const [acting, affectedMap] of Object.entries(latestImpactMatrix)) {
@@ -810,9 +827,19 @@ export class AIInjectSchedulerService {
           }
         }
         if (incomingOnMedia < 0) {
-          sentimentToWrite = Math.max(1, sentimentResult.public_sentiment + incomingOnMedia);
+          sentimentToWrite = Math.max(1, sentimentToWrite + incomingOnMedia);
         }
       }
+
+      // Misinformation decay: if there are unaddressed misinformation injects, sentiment drifts down
+      const unaddressedMisinfo = Number(media.unaddressed_misinformation_count) || 0;
+      if (unaddressedMisinfo > 0) {
+        const decay = Math.min(1.5, unaddressedMisinfo * 0.5);
+        sentimentToWrite = Math.max(1, sentimentToWrite - decay);
+      }
+
+      sentimentToWrite = Math.max(1, Math.min(10, Math.round(sentimentToWrite)));
+
       const { data: sessionForState } = await supabaseAdmin
         .from('sessions')
         .select('current_state')
@@ -827,6 +854,7 @@ export class AIInjectSchedulerService {
           public_sentiment: sentimentToWrite,
           sentiment_label: sentimentResult.sentiment_label,
           sentiment_reason: sentimentResult.reason,
+          media_protocol_score: mediaProtocolScore,
         },
       };
       await supabaseAdmin

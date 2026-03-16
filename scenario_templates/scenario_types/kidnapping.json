@@ -140,7 +140,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["perimeter", "cordon", "secure", "contain"] }
+        "config": {
+          "keywords": ["perimeter", "cordon", "secure", "contain"]
+        }
       },
       {
         "key": "tactical_team_ready",
@@ -149,7 +151,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["tactical", "assault team", "ready", "standby"] }
+        "config": {
+          "keywords": ["tactical", "assault team", "ready", "standby"]
+        }
       },
       {
         "key": "armed_units",
@@ -168,7 +172,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["contact", "communicate", "negotiate", "call"] }
+        "config": {
+          "keywords": ["contact", "communicate", "negotiate", "call"]
+        }
       },
       {
         "key": "demands_received",
@@ -185,7 +191,9 @@
         "initial_value": 0,
         "behavior": "decision_increment",
         "visible_to": "all",
-        "config": { "keywords": ["negotiate", "session", "call", "communicate"] }
+        "config": {
+          "keywords": ["negotiate", "session", "call", "communicate"]
+        }
       },
       {
         "key": "active_session",
@@ -194,7 +202,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["negotiate", "call", "session"] }
+        "config": {
+          "keywords": ["negotiate", "call", "session"]
+        }
       }
     ],
     "intelligence": [
@@ -205,7 +215,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["intel", "intelligence", "surveillance", "recon"] }
+        "config": {
+          "keywords": ["intel", "intelligence", "surveillance", "recon"]
+        }
       },
       {
         "key": "perpetrator_count_known",
@@ -222,7 +234,9 @@
         "initial_value": "high",
         "behavior": "state_effect",
         "visible_to": "all",
-        "config": { "values": ["low", "medium", "high", "critical"] }
+        "config": {
+          "values": ["low", "medium", "high", "critical"]
+        }
       }
     ],
     "resort_security": [
@@ -233,7 +247,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["secure", "lockdown", "perimeter", "access control"] }
+        "config": {
+          "keywords": ["secure", "lockdown", "perimeter", "access control"]
+        }
       },
       {
         "key": "evacuation_of_non_targets",
@@ -242,7 +258,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["evacuate", "guests", "staff", "non-target"] }
+        "config": {
+          "keywords": ["evacuate", "guests", "staff", "non-target"]
+        }
       }
     ]
   }

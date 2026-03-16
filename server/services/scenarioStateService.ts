@@ -621,6 +621,12 @@ export async function updateTeamStateFromDecision(
           } else {
             target[flip.key] = true;
           }
+
+          // When misinformation is addressed, decrement unaddressed count
+          if (flip.key === 'misinformation_addressed_count' && flip.stateKey === 'media_state') {
+            const cur = Math.max(0, Number(target.unaddressed_misinformation_count) || 0);
+            target.unaddressed_misinformation_count = Math.max(0, cur - 1);
+          }
         }
 
         logger.info(
@@ -752,6 +758,11 @@ export async function updateTeamStateFromDecision(
           mediaState.misinformation_addressed = true;
           mediaState.misinformation_addressed_count =
             Math.max(0, Number(mediaState.misinformation_addressed_count) || 0) + 1;
+          const curUnaddressed = Math.max(
+            0,
+            Number(mediaState.unaddressed_misinformation_count) || 0,
+          );
+          mediaState.unaddressed_misinformation_count = Math.max(0, curUnaddressed - 1);
         }
         if (
           hasKeyword('spokesperson', 'one voice', 'single spokesperson', 'designated spokesperson')

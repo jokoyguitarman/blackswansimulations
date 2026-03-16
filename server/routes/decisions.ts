@@ -1076,11 +1076,17 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       }
 
       // Unified quality failure inject: fire an escalating consequence for ANY quality issue
-      type FailureType = 'vague' | 'contradiction' | 'below_standard' | 'prereq';
+      type FailureType = 'vague' | 'contradiction' | 'below_standard' | 'prereq' | 'rejected';
       let failureType: FailureType | null = null;
       let failureContent = '';
 
-      if (envResult.specific === false && envResult.feedback) {
+      const rejected = envResult.rejected === true || aiEnvResult.rejected === true;
+      const rejectionReason = envResult.rejection_reason || aiEnvResult.rejection_reason || '';
+
+      if (rejected && rejectionReason) {
+        failureType = 'rejected';
+        failureContent = rejectionReason;
+      } else if (envResult.specific === false && envResult.feedback) {
         failureType = 'vague';
         const missingList = (envResult.missing_details ?? [])
           .map((d: string) => `- ${d}`)
@@ -1128,6 +1134,11 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
           'Ignored constraints causing setbacks',
           'Ignored constraints leading to failure',
         ],
+        rejected: [
+          'Action cannot be carried out',
+          'Dangerous action rejected — operational consequences',
+          'Repeated dangerous actions — loss of authority',
+        ],
       };
 
       if (
@@ -1152,7 +1163,13 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
           if (!recentFired || recentFired.length === 0) {
             const escalationIdx = Math.min(qualityFailureCount, 2);
             const injectSeverity: 'medium' | 'high' | 'critical' =
-              escalationIdx >= 2 ? 'critical' : escalationIdx >= 1 ? 'high' : 'medium';
+              failureType === 'rejected'
+                ? 'critical'
+                : escalationIdx >= 2
+                  ? 'critical'
+                  : escalationIdx >= 1
+                    ? 'high'
+                    : 'medium';
             const titleBase = FAILURE_TITLES[failureType][escalationIdx];
             const injectTitle = `${titleBase} – ${authorTeamNames[0]} (${decision.id.slice(0, 8)})`;
 
@@ -1166,7 +1183,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
                 severity: injectSeverity,
                 inject_scope: 'team_specific',
                 target_teams: [authorTeamNames[0]],
-                requires_response: failureType === 'vague',
+                requires_response: failureType === 'vague' || failureType === 'rejected',
                 requires_coordination: false,
                 ai_generated: true,
                 generation_source: 'specificity_feedback',
@@ -1305,8 +1322,11 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
 
       // Heat meter: determine mistake type from evaluation results
       if (authorTeamNames.length > 0) {
-        let mistakeType: 'vague' | 'contradiction' | 'prereq' | 'no_intel' | 'good' = 'good';
-        if (envResult.specific === false) {
+        let mistakeType: 'vague' | 'contradiction' | 'prereq' | 'no_intel' | 'rejected' | 'good' =
+          'good';
+        if (rejected) {
+          mistakeType = 'rejected';
+        } else if (envResult.specific === false) {
           mistakeType = 'vague';
         } else if (!envResult.consistent && envResult.mismatch_kind !== 'below_standard') {
           mistakeType = 'contradiction';

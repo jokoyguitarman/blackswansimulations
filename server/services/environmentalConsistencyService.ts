@@ -38,6 +38,10 @@ export interface EnvironmentalConsistencyResult {
   missing_details?: string[];
   /** AI-generated in-world pressure message telling the player what details are needed and why. */
   feedback?: string;
+  /** true when the decision proposes a forbidden/dangerous action (e.g. detonating a bomb, attacking people). */
+  rejected?: boolean;
+  /** In-world explanation of why the forbidden action cannot be carried out. */
+  rejection_reason?: string;
 }
 
 /** Scenario location row (map pin) for building ground truth from same data the Insider uses. */
@@ -430,10 +434,26 @@ When "specific" is false:
 - "missing_details": array of 2-5 short phrases naming what is missing (e.g. ["exit names and IDs", "marshal-to-evacuee ratio", "ground zero perimeter distance"])
 - "feedback": one paragraph (2-4 sentences) following the ESCALATION LEVEL rules above. Reference the actual scenario environment — do NOT be generic.
 
+=== (C) SAFETY GUARDRAILS ===
+Certain actions are ABSOLUTELY FORBIDDEN regardless of context. If the decision proposes any of these, set "rejected": true with a "rejection_reason" and skip sections A and B entirely.
+
+FORBIDDEN ACTIONS:
+- Directly handling, detonating, disarming, or triggering explosive devices (players must call bomb disposal / EOD teams, not handle ordnance themselves)
+- Intentionally causing harm to people (attacking, shooting, assaulting individuals)
+- Ordering emergency services to stand down, withdraw, or leave without authorisation
+- Actions that deliberately endanger civilians (e.g. herding people toward a known blast zone, opening cordons into hazardous areas)
+- Impersonating emergency services or claiming authority the team does not possess (e.g. "we are the police")
+
+If the decision describes contacting or requesting bomb disposal teams, EOD, SPF, or SCDF to handle a suspicious device, that is ALLOWED and should NOT be rejected.
+
+When "rejected" is true, set "rejection_reason" to an in-world explanation of why the action cannot be carried out (e.g. "C2E committee members do not have the authority or capability to handle explosive ordnance. Contact the bomb disposal unit via 995/SPF and establish a cordon."). Set consistent: false, severity: "high", specific: false.
+
 === OUTPUT FORMAT ===
 
 Return ONLY valid JSON:
 {
+  "rejected": boolean (true ONLY if a forbidden action was proposed; omit or false otherwise),
+  "rejection_reason": "..." (only if rejected is true),
   "consistent": boolean,
   "mismatch_kind": "contradiction"|"below_standard" (only if consistent is false),
   "severity": "low"|"medium"|"high" (only if consistent is false),
@@ -462,7 +482,8 @@ ${sectorStandardsLine}${teamRoleLine}${escalationLine}${incidentUserBlock}DECISI
 Title: ${decision.title}
 Description: ${decision.description}
 
-Evaluate BOTH dimensions — apply the ESCALATION LEVEL above to ALL feedback (both "reason" and "feedback"):
+Evaluate ALL THREE dimensions — apply the ESCALATION LEVEL above to ALL feedback (both "reason" and "feedback"):
+(C) SAFETY GUARDRAILS: First check — does this decision propose a forbidden action? If yes, set rejected: true with rejection_reason and skip A and B.
 (A) CONSISTENCY: Only treat as contradiction if the decision explicitly states a specific fact that contradicts the ground truth for that place or route; otherwise prefer consistent or below_standard. When consistent is false, write the "reason" following the ESCALATION LEVEL tone.
 (B) SPECIFICITY: Does this decision contain enough operational detail (named locations, quantities, ratios, protocols, timelines) to be executed on-scene? Apply the specificity requirements for the TEAM ROLE specified above. If it gives general instructions without concrete specifics, set specific: false with missing_details and feedback following the ESCALATION LEVEL rules.
 

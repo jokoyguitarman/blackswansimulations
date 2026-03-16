@@ -1467,12 +1467,21 @@ export const computePublicSentiment = async (
   stateSummary: string,
   mediaSummary: string,
   openAiApiKey: string | undefined,
+  previousSentiment?: number,
+  mediaProtocolScore?: number,
 ): Promise<PublicSentimentResult> => {
   const defaultResult: PublicSentimentResult = {
-    public_sentiment: 5,
+    public_sentiment: previousSentiment ?? 5,
     sentiment_label: 'Unknown',
   };
   if (!openAiApiKey?.trim()) return defaultResult;
+
+  const prevScore = previousSentiment ?? 5;
+  const protocolContext =
+    typeof mediaProtocolScore === 'number'
+      ? `\nMedia protocol adherence score: ${mediaProtocolScore}/10 (higher = better crisis comms practice).`
+      : '';
+
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -1485,13 +1494,20 @@ export const computePublicSentiment = async (
         messages: [
           {
             role: 'system',
-            content: `You evaluate public sentiment in a crisis simulation based on the current game state and media team actions.
-Output a public sentiment score from 1 (hostile, panic, distrust) to 10 (calm, trusting, cooperative), and optionally a short label (e.g. calm, anxious, distrustful, hostile) and a one-sentence reason.
-Return ONLY valid JSON: { "public_sentiment": number, "sentiment_label": string, "reason": string }.`,
+            content: `You evaluate public sentiment changes in a crisis simulation based on the current game state and media team actions.
+
+The PREVIOUS public sentiment score was ${prevScore}/10. You must decide whether sentiment should move UP, DOWN, or stay the SAME, and by how much (max ±2 per evaluation).
+Sentiment should shift gradually — large jumps are unrealistic unless something dramatic happened.
+
+Factors that IMPROVE sentiment: timely official statements, designated spokesperson, addressing misinformation, regular updates, respecting victim dignity, clear factual communication.
+Factors that WORSEN sentiment: unanswered misinformation, delayed statements, contradictory messaging, leaked victim names, lack of updates, visible chaos/casualties.${protocolContext}
+
+Return ONLY valid JSON: { "delta": number, "sentiment_label": string, "reason": string }
+where delta is between -2 and +2 (can be fractional, e.g. -0.5, +1).`,
           },
           {
             role: 'user',
-            content: `Current state:\n${stateSummary.slice(0, 3000)}\n\nMedia / statements:\n${mediaSummary.slice(0, 1500)}\n\nScore public sentiment 1-10 and optional label and reason. JSON only.`,
+            content: `Previous sentiment: ${prevScore}/10\n\nCurrent state:\n${stateSummary.slice(0, 3000)}\n\nMedia / statements:\n${mediaSummary.slice(0, 1500)}\n\nHow should sentiment change? JSON only.`,
           },
         ],
         temperature: 0.3,
@@ -1508,14 +1524,22 @@ Return ONLY valid JSON: { "public_sentiment": number, "sentiment_label": string,
     const content = json.choices?.[0]?.message?.content;
     if (!content) return defaultResult;
     const parsed = JSON.parse(content) as {
+      delta?: number;
       public_sentiment?: number;
       sentiment_label?: string;
       reason?: string;
     };
-    const score =
-      typeof parsed.public_sentiment === 'number'
-        ? Math.max(1, Math.min(10, Math.round(parsed.public_sentiment)))
-        : 5;
+
+    let score: number;
+    if (typeof parsed.delta === 'number') {
+      const clampedDelta = Math.max(-2, Math.min(2, parsed.delta));
+      score = Math.max(1, Math.min(10, Math.round(prevScore + clampedDelta)));
+    } else if (typeof parsed.public_sentiment === 'number') {
+      score = Math.max(1, Math.min(10, Math.round(parsed.public_sentiment)));
+    } else {
+      score = prevScore;
+    }
+
     return {
       public_sentiment: score,
       sentiment_label:

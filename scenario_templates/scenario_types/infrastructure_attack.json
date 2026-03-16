@@ -141,7 +141,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["perimeter", "cordon", "secure", "lockdown"] }
+        "config": {
+          "keywords": ["perimeter", "cordon", "secure", "lockdown"]
+        }
       },
       {
         "key": "armed_units",
@@ -160,7 +162,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["contain", "suppress", "foam", "isolate", "seal"] }
+        "config": {
+          "keywords": ["contain", "suppress", "foam", "isolate", "seal"]
+        }
       },
       {
         "key": "hazmat_level",
@@ -169,7 +173,9 @@
         "initial_value": "unknown",
         "behavior": "state_effect",
         "visible_to": "all",
-        "config": { "values": ["unknown", "low", "medium", "high", "critical"] }
+        "config": {
+          "values": ["unknown", "low", "medium", "high", "critical"]
+        }
       },
       {
         "key": "units_deployed",
@@ -200,8 +206,19 @@
           "base_rate_per_min": 30,
           "cap_key": "total_evacuees",
           "requires_flag": "evacuation_ordered",
-          "robustness_affects": true
+          "robustness_affects": true,
+          "rate_modifier_key": "evac_rate_modifier",
+          "marshal_boost_key": "marshals_deployed",
+          "marshal_boost_mult": 1.15
         }
+      },
+      {
+        "key": "evac_rate_modifier",
+        "label": "Evacuation Rate Modifier",
+        "type": "number",
+        "initial_value": 1,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
       },
       {
         "key": "evacuation_ordered",
@@ -210,7 +227,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["evacuate", "evacuation", "clear", "move out"] }
+        "config": {
+          "keywords": ["evacuate", "evacuation", "clear", "move out"]
+        }
       },
       {
         "key": "shelter_in_place",
@@ -219,10 +238,39 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["shelter", "stay indoors", "shelter in place"] }
+        "config": {
+          "keywords": ["shelter", "stay indoors", "shelter in place"]
+        }
+      },
+      {
+        "key": "marshals_deployed",
+        "label": "Marshals / Stewards Deployed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["marshal", "steward", "guide", "warden", "usher", "crowd marshal"]
+        }
       }
     ],
     "media": [
+      {
+        "key": "public_sentiment",
+        "label": "Public Sentiment",
+        "type": "number",
+        "initial_value": 5,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "media_protocol_score",
+        "label": "Protocol Adherence",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
       {
         "key": "statements_issued",
         "label": "Statements Issued",
@@ -230,7 +278,9 @@
         "initial_value": 0,
         "behavior": "decision_increment",
         "visible_to": "all",
-        "config": { "keywords": ["statement", "press", "announce", "advisory"] }
+        "config": {
+          "keywords": ["statement", "press", "announce", "advisory"]
+        }
       },
       {
         "key": "first_statement_issued",
@@ -239,7 +289,45 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "trainer_only",
-        "config": { "keywords": ["statement", "press", "announce", "advisory"] }
+        "config": {
+          "keywords": ["statement", "press", "announce", "advisory"]
+        }
+      },
+      {
+        "key": "unaddressed_misinformation_count",
+        "label": "Unaddressed Misinformation",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "victim_dignity_respected",
+        "label": "Victim Dignity Respected",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": [
+            "no names",
+            "family first",
+            "notify family",
+            "victim dignity",
+            "do not release names"
+          ]
+        }
+      },
+      {
+        "key": "regular_updates_planned",
+        "label": "Regular Updates Planned",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["30 min", "60 min", "next update", "regular updates", "update every"]
+        }
       }
     ],
     "operations": [
@@ -250,7 +338,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["shutdown", "emergency stop", "isolate process", "valve close"] }
+        "config": {
+          "keywords": ["shutdown", "emergency stop", "isolate process", "valve close"]
+        }
       },
       {
         "key": "damage_assessed",
@@ -259,7 +349,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["assess", "damage", "inspect", "structural"] }
+        "config": {
+          "keywords": ["assess", "damage", "inspect", "structural"]
+        }
       }
     ]
   }

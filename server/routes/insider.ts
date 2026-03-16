@@ -96,29 +96,42 @@ router.post(
         sources_used = 'interactive_map';
       } else {
         // Gather all scenario context for the AI
-        const [locationsResult, seedsResult, teamsResult, userTeamResult] = await Promise.all([
-          supabaseAdmin
-            .from('scenario_locations')
-            .select('label, location_type, description, conditions')
-            .eq('scenario_id', session.scenario_id)
-            .order('display_order', { ascending: true }),
-          supabaseAdmin
-            .from('scenario_environmental_seeds')
-            .select('variant_label, seed_data')
-            .eq('scenario_id', session.scenario_id)
-            .order('display_order', { ascending: true }),
-          supabaseAdmin
-            .from('scenario_teams')
-            .select('team_name, team_description')
-            .eq('scenario_id', session.scenario_id)
-            .order('team_name', { ascending: true }),
-          supabaseAdmin
-            .from('session_teams')
-            .select('team_name')
-            .eq('session_id', sessionId)
-            .eq('user_id', user.id)
-            .maybeSingle(),
-        ]);
+        const [locationsResult, seedsResult, teamsResult, userTeamResult, publishedInjectsResult] =
+          await Promise.all([
+            supabaseAdmin
+              .from('scenario_locations')
+              .select('label, location_type, description, conditions')
+              .eq('scenario_id', session.scenario_id)
+              .order('display_order', { ascending: true }),
+            supabaseAdmin
+              .from('scenario_environmental_seeds')
+              .select('variant_label, seed_data')
+              .eq('scenario_id', session.scenario_id)
+              .order('display_order', { ascending: true }),
+            supabaseAdmin
+              .from('scenario_teams')
+              .select('team_name, team_description')
+              .eq('scenario_id', session.scenario_id)
+              .order('team_name', { ascending: true }),
+            supabaseAdmin
+              .from('session_teams')
+              .select('team_name')
+              .eq('session_id', sessionId)
+              .eq('user_id', user.id)
+              .maybeSingle(),
+            supabaseAdmin
+              .from('session_events')
+              .select('metadata')
+              .eq('session_id', sessionId)
+              .eq('event_type', 'inject'),
+          ]);
+
+        const publishedInjectTitles = (publishedInjectsResult.data ?? [])
+          .map((e: { metadata: unknown }) => {
+            const meta = e.metadata as Record<string, unknown> | null;
+            return (meta?.title as string) ?? '';
+          })
+          .filter(Boolean);
 
         const currentState = (session.current_state as Record<string, unknown>) ?? {};
         const locationState = currentState.location_state as
@@ -184,6 +197,7 @@ router.post(
           elapsedMinutes,
           askingTeamName:
             (userTeamResult.data as { team_name?: string } | null)?.team_name ?? undefined,
+          publishedInjectTitles,
         };
 
         if (!env.openAiApiKey) {

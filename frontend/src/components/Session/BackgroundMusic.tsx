@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 const STORAGE_KEY_VOLUME = 'bgm-volume';
 const STORAGE_KEY_MUTED = 'bgm-muted';
@@ -13,19 +13,10 @@ export function BackgroundMusic({ src }: BackgroundMusicProps) {
     const stored = localStorage.getItem(STORAGE_KEY_VOLUME);
     return stored !== null ? parseFloat(stored) : 0.5;
   });
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(() => {
+    return localStorage.getItem(STORAGE_KEY_MUTED) === 'true';
+  });
   const [needsInteraction, setNeedsInteraction] = useState(false);
-
-  const attemptPlay = useCallback(async () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    try {
-      await audio.play();
-      setNeedsInteraction(false);
-    } catch {
-      setNeedsInteraction(true);
-    }
-  }, []);
 
   useEffect(() => {
     const audio = new Audio(src);
@@ -33,14 +24,32 @@ export function BackgroundMusic({ src }: BackgroundMusicProps) {
     audio.volume = isMuted ? 0 : volume;
     audioRef.current = audio;
 
-    attemptPlay();
+    let cancelled = false;
+
+    const tryPlay = async () => {
+      if (cancelled) return;
+      try {
+        await audio.play();
+        if (!cancelled) setNeedsInteraction(false);
+      } catch {
+        if (!cancelled) setNeedsInteraction(true);
+      }
+    };
+
+    // Wait for enough data to play through, then start
+    if (audio.readyState >= 4) {
+      tryPlay();
+    } else {
+      audio.addEventListener('canplaythrough', tryPlay, { once: true });
+    }
 
     return () => {
+      cancelled = true;
+      audio.removeEventListener('canplaythrough', tryPlay);
       audio.pause();
       audio.src = '';
       audioRef.current = null;
     };
-    // Only run on mount/unmount — src is stable
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
 
@@ -52,8 +61,15 @@ export function BackgroundMusic({ src }: BackgroundMusicProps) {
     localStorage.setItem(STORAGE_KEY_MUTED, String(isMuted));
   }, [volume, isMuted]);
 
-  const handleEnableMusic = () => {
-    attemptPlay();
+  const handleEnableMusic = async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    try {
+      await audio.play();
+      setNeedsInteraction(false);
+    } catch {
+      // Still blocked — shouldn't happen after a click, but be safe
+    }
   };
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -138,13 +138,49 @@
   "team_counter_definitions": {
     "triage": [
       {
+        "key": "total_patients",
+        "label": "Total Patients",
+        "type": "number",
+        "initial_value": 160,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "triage_processed",
+        "label": "Patients Processed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "trainer_only",
+        "config": {
+          "base_rate_per_min": 8,
+          "cap_key": "total_patients",
+          "robustness_affects": true,
+          "robustness_low_mult": 0.5,
+          "robustness_high_mult": 1.25,
+          "impact_sensitive": true,
+          "rate_modifier_key": "treatment_rate_modifier"
+        }
+      },
+      {
+        "key": "treatment_rate_modifier",
+        "label": "Treatment Rate Modifier",
+        "type": "number",
+        "initial_value": 1,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
         "key": "patients_presenting",
         "label": "Patients Presenting",
         "type": "number",
         "initial_value": 0,
         "behavior": "time_rate",
         "visible_to": "all",
-        "config": { "base_rate_per_min": 15, "robustness_affects": false }
+        "config": {
+          "base_rate_per_min": 15,
+          "robustness_affects": false
+        }
       },
       {
         "key": "patients_decontaminated",
@@ -166,7 +202,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["decontamination", "decon", "wash", "rinse"] }
+        "config": {
+          "keywords": ["decontamination", "decon", "wash", "rinse"]
+        }
       },
       {
         "key": "deaths_on_site",
@@ -185,7 +223,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["contain", "isolate", "shutdown", "valve", "seal"] }
+        "config": {
+          "keywords": ["contain", "isolate", "shutdown", "valve", "seal"]
+        }
       },
       {
         "key": "source_identified",
@@ -194,7 +234,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["source", "identified", "origin", "entry point"] }
+        "config": {
+          "keywords": ["source", "identified", "origin", "entry point"]
+        }
       },
       {
         "key": "samples_collected",
@@ -203,7 +245,9 @@
         "initial_value": 0,
         "behavior": "decision_increment",
         "visible_to": "all",
-        "config": { "keywords": ["sample", "collect", "test", "lab"] }
+        "config": {
+          "keywords": ["sample", "collect", "test", "lab"]
+        }
       }
     ],
     "police": [
@@ -214,7 +258,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["secure", "crime scene", "preserve", "evidence"] }
+        "config": {
+          "keywords": ["secure", "crime scene", "preserve", "evidence"]
+        }
       },
       {
         "key": "suspect_identified",
@@ -223,10 +269,28 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "trainer_only",
-        "config": { "keywords": ["suspect", "identified", "CCTV", "witness"] }
+        "config": {
+          "keywords": ["suspect", "identified", "CCTV", "witness"]
+        }
       }
     ],
     "media": [
+      {
+        "key": "public_sentiment",
+        "label": "Public Sentiment",
+        "type": "number",
+        "initial_value": 5,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "media_protocol_score",
+        "label": "Protocol Adherence",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
       {
         "key": "statements_issued",
         "label": "Statements Issued",
@@ -234,7 +298,9 @@
         "initial_value": 0,
         "behavior": "decision_increment",
         "visible_to": "all",
-        "config": { "keywords": ["statement", "press", "announce", "release"] }
+        "config": {
+          "keywords": ["statement", "press", "announce", "release"]
+        }
       },
       {
         "key": "first_statement_issued",
@@ -243,7 +309,45 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "trainer_only",
-        "config": { "keywords": ["statement", "press", "announce", "release"] }
+        "config": {
+          "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "unaddressed_misinformation_count",
+        "label": "Unaddressed Misinformation",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "victim_dignity_respected",
+        "label": "Victim Dignity Respected",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": [
+            "no names",
+            "family first",
+            "notify family",
+            "victim dignity",
+            "do not release names"
+          ]
+        }
+      },
+      {
+        "key": "regular_updates_planned",
+        "label": "Regular Updates Planned",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["30 min", "60 min", "next update", "regular updates", "update every"]
+        }
       }
     ],
     "public_health": [
@@ -254,7 +358,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["advisory", "boil", "warning", "do not drink", "alert"] }
+        "config": {
+          "keywords": ["advisory", "boil", "warning", "do not drink", "alert"]
+        }
       },
       {
         "key": "alternative_supply_active",
@@ -263,7 +369,9 @@
         "initial_value": false,
         "behavior": "decision_toggle",
         "visible_to": "all",
-        "config": { "keywords": ["alternative", "bottled", "tanker", "distribution", "supply"] }
+        "config": {
+          "keywords": ["alternative", "bottled", "tanker", "distribution", "supply"]
+        }
       },
       {
         "key": "population_exposed",

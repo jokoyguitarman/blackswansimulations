@@ -34,16 +34,21 @@ export interface CounterConfig {
   robustness_high_mult?: number;
   congestion_halves?: boolean;
   impact_sensitive?: boolean;
+  rate_modifier_key?: string;
+  marshal_boost_key?: string;
+  marshal_boost_mult?: number;
 
   // decision_toggle / decision_increment
   keywords?: string[];
   categories?: string[];
 
-  // derived
+  // derived — robustness-driven split fractions
   source_pool_key?: string;
   pool_fraction?: number;
   rate_key?: string;
   split_fractions?: Record<string, number>;
+  split_fractions_low?: Record<string, number>;
+  split_fractions_high?: Record<string, number>;
 
   // enum
   values?: string[];

@@ -77,9 +77,19 @@ export async function applyInjectPublishEffects(
           };
         } else {
           const flatEffect: Record<string, unknown> = {};
+          const ADDITIVE_KEYS = new Set([
+            'unaddressed_misinformation_count',
+            'deaths_on_site',
+            'casualties',
+            'patients_waiting',
+          ]);
           for (const [ek, ev] of Object.entries(effect)) {
             if (ev != null && typeof ev === 'object' && !Array.isArray(ev)) continue;
-            flatEffect[ek] = ev;
+            if (ADDITIVE_KEYS.has(ek) && typeof ev === 'number') {
+              flatEffect[ek] = Math.max(0, (Number(current[ek]) || 0) + ev);
+            } else {
+              flatEffect[ek] = ev;
+            }
           }
           (nextState as Record<string, unknown>)[key] = {
             ...current,
@@ -87,6 +97,29 @@ export async function applyInjectPublishEffects(
           };
         }
       }
+
+      // Deterministic sentiment nudge: when an inject carries sentiment_nudge in
+      // media_state, immediately shift public_sentiment by that amount (additive).
+      const mediaEffect = stateEffect.media_state as Record<string, unknown> | undefined;
+      if (mediaEffect && typeof mediaEffect.sentiment_nudge === 'number') {
+        const media = (nextState.media_state as Record<string, unknown>) || {};
+        const curSentiment =
+          typeof media.public_sentiment === 'number' ? media.public_sentiment : 5;
+        const nudge = mediaEffect.sentiment_nudge as number;
+        const newSentiment = Math.max(1, Math.min(10, Math.round(curSentiment + nudge)));
+        (nextState.media_state as Record<string, unknown>) = {
+          ...media,
+          public_sentiment: newSentiment,
+          sentiment_nudge_applied: nudge,
+        };
+        // Remove the nudge from the persisted state so it doesn't re-apply
+        delete (nextState.media_state as Record<string, unknown>).sentiment_nudge;
+        logger.info(
+          { sessionId, injectId, nudge, from: curSentiment, to: newSentiment },
+          'Applied deterministic sentiment nudge from inject',
+        );
+      }
+
       await supabaseAdmin.from('sessions').update({ current_state: nextState }).eq('id', sessionId);
       getWebSocketService().stateUpdated?.(sessionId, {
         state: nextState,

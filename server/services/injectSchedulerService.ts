@@ -253,6 +253,9 @@ export class InjectSchedulerService {
     >;
     const hasCounterDefs = Object.keys(counterDefsMap).length > 0;
 
+    const nowIso = new Date().toISOString();
+    const counterTicks = (nextState._counter_ticks as Record<string, string>) ?? {};
+
     if (hasCounterDefs) {
       for (const [stateKey, defs] of Object.entries(counterDefsMap)) {
         const teamState = (nextState[stateKey] as Record<string, unknown>) ?? {};
@@ -264,12 +267,19 @@ export class InjectSchedulerService {
           robustnessByTeam[teamNameRaw] ??
           null;
 
-        // Process time_rate counters
+        // Delta-based accumulation: compute minutes since last tick for this team
+        const lastTickIso = counterTicks[stateKey];
+        const lastTickMs = lastTickIso ? new Date(lastTickIso).getTime() : 0;
+        const nowMs = Date.now();
+        const tickDeltaMinutes =
+          lastTickMs > 0 ? Math.max(0, (nowMs - lastTickMs) / 60000) : elapsedMinutes;
+        counterTicks[stateKey] = nowIso;
+
+        // Process time_rate counters (delta-based accumulation)
         for (const def of defs) {
           if (def.behavior !== 'time_rate' || def.type !== 'number') continue;
           const cfg = def.config ?? {};
 
-          // Check requires_flag
           if (cfg.requires_flag && teamState[cfg.requires_flag] !== true) continue;
 
           let rate = cfg.base_rate_per_min ?? 10;
@@ -315,20 +325,29 @@ export class InjectSchedulerService {
             rate = rate * 0.85;
           }
 
-          // Compute new value
+          // Inject-driven rate modifier (e.g. equipment failure → 0.5, extra resources → 1.3)
+          if (cfg.rate_modifier_key) {
+            const modifier = Number(teamState[cfg.rate_modifier_key]);
+            if (modifier > 0) rate = rate * modifier;
+          }
+
+          // Marshal/steward boost (e.g. marshals_deployed → 1.15x)
+          if (cfg.marshal_boost_key && teamState[cfg.marshal_boost_key] === true) {
+            rate = rate * (cfg.marshal_boost_mult ?? 1.15);
+          }
+
+          // Delta-based accumulation: add rate * tickDelta to current value
           const cap = cfg.cap_key ? Math.max(0, Number(teamState[cfg.cap_key]) || 0) : Infinity;
-          const newVal = Math.min(
-            cap === Infinity ? Infinity : cap,
-            Math.floor(rate * elapsedMinutes),
-          );
           const curVal = Math.max(0, Number(teamState[def.key]) || 0);
+          const delta = Math.max(0, Math.floor(rate * tickDeltaMinutes));
+          const newVal = Math.min(cap === Infinity ? Infinity : cap, curVal + delta);
           if (newVal > curVal) {
             teamState[def.key] = newVal;
             stateChanged = true;
           }
         }
 
-        // Process derived counters
+        // Process derived counters (with robustness-driven split fractions)
         for (const def of defs) {
           if (def.behavior !== 'derived' || def.type !== 'number') continue;
           const cfg = def.config ?? {};
@@ -337,18 +356,25 @@ export class InjectSchedulerService {
             const poolVal = Math.max(0, Number(teamState[cfg.source_pool_key]) || 0);
             const pool = cfg.pool_fraction ? Math.floor(poolVal * cfg.pool_fraction) : poolVal;
 
-            // Use the rate_key counter to determine how many have been processed
             const processedKey = cfg.rate_key;
             const processed = processedKey
               ? Math.min(pool, Math.max(0, Number(teamState[processedKey]) || 0))
               : pool;
 
-            // Apply split fractions to compute derived values
-            for (const [fracKey, frac] of Object.entries(cfg.split_fractions)) {
+            // Select split fractions based on team robustness band
+            let activeSplits = cfg.split_fractions;
+            if (teamRobustness !== null && typeof teamRobustness === 'number') {
+              if (teamRobustness <= 4 && cfg.split_fractions_low) {
+                activeSplits = cfg.split_fractions_low;
+              } else if (teamRobustness >= 8 && cfg.split_fractions_high) {
+                activeSplits = cfg.split_fractions_high;
+              }
+            }
+
+            for (const [fracKey, frac] of Object.entries(activeSplits)) {
               const derivedVal = Math.floor(processed * (frac as number));
               teamState[fracKey] = derivedVal;
             }
-            // The current counter itself (e.g. patients_waiting) = pool - processed
             teamState[def.key] = Math.max(0, pool - processed);
             stateChanged = true;
           }
@@ -356,8 +382,20 @@ export class InjectSchedulerService {
 
         nextState[stateKey] = teamState;
       }
+      nextState._counter_ticks = counterTicks;
     } else {
       // Legacy hardcoded evacuation/triage counter logic (backward compatibility)
+      // Uses delta-based accumulation (same approach as data-driven engine above)
+      const legacyLastTickIso = counterTicks._legacy;
+      const legacyLastTickMs = legacyLastTickIso ? new Date(legacyLastTickIso).getTime() : 0;
+      const legacyNowMs = Date.now();
+      const legacyTickDelta =
+        legacyLastTickMs > 0
+          ? Math.max(0, (legacyNowMs - legacyLastTickMs) / 60000)
+          : elapsedMinutes;
+      counterTicks._legacy = nowIso;
+      nextState._counter_ticks = counterTicks;
+
       const BASE_EVAC_RATE_PER_MIN = 40;
       const evacState = (nextState.evacuation_state as Record<string, unknown>) || {};
       const totalEvacuees = Math.max(0, Number(evacState.total_evacuees) || 1000);
@@ -386,8 +424,9 @@ export class InjectSchedulerService {
         if (hasSuboptimalRoute) {
           rate = rate * 0.85;
         }
-        const evacuated = Math.min(totalEvacuees, Math.floor(rate * elapsedMinutes));
         const currentEvacuated = Math.max(0, Number(evacState.evacuated_count) || 0);
+        const evacDelta = Math.max(0, Math.floor(rate * legacyTickDelta));
+        const evacuated = Math.min(totalEvacuees, currentEvacuated + evacDelta);
         if (evacuated > currentEvacuated) {
           (nextState.evacuation_state as Record<string, unknown>) = {
             ...evacState,
@@ -414,10 +453,15 @@ export class InjectSchedulerService {
       else if (hasSuboptimalRoute && band === 'mid') band = 'low';
       const BASE_TRIAGE_PROCESSED_PER_MIN = 8;
       const throughputMult = band === 'low' ? 0.5 : band === 'high' ? 1.25 : 1;
-      const processed = Math.min(
-        pool,
-        Math.floor(BASE_TRIAGE_PROCESSED_PER_MIN * throughputMult * elapsedMinutes),
+      const triageRate = BASE_TRIAGE_PROCESSED_PER_MIN * throughputMult;
+      const prevProcessed = Math.max(
+        0,
+        (Number(triageStateNext.deaths_on_site) || 0) +
+          (Number(triageStateNext.handed_over_to_hospital) || 0) +
+          (Number(triageStateNext.patients_being_treated) || 0),
       );
+      const triageDelta = Math.max(0, Math.floor(triageRate * legacyTickDelta));
+      const processed = Math.min(pool, prevProcessed + triageDelta);
       const deathFrac = band === 'low' ? 0.25 : band === 'high' ? 0.05 : 0.12;
       const deaths = Math.min(processed, Math.floor(processed * deathFrac));
       const remaining = processed - deaths;

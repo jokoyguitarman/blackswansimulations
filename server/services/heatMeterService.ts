@@ -15,13 +15,14 @@ import { publishInjectToSession } from '../routes/injects.js';
 import type { Server as IoServer } from 'socket.io';
 import type { PathwayOutcome } from './aiService.js';
 
-export type MistakeType = 'vague' | 'contradiction' | 'prereq' | 'no_intel' | 'good';
+export type MistakeType = 'vague' | 'contradiction' | 'prereq' | 'no_intel' | 'rejected' | 'good';
 
 const MISTAKE_WEIGHTS: Record<MistakeType, number> = {
   vague: 1,
   contradiction: 2,
   prereq: 1,
   no_intel: 0.5,
+  rejected: 3,
   good: 0,
 };
 
@@ -255,6 +256,7 @@ const SENTIMENT_DELTAS: Record<MistakeType, number> = {
   contradiction: -1.0,
   prereq: -0.5,
   no_intel: -0.3,
+  rejected: -2.0,
 };
 
 export async function nudgePublicSentiment(

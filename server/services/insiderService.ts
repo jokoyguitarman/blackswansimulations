@@ -804,6 +804,8 @@ export interface InsiderContext {
   >;
   elapsedMinutes?: number;
   askingTeamName?: string;
+  /** Titles of injects already published in this session (for time-gating intel). */
+  publishedInjectTitles?: string[];
 }
 
 function truncateJson(obj: unknown, maxChars: number): string {
@@ -812,8 +814,26 @@ function truncateJson(obj: unknown, maxChars: number): string {
   return full.slice(0, maxChars) + '... (truncated)';
 }
 
+const SECOND_DEVICE_UNLOCK_INJECTS = [
+  'Suspicious Individual',
+  'Suspected Second Device',
+  'Second device found and defused',
+  'Second device detonates (area populated)',
+  'Second device detonates (area cleared)',
+];
+
+const SECOND_DEVICE_REGEX = /second\s+(device|bomb|explosive)|exit\s+b.*backpack|suicide\s+attack/i;
+
+function isSecondDeviceUnlocked(publishedTitles?: string[]): boolean {
+  if (!publishedTitles?.length) return false;
+  return publishedTitles.some((t) =>
+    SECOND_DEVICE_UNLOCK_INJECTS.some((u) => t.toLowerCase().includes(u.toLowerCase())),
+  );
+}
+
 function buildInsiderContextBlock(ctx: InsiderContext): string {
   const parts: string[] = [];
+  const secondDeviceRevealed = isSecondDeviceUnlocked(ctx.publishedInjectTitles);
 
   if (ctx.scenarioTitle) parts.push(`SCENARIO: ${ctx.scenarioTitle}`);
   if (ctx.scenarioType) parts.push(`TYPE: ${ctx.scenarioType}`);
@@ -873,8 +893,16 @@ function buildInsiderContextBlock(ctx: InsiderContext): string {
   }
 
   if (k.custom_facts?.length) {
-    const factLines = k.custom_facts.map((f) => `- ${f.topic}: ${f.detail || f.summary}`);
-    parts.push(`SCENARIO FACTS:\n${factLines.join('\n')}`);
+    const visibleFacts = secondDeviceRevealed
+      ? k.custom_facts
+      : k.custom_facts.filter((f) => {
+          const text = `${f.topic} ${f.summary} ${f.detail ?? ''}`;
+          return !SECOND_DEVICE_REGEX.test(text);
+        });
+    const factLines = visibleFacts.map((f) => `- ${f.topic}: ${f.detail || f.summary}`);
+    if (factLines.length > 0) {
+      parts.push(`SCENARIO FACTS:\n${factLines.join('\n')}`);
+    }
   }
 
   if (k.team_doctrines && Object.keys(k.team_doctrines).length > 0) {
@@ -925,6 +953,13 @@ export async function buildAIContextualAnswer(
 ): Promise<{ answer: string; sources_used: string }> {
   const contextBlock = buildInsiderContextBlock(ctx);
 
+  const secondDeviceRevealed = isSecondDeviceUnlocked(ctx.publishedInjectTitles);
+
+  const intelLockRule = secondDeviceRevealed
+    ? ''
+    : `
+- CRITICAL INTEL RESTRICTION: There is NO confirmed intelligence about a second device or secondary explosive at this time. Rumours about a "second bomb" are UNVERIFIED. If the player asks about a second device, second bomb, suspicious individual with a backpack, or anything related, respond ONLY with: "We have no confirmed intelligence on a secondary device at this time. There are unverified rumours circulating but no evidence to support them. Focus on confirmed threats." Do NOT reveal any details about Exit B, backpacks, suicide attackers, or bomb disposal procedures for a second device.`;
+
   const systemPrompt = `You are the "Insider" — a knowledgeable intelligence operative embedded in a crisis management simulation. You have deep knowledge of the area, the scenario, the facilities, the environment, and the current game state.
 
 Your job: answer the player's question using ONLY the context provided below. Be specific, cite actual location names, distances, capacities, and conditions from the data. If the data contains the answer, give it clearly and concisely. If the data does not contain enough information to answer, say so honestly.
@@ -939,7 +974,7 @@ RULES:
 - Do NOT make up information that isn't in the context
 - Do NOT reveal internal game mechanics (condition keys, state schema, inject triggers)
 - Keep answers focused — 2-6 sentences for simple questions, longer with structured data for complex ones
-- If the player asks about the map, tell them to use the interactive map in the session view
+- If the player asks about the map, tell them to use the interactive map in the session view${intelLockRule}
 
 CONTEXT:
 ${contextBlock}`;
