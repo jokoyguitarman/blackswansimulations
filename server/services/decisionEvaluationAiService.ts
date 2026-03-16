@@ -310,6 +310,149 @@ Set the category to null if that category has no items to check. Set match to tr
   }
 }
 
+// ---------------------------------------------------------------------------
+// Narrative prerequisite conflict detection (v2 — intent-based, no matching)
+// ---------------------------------------------------------------------------
+
+export interface PrerequisiteConflictResult {
+  conflict: boolean;
+  conflict_type: 'capacity' | 'space_contention' | 'location' | null;
+  location_label: string | null;
+  reason: string;
+}
+
+/**
+ * Narrative-based prerequisite check. Describes the environmental situation in
+ * plain language and asks the AI to reason about whether the decision creates a
+ * real conflict — no per-label matching fields, no structured lists to match against.
+ *
+ * Returns null on API failure so caller can fall back to keyword logic.
+ */
+export async function evaluatePrerequisiteConflict(
+  params: {
+    decisionText: string;
+    capacityFacilities: Array<{ label: string; type: string }>;
+    claimedSpaces: Array<{ label: string; claimed_by: string; claimed_as: string }>;
+    badLocations: Array<{ label: string; location_type: string; condition: string }>;
+    incidentContext?: { title: string; description: string };
+  },
+  openAiApiKey: string,
+): Promise<PrerequisiteConflictResult | null> {
+  const { decisionText, capacityFacilities, claimedSpaces, badLocations, incidentContext } = params;
+  const hasItems =
+    capacityFacilities.length > 0 || claimedSpaces.length > 0 || badLocations.length > 0;
+  if (!hasItems) return null;
+
+  try {
+    const conditions: string[] = [];
+    for (const f of capacityFacilities) {
+      conditions.push(
+        `${f.label} (${f.type}) is at full capacity and cannot accept more load right now.`,
+      );
+    }
+    for (const s of claimedSpaces) {
+      conditions.push(
+        `${s.label} has been claimed by the ${s.claimed_by} team as their ${s.claimed_as}.`,
+      );
+    }
+    for (const l of badLocations) {
+      conditions.push(
+        `${l.label} (${l.location_type}) has ${l.condition} — it has not been cleared or managed yet.`,
+      );
+    }
+
+    const conditionsBlock = conditions.join('\n');
+    const incidentBlock = incidentContext
+      ? `\n=== INCIDENT BEING RESPONDED TO ===\n${incidentContext.title} — ${incidentContext.description}\n`
+      : '';
+
+    const systemPrompt = `You are a crisis management evaluator for an emergency exercise simulation. You assess whether a team's decision conflicts with current environmental conditions at the incident site.
+
+You will receive:
+1. The current environmental situation (facilities at capacity, spaces already claimed by other teams, locations with poor/unsuitable conditions).
+2. The decision a team is trying to execute.
+3. Optionally, the incident this decision is responding to.
+
+Determine whether the decision creates a REAL CONFLICT with any of the environmental conditions described. A conflict exists when:
+- The decision relies on a facility that is at capacity (e.g. sending patients to a full hospital).
+- The decision proposes using a space that another team has already claimed for a different purpose — and the two uses would genuinely interfere with each other.
+- The decision commits to operating in a location that has poor or unsuitable conditions that haven't been managed.
+
+A conflict does NOT exist when:
+- The decision merely mentions a location without proposing to use it.
+- The decision references a location to reject, avoid, or suggest alternatives.
+- The decision acknowledges the constraint and works around it.
+- The overlap with a claimed space is compatible (e.g. both uses can coexist, or the team is coordinating with the claiming team).
+- The decision mentions a location only in passing or as context.
+
+Return JSON only:
+{
+  "conflict": boolean,
+  "conflict_type": "capacity" | "space_contention" | "location" | null,
+  "location_label": "the specific location/facility name if there is a conflict, or null",
+  "reason": "one or two sentences explaining your assessment"
+}`;
+
+    const userPrompt = `=== CURRENT ENVIRONMENTAL CONDITIONS ===
+${conditionsBlock}
+${incidentBlock}
+=== DECISION TEXT ===
+${decisionText.slice(0, 1500)}
+
+---
+Does this decision conflict with the environmental conditions described above? JSON only.`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 300,
+        response_format: { type: 'json_object' },
+      }),
+    });
+    if (!response.ok) {
+      logger.warn({ status: response.status }, 'OpenAI API error in evaluatePrerequisiteConflict');
+      return null;
+    }
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) return null;
+    const parsed = JSON.parse(content) as {
+      conflict?: boolean;
+      conflict_type?: string;
+      location_label?: string;
+      reason?: string;
+    };
+    const validTypes = ['capacity', 'space_contention', 'location'] as const;
+    const conflictType =
+      parsed.conflict === true &&
+      typeof parsed.conflict_type === 'string' &&
+      validTypes.includes(parsed.conflict_type as (typeof validTypes)[number])
+        ? (parsed.conflict_type as PrerequisiteConflictResult['conflict_type'])
+        : null;
+
+    return {
+      conflict: parsed.conflict === true,
+      conflict_type: conflictType,
+      location_label:
+        typeof parsed.location_label === 'string' ? parsed.location_label.trim() : null,
+      reason: typeof parsed.reason === 'string' ? parsed.reason.trim().slice(0, 400) : '',
+    };
+  } catch (err) {
+    logger.warn({ err }, 'evaluatePrerequisiteConflict failed, returning null for fallback');
+    return null;
+  }
+}
+
 /** Decision-semantic condition keys that can be precomputed by AI. */
 export const DECISION_SEMANTIC_CONDITION_KEYS = [
   'no_media_management_decision',

@@ -264,7 +264,9 @@ export class AIInjectSchedulerService {
       // Get all active sessions
       const { data: sessions, error: sessionsError } = await supabaseAdmin
         .from('sessions')
-        .select('id, scenario_id, start_time, trainer_id, status, current_state')
+        .select(
+          'id, scenario_id, start_time, trainer_id, status, current_state, inject_state_effects',
+        )
         .eq('status', 'in_progress')
         .not('start_time', 'is', null);
 

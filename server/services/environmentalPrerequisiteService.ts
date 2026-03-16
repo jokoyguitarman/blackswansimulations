@@ -13,8 +13,12 @@ import { logger } from '../lib/logger.js';
 import type { EnvironmentalConsistencyResult } from './environmentalConsistencyService.js';
 import {
   evaluatePrerequisiteReferences,
+  evaluatePrerequisiteConflict,
   evaluateLocationReferenceIntent,
 } from './decisionEvaluationAiService.js';
+
+/** Flip to false to revert to the old structured-matching prerequisite prompt. */
+const USE_NARRATIVE_PREREQUISITE = true;
 
 /** Facility (hospital/police/fire_station) in environmental_state.areas; used for capacity gate. */
 export type AreaRow = {
@@ -204,67 +208,91 @@ export async function evaluateEnvironmentalPrerequisite(
 
     // --- AI-based prerequisite check (primary path) ---
     if (hasItemsToCheck && openAiApiKey) {
-      const aiResult = await evaluatePrerequisiteReferences(
-        {
-          decisionText,
-          capacityFacilities,
-          claimedSpaces,
-          badLocations: badLocationsForAi,
-          incidentContext: incident ?? undefined,
-        },
-        openAiApiKey,
-      );
+      const aiParams = {
+        decisionText,
+        capacityFacilities,
+        claimedSpaces,
+        badLocations: badLocationsForAi,
+        incidentContext: incident ?? undefined,
+      };
 
-      if (aiResult !== null) {
-        if (aiResult.capacity_facility?.match && aiResult.capacity_facility.label) {
-          const matchedLabel = aiResult.capacity_facility.label;
-          const matchedArea = areas.find(
-            (a) => (a.label ?? '').toLowerCase() === matchedLabel.toLowerCase(),
-          );
-          const type = matchedArea?.type ?? 'facility';
-          const reason =
-            type === 'hospital'
-              ? `${matchedLabel} is at full capacity at the moment, causing further delay to delivering your patients.`
-              : `${matchedLabel} is at full capacity; your plan cannot rely on this facility.`;
-          evaluationReason = aiResult.reason ?? reason;
-          return {
-            result: { consistent: false, severity: 'medium', error_type: 'capacity', reason },
-            evaluationReason,
-          };
+      // --- v2: narrative / intent-based prompt ---
+      if (USE_NARRATIVE_PREREQUISITE) {
+        const conflict = await evaluatePrerequisiteConflict(aiParams, openAiApiKey);
+        if (conflict !== null) {
+          if (conflict.conflict && conflict.conflict_type) {
+            evaluationReason = conflict.reason || 'Prerequisite conflict detected.';
+            const reason = conflict.reason || 'Environmental prerequisite conflict.';
+            return {
+              result: {
+                consistent: false,
+                severity: 'medium',
+                error_type: conflict.conflict_type,
+                reason,
+              },
+              evaluationReason,
+            };
+          }
+          evaluationReason =
+            conflict.reason || 'Prerequisite: passed – no conflict with environment.';
+          return { result: null, evaluationReason };
         }
+        // conflict === null means API failure — fall through to keyword fallback below
+      } else {
+        // --- v1 (legacy): structured matching prompt ---
+        const aiResult = await evaluatePrerequisiteReferences(aiParams, openAiApiKey);
 
-        if (aiResult.claimed_space?.match && aiResult.claimed_space.label) {
-          const sp = claimedSpaces.find(
-            (s) => s.label.toLowerCase() === (aiResult.claimed_space!.label ?? '').toLowerCase(),
-          );
-          const reason = sp
-            ? `${sp.label} is already being used as a ${sp.claimed_as} by ${sp.claimed_by}. You need to coordinate with them or choose a different location.`
-            : `${aiResult.claimed_space.label} is already claimed by another team.`;
-          evaluationReason = aiResult.reason ?? reason;
-          return {
-            result: {
-              consistent: false,
-              severity: 'medium',
-              error_type: 'space_contention',
-              reason,
-            },
-            evaluationReason,
-          };
+        if (aiResult !== null) {
+          if (aiResult.capacity_facility?.match && aiResult.capacity_facility.label) {
+            const matchedLabel = aiResult.capacity_facility.label;
+            const matchedArea = areas.find(
+              (a) => (a.label ?? '').toLowerCase() === matchedLabel.toLowerCase(),
+            );
+            const type = matchedArea?.type ?? 'facility';
+            const reason =
+              type === 'hospital'
+                ? `${matchedLabel} is at full capacity at the moment, causing further delay to delivering your patients.`
+                : `${matchedLabel} is at full capacity; your plan cannot rely on this facility.`;
+            evaluationReason = aiResult.reason ?? reason;
+            return {
+              result: { consistent: false, severity: 'medium', error_type: 'capacity', reason },
+              evaluationReason,
+            };
+          }
+
+          if (aiResult.claimed_space?.match && aiResult.claimed_space.label) {
+            const sp = claimedSpaces.find(
+              (s) => s.label.toLowerCase() === (aiResult.claimed_space!.label ?? '').toLowerCase(),
+            );
+            if (sp) {
+              const reason = `${sp.label} is already being used as a ${sp.claimed_as} by ${sp.claimed_by}. You need to coordinate with them or choose a different location.`;
+              evaluationReason = aiResult.reason ?? reason;
+              return {
+                result: {
+                  consistent: false,
+                  severity: 'medium',
+                  error_type: 'space_contention',
+                  reason,
+                },
+                evaluationReason,
+              };
+            }
+          }
+
+          if (aiResult.bad_location?.match && aiResult.bad_location.label) {
+            const reason =
+              aiResult.reason ??
+              `The location "${aiResult.bad_location.label}" has poor suitability or conditions that have not been cleared or managed.`;
+            evaluationReason = reason;
+            return {
+              result: { consistent: false, severity: 'medium', error_type: 'location', reason },
+              evaluationReason,
+            };
+          }
+
+          evaluationReason = aiResult.reason ?? 'Prerequisite: passed – no problematic references.';
+          return { result: null, evaluationReason };
         }
-
-        if (aiResult.bad_location?.match && aiResult.bad_location.label) {
-          const reason =
-            aiResult.reason ??
-            `The location "${aiResult.bad_location.label}" has poor suitability or conditions that have not been cleared or managed.`;
-          evaluationReason = reason;
-          return {
-            result: { consistent: false, severity: 'medium', error_type: 'location', reason },
-            evaluationReason,
-          };
-        }
-
-        evaluationReason = aiResult.reason ?? 'Prerequisite: passed – no problematic references.';
-        return { result: null, evaluationReason };
       }
     }
 
@@ -287,14 +315,8 @@ export async function evaluateEnvironmentalPrerequisite(
       };
     }
 
-    for (const sp of claimedSpaces) {
-      if (!decisionLower.includes(sp.label.toLowerCase())) continue;
-      if (decisionMentionsLocationNegatively(decisionText, sp.label)) continue;
-      const reason = `${sp.label} is already being used as a ${sp.claimed_as} by ${sp.claimed_by}. You need to coordinate with them or choose a different location.`;
-      return {
-        result: { consistent: false, severity: 'medium', error_type: 'space_contention', reason },
-      };
-    }
+    // Claimed-space check is AI-only (no keyword fallback) — intent matters
+    // more than keyword presence, and false positives are worse than misses.
 
     if (badLocationsForAi.length > 0) {
       const badLocsFallback: Array<{ label: string; location_type: string }> = [];

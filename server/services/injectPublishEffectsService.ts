@@ -2,6 +2,10 @@
  * Inject publish effects service (Implementation Guide Phase 5.1).
  * Central place for "when this inject is published, apply penalty and/or state updates."
  * Reads objective_penalty and state_effect from the inject (DB columns) and applies them.
+ *
+ * State effects are written to a SEPARATE column (inject_state_effects) so they cannot
+ * be clobbered by the counter scheduler or any other current_state writer.
+ * The frontend and condition evaluator deep-merge both columns at read time.
  */
 
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
@@ -10,9 +14,39 @@ import { addObjectivePenalty } from './objectiveTrackingService.js';
 import { getWebSocketService } from './websocketService.js';
 
 /**
+ * Deep-merge helper: merge `inject_state_effects` on top of `current_state`.
+ * Two-level merge so that e.g. evacuation_state fields from both sources coexist.
+ */
+export function mergeStateWithInjectEffects(
+  currentState: Record<string, unknown>,
+  injectEffects: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...currentState };
+  for (const [key, val] of Object.entries(injectEffects)) {
+    if (
+      val != null &&
+      typeof val === 'object' &&
+      !Array.isArray(val) &&
+      merged[key] != null &&
+      typeof merged[key] === 'object' &&
+      !Array.isArray(merged[key])
+    ) {
+      merged[key] = {
+        ...(merged[key] as Record<string, unknown>),
+        ...(val as Record<string, unknown>),
+      };
+    } else {
+      merged[key] = val;
+    }
+  }
+  return merged;
+}
+
+/**
  * Apply effects configured on the inject: objective penalty and state_effect merge into
- * session current_state (evacuation_state, triage_state, media_state).
- * Called from publishInjectToSession after the inject event is created and pathway outcomes are triggered.
+ * session inject_state_effects (separate column from current_state).
+ * Sentiment nudge is the one exception — written to current_state because the AI
+ * scheduler also manages public_sentiment there.
  */
 export async function applyInjectPublishEffects(
   sessionId: string,
@@ -50,16 +84,18 @@ export async function applyInjectPublishEffects(
   const stateEffect = inject.state_effect as Record<string, Record<string, unknown>> | undefined;
   if (stateEffect && typeof stateEffect === 'object' && Object.keys(stateEffect).length > 0) {
     try {
+      // Read the SEPARATE inject_state_effects column (only this service writes to it)
       const { data: sessionForState } = await supabaseAdmin
         .from('sessions')
-        .select('current_state')
+        .select('inject_state_effects, current_state')
         .eq('id', sessionId)
         .single();
-      const currentState = (sessionForState?.current_state as Record<string, unknown>) || {};
-      const nextState = { ...currentState };
+      const existing = (sessionForState?.inject_state_effects as Record<string, unknown>) || {};
+      const nextEffects = { ...existing };
+
       for (const [key, effectVal] of Object.entries(stateEffect)) {
         if (!key.endsWith('_state') || !effectVal || typeof effectVal !== 'object') continue;
-        const current = (nextState[key] as Record<string, unknown>) || {};
+        const current = (nextEffects[key] as Record<string, unknown>) || {};
         const effect = effectVal as Record<string, unknown>;
         if (
           key === 'evacuation_state' &&
@@ -70,11 +106,7 @@ export async function applyInjectPublishEffects(
             (v): v is string => typeof v === 'string',
           );
           const deduped = [...new Set(combined)];
-          (nextState as Record<string, unknown>)[key] = {
-            ...current,
-            ...effect,
-            exits_congested: deduped,
-          };
+          nextEffects[key] = { ...current, ...effect, exits_congested: deduped };
         } else {
           const flatEffect: Record<string, unknown> = {};
           const ADDITIVE_KEYS = new Set([
@@ -91,45 +123,56 @@ export async function applyInjectPublishEffects(
               flatEffect[ek] = ev;
             }
           }
-          (nextState as Record<string, unknown>)[key] = {
-            ...current,
-            ...flatEffect,
-          };
+          nextEffects[key] = { ...current, ...flatEffect };
         }
       }
 
-      // Deterministic sentiment nudge: when an inject carries sentiment_nudge in
-      // media_state, immediately shift public_sentiment by that amount (additive).
+      // Write inject effects to the separate column (race-free)
+      await supabaseAdmin
+        .from('sessions')
+        .update({ inject_state_effects: nextEffects })
+        .eq('id', sessionId);
+
+      // Broadcast the merged view so frontend has the complete picture
+      const currentState = (sessionForState?.current_state as Record<string, unknown>) || {};
+      const mergedState = mergeStateWithInjectEffects(currentState, nextEffects);
+      getWebSocketService().stateUpdated?.(sessionId, {
+        state: mergedState,
+        inject_state_effects: nextEffects,
+        timestamp: new Date().toISOString(),
+      });
+
+      logger.info(
+        { sessionId, injectId, effectKeys: Object.keys(nextEffects) },
+        'Inject state effects written to inject_state_effects column',
+      );
+
+      // Sentiment nudge: still written to current_state because the AI scheduler
+      // also manages public_sentiment there (both writers are aware of it).
       const mediaEffect = stateEffect.media_state as Record<string, unknown> | undefined;
       if (mediaEffect && typeof mediaEffect.sentiment_nudge === 'number') {
-        const media = (nextState.media_state as Record<string, unknown>) || {};
+        const media = (currentState.media_state as Record<string, unknown>) || {};
         const curSentiment =
           typeof media.public_sentiment === 'number' ? media.public_sentiment : 5;
         const nudge = mediaEffect.sentiment_nudge as number;
         const newSentiment = Math.max(1, Math.min(10, Math.round(curSentiment + nudge)));
-        (nextState.media_state as Record<string, unknown>) = {
+        const updatedMedia: Record<string, unknown> = {
           ...media,
           public_sentiment: newSentiment,
           sentiment_nudge_applied: nudge,
         };
-        // Remove the nudge from the persisted state so it doesn't re-apply
-        delete (nextState.media_state as Record<string, unknown>).sentiment_nudge;
+        delete updatedMedia.sentiment_nudge;
+        await supabaseAdmin
+          .from('sessions')
+          .update({ current_state: { ...currentState, media_state: updatedMedia } })
+          .eq('id', sessionId);
         logger.info(
           { sessionId, injectId, nudge, from: curSentiment, to: newSentiment },
           'Applied deterministic sentiment nudge from inject',
         );
       }
-
-      await supabaseAdmin.from('sessions').update({ current_state: nextState }).eq('id', sessionId);
-      getWebSocketService().stateUpdated?.(sessionId, {
-        state: nextState,
-        timestamp: new Date().toISOString(),
-      });
     } catch (stateErr) {
-      logger.error(
-        { err: stateErr, sessionId, injectId },
-        'Failed to apply state effect on inject publish',
-      );
+      logger.error({ err: stateErr, sessionId, injectId }, 'Failed to apply inject state effects');
     }
   }
 }

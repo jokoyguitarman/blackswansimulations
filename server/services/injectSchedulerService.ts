@@ -15,6 +15,7 @@ import {
   DECISION_SEMANTIC_CONDITION_KEYS,
 } from './decisionEvaluationAiService.js';
 import { getConditionConfigForScenario } from './scenarioConditionConfigService.js';
+import { mergeStateWithInjectEffects } from './injectPublishEffectsService.js';
 import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
 import type { Server as SocketServer } from 'socket.io';
@@ -289,7 +290,9 @@ export class InjectSchedulerService {
       // Get all active sessions with start_time (current_state for condition evaluator context)
       const { data: sessions, error: sessionsError } = await supabaseAdmin
         .from('sessions')
-        .select('id, scenario_id, start_time, trainer_id, status, current_state')
+        .select(
+          'id, scenario_id, start_time, trainer_id, status, current_state, inject_state_effects',
+        )
         .eq('status', 'in_progress')
         .not('start_time', 'is', null);
 
@@ -342,6 +345,7 @@ export class InjectSchedulerService {
     trainer_id: string;
     status: string;
     current_state?: Record<string, unknown> | null;
+    inject_state_effects?: Record<string, unknown> | null;
   }): Promise<void> {
     // Calculate elapsed minutes
     const startTime = new Date(session.start_time).getTime();
@@ -360,7 +364,10 @@ export class InjectSchedulerService {
     );
 
     // Phase 6 (optional): time-based state updates — set surge_active at T+10, supply_level at T+15 if no supply decision
-    const currentState = (session.current_state as Record<string, unknown>) || {};
+    // Merge inject_state_effects so counters see bomb-related state changes
+    const rawState = (session.current_state as Record<string, unknown>) || {};
+    const injectEffects = (session.inject_state_effects as Record<string, unknown>) || {};
+    const currentState = mergeStateWithInjectEffects(rawState, injectEffects);
     const nextState: Record<string, unknown> = { ...currentState };
     let stateChanged = false;
 
@@ -913,7 +920,10 @@ export class InjectSchedulerService {
       sessionId: session.id,
       scenarioId: session.scenario_id,
       elapsedMinutes,
-      currentState: (session.current_state as Record<string, unknown>) || {},
+      currentState: mergeStateWithInjectEffects(
+        (session.current_state as Record<string, unknown>) || {},
+        (session.inject_state_effects as Record<string, unknown>) || {},
+      ),
       executedDecisions,
       publishedScenarioInjectIds: Array.from(publishedInjectIds),
       pathwayOutcomeKeysFired: [], // Optional: populate from session_events metadata when pathway outcome keys are stored

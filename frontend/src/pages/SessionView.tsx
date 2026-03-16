@@ -35,6 +35,7 @@ interface Session {
     }>;
     [key: string]: unknown;
   };
+  inject_state_effects?: Record<string, unknown>;
   trainer_instructions?: string | null;
   scheduled_start_time?: string | null;
   join_token?: string | null;
@@ -107,6 +108,37 @@ function sanitizeCurrentState(state: Record<string, unknown>): Record<string, un
     }
   }
   return result;
+}
+
+/**
+ * Deep-merge inject_state_effects on top of current_state (two-level merge).
+ * Inject effects live in a separate DB column to avoid race conditions with
+ * the counter scheduler that writes current_state.
+ */
+function mergeInjectEffects(
+  currentState: Record<string, unknown>,
+  injectEffects?: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!injectEffects || Object.keys(injectEffects).length === 0) return currentState;
+  const merged: Record<string, unknown> = { ...currentState };
+  for (const [key, val] of Object.entries(injectEffects)) {
+    if (
+      val != null &&
+      typeof val === 'object' &&
+      !Array.isArray(val) &&
+      merged[key] != null &&
+      typeof merged[key] === 'object' &&
+      !Array.isArray(merged[key])
+    ) {
+      merged[key] = {
+        ...(merged[key] as Record<string, unknown>),
+        ...(val as Record<string, unknown>),
+      };
+    } else {
+      merged[key] = val;
+    }
+  }
+  return merged;
 }
 
 export const SessionView = () => {
@@ -388,10 +420,20 @@ export const SessionView = () => {
     ],
     onEvent: (event: WebSocketEvent) => {
       if (event.type === 'state.updated') {
-        const rawState = (event.data as { state?: Record<string, unknown> })?.state;
-        if (rawState) {
-          const state = sanitizeCurrentState(rawState);
-          setSession((prev) => (prev ? { ...prev, current_state: state } : null));
+        const payload = event.data as {
+          state?: Record<string, unknown>;
+          inject_state_effects?: Record<string, unknown>;
+        };
+        if (payload?.state) {
+          const state = sanitizeCurrentState(payload.state);
+          setSession((prev) => {
+            if (!prev) return null;
+            const update: Partial<Session> = { current_state: state };
+            if (payload.inject_state_effects) {
+              update.inject_state_effects = payload.inject_state_effects;
+            }
+            return { ...prev, ...update };
+          });
         }
         return;
       }
@@ -1015,7 +1057,10 @@ export const SessionView = () => {
                   isVisible={showMapModule}
                   fillHeight
                   locationsRefreshTrigger={locationsRefreshTrigger}
-                  currentState={session?.current_state as Record<string, unknown> | undefined}
+                  currentState={mergeInjectEffects(
+                    (session?.current_state as Record<string, unknown>) ?? {},
+                    session?.inject_state_effects,
+                  )}
                   initialCenter={
                     session?.scenarios?.center_lat != null && session?.scenarios?.center_lng != null
                       ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
@@ -1275,7 +1320,10 @@ export const SessionView = () => {
                     fillHeight
                     showAllPins
                     locationsRefreshTrigger={locationsRefreshTrigger}
-                    currentState={session?.current_state as Record<string, unknown> | undefined}
+                    currentState={mergeInjectEffects(
+                      (session?.current_state as Record<string, unknown>) ?? {},
+                      session?.inject_state_effects,
+                    )}
                     initialCenter={
                       session?.scenarios?.center_lat != null &&
                       session?.scenarios?.center_lng != null
