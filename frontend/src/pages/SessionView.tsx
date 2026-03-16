@@ -1016,6 +1016,7 @@ export const SessionView = () => {
                   isVisible={showMapModule}
                   fillHeight
                   locationsRefreshTrigger={locationsRefreshTrigger}
+                  currentState={session?.current_state as Record<string, unknown> | undefined}
                   initialCenter={
                     session?.scenarios?.center_lat != null && session?.scenarios?.center_lng != null
                       ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
@@ -1252,6 +1253,7 @@ export const SessionView = () => {
                     fillHeight
                     showAllPins
                     locationsRefreshTrigger={locationsRefreshTrigger}
+                    currentState={session?.current_state as Record<string, unknown> | undefined}
                     initialCenter={
                       session?.scenarios?.center_lat != null &&
                       session?.scenarios?.center_lng != null

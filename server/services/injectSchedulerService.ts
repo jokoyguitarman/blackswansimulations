@@ -2,6 +2,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { shouldCancelScheduledInject } from './aiService.js';
+import { updateTeamHeatMeter } from './heatMeterService.js';
 import { runGateEvaluationForSession } from './gateEvaluationService.js';
 import {
   evaluateInjectConditions,
@@ -822,35 +823,121 @@ export class InjectSchedulerService {
                 session_id: session.id,
                 event_type: 'ai_step_end',
                 description: result.cancel
-                  ? `AI: Cancelled inject: ${inject.title ?? inject.id}`
+                  ? `AI: Cancelled inject: ${inject.title ?? inject.id}${result.adversary_inject ? ' (adversary adapts)' : ''}`
                   : `AI: Publishing inject: ${inject.title ?? inject.id}`,
                 actor_id: null,
                 metadata: {
                   step: 'evaluating_inject_cancellation',
                   cancel: result.cancel,
-                  reason: result.reason ?? null,
+                  cancel_reason: result.cancel_reason ?? null,
+                  has_adversary_adaptation: !!result.adversary_inject,
                 },
               });
               if (result.cancel) {
                 await supabaseAdmin.from('session_events').insert({
                   session_id: session.id,
                   event_type: 'inject_cancelled',
-                  description: `Inject cancelled: ${inject.title ?? inject.id} - ${result.reason ?? 'AI determined recent decisions made it obsolete'}`,
+                  description: `Inject cancelled: ${inject.title ?? inject.id} - ${result.cancel_reason ?? 'Team actions addressed the concern'}`,
                   actor_id: null,
                   metadata: {
                     inject_id: inject.id,
-                    reason: result.reason ?? null,
+                    cancel_reason: result.cancel_reason ?? null,
                     cancelled_at: new Date().toISOString(),
                   },
                 });
+
+                const creditTeams = (inject as InjectRow).target_teams as string[] | null;
+                const teamsToCredit =
+                  creditTeams && creditTeams.length > 0
+                    ? creditTeams
+                    : [
+                        ...new Set(
+                          relevantDecisions
+                            .map((d) =>
+                              d.proposed_by ? userIdToTeam.get(d.proposed_by) : undefined,
+                            )
+                            .filter(Boolean) as string[],
+                        ),
+                      ];
+                for (const team of teamsToCredit) {
+                  try {
+                    await updateTeamHeatMeter(session.id, team, 'good');
+                  } catch {
+                    // non-critical
+                  }
+                }
+                if (teamsToCredit.length > 0) {
+                  logger.info(
+                    { sessionId: session.id, injectTitle: inject.title, teams: teamsToCredit },
+                    'Inject cancelled — positive scoring awarded',
+                  );
+                }
+
+                if (result.adversary_inject && session.scenario_id) {
+                  try {
+                    const origInject = inject as InjectRow;
+                    const adaptTitle = `${result.adversary_inject.title} – ${(origInject.target_teams as string[] | null)?.[0] ?? 'all'} (${inject.id.slice(0, 8)})`;
+                    const { data: adaptInject, error: adaptErr } = await supabaseAdmin
+                      .from('scenario_injects')
+                      .insert({
+                        scenario_id: session.scenario_id,
+                        type: 'field_update',
+                        title: adaptTitle,
+                        content: result.adversary_inject.content,
+                        severity: origInject.severity ?? 'medium',
+                        inject_scope: origInject.inject_scope ?? 'team_specific',
+                        target_teams: origInject.target_teams ?? null,
+                        requires_response: true,
+                        requires_coordination: false,
+                        ai_generated: true,
+                        generation_source: 'adversary_adaptation',
+                      })
+                      .select()
+                      .single();
+
+                    if (adaptErr) {
+                      logger.warn(
+                        { err: adaptErr, sessionId: session.id, origInjectTitle: inject.title },
+                        'Failed to insert adversary adaptation inject',
+                      );
+                    } else if (adaptInject) {
+                      if (!this.io) {
+                        const { io } = await import('../index.js');
+                        this.io = io;
+                      }
+                      if (this.io) {
+                        await publishInjectToSession(
+                          adaptInject.id,
+                          session.id,
+                          session.trainer_id,
+                          this.io,
+                        );
+                      }
+                      logger.info(
+                        {
+                          sessionId: session.id,
+                          origInjectTitle: inject.title,
+                          adaptTitle: adaptInject.title,
+                        },
+                        'Adversary adaptation inject published',
+                      );
+                    }
+                  } catch (adaptPublishErr) {
+                    logger.warn(
+                      { err: adaptPublishErr, sessionId: session.id },
+                      'Failed to publish adversary adaptation inject',
+                    );
+                  }
+                }
+
                 logger.info(
                   {
                     sessionId: session.id,
                     injectId: inject.id,
                     injectTitle: inject.title,
-                    reason: result.reason,
+                    cancel_reason: result.cancel_reason,
                   },
-                  'Scheduled inject cancelled by AI, not publishing',
+                  'Scheduled inject cancelled by adversary engine',
                 );
                 continue;
               }

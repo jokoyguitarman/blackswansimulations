@@ -349,18 +349,28 @@ Provide a detailed classification with high confidence.`;
 };
 
 /**
- * Result of AI check: should a scheduled inject be cancelled given recent player decisions?
+ * Result of the two-step adversary engine.
+ * Step 1: Did team actions address the inject? (cancel)
+ * Step 2: Can the adversary still cause trouble on the same subject? (adversary_inject)
  */
 export interface ScheduledInjectCancellationResult {
   cancel: boolean;
-  reason?: string;
+  cancel_reason?: string;
+  adversary_inject?: {
+    title: string;
+    content: string;
+  };
 }
 
 /**
- * Decide whether a scheduled scenario inject should be suppressed. The AI reasons as the
- * adversary: default is do not cancel (publish). Cancel only when players explicitly named
- * the same channel, facility, location, or incident as in the inject; generic measures
- * do not justify cancellation (adversary can adapt).
+ * Two-step adversary engine for scheduled injects.
+ *
+ * Step 1 — Have the teams' collective decisions already addressed the concern
+ *          of this inject? If NO, publish the original inject (cancel: false).
+ *
+ * Step 2 — (only reached when Step 1 = yes) Can the adversary realistically
+ *          still cause trouble on the SAME subject, despite the team's efforts?
+ *          If yes, generate a new adapted inject. If no, the team fully handled it.
  */
 export const shouldCancelScheduledInject = async (
   inject: { title: string; content: string },
@@ -368,31 +378,42 @@ export const shouldCancelScheduledInject = async (
   openAiApiKey: string,
 ): Promise<ScheduledInjectCancellationResult> => {
   try {
-    /*
-     * REVERT: restore the block below to systemPrompt/userPrompt to revert to pre-adversary cancellation logic.
-     * OLD systemPrompt:
-     * You are an expert crisis simulation facilitator. Your task is to decide whether a scheduled scenario event (inject) should still be published to players, given the decisions they have already made in the last 5 minutes.
-     * Rules:
-     * - If player decisions have already addressed, prevented, or made this scheduled event obsolete or contradictory, return cancel: true.
-     * - Examples: scheduled "Bomb explodes" but players decided to "safely detonate the bomb" -> cancel. Scheduled "Evacuation chaos" but players already executed a full evacuation order -> consider cancelling if the inject would be redundant or contradictory.
-     * - If the inject is still relevant, adds new information, or is not contradicted by recent decisions, return cancel: false.
-     * - When in doubt, prefer cancel: false so the scenario continues as designed unless there is a clear contradiction.
-     * - Consider partial overlap: if players did something that partially addresses the inject, you may still cancel if the inject would now be misleading (e.g. "Secondary explosion" when the threat was already neutralized).
-     * Return ONLY valid JSON: { "cancel": true|false, "reason": "..." }
-     * OLD userPrompt (same structure, inject.title, inject.content, decisionsText):
-     * Scheduled inject that is about to be published: Title: ... Content: ... --- Decisions made by players in the last 5 minutes: ... --- Should this scheduled inject be CANCELLED (not published) because player actions have already addressed, prevented, or made it obsolete? Return JSON with "cancel" (boolean) and "reason" (string).
-     */
-    const systemPrompt = `You are the adversary / scenario engine. Your goal is to keep the scenario challenging: scheduled injects should RUN unless players have directly and specifically removed the exact thing the inject is about.
+    const systemPrompt = `You are the adversary engine for a crisis management simulation. You evaluate scheduled events (injects) in two steps.
 
-Adversary adapts: If players took generic measures (e.g. "monitor extremist channels", "fortify detention facilities") without naming which channel or facility, assume the adversary uses other channels, other facilities, or other methods. Return cancel: false and give a brief reason (e.g. how the adversary adapts).
+=== STEP 1: HAVE THE TEAMS ADDRESSED THIS? ===
+Review ALL player decisions made during this session. Have they collectively taken actions that address the underlying concern of this inject?
 
-Cancel only when specific: Return cancel: true ONLY if the inject refers to a concrete thing (named channel, facility, location, incident) and player decisions explicitly refer to that SAME thing (e.g. "shut down Channel X", "secure Facility Y"). Treat as "specific" only when the decision text explicitly names the same entity (same channel name, facility name, or location). Generic phrases like "all high-risk facilities" or "known channels" do NOT count unless that specific thing is explicitly listed.
+Set "cancel": true when:
+- The combined effect of player decisions addresses, prevents, or makes this inject redundant.
+- The inject's core concern has been handled — even through different specific actions than the inject assumes. E.g. if the inject is "PM office demands statement" and players have already issued multiple public statements and press releases, the communication gap does not exist.
+- Players partially addressed it but enough that the inject would feel unfair or contradictory.
 
-Output: Return ONLY valid JSON in this exact format:
-{ "cancel": true, "reason": "..." }
-or
-{ "cancel": false, "reason": "..." }
-When cancel is false, reason should briefly state how the adversary adapts (for backend logging). When cancel is true, reason should state that players specifically addressed the same entity.`;
+Set "cancel": false when:
+- Players have not taken any actions related to the inject's concern.
+- Players addressed something tangentially related but the inject's specific problem still exists.
+- The inject introduces genuinely new information beyond what players have addressed.
+
+If "cancel" is false, STOP HERE. Return cancel: false with a cancel_reason explaining the gap.
+
+=== STEP 2: ADVERSARY ADAPTATION (only if cancel = true) ===
+The team addressed the original concern — good. But can you, the adversary, still realistically cause trouble on the SAME SUBJECT despite their efforts?
+
+Think creatively but realistically:
+- A different angle of attack on the same issue (e.g. team issued a statement, but adversary leaks contradicting footage)
+- An escalation that the team's actions don't cover (e.g. team secured one channel, but adversary uses social media instead)
+- A second-order consequence of the original concern (e.g. team addressed the immediate issue, but public trust damage spreads)
+
+If you CAN find a realistic adaptation: set "adversary_inject" with a title and content. The title should be a short (3-8 word) in-world field report headline. The content should be 2-4 sentences describing what is happening NOW as an in-world event — do NOT explain what players should do.
+
+If you CANNOT find a realistic adaptation (team fully neutralised it): omit "adversary_inject" entirely.
+
+=== OUTPUT FORMAT ===
+Return ONLY valid JSON:
+{
+  "cancel": boolean,
+  "cancel_reason": "..." (brief explanation),
+  "adversary_inject": { "title": "...", "content": "..." } (ONLY when cancel is true AND adversary can adapt)
+}`;
 
     const decisionsText =
       recentDecisions.length > 0
@@ -401,7 +422,7 @@ When cancel is false, reason should briefly state how the adversary adapts (for 
             .join('\n\n')
         : 'No decisions executed during this session.';
 
-    const userPrompt = `Scheduled inject that may be published:
+    const userPrompt = `Scheduled inject about to be published:
 
 Title: ${inject.title}
 
@@ -409,12 +430,15 @@ Content:
 ${inject.content}
 
 ---
-Decisions made by players during this session:
+ALL decisions made by players during this session (oldest first):
 
 ${decisionsText}
 
 ---
-As the adversary, can this inject still plausibly occur (e.g. by using a different channel, facility, location, or method)? Return cancel: true ONLY if players explicitly named the same channel, facility, location, or incident as in this inject. Otherwise return cancel: false with a brief reason (how the adversary adapts). Return JSON with "cancel" (boolean) and "reason" (string).`;
+Follow the two-step process:
+STEP 1: Have the teams collectively addressed the concern of this inject? If NO, return cancel: false.
+STEP 2 (only if Step 1 = yes): Can you, the adversary, still realistically cause trouble on the SAME subject? If yes, provide adversary_inject. If the team fully neutralised it, omit adversary_inject.
+Return JSON only.`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -428,8 +452,8 @@ As the adversary, can this inject still plausibly occur (e.g. by using a differe
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        temperature: 0.2,
-        max_tokens: 300,
+        temperature: 0.4,
+        max_tokens: 600,
         response_format: { type: 'json_object' },
       }),
     });
@@ -440,33 +464,57 @@ As the adversary, can this inject still plausibly occur (e.g. by using a differe
         { status: response.status, injectTitle: inject.title, error },
         'OpenAI API error in shouldCancelScheduledInject, defaulting to not cancel',
       );
-      return { cancel: false, reason: 'AI check failed; inject will publish.' };
+      return { cancel: false, cancel_reason: 'AI check failed; inject will publish.' };
     }
 
     const data = await response.json();
     const content = data.choices[0]?.message?.content;
     if (!content) {
-      return { cancel: false, reason: 'No AI response; inject will publish.' };
+      return { cancel: false, cancel_reason: 'No AI response; inject will publish.' };
     }
 
-    const parsed = JSON.parse(content) as { cancel?: boolean; reason?: string };
+    const parsed = JSON.parse(content) as {
+      cancel?: boolean;
+      cancel_reason?: string;
+      adversary_inject?: { title?: string; content?: string };
+    };
     const cancel = parsed.cancel === true;
+    const cancel_reason =
+      typeof parsed.cancel_reason === 'string' ? parsed.cancel_reason : undefined;
+
+    let adversary_inject: { title: string; content: string } | undefined;
+    if (
+      cancel &&
+      parsed.adversary_inject &&
+      typeof parsed.adversary_inject.title === 'string' &&
+      parsed.adversary_inject.title.trim() &&
+      typeof parsed.adversary_inject.content === 'string' &&
+      parsed.adversary_inject.content.trim()
+    ) {
+      adversary_inject = {
+        title: parsed.adversary_inject.title.trim(),
+        content: parsed.adversary_inject.content.trim(),
+      };
+    }
+
     if (cancel) {
       logger.info(
-        { injectTitle: inject.title, reason: parsed.reason },
-        'Scheduled inject cancelled by AI due to recent decisions',
+        {
+          injectTitle: inject.title,
+          cancel_reason,
+          hasAdversaryAdaptation: !!adversary_inject,
+          adversaryTitle: adversary_inject?.title ?? null,
+        },
+        'Scheduled inject cancelled by adversary engine',
       );
     }
-    return {
-      cancel,
-      reason: typeof parsed.reason === 'string' ? parsed.reason : undefined,
-    };
+    return { cancel, cancel_reason, adversary_inject };
   } catch (err) {
     logger.warn(
       { error: err, injectTitle: inject.title },
       'Error in shouldCancelScheduledInject, defaulting to not cancel',
     );
-    return { cancel: false, reason: 'Error during check; inject will publish.' };
+    return { cancel: false, cancel_reason: 'Error during check; inject will publish.' };
   }
 };
 

@@ -1088,12 +1088,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         failureContent = rejectionReason;
       } else if (envResult.specific === false && envResult.feedback) {
         failureType = 'vague';
-        const missingList = (envResult.missing_details ?? [])
-          .map((d: string) => `- ${d}`)
-          .join('\n');
-        failureContent = missingList
-          ? `${envResult.feedback}\n\nMissing details:\n${missingList}`
-          : envResult.feedback;
+        failureContent = envResult.feedback;
       } else if (
         !envResult.consistent &&
         envResult.mismatch_kind !== 'below_standard' &&
@@ -1113,32 +1108,12 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         failureContent = prereqResult.reason;
       }
 
-      const FAILURE_TITLES: Record<FailureType, [string, string, string]> = {
-        vague: [
-          'Operational detail needed',
-          'Field complications from unclear orders',
-          'Critical failures from inadequate direction',
-        ],
-        contradiction: [
-          'Decision contradicts ground conditions',
-          'Errors causing operational setbacks',
-          'Repeated errors causing operational damage',
-        ],
-        below_standard: [
-          'Decision falls short of operational standards',
-          'Standards gaps affecting operations',
-          'Continued standards violations causing harm',
-        ],
-        prereq: [
-          'Environmental constraint not addressed',
-          'Ignored constraints causing setbacks',
-          'Ignored constraints leading to failure',
-        ],
-        rejected: [
-          'Action cannot be carried out',
-          'Dangerous action rejected — operational consequences',
-          'Repeated dangerous actions — loss of authority',
-        ],
+      const FALLBACK_TITLES: Record<FailureType, string> = {
+        vague: 'Field report — operational complications',
+        contradiction: 'Field report — ground conditions',
+        below_standard: 'Field report — standards shortfall',
+        prereq: 'Field report — environmental constraint',
+        rejected: 'Action cannot be carried out',
       };
 
       if (
@@ -1170,7 +1145,8 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
                   : escalationIdx >= 1
                     ? 'high'
                     : 'medium';
-            const titleBase = FAILURE_TITLES[failureType][escalationIdx];
+            const aiTitle = envResult.consequence_title || aiEnvResult.consequence_title;
+            const titleBase = aiTitle || FALLBACK_TITLES[failureType];
             const injectTitle = `${titleBase} – ${authorTeamNames[0]} (${decision.id.slice(0, 8)})`;
 
             const { data: qualityInject, error: qualityInsertErr } = await supabaseAdmin
@@ -1183,7 +1159,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
                 severity: injectSeverity,
                 inject_scope: 'team_specific',
                 target_teams: [authorTeamNames[0]],
-                requires_response: failureType === 'vague' || failureType === 'rejected',
+                requires_response: true,
                 requires_coordination: false,
                 ai_generated: true,
                 generation_source: 'specificity_feedback',

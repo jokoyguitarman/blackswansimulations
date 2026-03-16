@@ -207,19 +207,6 @@ const EVAC_LABEL_PATTERNS = [
   'West open staging',
 ];
 
-/** Keywords indicating second-device cordon/clear at Exit B. */
-const SECOND_DEVICE_KEYWORDS = [
-  'exit b',
-  'exit B',
-  'clear',
-  'cordon',
-  'evacuate',
-  'second device',
-  'suspicious',
-  'package',
-  'bag',
-];
-
 /**
  * Extract triage zone label from decision text and match to scenario_locations.
  */
@@ -335,14 +322,6 @@ async function extractEvacChoice(
     }
   }
   return null;
-}
-
-/**
- * Check if decision text indicates clearing/cordoning the second-device area (Exit B).
- */
-function indicatesSecondDeviceZoneCleared(title: string, description: string): boolean {
-  const text = `${title} ${description}`.toLowerCase();
-  return SECOND_DEVICE_KEYWORDS.some((kw) => text.includes(kw.toLowerCase()));
 }
 
 interface StateKeyCandidate {
@@ -524,16 +503,12 @@ export async function updateTeamStateFromDecision(
       }
     }
 
-    // Evacuation: extract holding choice and second-device cordon
+    // Evacuation: extract holding choice
     if (isEvacuation && scenarioId && (title || description)) {
       const evacChoice = await extractEvacChoice(scenarioId, title, description);
       if (evacChoice) {
         currentState.evac_holding_selected = evacChoice.label;
         currentState.evac_holding_properties = evacChoice.properties;
-      }
-      if (indicatesSecondDeviceZoneCleared(title, description)) {
-        currentState.second_device_zone_cleared = true;
-        currentState.area_cleared = true;
       }
     }
 

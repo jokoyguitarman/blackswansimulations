@@ -126,6 +126,8 @@ interface MapViewProps {
   locationsRefreshTrigger?: number;
   /** When true (e.g. trainer view), show all pins regardless of Insider reveal; default false. */
   showAllPins?: boolean;
+  /** Live session current_state — used to conditionally show/hide pins with visible_after_state_key. */
+  currentState?: Record<string, unknown>;
 }
 
 /**
@@ -398,6 +400,7 @@ export const MapView = ({
   fillHeight = false,
   locationsRefreshTrigger = 0,
   showAllPins = false,
+  currentState,
 }: MapViewProps) => {
   const mapDisabledByEnv = import.meta.env.VITE_DISABLE_MAP === 'true';
   const isMapDisabled = disabled || mapDisabledByEnv;
@@ -490,7 +493,22 @@ export const MapView = ({
   );
   // Trainer sees all pins except cordon. Players see incident/access/triage/command/staging always;
   // poi only after Insider reveals it; cordon always hidden from players.
+  // Pins with visible_after_state_key only appear once that state key is truthy.
   const scenarioLocationsForMap = scenarioLocationsWithCoords.filter((loc) => {
+    // State-conditional visibility: hide until the referenced state key becomes truthy
+    const visKey = loc.conditions?.visible_after_state_key as string | undefined;
+    if (visKey && currentState) {
+      const [parentKey, childKey] = visKey.split('.');
+      if (parentKey && childKey) {
+        const parent = currentState[parentKey] as Record<string, unknown> | undefined;
+        if (!parent?.[childKey]) return false;
+      } else if (parentKey) {
+        if (!currentState[parentKey]) return false;
+      }
+    } else if (visKey && !currentState) {
+      return false;
+    }
+
     const isCordon =
       loc.pin_category === 'cordon' ||
       loc.location_type === 'cordon' ||

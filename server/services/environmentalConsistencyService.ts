@@ -36,8 +36,10 @@ export interface EnvironmentalConsistencyResult {
   specific?: boolean;
   /** Short phrases describing what is missing (e.g. "exit names", "marshal-to-evacuee ratio"). */
   missing_details?: string[];
-  /** AI-generated in-world pressure message telling the player what details are needed and why. */
+  /** AI-generated in-world consequence narrative describing what happens because of the decision's shortcomings. */
   feedback?: string;
+  /** AI-generated short in-world title for the consequence inject (e.g. "Overcrowding at Assembly North"). */
+  consequence_title?: string;
   /** true when the decision proposes a forbidden/dangerous action (e.g. detonating a bomb, attacking people). */
   rejected?: boolean;
   /** In-world explanation of why the forbidden action cannot be carried out. */
@@ -402,10 +404,11 @@ Rules:
 - Do not invent contradictions: If the decision correctly states a capacity for a location (e.g. "Vacant Lot E standing capacity 500" and ground truth says Lot E has standing 500), set consistent: true. Only set contradiction if the decision states a different number for that location (e.g. "Lot E has 100 lying" when ground truth says Lot E has 50 lying).
 - severity: "low" = minor (e.g. 60 in 50-capacity area); "medium" = clear contradiction (e.g. wrong exit, 100 in 50); "high" = dangerous/impossible (e.g. 200 in 50, non-existent exit). For below_standard use "low" or "medium" only. NEVER combine severity "high" with mismatch_kind "below_standard".
 - error_type: "capacity" | "location" | "flow" | "other" (if consistent is false).
-- reason: when consistent is false, write the reason following the ESCALATION LEVEL provided in the user prompt:
-  - ESCALATION 0: a factual, neutral statement of what is wrong (e.g. "The assembly area North has a safe capacity of 50; your plan assumed 100.").
-  - ESCALATION 1: describe in-world consequences now occurring because of the error (e.g. "Using the overcrowded North assembly area has caused a crush incident; casualties are being reported among evacuees."). Be scenario-specific.
-  - ESCALATION 2+: describe critical in-world damage from repeated errors (e.g. "Continued reliance on incorrect location data has led to preventable deaths and a complete breakdown of the evacuation corridor."). Be severe and scenario-specific.
+- reason: when consistent is false, write the reason as an IN-WORLD CONSEQUENCE — describe what is happening on the ground as a result of the decision, following the ESCALATION LEVEL provided in the user prompt. Do NOT tell the player what they should have done or what is wrong with their plan. Describe only what is unfolding:
+  - ESCALATION 0: minor operational friction (e.g. "Evacuees are spilling out of the north assembly area — capacity has been exceeded. Volunteers are struggling to manage the overflow.").
+  - ESCALATION 1: significant in-world problem (e.g. "A crush incident is developing at Assembly North. Several elderly evacuees have fallen and are being trampled. Medical teams are being called.").
+  - ESCALATION 2+: critical in-world damage (e.g. "Multiple casualties confirmed at the overcrowded assembly area. Emergency services cannot reach the injured through the crowd. The evacuation corridor has collapsed."). Be severe and scenario-specific.
+- consequence_title: when consistent is false, provide a short (3-8 word) in-world event headline for the consequence, as if it were a field report. E.g. "Crush incident at Assembly North", "Wrong exit causing evacuee confusion", "Route blocked by debris". Do NOT use titles like "Decision contradicts ground conditions".
 - Routes: If "Current route status" is in the ground truth, use it. If the decision uses a route that is congested, blocked, or unmanaged without proposing to manage/clear it first, set consistent: false with appropriate severity and error_type "flow" or "location". If the decision chooses a significantly slower route when a faster one is available, set consistent: false (or below_standard) with severity and reason.
 - route_effect (when the decision is route-related: evacuation, triage, transport, convoy): "clear" = uses a fast/managed route; "slow" = uses a slower or congested route but still valid; "congested" = uses a blocked/unmanaged route or clearly suboptimal. Omit or null when the decision does not involve route choice.
 
@@ -425,14 +428,17 @@ If sector standards or team doctrines are provided, the decision MUST address th
 
 Set "specific": false when the decision gives general/vague instructions without naming the concrete details above. Set "specific": true when the decision names enough specifics to be executed without further clarification.
 
-When "specific" is false, the "feedback" tone MUST match the ESCALATION LEVEL provided in the user prompt:
-- ESCALATION 0 (first offence): feedback is a polite but firm request from the field team asking for the missing operational details. Explain WHAT is missing and WHY it matters.
-- ESCALATION 1 (second offence): feedback describes IN-WORLD CONSEQUENCES that are now happening because orders were unclear. E.g. "Without designated triage zones, responders are improvising. Two critical patients were misrouted and their condition is deteriorating." Make it scenario-specific.
-- ESCALATION 2+ (third offence onward): feedback describes CRITICAL IN-WORLD DAMAGE — preventable casualties, operational failure, public backlash. E.g. "The continued absence of structured triage has led to preventable deaths. Field medics are overwhelmed and demoralised." Be severe and scenario-specific.
+CRITICAL RULE: Do NOT tell the player what is missing, what they should have done, or what details are needed. Instead, describe the IN-WORLD CONSEQUENCE of their vague orders — what is happening on the ground because the orders lacked specifics.
+
+When "specific" is false, the "feedback" MUST be an in-world consequence narrative matching the ESCALATION LEVEL:
+- ESCALATION 0 (first offence): minor friction from unclear orders. E.g. "Evacuees are scattered across multiple exits with no marshals directing flow. A bottleneck has formed at the main gate and stretcher teams cannot get through." Use the scenario's actual locations and constraints.
+- ESCALATION 1 (second offence): significant in-world problem. E.g. "Without clear prioritisation, a walking wounded patient was treated ahead of a critical bleed case. The critical patient's condition has deteriorated rapidly and field medics are calling for guidance." Be scenario-specific.
+- ESCALATION 2+ (third offence onward): critical in-world damage. E.g. "The continued lack of structured direction has led to preventable deaths. Field teams are demoralised and some volunteers have walked off." Be severe and scenario-specific.
 
 When "specific" is false:
-- "missing_details": array of 2-5 short phrases naming what is missing (e.g. ["exit names and IDs", "marshal-to-evacuee ratio", "ground zero perimeter distance"])
-- "feedback": one paragraph (2-4 sentences) following the ESCALATION LEVEL rules above. Reference the actual scenario environment — do NOT be generic.
+- "missing_details": array of 2-5 short phrases naming what is missing internally (e.g. ["exit names and IDs", "marshal-to-evacuee ratio"]). These are for internal scoring only and will NOT be shown to the player.
+- "feedback": one paragraph (2-4 sentences) — an in-world consequence narrative. Describe what IS happening, not what SHOULD happen. Reference the actual scenario environment — do NOT be generic.
+- "consequence_title": a short (3-8 word) in-world event title for this consequence, as if it were a field report headline. E.g. "Bottleneck forming at main gate", "Triage delays causing patient deterioration", "No power at forward treatment site". Do NOT use titles like "Missing details" or "Operational detail needed".
 
 === (C) SAFETY GUARDRAILS ===
 Certain actions are ABSOLUTELY FORBIDDEN regardless of context. If the decision proposes any of these, set "rejected": true with a "rejection_reason" and skip sections A and B entirely.
@@ -458,11 +464,12 @@ Return ONLY valid JSON:
   "mismatch_kind": "contradiction"|"below_standard" (only if consistent is false),
   "severity": "low"|"medium"|"high" (only if consistent is false),
   "error_type": "capacity"|"location"|"flow"|"other" (only if consistent is false),
-  "reason": "..." (only if consistent is false),
+  "reason": "..." (only if consistent is false — in-world consequence, NOT an explanation of what went wrong),
+  "consequence_title": "..." (short in-world event headline when consistent is false OR specific is false),
   "route_effect": "clear"|"slow"|"congested"|null (when decision is route-related),
   "specific": boolean,
-  "missing_details": ["..."] (only if specific is false),
-  "feedback": "..." (only if specific is false)
+  "missing_details": ["..."] (only if specific is false — internal use, NOT shown to player),
+  "feedback": "..." (only if specific is false — in-world consequence narrative, NOT instructions)
 }`;
 
     const incidentUserBlock =
@@ -475,17 +482,17 @@ Return ONLY valid JSON:
       : '';
     const teamRoleLine = teamName ? `TEAM ROLE: ${teamName}\n\n` : '';
     const escalationLevel = qualityFailureCount ?? 0;
-    const escalationLine = `ESCALATION LEVEL: ${escalationLevel} (${escalationLevel === 0 ? 'first offence — request details' : escalationLevel === 1 ? 'second offence — describe in-world consequences' : 'third+ offence — describe critical in-world damage'})\n\n`;
+    const escalationLine = `ESCALATION LEVEL: ${escalationLevel} (${escalationLevel === 0 ? 'first offence — minor operational friction' : escalationLevel === 1 ? 'second offence — significant in-world problems' : 'third+ offence — critical in-world damage and casualties'})\n\n`;
     const userPrompt = `ENVIRONMENT GROUND TRUTH: ${groundTruthSummary}
 
 ${sectorStandardsLine}${teamRoleLine}${escalationLine}${incidentUserBlock}DECISION:
 Title: ${decision.title}
 Description: ${decision.description}
 
-Evaluate ALL THREE dimensions — apply the ESCALATION LEVEL above to ALL feedback (both "reason" and "feedback"):
+Evaluate ALL THREE dimensions — apply the ESCALATION LEVEL above to ALL output. ALL "reason" and "feedback" text must be IN-WORLD CONSEQUENCES only. NEVER tell the player what is wrong, what they should do, or what is missing. Describe only what is happening on the ground as a result:
 (C) SAFETY GUARDRAILS: First check — does this decision propose a forbidden action? If yes, set rejected: true with rejection_reason and skip A and B.
-(A) CONSISTENCY: Only treat as contradiction if the decision explicitly states a specific fact that contradicts the ground truth for that place or route; otherwise prefer consistent or below_standard. When consistent is false, write the "reason" following the ESCALATION LEVEL tone.
-(B) SPECIFICITY: Does this decision contain enough operational detail (named locations, quantities, ratios, protocols, timelines) to be executed on-scene? Apply the specificity requirements for the TEAM ROLE specified above. If it gives general instructions without concrete specifics, set specific: false with missing_details and feedback following the ESCALATION LEVEL rules.
+(A) CONSISTENCY: Only treat as contradiction if the decision explicitly states a specific fact that contradicts the ground truth for that place or route; otherwise prefer consistent or below_standard. When consistent is false, write "reason" as an in-world consequence of the error (NOT an explanation). Also provide a "consequence_title" (short field-report headline).
+(B) SPECIFICITY: Does this decision contain enough operational detail (named locations, quantities, ratios, protocols, timelines) to be executed on-scene? Apply the specificity requirements for the TEAM ROLE specified above. If it gives general instructions without concrete specifics, set specific: false with missing_details (internal), feedback (in-world consequence), and consequence_title (field-report headline).
 
 Return JSON only.`;
 
@@ -525,6 +532,7 @@ Return JSON only.`;
       severity?: string;
       error_type?: string;
       reason?: string;
+      consequence_title?: string;
       route_effect?: string | null;
       specific?: boolean;
       missing_details?: string[];
@@ -546,6 +554,10 @@ Return JSON only.`;
       typeof parsed.feedback === 'string' && parsed.feedback.trim()
         ? parsed.feedback.trim()
         : undefined;
+    const consequence_title =
+      typeof parsed.consequence_title === 'string' && parsed.consequence_title.trim()
+        ? parsed.consequence_title.trim()
+        : undefined;
 
     const consistent = parsed.consistent === true;
     if (consistent) {
@@ -555,6 +567,7 @@ Return JSON only.`;
         specific,
         missing_details: specific ? undefined : missing_details,
         feedback: specific ? undefined : feedback,
+        consequence_title: specific ? undefined : consequence_title,
       };
     }
 
@@ -586,6 +599,7 @@ Return JSON only.`;
       error_type,
       mismatch_kind,
       reason,
+      consequence_title: consequence_title ?? undefined,
       route_effect: routeEffect ?? null,
       specific,
       missing_details: specific ? undefined : missing_details,

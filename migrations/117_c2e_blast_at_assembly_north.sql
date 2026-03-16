@@ -78,7 +78,7 @@ BEGIN
   INSERT INTO scenario_locations (scenario_id, location_type, label, coordinates, conditions, display_order)
   SELECT scenario_uuid, 'blast_site', 'Second blast (Assembly North)',
     '{"lat": 1.3498, "lng": 103.8519}'::jsonb,
-    '{"cordon_rule": "No entry; second device detonation site. Assembly North destroyed.", "pin_category": "incident_site", "blast_zone": true}'::jsonb,
+    '{"cordon_rule": "No entry; second device detonation site. Assembly North destroyed.", "pin_category": "incident_site", "blast_zone": true, "visible_after_state_key": "evacuation_state.assembly_north_destroyed"}'::jsonb,
     1
   WHERE NOT EXISTS (
     SELECT 1 FROM scenario_locations
@@ -200,16 +200,15 @@ BEGIN
   );
 
   -- =========================================================================
-  -- 5. New overflow scenario_locations — activated by the second blast.
-  --    These are pre-seeded on the map so they're visible as options.
-  --    Each has its own environmental variables.
+  -- 5. New overflow scenario_locations — hidden until the second blast.
+  --    visible_after_state_key keeps them off the map until assembly_north_destroyed.
   -- =========================================================================
 
   -- 5a. Multi-storey car park rooftop (north-west, vehicle accessible)
   INSERT INTO scenario_locations (scenario_id, location_type, label, coordinates, conditions, display_order)
   SELECT scenario_uuid, 'evacuation_holding', 'Multi-storey car park rooftop',
     '{"lat": 1.3503, "lng": 103.8512}'::jsonb,
-    '{"capacity": 250, "suitability": "medium", "nearest_exit": "North exit", "has_cover": false, "water": false, "power": false, "vehicle_access": true, "distance_from_blast_m": 120, "hazards": "Open rooftop; no shade or shelter. Wind exposure. Access via car park ramp only — may cause bottleneck. No water or power on site.", "notes": "Large open area suitable for overflow if ground-level areas are compromised."}'::jsonb,
+    '{"capacity": 250, "suitability": "medium", "nearest_exit": "North exit", "has_cover": false, "water": false, "power": false, "vehicle_access": true, "distance_from_blast_m": 120, "hazards": "Open rooftop; no shade or shelter. Wind exposure. Access via car park ramp only — may cause bottleneck. No water or power on site.", "notes": "Large open area suitable for overflow if ground-level areas are compromised.", "visible_after_state_key": "evacuation_state.assembly_north_destroyed"}'::jsonb,
     40
   WHERE NOT EXISTS (
     SELECT 1 FROM scenario_locations
@@ -220,7 +219,7 @@ BEGIN
   INSERT INTO scenario_locations (scenario_id, location_type, label, coordinates, conditions, display_order)
   SELECT scenario_uuid, 'evacuation_holding', 'Void deck Block 123',
     '{"lat": 1.3476, "lng": 103.8526}'::jsonb,
-    '{"capacity": 80, "suitability": "medium", "nearest_exit": "South exit", "has_cover": true, "water": true, "power": true, "vehicle_access": false, "distance_from_blast_m": 150, "hazards": "Confined space; narrow access. Residents may object to use. Limited ventilation.", "notes": "Sheltered ground-floor area under HDB block. Water and power available from building utilities. No vehicle access — pedestrian only."}'::jsonb,
+    '{"capacity": 80, "suitability": "medium", "nearest_exit": "South exit", "has_cover": true, "water": true, "power": true, "vehicle_access": false, "distance_from_blast_m": 150, "hazards": "Confined space; narrow access. Residents may object to use. Limited ventilation.", "notes": "Sheltered ground-floor area under HDB block. Water and power available from building utilities. No vehicle access — pedestrian only.", "visible_after_state_key": "evacuation_state.assembly_north_destroyed"}'::jsonb,
     41
   WHERE NOT EXISTS (
     SELECT 1 FROM scenario_locations
@@ -231,7 +230,7 @@ BEGIN
   INSERT INTO scenario_locations (scenario_id, location_type, label, coordinates, conditions, display_order)
   SELECT scenario_uuid, 'evacuation_holding', 'School compound (Bishan Park)',
     '{"lat": 1.3468, "lng": 103.8519}'::jsonb,
-    '{"capacity": 400, "suitability": "high", "nearest_exit": "South exit", "has_cover": true, "water": true, "power": true, "vehicle_access": true, "distance_from_blast_m": 250, "hazards": "Far from incident site (250 m). Need to coordinate with school authorities for access. Assembly hall can serve as indoor shelter.", "notes": "Large indoor and outdoor space. Full utilities. Vehicle access via school gate on south road. Best option for extended holding if situation persists."}'::jsonb,
+    '{"capacity": 400, "suitability": "high", "nearest_exit": "South exit", "has_cover": true, "water": true, "power": true, "vehicle_access": true, "distance_from_blast_m": 250, "hazards": "Far from incident site (250 m). Need to coordinate with school authorities for access. Assembly hall can serve as indoor shelter.", "notes": "Large indoor and outdoor space. Full utilities. Vehicle access via school gate on south road. Best option for extended holding if situation persists.", "visible_after_state_key": "evacuation_state.assembly_north_destroyed"}'::jsonb,
     42
   WHERE NOT EXISTS (
     SELECT 1 FROM scenario_locations
@@ -242,12 +241,19 @@ BEGIN
   INSERT INTO scenario_locations (scenario_id, location_type, label, coordinates, conditions, display_order)
   SELECT scenario_uuid, 'evacuation_holding', 'Bus interchange (east)',
     '{"lat": 1.3489, "lng": 103.8538}'::jsonb,
-    '{"capacity": 300, "suitability": "medium", "nearest_exit": "East exit", "has_cover": true, "water": false, "power": true, "vehicle_access": true, "distance_from_blast_m": 180, "hazards": "Active bus routes may need to be suspended. Public present — crowd management required. No dedicated water supply.", "notes": "Covered bus bays provide shelter. Vehicle access excellent — multiple bays for ambulance staging. Power from interchange grid. Can serve as alternate casualty evacuation point for ambulances if North exit is blocked."}'::jsonb,
+    '{"capacity": 300, "suitability": "medium", "nearest_exit": "East exit", "has_cover": true, "water": false, "power": true, "vehicle_access": true, "distance_from_blast_m": 180, "hazards": "Active bus routes may need to be suspended. Public present — crowd management required. No dedicated water supply.", "notes": "Covered bus bays provide shelter. Vehicle access excellent — multiple bays for ambulance staging. Power from interchange grid. Can serve as alternate casualty evacuation point for ambulances if North exit is blocked.", "visible_after_state_key": "evacuation_state.assembly_north_destroyed"}'::jsonb,
     43
   WHERE NOT EXISTS (
     SELECT 1 FROM scenario_locations
     WHERE scenario_id = scenario_uuid AND label = 'Bus interchange (east)'
   );
 
-  RAISE NOTICE '117: Second device at Assembly North — updated detonation injects, added blast pin, 5 post-blast injects, 4 overflow locations.';
+  -- Patch existing rows that were inserted without the visibility condition
+  UPDATE scenario_locations
+  SET conditions = conditions || '{"visible_after_state_key": "evacuation_state.assembly_north_destroyed"}'::jsonb
+  WHERE scenario_id = scenario_uuid
+    AND label IN ('Multi-storey car park rooftop', 'Void deck Block 123', 'School compound (Bishan Park)', 'Bus interchange (east)', 'Second blast (Assembly North)')
+    AND NOT (conditions ? 'visible_after_state_key');
+
+  RAISE NOTICE '117: Second device at Assembly North — updated detonation injects, added blast pin, 5 post-blast injects, 4 overflow locations (all hidden until blast).';
 END $$;
