@@ -1415,7 +1415,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
               .insert({
                 scenario_id: sessionScenarioId,
                 type: 'field_update',
-                title: 'Insufficient operational detail in your plan',
+                title: `Insufficient operational detail in your plan – ${authorTeamNames[0]} (${decision.id.slice(0, 8)})`,
                 content: injectContent,
                 severity: 'high',
                 inject_scope: 'team_specific',
