@@ -490,10 +490,10 @@ router.post(
       const decisionResponse = fullDecision || data;
       const mappedDecision = {
         ...decisionResponse,
-        decision_type: decisionResponse.type, // Map type to decision_type for frontend
+        decision_type: decisionResponse.type,
       };
 
-      // Broadcast decision created event
+      // Broadcast decision created event via WebSocket
       try {
         getWebSocketService().decisionProposed(session_id, mappedDecision);
       } catch (wsError) {
@@ -503,30 +503,29 @@ router.post(
         );
       }
 
-      // Log event
-      try {
-        await logAndBroadcastEvent(
-          io,
-          session_id,
-          'decision',
-          {
-            decision_id: data.id,
-            title: data.title,
-            decision_type: data.type,
-            status: data.status,
-            creator: fullDecision?.creator || { id: user.id },
-          },
-          user.id,
-        );
-      } catch (eventError) {
+      // Send response immediately
+      logger.info({ decisionId: data.id, userId: user.id }, 'Decision created');
+      res.status(201).json({ data: mappedDecision });
+
+      // Log event in background (non-blocking)
+      logAndBroadcastEvent(
+        io,
+        session_id,
+        'decision',
+        {
+          decision_id: data.id,
+          title: data.title,
+          decision_type: data.type,
+          status: data.status,
+          creator: fullDecision?.creator || { id: user.id },
+        },
+        user.id,
+      ).catch((eventError) => {
         logger.error(
           { error: eventError, decisionId: data.id },
           'Failed to log decision creation event',
         );
-      }
-
-      logger.info({ decisionId: data.id, userId: user.id }, 'Decision created');
-      res.status(201).json({ data: mappedDecision });
+      });
     } catch (err) {
       logger.error({ error: err }, 'Error in POST /decisions');
       res.status(500).json({ error: 'Internal server error' });
@@ -715,24 +714,661 @@ router.post(
   },
 );
 
+// Background AI processing after a decision is executed.
+// Runs asynchronously so the player gets an instant response.
+async function processExecutedDecisionInBackground(
+  decisionId: string,
+  decision: Record<string, unknown>,
+  userId: string,
+  userRole: string,
+) {
+  const sessionId = decision.session_id as string;
+
+  // --- Phase 1: State update (quick DB write) ---
+  try {
+    await updateStateOnDecisionExecution(sessionId, {
+      id: decisionId,
+      decision_type: (decision.type as string) || 'operational_action',
+      title: (decision.title as string) ?? '',
+      description: (decision.description as string) ?? '',
+      resources_needed: decision.resources_needed as Record<string, unknown> | undefined,
+      consequences: decision.consequences as Record<string, unknown> | undefined,
+    });
+  } catch (stateError) {
+    logger.error({ error: stateError, decisionId }, 'Error updating scenario state, continuing');
+  }
+
+  // --- Phase 2: AI classification + team state + decision triggers ---
+  let aiClassification: Awaited<ReturnType<typeof classifyDecision>> | null = null;
+  if (env.openAiApiKey) {
+    try {
+      aiClassification = await classifyDecision(
+        { title: decision.title as string, description: decision.description as string },
+        env.openAiApiKey,
+      );
+
+      await supabaseAdmin
+        .from('decisions')
+        .update({
+          type: (aiClassification as { primary_category?: string }).primary_category,
+          ai_classification: aiClassification,
+        })
+        .eq('id', decisionId);
+
+      // Update team state from classification
+      try {
+        const { data: authorTeams } = await supabaseAdmin
+          .from('session_teams')
+          .select('team_name')
+          .eq('session_id', sessionId)
+          .eq('user_id', decision.proposed_by as string);
+        const authorTeamNames = (authorTeams ?? []).map((r: { team_name: string }) => r.team_name);
+        const { data: sessionRow } = await supabaseAdmin
+          .from('sessions')
+          .select('start_time, scenario_id')
+          .eq('id', sessionId)
+          .single();
+        const startTime = (sessionRow as { start_time?: string } | null)?.start_time;
+        const elapsedMinutes = startTime
+          ? Math.floor((Date.now() - new Date(startTime).getTime()) / 60000)
+          : 0;
+        await updateTeamStateFromDecision(
+          sessionId,
+          decisionId,
+          authorTeamNames,
+          aiClassification!,
+          elapsedMinutes,
+          {
+            decisionTitle: (decision.title as string) ?? '',
+            decisionDescription: (decision.description as string) ?? '',
+            scenarioId: (sessionRow as { scenario_id?: string } | null)?.scenario_id ?? undefined,
+          },
+        );
+      } catch (teamStateErr) {
+        logger.error(
+          { error: teamStateErr, decisionId },
+          'Failed to update team state from decision',
+        );
+      }
+
+      // Evaluate decision-based triggers
+      if (io) {
+        try {
+          const { data: triggerAuthorTeams } = await supabaseAdmin
+            .from('session_teams')
+            .select('team_name')
+            .eq('session_id', sessionId)
+            .eq('user_id', decision.proposed_by as string);
+          const triggerTeamName =
+            (triggerAuthorTeams ?? []).length > 0
+              ? (triggerAuthorTeams![0] as { team_name: string }).team_name
+              : null;
+          await evaluateDecisionBasedTriggers(
+            sessionId,
+            {
+              id: decisionId,
+              title: decision.title as string,
+              description: decision.description as string,
+            },
+            aiClassification!,
+            io,
+            triggerTeamName,
+          );
+        } catch (triggerErr) {
+          logger.error(
+            { error: triggerErr, decisionId },
+            'Decision-based trigger evaluation failed',
+          );
+        }
+      }
+
+      logger.info(
+        {
+          decisionId,
+          classification: (aiClassification as { primary_category?: string }).primary_category,
+        },
+        'Decision classified by AI',
+      );
+    } catch (classificationError) {
+      logger.error(
+        { error: classificationError, decisionId },
+        'AI classification or inject generation failed',
+      );
+    }
+  }
+
+  // --- Phase 3: Environmental consistency, quality checks, heat meter ---
+  let authorTeamNames: string[] = [];
+  try {
+    const { data: authorTeams } = await supabaseAdmin
+      .from('session_teams')
+      .select('team_name')
+      .eq('session_id', sessionId)
+      .eq('user_id', decision.proposed_by as string);
+    authorTeamNames = (authorTeams ?? []).map((r: { team_name: string }) => r.team_name);
+
+    const { data: sessionRow } = await supabaseAdmin
+      .from('sessions')
+      .select('scenario_id, trainer_id')
+      .eq('id', sessionId)
+      .single();
+    const sessionScenarioId = (sessionRow as { scenario_id?: string } | null)?.scenario_id ?? null;
+    const sessionTrainerId = (sessionRow as { trainer_id?: string } | null)?.trainer_id ?? null;
+
+    let qualityFailureCount = 0;
+    if (authorTeamNames.length > 0) {
+      const { data: prevFailEvents, error: failCountErr } = await supabaseAdmin
+        .from('session_events')
+        .select('id')
+        .eq('session_id', sessionId)
+        .eq('event_type', 'quality_failure_inject_fired')
+        .filter('metadata->>team', 'eq', authorTeamNames[0]);
+      if (!failCountErr && prevFailEvents) {
+        qualityFailureCount = prevFailEvents.length;
+      }
+    }
+
+    const responseToIncidentIdForEnv = (decision as { response_to_incident_id?: string | null })
+      .response_to_incident_id;
+    let incidentContext: { title: string; description: string } | null = null;
+    if (responseToIncidentIdForEnv) {
+      const { data: incidentForEnv } = await supabaseAdmin
+        .from('incidents')
+        .select('title, description')
+        .eq('id', responseToIncidentIdForEnv)
+        .single();
+      if (incidentForEnv) {
+        incidentContext = {
+          title: (incidentForEnv as { title?: string }).title ?? '',
+          description: (incidentForEnv as { description?: string }).description ?? '',
+        };
+      }
+    }
+
+    // Run env consistency + env prerequisite in parallel (both are LLM calls)
+    const [aiEnvResult, prereqOut] = await Promise.all([
+      evaluateDecisionAgainstEnvironment(
+        sessionId,
+        {
+          id: decision.id as string,
+          title: decision.title as string,
+          description: decision.description as string,
+          type: (decision.type as string) ?? null,
+        },
+        env.openAiApiKey,
+        incidentContext,
+        authorTeamNames[0],
+        qualityFailureCount,
+      ),
+      evaluateEnvironmentalPrerequisite(
+        sessionId,
+        {
+          id: decision.id as string,
+          title: decision.title as string,
+          description: decision.description as string,
+          type: (decision.type as string) ?? null,
+          team_name: authorTeamNames[0] ?? undefined,
+        },
+        incidentContext,
+        env.openAiApiKey,
+      ),
+    ]);
+    const { result: prereqResult, evaluationReason: envPrereqReason } = prereqOut;
+    const envResult = prereqResult && !prereqResult.consistent ? prereqResult : aiEnvResult;
+    logger.info(
+      {
+        sessionId,
+        decisionId,
+        consistent: envResult.consistent,
+        mismatch_kind: envResult.mismatch_kind ?? null,
+        severity: envResult.severity ?? null,
+        error_type: envResult.error_type ?? null,
+        reason: envResult.reason ?? null,
+        route_effect: envResult.route_effect ?? null,
+      },
+      `Environmental consistency: ${envResult.consistent ? 'consistent' : (envResult.mismatch_kind ?? 'inconsistent')}`,
+    );
+    await supabaseAdmin
+      .from('decisions')
+      .update({ environmental_consistency: envResult })
+      .eq('id', decision.id as string);
+
+    if (envPrereqReason != null) {
+      await supabaseAdmin
+        .from('decisions')
+        .update({ evaluation_reasoning: { env_prerequisite: envPrereqReason } })
+        .eq('id', decision.id as string);
+    }
+
+    // Quality failure inject logic
+    type FailureType = 'vague' | 'contradiction' | 'below_standard' | 'prereq' | 'rejected';
+    let failureType: FailureType | null = null;
+    let failureContent = '';
+
+    const rejected = envResult.rejected === true || aiEnvResult.rejected === true;
+    const rejectionReason = envResult.rejection_reason || aiEnvResult.rejection_reason || '';
+
+    if (rejected && rejectionReason) {
+      failureType = 'rejected';
+      failureContent = rejectionReason;
+    } else if (envResult.specific === false && envResult.feedback) {
+      failureType = 'vague';
+      failureContent = envResult.feedback;
+    } else if (
+      !envResult.consistent &&
+      envResult.mismatch_kind !== 'below_standard' &&
+      envResult.reason
+    ) {
+      failureType = 'contradiction';
+      failureContent = envResult.reason;
+    } else if (
+      !envResult.consistent &&
+      envResult.mismatch_kind === 'below_standard' &&
+      envResult.reason
+    ) {
+      failureType = 'below_standard';
+      failureContent = envResult.reason;
+    } else if (prereqResult && !prereqResult.consistent && prereqResult.reason) {
+      failureType = 'prereq';
+      failureContent = prereqResult.reason;
+    }
+
+    const FALLBACK_TITLES: Record<FailureType, string> = {
+      vague: 'Field report — operational complications',
+      contradiction: 'Field report — ground conditions',
+      below_standard: 'Field report — standards shortfall',
+      prereq: 'Field report — environmental constraint',
+      rejected: 'Action cannot be carried out',
+    };
+
+    if (
+      failureType &&
+      failureContent &&
+      authorTeamNames.length > 0 &&
+      sessionScenarioId &&
+      sessionTrainerId &&
+      io
+    ) {
+      try {
+        if (env.openAiApiKey && failureType !== 'rejected') {
+          const { data: allDecisionRows } = await supabaseAdmin
+            .from('decisions')
+            .select('title, description, type')
+            .eq('session_id', sessionId)
+            .eq('status', 'executed')
+            .order('executed_at', { ascending: true })
+            .limit(50);
+          const allDecisions = (allDecisionRows ?? []).map((d) => ({
+            title: (d as { title: string }).title ?? '',
+            description: (d as { description: string }).description ?? '',
+            type: (d as { type: string | null }).type,
+          }));
+
+          if (allDecisions.length > 0) {
+            await supabaseAdmin.from('session_events').insert({
+              session_id: sessionId,
+              event_type: 'ai_step_start',
+              description: `Checking if quality failure inject (${failureType}) can be cancelled for ${authorTeamNames[0]}`,
+              actor_id: null,
+              metadata: {
+                step: 'quality_inject_cancellation',
+                team: authorTeamNames[0],
+                failure_type: failureType,
+                decisions_checked: allDecisions.length,
+              },
+            });
+
+            try {
+              const cancelCheck = await shouldCancelScheduledInject(
+                { title: failureContent.slice(0, 200), content: failureContent },
+                allDecisions,
+                env.openAiApiKey,
+              );
+
+              await supabaseAdmin.from('session_events').insert({
+                session_id: sessionId,
+                event_type: 'ai_step_end',
+                description: cancelCheck.cancel
+                  ? `Quality inject cancelled for ${authorTeamNames[0]}: ${cancelCheck.cancel_reason ?? 'prior decisions addressed concern'}`
+                  : `Quality inject NOT cancelled for ${authorTeamNames[0]}: ${cancelCheck.cancel_reason ?? 'concern not addressed'}`,
+                actor_id: null,
+                metadata: {
+                  step: 'quality_inject_cancellation',
+                  team: authorTeamNames[0],
+                  cancel: cancelCheck.cancel,
+                  cancel_reason: cancelCheck.cancel_reason,
+                },
+              });
+
+              if (cancelCheck.cancel) {
+                logger.info(
+                  {
+                    decisionId,
+                    team: authorTeamNames[0],
+                    failureType,
+                    cancel_reason: cancelCheck.cancel_reason,
+                  },
+                  'Quality failure inject cancelled — decisions addressed concern',
+                );
+                await updateTeamHeatMeter(sessionId, authorTeamNames[0], 'good');
+                failureType = null;
+                failureContent = '';
+              }
+            } catch (cancelErr) {
+              logger.warn(
+                { err: cancelErr, decisionId },
+                'Quality failure cancellation check failed, proceeding with inject',
+              );
+            }
+          }
+        }
+
+        if (failureType && failureContent) {
+          const escalationIdx = Math.min(qualityFailureCount, 2);
+          const injectSeverity: 'medium' | 'high' | 'critical' =
+            failureType === 'rejected'
+              ? 'critical'
+              : escalationIdx >= 2
+                ? 'critical'
+                : escalationIdx >= 1
+                  ? 'high'
+                  : 'medium';
+          const aiTitle = envResult.consequence_title || aiEnvResult.consequence_title;
+          const titleBase = aiTitle || FALLBACK_TITLES[failureType];
+          const injectTitle = `${titleBase} – ${authorTeamNames[0]} (${(decision.id as string).slice(0, 8)})`;
+
+          const { data: qualityInject, error: qualityInsertErr } = await supabaseAdmin
+            .from('scenario_injects')
+            .insert({
+              scenario_id: sessionScenarioId,
+              type: 'field_update',
+              title: injectTitle,
+              content: failureContent,
+              severity: injectSeverity,
+              inject_scope: 'team_specific',
+              target_teams: [authorTeamNames[0]],
+              requires_response: true,
+              requires_coordination: false,
+              ai_generated: true,
+              generation_source: 'specificity_feedback',
+            })
+            .select()
+            .single();
+
+          if (qualityInsertErr) {
+            logger.warn(
+              { err: qualityInsertErr, decisionId, team: authorTeamNames[0] },
+              'Quality failure inject insert failed',
+            );
+          }
+
+          if (qualityInject) {
+            await publishInjectToSession(qualityInject.id, sessionId, sessionTrainerId, io);
+            await supabaseAdmin.from('session_events').insert({
+              session_id: sessionId,
+              event_type: 'quality_failure_inject_fired',
+              description: `Quality failure (${failureType}) for ${authorTeamNames[0]} (escalation ${qualityFailureCount + 1})`,
+              actor_id: null,
+              metadata: {
+                team: authorTeamNames[0],
+                decision_id: decisionId,
+                failure_type: failureType,
+                escalation: qualityFailureCount + 1,
+              },
+            });
+            logger.info(
+              {
+                sessionId,
+                decisionId,
+                team: authorTeamNames[0],
+                failureType,
+                escalation: qualityFailureCount + 1,
+                severity: injectSeverity,
+              },
+              'Quality failure inject published',
+            );
+          }
+        }
+      } catch (qualityErr) {
+        logger.warn(
+          { err: qualityErr, sessionId, decisionId },
+          'Failed to fire quality failure inject',
+        );
+      }
+    }
+
+    // Insider knowledge consultation check
+    let noIntel = false;
+    if (authorTeamNames.length > 0) {
+      try {
+        const { data: teamUserRows } = await supabaseAdmin
+          .from('session_teams')
+          .select('user_id')
+          .eq('session_id', sessionId)
+          .in('team_name', authorTeamNames);
+        const teamUserIds = (teamUserRows ?? []).map((r: { user_id: string }) => r.user_id);
+        const consulted = await teamConsultedInsiderBefore(
+          sessionId,
+          teamUserIds,
+          new Date().toISOString(),
+        );
+        if (!consulted) {
+          noIntel = true;
+        }
+      } catch (intelErr) {
+        logger.warn({ err: intelErr, sessionId }, 'Insider knowledge check failed, continuing');
+      }
+    }
+
+    // Heat meter
+    if (authorTeamNames.length > 0) {
+      let mistakeType: 'vague' | 'contradiction' | 'prereq' | 'no_intel' | 'rejected' | 'good' =
+        'good';
+      if (rejected) {
+        mistakeType = 'rejected';
+      } else if (envResult.specific === false) {
+        mistakeType = 'vague';
+      } else if (!envResult.consistent && envResult.mismatch_kind !== 'below_standard') {
+        mistakeType = 'contradiction';
+      } else if (!envResult.consistent) {
+        mistakeType = 'prereq';
+      } else if (noIntel) {
+        mistakeType = 'no_intel';
+      }
+      try {
+        const { heat_percentage } = await updateTeamHeatMeter(
+          sessionId,
+          authorTeamNames[0],
+          mistakeType,
+          io,
+        );
+
+        if (sessionScenarioId && sessionTrainerId && io) {
+          await selectAndPublishPathwayOutcome(
+            sessionId,
+            authorTeamNames[0],
+            heat_percentage,
+            sessionScenarioId,
+            sessionTrainerId,
+            io,
+          );
+        }
+
+        if (authorTeamNames[0] === 'media') {
+          await nudgePublicSentiment(sessionId, mistakeType);
+        }
+      } catch (heatErr) {
+        logger.warn(
+          { err: heatErr, sessionId, team: authorTeamNames[0] },
+          'Heat meter / pathway / sentiment update failed, continuing',
+        );
+      }
+    }
+  } catch (antiGamingErr) {
+    logger.error(
+      { error: antiGamingErr, decisionId },
+      'Anti-gaming check failed, continuing with remaining processing',
+    );
+  }
+
+  // --- Phase 4: Env management, space claims, state effects (can run in parallel) ---
+  const bgTasks: Promise<unknown>[] = [];
+
+  bgTasks.push(
+    evaluateEnvironmentalManagementIntentAndUpdateState(
+      sessionId,
+      {
+        id: decision.id as string,
+        title: decision.title as string,
+        description: decision.description as string,
+        type: (decision.type as string) ?? null,
+      },
+      env.openAiApiKey,
+    ).catch((err) =>
+      logger.error({ error: err, decisionId }, 'Env condition management check failed'),
+    ),
+  );
+
+  bgTasks.push(
+    evaluateStateEffectManagementAndUpdateState(
+      sessionId,
+      {
+        id: decisionId,
+        title: decision.title as string,
+        description: decision.description as string,
+      },
+      env.openAiApiKey,
+      userId,
+    ).catch((err) =>
+      logger.error({ error: err, decisionId }, 'State effect management check failed'),
+    ),
+  );
+
+  if (authorTeamNames.length > 0) {
+    bgTasks.push(
+      (async () => {
+        const decisionLower =
+          `${(decision.title as string) ?? ''} ${(decision.description as string) ?? ''}`.toLowerCase();
+        const { data: claimSession } = await supabaseAdmin
+          .from('sessions')
+          .select('scenario_id')
+          .eq('id', sessionId)
+          .single();
+        const claimScenarioId = (claimSession as { scenario_id?: string } | null)?.scenario_id;
+        const { data: scLocations } = claimScenarioId
+          ? await supabaseAdmin
+              .from('scenario_locations')
+              .select('id, label, conditions')
+              .eq('scenario_id', claimScenarioId)
+          : { data: null };
+
+        if (scLocations && scLocations.length > 0) {
+          const assignmentPatterns =
+            /\b(set\s+up|establish|designate|use\s+as|deploy\s+at|create|place|position|station\s+at|locate|assign|convert|transform|operate)\b/i;
+          if (assignmentPatterns.test(decisionLower)) {
+            for (const loc of scLocations) {
+              const cond = (loc.conditions as Record<string, unknown>) ?? {};
+              const isCandidateSpace =
+                cond.pin_category === 'candidate_space' || Array.isArray(cond.potential_uses);
+              if (!isCandidateSpace) continue;
+
+              const label = (loc.label ?? '').toLowerCase();
+              if (!label || !decisionLower.includes(label)) continue;
+
+              const usePatterns: Array<[RegExp, string]> = [
+                [/triage/i, 'triage'],
+                [/command\s*(post|center|centre)/i, 'command_post'],
+                [/staging/i, 'staging'],
+                [/evacuation|assembly/i, 'evacuation_assembly'],
+                [/media/i, 'media_center'],
+                [/negotiation/i, 'negotiation_post'],
+                [/decontamination|decon/i, 'decontamination'],
+                [/morgue|mortuary|casualty\s*collection/i, 'casualty_collection'],
+                [/logistics|supply/i, 'logistics'],
+              ];
+              let claimedAs = 'designated_area';
+              for (const [pattern, name] of usePatterns) {
+                if (pattern.test(decisionLower)) {
+                  claimedAs = name;
+                  break;
+                }
+              }
+
+              const { data: sessionForTime } = await supabaseAdmin
+                .from('sessions')
+                .select('current_state')
+                .eq('id', sessionId)
+                .single();
+              const gameMinutes =
+                ((
+                  (sessionForTime as Record<string, unknown>)?.current_state as Record<
+                    string,
+                    unknown
+                  >
+                )?.game_time_minutes as number) ?? 0;
+
+              await recordSpaceClaim(
+                sessionId,
+                loc.id as string,
+                authorTeamNames[0],
+                claimedAs,
+                typeof gameMinutes === 'number' ? gameMinutes : 0,
+                (loc as { label?: string }).label ?? undefined,
+              );
+              break;
+            }
+          }
+        }
+      })().catch((err) => logger.error({ error: err, decisionId }, 'Space claim recording failed')),
+    );
+  }
+
+  // Objective evaluation (fire-and-forget)
+  bgTasks.push(
+    evaluateAllObjectivesForSession(sessionId, env.openAiApiKey).catch((err) =>
+      logger.error({ error: err, decisionId, sessionId }, 'AI objective evaluation failed'),
+    ),
+  );
+
+  // Notification + event logging
+  bgTasks.push(
+    createNotification({
+      sessionId,
+      userId: decision.proposed_by as string,
+      type: 'decision_executed',
+      title: 'Decision Executed',
+      message: `Your decision "${decision.title}" has been executed.`,
+      priority: 'medium',
+      metadata: { decision_id: decisionId },
+      actionUrl: `/sessions/${sessionId}#decisions`,
+    }).catch((err) => logger.error({ error: err, decisionId }, 'Error creating notification')),
+  );
+
+  bgTasks.push(
+    logAndBroadcastEvent(
+      io,
+      sessionId,
+      'decision',
+      {
+        decision_id: decisionId,
+        status: 'executed',
+        executed_by: { id: userId, role: userRole },
+      },
+      userId,
+    ).catch((err) => logger.error({ error: err, decisionId }, 'Error logging event')),
+  );
+
+  await Promise.allSettled(bgTasks);
+  logger.info({ decisionId }, 'Background decision processing complete');
+}
+
 // Execute decision
 router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const user = req.user!;
 
-    // ═══════════════════════════════════════════════════════
-    // CRITICAL: Use both logger AND console.log to ensure visibility
-    // ═══════════════════════════════════════════════════════
-    console.log('🔵 EXECUTE ENDPOINT CALLED', {
-      decisionId: id,
-      userId: user.id,
-      timestamp: new Date().toISOString(),
-    });
-    logger.info(
-      { decisionId: id, userId: user.id },
-      'EXECUTE_ENDPOINT: Decision execute endpoint called',
-    );
+    logger.info({ decisionId: id, userId: user.id }, 'Decision execute endpoint called');
 
     // Get decision to verify it exists
     const { data: decision } = await supabaseAdmin
@@ -742,11 +1378,8 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       .single();
 
     if (!decision) {
-      console.log('🔴 DECISION NOT FOUND', { decisionId: id });
       return res.status(404).json({ error: 'Decision not found' });
     }
-
-    console.log('🟡 DECISION FOUND', { decisionId: id, status: decision.status });
 
     // Allow execution if: status is 'approved' (legacy flow) OR status is 'proposed' and user is the creator (streamlined flow)
     const canExecute =
@@ -754,16 +1387,10 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       (decision.status === 'proposed' && decision.proposed_by === user.id);
 
     if (!canExecute) {
-      const { data: currentDecision } = await supabaseAdmin
-        .from('decisions')
-        .select('status')
-        .eq('id', id)
-        .single();
-
       logger.warn(
         {
           decisionId: id,
-          currentStatus: currentDecision?.status,
+          currentStatus: decision.status,
           attemptedBy: user.id,
         },
         'Attempted to execute decision without permission',
@@ -815,687 +1442,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       decision_type: updatedDecision.type,
     };
 
-    // Update scenario state based on decision execution
-    try {
-      await updateStateOnDecisionExecution(decision.session_id, {
-        ...updatedDecision,
-        decision_type: updatedDecision.type || 'operational_action',
-      });
-    } catch (stateError) {
-      logger.error(
-        { error: stateError, decisionId: id },
-        'Error updating scenario state, continuing with decision execution',
-      );
-    }
-
-    // After the state update section, before AI block:
-    console.log('🟡 BEFORE AI BLOCK', { decisionId: id, hasOpenAiKey: !!env.openAiApiKey });
-    logger.info(
-      { decisionId: id, hasOpenAiKey: !!env.openAiApiKey },
-      'BEFORE_AI_BLOCK: About to start AI processing',
-    );
-
-    // AI classifies decision and generates fresh injects
-    try {
-      console.log('🟡 INSIDE AI TRY', {
-        decisionId: id,
-        hasOpenAiKey: !!env.openAiApiKey,
-        keyLength: env.openAiApiKey?.length || 0,
-      });
-      logger.info(
-        { decisionId: id, hasOpenAiKey: !!env.openAiApiKey },
-        'INSIDE_AI_TRY: Entered AI processing try-catch block',
-      );
-
-      if (env.openAiApiKey) {
-        console.log('🟢 OPENAI KEY EXISTS', { decisionId: id, keyLength: env.openAiApiKey.length });
-        logger.info({ decisionId: id }, 'OPENAI_KEY_FOUND: Proceeding with classification');
-
-        // AI classifies decision
-        const aiClassification = await classifyDecision(
-          { title: decision.title, description: decision.description },
-          env.openAiApiKey,
-        );
-
-        console.log('🟢 CLASSIFICATION COMPLETE', {
-          decisionId: id,
-          classification: aiClassification.primary_category,
-        });
-        logger.info(
-          { decisionId: id, classification: aiClassification.primary_category },
-          'CLASSIFICATION_SUCCESS: Decision classified',
-        );
-
-        // Store classification
-        await supabaseAdmin
-          .from('decisions')
-          .update({
-            type: aiClassification.primary_category, // For backward compatibility
-            ai_classification: aiClassification,
-          })
-          .eq('id', id);
-
-        // Phase 3: Update team state from decision (evacuation_state, triage_state, media_state)
-        try {
-          const { data: authorTeams } = await supabaseAdmin
-            .from('session_teams')
-            .select('team_name')
-            .eq('session_id', decision.session_id)
-            .eq('user_id', decision.proposed_by);
-          const authorTeamNames = (authorTeams ?? []).map(
-            (r: { team_name: string }) => r.team_name,
-          );
-          const { data: sessionRow } = await supabaseAdmin
-            .from('sessions')
-            .select('start_time, scenario_id')
-            .eq('id', decision.session_id)
-            .single();
-          const startTime = (sessionRow as { start_time?: string } | null)?.start_time;
-          const elapsedMinutes = startTime
-            ? Math.floor((Date.now() - new Date(startTime).getTime()) / 60000)
-            : 0;
-          await updateTeamStateFromDecision(
-            decision.session_id,
-            id,
-            authorTeamNames,
-            aiClassification,
-            elapsedMinutes,
-            {
-              decisionTitle: decision.title ?? '',
-              decisionDescription: decision.description ?? '',
-              scenarioId: (sessionRow as { scenario_id?: string } | null)?.scenario_id ?? undefined,
-            },
-          );
-        } catch (teamStateErr) {
-          logger.error(
-            { error: teamStateErr, decisionId: id },
-            'Failed to update team state from decision',
-          );
-        }
-
-        // Phase 3: Evaluate decision-based triggers and auto-publish matching injects
-        if (aiClassification && io) {
-          try {
-            // Resolve the decision-maker's team for inject scoping
-            const { data: triggerAuthorTeams } = await supabaseAdmin
-              .from('session_teams')
-              .select('team_name')
-              .eq('session_id', decision.session_id)
-              .eq('user_id', decision.proposed_by);
-            const triggerTeamName =
-              (triggerAuthorTeams ?? []).length > 0
-                ? (triggerAuthorTeams![0] as { team_name: string }).team_name
-                : null;
-            await evaluateDecisionBasedTriggers(
-              decision.session_id,
-              { id, title: decision.title, description: decision.description },
-              aiClassification,
-              io,
-              triggerTeamName,
-            );
-          } catch (triggerErr) {
-            logger.error(
-              { error: triggerErr, decisionId: id },
-              'Decision-based trigger evaluation failed',
-            );
-          }
-        }
-
-        // AI injects will be generated by the scheduled service every 5 minutes
-        // based on all recent decisions and state, rather than immediately per decision
-        logger.info(
-          { decisionId: id, classification: aiClassification.primary_category },
-          'Decision classified (AI injects will be generated by scheduled service every 5 minutes)',
-        );
-      } else {
-        console.log('🔴 OPENAI KEY MISSING', { decisionId: id, envKey: env.openAiApiKey });
-        logger.warn(
-          { decisionId: id, hasKey: !!env.openAiApiKey },
-          'OPENAI_KEY_MISSING: OpenAI API key not configured',
-        );
-      }
-    } catch (classificationError) {
-      console.error('🔴 AI ERROR', {
-        decisionId: id,
-        error:
-          classificationError instanceof Error
-            ? classificationError.message
-            : String(classificationError),
-      });
-      logger.error(
-        { error: classificationError, decisionId: id },
-        'AI_ERROR: Error in AI classification or inject generation',
-      );
-    }
-
-    logger.info({ decisionId: id }, 'AFTER_AI_BLOCK: Completed AI processing');
-
-    let authorTeamNames: string[] = [];
-    try {
-      const { data: authorTeams } = await supabaseAdmin
-        .from('session_teams')
-        .select('team_name')
-        .eq('session_id', decision.session_id)
-        .eq('user_id', decision.proposed_by);
-      authorTeamNames = (authorTeams ?? []).map((r: { team_name: string }) => r.team_name);
-
-      const { data: sessionRow } = await supabaseAdmin
-        .from('sessions')
-        .select('scenario_id, trainer_id')
-        .eq('id', decision.session_id)
-        .single();
-      const sessionScenarioId =
-        (sessionRow as { scenario_id?: string } | null)?.scenario_id ?? null;
-      const sessionTrainerId = (sessionRow as { trainer_id?: string } | null)?.trainer_id ?? null;
-
-      // Count ALL previous quality failure injects for this team (unified escalation counter)
-      let qualityFailureCount = 0;
-      if (authorTeamNames.length > 0) {
-        const { data: prevFailEvents, error: failCountErr } = await supabaseAdmin
-          .from('session_events')
-          .select('id')
-          .eq('session_id', decision.session_id)
-          .eq('event_type', 'quality_failure_inject_fired')
-          .filter('metadata->>team', 'eq', authorTeamNames[0]);
-        if (!failCountErr && prevFailEvents) {
-          qualityFailureCount = prevFailEvents.length;
-        }
-      }
-
-      // Load incident context for Checkpoint 2 when decision is incident-linked
-      const responseToIncidentIdForEnv = (decision as { response_to_incident_id?: string | null })
-        .response_to_incident_id;
-      let incidentContext: { title: string; description: string } | null = null;
-      if (responseToIncidentIdForEnv) {
-        const { data: incidentForEnv } = await supabaseAdmin
-          .from('incidents')
-          .select('title, description')
-          .eq('id', responseToIncidentIdForEnv)
-          .single();
-        if (incidentForEnv) {
-          incidentContext = {
-            title: (incidentForEnv as { title?: string }).title ?? '',
-            description: (incidentForEnv as { description?: string }).description ?? '',
-          };
-        }
-      }
-
-      // Checkpoint 2: Environmental consistency + specificity (escalation-aware)
-      const aiEnvResult = await evaluateDecisionAgainstEnvironment(
-        decision.session_id,
-        {
-          id: decision.id,
-          title: decision.title,
-          description: decision.description,
-          type: decision.type ?? null,
-        },
-        env.openAiApiKey,
-        incidentContext,
-        authorTeamNames[0],
-        qualityFailureCount,
-      );
-      // Step 5: Environmental prerequisite (corridor traffic + location-condition + space contention gate); overrides AI result when failed
-      const { result: prereqResult, evaluationReason: envPrereqReason } =
-        await evaluateEnvironmentalPrerequisite(
-          decision.session_id,
-          {
-            id: decision.id,
-            title: decision.title,
-            description: decision.description,
-            type: decision.type ?? null,
-            team_name: authorTeamNames[0] ?? undefined,
-          },
-          incidentContext,
-          env.openAiApiKey,
-        );
-      const envResult = prereqResult && !prereqResult.consistent ? prereqResult : aiEnvResult;
-      logger.info(
-        {
-          sessionId: decision.session_id,
-          decisionId: decision.id,
-          consistent: envResult.consistent,
-          mismatch_kind: envResult.mismatch_kind ?? null,
-          severity: envResult.severity ?? null,
-          error_type: envResult.error_type ?? null,
-          reason: envResult.reason ?? null,
-          route_effect: envResult.route_effect ?? null,
-        },
-        `Environmental consistency: ${envResult.consistent ? 'consistent' : (envResult.mismatch_kind ?? 'inconsistent')}`,
-      );
-      await supabaseAdmin
-        .from('decisions')
-        .update({ environmental_consistency: envResult })
-        .eq('id', decision.id);
-
-      // Persist evaluation reasoning (env prerequisite) for AAR/trainer visibility
-      if (envPrereqReason != null) {
-        await supabaseAdmin
-          .from('decisions')
-          .update({ evaluation_reasoning: { env_prerequisite: envPrereqReason } })
-          .eq('id', decision.id);
-      }
-
-      // Unified quality failure inject: fire an escalating consequence for ANY quality issue
-      type FailureType = 'vague' | 'contradiction' | 'below_standard' | 'prereq' | 'rejected';
-      let failureType: FailureType | null = null;
-      let failureContent = '';
-
-      const rejected = envResult.rejected === true || aiEnvResult.rejected === true;
-      const rejectionReason = envResult.rejection_reason || aiEnvResult.rejection_reason || '';
-
-      if (rejected && rejectionReason) {
-        failureType = 'rejected';
-        failureContent = rejectionReason;
-      } else if (envResult.specific === false && envResult.feedback) {
-        failureType = 'vague';
-        failureContent = envResult.feedback;
-      } else if (
-        !envResult.consistent &&
-        envResult.mismatch_kind !== 'below_standard' &&
-        envResult.reason
-      ) {
-        failureType = 'contradiction';
-        failureContent = envResult.reason;
-      } else if (
-        !envResult.consistent &&
-        envResult.mismatch_kind === 'below_standard' &&
-        envResult.reason
-      ) {
-        failureType = 'below_standard';
-        failureContent = envResult.reason;
-      } else if (prereqResult && !prereqResult.consistent && prereqResult.reason) {
-        failureType = 'prereq';
-        failureContent = prereqResult.reason;
-      }
-
-      const FALLBACK_TITLES: Record<FailureType, string> = {
-        vague: 'Field report — operational complications',
-        contradiction: 'Field report — ground conditions',
-        below_standard: 'Field report — standards shortfall',
-        prereq: 'Field report — environmental constraint',
-        rejected: 'Action cannot be carried out',
-      };
-
-      if (
-        failureType &&
-        failureContent &&
-        authorTeamNames.length > 0 &&
-        sessionScenarioId &&
-        sessionTrainerId &&
-        io
-      ) {
-        try {
-          // --- Cancellation check: include ALL decisions (including the current one) ---
-          if (env.openAiApiKey && failureType !== 'rejected') {
-            const { data: allDecisionRows } = await supabaseAdmin
-              .from('decisions')
-              .select('title, description, type')
-              .eq('session_id', decision.session_id)
-              .eq('status', 'executed')
-              .order('executed_at', { ascending: true })
-              .limit(50);
-            const allDecisions = (allDecisionRows ?? []).map((d) => ({
-              title: (d as { title: string }).title ?? '',
-              description: (d as { description: string }).description ?? '',
-              type: (d as { type: string | null }).type,
-            }));
-
-            if (allDecisions.length > 0) {
-              await supabaseAdmin.from('session_events').insert({
-                session_id: decision.session_id,
-                event_type: 'ai_step_start',
-                description: `Checking if quality failure inject (${failureType}) can be cancelled for ${authorTeamNames[0]}`,
-                actor_id: null,
-                metadata: {
-                  step: 'quality_inject_cancellation',
-                  team: authorTeamNames[0],
-                  failure_type: failureType,
-                  decisions_checked: allDecisions.length,
-                },
-              });
-
-              try {
-                const cancelCheck = await shouldCancelScheduledInject(
-                  { title: failureContent.slice(0, 200), content: failureContent },
-                  allDecisions,
-                  env.openAiApiKey,
-                );
-
-                await supabaseAdmin.from('session_events').insert({
-                  session_id: decision.session_id,
-                  event_type: 'ai_step_end',
-                  description: cancelCheck.cancel
-                    ? `Quality inject cancelled for ${authorTeamNames[0]}: ${cancelCheck.cancel_reason ?? 'prior decisions addressed concern'}`
-                    : `Quality inject NOT cancelled for ${authorTeamNames[0]}: ${cancelCheck.cancel_reason ?? 'concern not addressed'}`,
-                  actor_id: null,
-                  metadata: {
-                    step: 'quality_inject_cancellation',
-                    team: authorTeamNames[0],
-                    cancel: cancelCheck.cancel,
-                    cancel_reason: cancelCheck.cancel_reason,
-                  },
-                });
-
-                if (cancelCheck.cancel) {
-                  logger.info(
-                    {
-                      decisionId: decision.id,
-                      team: authorTeamNames[0],
-                      failureType,
-                      cancel_reason: cancelCheck.cancel_reason,
-                    },
-                    'Quality failure inject cancelled — decisions addressed concern',
-                  );
-                  await updateTeamHeatMeter(decision.session_id, authorTeamNames[0], 'good');
-                  failureType = null;
-                  failureContent = '';
-                }
-              } catch (cancelErr) {
-                logger.warn(
-                  { err: cancelErr, decisionId: decision.id },
-                  'Quality failure cancellation check failed, proceeding with inject',
-                );
-              }
-            }
-          }
-
-          // --- Publish quality failure inject if not cancelled ---
-          if (failureType && failureContent) {
-            const escalationIdx = Math.min(qualityFailureCount, 2);
-            const injectSeverity: 'medium' | 'high' | 'critical' =
-              failureType === 'rejected'
-                ? 'critical'
-                : escalationIdx >= 2
-                  ? 'critical'
-                  : escalationIdx >= 1
-                    ? 'high'
-                    : 'medium';
-            const aiTitle = envResult.consequence_title || aiEnvResult.consequence_title;
-            const titleBase = aiTitle || FALLBACK_TITLES[failureType];
-            const injectTitle = `${titleBase} – ${authorTeamNames[0]} (${decision.id.slice(0, 8)})`;
-
-            const { data: qualityInject, error: qualityInsertErr } = await supabaseAdmin
-              .from('scenario_injects')
-              .insert({
-                scenario_id: sessionScenarioId,
-                type: 'field_update',
-                title: injectTitle,
-                content: failureContent,
-                severity: injectSeverity,
-                inject_scope: 'team_specific',
-                target_teams: [authorTeamNames[0]],
-                requires_response: true,
-                requires_coordination: false,
-                ai_generated: true,
-                generation_source: 'specificity_feedback',
-              })
-              .select()
-              .single();
-
-            if (qualityInsertErr) {
-              logger.warn(
-                { err: qualityInsertErr, decisionId: decision.id, team: authorTeamNames[0] },
-                'Quality failure inject insert failed',
-              );
-            }
-
-            if (qualityInject) {
-              await publishInjectToSession(
-                qualityInject.id,
-                decision.session_id,
-                sessionTrainerId,
-                io,
-              );
-              await supabaseAdmin.from('session_events').insert({
-                session_id: decision.session_id,
-                event_type: 'quality_failure_inject_fired',
-                description: `Quality failure (${failureType}) for ${authorTeamNames[0]} (escalation ${qualityFailureCount + 1})`,
-                actor_id: null,
-                metadata: {
-                  team: authorTeamNames[0],
-                  decision_id: decision.id,
-                  failure_type: failureType,
-                  escalation: qualityFailureCount + 1,
-                },
-              });
-              logger.info(
-                {
-                  sessionId: decision.session_id,
-                  decisionId: decision.id,
-                  team: authorTeamNames[0],
-                  failureType,
-                  escalation: qualityFailureCount + 1,
-                  severity: injectSeverity,
-                },
-                'Quality failure inject published',
-              );
-            }
-          }
-        } catch (qualityErr) {
-          logger.warn(
-            { err: qualityErr, sessionId: decision.session_id, decisionId: decision.id },
-            'Failed to fire quality failure inject',
-          );
-        }
-      }
-
-      // Insider knowledge consultation check
-      let noIntel = false;
-      if (authorTeamNames.length > 0) {
-        try {
-          const { data: teamUserRows } = await supabaseAdmin
-            .from('session_teams')
-            .select('user_id')
-            .eq('session_id', decision.session_id)
-            .in('team_name', authorTeamNames);
-          const teamUserIds = (teamUserRows ?? []).map((r: { user_id: string }) => r.user_id);
-          const consulted = await teamConsultedInsiderBefore(
-            decision.session_id,
-            teamUserIds,
-            new Date().toISOString(),
-          );
-          if (!consulted) {
-            noIntel = true;
-          }
-        } catch (intelErr) {
-          logger.warn(
-            { err: intelErr, sessionId: decision.session_id },
-            'Insider knowledge check failed, continuing',
-          );
-        }
-      }
-
-      // Heat meter: determine mistake type from evaluation results
-      if (authorTeamNames.length > 0) {
-        let mistakeType: 'vague' | 'contradiction' | 'prereq' | 'no_intel' | 'rejected' | 'good' =
-          'good';
-        if (rejected) {
-          mistakeType = 'rejected';
-        } else if (envResult.specific === false) {
-          mistakeType = 'vague';
-        } else if (!envResult.consistent && envResult.mismatch_kind !== 'below_standard') {
-          mistakeType = 'contradiction';
-        } else if (!envResult.consistent) {
-          mistakeType = 'prereq';
-        } else if (noIntel) {
-          mistakeType = 'no_intel';
-        }
-        try {
-          const { heat_percentage } = await updateTeamHeatMeter(
-            decision.session_id,
-            authorTeamNames[0],
-            mistakeType,
-            io,
-          );
-
-          if (sessionScenarioId && sessionTrainerId && io) {
-            await selectAndPublishPathwayOutcome(
-              decision.session_id,
-              authorTeamNames[0],
-              heat_percentage,
-              sessionScenarioId,
-              sessionTrainerId,
-              io,
-            );
-          }
-
-          if (authorTeamNames[0] === 'media') {
-            await nudgePublicSentiment(decision.session_id, mistakeType);
-          }
-        } catch (heatErr) {
-          logger.warn(
-            { err: heatErr, sessionId: decision.session_id, team: authorTeamNames[0] },
-            'Heat meter / pathway / sentiment update failed, continuing',
-          );
-        }
-      }
-    } catch (antiGamingErr) {
-      logger.error(
-        { error: antiGamingErr, decisionId: id },
-        'Anti-gaming check failed, continuing with objective tracking',
-      );
-    }
-
-    // Environmental condition management: if decision credibly addressed an unmanaged route/location, mark it managed
-    try {
-      await evaluateEnvironmentalManagementIntentAndUpdateState(
-        decision.session_id,
-        {
-          id: decision.id,
-          title: decision.title,
-          description: decision.description,
-          type: decision.type ?? null,
-        },
-        env.openAiApiKey,
-      );
-    } catch (envMgmtErr) {
-      logger.error(
-        { error: envMgmtErr, decisionId: id },
-        'Env condition management check failed, continuing',
-      );
-    }
-
-    // Space claim recording: if decision references a candidate space and assigns a function, record the claim
-    if (authorTeamNames.length > 0) {
-      try {
-        const decisionLower = `${decision.title ?? ''} ${decision.description ?? ''}`.toLowerCase();
-        const { data: claimSession } = await supabaseAdmin
-          .from('sessions')
-          .select('scenario_id')
-          .eq('id', decision.session_id)
-          .single();
-        const claimScenarioId = (claimSession as { scenario_id?: string } | null)?.scenario_id;
-        const { data: scLocations } = claimScenarioId
-          ? await supabaseAdmin
-              .from('scenario_locations')
-              .select('id, label, conditions')
-              .eq('scenario_id', claimScenarioId)
-          : { data: null };
-
-        if (scLocations && scLocations.length > 0) {
-          // Assignment keywords that suggest a team is assigning a function to a space
-          const assignmentPatterns =
-            /\b(set\s+up|establish|designate|use\s+as|deploy\s+at|create|place|position|station\s+at|locate|assign|convert|transform|operate)\b/i;
-          if (assignmentPatterns.test(decisionLower)) {
-            for (const loc of scLocations) {
-              const cond = (loc.conditions as Record<string, unknown>) ?? {};
-              const isCandidateSpace =
-                cond.pin_category === 'candidate_space' || Array.isArray(cond.potential_uses);
-              if (!isCandidateSpace) continue;
-
-              const label = (loc.label ?? '').toLowerCase();
-              if (!label || !decisionLower.includes(label)) continue;
-
-              // Determine what the space is being used as
-              const usePatterns: Array<[RegExp, string]> = [
-                [/triage/i, 'triage'],
-                [/command\s*(post|center|centre)/i, 'command_post'],
-                [/staging/i, 'staging'],
-                [/evacuation|assembly/i, 'evacuation_assembly'],
-                [/media/i, 'media_center'],
-                [/negotiation/i, 'negotiation_post'],
-                [/decontamination|decon/i, 'decontamination'],
-                [/morgue|mortuary|casualty\s*collection/i, 'casualty_collection'],
-                [/logistics|supply/i, 'logistics'],
-              ];
-              let claimedAs = 'designated_area';
-              for (const [pattern, name] of usePatterns) {
-                if (pattern.test(decisionLower)) {
-                  claimedAs = name;
-                  break;
-                }
-              }
-
-              // Get current game time (minutes into scenario) from session state
-              const { data: sessionForTime } = await supabaseAdmin
-                .from('sessions')
-                .select('current_state')
-                .eq('id', decision.session_id)
-                .single();
-              const gameMinutes =
-                ((
-                  (sessionForTime as Record<string, unknown>)?.current_state as Record<
-                    string,
-                    unknown
-                  >
-                )?.game_time_minutes as number) ?? 0;
-
-              await recordSpaceClaim(
-                decision.session_id,
-                loc.id as string,
-                authorTeamNames[0],
-                claimedAs,
-                typeof gameMinutes === 'number' ? gameMinutes : 0,
-                (loc as { label?: string }).label ?? undefined,
-              );
-              break;
-            }
-          }
-        }
-      } catch (claimErr) {
-        logger.error(
-          { error: claimErr, decisionId: id },
-          'Space claim recording failed, continuing',
-        );
-      }
-    }
-
-    // State effect management: if decision credibly addresses an active state effect (e.g. exit congestion), mark it managed
-    try {
-      await evaluateStateEffectManagementAndUpdateState(
-        decision.session_id,
-        { id: decision.id, title: decision.title, description: decision.description },
-        env.openAiApiKey,
-        user.id,
-      );
-    } catch (stateEffErr) {
-      logger.error(
-        { error: stateEffErr, decisionId: id },
-        'State effect management check failed, continuing',
-      );
-    }
-
-    // Old keyword-based objective tracking removed — replaced by heat meter system above
-
-    // Evaluate objectives with AI to determine if any are complete (non-blocking)
-    try {
-      // Run in background - don't await to avoid blocking decision execution
-      evaluateAllObjectivesForSession(decision.session_id, env.openAiApiKey).catch((evalError) => {
-        // Log but don't throw - this is a background process
-        logger.error(
-          { error: evalError, decisionId: id, sessionId: decision.session_id },
-          'Error in AI objective evaluation, continuing without blocking',
-        );
-      });
-    } catch (evalError) {
-      // Log but don't block decision execution
-      logger.error(
-        { error: evalError, decisionId: id },
-        'Error initiating AI objective evaluation, continuing with decision execution',
-      );
-    }
-
-    // Broadcast decision executed event
+    // Broadcast instantly via WebSocket so other clients update
     try {
       getWebSocketService().decisionExecuted(decision.session_id, mappedDecision);
     } catch (wsError) {
@@ -1505,46 +1452,20 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       );
     }
 
-    // Notify decision creator that it was executed
-    try {
-      await createNotification({
-        sessionId: decision.session_id,
-        userId: decision.proposed_by,
-        type: 'decision_executed',
-        title: 'Decision Executed',
-        message: `Your decision "${decision.title}" has been executed.`,
-        priority: 'medium',
-        metadata: {
-          decision_id: decision.id,
-        },
-        actionUrl: `/sessions/${decision.session_id}#decisions`,
-      });
-    } catch (notifError) {
-      logger.error({ error: notifError, decisionId: id }, 'Error creating notification');
-    }
-
-    // Log event
-    try {
-      await logAndBroadcastEvent(
-        io,
-        decision.session_id,
-        'decision',
-        {
-          decision_id: id,
-          status: 'executed',
-          executed_by: { id: user.id, role: user.role },
-        },
-        user.id,
-      );
-    } catch (eventError) {
-      logger.error({ error: eventError, decisionId: id }, 'Error logging event');
-    }
-
-    console.log('🟢 EXECUTE COMPLETE', { decisionId: id });
-    logger.info({ decisionId: id, userId: user.id }, 'Decision executed');
+    // Send response immediately — player sees instant feedback
+    logger.info(
+      { decisionId: id, userId: user.id },
+      'Decision executed — starting background processing',
+    );
     res.json({ data: mappedDecision });
+
+    // All AI processing, env checks, heat meter, etc. run in background
+    processExecutedDecisionInBackground(id, decision, user.id, user.role ?? 'participant').catch(
+      (err) => {
+        logger.error({ error: err, decisionId: id }, 'Background decision processing failed');
+      },
+    );
   } catch (err) {
-    console.error('🔴 EXECUTE ERROR', { error: err instanceof Error ? err.message : String(err) });
     logger.error({ error: err }, 'Error in POST /decisions/:id/execute');
     res.status(500).json({ error: 'Internal server error' });
   }

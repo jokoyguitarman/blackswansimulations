@@ -58,6 +58,7 @@ interface IncidentsPanelProps {
   selectedIncidentId?: string | null;
   onIncidentSelect?: (incidentId: string | null) => void;
   isTrainer?: boolean;
+  filterTeam?: string;
 }
 
 export const IncidentsPanel = ({
@@ -65,11 +66,11 @@ export const IncidentsPanel = ({
   selectedIncidentId,
   onIncidentSelect,
   isTrainer,
+  filterTeam = 'none',
 }: IncidentsPanelProps) => {
   const { user } = useAuth();
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filterTeam, setFilterTeam] = useState<string>('none');
   const [showDecisionModal, setShowDecisionModal] = useState(false);
   const [decisionModalIncidentId, setDecisionModalIncidentId] = useState<string | null>(null);
   /** Incident IDs where the current user has an executed decision (show "Done" instead of "Decision") */
@@ -431,11 +432,6 @@ export const IncidentsPanel = ({
     }
   };
 
-  // Derive unique team options from loaded incidents
-  const teamOptions = Array.from(
-    new Set(incidents.map((i) => i.for_teams_display ?? 'All teams')),
-  ).sort();
-
   // Filter incidents by target team
   const filteredIncidents = incidents.filter((incident) => {
     if (filterTeam === 'none') return true;
@@ -461,30 +457,6 @@ export const IncidentsPanel = ({
       {/* Header */}
       <div className="military-border p-4 flex justify-between items-center">
         <h3 className="text-lg terminal-text uppercase">[INCIDENTS] Active Incidents</h3>
-      </div>
-
-      {/* Filter by target team */}
-      <div className="military-border p-4 flex gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          <label className="text-xs terminal-text text-robotic-yellow/70 uppercase">
-            [FILTER BY TEAM]
-          </label>
-          <select
-            value={filterTeam}
-            onChange={(e) => setFilterTeam(e.target.value)}
-            className="military-input terminal-text text-sm px-3 py-1"
-          >
-            <option value="none">No filter</option>
-            <option value="All teams">All teams only</option>
-            {teamOptions
-              .filter((t) => t !== 'All teams')
-              .map((team) => (
-                <option key={team} value={team}>
-                  {team}
-                </option>
-              ))}
-          </select>
-        </div>
       </div>
 
       {/* Incidents List */}

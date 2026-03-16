@@ -204,11 +204,27 @@ conditionRegistry.evacuation_gate_not_met = (ctx) => {
   );
 };
 
-// Location-choice conditions (from current_state.triage_zone_properties, evac_holding_properties)
+// Location-choice conditions: read from claimed_locations in team state, falling back to legacy top-level keys
 function getTriageZoneProperties(ctx: EvaluationContext): Record<string, unknown> | null {
+  const triageState = ctx.currentState?.triage_state as Record<string, unknown> | undefined;
+  const claimed = triageState?.claimed_locations as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  if (claimed) {
+    const first = Object.values(claimed)[0];
+    if (first) return first;
+  }
   return (ctx.currentState?.triage_zone_properties as Record<string, unknown>) ?? null;
 }
 function getEvacHoldingProperties(ctx: EvaluationContext): Record<string, unknown> | null {
+  const evacState = ctx.currentState?.evacuation_state as Record<string, unknown> | undefined;
+  const claimed = evacState?.claimed_locations as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  if (claimed) {
+    const first = Object.values(claimed)[0];
+    if (first) return first;
+  }
   return (ctx.currentState?.evac_holding_properties as Record<string, unknown>) ?? null;
 }
 conditionRegistry.triage_zone_unsuitable = (ctx) => {

@@ -189,139 +189,89 @@ const createStateSnapshot = async (
   }
 };
 
-/** Triage zone labels to match (Vacant lot A–E, Area A–E, Lot A–E). */
-const TRIAGE_LABEL_PATTERNS = [
-  /(?:vacant\s+)?lot\s+([A-E])/i,
-  /area\s+([A-E])/i,
-  /(?:vacant\s+lot\s+)?([A-E])\b/i,
-];
-
-/** Evacuation holding labels (exact or partial). */
-const EVAC_LABEL_PATTERNS = [
-  'Assembly North',
-  'Holding East',
-  'Staging South',
-  'Community club side',
-  'West open area',
-  'Assembly North-East',
-  'West open staging',
-];
-
 /**
- * Extract triage zone label from decision text and match to scenario_locations.
+ * Location types that represent claimable spaces for each team domain.
+ * The AI evaluation will determine intent (activate vs avoid).
  */
-async function extractTriageChoice(
-  scenarioId: string,
-  title: string,
-  description: string,
-): Promise<{ label: string; properties: Record<string, unknown> } | null> {
-  const text = `${title} ${description}`.toLowerCase();
-  let matchedLabel: string | null = null;
-  for (const pat of TRIAGE_LABEL_PATTERNS) {
-    const m = text.match(pat);
-    if (m) {
-      const letter = m[1]?.toUpperCase();
-      if (letter) matchedLabel = `Vacant lot ${letter}`;
-      break;
-    }
-  }
-  if (!matchedLabel) return null;
+const CLAIMABLE_LOCATION_TYPES: Record<string, string[]> = {
+  evacuation_state: ['evacuation_holding'],
+  triage_state: ['area', 'triage_site'],
+};
 
-  const { data: locs } = await supabaseAdmin
-    .from('scenario_locations')
-    .select('label, conditions')
-    .eq('scenario_id', scenarioId)
-    .in('location_type', ['area', 'triage_site']);
-
-  let loc = locs?.find(
-    (l) =>
-      l.label === matchedLabel ||
-      l.label?.toLowerCase() === matchedLabel.toLowerCase() ||
-      (l.label?.toLowerCase().includes('lot') &&
-        l.label?.toUpperCase().endsWith(matchedLabel.slice(-1))),
-  );
-
-  // Fallback: if no typed pins found, search ALL pins by label
-  if (!loc) {
-    const { data: allLocs } = await supabaseAdmin
-      .from('scenario_locations')
-      .select('label, conditions')
-      .eq('scenario_id', scenarioId);
-    loc = allLocs?.find(
-      (l) =>
-        l.label === matchedLabel ||
-        l.label?.toLowerCase() === matchedLabel.toLowerCase() ||
-        (l.label?.toLowerCase().includes('lot') &&
-          l.label?.toUpperCase().endsWith(matchedLabel.slice(-1))),
-    );
-  }
-  if (!loc) return null;
-
-  const cond = (loc.conditions as Record<string, unknown>) || {};
-  return {
-    label: loc.label ?? matchedLabel,
-    properties: {
-      water: cond.water,
-      power: cond.power,
-      unsuitable: cond.unsuitable,
-      suitability: cond.suitability,
-      distance_from_blast_m: cond.distance_from_blast_m,
-      capacity_lying: cond.capacity_lying,
-      capacity_standing: cond.capacity_standing,
-    },
-  };
+interface ClaimableLocation {
+  label: string;
+  locationType: string;
+  stateKey: string;
+  properties: Record<string, unknown>;
 }
 
 /**
- * Extract evacuation holding label from decision text and match to scenario_locations.
+ * Load claimable locations from scenario_locations and return them as
+ * AI candidate entries plus a lookup map for processing results.
  */
-async function extractEvacChoice(
+async function loadClaimableLocations(
   scenarioId: string,
-  title: string,
-  description: string,
-): Promise<{ label: string; properties: Record<string, unknown> } | null> {
-  const text = `${title} ${description}`;
-  for (const pattern of EVAC_LABEL_PATTERNS) {
-    if (text.toLowerCase().includes(pattern.toLowerCase())) {
-      const { data: locs } = await supabaseAdmin
-        .from('scenario_locations')
-        .select('label, conditions')
-        .eq('scenario_id', scenarioId)
-        .eq('location_type', 'evacuation_holding');
+  teamStateKeys: string[],
+): Promise<{ candidates: StateKeyCandidate[]; locationMap: Map<string, ClaimableLocation> }> {
+  const candidates: StateKeyCandidate[] = [];
+  const locationMap = new Map<string, ClaimableLocation>();
 
-      let loc = locs?.find(
-        (l) =>
-          l.label?.toLowerCase().includes(pattern.toLowerCase()) ||
-          pattern.toLowerCase().includes(l.label?.toLowerCase() ?? ''),
-      );
-
-      // Fallback: if no typed pins found, search ALL pins by label
-      if (!loc) {
-        const { data: allLocs } = await supabaseAdmin
-          .from('scenario_locations')
-          .select('label, conditions')
-          .eq('scenario_id', scenarioId);
-        loc = allLocs?.find(
-          (l) =>
-            l.label?.toLowerCase().includes(pattern.toLowerCase()) ||
-            pattern.toLowerCase().includes(l.label?.toLowerCase() ?? ''),
-        );
-      }
-
-      if (loc) {
-        const cond = (loc.conditions as Record<string, unknown>) || {};
-        return {
-          label: loc.label ?? pattern,
-          properties: {
-            capacity: cond.capacity ?? cond.capacity_persons,
-            water: cond.water ?? cond.has_water,
-            has_cover: cond.has_cover ?? cond.has_shelter,
-          },
-        };
-      }
-    }
+  const relevantTypes = new Set<string>();
+  for (const sk of teamStateKeys) {
+    for (const lt of CLAIMABLE_LOCATION_TYPES[sk] ?? []) relevantTypes.add(lt);
   }
-  return null;
+  if (relevantTypes.size === 0) return { candidates, locationMap };
+
+  const { data: locs } = await supabaseAdmin
+    .from('scenario_locations')
+    .select('label, location_type, conditions')
+    .eq('scenario_id', scenarioId)
+    .in('location_type', [...relevantTypes]);
+
+  if (!locs?.length) return { candidates, locationMap };
+
+  for (const loc of locs) {
+    const label = loc.label as string;
+    if (!label) continue;
+    const lt = loc.location_type as string;
+    const cond = (loc.conditions as Record<string, unknown>) || {};
+
+    const stateKey = Object.entries(CLAIMABLE_LOCATION_TYPES).find(([, types]) =>
+      types.includes(lt),
+    )?.[0];
+    if (!stateKey || !teamStateKeys.includes(stateKey)) continue;
+
+    const candidateKey = `claim:${label}`;
+    const domainLabel =
+      stateKey === 'triage_state'
+        ? `Select ${label} as triage zone`
+        : `Activate ${label} as evacuation holding area`;
+
+    candidates.push({
+      key: candidateKey,
+      label: domainLabel,
+      behavior: 'decision_toggle',
+      type: 'boolean',
+      stateKey,
+    });
+
+    locationMap.set(candidateKey, {
+      label,
+      locationType: lt,
+      stateKey,
+      properties: {
+        capacity: cond.capacity ?? cond.capacity_persons,
+        water: cond.water ?? cond.has_water,
+        has_cover: cond.has_cover ?? cond.has_shelter,
+        suitability: cond.suitability,
+        distance_from_blast_m: cond.distance_from_blast_m,
+        capacity_lying: cond.capacity_lying,
+        capacity_standing: cond.capacity_standing,
+      },
+    });
+  }
+
+  return { candidates, locationMap };
 }
 
 interface StateKeyCandidate {
@@ -451,7 +401,7 @@ Which keys should be flipped? Be strict — only flip keys where the decision sp
 /**
  * Phase 3: Update team state (evacuation_state, triage_state, media_state) from an executed decision
  * using AI classification and author team. Called after classifyDecision and storing ai_classification.
- * Also tracks triage_zone_selected, evac_holding_selected, second_device_zone_cleared from decision text.
+ * Also tracks claimed_locations (AI-evaluated from scenario_locations) and second_device_zone_cleared.
  */
 export async function updateTeamStateFromDecision(
   sessionId: string,
@@ -493,24 +443,6 @@ export async function updateTeamStateFromDecision(
     const isEvacuation = authorTeamNames.some((t) => /evacuation/i.test(t));
     const isTriage = authorTeamNames.some((t) => /triage/i.test(t));
     const isMedia = authorTeamNames.some((t) => /media/i.test(t));
-
-    // Triage: extract zone choice and store properties for condition evaluator
-    if (isTriage && scenarioId && (title || description)) {
-      const triageChoice = await extractTriageChoice(scenarioId, title, description);
-      if (triageChoice) {
-        currentState.triage_zone_selected = triageChoice.label;
-        currentState.triage_zone_properties = triageChoice.properties;
-      }
-    }
-
-    // Evacuation: extract holding choice
-    if (isEvacuation && scenarioId && (title || description)) {
-      const evacChoice = await extractEvacChoice(scenarioId, title, description);
-      if (evacChoice) {
-        currentState.evac_holding_selected = evacChoice.label;
-        currentState.evac_holding_properties = evacChoice.properties;
-      }
-    }
 
     // --- Data-driven counter updates from counter_definitions ---
     const counterDefsMap = (currentState._counter_definitions ?? {}) as Record<
@@ -578,11 +510,43 @@ export async function updateTeamStateFromDecision(
         }
       }
 
+      // Load claimable locations as additional AI candidates
+      let locationMap = new Map<string, ClaimableLocation>();
+      if (scenarioId) {
+        const teamStateKeys = [...new Set(authorTeamNames.map((n) => teamToStateKey(n)))];
+        const locResult = await loadClaimableLocations(scenarioId, teamStateKeys);
+        allCandidates.push(...locResult.candidates);
+        locationMap = locResult.locationMap;
+      }
+
       const apiKey = env.openAiApiKey;
       if (allCandidates.length > 0 && apiKey) {
         const result = await evaluateStateKeysWithAI(title, description, allCandidates, apiKey);
 
         for (const flip of result.keys_to_flip) {
+          // Handle location claims separately
+          if (flip.key.startsWith('claim:')) {
+            const locInfo = locationMap.get(flip.key);
+            if (locInfo) {
+              let target = currentState[locInfo.stateKey] as Record<string, unknown>;
+              if (typeof target !== 'object' || target === null) {
+                target = {};
+                currentState[locInfo.stateKey] = target;
+              }
+              const existing = (target.claimed_locations as Record<string, unknown>) || {};
+              existing[locInfo.label] = {
+                ...locInfo.properties,
+                assigned_at_min: elapsedMinutes,
+              };
+              target.claimed_locations = existing;
+              logger.info(
+                { sessionId, location: locInfo.label, stateKey: locInfo.stateKey },
+                'Location claimed via AI evaluation',
+              );
+            }
+            continue;
+          }
+
           let target = currentState[flip.stateKey] as Record<string, unknown>;
           if (typeof target !== 'object' || target === null) {
             target = {};

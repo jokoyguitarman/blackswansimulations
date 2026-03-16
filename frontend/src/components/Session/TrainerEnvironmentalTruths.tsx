@@ -263,7 +263,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function ConditionsBlock({ conditions }: { conditions: Record<string, unknown> | null }) {
   if (!conditions || Object.keys(conditions).length === 0) return null;
   return (
-    <div className="ml-2 mt-0.5 text-xs text-robotic-gray-400 font-mono">
+    <div className="ml-2 mt-0.5 text-xs text-white font-mono">
       {Object.entries(conditions).map(([k, v]) => (
         <div key={k}>
           {k}: {typeof v === 'object' ? JSON.stringify(v) : String(v)}
@@ -439,7 +439,7 @@ export const TrainerEnvironmentalTruths = ({
       <h4 className="text-robotic-yellow uppercase text-xs font-semibold border-b border-robotic-yellow/30 pb-1 sticky top-0 bg-robotic-gray-900/95 z-10">
         [ENVIRONMENT GROUND TRUTH]
       </h4>
-      <p className="text-robotic-gray-400 text-xs">
+      <p className="text-white text-xs">
         Backend uses these to evaluate decisions, drive injects, and modulate counters.
       </p>
 
@@ -503,7 +503,7 @@ export const TrainerEnvironmentalTruths = ({
               return (
                 <div key={loc.id ?? i} className="mb-1">
                   <span className="font-medium">{loc.label ?? `Area ${i + 1}`}</span>
-                  {cap && <span className="text-robotic-gray-400"> — {cap}</span>}
+                  {cap && <span className="text-white"> — {cap}</span>}
                   <ConditionsBlock conditions={loc.conditions ?? null} />
                 </div>
               );
@@ -573,7 +573,7 @@ export const TrainerEnvironmentalTruths = ({
       {/* New-model: Candidate Spaces */}
       {hasNewModel && candidateSpaceLocs.length > 0 && (
         <Section title="Candidate spaces (neutral, for player assignment)">
-          <p className="text-robotic-gray-400 text-xs mb-1">
+          <p className="text-white text-xs mb-1">
             Physical spaces players can assign a purpose to (triage, staging, command post, etc.)
           </p>
           {candidateSpaceLocs.map((loc, i) => {
@@ -596,7 +596,7 @@ export const TrainerEnvironmentalTruths = ({
                     ))}
                   </span>
                 )}
-                <div className="text-xs text-robotic-gray-400 mt-0.5">
+                <div className="text-xs text-white mt-0.5">
                   {[
                     cond.area_m2 != null && `${cond.area_m2}m²`,
                     cond.capacity_persons != null && `cap ${cond.capacity_persons}`,
@@ -625,7 +625,7 @@ export const TrainerEnvironmentalTruths = ({
                 Site requirements (from standards)
               </div>
               {Object.entries(siteRequirements).map(([useType, req]) => (
-                <div key={useType} className="text-xs text-robotic-gray-400 mb-1">
+                <div key={useType} className="text-xs text-white mb-1">
                   <span className="text-robotic-yellow/60">{useType.replace(/_/g, ' ')}:</span>{' '}
                   {[
                     req.min_area_m2 != null && `min ${req.min_area_m2}m²`,
@@ -659,7 +659,7 @@ export const TrainerEnvironmentalTruths = ({
                 return (
                   <div key={loc.id ?? i} className="mb-1 text-xs">
                     <span className="font-medium">{loc.label}</span>
-                    <span className="text-robotic-gray-400">
+                    <span className="text-white">
                       {' — '}
                       {[
                         cond.distance_from_incident_m != null &&
@@ -689,7 +689,7 @@ export const TrainerEnvironmentalTruths = ({
                 return (
                   <div key={loc.id ?? i} className="mb-1 text-xs">
                     <span className="font-medium">{loc.label}</span>
-                    <span className="text-robotic-gray-400">
+                    <span className="text-white">
                       {' — '}
                       {[
                         cond.distance_from_incident_m != null &&
@@ -719,7 +719,7 @@ export const TrainerEnvironmentalTruths = ({
                 return (
                   <div key={loc.id ?? i} className="mb-1 text-xs">
                     <span className="font-medium">{loc.label}</span>
-                    <span className="text-robotic-gray-400">
+                    <span className="text-white">
                       {' — '}
                       {[
                         cond.distance_from_incident_m != null &&
@@ -744,7 +744,7 @@ export const TrainerEnvironmentalTruths = ({
       {/* Routes */}
       {(sessionRoutes.length > 0 || (osm?.emergency_routes?.length ?? 0) > 0) && (
         <Section title="Routes (environmental_state)">
-          <p className="text-robotic-gray-400 text-xs mb-1">
+          <p className="text-white text-xs mb-1">
             Used for consistency checks; affects robustness cap and counter pressure.
           </p>
           <ul className="list-disc pl-4 space-y-0.5">
@@ -863,9 +863,7 @@ export const TrainerEnvironmentalTruths = ({
               <li key={f.id ?? i}>
                 <span className="font-medium">{f.name ?? f.id}</span>
                 {f.severity && <span className="text-robotic-yellow/70 ml-1">({f.severity})</span>}
-                {f.description && (
-                  <div className="text-xs text-robotic-gray-400 mt-0.5">{f.description}</div>
-                )}
+                {f.description && <div className="text-xs text-white mt-0.5">{f.description}</div>}
               </li>
             ))}
           </ul>
@@ -879,9 +877,7 @@ export const TrainerEnvironmentalTruths = ({
             {customFacts.map((f, i) => (
               <li key={i}>
                 <span className="font-medium">{f.topic ?? 'Fact'}</span>
-                {f.summary && (
-                  <div className="text-xs text-robotic-gray-400 mt-0.5">{f.summary}</div>
-                )}
+                {f.summary && <div className="text-xs text-white mt-0.5">{f.summary}</div>}
               </li>
             ))}
           </ul>
@@ -891,7 +887,7 @@ export const TrainerEnvironmentalTruths = ({
       {/* Team state (current) */}
       {currentState && (
         <Section title="Team state (current_state)">
-          <p className="text-robotic-gray-400 text-xs mb-2">
+          <p className="text-white text-xs mb-2">
             Used by condition evaluator and inject scheduler.
           </p>
           {Object.entries(currentState).map(([stateKey, stateVal]) => {
@@ -962,9 +958,7 @@ export const TrainerEnvironmentalTruths = ({
             {keywordPatterns.map((p) => (
               <div key={p.category}>
                 <div className="text-robotic-yellow/70 font-medium">{p.category}</div>
-                <div className="font-mono text-robotic-gray-400 mt-0.5">
-                  {p.keywords.join(', ')}
-                </div>
+                <div className="font-mono text-white mt-0.5">{p.keywords.join(', ')}</div>
               </div>
             ))}
           </div>

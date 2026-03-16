@@ -142,6 +142,7 @@ export const SessionView = () => {
   >([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showTeamAssignmentModal, setShowTeamAssignmentModal] = useState(false);
+  const [filterTeam, setFilterTeam] = useState<string>('none');
   const [myTeams, setMyTeams] = useState<Array<{ team_name: string; team_role?: string }>>([]);
   const [scenarioTeams, setScenarioTeams] = useState<ScenarioTeamWithCounters[]>([]);
   const [backendDecisions, setBackendDecisions] = useState<
@@ -1033,6 +1034,28 @@ export const SessionView = () => {
 
       {/* Card-Based Content Grid */}
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        {/* Shared team filter */}
+        {id && (
+          <div className="military-border p-3 mb-4 bg-robotic-gray-300 flex items-center gap-3">
+            <label className="text-xs terminal-text text-robotic-yellow/70 uppercase">
+              [FILTER BY TEAM]
+            </label>
+            <select
+              value={filterTeam}
+              onChange={(e) => setFilterTeam(e.target.value)}
+              className="military-input terminal-text text-sm px-3 py-1"
+            >
+              <option value="none">No filter</option>
+              <option value="All teams">All teams only</option>
+              {scenarioTeams.map((t) => (
+                <option key={t.team_name} value={t.team_name}>
+                  {t.team_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div
           ref={sessionContentRef}
           className="grid grid-cols-1 md:grid-cols-2 gap-6"
@@ -1059,6 +1082,7 @@ export const SessionView = () => {
                   selectedIncidentId={selectedIncidentId}
                   onIncidentSelect={(incidentId) => setSelectedIncidentId(incidentId)}
                   isTrainer={isTrainer}
+                  filterTeam={filterTeam}
                 />
               </div>
             </div>
@@ -1080,7 +1104,7 @@ export const SessionView = () => {
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
-                <DecisionWorkflow sessionId={id} />
+                <DecisionWorkflow sessionId={id} filterTeam={filterTeam} />
               </div>
             </div>
           )}
@@ -1285,7 +1309,7 @@ export const SessionView = () => {
                     className="flex-1 overflow-y-auto min-h-0"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <DecisionsAIRatingsPanel sessionId={id} />
+                    <DecisionsAIRatingsPanel sessionId={id} filterTeam={filterTeam} />
                   </div>
                 </div>
               )}

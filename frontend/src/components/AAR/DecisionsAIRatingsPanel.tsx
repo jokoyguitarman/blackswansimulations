@@ -34,17 +34,25 @@ interface DecisionsAIRatingsPanelData {
 
 interface DecisionsAIRatingsPanelProps {
   sessionId: string;
+  filterTeam?: string;
 }
 
-export const DecisionsAIRatingsPanel = ({ sessionId }: DecisionsAIRatingsPanelProps) => {
+export const DecisionsAIRatingsPanel = ({
+  sessionId,
+  filterTeam = 'none',
+}: DecisionsAIRatingsPanelProps) => {
   const [data, setData] = useState<DecisionsAIRatingsPanelData | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [userTeamMap, setUserTeamMap] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     const load = async () => {
       try {
-        const result = await api.aar.get(sessionId);
+        const [result, teamsResult] = await Promise.all([
+          api.aar.get(sessionId),
+          api.teams.getSessionTeams(sessionId),
+        ]);
         const d = result.data as {
           decisions?: Decision[];
           impact_matrices?: ImpactMatrixRow[];
@@ -55,6 +63,11 @@ export const DecisionsAIRatingsPanel = ({ sessionId }: DecisionsAIRatingsPanelPr
           impact_matrices: d.impact_matrices || [],
           participants: d.participants || [],
         });
+        const map = new Map<string, string>();
+        for (const t of teamsResult.data ?? []) {
+          map.set(t.user_id, t.team_name);
+        }
+        setUserTeamMap(map);
       } catch (err) {
         console.error('Failed to load decisions and AI ratings:', err);
       } finally {
@@ -110,11 +123,19 @@ export const DecisionsAIRatingsPanel = ({ sessionId }: DecisionsAIRatingsPanelPr
     }
   }
 
-  const decisionsSorted = [...decisions].sort(
-    (a, b) =>
-      new Date(a.executed_at || a.created_at).getTime() -
-      new Date(b.executed_at || b.created_at).getTime(),
-  );
+  const decisionsSorted = [...decisions]
+    .filter((d) => {
+      if (filterTeam === 'none') return true;
+      if (!d.proposed_by) return filterTeam === 'All teams';
+      const team = userTeamMap.get(d.proposed_by);
+      if (filterTeam === 'All teams') return !team;
+      return team === filterTeam;
+    })
+    .sort(
+      (a, b) =>
+        new Date(a.executed_at || a.created_at).getTime() -
+        new Date(b.executed_at || b.created_at).getTime(),
+    );
 
   const toggleExpanded = (id: string) => {
     setExpandedIds((prev) => {

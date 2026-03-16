@@ -40,15 +40,34 @@ interface Decision {
 
 interface DecisionWorkflowProps {
   sessionId: string;
+  filterTeam?: string;
 }
 
-export const DecisionWorkflow = ({ sessionId }: DecisionWorkflowProps) => {
+export const DecisionWorkflow = ({ sessionId, filterTeam = 'none' }: DecisionWorkflowProps) => {
   const { user } = useAuth();
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDecision, setSelectedDecision] = useState<Decision | null>(null);
   const [expandedDecisions, setExpandedDecisions] = useState<Set<string>>(new Set());
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [userTeamMap, setUserTeamMap] = useState<Map<string, string>>(new Map());
+
+  // Load team mappings for filtering
+  useEffect(() => {
+    const loadTeams = async () => {
+      try {
+        const result = await api.teams.getSessionTeams(sessionId);
+        const map = new Map<string, string>();
+        for (const t of result.data ?? []) {
+          map.set(t.user_id, t.team_name);
+        }
+        setUserTeamMap(map);
+      } catch {
+        /* non-critical */
+      }
+    };
+    loadTeams();
+  }, [sessionId]);
 
   // Initial load
   useEffect(() => {
@@ -185,77 +204,85 @@ export const DecisionWorkflow = ({ sessionId }: DecisionWorkflowProps) => {
       )}
 
       <div className="space-y-3">
-        {decisions.map((decision) => (
-          <div
-            key={decision.id}
-            className="military-border p-4 cursor-pointer hover:border-robotic-yellow transition-all"
-            onClick={() => setSelectedDecision(decision)}
-          >
-            <div className="flex justify-between items-start mb-2">
-              <h4 className="text-sm terminal-text font-semibold">{decision.title}</h4>
-              <span
-                className={`text-xs terminal-text px-2 py-1 border ${getStatusColor(decision.status)}`}
-              >
-                {decision.status.toUpperCase()}
-              </span>
-            </div>
-            <div className="text-xs terminal-text text-robotic-yellow/70 mb-2">
-              {decision.description.length > 150 ? (
-                <>
-                  <p className={expandedDecisions.has(decision.id) ? '' : 'line-clamp-2'}>
-                    {decision.description}
-                  </p>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setExpandedDecisions((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(decision.id)) {
-                          next.delete(decision.id);
-                        } else {
-                          next.add(decision.id);
-                        }
-                        return next;
-                      });
-                    }}
-                    className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow mt-1 uppercase"
-                  >
-                    {expandedDecisions.has(decision.id) ? '[SHOW LESS]' : '[SHOW MORE]'}
-                  </button>
-                </>
-              ) : (
-                <p>{decision.description}</p>
-              )}
-            </div>
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-              <div className="text-xs terminal-text text-robotic-yellow/50">
-                [{decision.decision_type}] • {decision.creator?.full_name || 'Unknown'}
+        {decisions
+          .filter((decision) => {
+            if (filterTeam === 'none') return true;
+            if (!decision.proposed_by) return filterTeam === 'All teams';
+            const team = userTeamMap.get(decision.proposed_by);
+            if (filterTeam === 'All teams') return !team;
+            return team === filterTeam;
+          })
+          .map((decision) => (
+            <div
+              key={decision.id}
+              className="military-border p-4 cursor-pointer hover:border-robotic-yellow transition-all"
+              onClick={() => setSelectedDecision(decision)}
+            >
+              <div className="flex justify-between items-start mb-2">
+                <h4 className="text-sm terminal-text font-semibold">{decision.title}</h4>
+                <span
+                  className={`text-xs terminal-text px-2 py-1 border ${getStatusColor(decision.status)}`}
+                >
+                  {decision.status.toUpperCase()}
+                </span>
               </div>
-              {canApprove(decision) && (
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleApprove(decision.id, true);
-                    }}
-                    className="px-3 py-1 text-xs terminal-text border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10"
-                  >
-                    [APPROVE]
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleApprove(decision.id, false);
-                    }}
-                    className="px-3 py-1 text-xs terminal-text border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
-                  >
-                    [REJECT]
-                  </button>
+              <div className="text-xs terminal-text text-robotic-yellow/70 mb-2">
+                {decision.description.length > 150 ? (
+                  <>
+                    <p className={expandedDecisions.has(decision.id) ? '' : 'line-clamp-2'}>
+                      {decision.description}
+                    </p>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedDecisions((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(decision.id)) {
+                            next.delete(decision.id);
+                          } else {
+                            next.add(decision.id);
+                          }
+                          return next;
+                        });
+                      }}
+                      className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow mt-1 uppercase"
+                    >
+                      {expandedDecisions.has(decision.id) ? '[SHOW LESS]' : '[SHOW MORE]'}
+                    </button>
+                  </>
+                ) : (
+                  <p>{decision.description}</p>
+                )}
+              </div>
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                <div className="text-xs terminal-text text-robotic-yellow/50">
+                  [{decision.decision_type}] • {decision.creator?.full_name || 'Unknown'}
                 </div>
-              )}
+                {canApprove(decision) && (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleApprove(decision.id, true);
+                      }}
+                      className="px-3 py-1 text-xs terminal-text border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10"
+                    >
+                      [APPROVE]
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleApprove(decision.id, false);
+                      }}
+                      className="px-3 py-1 text-xs terminal-text border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
+                    >
+                      [REJECT]
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
         {decisions.length === 0 && (
           <div className="military-border p-8 text-center">
             <p className="text-sm terminal-text text-robotic-yellow/50">
