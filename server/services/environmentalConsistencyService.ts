@@ -419,7 +419,7 @@ Set "specific": false when the decision gives general/vague instructions without
 
 When "specific" is false:
 - "missing_details": array of 2-5 short phrases naming what is missing (e.g. ["exit names and IDs", "marshal-to-evacuee ratio", "ground zero perimeter distance"])
-- "feedback": one paragraph (2-4 sentences) written as an in-world pressure message from the field team. Explain that the team on the ground cannot execute the order without the missing details. Be specific about WHAT is missing and WHY it matters operationally. Do NOT be generic — reference the actual scenario environment (e.g. "Which of the ${layout?.exits?.length ?? 'available'} exits should we direct evacuees to?" not just "Please specify exits").
+- "feedback": one paragraph (2-4 sentences) written as an in-world pressure message from the field team. Explain that the team on the ground cannot execute the order without the missing details. Be specific about WHAT is missing and WHY it matters operationally. Do NOT be generic — reference the actual scenario environment (e.g. "Which of the available exits should we direct evacuees to? We have multiple options and need a designation." not just "Please specify exits").
 
 === OUTPUT FORMAT ===
 
