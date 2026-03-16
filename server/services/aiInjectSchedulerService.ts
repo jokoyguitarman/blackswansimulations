@@ -954,6 +954,9 @@ export class AIInjectSchedulerService {
         }
 
         let publishedCount = 0;
+        const pathwayTeamsCovered = new Set<string>();
+        let pathwayUniversalPublished = false;
+
         for (const row of rowsToProcess) {
           const outcomes = parseOutcomes(row.outcomes);
           if (outcomes.length === 0) continue;
@@ -964,6 +967,11 @@ export class AIInjectSchedulerService {
           const targetTeams = Array.isArray(targetTeamsRaw) ? targetTeamsRaw : [];
 
           const useTeamBand = scope === 'team_specific' && targetTeams.length > 0;
+
+          // Skip if we already published a pathway outcome for this team/scope
+          if (!useTeamBand && pathwayUniversalPublished) continue;
+          if (useTeamBand && targetTeams.every((t) => pathwayTeamsCovered.has(t))) continue;
+
           const rawBand = useTeamBand
             ? computeRobustnessBandForTeams(
                 latestRobustnessByDecision,
@@ -1003,8 +1011,6 @@ export class AIInjectSchedulerService {
               ? matching[0]
               : outcomes[Math.floor(Math.random() * outcomes.length)];
 
-          // High-band outcomes are de-escalation (things improving); do not require a response
-          // Low/medium band outcomes (escalation/problems): always require response so teams have something to act on
           const requiresResponse =
             robustnessBand === 'high'
               ? false
@@ -1042,6 +1048,8 @@ export class AIInjectSchedulerService {
               this.io!,
             );
             publishedCount += 1;
+            if (!useTeamBand) pathwayUniversalPublished = true;
+            for (const t of targetTeams) pathwayTeamsCovered.add(t);
             logger.info(
               {
                 sessionId: session.id,
@@ -1135,6 +1143,11 @@ export class AIInjectSchedulerService {
           const { io } = await import('../index.js');
           this.io = io;
         }
+
+        // Deduplicate: at most one inaction inject per team (or one universal)
+        const inactionTeamsCovered = new Set<string>();
+        let universalInactionPublished = false;
+
         for (const row of rowsToProcess) {
           const outcomes = parseOutcomes(row.outcomes);
           if (outcomes.length === 0) continue;
@@ -1145,7 +1158,12 @@ export class AIInjectSchedulerService {
             targetTeamsRow.length > 0;
           const targetHadActionable =
             !isTeamSpecific || targetTeamsRow.some((t) => teamsWithActionable.has(t));
-          if (!targetHadActionable) continue; // Skip penalty for team that had no actionable items
+          if (!targetHadActionable) continue;
+
+          // Skip if we already published an inaction inject for this team/scope
+          if (!isTeamSpecific && universalInactionPublished) continue;
+          if (isTeamSpecific && targetTeamsRow.every((t) => inactionTeamsCovered.has(t))) continue;
+
           const matching = outcomes.filter((o) => o.robustness_band === robustnessBand);
           const inactionOutcome =
             matching.length > 0
@@ -1156,8 +1174,6 @@ export class AIInjectSchedulerService {
             (matching.length > 0
               ? matching[0]
               : outcomes[Math.floor(Math.random() * outcomes.length)]);
-          // Inaction penalties always require response so teams can act
-          const inactionRequiresResponse = true;
           const { data: createdInject, error: createError } = await supabaseAdmin
             .from('scenario_injects')
             .insert({
@@ -1171,7 +1187,7 @@ export class AIInjectSchedulerService {
               affected_roles: toPublish.inject_payload.affected_roles ?? [],
               inject_scope: toPublish.inject_payload.inject_scope ?? 'universal',
               target_teams: toPublish.inject_payload.target_teams ?? null,
-              requires_response: inactionRequiresResponse,
+              requires_response: true,
               requires_coordination: false,
               ai_generated: true,
               triggered_by_user_id: null,
@@ -1186,6 +1202,8 @@ export class AIInjectSchedulerService {
               session.trainer_id,
               this.io!,
             );
+            if (!isTeamSpecific) universalInactionPublished = true;
+            for (const t of targetTeamsRow) inactionTeamsCovered.add(t);
             logger.info(
               {
                 sessionId: session.id,
