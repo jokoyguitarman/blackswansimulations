@@ -122,9 +122,7 @@ export const SessionView = () => {
   const [cardNotifications, setCardNotifications] = useState<
     Record<string, 'new' | 'viewed' | 'none'>
   >({});
-  const [showMapModule, setShowMapModule] = useState(
-    () => typeof window !== 'undefined' && window.location.hash === '#show-map',
-  );
+  const [showMapModule, setShowMapModule] = useState(true);
   const [mapModuleReady, setMapModuleReady] = useState(false);
   const [mapHasBeenOpened, setMapHasBeenOpened] = useState(false);
   const [locationsRefreshTrigger, setLocationsRefreshTrigger] = useState(0);
@@ -199,14 +197,14 @@ export const SessionView = () => {
     }>
   >([]);
 
-  // Sync map module visibility with #show-map hash (link in Insider reply opens map via hash).
+  // If Insider reply contains a #show-map hash link, ensure map opens (it's already visible by default).
   useEffect(() => {
-    const syncFromHash = () => {
-      setShowMapModule(window.location.hash === '#show-map');
+    const openFromHash = () => {
+      if (window.location.hash === '#show-map') setShowMapModule(true);
     };
-    syncFromHash();
-    window.addEventListener('hashchange', syncFromHash);
-    return () => window.removeEventListener('hashchange', syncFromHash);
+    openFromHash();
+    window.addEventListener('hashchange', openFromHash);
+    return () => window.removeEventListener('hashchange', openFromHash);
   }, []);
 
   // Once the user opens the map, keep it mounted but hidden when closed (avoids Leaflet removeChild on unmount).
@@ -981,7 +979,7 @@ export const SessionView = () => {
           );
         })()}
 
-      {/* Live map module - hidden by default, shown via #show-map hash */}
+      {/* Live map module - visible by default, can be hidden by user */}
       {id && (
         <div
           className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 ${showMapModule ? '' : 'hidden'}`}
