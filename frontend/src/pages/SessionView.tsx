@@ -639,62 +639,6 @@ export const SessionView = () => {
                   </div>
                 </div>
               )}
-              {/* Heat Meter */}
-              {session.status === 'in_progress' &&
-                (() => {
-                  const heatMeter = (session.current_state as Record<string, unknown> | undefined)
-                    ?.heat_meter as Record<string, { heat_percentage?: number }> | undefined;
-                  const teamsToShow = isTrainer
-                    ? Object.keys(heatMeter ?? {})
-                    : myTeams.map((t) => t.team_name).filter((tn) => heatMeter?.[tn]);
-                  if (!heatMeter || teamsToShow.length === 0) return null;
-                  return (
-                    <div className="flex items-center gap-3">
-                      {teamsToShow.map((tn) => {
-                        const pct = heatMeter[tn]?.heat_percentage ?? 0;
-                        const color =
-                          pct >= 60
-                            ? 'bg-red-500'
-                            : pct >= 40
-                              ? 'bg-orange-500'
-                              : pct >= 20
-                                ? 'bg-yellow-500'
-                                : 'bg-green-500';
-                        const borderColor =
-                          pct >= 60
-                            ? 'border-red-500'
-                            : pct >= 40
-                              ? 'border-orange-500'
-                              : pct >= 20
-                                ? 'border-yellow-500'
-                                : 'border-green-500';
-                        return (
-                          <div
-                            key={tn}
-                            className={`military-border px-3 py-2 bg-robotic-gray-200 ${borderColor}`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs terminal-text text-robotic-yellow/70 uppercase whitespace-nowrap">
-                                {isTrainer ? tn.toUpperCase() : '[HEAT]'}
-                              </span>
-                              <div className="w-16 h-2 bg-robotic-gray-100 rounded-sm overflow-hidden">
-                                <div
-                                  className={`h-full ${color} transition-all duration-500`}
-                                  style={{ width: `${Math.min(100, pct)}%` }}
-                                />
-                              </div>
-                              <span
-                                className={`text-xs terminal-text font-mono font-bold ${pct >= 60 ? 'text-red-400' : pct >= 40 ? 'text-orange-400' : pct >= 20 ? 'text-yellow-400' : 'text-green-400'}`}
-                              >
-                                {pct.toFixed(0)}%
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
               {session.status === 'completed' && (
                 <div className="military-border px-4 py-2 bg-robotic-green/20 border-robotic-green">
                   <span className="text-xs terminal-text text-robotic-green uppercase">
@@ -978,6 +922,116 @@ export const SessionView = () => {
           );
         })()}
 
+      {/* Full-Width Heat Meter Bar */}
+      {session.status === 'in_progress' &&
+        (() => {
+          const heatMeter = (session.current_state as Record<string, unknown> | undefined)
+            ?.heat_meter as Record<string, { heat_percentage?: number }> | undefined;
+          const teamsToShow = isTrainer
+            ? Object.keys(heatMeter ?? {})
+            : myTeams.map((t) => t.team_name).filter((tn) => heatMeter?.[tn]);
+          if (!heatMeter || teamsToShow.length === 0) return null;
+          return (
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
+              <div className="military-border p-4 bg-robotic-gray-200">
+                <h3 className="text-sm terminal-text uppercase text-robotic-yellow mb-3">
+                  [HEAT METER]
+                </h3>
+                <div className="space-y-2">
+                  {teamsToShow.map((tn) => {
+                    const pct = heatMeter[tn]?.heat_percentage ?? 0;
+                    const barColor =
+                      pct >= 60
+                        ? 'bg-red-500'
+                        : pct >= 40
+                          ? 'bg-orange-500'
+                          : pct >= 20
+                            ? 'bg-yellow-500'
+                            : 'bg-green-500';
+                    const textColor =
+                      pct >= 60
+                        ? 'text-red-400'
+                        : pct >= 40
+                          ? 'text-orange-400'
+                          : pct >= 20
+                            ? 'text-yellow-400'
+                            : 'text-green-400';
+                    return (
+                      <div key={tn} className="flex items-center gap-3">
+                        <span className="text-xs terminal-text text-robotic-yellow/70 uppercase w-24 shrink-0">
+                          {tn.toUpperCase()}
+                        </span>
+                        <div className="flex-1 h-3 bg-robotic-gray-100 rounded-sm overflow-hidden">
+                          <div
+                            className={`h-full ${barColor} transition-all duration-500`}
+                            style={{ width: `${Math.min(100, pct)}%` }}
+                          />
+                        </div>
+                        <span
+                          className={`text-sm terminal-text font-mono font-bold w-12 text-right ${textColor}`}
+                        >
+                          {pct.toFixed(0)}%
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+      {/* Live map module - hidden by default, shown via #show-map hash */}
+      {id && (
+        <div
+          className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 ${showMapModule ? '' : 'hidden'}`}
+          aria-hidden={!showMapModule}
+        >
+          <div className="military-border p-6 bg-robotic-gray-300 flex flex-col h-[700px]">
+            <div className="flex justify-between items-center mb-3 flex-shrink-0">
+              <h3 className="text-lg terminal-text uppercase">[MAP]</h3>
+              <button
+                onClick={() => {
+                  sessionContentRef.current?.focus({ preventScroll: true });
+                  setShowMapModule(false);
+                  if (window.location.hash === '#show-map') {
+                    window.history.replaceState(
+                      null,
+                      '',
+                      window.location.pathname + window.location.search,
+                    );
+                  }
+                }}
+                className="px-3 py-1 text-xs terminal-text uppercase border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
+              >
+                [HIDE MAP]
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden h-[620px]">
+              {mapModuleReady && mapHasBeenOpened && (
+                <MapView
+                  sessionId={id}
+                  incidents={[]}
+                  resources={[]}
+                  isVisible={showMapModule}
+                  fillHeight
+                  locationsRefreshTrigger={locationsRefreshTrigger}
+                  initialCenter={
+                    session?.scenarios?.center_lat != null && session?.scenarios?.center_lng != null
+                      ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
+                          number,
+                          number,
+                        ])
+                      : [1.3521, 103.8198]
+                  }
+                  initialZoom={16}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Card-Based Content Grid */}
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div
@@ -1238,7 +1292,7 @@ export const SessionView = () => {
 
               {/* Timeline - 2 cols, fixed height (3 rows), scrollable */}
               <div
-                className="md:col-span-2 military-border p-6 bg-robotic-gray-300 relative cursor-pointer flex flex-col h-[420px]"
+                className="md:col-span-2 military-border p-6 bg-robotic-gray-300 relative cursor-pointer flex flex-col h-[750px]"
                 onClick={() => markCardViewed('timeline')}
               >
                 <div className="flex items-center justify-between mb-4 flex-shrink-0">
@@ -1574,56 +1628,6 @@ export const SessionView = () => {
                 </div>
               )}
             </>
-          )}
-
-          {/* Live map module - 2 columns, bottom; keep mounted when closed to avoid Leaflet removeChild on unmount */}
-          {id && (
-            <div
-              className={`md:col-span-2 military-border p-6 bg-robotic-gray-300 flex flex-col h-[700px] ${showMapModule ? '' : 'hidden'}`}
-              aria-hidden={!showMapModule}
-            >
-              <div className="flex justify-between items-center mb-3 flex-shrink-0">
-                <h3 className="text-lg terminal-text uppercase">[MAP]</h3>
-                <button
-                  onClick={() => {
-                    sessionContentRef.current?.focus({ preventScroll: true });
-                    setShowMapModule(false);
-                    if (window.location.hash === '#show-map') {
-                      window.history.replaceState(
-                        null,
-                        '',
-                        window.location.pathname + window.location.search,
-                      );
-                    }
-                  }}
-                  className="px-3 py-1 text-xs terminal-text uppercase border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
-                >
-                  [HIDE MAP]
-                </button>
-              </div>
-              <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden h-[620px]">
-                {mapModuleReady && mapHasBeenOpened && (
-                  <MapView
-                    sessionId={id}
-                    incidents={[]}
-                    resources={[]}
-                    isVisible={showMapModule}
-                    fillHeight
-                    locationsRefreshTrigger={locationsRefreshTrigger}
-                    initialCenter={
-                      session?.scenarios?.center_lat != null &&
-                      session?.scenarios?.center_lng != null
-                        ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
-                            number,
-                            number,
-                          ])
-                        : [1.3521, 103.8198]
-                    }
-                    initialZoom={16}
-                  />
-                )}
-              </div>
-            </div>
           )}
         </div>
       </div>
