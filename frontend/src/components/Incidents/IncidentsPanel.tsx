@@ -45,6 +45,8 @@ interface Incident {
       full_name: string;
     };
   }>;
+  /** Which team(s) this incident targets (set by API from inject scope). */
+  for_teams_display?: string;
   /** When false, do not show [DECISION] button (status-update only). */
   requires_response?: boolean;
   /** Origin of the inject that created this incident */
@@ -67,8 +69,7 @@ export const IncidentsPanel = ({
   const { user } = useAuth();
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterSeverity, setFilterSeverity] = useState<string>('all');
+  const [filterTeam, setFilterTeam] = useState<string>('none');
   const [showDecisionModal, setShowDecisionModal] = useState(false);
   const [decisionModalIncidentId, setDecisionModalIncidentId] = useState<string | null>(null);
   /** Incident IDs where the current user has an executed decision (show "Done" instead of "Decision") */
@@ -430,11 +431,17 @@ export const IncidentsPanel = ({
     }
   };
 
-  // Filter incidents
+  // Derive unique team options from loaded incidents
+  const teamOptions = Array.from(
+    new Set(incidents.map((i) => i.for_teams_display ?? 'All teams')),
+  ).sort();
+
+  // Filter incidents by target team
   const filteredIncidents = incidents.filter((incident) => {
-    if (filterStatus !== 'all' && incident.status !== filterStatus) return false;
-    if (filterSeverity !== 'all' && incident.severity !== filterSeverity) return false;
-    return true;
+    if (filterTeam === 'none') return true;
+    const display = incident.for_teams_display ?? 'All teams';
+    if (filterTeam === 'All teams') return display === 'All teams';
+    return display.split(', ').some((t) => t === filterTeam);
   });
 
   if (loading) {
@@ -456,36 +463,26 @@ export const IncidentsPanel = ({
         <h3 className="text-lg terminal-text uppercase">[INCIDENTS] Active Incidents</h3>
       </div>
 
-      {/* Filters */}
+      {/* Filter by target team */}
       <div className="military-border p-4 flex gap-4 flex-wrap">
         <div className="flex items-center gap-2">
-          <label className="text-xs terminal-text text-robotic-yellow/70 uppercase">[STATUS]</label>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="military-input terminal-text text-sm px-3 py-1"
-          >
-            <option value="all">All</option>
-            <option value="active">Active</option>
-            <option value="under_control">Under Control</option>
-            <option value="contained">Contained</option>
-            <option value="resolved">Resolved</option>
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
           <label className="text-xs terminal-text text-robotic-yellow/70 uppercase">
-            [SEVERITY]
+            [FILTER BY TEAM]
           </label>
           <select
-            value={filterSeverity}
-            onChange={(e) => setFilterSeverity(e.target.value)}
+            value={filterTeam}
+            onChange={(e) => setFilterTeam(e.target.value)}
             className="military-input terminal-text text-sm px-3 py-1"
           >
-            <option value="all">All</option>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="critical">Critical</option>
+            <option value="none">No filter</option>
+            <option value="All teams">All teams only</option>
+            {teamOptions
+              .filter((t) => t !== 'All teams')
+              .map((team) => (
+                <option key={team} value={team}>
+                  {team}
+                </option>
+              ))}
           </select>
         </div>
       </div>

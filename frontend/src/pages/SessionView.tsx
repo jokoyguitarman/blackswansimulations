@@ -979,8 +979,8 @@ export const SessionView = () => {
           );
         })()}
 
-      {/* Live map module - visible by default, can be hidden by user */}
-      {id && (
+      {/* Live map module - visible by default, can be hidden by user (trainers use the map in the trainer grid instead) */}
+      {id && !isTrainer && (
         <div
           className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 ${showMapModule ? '' : 'hidden'}`}
           aria-hidden={!showMapModule}

@@ -21,6 +21,172 @@ import type { Server as SocketServer } from 'socket.io';
 import type { CounterDefinition } from '../counterDefinitions.js';
 
 /**
+ * Shared AI cancellation gate for any inject about to be published.
+ * Returns true if the inject was cancelled (caller should skip publishing).
+ */
+async function runAiCancellationGate(
+  inject: {
+    id: string;
+    title: string | null;
+    content?: string;
+    target_teams?: string[] | null;
+    severity?: string | null;
+    inject_scope?: string | null;
+  },
+  session: { id: string; scenario_id: string; trainer_id: string },
+  allDecisionsForAi: Array<{
+    title: string;
+    description: string;
+    type: string | null;
+    proposed_by: string | null;
+  }>,
+  userIdToTeam: Map<string, string>,
+  io: SocketServer | null,
+): Promise<boolean> {
+  if (!env.openAiApiKey) return false;
+
+  try {
+    const targetTeams = inject.target_teams ?? null;
+    const relevantDecisions =
+      !targetTeams || targetTeams.length === 0
+        ? allDecisionsForAi
+        : allDecisionsForAi.filter((d) => {
+            const team = d.proposed_by ? userIdToTeam.get(d.proposed_by) : undefined;
+            return team != null && targetTeams.includes(team);
+          });
+
+    await supabaseAdmin.from('session_events').insert({
+      session_id: session.id,
+      event_type: 'ai_step_start',
+      description: `AI: Evaluating whether to cancel inject: ${inject.title ?? inject.id}`,
+      actor_id: null,
+      metadata: { step: 'evaluating_inject_cancellation', inject_title: inject.title ?? null },
+    });
+
+    const result = await shouldCancelScheduledInject(
+      { title: inject.title ?? '', content: inject.content ?? '' },
+      relevantDecisions,
+      env.openAiApiKey,
+    );
+
+    await supabaseAdmin.from('session_events').insert({
+      session_id: session.id,
+      event_type: 'ai_step_end',
+      description: result.cancel
+        ? `AI: Cancelled inject: ${inject.title ?? inject.id}${result.adversary_inject ? ' (adversary adapts)' : ''}`
+        : `AI: Publishing inject: ${inject.title ?? inject.id}`,
+      actor_id: null,
+      metadata: {
+        step: 'evaluating_inject_cancellation',
+        cancel: result.cancel,
+        cancel_reason: result.cancel_reason ?? null,
+        has_adversary_adaptation: !!result.adversary_inject,
+      },
+    });
+
+    if (!result.cancel) return false;
+
+    // --- Inject was cancelled ---
+    await supabaseAdmin.from('session_events').insert({
+      session_id: session.id,
+      event_type: 'inject_cancelled',
+      description: `Inject cancelled: ${inject.title ?? inject.id} - ${result.cancel_reason ?? 'Team actions addressed the concern'}`,
+      actor_id: null,
+      metadata: {
+        inject_id: inject.id,
+        cancel_reason: result.cancel_reason ?? null,
+        cancelled_at: new Date().toISOString(),
+      },
+    });
+
+    // Credit teams with positive heat meter
+    const creditTeams = inject.target_teams ?? null;
+    const teamsToCredit =
+      creditTeams && creditTeams.length > 0
+        ? creditTeams
+        : [
+            ...new Set(
+              relevantDecisions
+                .map((d) => (d.proposed_by ? userIdToTeam.get(d.proposed_by) : undefined))
+                .filter(Boolean) as string[],
+            ),
+          ];
+    for (const team of teamsToCredit) {
+      try {
+        await updateTeamHeatMeter(session.id, team, 'good');
+      } catch {
+        /* non-critical */
+      }
+    }
+    if (teamsToCredit.length > 0) {
+      logger.info(
+        { sessionId: session.id, injectTitle: inject.title, teams: teamsToCredit },
+        'Inject cancelled — positive scoring awarded',
+      );
+    }
+
+    // Adversary adaptation: publish a follow-up if the adversary can still cause trouble
+    if (result.adversary_inject && session.scenario_id) {
+      try {
+        const adaptTitle = `${result.adversary_inject.title} – ${(inject.target_teams ?? [])[0] ?? 'all'} (${inject.id.slice(0, 8)})`;
+        const { data: adaptInject, error: adaptErr } = await supabaseAdmin
+          .from('scenario_injects')
+          .insert({
+            scenario_id: session.scenario_id,
+            type: 'field_update',
+            title: adaptTitle,
+            content: result.adversary_inject.content,
+            severity: inject.severity ?? 'medium',
+            inject_scope: inject.inject_scope ?? 'team_specific',
+            target_teams: inject.target_teams ?? null,
+            requires_response: true,
+            requires_coordination: false,
+            ai_generated: true,
+            generation_source: 'adversary_adaptation',
+          })
+          .select()
+          .single();
+
+        if (adaptErr) {
+          logger.warn(
+            { err: adaptErr, sessionId: session.id, origInjectTitle: inject.title },
+            'Failed to insert adversary adaptation inject',
+          );
+        } else if (adaptInject && io) {
+          await publishInjectToSession(adaptInject.id, session.id, session.trainer_id, io);
+          logger.info(
+            { sessionId: session.id, origInjectTitle: inject.title, adaptTitle: adaptInject.title },
+            'Adversary adaptation inject published',
+          );
+        }
+      } catch (adaptPublishErr) {
+        logger.warn(
+          { err: adaptPublishErr, sessionId: session.id },
+          'Failed to publish adversary adaptation inject',
+        );
+      }
+    }
+
+    logger.info(
+      {
+        sessionId: session.id,
+        injectId: inject.id,
+        injectTitle: inject.title,
+        cancel_reason: result.cancel_reason,
+      },
+      'Scheduled inject cancelled by adversary engine',
+    );
+    return true;
+  } catch (cancelErr) {
+    logger.warn(
+      { error: cancelErr, sessionId: session.id, injectId: inject.id },
+      'AI cancellation check failed, publishing inject anyway',
+    );
+    return false;
+  }
+}
+
+/**
  * Inject Scheduler Service
  * Monitors active sessions and publishes (1) time-based injects when trigger_time_minutes is reached,
  * (2) condition-driven injects when conditions_to_appear are met and conditions_to_cancel are not (Step 4).
@@ -758,198 +924,58 @@ export class InjectSchedulerService {
       scenarioConditionKeyDefs,
     };
 
-    // --- Time-based injects: publish and optionally run AI cancel for future injects ---
+    // Fetch all decisions and team mappings (shared by time-based and condition-driven AI checks)
+    const { data: allDecisions } = await supabaseAdmin
+      .from('decisions')
+      .select('id, title, description, type, proposed_by')
+      .eq('session_id', session.id)
+      .eq('status', 'executed')
+      .order('executed_at', { ascending: false })
+      .limit(50);
+
+    const allDecisionsForAi = (allDecisions || []).map((d) => ({
+      title: d.title ?? '',
+      description: d.description ?? '',
+      type: d.type as string | null,
+      proposed_by: d.proposed_by as string | null,
+    }));
+
+    const { data: teamMappings } = await supabaseAdmin
+      .from('session_teams')
+      .select('user_id, team_name')
+      .eq('session_id', session.id);
+    const userIdToTeam = new Map<string, string>();
+    for (const tm of teamMappings ?? []) {
+      userIdToTeam.set(
+        (tm as { user_id: string }).user_id,
+        (tm as { team_name: string }).team_name,
+      );
+    }
+
+    // --- Time-based injects: publish with AI cancellation gate ---
     if (injectsToPublish.length > 0) {
-      const { data: allDecisions } = await supabaseAdmin
-        .from('decisions')
-        .select('id, title, description, type, proposed_by')
-        .eq('session_id', session.id)
-        .eq('status', 'executed')
-        .order('executed_at', { ascending: false })
-        .limit(50);
-
-      const allDecisionsForAi = (allDecisions || []).map((d) => ({
-        title: d.title ?? '',
-        description: d.description ?? '',
-        type: d.type as string | null,
-        proposed_by: d.proposed_by as string | null,
-      }));
-
-      // Map user IDs to team names for filtering decisions by inject target teams
-      const { data: teamMappings } = await supabaseAdmin
-        .from('session_teams')
-        .select('user_id, team_name')
-        .eq('session_id', session.id);
-      const userIdToTeam = new Map<string, string>();
-      for (const tm of teamMappings ?? []) {
-        userIdToTeam.set(
-          (tm as { user_id: string }).user_id,
-          (tm as { team_name: string }).team_name,
-        );
-      }
-
       for (const inject of injectsToPublish) {
         try {
-          // AI cancellation check: should this scheduled inject be suppressed due to session decisions?
-          if (env.openAiApiKey) {
-            try {
-              const targetTeams = (inject as InjectRow).target_teams as string[] | null;
-              const relevantDecisions =
-                !targetTeams || targetTeams.length === 0
-                  ? allDecisionsForAi
-                  : allDecisionsForAi.filter((d) => {
-                      const team = d.proposed_by ? userIdToTeam.get(d.proposed_by) : undefined;
-                      return team != null && targetTeams.includes(team);
-                    });
-
-              await supabaseAdmin.from('session_events').insert({
-                session_id: session.id,
-                event_type: 'ai_step_start',
-                description: `AI: Evaluating whether to cancel inject: ${inject.title ?? inject.id}`,
-                actor_id: null,
-                metadata: {
-                  step: 'evaluating_inject_cancellation',
-                  inject_title: inject.title ?? null,
-                },
-              });
-              const result = await shouldCancelScheduledInject(
-                {
-                  title: inject.title ?? '',
-                  content: (inject as { content?: string }).content ?? '',
-                },
-                relevantDecisions,
-                env.openAiApiKey,
-              );
-              await supabaseAdmin.from('session_events').insert({
-                session_id: session.id,
-                event_type: 'ai_step_end',
-                description: result.cancel
-                  ? `AI: Cancelled inject: ${inject.title ?? inject.id}${result.adversary_inject ? ' (adversary adapts)' : ''}`
-                  : `AI: Publishing inject: ${inject.title ?? inject.id}`,
-                actor_id: null,
-                metadata: {
-                  step: 'evaluating_inject_cancellation',
-                  cancel: result.cancel,
-                  cancel_reason: result.cancel_reason ?? null,
-                  has_adversary_adaptation: !!result.adversary_inject,
-                },
-              });
-              if (result.cancel) {
-                await supabaseAdmin.from('session_events').insert({
-                  session_id: session.id,
-                  event_type: 'inject_cancelled',
-                  description: `Inject cancelled: ${inject.title ?? inject.id} - ${result.cancel_reason ?? 'Team actions addressed the concern'}`,
-                  actor_id: null,
-                  metadata: {
-                    inject_id: inject.id,
-                    cancel_reason: result.cancel_reason ?? null,
-                    cancelled_at: new Date().toISOString(),
-                  },
-                });
-
-                const creditTeams = (inject as InjectRow).target_teams as string[] | null;
-                const teamsToCredit =
-                  creditTeams && creditTeams.length > 0
-                    ? creditTeams
-                    : [
-                        ...new Set(
-                          relevantDecisions
-                            .map((d) =>
-                              d.proposed_by ? userIdToTeam.get(d.proposed_by) : undefined,
-                            )
-                            .filter(Boolean) as string[],
-                        ),
-                      ];
-                for (const team of teamsToCredit) {
-                  try {
-                    await updateTeamHeatMeter(session.id, team, 'good');
-                  } catch {
-                    // non-critical
-                  }
-                }
-                if (teamsToCredit.length > 0) {
-                  logger.info(
-                    { sessionId: session.id, injectTitle: inject.title, teams: teamsToCredit },
-                    'Inject cancelled — positive scoring awarded',
-                  );
-                }
-
-                if (result.adversary_inject && session.scenario_id) {
-                  try {
-                    const origInject = inject as InjectRow;
-                    const adaptTitle = `${result.adversary_inject.title} – ${(origInject.target_teams as string[] | null)?.[0] ?? 'all'} (${inject.id.slice(0, 8)})`;
-                    const { data: adaptInject, error: adaptErr } = await supabaseAdmin
-                      .from('scenario_injects')
-                      .insert({
-                        scenario_id: session.scenario_id,
-                        type: 'field_update',
-                        title: adaptTitle,
-                        content: result.adversary_inject.content,
-                        severity: origInject.severity ?? 'medium',
-                        inject_scope: origInject.inject_scope ?? 'team_specific',
-                        target_teams: origInject.target_teams ?? null,
-                        requires_response: true,
-                        requires_coordination: false,
-                        ai_generated: true,
-                        generation_source: 'adversary_adaptation',
-                      })
-                      .select()
-                      .single();
-
-                    if (adaptErr) {
-                      logger.warn(
-                        { err: adaptErr, sessionId: session.id, origInjectTitle: inject.title },
-                        'Failed to insert adversary adaptation inject',
-                      );
-                    } else if (adaptInject) {
-                      if (!this.io) {
-                        const { io } = await import('../index.js');
-                        this.io = io;
-                      }
-                      if (this.io) {
-                        await publishInjectToSession(
-                          adaptInject.id,
-                          session.id,
-                          session.trainer_id,
-                          this.io,
-                        );
-                      }
-                      logger.info(
-                        {
-                          sessionId: session.id,
-                          origInjectTitle: inject.title,
-                          adaptTitle: adaptInject.title,
-                        },
-                        'Adversary adaptation inject published',
-                      );
-                    }
-                  } catch (adaptPublishErr) {
-                    logger.warn(
-                      { err: adaptPublishErr, sessionId: session.id },
-                      'Failed to publish adversary adaptation inject',
-                    );
-                  }
-                }
-
-                logger.info(
-                  {
-                    sessionId: session.id,
-                    injectId: inject.id,
-                    injectTitle: inject.title,
-                    cancel_reason: result.cancel_reason,
-                  },
-                  'Scheduled inject cancelled by adversary engine',
-                );
-                continue;
-              }
-            } catch (cancelErr) {
-              logger.warn(
-                { error: cancelErr, sessionId: session.id, injectId: inject.id },
-                'AI cancellation check failed, publishing inject anyway',
-              );
-              // Fall through to publish (fail-open)
-            }
+          if (!this.io) {
+            const { io } = await import('../index.js');
+            this.io = io;
           }
+
+          const cancelled = await runAiCancellationGate(
+            {
+              id: inject.id,
+              title: inject.title ?? null,
+              content: (inject as { content?: string }).content,
+              target_teams: (inject as InjectRow).target_teams,
+              severity: (inject as InjectRow).severity,
+              inject_scope: (inject as InjectRow).inject_scope,
+            },
+            { id: session.id, scenario_id: session.scenario_id, trainer_id: session.trainer_id },
+            allDecisionsForAi,
+            userIdToTeam,
+            this.io,
+          );
+          if (cancelled) continue;
 
           logger.info(
             {
@@ -963,11 +989,6 @@ export class InjectSchedulerService {
             'Auto-publishing inject',
           );
 
-          if (!this.io) {
-            // Lazy import to avoid circular dependency
-            const { io } = await import('../index.js');
-            this.io = io;
-          }
           if (!this.io) {
             logger.warn(
               { sessionId: session.id, injectId: inject.id },
@@ -987,16 +1008,15 @@ export class InjectSchedulerService {
             { error: publishErr, sessionId: session.id, injectId: inject.id },
             'Failed to auto-publish inject',
           );
-          // Continue with next inject even if one fails
         }
       }
     }
 
-    // --- Condition-driven injects: evaluate appear/cancel and publish if appear_met ---
+    // --- Condition-driven injects: AI cancellation gate first, then condition fallback ---
     const { data: conditionInjectsRaw, error: conditionError } = await supabaseAdmin
       .from('scenario_injects')
       .select(
-        'id, title, conditions_to_appear, conditions_to_cancel, eligible_after_minutes, target_teams, inject_scope',
+        'id, title, content, severity, conditions_to_appear, conditions_to_cancel, eligible_after_minutes, target_teams, inject_scope',
       )
       .eq('scenario_id', session.scenario_id)
       .not('conditions_to_appear', 'is', null);
@@ -1077,6 +1097,24 @@ export class InjectSchedulerService {
             const { io } = await import('../index.js');
             this.io = io;
           }
+
+          // AI cancellation gate: check if team decisions already address this concern
+          const cancelled = await runAiCancellationGate(
+            {
+              id: inject.id,
+              title: inject.title ?? null,
+              content: (inject as { content?: string }).content,
+              target_teams: (inject as { target_teams?: string[] | null }).target_teams,
+              severity: (inject as { severity?: string | null }).severity,
+              inject_scope: (inject as { inject_scope?: string | null }).inject_scope,
+            },
+            { id: session.id, scenario_id: session.scenario_id, trainer_id: session.trainer_id },
+            allDecisionsForAi,
+            userIdToTeam,
+            this.io,
+          );
+          if (cancelled) continue;
+
           if (!this.io) {
             logger.warn(
               { sessionId: session.id, injectId: inject.id },
