@@ -1367,6 +1367,18 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
       }
 
       // Specificity feedback: fire a pressure inject when the decision lacks operational detail
+      logger.info(
+        {
+          decisionId: decision.id,
+          specific: envResult.specific,
+          hasFeedback: !!envResult.feedback,
+          authorTeamNames,
+          sessionScenarioId: !!sessionScenarioId,
+          sessionTrainerId: !!sessionTrainerId,
+          hasIo: !!io,
+        },
+        'SPECIFICITY_CHECK: conditions before inject block',
+      );
       if (
         envResult.specific === false &&
         envResult.feedback &&
