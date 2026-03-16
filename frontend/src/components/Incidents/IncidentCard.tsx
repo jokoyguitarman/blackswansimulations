@@ -75,6 +75,10 @@ const SOURCE_BADGE: Record<string, { label: string; color: string }> = {
     color: 'border-purple-400/60 text-purple-400/80 bg-purple-400/10',
   },
   trainer: { label: 'TRAINER', color: 'border-blue-400/60 text-blue-400/80 bg-blue-400/10' },
+  matrix_friction: {
+    label: 'FRICTION',
+    color: 'border-orange-400/60 text-orange-400/80 bg-orange-400/10',
+  },
 };
 
 export const IncidentCard = ({

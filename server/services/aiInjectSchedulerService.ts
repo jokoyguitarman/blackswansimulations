@@ -942,6 +942,8 @@ export class AIInjectSchedulerService {
 
     const hasPathwayOutcomes = rowsToProcess.some((r) => parseOutcomes(r.outcomes).length > 0);
 
+    const generatedThisCycle: Array<{ title: string; content: string }> = [];
+
     if (formattedDecisions.length > 0) {
       if (hasPathwayOutcomes) {
         // Pathway outcome selection uses only the robustness band (from per-decision robustness scores).
@@ -1063,13 +1065,12 @@ export class AIInjectSchedulerService {
         }
 
         if (publishedCount === 0) {
-          const generated: Array<{ title: string; content: string }> = [];
           const universalResult = await this.generateUniversalInject(
             session,
             baseContext,
             formattedDecisions,
           );
-          if (universalResult) generated.push(universalResult);
+          if (universalResult) generatedThisCycle.push(universalResult);
           for (const teamName of teamsWithMembers) {
             const teamDecisions = formattedDecisions.filter((d) => d.team === teamName);
             if (teamDecisions.length > 0) {
@@ -1078,9 +1079,9 @@ export class AIInjectSchedulerService {
                 baseContext,
                 teamName,
                 teamDecisions,
-                generated,
+                generatedThisCycle,
               );
-              if (teamResult) generated.push(teamResult);
+              if (teamResult) generatedThisCycle.push(teamResult);
             }
           }
         }
@@ -1095,13 +1096,12 @@ export class AIInjectSchedulerService {
             metadata: { step: 'inject_generation' },
           });
         }
-        const generated: Array<{ title: string; content: string }> = [];
         const universalResult = await this.generateUniversalInject(
           session,
           baseContext,
           formattedDecisions,
         );
-        if (universalResult) generated.push(universalResult);
+        if (universalResult) generatedThisCycle.push(universalResult);
         for (const teamName of teamsWithMembers) {
           const teamDecisions = formattedDecisions.filter((d) => d.team === teamName);
           if (teamDecisions.length > 0) {
@@ -1110,9 +1110,9 @@ export class AIInjectSchedulerService {
               baseContext,
               teamName,
               teamDecisions,
-              generated,
+              generatedThisCycle,
             );
-            if (teamResult) generated.push(teamResult);
+            if (teamResult) generatedThisCycle.push(teamResult);
           }
         }
         if (env.openAiApiKey) {
@@ -1237,6 +1237,14 @@ export class AIInjectSchedulerService {
         }
       }
     }
+
+    // After normal inject generation, check for inter-team friction from the impact matrix
+    await this.generateFrictionInjects(
+      session,
+      baseContext,
+      latestImpactMatrix,
+      generatedThisCycle,
+    );
   }
 
   /**
@@ -1464,6 +1472,155 @@ export class AIInjectSchedulerService {
     );
 
     return { title: generatedInject.title, content: generatedInject.content };
+  }
+
+  /**
+   * Scan the impact matrix for negative scores and generate friction injects
+   * targeting the affected teams. Capped at 2 per cycle, with a 10-minute
+   * cooldown per (acting, affected) pair to avoid repetitive hammering.
+   */
+  private async generateFrictionInjects(
+    session: { id: string; scenario_id: string; trainer_id: string },
+    baseContext: Record<string, unknown>,
+    matrix: Record<string, Record<string, number>> | null | undefined,
+    alreadyGenerated: Array<{ title: string; content: string }>,
+  ): Promise<void> {
+    if (!matrix || !env.openAiApiKey) return;
+
+    // Extract all negative pairs, sorted by magnitude (most negative first)
+    const negativePairs: Array<{ acting: string; affected: string; score: number }> = [];
+    for (const [acting, targets] of Object.entries(matrix)) {
+      for (const [affected, score] of Object.entries(targets)) {
+        if (score <= -1) {
+          negativePairs.push({ acting, affected, score });
+        }
+      }
+    }
+    if (negativePairs.length === 0) return;
+
+    negativePairs.sort((a, b) => a.score - b.score);
+
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { data: recentFrictionEvents } = await supabaseAdmin
+      .from('session_events')
+      .select('metadata')
+      .eq('session_id', session.id)
+      .eq('event_type', 'friction_inject_fired')
+      .gte('created_at', tenMinutesAgo);
+
+    const recentPairKeys = new Set(
+      (recentFrictionEvents ?? []).map((e: { metadata: Record<string, unknown> }) => {
+        const m = e.metadata ?? {};
+        return `${m.acting_team}→${m.affected_team}`;
+      }),
+    );
+
+    const maxFrictionPerCycle = 2;
+    let generated = 0;
+
+    for (const pair of negativePairs) {
+      if (generated >= maxFrictionPerCycle) break;
+
+      const pairKey = `${pair.acting}→${pair.affected}`;
+      if (recentPairKeys.has(pairKey)) {
+        logger.debug(
+          { sessionId: session.id, pairKey },
+          'Friction inject skipped (cooldown active)',
+        );
+        continue;
+      }
+
+      const frictionContext = {
+        ...baseContext,
+        injectType: 'team_specific',
+        focus: 'inter_team_friction',
+        teamName: pair.affected,
+        instructions: `MANDATORY: Generate a friction inject for the ${pair.affected} team. The ${pair.acting} team's recent decisions have negatively impacted ${pair.affected} (matrix score: ${pair.score}). Describe the concrete operational problem this is causing for ${pair.affected} — e.g. blocked access, resource competition, conflicting instructions, overwhelmed capacity, delayed handoffs. Name both teams. The inject must demand a response from ${pair.affected} to resolve the friction. Do NOT generate a generic status update; this must be specifically about inter-team friction caused by ${pair.acting}.`,
+        alreadyGeneratedThisCycle: alreadyGenerated,
+      };
+
+      const generatedInject = await generateInjectFromDecision(
+        {
+          title: `Inter-team friction: ${pair.acting} impacting ${pair.affected}`,
+          description: `${pair.acting}'s decisions are causing problems for ${pair.affected} (score: ${pair.score})`,
+          type: 'coordination_order',
+        },
+        frictionContext as Parameters<typeof generateInjectFromDecision>[1],
+        env.openAiApiKey,
+      );
+
+      if (!generatedInject) {
+        logger.debug(
+          { sessionId: session.id, acting: pair.acting, affected: pair.affected },
+          'AI returned null for friction inject',
+        );
+        continue;
+      }
+
+      const { data: createdInject, error: createError } = await supabaseAdmin
+        .from('scenario_injects')
+        .insert({
+          scenario_id: session.scenario_id,
+          trigger_time_minutes: null,
+          trigger_condition: null,
+          type: generatedInject.type,
+          title: generatedInject.title,
+          content: generatedInject.content,
+          severity: generatedInject.severity,
+          affected_roles: generatedInject.affected_roles || [],
+          inject_scope: 'team_specific',
+          target_teams: [pair.affected],
+          requires_response: true,
+          requires_coordination: true,
+          ai_generated: true,
+          triggered_by_user_id: null,
+          generation_source: 'matrix_friction',
+        })
+        .select()
+        .single();
+
+      if (createError || !createdInject) {
+        logger.error(
+          { error: createError, sessionId: session.id, pair },
+          'Failed to create friction inject',
+        );
+        continue;
+      }
+
+      if (!this.io) {
+        const { io } = await import('../index.js');
+        this.io = io;
+      }
+
+      await publishInjectToSession(createdInject.id, session.id, session.trainer_id, this.io);
+
+      await supabaseAdmin.from('session_events').insert({
+        session_id: session.id,
+        event_type: 'friction_inject_fired',
+        description: `Friction inject: ${pair.acting} → ${pair.affected} (score ${pair.score})`,
+        actor_id: null,
+        metadata: {
+          acting_team: pair.acting,
+          affected_team: pair.affected,
+          score: pair.score,
+          inject_id: createdInject.id,
+        },
+      });
+
+      alreadyGenerated.push({ title: generatedInject.title, content: generatedInject.content });
+      generated++;
+
+      logger.info(
+        {
+          sessionId: session.id,
+          injectId: createdInject.id,
+          acting: pair.acting,
+          affected: pair.affected,
+          score: pair.score,
+        },
+        'Friction inject generated and published from impact matrix',
+      );
+    }
   }
 }
 
