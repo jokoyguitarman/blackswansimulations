@@ -161,14 +161,14 @@ function effectiveRobustnessBand(
  */
 async function teamsWithActionableIncidents(
   sessionId: string,
-  fiveMinutesAgo: string,
+  lookbackIso: string,
 ): Promise<Set<string>> {
   const { data: incidents } = await supabaseAdmin
     .from('incidents')
     .select('id, inject_id')
     .eq('session_id', sessionId)
     .eq('requires_response', true)
-    .gte('reported_at', fiveMinutesAgo);
+    .gte('reported_at', lookbackIso);
   if (!incidents?.length) return new Set();
   const injectIds = [
     ...new Set(
@@ -205,7 +205,7 @@ async function teamsWithActionableIncidents(
 export class AIInjectSchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
-  private readonly checkIntervalMs = 5 * 60 * 1000; // 5 minutes
+  private readonly checkIntervalMs = 10 * 60 * 1000; // 10 minutes
   private io: SocketServer | null = null;
 
   constructor(io?: SocketServer) {
@@ -213,7 +213,7 @@ export class AIInjectSchedulerService {
     logger.info(
       {
         intervalMs: this.checkIntervalMs,
-        intervalMinutes: 5,
+        intervalMinutes: 10,
       },
       'AIInjectSchedulerService initialized',
     );
@@ -234,13 +234,14 @@ export class AIInjectSchedulerService {
     }
 
     this.isRunning = true;
-    // Run immediately on start, then every 5 minutes
-    this.checkAndGenerateInjects();
+    // First evaluation after 10 minutes so teams have time to act before being judged
     this.intervalId = setInterval(() => {
       this.checkAndGenerateInjects();
     }, this.checkIntervalMs);
 
-    logger.info('AIInjectSchedulerService started (runs every 5 minutes)');
+    logger.info(
+      'AIInjectSchedulerService started (first run in 10 minutes, then every 10 minutes)',
+    );
   }
 
   /**
@@ -310,9 +311,9 @@ export class AIInjectSchedulerService {
     status: string;
     current_state: Record<string, unknown> | null;
   }): Promise<void> {
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
-    // Get all decisions made in the last 5 minutes
+    // Get all decisions made in the last 10 minutes
     const { data: recentDecisions, error: decisionsError } = await supabaseAdmin
       .from('decisions')
       .select(
@@ -320,7 +321,7 @@ export class AIInjectSchedulerService {
       )
       .eq('session_id', session.id)
       .eq('status', 'executed')
-      .gte('executed_at', fiveMinutesAgo)
+      .gte('executed_at', tenMinutesAgo)
       .order('executed_at', { ascending: false });
 
     if (decisionsError) {
@@ -351,7 +352,7 @@ export class AIInjectSchedulerService {
       .select('metadata, created_at')
       .eq('session_id', session.id)
       .eq('event_type', 'inject')
-      .gte('created_at', fiveMinutesAgo)
+      .gte('created_at', tenMinutesAgo)
       .order('created_at', { ascending: false });
 
     if (injectsError) {
@@ -898,15 +899,15 @@ export class AIInjectSchedulerService {
       .limit(1);
     const hasNotMetGates = (notMetGates?.length ?? 0) > 0;
 
-    // Teams that had actionable incidents (requires_response: true) in last 5 min – avoid penalizing when they had nothing to respond to
-    const teamsWithActionable = await teamsWithActionableIncidents(session.id, fiveMinutesAgo);
+    // Teams that had actionable incidents (requires_response: true) in last 10 min – avoid penalizing when they had nothing to respond to
+    const teamsWithActionable = await teamsWithActionableIncidents(session.id, tenMinutesAgo);
 
-    // Load unconsumed pathway outcome rows from the last 5 minutes (consumed rows were already published per-decision)
+    // Load unconsumed pathway outcome rows from the last 10 minutes (consumed rows were already published per-decision)
     const { data: pathwayOutcomesRows } = await supabaseAdmin
       .from('session_pathway_outcomes')
       .select('id, outcomes, trigger_inject_id, evaluated_at')
       .eq('session_id', session.id)
-      .gte('evaluated_at', fiveMinutesAgo)
+      .gte('evaluated_at', tenMinutesAgo)
       .is('consumed_at', null)
       .order('evaluated_at', { ascending: true });
 

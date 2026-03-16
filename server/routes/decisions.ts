@@ -10,7 +10,7 @@ import {
   updateStateOnDecisionExecution,
   updateTeamStateFromDecision,
 } from '../services/scenarioStateService.js';
-import { classifyDecision } from '../services/aiService.js';
+import { classifyDecision, shouldCancelScheduledInject } from '../services/aiService.js';
 import { evaluateAllObjectivesForSession } from '../services/objectiveTrackingService.js';
 // Gate evaluation imports removed — gates still evaluate on the scheduler for AAR,
 // but no longer drive player-facing inject publishing or objective skipping in the decision flow.
@@ -1125,17 +1125,82 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
         io
       ) {
         try {
-          const thirtySecAgo = new Date(Date.now() - 30 * 1000).toISOString();
-          const { data: recentFired } = await supabaseAdmin
-            .from('session_events')
-            .select('id')
-            .eq('session_id', decision.session_id)
-            .eq('event_type', 'quality_failure_inject_fired')
-            .gte('created_at', thirtySecAgo)
-            .filter('metadata->>team', 'eq', authorTeamNames[0])
-            .limit(1);
+          // --- Cancellation check: include ALL decisions (including the current one) ---
+          if (env.openAiApiKey && failureType !== 'rejected') {
+            const { data: allDecisionRows } = await supabaseAdmin
+              .from('decisions')
+              .select('title, description, type')
+              .eq('session_id', decision.session_id)
+              .eq('status', 'executed')
+              .order('executed_at', { ascending: true })
+              .limit(50);
+            const allDecisions = (allDecisionRows ?? []).map((d) => ({
+              title: (d as { title: string }).title ?? '',
+              description: (d as { description: string }).description ?? '',
+              type: (d as { type: string | null }).type,
+            }));
 
-          if (!recentFired || recentFired.length === 0) {
+            if (allDecisions.length > 0) {
+              await supabaseAdmin.from('session_events').insert({
+                session_id: decision.session_id,
+                event_type: 'ai_step_start',
+                description: `Checking if quality failure inject (${failureType}) can be cancelled for ${authorTeamNames[0]}`,
+                actor_id: null,
+                metadata: {
+                  step: 'quality_inject_cancellation',
+                  team: authorTeamNames[0],
+                  failure_type: failureType,
+                  decisions_checked: allDecisions.length,
+                },
+              });
+
+              try {
+                const cancelCheck = await shouldCancelScheduledInject(
+                  { title: failureContent.slice(0, 200), content: failureContent },
+                  allDecisions,
+                  env.openAiApiKey,
+                );
+
+                await supabaseAdmin.from('session_events').insert({
+                  session_id: decision.session_id,
+                  event_type: 'ai_step_end',
+                  description: cancelCheck.cancel
+                    ? `Quality inject cancelled for ${authorTeamNames[0]}: ${cancelCheck.cancel_reason ?? 'prior decisions addressed concern'}`
+                    : `Quality inject NOT cancelled for ${authorTeamNames[0]}: ${cancelCheck.cancel_reason ?? 'concern not addressed'}`,
+                  actor_id: null,
+                  metadata: {
+                    step: 'quality_inject_cancellation',
+                    team: authorTeamNames[0],
+                    cancel: cancelCheck.cancel,
+                    cancel_reason: cancelCheck.cancel_reason,
+                  },
+                });
+
+                if (cancelCheck.cancel) {
+                  logger.info(
+                    {
+                      decisionId: decision.id,
+                      team: authorTeamNames[0],
+                      failureType,
+                      cancel_reason: cancelCheck.cancel_reason,
+                    },
+                    'Quality failure inject cancelled — decisions addressed concern',
+                  );
+                  await updateTeamHeatMeter(decision.session_id, authorTeamNames[0], 'good');
+                  failureType = null;
+                  failureContent = '';
+                }
+              } catch (cancelErr) {
+                logger.warn(
+                  { err: cancelErr, decisionId: decision.id },
+                  'Quality failure cancellation check failed, proceeding with inject',
+                );
+              }
+            }
+          }
+
+          // --- Publish quality failure inject if not cancelled ---
+          if (failureType && failureContent) {
             const escalationIdx = Math.min(qualityFailureCount, 2);
             const injectSeverity: 'medium' | 'high' | 'critical' =
               failureType === 'rejected'
@@ -1231,62 +1296,6 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
           );
           if (!consulted) {
             noIntel = true;
-            // Count decisions made by this team to determine if nudge is warranted
-            const { data: teamDecisions } = await supabaseAdmin
-              .from('decisions')
-              .select('id')
-              .eq('session_id', decision.session_id)
-              .in('proposed_by', teamUserIds)
-              .eq('status', 'executed');
-            const decisionCount = teamDecisions?.length ?? 0;
-            if (decisionCount >= 2 && sessionScenarioId && sessionTrainerId && io) {
-              const { data: nudgeFired } = await supabaseAdmin
-                .from('session_events')
-                .select('id')
-                .eq('session_id', decision.session_id)
-                .eq('event_type', 'intel_nudge_fired')
-                .filter('metadata->>team', 'eq', authorTeamNames[0])
-                .limit(1);
-              if (!nudgeFired || nudgeFired.length === 0) {
-                const { data: nudgeInject } = await supabaseAdmin
-                  .from('scenario_injects')
-                  .insert({
-                    scenario_id: sessionScenarioId,
-                    type: 'field_update',
-                    title: `Intelligence reports not reviewed – ${authorTeamNames[0]} (${decision.id.slice(0, 8)})`,
-                    content:
-                      'Intelligence reports from the forward command post are available but your team has not reviewed them. Decision-making without available briefing materials increases operational risk. Recommend reviewing current intelligence before issuing further orders.',
-                    severity: 'medium',
-                    inject_scope: 'team_specific',
-                    target_teams: [authorTeamNames[0]],
-                    requires_response: false,
-                    requires_coordination: false,
-                    ai_generated: true,
-                    generation_source: 'specificity_feedback',
-                  })
-                  .select()
-                  .single();
-                if (nudgeInject) {
-                  await publishInjectToSession(
-                    nudgeInject.id,
-                    decision.session_id,
-                    sessionTrainerId,
-                    io,
-                  );
-                  await supabaseAdmin.from('session_events').insert({
-                    session_id: decision.session_id,
-                    event_type: 'intel_nudge_fired',
-                    description: `Intel nudge inject fired for ${authorTeamNames[0]}`,
-                    actor_id: null,
-                    metadata: { team: authorTeamNames[0] },
-                  });
-                  logger.info(
-                    { sessionId: decision.session_id, team: authorTeamNames[0] },
-                    'Intel nudge inject fired',
-                  );
-                }
-              }
-            }
           }
         } catch (intelErr) {
           logger.warn(
