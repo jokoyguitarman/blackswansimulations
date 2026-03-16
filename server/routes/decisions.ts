@@ -1399,6 +1399,10 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
             .limit(1);
 
           if (!recentSpecFired || recentSpecFired.length === 0) {
+            logger.info(
+              { decisionId: decision.id, team: authorTeamNames[0] },
+              'SPECIFICITY_CHECK: cooldown clear – proceeding to insert inject',
+            );
             const missingList = (envResult.missing_details ?? [])
               .map((d: string) => `- ${d}`)
               .join('\n');
@@ -1406,7 +1410,7 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
               ? `${envResult.feedback}\n\nMissing details:\n${missingList}`
               : envResult.feedback;
 
-            const { data: specInject } = await supabaseAdmin
+            const { data: specInject, error: specInsertErr } = await supabaseAdmin
               .from('scenario_injects')
               .insert({
                 scenario_id: sessionScenarioId,
@@ -1423,6 +1427,13 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
               })
               .select()
               .single();
+
+            if (specInsertErr) {
+              logger.warn(
+                { err: specInsertErr, decisionId: decision.id, team: authorTeamNames[0] },
+                'SPECIFICITY_CHECK: scenario_injects insert FAILED',
+              );
+            }
 
             if (specInject) {
               await publishInjectToSession(
@@ -1448,6 +1459,15 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
                 'Specificity feedback inject published',
               );
             }
+          } else {
+            logger.info(
+              {
+                decisionId: decision.id,
+                team: authorTeamNames[0],
+                recentSpecFiredCount: recentSpecFired?.length,
+              },
+              'SPECIFICITY_CHECK: cooldown ACTIVE – skipping inject',
+            );
           }
         } catch (specErr) {
           logger.warn(
