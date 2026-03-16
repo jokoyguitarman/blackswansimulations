@@ -484,6 +484,8 @@ export async function updateTeamStateFromDecision(
     if (!session) return;
     const currentState: Record<string, unknown> =
       (session.current_state as Record<string, unknown>) || {};
+    // Snapshot before modifications so we can diff later for safe merge
+    const originalSnapshot = JSON.parse(JSON.stringify(currentState)) as Record<string, unknown>;
     const scenarioId = options?.scenarioId ?? (session.scenario_id as string | undefined) ?? null;
 
     const title = options?.decisionTitle ?? '';
@@ -775,11 +777,34 @@ export async function updateTeamStateFromDecision(
       currentState.media_state = mediaState;
     }
 
-    const nextState = { ...currentState };
+    // Re-read latest state to avoid clobbering concurrent writes (e.g. inject state_effects)
+    const { data: freshRow } = await supabaseAdmin
+      .from('sessions')
+      .select('current_state')
+      .eq('id', sessionId)
+      .single();
+    const freshState = (freshRow?.current_state as Record<string, unknown>) ?? {};
+
+    // Merge only keys that this function actually changed
+    for (const key of Object.keys(currentState)) {
+      if (key.endsWith('_state')) {
+        const origSub = (originalSnapshot[key] as Record<string, unknown>) || {};
+        const modSub = (currentState[key] as Record<string, unknown>) || {};
+        const freshSub = (freshState[key] as Record<string, unknown>) || {};
+        for (const [k, v] of Object.entries(modSub)) {
+          if (origSub[k] !== v) {
+            freshSub[k] = v;
+          }
+        }
+        freshState[key] = freshSub;
+      } else if (JSON.stringify(originalSnapshot[key]) !== JSON.stringify(currentState[key])) {
+        freshState[key] = currentState[key];
+      }
+    }
 
     const { error } = await supabaseAdmin
       .from('sessions')
-      .update({ current_state: nextState })
+      .update({ current_state: freshState })
       .eq('id', sessionId);
     if (error) {
       logger.error({ error, sessionId }, 'Failed to update team state from decision');
@@ -787,7 +812,7 @@ export async function updateTeamStateFromDecision(
     }
     getWebSocketService().stateUpdated?.(sessionId, {
       type: 'state.updated',
-      state: nextState,
+      state: freshState,
       timestamp: new Date().toISOString(),
     });
     logger.debug({ sessionId, authorTeamNames }, 'Team state updated from decision');

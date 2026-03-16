@@ -29,6 +29,47 @@ import type { CounterDefinition } from '../counterDefinitions.js';
 const sessionsInProgress = new Set<string>();
 
 /**
+ * Re-read the latest state from DB and merge only the keys that the scheduler
+ * actually changed (diff between originalSnapshot and modifiedState).
+ * This prevents the scheduler from overwriting concurrent state changes
+ * (e.g. inject state_effects like assembly_north_destroyed, exits_congested).
+ */
+async function mergeCounterChanges(
+  sessionId: string,
+  originalSnapshot: Record<string, unknown>,
+  modifiedState: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const { data: freshRow } = await supabaseAdmin
+    .from('sessions')
+    .select('current_state')
+    .eq('id', sessionId)
+    .single();
+  const freshState = (freshRow?.current_state as Record<string, unknown>) || {};
+
+  // For top-level *_state objects: diff sub-keys and merge only changed ones
+  for (const key of Object.keys(modifiedState)) {
+    if (key.endsWith('_state')) {
+      const origSub = (originalSnapshot[key] as Record<string, unknown>) || {};
+      const modSub = (modifiedState[key] as Record<string, unknown>) || {};
+      const freshSub = (freshState[key] as Record<string, unknown>) || {};
+      for (const [k, v] of Object.entries(modSub)) {
+        if (origSub[k] !== v) {
+          freshSub[k] = v;
+        }
+      }
+      freshState[key] = freshSub;
+    } else {
+      // Non-state keys (_counter_ticks, _counter_definitions, managed_effects, etc.)
+      if (JSON.stringify(originalSnapshot[key]) !== JSON.stringify(modifiedState[key])) {
+        freshState[key] = modifiedState[key];
+      }
+    }
+  }
+
+  return freshState;
+}
+
+/**
  * Sum of impact scores where the affected team matches the given key (case-insensitive).
  * Used to penalize evacuation rate, triage band, and media sentiment when other teams hurt this one.
  */
@@ -483,15 +524,18 @@ export class InjectSchedulerService {
 
     if (stateChanged) {
       try {
+        // Re-read the latest state to avoid clobbering concurrent writes
+        // (e.g. inject state_effects like assembly_north_destroyed).
+        const mergedState = await mergeCounterChanges(session.id, currentState, nextState);
         await supabaseAdmin
           .from('sessions')
-          .update({ current_state: nextState })
+          .update({ current_state: mergedState })
           .eq('id', session.id);
         getWebSocketService().stateUpdated?.(session.id, {
-          state: nextState,
+          state: mergedState,
           timestamp: new Date().toISOString(),
         });
-        (session as { current_state?: Record<string, unknown> }).current_state = nextState;
+        (session as { current_state?: Record<string, unknown> }).current_state = mergedState;
       } catch (stateErr) {
         logger.error(
           { err: stateErr, sessionId: session.id },

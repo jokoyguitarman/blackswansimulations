@@ -367,7 +367,14 @@ export async function evaluateEnvironmentalManagementIntentAndUpdateState(
 
   if (conditionsAddressed.length === 0) return;
 
-  const nextState = applyConditionUpdates(currentState, conditionsAddressed);
+  // Re-read latest state to avoid clobbering concurrent writes (e.g. inject state_effects)
+  const { data: freshRow } = await supabaseAdmin
+    .from('sessions')
+    .select('current_state')
+    .eq('id', sessionId)
+    .single();
+  const freshState = (freshRow?.current_state as Record<string, unknown>) ?? currentState;
+  const nextState = applyConditionUpdates(freshState, conditionsAddressed);
 
   const { error: updateError } = await supabaseAdmin
     .from('sessions')
