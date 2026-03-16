@@ -535,7 +535,7 @@ export class InjectSchedulerService {
     const { data: injectsRaw, error: injectsError } = await supabaseAdmin
       .from('scenario_injects')
       .select(
-        'id, trigger_time_minutes, title, content, required_gate_id, required_gate_not_met_id',
+        'id, trigger_time_minutes, title, content, required_gate_id, required_gate_not_met_id, target_teams, inject_scope',
       )
       .eq('scenario_id', session.scenario_id)
       .not('trigger_time_minutes', 'is', null)
@@ -557,6 +557,8 @@ export class InjectSchedulerService {
       content?: string;
       required_gate_id?: string | null;
       required_gate_not_met_id?: string | null;
+      target_teams?: string[] | null;
+      inject_scope?: string | null;
     };
     const injects = (injectsRaw ?? []).filter((inj: InjectRow) => {
       if (inj.required_gate_id != null) {
@@ -712,106 +714,48 @@ export class InjectSchedulerService {
 
     // --- Time-based injects: publish and optionally run AI cancel for future injects ---
     if (injectsToPublish.length > 0) {
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      const { data: recentDecisions } = await supabaseAdmin
+      const { data: allDecisions } = await supabaseAdmin
         .from('decisions')
-        .select('id, title, description, type')
+        .select('id, title, description, type, proposed_by')
         .eq('session_id', session.id)
         .eq('status', 'executed')
-        .gte('executed_at', fiveMinutesAgo)
-        .order('executed_at', { ascending: false });
+        .order('executed_at', { ascending: false })
+        .limit(50);
 
-      const decisionsForAi = (recentDecisions || []).map((d) => ({
+      const allDecisionsForAi = (allDecisions || []).map((d) => ({
         title: d.title ?? '',
         description: d.description ?? '',
         type: d.type as string | null,
+        proposed_by: d.proposed_by as string | null,
       }));
 
-      // Check future (not-yet-due) injects: allow AI to cancel them now so they never publish
-      if (env.openAiApiKey && decisionsForAi.length > 0) {
-        const { data: futureInjects } = await supabaseAdmin
-          .from('scenario_injects')
-          .select('id, trigger_time_minutes, title, content')
-          .eq('scenario_id', session.scenario_id)
-          .not('trigger_time_minutes', 'is', null)
-          .gt('trigger_time_minutes', elapsedMinutes)
-          .order('trigger_time_minutes', { ascending: true });
-
-        const futureToEvaluate = (futureInjects || []).filter(
-          (inject) => !cancelledInjectIds.has(inject.id),
+      // Map user IDs to team names for filtering decisions by inject target teams
+      const { data: teamMappings } = await supabaseAdmin
+        .from('session_teams')
+        .select('user_id, team_name')
+        .eq('session_id', session.id);
+      const userIdToTeam = new Map<string, string>();
+      for (const tm of teamMappings ?? []) {
+        userIdToTeam.set(
+          (tm as { user_id: string }).user_id,
+          (tm as { team_name: string }).team_name,
         );
-        for (const inject of futureToEvaluate) {
-          try {
-            await supabaseAdmin.from('session_events').insert({
-              session_id: session.id,
-              event_type: 'ai_step_start',
-              description: `AI: Evaluating whether to cancel scheduled inject: ${inject.title ?? inject.id}`,
-              actor_id: null,
-              metadata: {
-                step: 'evaluating_inject_cancellation',
-                inject_title: inject.title ?? null,
-              },
-            });
-            const result = await shouldCancelScheduledInject(
-              {
-                title: inject.title ?? '',
-                content: (inject as { content?: string }).content ?? '',
-              },
-              decisionsForAi,
-              env.openAiApiKey,
-            );
-            await supabaseAdmin.from('session_events').insert({
-              session_id: session.id,
-              event_type: 'ai_step_end',
-              description: result.cancel
-                ? `AI: Cancelled scheduled inject: ${inject.title ?? inject.id}`
-                : `AI: Keeping scheduled inject: ${inject.title ?? inject.id}`,
-              actor_id: null,
-              metadata: {
-                step: 'evaluating_inject_cancellation',
-                cancel: result.cancel,
-                reason: result.reason ?? null,
-              },
-            });
-            if (result.cancel) {
-              await supabaseAdmin.from('session_events').insert({
-                session_id: session.id,
-                event_type: 'inject_cancelled',
-                description: `Inject cancelled (future): ${inject.title ?? inject.id} - ${result.reason ?? 'AI determined recent decisions made it obsolete'}`,
-                actor_id: null,
-                metadata: {
-                  inject_id: inject.id,
-                  reason: result.reason ?? null,
-                  cancelled_at: new Date().toISOString(),
-                  trigger_time_minutes: inject.trigger_time_minutes,
-                },
-              });
-              cancelledInjectIds.add(inject.id);
-              logger.info(
-                {
-                  sessionId: session.id,
-                  injectId: inject.id,
-                  injectTitle: inject.title,
-                  triggerTimeMinutes: inject.trigger_time_minutes,
-                  reason: result.reason,
-                },
-                'Future scheduled inject cancelled by AI (will not publish when due)',
-              );
-            }
-          } catch (cancelErr) {
-            logger.warn(
-              { error: cancelErr, sessionId: session.id, injectId: inject.id },
-              'AI cancellation check failed for future inject, will re-evaluate when due',
-            );
-          }
-        }
       }
 
       for (const inject of injectsToPublish) {
         try {
-          // AI cancellation check: should this scheduled inject be suppressed due to recent decisions?
+          // AI cancellation check: should this scheduled inject be suppressed due to session decisions?
           if (env.openAiApiKey) {
             try {
+              const targetTeams = (inject as InjectRow).target_teams as string[] | null;
+              const relevantDecisions =
+                !targetTeams || targetTeams.length === 0
+                  ? allDecisionsForAi
+                  : allDecisionsForAi.filter((d) => {
+                      const team = d.proposed_by ? userIdToTeam.get(d.proposed_by) : undefined;
+                      return team != null && targetTeams.includes(team);
+                    });
+
               await supabaseAdmin.from('session_events').insert({
                 session_id: session.id,
                 event_type: 'ai_step_start',
@@ -827,7 +771,7 @@ export class InjectSchedulerService {
                   title: inject.title ?? '',
                   content: (inject as { content?: string }).content ?? '',
                 },
-                decisionsForAi,
+                relevantDecisions,
                 env.openAiApiKey,
               );
               await supabaseAdmin.from('session_events').insert({

@@ -79,6 +79,10 @@ const SOURCE_BADGE: Record<string, { label: string; color: string }> = {
     label: 'FRICTION',
     color: 'border-orange-400/60 text-orange-400/80 bg-orange-400/10',
   },
+  specificity_feedback: {
+    label: 'SPECIFICITY',
+    color: 'border-yellow-400/60 text-yellow-400/80 bg-yellow-400/10',
+  },
 };
 
 export const IncidentCard = ({

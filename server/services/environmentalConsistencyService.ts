@@ -32,6 +32,12 @@ export interface EnvironmentalConsistencyResult {
   reason?: string;
   /** When the decision is route-related (evacuation, triage, transport): used for counter pressure in inject scheduler. */
   route_effect?: RouteEffect | null;
+  /** false when the decision lacks operational specificity (missing locations, ratios, protocols, timelines). */
+  specific?: boolean;
+  /** Short phrases describing what is missing (e.g. "exit names", "marshal-to-evacuee ratio"). */
+  missing_details?: string[];
+  /** AI-generated in-world pressure message telling the player what details are needed and why. */
+  feedback?: string;
 }
 
 /** Scenario location row (map pin) for building ground truth from same data the Insider uses. */
@@ -378,7 +384,10 @@ export async function evaluateDecisionAgainstEnvironment(
         ? ` The decision is in response to a specific incident. Only flag contradictions that are RELEVANT to that incident (e.g. for "Journalists at triage", do not penalize lack of exit/layout claims; for "Evacuation route blocked", focus on route/exit/capacity claims). Prefer consistent: true when the decision does not make layout-specific claims that contradict ground truth. When consistent is false, phrase the reason as: "Given the incident (X), the decision proposed Y which contradicts ground truth Z."`
         : '';
 
-    const systemPrompt = `You are an expert crisis management evaluator. Given a decision (title and description) and the scenario's ENVIRONMENT GROUND TRUTH, determine if the decision's details are consistent with that environment.${incidentBlock}
+    const systemPrompt = `You are an expert crisis management evaluator. Given a decision (title and description), the scenario's ENVIRONMENT GROUND TRUTH, and any team doctrines/sector standards, evaluate TWO dimensions: (A) ENVIRONMENTAL CONSISTENCY and (B) OPERATIONAL SPECIFICITY.${incidentBlock}
+
+=== (A) ENVIRONMENTAL CONSISTENCY ===
+Determine if the decision's details are consistent with the environment.
 
 Rules:
 - consistent: true if the decision does not contradict the ground truth and (when sector standards exist) either meets them or uses a pragmatic option that matches ground truth.
@@ -396,9 +405,36 @@ Sector standards (e.g. 125% assembly capacity, triage ratios) are best-practice 
 
 CRITICAL: If a location EXISTS in ground truth and the decision uses its CORRECT capacity but that capacity is insufficient for the need, that is ALWAYS "below_standard", NEVER "contradiction". "contradiction" is reserved for factual errors (wrong numbers, non-existent locations).
 
-Examples: (1) Decision says "Vacant Lot E standing capacity 500" and ground truth says Lot E (standing 500). Result: consistent true. (2) Decision says "Assembly North capacity 300" and ground truth says Assembly North capacity 200. Result: consistent false, mismatch_kind "contradiction". (3) Decision says "use Commercial Area for triage" and ground truth says Commercial Area capacity 80 but triage needs 100. Result: consistent false, mismatch_kind "below_standard", severity "medium".
+=== (B) OPERATIONAL SPECIFICITY ===
+Evaluate whether this decision is OPERATIONALLY SPECIFIC enough to be executed on the ground. A decision must name concrete details relevant to the team's role and the doctrines/standards provided.
 
-Return ONLY valid JSON: { "consistent": boolean, "mismatch_kind": "contradiction"|"below_standard" (if consistent is false), "severity": "low"|"medium"|"high" (if consistent is false), "error_type": "capacity"|"location"|"flow"|"other" (if consistent is false), "reason": "..." (if consistent is false), "route_effect": "clear"|"slow"|"congested"|null (when decision is route-related) }`;
+Specificity requirements by team role:
+- Evacuation: specific exit names/IDs, flow control method, marshal-to-evacuee ratios, staging/assembly areas, ground zero perimeter distance, phased evacuation order if applicable
+- Triage: named triage zones/areas, triage protocol (e.g. START, SALT, Triage Sieve), staff-to-patient ratios, casualty categorisation zones (Red/Yellow/Green), transport priorities and destination hospitals
+- Media: named spokesperson, statement content or key messages, press conference location or channel, information update frequency, misinformation rebuttal points
+
+If sector standards or team doctrines are provided, the decision MUST address the key thresholds and requirements they specify. A decision that gives correct general instructions but omits the operational specifics listed above is NOT specific.
+
+Set "specific": false when the decision gives general/vague instructions without naming the concrete details above. Set "specific": true when the decision names enough specifics to be executed without further clarification.
+
+When "specific" is false:
+- "missing_details": array of 2-5 short phrases naming what is missing (e.g. ["exit names and IDs", "marshal-to-evacuee ratio", "ground zero perimeter distance"])
+- "feedback": one paragraph (2-4 sentences) written as an in-world pressure message from the field team. Explain that the team on the ground cannot execute the order without the missing details. Be specific about WHAT is missing and WHY it matters operationally. Do NOT be generic — reference the actual scenario environment (e.g. "Which of the ${layout?.exits?.length ?? 'available'} exits should we direct evacuees to?" not just "Please specify exits").
+
+=== OUTPUT FORMAT ===
+
+Return ONLY valid JSON:
+{
+  "consistent": boolean,
+  "mismatch_kind": "contradiction"|"below_standard" (only if consistent is false),
+  "severity": "low"|"medium"|"high" (only if consistent is false),
+  "error_type": "capacity"|"location"|"flow"|"other" (only if consistent is false),
+  "reason": "..." (only if consistent is false),
+  "route_effect": "clear"|"slow"|"congested"|null (when decision is route-related),
+  "specific": boolean,
+  "missing_details": ["..."] (only if specific is false),
+  "feedback": "..." (only if specific is false)
+}`;
 
     const incidentUserBlock =
       incident?.title != null || incident?.description != null
@@ -414,9 +450,11 @@ ${sectorStandardsLine}${incidentUserBlock}DECISION:
 Title: ${decision.title}
 Description: ${decision.description}
 
-Only treat as contradiction if the decision explicitly states a specific fact that contradicts the ground truth for that place or route; otherwise prefer consistent or below_standard.
+Evaluate BOTH dimensions:
+(A) CONSISTENCY: Only treat as contradiction if the decision explicitly states a specific fact that contradicts the ground truth for that place or route; otherwise prefer consistent or below_standard.
+(B) SPECIFICITY: Does this decision contain enough operational detail (named locations, quantities, ratios, protocols, timelines) to be executed on-scene? If it gives general instructions without concrete specifics, set specific: false with missing_details and a detailed feedback paragraph.
 
-Is this decision consistent with the environment? Return JSON only.`;
+Return JSON only.`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -431,7 +469,7 @@ Is this decision consistent with the environment? Return JSON only.`;
           { role: 'user', content: userPrompt },
         ],
         temperature: 0.2,
-        max_tokens: 300,
+        max_tokens: 1024,
         response_format: { type: 'json_object' },
       }),
     });
@@ -455,6 +493,9 @@ Is this decision consistent with the environment? Return JSON only.`;
       error_type?: string;
       reason?: string;
       route_effect?: string | null;
+      specific?: boolean;
+      missing_details?: string[];
+      feedback?: string;
     };
 
     const routeEffect =
@@ -464,9 +505,24 @@ Is this decision consistent with the environment? Return JSON only.`;
         ? (parsed.route_effect as RouteEffect)
         : undefined;
 
+    const specific = parsed.specific !== false;
+    const missing_details = Array.isArray(parsed.missing_details)
+      ? (parsed.missing_details as unknown[]).filter((d): d is string => typeof d === 'string')
+      : [];
+    const feedback =
+      typeof parsed.feedback === 'string' && parsed.feedback.trim()
+        ? parsed.feedback.trim()
+        : undefined;
+
     const consistent = parsed.consistent === true;
     if (consistent) {
-      return { consistent: true, route_effect: routeEffect ?? null };
+      return {
+        consistent: true,
+        route_effect: routeEffect ?? null,
+        specific,
+        missing_details: specific ? undefined : missing_details,
+        feedback: specific ? undefined : feedback,
+      };
     }
 
     const rawKind = (typeof parsed.mismatch_kind === 'string' ? parsed.mismatch_kind : '')
@@ -498,6 +554,9 @@ Is this decision consistent with the environment? Return JSON only.`;
       mismatch_kind,
       reason,
       route_effect: routeEffect ?? null,
+      specific,
+      missing_details: specific ? undefined : missing_details,
+      feedback: specific ? undefined : feedback,
     };
   } catch (err) {
     logger.warn(

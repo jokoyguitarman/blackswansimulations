@@ -399,7 +399,7 @@ When cancel is false, reason should briefly state how the adversary adapts (for 
         ? recentDecisions
             .map((d, i) => `${i + 1}. [${d.type || 'unknown'}] ${d.title}\n   ${d.description}`)
             .join('\n\n')
-        : 'No decisions executed in the last 5 minutes.';
+        : 'No decisions executed during this session.';
 
     const userPrompt = `Scheduled inject that may be published:
 
@@ -409,7 +409,7 @@ Content:
 ${inject.content}
 
 ---
-Decisions made by players in the last 5 minutes:
+Decisions made by players during this session:
 
 ${decisionsText}
 

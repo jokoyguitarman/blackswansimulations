@@ -1366,6 +1366,85 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
           .eq('id', decision.id);
       }
 
+      // Specificity feedback: fire a pressure inject when the decision lacks operational detail
+      if (
+        envResult.specific === false &&
+        envResult.feedback &&
+        authorTeamNames.length > 0 &&
+        sessionScenarioId &&
+        sessionTrainerId &&
+        io
+      ) {
+        try {
+          const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+          const { data: recentSpecFired } = await supabaseAdmin
+            .from('session_events')
+            .select('id')
+            .eq('session_id', decision.session_id)
+            .eq('event_type', 'specificity_inject_fired')
+            .gte('created_at', fiveMinAgo)
+            .filter('metadata->>team', 'eq', authorTeamNames[0])
+            .limit(1);
+
+          if (!recentSpecFired || recentSpecFired.length === 0) {
+            const missingList = (envResult.missing_details ?? [])
+              .map((d: string) => `- ${d}`)
+              .join('\n');
+            const injectContent = missingList
+              ? `${envResult.feedback}\n\nMissing details:\n${missingList}`
+              : envResult.feedback;
+
+            const { data: specInject } = await supabaseAdmin
+              .from('scenario_injects')
+              .insert({
+                scenario_id: sessionScenarioId,
+                type: 'field_update',
+                title: 'Insufficient operational detail in your plan',
+                content: injectContent,
+                severity: 'high',
+                inject_scope: 'team_specific',
+                target_teams: [authorTeamNames[0]],
+                requires_response: true,
+                requires_coordination: false,
+                ai_generated: true,
+                generation_source: 'specificity_feedback',
+              })
+              .select()
+              .single();
+
+            if (specInject) {
+              await publishInjectToSession(
+                specInject.id,
+                decision.session_id,
+                sessionTrainerId,
+                io,
+              );
+              await supabaseAdmin.from('session_events').insert({
+                session_id: decision.session_id,
+                event_type: 'specificity_inject_fired',
+                description: `Specificity feedback inject fired for ${authorTeamNames[0]}`,
+                actor_id: null,
+                metadata: { team: authorTeamNames[0], decision_id: decision.id },
+              });
+              logger.info(
+                {
+                  sessionId: decision.session_id,
+                  decisionId: decision.id,
+                  team: authorTeamNames[0],
+                  missing: envResult.missing_details,
+                },
+                'Specificity feedback inject published',
+              );
+            }
+          }
+        } catch (specErr) {
+          logger.warn(
+            { err: specErr, sessionId: decision.session_id, decisionId: decision.id },
+            'Failed to fire specificity feedback inject',
+          );
+        }
+      }
+
       const isContradiction = !envResult.consistent && envResult.mismatch_kind !== 'below_standard';
       if (!envResult.consistent && authorTeamNames.length > 0 && sessionScenarioId) {
         const { data: scenarioObjectives } = await supabaseAdmin
