@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../../lib/api';
+import { VoiceMicButton } from '../VoiceMicButton';
 
 interface CreateDecisionFormProps {
   sessionId: string;
@@ -73,18 +74,25 @@ export const CreateDecisionForm = ({
             <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
               [DESCRIPTION]
             </label>
-            <textarea
-              required
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-4 py-3 military-input terminal-text"
-              rows={4}
-              placeholder={
-                isPreemptive
-                  ? 'Describe your pre-emptive decision, protocol, or resource allocation...'
-                  : 'Detailed decision description...'
-              }
-            />
+            <div className="relative">
+              <textarea
+                required
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full px-4 py-3 pr-12 military-input terminal-text"
+                rows={4}
+                placeholder={
+                  isPreemptive
+                    ? 'Describe your pre-emptive decision, protocol, or resource allocation...'
+                    : 'Type or speak your decision...'
+                }
+              />
+              <VoiceMicButton
+                onTranscript={(text) => setDescription((prev) => (prev ? `${prev} ${text}` : text))}
+                disabled={loading}
+                className="absolute bottom-2 right-2"
+              />
+            </div>
           </div>
 
           <div className="flex gap-4 pt-4 border-t border-robotic-yellow/30">

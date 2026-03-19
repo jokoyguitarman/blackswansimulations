@@ -4,6 +4,7 @@ import { api } from '../../lib/api';
 import { useWebSocket, type WebSocketEvent } from '../../hooks/useWebSocket';
 import { useRealtime } from '../../hooks/useRealtime';
 import { supabase } from '../../lib/supabase';
+import { VoiceMicButton } from '../VoiceMicButton';
 
 interface Channel {
   id: string;
@@ -1697,8 +1698,11 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
             type="text"
             value={messageInput}
             onChange={(e) => setMessageInput(e.target.value)}
-            placeholder="Type a message..."
+            placeholder="Type or speak a message..."
             className="flex-1 px-4 py-2 military-input terminal-text text-sm"
+          />
+          <VoiceMicButton
+            onTranscript={(text) => setMessageInput((prev) => (prev ? `${prev} ${text}` : text))}
           />
           <button type="submit" className="military-button px-6 py-2">
             [SEND]
