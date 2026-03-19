@@ -61,13 +61,13 @@ export function useVoiceInput() {
           } = await supabase.auth.getSession();
           if (!session) throw new Error('Not authenticated');
 
-          const formData = new FormData();
-          formData.append('audio', blob, 'recording.webm');
-
           const response = await fetch(apiUrl('/api/ai/transcribe'), {
             method: 'POST',
-            headers: { Authorization: `Bearer ${session.access_token}` },
-            body: formData,
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+              'Content-Type': mimeType,
+            },
+            body: blob,
           });
 
           if (!response.ok) {

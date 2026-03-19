@@ -1,6 +1,5 @@
-import { Router } from 'express';
+import { Router, raw } from 'express';
 import { z } from 'zod';
-import multer from 'multer';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
@@ -8,8 +7,6 @@ import { generateScenario } from '../services/aiService.js';
 import { env } from '../env.js';
 
 const router = Router();
-
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const generateScenarioSchema = z.object({
   body: z.object({
@@ -86,24 +83,32 @@ router.post(
 );
 
 // Transcribe audio to text using OpenAI Whisper
+// Accepts raw audio body (Content-Type: audio/*) — no multipart parsing needed
 router.post(
   '/transcribe',
   requireAuth,
-  upload.single('audio'),
+  raw({ type: ['audio/*', 'application/octet-stream'], limit: '10mb' }),
   async (req: AuthenticatedRequest, res) => {
     try {
       if (!env.openAiApiKey) {
         return res.status(500).json({ error: 'OpenAI API key not configured' });
       }
 
-      const file = req.file;
-      if (!file) {
-        return res.status(400).json({ error: 'No audio file provided' });
+      const audioBuffer = req.body as Buffer;
+      if (!audioBuffer || !Buffer.isBuffer(audioBuffer) || audioBuffer.length < 100) {
+        return res.status(400).json({ error: 'No audio data provided' });
       }
 
+      const contentType = req.headers['content-type'] || 'audio/webm';
+      const ext = contentType.includes('wav')
+        ? 'wav'
+        : contentType.includes('mp4')
+          ? 'mp4'
+          : 'webm';
+
       const formData = new FormData();
-      const blob = new Blob([file.buffer], { type: file.mimetype || 'audio/webm' });
-      formData.append('file', blob, file.originalname || 'audio.webm');
+      const blob = new Blob([audioBuffer as unknown as BlobPart], { type: contentType });
+      formData.append('file', blob, `recording.${ext}`);
       formData.append('model', 'whisper-1');
       formData.append('language', 'en');
 
