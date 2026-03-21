@@ -435,8 +435,11 @@ export const GoogleMap3DView = ({
 
   // ---------- marker rendering ----------
 
+  // TODO: Re-enable markers once Marker3DInteractiveElement content type issue is resolved.
+  // The 3D marker API only accepts <img>/<svg>/PinElement inside <template>, not arbitrary HTML.
   useEffect(() => {
     if (!mapLoaded || !mapRef.current || !maps3dLibRef.current) return;
+    return; // Skip marker rendering for now
 
     markersRef.current.forEach((m) => {
       try {
