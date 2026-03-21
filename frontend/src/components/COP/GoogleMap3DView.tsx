@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { Loader } from '@googlemaps/js-api-loader';
+import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { api } from '../../lib/api';
 
@@ -209,20 +209,19 @@ function zoomToRange(zoom: number): number {
   return 35_000_000 / Math.pow(2, zoom);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let maps3dPromise: Promise<any> | null = null;
+let optionsSet = false;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function loadMaps3DLibrary(): Promise<any> {
-  if (maps3dPromise) return maps3dPromise;
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   if (!apiKey) return Promise.reject(new Error('VITE_GOOGLE_MAPS_API_KEY not set'));
 
-  const loader = new Loader({ apiKey, version: 'alpha' });
-  // Type defs may lag behind runtime; importLibrary exists at runtime
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  maps3dPromise = (loader as any).importLibrary('maps3d') as Promise<any>;
-  return maps3dPromise!;
+  if (!optionsSet) {
+    setOptions({ key: apiKey, v: 'alpha' });
+    optionsSet = true;
+  }
+
+  return importLibrary('maps3d');
 }
 
 export interface GoogleMap3DViewProps {
