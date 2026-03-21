@@ -41,6 +41,18 @@ INJECT_SCHEDULER_INTERVAL_MS=30000
 SESSION_SECRET=change-this-to-a-secure-random-string
 ```
 
+Also create a `frontend/.env.local` file with the following frontend variables:
+
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key-here
+VITE_API_URL=http://localhost:3001
+
+# Google Maps 3D (Optional - enables 3D photorealistic map alongside OSM)
+# Requires Maps JavaScript API + Map Tiles API enabled in Google Cloud Console
+VITE_GOOGLE_MAPS_API_KEY=your-google-maps-api-key-here
+```
+
 ## How to Get Credentials
 
 ### Supabase

@@ -14,6 +14,7 @@ import { SessionLobby } from '../components/Session/SessionLobby';
 import { NotificationBell } from '../components/Notifications/NotificationBell';
 import { IncidentsPanel } from '../components/Incidents/IncidentsPanel';
 import { MapView } from '../components/COP/MapView';
+import { GoogleMap3DView } from '../components/COP/GoogleMap3DView';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { type WebSocketEvent } from '../lib/websocketClient';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
@@ -157,6 +158,9 @@ export const SessionView = () => {
   const [showMapModule, setShowMapModule] = useState(true);
   const [mapModuleReady, setMapModuleReady] = useState(false);
   const [mapHasBeenOpened, setMapHasBeenOpened] = useState(false);
+  const [mapProvider, setMapProvider] = useState<'osm' | 'google3d'>(
+    import.meta.env.VITE_GOOGLE_MAPS_API_KEY ? 'google3d' : 'osm',
+  );
   const [locationsRefreshTrigger, setLocationsRefreshTrigger] = useState(0);
   const sessionContentRef = useRef<HTMLDivElement | null>(null);
   const [_incidents, setIncidents] = useState<
@@ -1031,26 +1035,75 @@ export const SessionView = () => {
           <div className="military-border p-6 bg-robotic-gray-300 flex flex-col h-[700px]">
             <div className="flex justify-between items-center mb-3 flex-shrink-0">
               <h3 className="text-lg terminal-text uppercase">[MAP]</h3>
-              <button
-                onClick={() => {
-                  sessionContentRef.current?.focus({ preventScroll: true });
-                  setShowMapModule(false);
-                  if (window.location.hash === '#show-map') {
-                    window.history.replaceState(
-                      null,
-                      '',
-                      window.location.pathname + window.location.search,
-                    );
-                  }
-                }}
-                className="px-3 py-1 text-xs terminal-text uppercase border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
-              >
-                [HIDE MAP]
-              </button>
+              <div className="flex items-center gap-2">
+                {import.meta.env.VITE_GOOGLE_MAPS_API_KEY && (
+                  <div className="flex border border-robotic-yellow/50 rounded overflow-hidden">
+                    <button
+                      onClick={() => setMapProvider('osm')}
+                      className={`px-3 py-1 text-xs terminal-text uppercase ${
+                        mapProvider === 'osm'
+                          ? 'bg-robotic-yellow/20 text-robotic-yellow'
+                          : 'text-robotic-yellow/50 hover:bg-robotic-yellow/10'
+                      }`}
+                    >
+                      2D
+                    </button>
+                    <button
+                      onClick={() => setMapProvider('google3d')}
+                      className={`px-3 py-1 text-xs terminal-text uppercase ${
+                        mapProvider === 'google3d'
+                          ? 'bg-robotic-yellow/20 text-robotic-yellow'
+                          : 'text-robotic-yellow/50 hover:bg-robotic-yellow/10'
+                      }`}
+                    >
+                      3D
+                    </button>
+                  </div>
+                )}
+                <button
+                  onClick={() => {
+                    sessionContentRef.current?.focus({ preventScroll: true });
+                    setShowMapModule(false);
+                    if (window.location.hash === '#show-map') {
+                      window.history.replaceState(
+                        null,
+                        '',
+                        window.location.pathname + window.location.search,
+                      );
+                    }
+                  }}
+                  className="px-3 py-1 text-xs terminal-text uppercase border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
+                >
+                  [HIDE MAP]
+                </button>
+              </div>
             </div>
             <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden h-[620px]">
-              {mapModuleReady && mapHasBeenOpened && (
+              {mapModuleReady && mapHasBeenOpened && mapProvider === 'osm' && (
                 <MapView
+                  sessionId={id}
+                  incidents={[]}
+                  resources={[]}
+                  isVisible={showMapModule}
+                  fillHeight
+                  locationsRefreshTrigger={locationsRefreshTrigger}
+                  currentState={mergeInjectEffects(
+                    (session?.current_state as Record<string, unknown>) ?? {},
+                    session?.inject_state_effects,
+                  )}
+                  initialCenter={
+                    session?.scenarios?.center_lat != null && session?.scenarios?.center_lng != null
+                      ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
+                          number,
+                          number,
+                        ])
+                      : [1.3521, 103.8198]
+                  }
+                  initialZoom={16}
+                />
+              )}
+              {mapModuleReady && mapHasBeenOpened && mapProvider === 'google3d' && (
+                <GoogleMap3DView
                   sessionId={id}
                   incidents={[]}
                   resources={[]}
@@ -1310,31 +1363,82 @@ export const SessionView = () => {
                   <h3 className="text-lg terminal-text uppercase">
                     [TRAINER MAP] All markings and pins
                   </h3>
+                  {import.meta.env.VITE_GOOGLE_MAPS_API_KEY && (
+                    <div className="flex border border-robotic-yellow/50 rounded overflow-hidden">
+                      <button
+                        onClick={() => setMapProvider('osm')}
+                        className={`px-3 py-1 text-xs terminal-text uppercase ${
+                          mapProvider === 'osm'
+                            ? 'bg-robotic-yellow/20 text-robotic-yellow'
+                            : 'text-robotic-yellow/50 hover:bg-robotic-yellow/10'
+                        }`}
+                      >
+                        2D
+                      </button>
+                      <button
+                        onClick={() => setMapProvider('google3d')}
+                        className={`px-3 py-1 text-xs terminal-text uppercase ${
+                          mapProvider === 'google3d'
+                            ? 'bg-robotic-yellow/20 text-robotic-yellow'
+                            : 'text-robotic-yellow/50 hover:bg-robotic-yellow/10'
+                        }`}
+                      >
+                        3D
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden h-[620px]">
-                  <MapView
-                    sessionId={id}
-                    incidents={[]}
-                    resources={[]}
-                    isVisible={true}
-                    fillHeight
-                    showAllPins
-                    locationsRefreshTrigger={locationsRefreshTrigger}
-                    currentState={mergeInjectEffects(
-                      (session?.current_state as Record<string, unknown>) ?? {},
-                      session?.inject_state_effects,
-                    )}
-                    initialCenter={
-                      session?.scenarios?.center_lat != null &&
-                      session?.scenarios?.center_lng != null
-                        ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
-                            number,
-                            number,
-                          ])
-                        : [1.3521, 103.8198]
-                    }
-                    initialZoom={16}
-                  />
+                  {mapProvider === 'osm' && (
+                    <MapView
+                      sessionId={id}
+                      incidents={[]}
+                      resources={[]}
+                      isVisible={true}
+                      fillHeight
+                      showAllPins
+                      locationsRefreshTrigger={locationsRefreshTrigger}
+                      currentState={mergeInjectEffects(
+                        (session?.current_state as Record<string, unknown>) ?? {},
+                        session?.inject_state_effects,
+                      )}
+                      initialCenter={
+                        session?.scenarios?.center_lat != null &&
+                        session?.scenarios?.center_lng != null
+                          ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
+                              number,
+                              number,
+                            ])
+                          : [1.3521, 103.8198]
+                      }
+                      initialZoom={16}
+                    />
+                  )}
+                  {mapProvider === 'google3d' && (
+                    <GoogleMap3DView
+                      sessionId={id}
+                      incidents={[]}
+                      resources={[]}
+                      isVisible={true}
+                      fillHeight
+                      showAllPins
+                      locationsRefreshTrigger={locationsRefreshTrigger}
+                      currentState={mergeInjectEffects(
+                        (session?.current_state as Record<string, unknown>) ?? {},
+                        session?.inject_state_effects,
+                      )}
+                      initialCenter={
+                        session?.scenarios?.center_lat != null &&
+                        session?.scenarios?.center_lng != null
+                          ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
+                              number,
+                              number,
+                            ])
+                          : [1.3521, 103.8198]
+                      }
+                      initialZoom={16}
+                    />
+                  )}
                 </div>
               </div>
 
