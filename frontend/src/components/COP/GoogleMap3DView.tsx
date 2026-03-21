@@ -217,11 +217,21 @@ function loadMaps3DLibrary(): Promise<any> {
   if (!apiKey) return Promise.reject(new Error('VITE_GOOGLE_MAPS_API_KEY not set'));
 
   if (!optionsSet) {
-    setOptions({ key: apiKey, v: 'beta' });
+    setOptions({ key: apiKey, v: 'alpha' });
     optionsSet = true;
   }
 
-  return importLibrary('maps3d');
+  console.log('[GoogleMap3D] Loading maps3d library...');
+  const libraryPromise = importLibrary('maps3d');
+
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Google Maps 3D library load timed out after 15s')), 15000),
+  );
+
+  return Promise.race([libraryPromise, timeout]).then((result) => {
+    console.log('[GoogleMap3D] maps3d library loaded successfully');
+    return result;
+  });
 }
 
 export interface GoogleMap3DViewProps {
@@ -379,14 +389,24 @@ export const GoogleMap3DView = ({
 
     (async () => {
       try {
+        console.log('[GoogleMap3D] Init starting for session', sessionId);
         const maps3d = await loadMaps3DLibrary();
-        if (!mounted || !containerRef.current) return;
+        if (!mounted) {
+          console.log('[GoogleMap3D] Aborted: component unmounted during load');
+          return;
+        }
+        if (!containerRef.current) {
+          console.log('[GoogleMap3D] Aborted: container ref is null');
+          return;
+        }
 
         maps3dLibRef.current = maps3d;
+        console.log('[GoogleMap3D] Library keys:', Object.keys(maps3d));
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { Map3DElement } = maps3d as { Map3DElement: any; [k: string]: any };
         const [lat, lng] = normalizeCenter(initialCenter);
+        console.log('[GoogleMap3D] Creating Map3DElement at', lat, lng);
 
         const map = new Map3DElement();
         map.center = { lat, lng, altitude: 0 };
@@ -402,7 +422,9 @@ export const GoogleMap3DView = ({
         containerRef.current.appendChild(map);
         mapRef.current = map;
         setMapLoaded(true);
+        console.log('[GoogleMap3D] Map element appended, mapLoaded=true');
       } catch (err: unknown) {
+        console.error('[GoogleMap3D] Init failed:', err);
         if (mounted) {
           const msg = err instanceof Error ? err.message : 'Failed to load Google Maps 3D';
           setLoadError(msg);
