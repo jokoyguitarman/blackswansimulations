@@ -217,7 +217,7 @@ function loadMaps3DLibrary(): Promise<any> {
   if (!apiKey) return Promise.reject(new Error('VITE_GOOGLE_MAPS_API_KEY not set'));
 
   if (!optionsSet) {
-    setOptions({ key: apiKey, v: 'alpha' });
+    setOptions({ key: apiKey });
     optionsSet = true;
   }
 
