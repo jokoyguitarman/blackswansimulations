@@ -409,6 +409,7 @@ export const GoogleMap3DView = ({
         console.log('[GoogleMap3D] Creating Map3DElement at', lat, lng);
 
         const map = new Map3DElement();
+        map.mode = 'HYBRID';
         map.center = { lat, lng, altitude: 0 };
         map.range = zoomToRange(initialZoom);
         map.tilt = 55;
