@@ -1192,12 +1192,13 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
     }
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSendMessage = async (e?: React.FormEvent, directMessage?: string) => {
+    e?.preventDefault();
     const channelId = selectedChannel || selectedDM;
-    if (!channelId || !messageInput.trim()) return;
+    const raw = directMessage ?? messageInput;
+    if (!channelId || !raw.trim()) return;
 
-    const messageContent = messageInput.trim();
+    const messageContent = raw.trim();
     setMessageInput('');
 
     // Insider virtual DM: call insider API and show reply in local state
@@ -1693,7 +1694,7 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
 
       {/* Message Input */}
       {currentChannelId && (
-        <form onSubmit={handleSendMessage} className="flex gap-2">
+        <form onSubmit={(e) => handleSendMessage(e)} className="flex gap-2">
           <input
             type="text"
             value={messageInput}
@@ -1701,9 +1702,7 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
             placeholder="Type or speak a message..."
             className="flex-1 px-4 py-2 military-input terminal-text text-sm"
           />
-          <VoiceMicButton
-            onTranscript={(text) => setMessageInput((prev) => (prev ? `${prev} ${text}` : text))}
-          />
+          <VoiceMicButton autoSend onTranscript={(text) => handleSendMessage(undefined, text)} />
           <button type="submit" className="military-button px-6 py-2">
             [SEND]
           </button>

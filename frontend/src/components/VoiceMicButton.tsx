@@ -5,9 +5,16 @@ interface VoiceMicButtonProps {
   onTranscript: (text: string) => void;
   disabled?: boolean;
   className?: string;
+  /** When true, calls onTranscript immediately after transcription (no review step). */
+  autoSend?: boolean;
 }
 
-export const VoiceMicButton = ({ onTranscript, disabled, className = '' }: VoiceMicButtonProps) => {
+export const VoiceMicButton = ({
+  onTranscript,
+  disabled,
+  className = '',
+  autoSend,
+}: VoiceMicButtonProps) => {
   const { isRecording, isTranscribing, error, startRecording, stopRecording } = useVoiceInput();
   const [showError, setShowError] = useState(false);
 
@@ -36,7 +43,7 @@ export const VoiceMicButton = ({ onTranscript, disabled, className = '' }: Voice
   const title = isTranscribing
     ? 'Transcribing...'
     : isRecording
-      ? 'Click to stop recording'
+      ? `Release to ${autoSend ? 'send' : 'stop'}`
       : 'Click to speak';
 
   return (
@@ -65,9 +72,13 @@ export const VoiceMicButton = ({ onTranscript, disabled, className = '' }: Voice
           </svg>
         ) : (
           <span className="relative">
+            {/* Walkie-talkie icon */}
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
-              <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+              <rect x="7" y="6" width="10" height="14" rx="2" />
+              <rect x="9" y="8" width="6" height="4" rx="1" opacity="0.4" />
+              <circle cx="12" cy="16" r="1.5" opacity="0.6" />
+              <rect x="10" y="2" width="4" height="5" rx="1" />
+              <rect x="11" y="0" width="2" height="3" />
             </svg>
             {isRecording && (
               <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
