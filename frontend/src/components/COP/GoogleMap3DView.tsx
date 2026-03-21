@@ -217,7 +217,7 @@ function loadMaps3DLibrary(): Promise<any> {
   if (!apiKey) return Promise.reject(new Error('VITE_GOOGLE_MAPS_API_KEY not set'));
 
   if (!optionsSet) {
-    setOptions({ key: apiKey, v: 'alpha' });
+    setOptions({ key: apiKey, v: 'beta' });
     optionsSet = true;
   }
 
@@ -486,7 +486,9 @@ export const GoogleMap3DView = ({
 
       wrapper.appendChild(circle);
       wrapper.appendChild(label);
-      marker.append(wrapper);
+      const template = document.createElement('template');
+      template.content.appendChild(wrapper);
+      marker.append(template);
 
       if (hasClickSupport) {
         marker.addEventListener('gmp-click', () => setSelectedPin(loc));
@@ -530,7 +532,9 @@ export const GoogleMap3DView = ({
 
       wrapper.appendChild(circle);
       wrapper.appendChild(label);
-      marker.append(wrapper);
+      const template = document.createElement('template');
+      template.content.appendChild(wrapper);
+      marker.append(template);
 
       if (hasClickSupport) {
         marker.addEventListener('gmp-click', () => onIncidentClick?.(incident));
@@ -571,7 +575,9 @@ export const GoogleMap3DView = ({
 
       wrapper.appendChild(circle);
       wrapper.appendChild(label);
-      marker.append(wrapper);
+      const template = document.createElement('template');
+      template.content.appendChild(wrapper);
+      marker.append(template);
 
       mapRef.current.append(marker);
       markersRef.current.push(marker);
