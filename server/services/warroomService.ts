@@ -12,6 +12,7 @@ import {
   fetchOsmVicinityByCoordinates,
   fetchOsmOpenSpaces,
   fetchVenueBuilding,
+  fetchRouteGeometries,
 } from './osmVicinityService.js';
 import {
   parseFreeTextPrompt,
@@ -251,10 +252,14 @@ export async function generateAndPersistWarroomScenario(
   let osmVicinity = undefined;
   let osmOpenSpaces: import('./osmVicinityService.js').OsmOpenSpace[] | undefined;
   let osmBuildings: import('./osmVicinityService.js').OsmBuilding[] | undefined;
+  let osmRouteGeometries: import('./osmVicinityService.js').OsmRouteGeometry[] | undefined;
   if (geocodeResult) {
-    onProgress?.('osm', 'Fetching nearby facilities, open spaces, and building outlines...');
+    onProgress?.(
+      'osm',
+      'Fetching nearby facilities, open spaces, building outlines, and route geometries...',
+    );
     try {
-      const [vicinity, spaces, buildings] = await Promise.all([
+      const [vicinity, spaces, buildings, routeGeoms] = await Promise.all([
         fetchOsmVicinityByCoordinates(geocodeResult.lat, geocodeResult.lng, 10000),
         fetchOsmOpenSpaces(geocodeResult.lat, geocodeResult.lng, 1500).catch((err) => {
           logger.warn({ err }, 'OSM open spaces fetch failed; continuing without');
@@ -264,10 +269,15 @@ export async function generateAndPersistWarroomScenario(
           logger.warn({ err }, 'OSM venue building fetch failed; continuing without');
           return [] as import('./osmVicinityService.js').OsmBuilding[];
         }),
+        fetchRouteGeometries(geocodeResult.lat, geocodeResult.lng, 2000).catch((err) => {
+          logger.warn({ err }, 'OSM route geometries fetch failed; continuing without');
+          return [] as import('./osmVicinityService.js').OsmRouteGeometry[];
+        }),
       ]);
       osmVicinity = vicinity;
       osmOpenSpaces = spaces.length > 0 ? spaces : undefined;
       osmBuildings = buildings.length > 0 ? buildings : undefined;
+      osmRouteGeometries = routeGeoms.length > 0 ? routeGeoms : undefined;
     } catch (osmErr) {
       logger.warn(
         { err: osmErr, location: parsed.location },
@@ -362,6 +372,7 @@ export async function generateAndPersistWarroomScenario(
       osm_vicinity: osmVicinity,
       osmOpenSpaces,
       osmBuildings,
+      osmRouteGeometries,
       geocode: geocodeResult
         ? {
             lat: geocodeResult.lat,

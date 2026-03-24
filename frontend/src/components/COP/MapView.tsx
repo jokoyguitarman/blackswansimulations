@@ -6,6 +6,17 @@ import { IncidentMarker } from './IncidentMarker';
 import { ResourceMarker } from './ResourceMarker';
 import { EvacuationZone } from './EvacuationZone';
 import { ScenarioLocationMarker, type ScenarioLocationPin } from './ScenarioLocationMarker';
+import { RoutePolyline, type RouteData } from './RoutePolyline';
+import { WindIndicator, type WindData } from './WindIndicator';
+import { BlastZoneOverlay } from './BlastZoneOverlay';
+import { CrowdDensityOverlay, type CrowdArea } from './CrowdDensityOverlay';
+import { AssetPalette, type DraggableAssetDef } from './AssetPalette';
+import { PlacedAssetMarker, type PlacedAsset } from './PlacedAssetMarker';
+import { MapDropHandler } from './MapDropHandler';
+import { HazardMarker, type HazardData } from './HazardMarker';
+import { HazardAssessmentModal } from './HazardAssessmentModal';
+import { FloorSelector, type FloorPlan } from './FloorSelector';
+import { FloorPlanOverlay } from './FloorPlanOverlay';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { api } from '../../lib/api';
 import type { LatLngExpression } from 'leaflet';
@@ -128,6 +139,10 @@ interface MapViewProps {
   showAllPins?: boolean;
   /** Live session current_state — used to conditionally show/hide pins with visible_after_state_key. */
   currentState?: Record<string, unknown>;
+  /** Draggable asset definitions for the player's team (Phase 3). */
+  draggableAssets?: DraggableAssetDef[];
+  /** Player's team name for placement ownership. */
+  teamName?: string;
 }
 
 /**
@@ -401,6 +416,8 @@ export const MapView = ({
   locationsRefreshTrigger = 0,
   showAllPins = false,
   currentState,
+  draggableAssets = [],
+  teamName,
 }: MapViewProps) => {
   const mapDisabledByEnv = import.meta.env.VITE_DISABLE_MAP === 'true';
   const isMapDisabled = disabled || mapDisabledByEnv;
@@ -409,9 +426,15 @@ export const MapView = ({
   const [scenarioLocations, setScenarioLocations] = useState<ScenarioLocationPin[]>([]);
   const [mapRevealedCategories, setMapRevealedCategories] = useState<string[]>([]);
   const [environmentalState, setEnvironmentalState] = useState<{
-    routes?: Array<{ label?: string; managed?: boolean }>;
-    areas?: unknown[];
+    routes?: RouteData[];
+    areas?: CrowdArea[];
+    wind?: WindData;
   } | null>(null);
+  const [placedAssets, setPlacedAssets] = useState<PlacedAsset[]>([]);
+  const [hazards, setHazards] = useState<HazardData[]>([]);
+  const [selectedHazard, setSelectedHazard] = useState<HazardData | null>(null);
+  const [floorPlans, setFloorPlans] = useState<FloorPlan[]>([]);
+  const [activeFloor, setActiveFloor] = useState('G');
   const [isContainerReady, setIsContainerReady] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -455,7 +478,7 @@ export const MapView = ({
   // Listen for state updates: evacuation zones + environmental_state (Step 6)
   useWebSocket({
     sessionId,
-    eventTypes: ['state.updated'],
+    eventTypes: ['state.updated', 'placement.created', 'placement.updated', 'placement.removed'],
     onEvent: (event: WebSocketEvent) => {
       if (event.type === 'state.updated') {
         const state = (event.data as { state?: Record<string, unknown> })?.state;
@@ -469,15 +492,94 @@ export const MapView = ({
         ) {
           setEnvironmentalState(
             state.environmental_state as {
-              routes?: Array<{ label?: string; managed?: boolean }>;
-              areas?: unknown[];
+              routes?: RouteData[];
+              areas?: CrowdArea[];
+              wind?: WindData;
             },
           );
+        }
+      }
+      if (event.type === 'placement.created') {
+        const { placement } = event.data as { placement: PlacedAsset };
+        if (placement) {
+          setPlacedAssets((prev) => [...prev.filter((p) => p.id !== placement.id), placement]);
+        }
+      }
+      if (event.type === 'placement.updated') {
+        const { placement } = event.data as { placement: PlacedAsset };
+        if (placement) {
+          setPlacedAssets((prev) => prev.map((p) => (p.id === placement.id ? placement : p)));
+        }
+      }
+      if (event.type === 'placement.removed') {
+        const { placement } = event.data as { placement: PlacedAsset };
+        if (placement) {
+          setPlacedAssets((prev) => prev.filter((p) => p.id !== placement.id));
         }
       }
     },
     enabled: !!sessionId && !isMapDisabled,
   });
+
+  // Fetch existing placements and hazards on mount
+  useEffect(() => {
+    if (!sessionId || isMapDisabled) return;
+    let cancelled = false;
+    api.placements
+      .list(sessionId)
+      .then((res) => {
+        if (cancelled) return;
+        if (Array.isArray(res.data)) {
+          setPlacedAssets(res.data as PlacedAsset[]);
+        }
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    api.hazards
+      .list(sessionId)
+      .then((res) => {
+        if (cancelled) return;
+        if (Array.isArray(res.data)) {
+          setHazards(res.data as HazardData[]);
+        }
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    api.floorPlans
+      .list(sessionId)
+      .then((res) => {
+        if (cancelled) return;
+        if (Array.isArray(res.data)) {
+          setFloorPlans(res.data as FloorPlan[]);
+        }
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, isMapDisabled]);
+
+  // Periodically refresh hazards (new ones may appear over time)
+  useEffect(() => {
+    if (!sessionId || isMapDisabled) return;
+    const interval = setInterval(() => {
+      api.hazards
+        .list(sessionId)
+        .then((res) => {
+          if (Array.isArray(res.data)) {
+            setHazards(res.data as HazardData[]);
+          }
+        })
+        .catch(() => {
+          /* ignore */
+        });
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [sessionId, isMapDisabled]);
 
   // Filter incidents and resources with valid locations
   const incidentsWithLocation = incidents.filter(
@@ -526,6 +628,24 @@ export const MapView = ({
     ? environmentalState.routes.filter((r) => r.managed === false)
     : [];
   const hasUnmanagedRoutes = unmanagedRoutes.length > 0;
+
+  // Placement counts for the asset palette
+  const ownPlacedCounts: Record<string, number> = {};
+  if (teamName) {
+    for (const p of placedAssets) {
+      if (p.team_name === teamName) {
+        ownPlacedCounts[p.asset_type] = (ownPlacedCounts[p.asset_type] ?? 0) + 1;
+      }
+    }
+  }
+
+  const handleRemovePlacement = async (placementId: string) => {
+    try {
+      await api.placements.remove(sessionId, placementId);
+    } catch {
+      /* handled by WS */
+    }
+  };
 
   // Key stable per session so map only remounts when session changes, not on every render
   const mapKey = `map-${sessionId}`;
@@ -594,13 +714,33 @@ export const MapView = ({
         display: 'block',
       }}
     >
-      {/* Optional legend: environmental state (traffic / routes) */}
-      {hasUnmanagedRoutes && (
+      {/* Route status legend */}
+      {Array.isArray(environmentalState?.routes) && environmentalState.routes.length > 0 && (
         <div
-          className="absolute top-2 left-2 z-[1000] px-2 py-1.5 rounded bg-black/80 border border-robotic-yellow/50 text-xs terminal-text text-robotic-yellow"
-          aria-label="Environmental state legend"
+          className="absolute top-2 left-2 z-[1000] px-3 py-2 rounded bg-black/85 border border-robotic-yellow/50 text-xs terminal-text text-robotic-yellow space-y-1"
+          aria-label="Route status legend"
         >
-          <span className="font-medium">Traffic / routes:</span> {unmanagedRoutes.length} unmanaged
+          <div className="font-medium mb-1">Routes</div>
+          {hasUnmanagedRoutes && (
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-3 h-0.5 bg-red-500 rounded" />
+              <span>{unmanagedRoutes.length} unmanaged</span>
+            </div>
+          )}
+          {environmentalState.routes.filter((r) => r.problem && r.managed).length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-3 h-0.5 bg-amber-500 rounded" />
+              <span>
+                {environmentalState.routes.filter((r) => r.problem && r.managed).length} managed
+              </span>
+            </div>
+          )}
+          {environmentalState.routes.filter((r) => !r.problem).length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-3 h-0.5 bg-green-500 rounded" />
+              <span>{environmentalState.routes.filter((r) => !r.problem).length} clear</span>
+            </div>
+          )}
         </div>
       )}
       {isContainerReady && (
@@ -650,12 +790,56 @@ export const MapView = ({
           <MapSizeInvalidator isVisible={isVisible} />
           <MapCleanup />
 
+          {/* Drop handler for drag-and-drop asset placement */}
+          {teamName && (
+            <MapDropHandler
+              sessionId={sessionId}
+              teamName={teamName}
+              enabled={draggableAssets.length > 0 && !disabled}
+            />
+          )}
+
           <MapUpdater
             incidents={incidents}
             selectedIncidentId={selectedIncidentId}
             initialCenter={initialCenter}
             initialZoom={initialZoom}
           />
+
+          {/* Route Polylines */}
+          {Array.isArray(environmentalState?.routes) &&
+            environmentalState.routes
+              .filter((r) => r.geometry?.length && r.geometry.length >= 2)
+              .map((route, idx) => (
+                <RoutePolyline key={`route-${route.label ?? idx}`} route={route} />
+              ))}
+
+          {/* Blast Zone Overlays from incident_site pins */}
+          {scenarioLocationsForMap
+            .filter((loc) => {
+              const cat = loc.pin_category?.toLowerCase() ?? '';
+              const t = loc.location_type.toLowerCase();
+              return cat === 'incident_site' || t.includes('blast') || t.includes('epicentre');
+            })
+            .filter((loc) => loc.conditions?.blast_radius_m)
+            .map((loc) => (
+              <BlastZoneOverlay
+                key={`blast-${loc.id}`}
+                center={[loc.coordinates.lat!, loc.coordinates.lng!] as LatLngExpression}
+                blastRadius={loc.conditions!.blast_radius_m as number}
+                innerCordonRadius={loc.conditions?.inner_cordon_radius_m as number | undefined}
+                outerCordonRadius={loc.conditions?.outer_cordon_radius_m as number | undefined}
+                label={loc.label}
+              />
+            ))}
+
+          {/* Crowd Density Overlay */}
+          {Array.isArray(environmentalState?.areas) && environmentalState.areas.length > 0 && (
+            <CrowdDensityOverlay areas={environmentalState.areas} />
+          )}
+
+          {/* Wind Direction Indicator */}
+          {environmentalState?.wind && <WindIndicator wind={environmentalState.wind} />}
 
           {/* Evacuation Zones */}
           {evacuationZones.map((zone) => (
@@ -696,7 +880,82 @@ export const MapView = ({
               onClick={() => onResourceClick?.(resource)}
             />
           ))}
+
+          {/* Placed Assets (Phase 3) — filtered by active floor when multi-floor */}
+          {placedAssets
+            .filter((a) => {
+              if (!floorPlans.length) return true;
+              const floor = (a.properties?.floor_level as string) ?? 'G';
+              return floor === activeFloor;
+            })
+            .map((asset) => (
+              <PlacedAssetMarker
+                key={asset.id}
+                asset={asset}
+                isOwnTeam={!!teamName && asset.team_name === teamName}
+                onRemove={
+                  teamName && asset.team_name === teamName ? handleRemovePlacement : undefined
+                }
+              />
+            ))}
+
+          {/* Floor Plan Overlay (Phase 5) */}
+          {floorPlans
+            .filter((f) => f.floor_level === activeFloor)
+            .map((floor) => (
+              <FloorPlanOverlay key={floor.id} floor={floor} />
+            ))}
+
+          {/* Hazard Markers (Phase 4) — filtered by active floor */}
+          {hazards
+            .filter((h) => h.status !== 'resolved')
+            .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
+            .map((hazard) => (
+              <HazardMarker key={hazard.id} hazard={hazard} onClick={setSelectedHazard} />
+            ))}
         </MapContainer>
+      )}
+
+      {/* Asset Palette (Phase 3) */}
+      {draggableAssets.length > 0 && teamName && (
+        <AssetPalette
+          assets={draggableAssets}
+          teamName={teamName}
+          placedCounts={ownPlacedCounts}
+          onAssetDragStart={() => {}}
+          disabled={disabled}
+        />
+      )}
+
+      {/* Floor Selector (Phase 5) */}
+      {floorPlans.length > 1 && (
+        <FloorSelector
+          floors={floorPlans}
+          activeFloor={activeFloor}
+          onFloorChange={setActiveFloor}
+          hazardFloors={
+            new Set(hazards.filter((h) => h.status !== 'resolved').map((h) => h.floor_level))
+          }
+        />
+      )}
+
+      {/* Hazard Assessment Modal (Phase 4) */}
+      {selectedHazard && (
+        <HazardAssessmentModal
+          hazard={selectedHazard}
+          onClose={() => setSelectedHazard(null)}
+          onSubmitDecision={async (hazardId, description) => {
+            try {
+              await api.decisions.create({
+                session_id: sessionId,
+                description: `[Hazard Assessment: ${selectedHazard.hazard_type.replace(/_/g, ' ')}] ${description}`,
+                team_name: teamName,
+              });
+            } catch {
+              /* ignore */
+            }
+          }}
+        />
       )}
     </div>
   );

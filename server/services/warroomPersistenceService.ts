@@ -58,6 +58,8 @@ export async function persistWarroomScenario(
     condition_driven_injects,
     locations,
     environmental_seeds,
+    hazards,
+    floor_plans,
     insider_knowledge,
   } = payload;
 
@@ -172,6 +174,45 @@ export async function persistWarroomScenario(
         })),
       );
       if (seedError) throw new Error(`scenario_environmental_seeds: ${seedError.message}`);
+    }
+
+    if (hazards && hazards.length > 0) {
+      const { error: hazError } = await supabaseAdmin.from('scenario_hazards').insert(
+        hazards.map((h) => ({
+          scenario_id: scenarioId,
+          hazard_type: h.hazard_type,
+          location_lat: h.location_lat,
+          location_lng: h.location_lng,
+          floor_level: h.floor_level ?? 'G',
+          properties: h.properties ?? {},
+          assessment_criteria: h.assessment_criteria ?? [],
+          image_url: h.image_url ?? null,
+          image_sequence: h.image_sequence ?? null,
+          status: h.status ?? 'active',
+          appears_at_minutes: h.appears_at_minutes ?? 0,
+        })),
+      );
+      if (hazError) {
+        logger.warn({ error: hazError }, 'scenario_hazards insert failed (non-blocking)');
+      }
+    }
+
+    if (floor_plans && floor_plans.length > 0) {
+      const { error: fpError } = await supabaseAdmin.from('scenario_floor_plans').insert(
+        floor_plans.map((fp) => ({
+          scenario_id: scenarioId,
+          floor_level: fp.floor_level,
+          floor_label: fp.floor_label,
+          plan_svg: fp.plan_svg ?? null,
+          plan_image_url: fp.plan_image_url ?? null,
+          bounds: fp.bounds ?? null,
+          features: fp.features ?? [],
+          environmental_factors: fp.environmental_factors ?? [],
+        })),
+      );
+      if (fpError) {
+        logger.warn({ error: fpError }, 'scenario_floor_plans insert failed (non-blocking)');
+      }
     }
 
     const knowledgeToSave = insider_knowledge || {};

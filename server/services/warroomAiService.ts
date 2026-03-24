@@ -7,7 +7,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../lib/logger.js';
-import type { OsmVicinity, OsmOpenSpace, OsmBuilding } from './osmVicinityService.js';
+import type {
+  OsmVicinity,
+  OsmOpenSpace,
+  OsmBuilding,
+  OsmRouteGeometry,
+} from './osmVicinityService.js';
 import {
   standardsToPromptBlock,
   similarCasesToPromptBlock,
@@ -103,6 +108,33 @@ export interface WarroomScenarioPayload {
     seed_data: Record<string, unknown>;
     display_order: number;
   }>;
+  floor_plans?: Array<{
+    floor_level: string;
+    floor_label: string;
+    plan_svg?: string;
+    plan_image_url?: string;
+    bounds?: Record<string, unknown>;
+    features: Array<{
+      id: string;
+      type: string;
+      label: string;
+      geometry?: Record<string, unknown>;
+      properties?: Record<string, unknown>;
+    }>;
+    environmental_factors: Array<Record<string, unknown>>;
+  }>;
+  hazards?: Array<{
+    hazard_type: string;
+    location_lat: number;
+    location_lng: number;
+    floor_level: string;
+    properties: Record<string, unknown>;
+    assessment_criteria: string[];
+    image_url?: string;
+    image_sequence?: Array<{ at_minutes: number; image_url: string; description: string }>;
+    status: string;
+    appears_at_minutes: number;
+  }>;
   insider_knowledge?: {
     osm_vicinity?: OsmVicinity;
     sector_standards?: string;
@@ -188,6 +220,7 @@ export interface WarroomGenerateInput {
   osm_vicinity?: OsmVicinity;
   osmOpenSpaces?: OsmOpenSpace[];
   osmBuildings?: OsmBuilding[];
+  osmRouteGeometries?: OsmRouteGeometry[];
   geocode?: { lat: number; lng: number; display_name: string };
   complexity_tier: 'minimal' | 'standard' | 'full' | 'rich';
   /** Game duration in minutes (20–240, default 60). Drives inject volume and timing. */
@@ -1407,6 +1440,288 @@ RULES:
 }
 
 // ---------------------------------------------------------------------------
+// Phase 4b2 — Hazard Generation  (2 000 tokens)
+// ---------------------------------------------------------------------------
+
+async function generateScenarioHazards(
+  input: WarroomGenerateInput,
+  openAiApiKey: string,
+  onProgress?: WarroomAiProgressCallback,
+  narrative?: { title?: string; description?: string; briefing?: string },
+  locations?: WarroomScenarioPayload['locations'],
+): Promise<WarroomScenarioPayload['hazards']> {
+  const includeHazards = input.complexity_tier === 'full' || input.complexity_tier === 'rich';
+  if (!includeHazards) return undefined;
+
+  onProgress?.('Generating interactive hazards...');
+
+  const { scenario_type, setting, venue_name, location } = input;
+  const venue = venue_name || location || setting;
+
+  const incidentSites =
+    locations?.filter(
+      (l) =>
+        l.pin_category === 'incident_site' ||
+        l.location_type.toLowerCase().includes('blast') ||
+        l.location_type.toLowerCase().includes('epicentre'),
+    ) ?? [];
+
+  const incidentBlock =
+    incidentSites.length > 0
+      ? `Incident sites:\n${incidentSites.map((s) => `- ${s.label} at (${s.coordinates.lat}, ${s.coordinates.lng})`).join('\n')}`
+      : '';
+
+  const systemPrompt = `You are an expert crisis management scenario designer generating interactive hazards for a training exercise.
+
+Scenario type: ${scenario_type}
+Venue: ${venue}
+Setting: ${setting}
+${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
+${incidentBlock}
+
+Generate 2-4 hazards appropriate for this ${scenario_type} scenario. Each hazard must be a realistic danger that teams encounter during response.
+
+Return ONLY valid JSON:
+{
+  "hazards": [
+    {
+      "hazard_type": "fire|chemical_spill|structural_collapse|debris|gas_leak|flood|biological|explosion|electrical",
+      "location_lat": number,
+      "location_lng": number,
+      "floor_level": "G",
+      "properties": {
+        "size": "small|medium|large",
+        "fuel_source": "description of what is burning/leaking",
+        "adjacent_risks": ["risk1", "risk2"],
+        "wind_exposure": true/false,
+        "casualties_visible": number,
+        "access_blocked": true/false
+      },
+      "assessment_criteria": ["criteria1", "criteria2", "criteria3"],
+      "status": "active",
+      "appears_at_minutes": number (0 = immediate, >0 = appears later)
+    }
+  ]
+}
+
+RULES:
+- Hazards must be near or at the incident sites (within 200m)
+- At least one immediate hazard (appears_at_minutes: 0) and one delayed hazard
+- assessment_criteria should list what a good response would identify/do
+- Properties must be specific to the hazard type
+- Locations must be realistic coordinates near the incident sites`;
+
+  const userPrompt = `Generate hazards for "${narrative?.title || scenario_type}" at ${venue}.`;
+
+  try {
+    const parsed = await callOpenAi<{
+      hazards?: WarroomScenarioPayload['hazards'];
+    }>(systemPrompt, userPrompt, openAiApiKey, 2000);
+    return parsed.hazards?.length ? parsed.hazards : undefined;
+  } catch (err) {
+    logger.warn({ err }, 'Hazard generation failed; continuing without');
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4b3 — Floor Plan Generation  (3 000 tokens)
+// Uses real building polygon from OSM + AI features → server-side SVG render
+// ---------------------------------------------------------------------------
+
+async function generateFloorPlans(
+  input: WarroomGenerateInput,
+  openAiApiKey: string,
+  onProgress?: WarroomAiProgressCallback,
+  narrative?: { title?: string; description?: string; briefing?: string },
+): Promise<WarroomScenarioPayload['floor_plans']> {
+  const includeFloors = input.complexity_tier === 'full' || input.complexity_tier === 'rich';
+  if (!includeFloors) return undefined;
+
+  const mainBuilding = input.osmBuildings?.[0];
+  const levels = mainBuilding?.building_levels ?? 1;
+  if (levels <= 1) return undefined;
+
+  onProgress?.('Generating multi-floor layout from building footprint...');
+
+  const { scenario_type, setting, venue_name, location } = input;
+  const venue = venue_name || location || setting;
+
+  const undergroundLevels = mainBuilding?.building_levels_underground ?? 0;
+  const buildingUse = mainBuilding?.building_use ?? setting;
+
+  const floorList: string[] = [];
+  for (let i = undergroundLevels; i > 0; i--) floorList.push(`B${i}`);
+  floorList.push('G');
+  for (let i = 1; i < levels; i++) floorList.push(`L${i}`);
+
+  const hasPolygon = !!mainBuilding?.footprint_polygon?.length;
+  const polygonNote = hasPolygon
+    ? `The building has a real footprint polygon with ${mainBuilding!.footprint_polygon!.length} vertices from OSM.`
+    : 'No polygon available; layout will use a rectangular approximation.';
+
+  const boundsBlock = mainBuilding?.bounds
+    ? `Building bounds: minLat=${mainBuilding.bounds.minlat}, maxLat=${mainBuilding.bounds.maxlat}, minLng=${mainBuilding.bounds.minlon}, maxLng=${mainBuilding.bounds.maxlon}`
+    : '';
+
+  const systemPrompt = `You are an expert building layout designer. You are placing features inside a ${buildingUse} for a crisis training exercise.
+
+Scenario type: ${scenario_type}
+Venue: ${venue} (${buildingUse})
+Setting: ${setting}
+Floors: ${floorList.join(', ')}
+${boundsBlock}
+${polygonNote}
+${narrative ? `Narrative: ${narrative.title}` : ''}
+
+IMPORTANT: Position each feature using NORMALISED coordinates (0.0 to 1.0):
+- position_x: 0.0 = west edge, 1.0 = east edge
+- position_y: 0.0 = north edge, 1.0 = south edge
+- For area features, also provide size_x and size_y (0.0 to 1.0 fraction of building)
+
+Place exits at edges (x near 0 or 1, or y near 0 or 1). Place central features (escalators, elevators) near the middle (0.4-0.6). Distribute rooms across the floor realistically.
+
+Return ONLY valid JSON:
+{
+  "floor_plans": [
+    {
+      "floor_level": "G",
+      "floor_label": "Ground Floor",
+      "features": [
+        {
+          "id": "main_entrance_g",
+          "type": "entrance",
+          "label": "Main Entrance",
+          "position_x": 0.5,
+          "position_y": 1.0,
+          "properties": { "capacity": 200, "width_m": 6 }
+        },
+        {
+          "id": "food_court_g",
+          "type": "food_court",
+          "label": "Food Court",
+          "position_x": 0.3,
+          "position_y": 0.4,
+          "size_x": 0.25,
+          "size_y": 0.2,
+          "properties": {}
+        }
+      ],
+      "environmental_factors": [
+        { "factor": "smoke_accumulation", "severity": "low" },
+        { "factor": "crowd_density", "severity": "medium" }
+      ]
+    }
+  ]
+}
+
+RULES:
+- Each feature MUST have id, type, label, position_x (0-1), position_y (0-1)
+- Area features (corridor, food_court, retail, room, parking, office, storage) also need size_x and size_y
+- emergency_exit positions: on edges (x=0, x=1, y=0, or y=1)
+- escalator/elevator/stairs: near center, consistent across floors
+- Ground floor: main entrance, 3-4 emergency exits, retail/food areas
+- Upper floors: escalators/stairs down, fire exits, retail/office
+- Basement: parking, service areas, limited exits
+- 6-10 features per floor
+- Valid types: emergency_exit, escalator, elevator, stairs, entrance, room, corridor, food_court, retail, restroom, fire_extinguisher, fire_alarm, first_aid, electrical_panel, ventilation, water_supply, parking, office, storage`;
+
+  const userPrompt = `Generate floor plans for ${floorList.length} floors of ${venue} (${buildingUse}). Floors: ${floorList.join(', ')}.`;
+
+  try {
+    const { generateFloorPlanSvg, convertFeaturesToGeoJson } =
+      await import('./floorPlanSvgService.js');
+
+    interface AiFloorPlan {
+      floor_level: string;
+      floor_label: string;
+      features: Array<{
+        id: string;
+        type: string;
+        label: string;
+        position_x: number;
+        position_y: number;
+        size_x?: number;
+        size_y?: number;
+        properties?: Record<string, unknown>;
+      }>;
+      environmental_factors: Array<Record<string, unknown>>;
+    }
+
+    const parsed = await callOpenAi<{
+      floor_plans?: AiFloorPlan[];
+    }>(systemPrompt, userPrompt, openAiApiKey, 4000);
+
+    if (!parsed.floor_plans?.length) return undefined;
+
+    const polygon = mainBuilding?.footprint_polygon;
+    const rectBounds = mainBuilding?.bounds ?? null;
+    const leafletBounds = rectBounds
+      ? {
+          southWest: [rectBounds.minlat, rectBounds.minlon],
+          northEast: [rectBounds.maxlat, rectBounds.maxlon],
+        }
+      : undefined;
+
+    const results: NonNullable<WarroomScenarioPayload['floor_plans']> = [];
+
+    for (const aiFloor of parsed.floor_plans) {
+      // Generate SVG from real polygon + AI features
+      const svg = generateFloorPlanSvg(polygon, rectBounds, {
+        floor_level: aiFloor.floor_level,
+        floor_label: aiFloor.floor_label,
+        building_use: buildingUse,
+        features: aiFloor.features.map((f) => ({
+          id: f.id,
+          type: f.type,
+          label: f.label,
+          position_x: Math.max(0, Math.min(1, f.position_x ?? 0.5)),
+          position_y: Math.max(0, Math.min(1, f.position_y ?? 0.5)),
+          size_x: f.size_x,
+          size_y: f.size_y,
+          properties: f.properties,
+        })),
+        environmental_factors: aiFloor.environmental_factors ?? [],
+      });
+
+      // Convert normalised feature positions to GeoJSON for map markers
+      const geoFeatures = rectBounds
+        ? convertFeaturesToGeoJson(
+            aiFloor.features.map((f) => ({
+              id: f.id,
+              type: f.type,
+              label: f.label,
+              position_x: Math.max(0, Math.min(1, f.position_x ?? 0.5)),
+              position_y: Math.max(0, Math.min(1, f.position_y ?? 0.5)),
+              properties: f.properties,
+            })),
+            rectBounds,
+          )
+        : [];
+
+      results.push({
+        floor_level: aiFloor.floor_level,
+        floor_label: aiFloor.floor_label,
+        plan_svg: svg || undefined,
+        bounds: leafletBounds,
+        features: geoFeatures,
+        environmental_factors: aiFloor.environmental_factors ?? [],
+      });
+    }
+
+    logger.info(
+      { floors: results.length, hasPolygon, polygonVertices: polygon?.length ?? 0 },
+      'Floor plan SVGs generated from building footprint',
+    );
+
+    return results;
+  } catch (err) {
+    logger.warn({ err }, 'Floor plan generation failed; continuing without');
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Phase 4c — Layout & Site Knowledge  (3 000 tokens)
 // ---------------------------------------------------------------------------
 
@@ -2043,6 +2358,7 @@ interface SeedRoute {
   problem?: string | null;
   managed?: boolean;
   travel_time_minutes?: number;
+  geometry?: [number, number][];
   capacity_per_min?: number;
 }
 
@@ -2099,6 +2415,40 @@ function formatRouteForPrompt(r: SeedRoute): string {
   if (r.travel_time_minutes != null) parts.push(`travel_time: ${r.travel_time_minutes} min`);
   if (r.capacity_per_min != null) parts.push(`capacity: ${r.capacity_per_min}/min`);
   return parts.join(', ');
+}
+
+/**
+ * Best-effort match of an AI-generated route label to a real OSM road geometry.
+ * Matches by substring overlap between route label/aliases and OSM road name.
+ */
+function matchRouteToOsmGeometry(
+  route: SeedRoute,
+  osmRoutes: OsmRouteGeometry[],
+): OsmRouteGeometry | null {
+  if (!osmRoutes.length) return null;
+  const routeText = [route.label ?? '', ...(route.aliases ?? [])].join(' ').toLowerCase();
+  if (!routeText.trim()) return null;
+
+  let bestMatch: OsmRouteGeometry | null = null;
+  let bestScore = 0;
+
+  for (const osm of osmRoutes) {
+    const osmName = osm.name.toLowerCase();
+    const words = routeText.split(/[\s,/]+/).filter((w) => w.length > 2);
+    let score = 0;
+    for (const word of words) {
+      if (osmName.includes(word)) score++;
+    }
+    if (osmName.includes(routeText) || routeText.includes(osmName)) {
+      score += 5;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = osm;
+    }
+  }
+
+  return bestScore > 0 ? bestMatch : osmRoutes[0];
 }
 
 /** Extracts seed routes and areas from environmental seeds. */
@@ -3127,6 +3477,19 @@ export async function warroomGenerateScenario(
     counterDefsMap,
   );
 
+  // Attach OSM route geometries to seed routes by matching labels
+  if (environmental_seeds?.length && input.osmRouteGeometries?.length) {
+    for (const seed of environmental_seeds) {
+      const sd = seed.seed_data as Record<string, unknown>;
+      const routes = Array.isArray(sd.routes) ? (sd.routes as SeedRoute[]) : [];
+      for (const route of routes) {
+        if (route.geometry?.length) continue;
+        const matched = matchRouteToOsmGeometry(route, input.osmRouteGeometries);
+        if (matched) route.geometry = matched.coordinates;
+      }
+    }
+  }
+
   // Attach counter definitions to teams (AI-generated or template fallback)
   const effectiveDefsMap = counterDefsMap ?? loadTemplateCounterDefs(input.scenario_type);
   if (effectiveDefsMap) {
@@ -3142,15 +3505,19 @@ export async function warroomGenerateScenario(
     }
   }
 
-  const phase4c = await generateLayoutAndSiteKnowledge(
-    input,
-    teamNames,
-    openAiApiKey,
-    onProgress,
-    narrative,
-    locations,
-    environmental_seeds,
-  );
+  const [phase4c, scenarioHazards, floorPlansResult] = await Promise.all([
+    generateLayoutAndSiteKnowledge(
+      input,
+      teamNames,
+      openAiApiKey,
+      onProgress,
+      narrative,
+      locations,
+      environmental_seeds,
+    ),
+    generateScenarioHazards(input, openAiApiKey, onProgress, narrative, locations),
+    generateFloorPlans(input, openAiApiKey, onProgress, narrative),
+  ]);
 
   // Phase 4d — Team Intelligence Dossiers (one AI call per team, in parallel)
   const teamDossiers = await generateTeamIntelligenceDossiers(
@@ -3280,6 +3647,8 @@ export async function warroomGenerateScenario(
     condition_driven_injects,
     locations,
     environmental_seeds,
+    hazards: scenarioHazards,
+    floor_plans: floorPlansResult,
     insider_knowledge: hasInsiderKnowledge ? insiderKnowledge : undefined,
   };
 }

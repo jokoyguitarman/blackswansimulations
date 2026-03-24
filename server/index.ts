@@ -26,6 +26,9 @@ import { objectivesRouter } from './routes/objectives.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { joinRouter } from './routes/join.js';
 import { warroomRouter } from './routes/warroom.js';
+import placementsRouter from './routes/placements.js';
+import hazardsRouter from './routes/hazards.js';
+import floorPlansRouter from './routes/floorPlans.js';
 import { setupWebSocket } from './websocket/index.js';
 import { initializeWebSocketService } from './services/websocketService.js';
 import { initializeInjectScheduler } from './services/injectSchedulerService.js';
@@ -169,6 +172,9 @@ app.use('/api/objectives', objectivesRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/join', joinRouter);
 app.use('/api/warroom', warroomRouter);
+app.use('/api', placementsRouter);
+app.use('/api', hazardsRouter);
+app.use('/api', floorPlansRouter);
 
 // 404 handler
 app.use((req, res) => {

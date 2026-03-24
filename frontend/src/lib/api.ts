@@ -441,6 +441,143 @@ export const api = {
     },
   },
 
+  // Placements (drag-and-drop map assets)
+  placements: {
+    list: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          session_id: string;
+          team_name: string;
+          placed_by: string;
+          asset_type: string;
+          label: string;
+          geometry: Record<string, unknown>;
+          properties: Record<string, unknown>;
+          placement_score: Record<string, number> | null;
+          status: string;
+          linked_decision_id: string | null;
+          placed_at: string;
+          updated_at: string;
+          removed_at: string | null;
+        }>;
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/placements`), { headers }));
+    },
+    create: async (
+      sessionId: string,
+      data: {
+        team_name: string;
+        asset_type: string;
+        label?: string;
+        geometry: Record<string, unknown>;
+        properties?: Record<string, unknown>;
+      },
+    ) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Record<string, unknown>;
+        warnings: string[];
+      }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/placements`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(data),
+        }),
+      );
+    },
+    update: async (
+      sessionId: string,
+      placementId: string,
+      data: {
+        geometry?: Record<string, unknown>;
+        properties?: Record<string, unknown>;
+        label?: string;
+      },
+    ) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/placements/${placementId}`), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(data),
+        }),
+      );
+    },
+    remove: async (sessionId: string, placementId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/placements/${placementId}`), {
+          method: 'DELETE',
+          headers,
+        }),
+      );
+    },
+  },
+
+  // Hazards (interactive hazard assessment)
+  hazards: {
+    list: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          scenario_id: string;
+          session_id: string | null;
+          hazard_type: string;
+          location_lat: number;
+          location_lng: number;
+          floor_level: string;
+          properties: Record<string, unknown>;
+          assessment_criteria: unknown[];
+          image_url: string | null;
+          image_sequence: Array<{
+            at_minutes: number;
+            image_url: string;
+            description: string;
+          }> | null;
+          current_image_url: string | null;
+          current_description: string | null;
+          status: string;
+          appears_at_minutes: number;
+        }>;
+        elapsed_minutes: number;
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/hazards`), { headers }));
+    },
+    get: async (sessionId: string, hazardId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Record<string, unknown>;
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/hazards/${hazardId}`), { headers }));
+    },
+  },
+
+  // Floor Plans (multi-floor maps)
+  floorPlans: {
+    list: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          scenario_id: string;
+          floor_level: string;
+          floor_label: string;
+          plan_svg: string | null;
+          plan_image_url: string | null;
+          bounds: Record<string, unknown> | null;
+          features: Array<{
+            id: string;
+            type: string;
+            label: string;
+            geometry?: Record<string, unknown>;
+            properties?: Record<string, unknown>;
+          }>;
+          environmental_factors: Array<Record<string, unknown>>;
+        }>;
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/floor-plans`), { headers }));
+    },
+  },
+
   // Briefing
   briefing: {
     get: async (sessionId: string) => {

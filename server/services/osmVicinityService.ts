@@ -412,7 +412,77 @@ export interface OsmBuilding {
   lat: number;
   lng: number;
   bounds: { minlat: number; minlon: number; maxlat: number; maxlon: number } | null;
+  /** Actual building footprint polygon from OSM — array of [lat, lng] pairs tracing the outline. */
+  footprint_polygon?: [number, number][];
   distance_from_center_m: number;
+  building_levels?: number;
+  building_levels_underground?: number;
+  building_use?: string;
+  height_m?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Route Geometry query — road polylines near the incident center
+// ---------------------------------------------------------------------------
+
+export interface OsmRouteGeometry {
+  name: string;
+  highway_type: string;
+  one_way: boolean;
+  coordinates: [number, number][];
+  distance_from_center_m: number;
+}
+
+export async function fetchRouteGeometries(
+  lat: number,
+  lng: number,
+  radiusMeters: number = 2000,
+): Promise<OsmRouteGeometry[]> {
+  const radius = Math.min(radiusMeters, 5000);
+  const query = `
+[out:json][timeout:25];
+(
+  way["highway"~"^(primary|secondary|tertiary|trunk|motorway|residential|unclassified)"](around:${radius},${lat},${lng});
+);
+out body geom;
+`;
+
+  const elements = await runRawOverpassQuery(query);
+  const seen = new Set<string>();
+  const results: OsmRouteGeometry[] = [];
+
+  for (const el of elements) {
+    const tags = (el.tags as Record<string, string>) || {};
+    const geometry = el.geometry as Array<{ lat: number; lon: number }> | undefined;
+    if (!geometry?.length) continue;
+
+    const name = tags.name || tags.ref || `${tags.highway} road`;
+    const dedup = `${name}-${tags.highway}`;
+    if (seen.has(dedup)) continue;
+    seen.add(dedup);
+
+    const coordinates: [number, number][] = geometry.map((pt) => [pt.lat, pt.lon]);
+    const midIdx = Math.floor(coordinates.length / 2);
+    const midPt = coordinates[midIdx] ?? coordinates[0];
+    const dist = Math.round(haversine(lat, lng, midPt[0], midPt[1]));
+
+    results.push({
+      name,
+      highway_type: tags.highway,
+      one_way: tags.oneway === 'yes',
+      coordinates,
+      distance_from_center_m: dist,
+    });
+  }
+
+  results.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
+
+  const MAX_ROUTES = 20;
+  logger.info(
+    { total: results.length, returned: Math.min(results.length, MAX_ROUTES), radius },
+    'OSM route geometries fetched',
+  );
+  return results.slice(0, MAX_ROUTES);
 }
 
 export async function fetchVenueBuilding(
@@ -427,7 +497,7 @@ export async function fetchVenueBuilding(
   way["building"](around:${radius},${lat},${lng});
   relation["building"](around:${radius},${lat},${lng});
 );
-out body center bb;
+out body geom center bb;
 `;
 
   const elements = await runRawOverpassQuery(query);
@@ -444,7 +514,31 @@ out body center bb;
     const dist = Math.round(haversine(lat, lng, pos.lat, pos.lng));
     const name = tags.name || null;
 
-    results.push({ name, lat: pos.lat, lng: pos.lng, bounds, distance_from_center_m: dist });
+    const building: OsmBuilding = {
+      name,
+      lat: pos.lat,
+      lng: pos.lng,
+      bounds,
+      distance_from_center_m: dist,
+    };
+
+    // Extract actual building footprint polygon from `geom` output
+    const geometry = el.geometry as Array<{ lat: number; lon: number }> | undefined;
+    if (geometry?.length && geometry.length >= 3) {
+      building.footprint_polygon = geometry.map((pt) => [pt.lat, pt.lon] as [number, number]);
+    }
+
+    if (tags['building:levels'])
+      building.building_levels = parseInt(tags['building:levels'], 10) || undefined;
+    if (tags['building:levels:underground'])
+      building.building_levels_underground =
+        parseInt(tags['building:levels:underground'], 10) || undefined;
+    if (tags['building:use'] || tags.building)
+      building.building_use =
+        tags['building:use'] || (tags.building !== 'yes' ? tags.building : undefined);
+    if (tags.height) building.height_m = parseFloat(tags.height) || undefined;
+
+    results.push(building);
   }
 
   results.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
