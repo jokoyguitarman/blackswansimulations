@@ -30,7 +30,7 @@ export const SpatialAARPanel = ({ sessionId }: SpatialAARPanelProps) => {
       .list(sessionId)
       .then((res) => {
         if (Array.isArray(res.data)) {
-          setPlacements(res.data as PlacementRecord[]);
+          setPlacements(res.data as unknown as PlacementRecord[]);
         }
       })
       .catch(() => {})

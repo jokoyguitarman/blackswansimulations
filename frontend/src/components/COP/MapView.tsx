@@ -530,7 +530,7 @@ export const MapView = ({
       .then((res) => {
         if (cancelled) return;
         if (Array.isArray(res.data)) {
-          setPlacedAssets(res.data as PlacedAsset[]);
+          setPlacedAssets(res.data as unknown as PlacedAsset[]);
         }
       })
       .catch(() => {
@@ -944,7 +944,7 @@ export const MapView = ({
         <HazardAssessmentModal
           hazard={selectedHazard}
           onClose={() => setSelectedHazard(null)}
-          onSubmitDecision={async (hazardId, description) => {
+          onSubmitDecision={async (_hazardId, description) => {
             try {
               await api.decisions.create({
                 session_id: sessionId,

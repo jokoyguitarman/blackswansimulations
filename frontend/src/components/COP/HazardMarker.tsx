@@ -120,7 +120,7 @@ export const HazardMarker = ({ hazard, onClick }: HazardMarkerProps) => {
         <div className="text-xs">
           <div className="font-semibold capitalize">{hazard.hazard_type.replace(/_/g, ' ')}</div>
           <div className="capitalize text-gray-500">{hazard.status}</div>
-          {hazard.properties.size && <div>Size: {String(hazard.properties.size)}</div>}
+          {hazard.properties.size != null && <div>Size: {String(hazard.properties.size)}</div>}
         </div>
       </Tooltip>
     </Marker>
