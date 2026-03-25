@@ -15,6 +15,175 @@ import { NotificationBell } from '../components/Notifications/NotificationBell';
 import { IncidentsPanel } from '../components/Incidents/IncidentsPanel';
 import { MapView } from '../components/COP/MapView';
 import { GoogleMap3DView } from '../components/COP/GoogleMap3DView';
+import type { DraggableAssetDef } from '../components/COP/AssetPalette';
+
+const TEAM_ASSET_CATALOG: Record<string, DraggableAssetDef[]> = {
+  evacuation: [
+    {
+      asset_type: 'assembly_point',
+      icon: 'flag',
+      geometry_type: 'point',
+      label: 'Assembly Point',
+      max_count: 4,
+    },
+    {
+      asset_type: 'barrier',
+      icon: 'barrier',
+      geometry_type: 'point',
+      label: 'Barrier / Cordon',
+      max_count: 8,
+    },
+    {
+      asset_type: 'marshal_post',
+      icon: 'person',
+      geometry_type: 'point',
+      label: 'Marshal Post',
+      max_count: 6,
+    },
+    {
+      asset_type: 'ambulance_staging',
+      icon: 'ambulance',
+      geometry_type: 'point',
+      label: 'Ambulance Staging',
+      max_count: 3,
+    },
+  ],
+  triage: [
+    {
+      asset_type: 'triage_tent',
+      icon: 'tent',
+      geometry_type: 'point',
+      label: 'Triage Tent',
+      max_count: 4,
+    },
+    {
+      asset_type: 'field_hospital',
+      icon: 'medical',
+      geometry_type: 'point',
+      label: 'Field Hospital',
+      max_count: 2,
+    },
+    {
+      asset_type: 'ambulance_staging',
+      icon: 'ambulance',
+      geometry_type: 'point',
+      label: 'Ambulance Staging',
+      max_count: 3,
+    },
+    {
+      asset_type: 'decon_zone',
+      icon: 'hazmat',
+      geometry_type: 'point',
+      label: 'Decon Zone',
+      max_count: 2,
+    },
+  ],
+  media: [
+    {
+      asset_type: 'press_cordon',
+      icon: 'barrier',
+      geometry_type: 'point',
+      label: 'Press Cordon',
+      max_count: 3,
+    },
+    {
+      asset_type: 'briefing_point',
+      icon: 'podium',
+      geometry_type: 'point',
+      label: 'Media Briefing Point',
+      max_count: 2,
+    },
+    {
+      asset_type: 'camera_position',
+      icon: 'camera',
+      geometry_type: 'point',
+      label: 'Camera Position',
+      max_count: 4,
+    },
+  ],
+  fire_hazmat: [
+    {
+      asset_type: 'decon_zone',
+      icon: 'hazmat',
+      geometry_type: 'point',
+      label: 'Decon Zone',
+      max_count: 3,
+    },
+    {
+      asset_type: 'fire_truck_staging',
+      icon: 'fire_truck',
+      geometry_type: 'point',
+      label: 'Fire Truck Staging',
+      max_count: 3,
+    },
+    {
+      asset_type: 'water_point',
+      icon: 'water',
+      geometry_type: 'point',
+      label: 'Water Point',
+      max_count: 4,
+    },
+    {
+      asset_type: 'barrier',
+      icon: 'barrier',
+      geometry_type: 'point',
+      label: 'Hazard Perimeter',
+      max_count: 8,
+    },
+  ],
+};
+
+const UNIVERSAL_ASSETS: DraggableAssetDef[] = [
+  {
+    asset_type: 'command_post',
+    icon: 'command',
+    geometry_type: 'point',
+    label: 'Command Post',
+    max_count: 2,
+  },
+  {
+    asset_type: 'radio_relay',
+    icon: 'radio',
+    geometry_type: 'point',
+    label: 'Radio Relay',
+    max_count: 3,
+  },
+];
+
+function getAssetsForTeam(teamName: string): DraggableAssetDef[] {
+  const key = teamName.toLowerCase().replace(/[\s-]/g, '_');
+  const specific = TEAM_ASSET_CATALOG[key];
+  if (specific) return [...specific, ...UNIVERSAL_ASSETS];
+  for (const [catalogKey, assets] of Object.entries(TEAM_ASSET_CATALOG)) {
+    if (key.includes(catalogKey) || catalogKey.includes(key)) {
+      return [...assets, ...UNIVERSAL_ASSETS];
+    }
+  }
+  return [
+    ...UNIVERSAL_ASSETS,
+    {
+      asset_type: 'barrier',
+      icon: 'barrier',
+      geometry_type: 'point',
+      label: 'Barrier / Cordon',
+      max_count: 6,
+    },
+    {
+      asset_type: 'assembly_point',
+      icon: 'flag',
+      geometry_type: 'point',
+      label: 'Assembly Point',
+      max_count: 3,
+    },
+    {
+      asset_type: 'triage_tent',
+      icon: 'tent',
+      geometry_type: 'point',
+      label: 'Triage Tent',
+      max_count: 2,
+    },
+  ];
+}
 import { useWebSocket } from '../hooks/useWebSocket';
 import { type WebSocketEvent } from '../lib/websocketClient';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
@@ -1100,6 +1269,10 @@ export const SessionView = () => {
                       : [1.3521, 103.8198]
                   }
                   initialZoom={16}
+                  teamName={myTeams[0]?.team_name}
+                  draggableAssets={
+                    myTeams[0]?.team_name ? getAssetsForTeam(myTeams[0].team_name) : []
+                  }
                 />
               )}
               {mapModuleReady && mapHasBeenOpened && mapProvider === 'google3d' && (
@@ -1412,6 +1585,22 @@ export const SessionView = () => {
                           : [1.3521, 103.8198]
                       }
                       initialZoom={16}
+                      teamName={isTrainer ? 'Trainer' : myTeams[0]?.team_name}
+                      draggableAssets={
+                        isTrainer
+                          ? [
+                              ...Object.values(TEAM_ASSET_CATALOG)
+                                .flat()
+                                .filter(
+                                  (a, i, arr) =>
+                                    arr.findIndex((b) => b.asset_type === a.asset_type) === i,
+                                ),
+                              ...UNIVERSAL_ASSETS,
+                            ]
+                          : myTeams[0]?.team_name
+                            ? getAssetsForTeam(myTeams[0].team_name)
+                            : []
+                      }
                     />
                   )}
                   {mapProvider === 'google3d' && (
