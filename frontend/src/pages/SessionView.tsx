@@ -466,15 +466,33 @@ export const SessionView = () => {
       const parts: string[] = [];
       for (const [label, group] of grouped) {
         const count = group.length;
-        const sample = group[0];
-        const details: string[] = [];
-        if (sample.properties.length_m) details.push(`${sample.properties.length_m}m`);
-        if (sample.properties.area_m2) details.push(`${sample.properties.area_m2}m²`);
-        const detailStr = details.length ? ` (${details.join(', ')})` : '';
-        parts.push(count > 1 ? `${count}x ${label}${detailStr}` : `${label}${detailStr}`);
+        for (const item of group) {
+          const details: string[] = [];
+          const p = item.properties;
+          if (p.length_m) details.push(`${p.length_m}m long`);
+          if (p.area_m2) details.push(`${p.area_m2}m² area`);
+          if (p.capacity) {
+            const unit = (p.capacity_unit as string) ?? 'people';
+            details.push(`capacity: ${p.capacity} ${unit}`);
+          }
+          if (p.encloses && Array.isArray(p.encloses) && (p.encloses as string[]).length > 0) {
+            details.push(`encloses ${(p.encloses as string[]).length} asset(s)`);
+          }
+          const geoLabel =
+            item.geometryType === 'Polygon'
+              ? 'zone'
+              : item.geometryType === 'LineString'
+                ? 'line'
+                : 'point';
+          const detailStr = details.length ? ` — ${details.join(', ')}` : '';
+          parts.push(`${label} (${geoLabel})${detailStr}`);
+        }
+        if (count > 1) {
+          parts.push(`(${count}x ${label} total)`);
+        }
       }
 
-      const autoDesc = `${teamName} placed: ${parts.join(', ')}`;
+      const autoDesc = `${teamName} placed: ${parts.join('; ')}`;
       const fullDescription = userDescription
         ? `${userDescription}\n\nMap actions: ${autoDesc}`
         : autoDesc;

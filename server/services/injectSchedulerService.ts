@@ -943,12 +943,46 @@ export class InjectSchedulerService {
       .order('executed_at', { ascending: false })
       .limit(50);
 
-    const allDecisionsForAi = (allDecisions || []).map((d) => ({
+    const allDecisionsForAi: Array<{
+      title: string;
+      description: string;
+      type: string | null;
+      proposed_by: string | null;
+    }> = (allDecisions || []).map((d) => ({
       title: d.title ?? '',
       description: d.description ?? '',
       type: d.type as string | null,
       proposed_by: d.proposed_by as string | null,
     }));
+
+    // Append active map placements as pseudo-decisions so the AI cancellation
+    // gate can see physical assets (cordons, triage zones, assembly points, etc.)
+    const { data: activePlacements } = await supabaseAdmin
+      .from('placed_assets')
+      .select('asset_type, label, geometry, properties, team_name, placed_at')
+      .eq('session_id', session.id)
+      .eq('status', 'active');
+
+    for (const p of activePlacements ?? []) {
+      const geomType = (p.geometry as Record<string, unknown>)?.type ?? 'Point';
+      const props = (p.properties ?? {}) as Record<string, unknown>;
+      const details = [
+        props.length_m ? `${props.length_m}m long` : null,
+        props.area_m2 ? `${props.area_m2}m² area` : null,
+        props.capacity
+          ? `capacity ${props.capacity} ${(props.capacity_unit as string) ?? 'people'}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(', ');
+
+      allDecisionsForAi.push({
+        title: `[MAP PLACEMENT] ${p.label ?? p.asset_type} by ${p.team_name}`,
+        description: `${p.team_name} placed a ${p.label ?? p.asset_type} (${geomType}) on the map${details ? `: ${details}` : ''}`,
+        type: 'map_action',
+        proposed_by: null,
+      });
+    }
 
     const { data: teamMappings } = await supabaseAdmin
       .from('session_teams')
