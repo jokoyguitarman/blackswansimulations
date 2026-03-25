@@ -88,36 +88,46 @@ export const MapDrawHandler = ({
     onVertexCountChange?.(vertices.length);
   }, [vertices.length, onVertexCountChange]);
 
-  const finishDrawing = useCallback(async () => {
-    const pts = verticesRef.current;
-    if (pts.length < minPoints || submitting) return;
-    setSubmitting(true);
+  const finishDrawing = useCallback(
+    async (closeLoop = false) => {
+      const pts = verticesRef.current;
+      if (pts.length < minPoints || submitting) return;
+      setSubmitting(true);
 
-    const coordinates = pts.map((p) => [p.lng, p.lat]);
-    const geometry = isPolygon
-      ? { type: 'Polygon' as const, coordinates: [[...coordinates, coordinates[0]]] }
-      : { type: 'LineString' as const, coordinates };
+      const coordinates = pts.map((p) => [p.lng, p.lat]);
 
-    const totalLength = polylineLength(pts);
-    const props: Record<string, unknown> = { length_m: Math.round(totalLength) };
-    if (isPolygon) {
-      props.area_m2 = Math.round(polygonArea(pts));
-    }
+      let geometry: { type: 'Polygon' | 'LineString'; coordinates: unknown };
+      if (isPolygon) {
+        geometry = { type: 'Polygon', coordinates: [[...coordinates, coordinates[0]]] };
+      } else if (closeLoop && coordinates.length >= 2) {
+        geometry = { type: 'LineString', coordinates: [...coordinates, coordinates[0]] };
+      } else {
+        geometry = { type: 'LineString', coordinates };
+      }
 
-    try {
-      await api.placements.create(sessionId, {
-        team_name: teamName,
-        asset_type: drawingAsset.asset_type,
-        label: drawingAsset.label,
-        geometry,
-        properties: props,
-      });
-    } catch {
-      // Validation errors shown by WS event
-    }
-    setSubmitting(false);
-    onFinish();
-  }, [sessionId, teamName, drawingAsset, isPolygon, minPoints, submitting, onFinish]);
+      const measurePts = closeLoop ? [...pts, pts[0]] : pts;
+      const totalLength = polylineLength(measurePts);
+      const props: Record<string, unknown> = { length_m: Math.round(totalLength) };
+      if (isPolygon) {
+        props.area_m2 = Math.round(polygonArea(pts));
+      }
+
+      try {
+        await api.placements.create(sessionId, {
+          team_name: teamName,
+          asset_type: drawingAsset.asset_type,
+          label: drawingAsset.label,
+          geometry,
+          properties: props,
+        });
+      } catch {
+        // Validation errors shown by WS event
+      }
+      setSubmitting(false);
+      onFinish();
+    },
+    [sessionId, teamName, drawingAsset, isPolygon, minPoints, submitting, onFinish],
+  );
 
   // Allow parent to trigger finish via incrementing finishSignal
   const prevSignalRef = useRef(finishSignal);
@@ -145,9 +155,8 @@ export const MapDrawHandler = ({
   useMapEvents({
     click(e: LeafletMouseEvent) {
       if (submitting) return;
-      // Snap-to-start: if clicking near the first vertex and we have enough points, finish
       if (isNearFirstVertex(e.latlng)) {
-        finishDrawing();
+        finishDrawing(true);
         return;
       }
       setVertices((prev) => [...prev, e.latlng]);
