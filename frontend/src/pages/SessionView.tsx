@@ -128,6 +128,13 @@ const UNIVERSAL_ASSETS: DraggableAssetDef[] = [
     max_count: 6,
   },
   {
+    asset_type: 'operational_area',
+    icon: 'area',
+    geometry_type: 'polygon',
+    label: 'Operational Area',
+    max_count: 4,
+  },
+  {
     asset_type: 'command_post',
     icon: 'command',
     geometry_type: 'point',

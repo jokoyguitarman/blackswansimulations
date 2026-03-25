@@ -59,6 +59,7 @@ const ASSET_ICONS: Record<string, string> = {
   water_point: '💧',
   fire_truck_staging: '🚒',
   radio_relay: '📻',
+  operational_area: '⬡',
 };
 
 function getAssetIcon(assetType: string): string {
@@ -151,6 +152,9 @@ export const PlacedAssetMarker = ({
     const color = getTeamColor(asset.team_name);
     const lengthM = asset.properties?.length_m as number | undefined;
     const areaM2 = asset.properties?.area_m2 as number | undefined;
+    const enclosesCount = Array.isArray(asset.properties?.encloses)
+      ? (asset.properties.encloses as string[]).length
+      : 0;
 
     return (
       <Polygon
@@ -181,6 +185,11 @@ export const PlacedAssetMarker = ({
             {lengthM != null && !areaM2 && (
               <div className="text-gray-400 font-mono">
                 {lengthM >= 1000 ? `${(lengthM / 1000).toFixed(2)} km` : `${Math.round(lengthM)} m`}
+              </div>
+            )}
+            {enclosesCount > 0 && (
+              <div className="text-green-500 font-medium">
+                {enclosesCount} asset{enclosesCount > 1 ? 's' : ''} enclosed
               </div>
             )}
           </div>
@@ -246,9 +255,18 @@ export const PlacedAssetMarker = ({
   if (!coords?.length) return null;
   const position: LatLngExpression = [coords[1], coords[0]];
   const icon = createPlacedAssetIcon(asset, isOwnTeam);
+  const capacity = asset.properties?.capacity as number | undefined;
+  const capacityUnit = asset.properties?.capacity_unit as string | undefined;
 
   return (
     <Marker position={position} icon={icon} draggable={isOwnTeam}>
+      {capacity != null && (
+        <Tooltip direction="top" offset={[0, -20]} permanent className="capacity-tooltip">
+          <span style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold' }}>
+            {capacity} {capacityUnit ?? 'units'}
+          </span>
+        </Tooltip>
+      )}
       <Popup>
         <AssetPopupContent
           asset={asset}
@@ -280,6 +298,28 @@ function AssetPopupContent({
       <div className="text-sm font-semibold terminal-text text-robotic-yellow">{asset.label}</div>
       <div className="text-xs text-robotic-yellow/60 mt-0.5">{asset.team_name}</div>
       <div className="text-xs text-robotic-yellow/50 mt-0.5">Placed at {placedTime}</div>
+
+      {asset.properties?.capacity != null && (
+        <div className="mt-1.5 px-2 py-1 bg-robotic-yellow/10 border border-robotic-yellow/30 rounded text-xs">
+          <div className="font-medium text-robotic-yellow">
+            Capacity: {String(asset.properties.capacity)}{' '}
+            {(asset.properties.capacity_unit as string) ?? 'units'}
+          </div>
+          {asset.properties.enclosed_area_m2 != null && (
+            <div className="text-robotic-yellow/50 mt-0.5">
+              Floor area: {Math.round(asset.properties.enclosed_area_m2 as number)} m²
+            </div>
+          )}
+        </div>
+      )}
+
+      {Array.isArray(asset.properties?.encloses) &&
+        (asset.properties.encloses as string[]).length > 0 && (
+          <div className="mt-1 text-xs text-robotic-yellow/50">
+            Encloses {(asset.properties.encloses as string[]).length} asset
+            {(asset.properties.encloses as string[]).length > 1 ? 's' : ''}
+          </div>
+        )}
 
       {asset.placement_score && (
         <div className="mt-1.5 text-xs">

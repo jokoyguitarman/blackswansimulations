@@ -39,6 +39,7 @@ const ICON_MAP: Record<string, string> = {
   search: '🔍',
   radio: '📻',
   water: '💧',
+  area: '⬡',
 };
 
 function getAssetEmoji(icon: string): string {
