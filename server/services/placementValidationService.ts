@@ -37,6 +37,18 @@ function extractPointFromGeometry(
       return { lat: latSum / coords[0].length, lng: lngSum / coords[0].length };
     }
   }
+  if (geometry.type === 'LineString') {
+    const coords = geometry.coordinates as [number, number][];
+    if (coords?.length >= 2) {
+      let latSum = 0,
+        lngSum = 0;
+      for (const [lng, lat] of coords) {
+        latSum += lat;
+        lngSum += lng;
+      }
+      return { lat: latSum / coords.length, lng: lngSum / coords.length };
+    }
+  }
   return null;
 }
 

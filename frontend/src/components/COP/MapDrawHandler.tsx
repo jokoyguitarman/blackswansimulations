@@ -14,6 +14,14 @@ interface MapDrawHandlerProps {
   finishSignal?: number;
   /** Reports the current vertex count so parent can enable/disable Finish button. */
   onVertexCountChange?: (count: number) => void;
+  /** Called with placement data after a successful creation (for action recording). */
+  onPlacementCreated?: (placement: {
+    id: string;
+    label: string;
+    asset_type: string;
+    geometry: Record<string, unknown>;
+    properties: Record<string, unknown>;
+  }) => void;
 }
 
 const SNAP_RADIUS_PX = 18;
@@ -71,12 +79,14 @@ export const MapDrawHandler = ({
   onCancel,
   finishSignal,
   onVertexCountChange,
+  onPlacementCreated,
 }: MapDrawHandlerProps) => {
   const map = useMap();
   const [vertices, setVertices] = useState<LatLng[]>([]);
   const [cursorPos, setCursorPos] = useState<LatLng | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [nearStart, setNearStart] = useState(false);
+  const [drawError, setDrawError] = useState<string | null>(null);
   const verticesRef = useRef(vertices);
   verticesRef.current = vertices;
 
@@ -113,20 +123,42 @@ export const MapDrawHandler = ({
       }
 
       try {
-        await api.placements.create(sessionId, {
+        const result = await api.placements.create(sessionId, {
           team_name: teamName,
           asset_type: drawingAsset.asset_type,
           label: drawingAsset.label,
           geometry,
           properties: props,
         });
-      } catch {
-        // Validation errors shown by WS event
+        const placed = result?.data as Record<string, unknown> | undefined;
+        if (placed?.id) {
+          onPlacementCreated?.({
+            id: placed.id as string,
+            label: drawingAsset.label,
+            asset_type: drawingAsset.asset_type,
+            geometry: (placed.geometry as Record<string, unknown>) ?? geometry,
+            properties: (placed.properties as Record<string, unknown>) ?? props,
+          });
+        }
+        setDrawError(null);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Placement failed — check your position';
+        setDrawError(msg);
+        setTimeout(() => setDrawError(null), 5000);
       }
       setSubmitting(false);
       onFinish();
     },
-    [sessionId, teamName, drawingAsset, isPolygon, minPoints, submitting, onFinish],
+    [
+      sessionId,
+      teamName,
+      drawingAsset,
+      isPolygon,
+      minPoints,
+      submitting,
+      onFinish,
+      onPlacementCreated,
+    ],
   );
 
   // Allow parent to trigger finish via incrementing finishSignal
@@ -216,6 +248,30 @@ export const MapDrawHandler = ({
 
   return (
     <>
+      {/* Error toast */}
+      {drawError && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 2000,
+            background: 'rgba(127,29,29,0.95)',
+            border: '1px solid rgba(239,68,68,0.6)',
+            color: '#fca5a5',
+            padding: '8px 16px',
+            borderRadius: 6,
+            fontSize: 12,
+            fontFamily: 'monospace',
+            maxWidth: 350,
+            pointerEvents: 'none',
+          }}
+        >
+          {drawError}
+        </div>
+      )}
+
       {/* Preview shape */}
       {positions.length >= 2 && (
         <>

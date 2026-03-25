@@ -58,6 +58,8 @@ interface IncidentCardProps {
   hasExecutedDecision?: boolean;
   /** Trainers can see the decision indicator but cannot click it */
   isTrainer?: boolean;
+  /** When user clicks "Respond with Action", start map-action recording for this incident */
+  onRespondWithAction?: (incidentId: string, incidentTitle: string) => void;
 }
 
 const SOURCE_BADGE: Record<string, { label: string; color: string }> = {
@@ -93,6 +95,7 @@ export const IncidentCard = ({
   onDecisionClick,
   hasExecutedDecision,
   isTrainer,
+  onRespondWithAction,
 }: IncidentCardProps) => {
   // const { user } = useAuth(); // Unused - keeping for potential future use
   const [updating, setUpdating] = useState(false);
@@ -227,6 +230,21 @@ export const IncidentCard = ({
               [DECISION]
             </button>
           ))}
+        {/* Respond with map action */}
+        {onRespondWithAction &&
+          !isTrainer &&
+          incident.requires_response !== false &&
+          !hasExecutedDecision && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRespondWithAction(incident.id, incident.title);
+              }}
+              className="px-3 py-1 text-xs terminal-text border border-cyan-400/70 text-cyan-400 hover:bg-cyan-400/10 whitespace-nowrap"
+            >
+              [MAP ACTION]
+            </button>
+          )}
         {incident.status === 'under_control' && (
           <button
             onClick={(e) => {

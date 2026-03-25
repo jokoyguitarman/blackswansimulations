@@ -377,12 +377,13 @@ router.patch('/sessions/:id/placements/:placementId', requireAuth, async (req, r
     const user = (req as AuthenticatedRequest).user;
     if (!user?.id) return res.status(401).json({ error: 'Not authenticated' });
 
-    const { geometry, properties, label } = req.body;
+    const { geometry, properties, label, linked_decision_id } = req.body;
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (geometry) updates.geometry = geometry;
     if (properties) updates.properties = properties;
     if (label) updates.label = label;
+    if (linked_decision_id) updates.linked_decision_id = linked_decision_id;
 
     // Re-validate if geometry changed
     if (geometry) {

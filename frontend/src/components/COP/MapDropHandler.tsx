@@ -7,9 +7,21 @@ interface MapDropHandlerProps {
   sessionId: string;
   teamName: string;
   enabled: boolean;
+  onPlacementCreated?: (placement: {
+    id: string;
+    label: string;
+    asset_type: string;
+    geometry: Record<string, unknown>;
+    properties: Record<string, unknown>;
+  }) => void;
 }
 
-export const MapDropHandler = ({ sessionId, teamName, enabled }: MapDropHandlerProps) => {
+export const MapDropHandler = ({
+  sessionId,
+  teamName,
+  enabled,
+  onPlacementCreated,
+}: MapDropHandlerProps) => {
   const map = useMap();
 
   useEffect(() => {
@@ -71,17 +83,25 @@ export const MapDropHandler = ({ sessionId, teamName, enabled }: MapDropHandlerP
       const y = e.clientY - rect.top;
       const latlng = map.containerPointToLatLng([x, y]);
 
+      const geom = { type: 'Point' as const, coordinates: [latlng.lng, latlng.lat] };
       try {
-        await api.placements.create(sessionId, {
+        const result = await api.placements.create(sessionId, {
           team_name: teamName,
           asset_type: asset.asset_type,
           label: asset.label,
-          geometry: {
-            type: 'Point',
-            coordinates: [latlng.lng, latlng.lat],
-          },
+          geometry: geom,
           properties: {},
         });
+        const placed = result?.data as Record<string, unknown> | undefined;
+        if (placed?.id) {
+          onPlacementCreated?.({
+            id: placed.id as string,
+            label: asset.label,
+            asset_type: asset.asset_type,
+            geometry: (placed.geometry as Record<string, unknown>) ?? geom,
+            properties: (placed.properties as Record<string, unknown>) ?? {},
+          });
+        }
       } catch {
         // Validation errors handled by UI
       }
@@ -99,7 +119,7 @@ export const MapDropHandler = ({ sessionId, teamName, enabled }: MapDropHandlerP
       container.removeEventListener('drop', handleDrop);
       enableMapDrag();
     };
-  }, [map, sessionId, teamName, enabled]);
+  }, [map, sessionId, teamName, enabled, onPlacementCreated]);
 
   return null;
 };

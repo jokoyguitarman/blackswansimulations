@@ -144,6 +144,29 @@ interface MapViewProps {
   draggableAssets?: DraggableAssetDef[];
   /** Player's team name for placement ownership. */
   teamName?: string;
+  /** Called when a new placement is created via draw/drop (for action recording). */
+  onPlacementCreated?: (placement: {
+    id: string;
+    label: string;
+    asset_type: string;
+    geometry: Record<string, unknown>;
+    properties: Record<string, unknown>;
+  }) => void;
+  /** True when actions are being recorded — shows a visual indicator. */
+  isRecordingActions?: boolean;
+  /** Action recording state for the AssetPalette. */
+  actionRecording?: {
+    active: boolean;
+    incidentId?: string;
+    incidentTitle?: string;
+    actions: Array<{ placementId: string; label: string; assetType: string }>;
+  } | null;
+  /** Called when user clicks "Submit Actions" in the palette. */
+  onSubmitActions?: (description: string) => void;
+  /** Called when user clicks "Cancel Recording" in the palette. */
+  onCancelRecording?: () => void;
+  /** Called when user clicks "Record Actions" in the palette. */
+  onStartRecording?: () => void;
 }
 
 /**
@@ -419,6 +442,12 @@ export const MapView = ({
   currentState,
   draggableAssets = [],
   teamName,
+  onPlacementCreated,
+  isRecordingActions,
+  actionRecording,
+  onSubmitActions,
+  onCancelRecording,
+  onStartRecording,
 }: MapViewProps) => {
   const mapDisabledByEnv = import.meta.env.VITE_DISABLE_MAP === 'true';
   const isMapDisabled = disabled || mapDisabledByEnv;
@@ -801,6 +830,7 @@ export const MapView = ({
               sessionId={sessionId}
               teamName={teamName}
               enabled={draggableAssets.length > 0 && !disabled}
+              onPlacementCreated={onPlacementCreated}
             />
           )}
 
@@ -820,6 +850,7 @@ export const MapView = ({
               }}
               finishSignal={drawFinishSignal}
               onVertexCountChange={setDrawVertexCount}
+              onPlacementCreated={onPlacementCreated}
             />
           )}
 
@@ -940,6 +971,20 @@ export const MapView = ({
         </MapContainer>
       )}
 
+      {/* Recording indicator overlay */}
+      {isRecordingActions && (
+        <div
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-2 px-3 py-1.5 rounded-full border"
+          style={{
+            background: 'rgba(0,0,0,0.85)',
+            borderColor: 'rgba(239,68,68,0.5)',
+          }}
+        >
+          <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+          <span className="text-xs font-mono text-red-300">RECORDING ACTIONS</span>
+        </div>
+      )}
+
       {/* Asset Palette (Phase 3) */}
       {draggableAssets.length > 0 && teamName && (
         <AssetPalette
@@ -956,6 +1001,10 @@ export const MapView = ({
           drawingAssetType={drawingAsset?.asset_type ?? null}
           drawVertexCount={drawVertexCount}
           disabled={disabled}
+          actionRecording={actionRecording}
+          onSubmitActions={onSubmitActions}
+          onCancelRecording={onCancelRecording}
+          onStartRecording={onStartRecording}
         />
       )}
 

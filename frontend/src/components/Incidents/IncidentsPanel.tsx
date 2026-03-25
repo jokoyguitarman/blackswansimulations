@@ -59,6 +59,8 @@ interface IncidentsPanelProps {
   onIncidentSelect?: (incidentId: string | null) => void;
   isTrainer?: boolean;
   filterTeam?: string;
+  /** Called when user clicks "Respond with Action" on an incident — triggers map action recording. */
+  onRespondWithAction?: (incidentId: string, incidentTitle: string) => void;
 }
 
 export const IncidentsPanel = ({
@@ -67,6 +69,7 @@ export const IncidentsPanel = ({
   onIncidentSelect,
   isTrainer,
   filterTeam = 'none',
+  onRespondWithAction,
 }: IncidentsPanelProps) => {
   const { user } = useAuth();
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -474,6 +477,7 @@ export const IncidentsPanel = ({
             }}
             hasExecutedDecision={incidentIdsWithExecutedDecision.has(incident.id)}
             isTrainer={isTrainer}
+            onRespondWithAction={onRespondWithAction}
           />
         ))}
         {filteredIncidents.length === 0 && (

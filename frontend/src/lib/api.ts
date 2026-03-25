@@ -493,6 +493,7 @@ export const api = {
         geometry?: Record<string, unknown>;
         properties?: Record<string, unknown>;
         label?: string;
+        linked_decision_id?: string;
       },
     ) => {
       const headers = await getAuthHeaders();

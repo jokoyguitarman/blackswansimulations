@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { ChatInterface } from '../components/Chat/ChatInterface';
@@ -395,6 +395,124 @@ export const SessionView = () => {
       }>;
     }>
   >([]);
+
+  // --- Action recording state for map-based decisions ---
+  const [actionRecording, setActionRecording] = useState<{
+    active: boolean;
+    incidentId?: string;
+    incidentTitle?: string;
+    actions: Array<{
+      placementId: string;
+      label: string;
+      assetType: string;
+      geometryType: string;
+      properties: Record<string, unknown>;
+    }>;
+  } | null>(null);
+
+  const handlePlacementCreated = useCallback(
+    (placement: {
+      id: string;
+      label: string;
+      asset_type: string;
+      geometry: Record<string, unknown>;
+      properties: Record<string, unknown>;
+    }) => {
+      if (!actionRecording?.active) return;
+      setActionRecording((prev) => {
+        if (!prev?.active) return prev;
+        return {
+          ...prev,
+          actions: [
+            ...prev.actions,
+            {
+              placementId: placement.id,
+              label: placement.label,
+              assetType: placement.asset_type,
+              geometryType: (placement.geometry?.type as string) ?? 'Point',
+              properties: placement.properties,
+            },
+          ],
+        };
+      });
+    },
+    [actionRecording?.active],
+  );
+
+  const handleStartRecording = useCallback(() => {
+    setActionRecording({ active: true, actions: [] });
+  }, []);
+
+  const handleRespondWithAction = useCallback((incidentId: string, incidentTitle: string) => {
+    setActionRecording({ active: true, incidentId, incidentTitle, actions: [] });
+  }, []);
+
+  const handleCancelRecording = useCallback(() => {
+    setActionRecording(null);
+  }, []);
+
+  const handleSubmitActions = useCallback(
+    async (userDescription: string) => {
+      if (!id || !actionRecording?.active || actionRecording.actions.length === 0) return;
+
+      const teamName = myTeams[0]?.team_name ?? 'Unknown team';
+      const grouped = new Map<string, typeof actionRecording.actions>();
+      for (const a of actionRecording.actions) {
+        const key = a.label;
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key)!.push(a);
+      }
+
+      const parts: string[] = [];
+      for (const [label, group] of grouped) {
+        const count = group.length;
+        const sample = group[0];
+        const details: string[] = [];
+        if (sample.properties.length_m) details.push(`${sample.properties.length_m}m`);
+        if (sample.properties.area_m2) details.push(`${sample.properties.area_m2}m²`);
+        const detailStr = details.length ? ` (${details.join(', ')})` : '';
+        parts.push(count > 1 ? `${count}x ${label}${detailStr}` : `${label}${detailStr}`);
+      }
+
+      const autoDesc = `${teamName} placed: ${parts.join(', ')}`;
+      const fullDescription = userDescription
+        ? `${userDescription}\n\nMap actions: ${autoDesc}`
+        : autoDesc;
+      const title = actionRecording.incidentTitle
+        ? `Map response to: ${actionRecording.incidentTitle}`
+        : `Map deployment by ${teamName}`;
+
+      try {
+        const createResult = await api.decisions.create({
+          session_id: id,
+          title,
+          description: fullDescription,
+          team_name: teamName,
+          response_to_incident_id: actionRecording.incidentId ?? null,
+          proposed_action: fullDescription,
+          auto_execute: true,
+        });
+
+        const decision = createResult?.data as { id?: string } | undefined;
+        if (decision?.id) {
+          await api.decisions.execute(decision.id);
+
+          await Promise.allSettled(
+            actionRecording.actions.map((a) =>
+              api.placements.update(id, a.placementId, {
+                linked_decision_id: decision.id!,
+              }),
+            ),
+          );
+        }
+      } catch (err) {
+        console.error('Failed to submit map actions as decision:', err);
+      }
+
+      setActionRecording(null);
+    },
+    [id, actionRecording, myTeams],
+  );
 
   // If Insider reply contains a #show-map hash link, ensure map opens (it's already visible by default).
   useEffect(() => {
@@ -1266,6 +1384,12 @@ export const SessionView = () => {
                   draggableAssets={
                     myTeams[0]?.team_name ? getAssetsForTeam(myTeams[0].team_name) : []
                   }
+                  onPlacementCreated={handlePlacementCreated}
+                  isRecordingActions={!!actionRecording?.active}
+                  actionRecording={actionRecording}
+                  onSubmitActions={handleSubmitActions}
+                  onCancelRecording={handleCancelRecording}
+                  onStartRecording={handleStartRecording}
                 />
               )}
               {mapModuleReady && mapHasBeenOpened && mapProvider === 'google3d' && (
@@ -1347,6 +1471,7 @@ export const SessionView = () => {
                   onIncidentSelect={(incidentId) => setSelectedIncidentId(incidentId)}
                   isTrainer={isTrainer}
                   filterTeam={filterTeam}
+                  onRespondWithAction={handleRespondWithAction}
                 />
               </div>
             </div>
