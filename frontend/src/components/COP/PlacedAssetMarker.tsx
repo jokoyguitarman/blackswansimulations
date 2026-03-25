@@ -44,18 +44,21 @@ function getTeamColor(teamName: string): string {
 }
 
 const ASSET_ICONS: Record<string, string> = {
-  triage_tent: '⚕️',
+  triage_tent: '⛺',
   ambulance_staging: '🚑',
   decon_zone: '☢️',
   barrier: '🚧',
   marshal_post: '🧑',
-  assembly_point: '⛺',
-  press_cordon: '📷',
+  assembly_point: '🚩',
+  press_cordon: '🚧',
   briefing_point: '🎤',
+  camera_position: '📷',
   command_post: '🎯',
-  field_hospital: '🏥',
+  field_hospital: '⚕️',
   helicopter_lz: '🚁',
   water_point: '💧',
+  fire_truck_staging: '🚒',
+  radio_relay: '📻',
 };
 
 function getAssetIcon(assetType: string): string {
