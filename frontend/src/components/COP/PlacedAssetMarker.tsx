@@ -149,6 +149,8 @@ export const PlacedAssetMarker = ({
       ([lng, lat]) => [lat, lng] as LatLngExpression,
     );
     const color = getTeamColor(asset.team_name);
+    const lengthM = asset.properties?.length_m as number | undefined;
+    const areaM2 = asset.properties?.area_m2 as number | undefined;
 
     return (
       <Polygon
@@ -156,15 +158,31 @@ export const PlacedAssetMarker = ({
         pathOptions={{
           color,
           fillColor: color,
-          fillOpacity: 0.15,
+          fillOpacity: isOwnTeam ? 0.2 : 0.1,
           weight: 2,
           dashArray: isOwnTeam ? undefined : '6, 4',
         }}
       >
         <Tooltip sticky>
           <div className="text-xs">
-            <div className="font-semibold">{asset.label}</div>
+            <div className="font-semibold">
+              {getAssetIcon(asset.asset_type)} {asset.label}
+            </div>
             <div className="text-gray-500">{asset.team_name}</div>
+            {areaM2 != null && (
+              <div className="text-gray-400 font-mono">
+                {areaM2 >= 1_000_000
+                  ? `${(areaM2 / 1_000_000).toFixed(2)} km²`
+                  : areaM2 >= 10_000
+                    ? `${(areaM2 / 10_000).toFixed(2)} ha`
+                    : `${Math.round(areaM2)} m²`}
+              </div>
+            )}
+            {lengthM != null && !areaM2 && (
+              <div className="text-gray-400 font-mono">
+                {lengthM >= 1000 ? `${(lengthM / 1000).toFixed(2)} km` : `${Math.round(lengthM)} m`}
+              </div>
+            )}
           </div>
         </Tooltip>
         <Popup>
@@ -186,13 +204,29 @@ export const PlacedAssetMarker = ({
       ([lng, lat]) => [lat, lng] as LatLngExpression,
     );
     const color = getTeamColor(asset.team_name);
+    const lengthM = asset.properties?.length_m as number | undefined;
 
     return (
-      <Polyline positions={positions} pathOptions={{ color, weight: 4, opacity: 0.8 }}>
+      <Polyline
+        positions={positions}
+        pathOptions={{
+          color,
+          weight: 4,
+          opacity: isOwnTeam ? 0.9 : 0.65,
+          dashArray: isOwnTeam ? undefined : '8, 4',
+        }}
+      >
         <Tooltip sticky>
           <div className="text-xs">
-            <div className="font-semibold">{asset.label}</div>
+            <div className="font-semibold">
+              {getAssetIcon(asset.asset_type)} {asset.label}
+            </div>
             <div className="text-gray-500">{asset.team_name}</div>
+            {lengthM != null && (
+              <div className="text-gray-400 font-mono">
+                {lengthM >= 1000 ? `${(lengthM / 1000).toFixed(2)} km` : `${Math.round(lengthM)} m`}
+              </div>
+            )}
           </div>
         </Tooltip>
         <Popup>

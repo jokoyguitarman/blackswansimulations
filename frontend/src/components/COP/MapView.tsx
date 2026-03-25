@@ -13,6 +13,7 @@ import { CrowdDensityOverlay, type CrowdArea } from './CrowdDensityOverlay';
 import { AssetPalette, type DraggableAssetDef } from './AssetPalette';
 import { PlacedAssetMarker, type PlacedAsset } from './PlacedAssetMarker';
 import { MapDropHandler } from './MapDropHandler';
+import { MapDrawHandler } from './MapDrawHandler';
 import { HazardMarker, type HazardData } from './HazardMarker';
 import { HazardAssessmentModal } from './HazardAssessmentModal';
 import { FloorSelector, type FloorPlan } from './FloorSelector';
@@ -647,6 +648,8 @@ export const MapView = ({
     }
   };
 
+  const [drawingAsset, setDrawingAsset] = useState<DraggableAssetDef | null>(null);
+
   // Key stable per session so map only remounts when session changes, not on every render
   const mapKey = `map-${sessionId}`;
 
@@ -790,12 +793,23 @@ export const MapView = ({
           <MapSizeInvalidator isVisible={isVisible} />
           <MapCleanup />
 
-          {/* Drop handler for drag-and-drop asset placement */}
-          {teamName && (
+          {/* Drop handler for drag-and-drop asset placement (disabled while drawing) */}
+          {teamName && !drawingAsset && (
             <MapDropHandler
               sessionId={sessionId}
               teamName={teamName}
               enabled={draggableAssets.length > 0 && !disabled}
+            />
+          )}
+
+          {/* Drawing handler for line/polygon assets */}
+          {teamName && drawingAsset && (
+            <MapDrawHandler
+              sessionId={sessionId}
+              teamName={teamName}
+              drawingAsset={drawingAsset}
+              onFinish={() => setDrawingAsset(null)}
+              onCancel={() => setDrawingAsset(null)}
             />
           )}
 
@@ -923,6 +937,8 @@ export const MapView = ({
           teamName={teamName}
           placedCounts={ownPlacedCounts}
           onAssetDragStart={() => {}}
+          onStartDraw={(asset) => setDrawingAsset(asset)}
+          drawingAssetType={drawingAsset?.asset_type ?? null}
           disabled={disabled}
         />
       )}

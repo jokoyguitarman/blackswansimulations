@@ -75,7 +75,7 @@ const TEAM_ASSET_CATALOG: Record<string, DraggableAssetDef[]> = {
     {
       asset_type: 'press_cordon',
       icon: 'barrier',
-      geometry_type: 'point',
+      geometry_type: 'line',
       label: 'Press Cordon',
       max_count: 3,
     },
@@ -123,7 +123,7 @@ const UNIVERSAL_ASSETS: DraggableAssetDef[] = [
   {
     asset_type: 'barrier',
     icon: 'barrier',
-    geometry_type: 'point',
+    geometry_type: 'line',
     label: 'Barrier / Cordon',
     max_count: 6,
   },
