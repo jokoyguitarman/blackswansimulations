@@ -1,11 +1,12 @@
 import { Router } from 'express';
+import { requireAuth } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 
 const router = Router();
 
 // GET /sessions/:id/hazards — list hazards visible at current game time
-router.get('/sessions/:id/hazards', async (req, res) => {
+router.get('/sessions/:id/hazards', requireAuth, async (req, res) => {
   try {
     const { id: sessionId } = req.params;
 
@@ -66,7 +67,7 @@ router.get('/sessions/:id/hazards', async (req, res) => {
 });
 
 // GET /sessions/:id/hazards/:hazardId — get single hazard detail
-router.get('/sessions/:id/hazards/:hazardId', async (req, res) => {
+router.get('/sessions/:id/hazards/:hazardId', requireAuth, async (req, res) => {
   try {
     const { hazardId } = req.params;
 

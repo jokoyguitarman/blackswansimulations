@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { type AuthenticatedRequest } from '../middleware/auth.js';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from '../services/websocketService.js';
@@ -9,7 +9,7 @@ import { evaluatePlacement } from '../services/spatialScoringService.js';
 const router = Router();
 
 // GET /sessions/:id/placements — list active placements
-router.get('/sessions/:id/placements', async (req, res) => {
+router.get('/sessions/:id/placements', requireAuth, async (req, res) => {
   try {
     const { id: sessionId } = req.params;
     const { data, error } = await supabaseAdmin
@@ -32,7 +32,7 @@ router.get('/sessions/:id/placements', async (req, res) => {
 });
 
 // POST /sessions/:id/placements — create a new placement
-router.post('/sessions/:id/placements', async (req, res) => {
+router.post('/sessions/:id/placements', requireAuth, async (req, res) => {
   try {
     const { id: sessionId } = req.params;
     const user = (req as AuthenticatedRequest).user;
@@ -122,7 +122,7 @@ router.post('/sessions/:id/placements', async (req, res) => {
 });
 
 // PATCH /sessions/:id/placements/:placementId — update (relocate)
-router.patch('/sessions/:id/placements/:placementId', async (req, res) => {
+router.patch('/sessions/:id/placements/:placementId', requireAuth, async (req, res) => {
   try {
     const { id: sessionId, placementId } = req.params;
     const user = (req as AuthenticatedRequest).user;
@@ -206,7 +206,7 @@ router.patch('/sessions/:id/placements/:placementId', async (req, res) => {
 });
 
 // DELETE /sessions/:id/placements/:placementId — remove (soft delete)
-router.delete('/sessions/:id/placements/:placementId', async (req, res) => {
+router.delete('/sessions/:id/placements/:placementId', requireAuth, async (req, res) => {
   try {
     const { id: sessionId, placementId } = req.params;
     const user = (req as AuthenticatedRequest).user;

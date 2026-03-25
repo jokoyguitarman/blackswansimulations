@@ -1,11 +1,12 @@
 import { Router } from 'express';
+import { requireAuth } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 
 const router = Router();
 
 // GET /sessions/:id/floor-plans — list floor plans for the session's scenario
-router.get('/sessions/:id/floor-plans', async (req, res) => {
+router.get('/sessions/:id/floor-plans', requireAuth, async (req, res) => {
   try {
     const { id: sessionId } = req.params;
 
@@ -36,7 +37,7 @@ router.get('/sessions/:id/floor-plans', async (req, res) => {
 });
 
 // GET /sessions/:id/floor-plans/:floorLevel — get a specific floor plan
-router.get('/sessions/:id/floor-plans/:floorLevel', async (req, res) => {
+router.get('/sessions/:id/floor-plans/:floorLevel', requireAuth, async (req, res) => {
   try {
     const { id: sessionId, floorLevel } = req.params;
 
