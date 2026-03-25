@@ -27,13 +27,6 @@ const TEAM_ASSET_CATALOG: Record<string, DraggableAssetDef[]> = {
       max_count: 4,
     },
     {
-      asset_type: 'barrier',
-      icon: 'barrier',
-      geometry_type: 'point',
-      label: 'Barrier / Cordon',
-      max_count: 8,
-    },
-    {
       asset_type: 'marshal_post',
       icon: 'person',
       geometry_type: 'point',
@@ -123,17 +116,17 @@ const TEAM_ASSET_CATALOG: Record<string, DraggableAssetDef[]> = {
       label: 'Water Point',
       max_count: 4,
     },
-    {
-      asset_type: 'barrier',
-      icon: 'barrier',
-      geometry_type: 'point',
-      label: 'Hazard Perimeter',
-      max_count: 8,
-    },
   ],
 };
 
 const UNIVERSAL_ASSETS: DraggableAssetDef[] = [
+  {
+    asset_type: 'barrier',
+    icon: 'barrier',
+    geometry_type: 'point',
+    label: 'Barrier / Cordon',
+    max_count: 6,
+  },
   {
     asset_type: 'command_post',
     icon: 'command',
@@ -161,13 +154,6 @@ function getAssetsForTeam(teamName: string): DraggableAssetDef[] {
   }
   return [
     ...UNIVERSAL_ASSETS,
-    {
-      asset_type: 'barrier',
-      icon: 'barrier',
-      geometry_type: 'point',
-      label: 'Barrier / Cordon',
-      max_count: 6,
-    },
     {
       asset_type: 'assembly_point',
       icon: 'flag',
