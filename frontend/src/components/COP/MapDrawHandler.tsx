@@ -10,7 +10,13 @@ interface MapDrawHandlerProps {
   drawingAsset: DraggableAssetDef;
   onFinish: () => void;
   onCancel: () => void;
+  /** Increment to trigger finish from outside (e.g. a Finish button). */
+  finishSignal?: number;
+  /** Reports the current vertex count so parent can enable/disable Finish button. */
+  onVertexCountChange?: (count: number) => void;
 }
+
+const SNAP_RADIUS_PX = 18;
 
 function haversineDistance(a: LatLng, b: LatLng): number {
   const R = 6371000;
@@ -63,16 +69,24 @@ export const MapDrawHandler = ({
   drawingAsset,
   onFinish,
   onCancel,
+  finishSignal,
+  onVertexCountChange,
 }: MapDrawHandlerProps) => {
   const map = useMap();
   const [vertices, setVertices] = useState<LatLng[]>([]);
   const [cursorPos, setCursorPos] = useState<LatLng | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [nearStart, setNearStart] = useState(false);
   const verticesRef = useRef(vertices);
   verticesRef.current = vertices;
 
   const isPolygon = drawingAsset.geometry_type === 'polygon';
   const minPoints = isPolygon ? 3 : 2;
+
+  // Report vertex count changes to parent
+  useEffect(() => {
+    onVertexCountChange?.(vertices.length);
+  }, [vertices.length, onVertexCountChange]);
 
   const finishDrawing = useCallback(async () => {
     const pts = verticesRef.current;
@@ -105,15 +119,42 @@ export const MapDrawHandler = ({
     onFinish();
   }, [sessionId, teamName, drawingAsset, isPolygon, minPoints, submitting, onFinish]);
 
+  // Allow parent to trigger finish via incrementing finishSignal
+  const prevSignalRef = useRef(finishSignal);
+  useEffect(() => {
+    if (finishSignal !== undefined && finishSignal !== prevSignalRef.current) {
+      prevSignalRef.current = finishSignal;
+      finishDrawing();
+    }
+  }, [finishSignal, finishDrawing]);
+
+  /** Check if a screen point is within SNAP_RADIUS_PX of the first vertex. */
+  const isNearFirstVertex = useCallback(
+    (latlng: LatLng): boolean => {
+      if (verticesRef.current.length < minPoints) return false;
+      const first = verticesRef.current[0];
+      const clickPx = map.latLngToContainerPoint(latlng);
+      const firstPx = map.latLngToContainerPoint(first);
+      const dx = clickPx.x - firstPx.x;
+      const dy = clickPx.y - firstPx.y;
+      return dx * dx + dy * dy <= SNAP_RADIUS_PX * SNAP_RADIUS_PX;
+    },
+    [map, minPoints],
+  );
+
   useMapEvents({
     click(e: LeafletMouseEvent) {
       if (submitting) return;
+      // Snap-to-start: if clicking near the first vertex and we have enough points, finish
+      if (isNearFirstVertex(e.latlng)) {
+        finishDrawing();
+        return;
+      }
       setVertices((prev) => [...prev, e.latlng]);
     },
     dblclick(e: LeafletMouseEvent) {
       e.originalEvent.preventDefault();
       e.originalEvent.stopPropagation();
-      // Add the double-click point then finish
       setVertices((prev) => {
         const next = [...prev, e.latlng];
         verticesRef.current = next;
@@ -123,6 +164,7 @@ export const MapDrawHandler = ({
     },
     mousemove(e: LeafletMouseEvent) {
       setCursorPos(e.latlng);
+      setNearStart(isNearFirstVertex(e.latlng));
     },
     contextmenu(e: LeafletMouseEvent) {
       e.originalEvent.preventDefault();
@@ -142,7 +184,7 @@ export const MapDrawHandler = ({
     };
   }, [map]);
 
-  // Escape to cancel
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCancel();
@@ -157,7 +199,9 @@ export const MapDrawHandler = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onCancel, finishDrawing, minPoints]);
 
-  const previewPoints = cursorPos ? [...vertices, cursorPos] : vertices;
+  // Build preview: when near the start vertex, snap the preview line back to vertex[0]
+  const previewEnd = nearStart && vertices.length >= minPoints ? vertices[0] : cursorPos;
+  const previewPoints = previewEnd ? [...vertices, previewEnd] : vertices;
   const positions = previewPoints.map((p) => [p.lat, p.lng] as [number, number]);
   const totalDist = polylineLength(previewPoints);
 
@@ -170,8 +214,8 @@ export const MapDrawHandler = ({
             <Polygon
               positions={positions}
               pathOptions={{
-                color: '#f59e0b',
-                fillColor: '#f59e0b',
+                color: nearStart ? '#22c55e' : '#f59e0b',
+                fillColor: nearStart ? '#22c55e' : '#f59e0b',
                 fillOpacity: 0.15,
                 weight: 2,
                 dashArray: '8, 4',
@@ -189,7 +233,7 @@ export const MapDrawHandler = ({
             <Polyline
               positions={positions}
               pathOptions={{
-                color: '#f59e0b',
+                color: nearStart ? '#22c55e' : '#f59e0b',
                 weight: 3,
                 dashArray: '8, 4',
               }}
@@ -207,12 +251,12 @@ export const MapDrawHandler = ({
         <CircleMarker
           key={i}
           center={[v.lat, v.lng]}
-          radius={5}
+          radius={i === 0 && nearStart ? 9 : 5}
           pathOptions={{
-            color: '#f59e0b',
+            color: i === 0 ? '#22c55e' : '#f59e0b',
             fillColor: i === 0 ? '#22c55e' : '#f59e0b',
-            fillOpacity: 1,
-            weight: 2,
+            fillOpacity: i === 0 && nearStart ? 0.5 : 1,
+            weight: i === 0 && nearStart ? 3 : 2,
           }}
         />
       ))}

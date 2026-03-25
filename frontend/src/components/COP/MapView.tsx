@@ -649,6 +649,8 @@ export const MapView = ({
   };
 
   const [drawingAsset, setDrawingAsset] = useState<DraggableAssetDef | null>(null);
+  const [drawVertexCount, setDrawVertexCount] = useState(0);
+  const [drawFinishSignal, setDrawFinishSignal] = useState(0);
 
   // Key stable per session so map only remounts when session changes, not on every render
   const mapKey = `map-${sessionId}`;
@@ -808,8 +810,16 @@ export const MapView = ({
               sessionId={sessionId}
               teamName={teamName}
               drawingAsset={drawingAsset}
-              onFinish={() => setDrawingAsset(null)}
-              onCancel={() => setDrawingAsset(null)}
+              onFinish={() => {
+                setDrawingAsset(null);
+                setDrawVertexCount(0);
+              }}
+              onCancel={() => {
+                setDrawingAsset(null);
+                setDrawVertexCount(0);
+              }}
+              finishSignal={drawFinishSignal}
+              onVertexCountChange={setDrawVertexCount}
             />
           )}
 
@@ -938,7 +948,13 @@ export const MapView = ({
           placedCounts={ownPlacedCounts}
           onAssetDragStart={() => {}}
           onStartDraw={(asset) => setDrawingAsset(asset)}
+          onFinishDraw={() => setDrawFinishSignal((s) => s + 1)}
+          onCancelDraw={() => {
+            setDrawingAsset(null);
+            setDrawVertexCount(0);
+          }}
           drawingAssetType={drawingAsset?.asset_type ?? null}
+          drawVertexCount={drawVertexCount}
           disabled={disabled}
         />
       )}

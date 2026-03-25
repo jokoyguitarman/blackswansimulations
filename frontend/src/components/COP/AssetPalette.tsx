@@ -14,7 +14,11 @@ interface AssetPaletteProps {
   placedCounts: Record<string, number>;
   onAssetDragStart: (asset: DraggableAssetDef) => void;
   onStartDraw?: (asset: DraggableAssetDef) => void;
+  onFinishDraw?: () => void;
+  onCancelDraw?: () => void;
   drawingAssetType?: string | null;
+  /** Current vertex count while drawing — enables/disables the Finish button. */
+  drawVertexCount?: number;
   disabled?: boolean;
 }
 
@@ -47,7 +51,10 @@ export const AssetPalette = ({
   placedCounts,
   onAssetDragStart,
   onStartDraw,
+  onFinishDraw,
+  onCancelDraw,
   drawingAssetType,
+  drawVertexCount = 0,
   disabled,
 }: AssetPaletteProps) => {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -68,15 +75,53 @@ export const AssetPalette = ({
   return (
     <div className="absolute bottom-3 left-3 z-[1000] select-none" style={{ maxWidth: '280px' }}>
       {/* Drawing-mode banner */}
-      {isDrawing && (
-        <div className="px-3 py-2 bg-amber-900/95 border border-amber-500/70 rounded-t text-xs terminal-text text-amber-300 space-y-1">
-          <div className="font-medium">Drawing mode</div>
-          <div className="text-amber-300/70 leading-relaxed">
-            Click the map to place vertices. Double-click or press Enter to finish. Backspace
-            removes the last point. Escape or right-click to cancel.
-          </div>
-        </div>
-      )}
+      {isDrawing &&
+        (() => {
+          const drawingDef = assets.find((a) => a.asset_type === drawingAssetType);
+          const isPolyMode = drawingDef?.geometry_type === 'polygon';
+          const minPts = isPolyMode ? 3 : 2;
+          const canFinish = drawVertexCount >= minPts;
+
+          return (
+            <div className="px-3 py-2 bg-amber-900/95 border border-amber-500/70 rounded-t text-xs terminal-text text-amber-300 space-y-2">
+              <div className="font-medium flex items-center justify-between">
+                <span>
+                  Drawing — {drawVertexCount} point{drawVertexCount !== 1 ? 's' : ''}
+                </span>
+                {!canFinish && (
+                  <span className="text-amber-300/50 font-normal">
+                    need {minPts - drawVertexCount} more
+                  </span>
+                )}
+              </div>
+              <div className="text-amber-300/60 leading-relaxed">
+                Click on the map to add points.{' '}
+                {canFinish
+                  ? 'Click the green start point or press Finish to complete.'
+                  : `Place at least ${minPts} points to finish.`}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={onFinishDraw}
+                  disabled={!canFinish}
+                  className={`flex-1 px-2 py-1 rounded border text-xs font-medium transition-colors ${
+                    canFinish
+                      ? 'border-green-500/70 text-green-300 bg-green-900/50 hover:bg-green-800/60'
+                      : 'border-gray-600 text-gray-500 cursor-not-allowed opacity-50'
+                  }`}
+                >
+                  Finish
+                </button>
+                <button
+                  onClick={onCancelDraw}
+                  className="flex-1 px-2 py-1 rounded border border-red-500/50 text-red-300 bg-red-900/40 hover:bg-red-800/50 text-xs font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
       <button
         onClick={() => setIsExpanded(!isExpanded)}
