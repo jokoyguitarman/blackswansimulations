@@ -13,14 +13,14 @@ router.get('/sessions/:id/hazards', requireAuth, async (req, res) => {
     // Get session to find scenario_id and elapsed time
     const { data: session } = await supabaseAdmin
       .from('sessions')
-      .select('scenario_id, started_at, current_state')
+      .select('scenario_id, start_time, current_state')
       .eq('id', sessionId)
       .single();
 
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
-    const elapsedMinutes = session.started_at
-      ? Math.floor((Date.now() - new Date(session.started_at).getTime()) / 60000)
+    const elapsedMinutes = session.start_time
+      ? Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000)
       : 0;
 
     // Fetch hazards: scenario-level (session_id IS NULL) + session-level

@@ -22,14 +22,14 @@ router.get('/sessions/:id/casualties', requireAuth, async (req, res) => {
 
     const { data: session } = await supabaseAdmin
       .from('sessions')
-      .select('scenario_id, started_at')
+      .select('scenario_id, start_time')
       .eq('id', sessionId)
       .single();
 
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
-    const elapsedMinutes = session.started_at
-      ? Math.floor((Date.now() - new Date(session.started_at).getTime()) / 60000)
+    const elapsedMinutes = session.start_time
+      ? Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000)
       : 0;
 
     const { data: casualties, error } = await supabaseAdmin
@@ -148,13 +148,13 @@ router.post('/sessions/:id/casualties/:casualtyId/assess', requireAuth, async (r
 
     const { data: session } = await supabaseAdmin
       .from('sessions')
-      .select('scenario_id, started_at')
+      .select('scenario_id, start_time')
       .eq('id', sessionId)
       .single();
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
-    const elapsedMinutes = session.started_at
-      ? Math.floor((Date.now() - new Date(session.started_at).getTime()) / 60000)
+    const elapsedMinutes = session.start_time
+      ? Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000)
       : 0;
 
     const { data: casualty, error: casError } = await supabaseAdmin

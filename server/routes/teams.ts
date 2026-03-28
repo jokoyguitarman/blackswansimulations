@@ -77,16 +77,18 @@ router.get('/session/:id', requireAuth, async (req: AuthenticatedRequest, res) =
 
       // Fetch user data separately
       if (assignments && assignments.length > 0) {
-        const userIds = [...new Set(assignments.map((a: any) => a.user_id))];
+        const userIds = [
+          ...new Set(assignments.map((a: Record<string, unknown>) => a.user_id as string)),
+        ];
         const { data: users } = await supabaseAdmin
           .from('user_profiles')
           .select('id, full_name, role')
           .in('id', userIds);
 
-        const userMap = new Map(users?.map((u: any) => [u.id, u]) || []);
-        const assignmentsWithUsers = assignments.map((a: any) => ({
+        const userMap = new Map(users?.map((u: Record<string, unknown>) => [u.id, u]) || []);
+        const assignmentsWithUsers = assignments.map((a: Record<string, unknown>) => ({
           ...a,
-          user: userMap.get(a.user_id) || null,
+          user: userMap.get(a.user_id as string) || null,
         }));
 
         return res.json({ data: assignmentsWithUsers });
@@ -120,16 +122,18 @@ router.get('/session/:id', requireAuth, async (req: AuthenticatedRequest, res) =
 
     // Fetch user data separately
     if (assignments && assignments.length > 0) {
-      const userIds = [...new Set(assignments.map((a: any) => a.user_id))];
+      const userIds = [
+        ...new Set(assignments.map((a: Record<string, unknown>) => a.user_id as string)),
+      ];
       const { data: users } = await supabaseAdmin
         .from('user_profiles')
         .select('id, full_name, role')
         .in('id', userIds);
 
-      const userMap = new Map(users?.map((u: any) => [u.id, u]) || []);
-      const assignmentsWithUsers = assignments.map((a: any) => ({
+      const userMap = new Map(users?.map((u: Record<string, unknown>) => [u.id, u]) || []);
+      const assignmentsWithUsers = assignments.map((a: Record<string, unknown>) => ({
         ...a,
-        user: userMap.get(a.user_id) || null,
+        user: userMap.get(a.user_id as string) || null,
       }));
 
       return res.json({ data: assignmentsWithUsers });
@@ -301,9 +305,17 @@ router.get('/scenario/:id', requireAuth, async (req: AuthenticatedRequest, res) 
       return res.status(404).json({ error: 'Scenario not found' });
     }
 
-    // Check access - trainers/admins or scenario creator
+    // Check access - trainers/admins, scenario creator, or any session participant
     if (scenario.created_by !== user.id && user.role !== 'trainer' && user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied' });
+      const { data: participation } = await supabaseAdmin
+        .from('session_participants')
+        .select('id')
+        .eq('user_id', user.id)
+        .limit(1)
+        .maybeSingle();
+      if (!participation) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
     }
 
     const { data: teams, error } = await supabaseAdmin

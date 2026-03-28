@@ -13,12 +13,12 @@ import { getWebSocketService } from '../services/websocketService.js';
 export async function runHazardDeterioration(sessionId: string): Promise<void> {
   const { data: session } = await supabaseAdmin
     .from('sessions')
-    .select('scenario_id, started_at')
+    .select('scenario_id, start_time')
     .eq('id', sessionId)
     .single();
-  if (!session?.started_at) return;
+  if (!session?.start_time) return;
 
-  const elapsedMinutes = Math.floor((Date.now() - new Date(session.started_at).getTime()) / 60000);
+  const elapsedMinutes = Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000);
 
   const { data: hazards } = await supabaseAdmin
     .from('scenario_hazards')
