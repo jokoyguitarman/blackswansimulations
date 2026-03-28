@@ -1069,6 +1069,33 @@ const MapPinsTab = ({
       } else {
         setSaveMsg('All pin positions saved');
       }
+
+      // Update local state so pins stay at their new positions after save
+      if (c.locations.size) {
+        setLocations((prev) =>
+          prev.map((loc) => {
+            const moved = c.locations.get(loc.id);
+            return moved ? { ...loc, coordinates: { lat: moved.lat, lng: moved.lng } } : loc;
+          }),
+        );
+      }
+      if (c.hazards.size) {
+        setHazardPins((prev) =>
+          prev.map((h) => {
+            const moved = c.hazards.get(h.id);
+            return moved ? { ...h, location_lat: moved.lat, location_lng: moved.lng } : h;
+          }),
+        );
+      }
+      if (c.casualties.size) {
+        setCasualtyPins((prev) =>
+          prev.map((cas) => {
+            const moved = c.casualties.get(cas.id);
+            return moved ? { ...cas, location_lat: moved.lat, location_lng: moved.lng } : cas;
+          }),
+        );
+      }
+
       changesRef.current = { locations: new Map(), hazards: new Map(), casualties: new Map() };
       setDirty(false);
     } catch {

@@ -252,7 +252,33 @@ router.get('/:id/locations', requireAuth, async (req: AuthenticatedRequest, res)
       logger.error({ error, scenarioId: id }, 'Failed to fetch scenario locations');
       return res.status(500).json({ error: 'Failed to fetch locations' });
     }
-    res.json({ data: data ?? [] });
+
+    // Auto-repair GeoJSON-corrupted coordinates ({type:'Point',coordinates:[lng,lat]} → {lat,lng})
+    const rows = data ?? [];
+    for (const row of rows) {
+      const coords = row.coordinates as Record<string, unknown> | null;
+      if (
+        coords &&
+        coords.type === 'Point' &&
+        Array.isArray(coords.coordinates) &&
+        coords.coordinates.length >= 2
+      ) {
+        const [lng, lat] = coords.coordinates as number[];
+        row.coordinates = { lat, lng };
+        // Fire-and-forget DB repair
+        supabaseAdmin
+          .from('scenario_locations')
+          .update({ coordinates: { lat, lng } })
+          .eq('id', row.id)
+          .then(({ error: repairErr }) => {
+            if (repairErr)
+              logger.warn({ id: row.id, error: repairErr }, 'Failed to auto-repair coordinates');
+            else logger.info({ id: row.id }, 'Auto-repaired GeoJSON coordinates');
+          });
+      }
+    }
+
+    res.json({ data: rows });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /scenarios/:id/locations');
     res.status(500).json({ error: 'Internal server error' });

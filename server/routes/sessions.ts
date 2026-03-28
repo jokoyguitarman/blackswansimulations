@@ -833,6 +833,30 @@ router.get(
         return res.status(500).json({ error: 'Failed to fetch locations' });
       }
 
+      // Auto-repair GeoJSON-corrupted coordinates ({type:'Point',coordinates:[lng,lat]} → {lat,lng})
+      const locRows = locations ?? [];
+      for (const row of locRows) {
+        const coords = row.coordinates as Record<string, unknown> | null;
+        if (
+          coords &&
+          coords.type === 'Point' &&
+          Array.isArray(coords.coordinates) &&
+          coords.coordinates.length >= 2
+        ) {
+          const [lng, lat] = coords.coordinates as number[];
+          row.coordinates = { lat, lng };
+          supabaseAdmin
+            .from('scenario_locations')
+            .update({ coordinates: { lat, lng } })
+            .eq('id', row.id)
+            .then(({ error: repairErr }) => {
+              if (repairErr)
+                logger.warn({ id: row.id, error: repairErr }, 'Failed to auto-repair coordinates');
+              else logger.info({ id: row.id }, 'Auto-repaired GeoJSON coordinates');
+            });
+        }
+      }
+
       // Pins for establishments (hospital, police, fire, cctv, community) only show when THIS user has asked the Insider about that category (per-player view).
       const { data: qaRows } = await supabaseAdmin
         .from('session_insider_qa')
@@ -846,7 +870,7 @@ router.get(
       );
 
       res.json({
-        data: locations ?? [],
+        data: locRows,
         map_revealed_categories: mapRevealedCategories,
       });
     } catch (err) {
