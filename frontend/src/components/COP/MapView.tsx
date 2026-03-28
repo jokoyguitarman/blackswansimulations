@@ -384,7 +384,7 @@ const MapUpdater = ({
       );
 
       if (bounds.length > 0) {
-        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 19 });
         setTimeout(() => map.invalidateSize(), 100);
       }
     } else if (initialCenter && initialZoom) {
@@ -795,6 +795,7 @@ export const MapView = ({
           scrollWheelZoom={true}
           doubleClickZoom={true}
           zoomControl={true}
+          maxZoom={22}
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -803,7 +804,8 @@ export const MapView = ({
             noWrap={false}
             updateWhenZooming={true}
             updateWhenIdle={true}
-            maxZoom={19}
+            maxNativeZoom={19}
+            maxZoom={22}
             minZoom={2}
             eventHandlers={{
               loading: () => console.log('[MapView] Tiles loading...'),
