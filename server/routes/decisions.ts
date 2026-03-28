@@ -41,7 +41,7 @@ const router = Router();
 const createDecisionSchema = z.object({
   body: z.object({
     session_id: z.string().uuid(),
-    response_to_incident_id: z.string().uuid().optional(),
+    response_to_incident_id: z.string().uuid().optional().nullable(),
     title: z.string().max(200).optional(),
     description: z.string().min(1),
     decision_type: z
@@ -315,7 +315,7 @@ router.post(
         title: titleInput,
         description,
         decision_type,
-        required_approvers,
+        required_approvers = [],
       } = req.body;
 
       // Verify session access

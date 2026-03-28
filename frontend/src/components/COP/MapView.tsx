@@ -164,6 +164,7 @@ interface MapViewProps {
     incidentId?: string;
     incidentTitle?: string;
     actions: Array<{ placementId: string; label: string; assetType: string }>;
+    crowdMoves?: Array<{ crowdId: string; label: string }>;
   } | null;
   /** Called when user clicks "Submit Actions" in the palette. */
   onSubmitActions?: (description: string) => void;
@@ -171,6 +172,15 @@ interface MapViewProps {
   onCancelRecording?: () => void;
   /** Called when user clicks "Record Actions" in the palette. */
   onStartRecording?: () => void;
+  /** Called when a crowd pin is moved (for action recording). */
+  onCrowdMoved?: (crowd: {
+    id: string;
+    label: string;
+    fromLat: number;
+    fromLng: number;
+    toLat: number;
+    toLng: number;
+  }) => void;
 }
 
 /**
@@ -452,6 +462,7 @@ export const MapView = ({
   onSubmitActions,
   onCancelRecording,
   onStartRecording,
+  onCrowdMoved,
 }: MapViewProps) => {
   const mapDisabledByEnv = import.meta.env.VITE_DISABLE_MAP === 'true';
   const isMapDisabled = disabled || mapDisabledByEnv;
@@ -528,13 +539,16 @@ export const MapView = ({
         location_type: sl.location_type,
         coordinates: sl.coordinates as { lat: number; lng: number },
         conditions: (sl.conditions ?? {}) as Record<string, unknown>,
-        claimable_by: ((sl.conditions as Record<string, unknown>)?.claimable_by as string[]) ?? [
-          'all',
-        ],
+        claimable_by: (sl.claimable_by as string[] | undefined) ??
+          ((sl.conditions as Record<string, unknown>)?.claimable_by as string[]) ?? ['all'],
         claimed_by_team:
-          ((sl.conditions as Record<string, unknown>)?.claimed_by_team as string | null) ?? null,
+          (sl.claimed_by_team as string | null) ??
+          ((sl.conditions as Record<string, unknown>)?.claimed_by_team as string | null) ??
+          null,
         claimed_as:
-          ((sl.conditions as Record<string, unknown>)?.claimed_as as string | null) ?? null,
+          (sl.claimed_as as string | null) ??
+          ((sl.conditions as Record<string, unknown>)?.claimed_as as string | null) ??
+          null,
       }));
     setEntryExitPins(eeLocations);
   }, [scenarioLocations]);
@@ -1105,13 +1119,32 @@ export const MapView = ({
                   /* TODO: open crowd detail modal */
                 }}
                 onDragEnd={async (c, newLat, newLng) => {
+                  const oldLat = c.location_lat;
+                  const oldLng = c.location_lng;
+                  setCrowds((prev) =>
+                    prev.map((cr) =>
+                      cr.id === c.id ? { ...cr, location_lat: newLat, location_lng: newLng } : cr,
+                    ),
+                  );
                   try {
                     await api.casualties.update(sessionId, c.id, {
                       location_lat: newLat,
                       location_lng: newLng,
                     });
+                    onCrowdMoved?.({
+                      id: c.id,
+                      label: `Crowd (${c.headcount} people)`,
+                      fromLat: oldLat,
+                      fromLng: oldLng,
+                      toLat: newLat,
+                      toLng: newLng,
+                    });
                   } catch {
-                    /* revert will happen on next poll */
+                    setCrowds((prev) =>
+                      prev.map((cr) =>
+                        cr.id === c.id ? { ...cr, location_lat: oldLat, location_lng: oldLng } : cr,
+                      ),
+                    );
                   }
                 }}
               />
@@ -1134,8 +1167,29 @@ export const MapView = ({
                         : p,
                     ),
                   );
-                } catch {
-                  /* ignore */
+                } catch (err: unknown) {
+                  const msg = err instanceof Error ? err.message : 'Failed to claim this point';
+                  if (msg.toLowerCase().includes('already claimed')) {
+                    const refreshed = await api.sessions.getLocations(sessionId);
+                    const locs = (refreshed?.data ?? []) as Array<Record<string, unknown>>;
+                    const found = locs.find((l) => l.id === locationId) as
+                      | Record<string, unknown>
+                      | undefined;
+                    if (found?.claimed_by_team) {
+                      setEntryExitPins((prev) =>
+                        prev.map((p) =>
+                          p.id === locationId
+                            ? {
+                                ...p,
+                                claimed_by_team: found.claimed_by_team as string,
+                                claimed_as: (found.claimed_as as string) ?? null,
+                              }
+                            : p,
+                        ),
+                      );
+                    }
+                  }
+                  alert(msg);
                 }
               }}
             />

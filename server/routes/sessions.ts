@@ -821,7 +821,9 @@ router.get(
 
       const { data: locations, error: locError } = await supabaseAdmin
         .from('scenario_locations')
-        .select('id, scenario_id, location_type, label, coordinates, conditions, display_order')
+        .select(
+          'id, scenario_id, location_type, label, coordinates, conditions, display_order, claimable_by, claimed_by_team, claimed_as',
+        )
         .eq('scenario_id', scenarioId)
         .order('display_order', { ascending: true });
 

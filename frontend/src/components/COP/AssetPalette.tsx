@@ -13,6 +13,7 @@ interface ActionRecordingState {
   incidentId?: string;
   incidentTitle?: string;
   actions: Array<{ placementId: string; label: string; assetType: string }>;
+  crowdMoves?: Array<{ crowdId: string; label: string }>;
 }
 
 interface AssetPaletteProps {
@@ -256,17 +257,28 @@ export const AssetPalette = ({
             <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" />
             <span className="text-red-300 font-medium">RECORDING</span>
             <span className="text-robotic-yellow/60 ml-auto">
-              {actionRecording.actions.length} action
-              {actionRecording.actions.length !== 1 ? 's' : ''}
+              {actionRecording.actions.length + (actionRecording.crowdMoves?.length ?? 0)} action
+              {actionRecording.actions.length + (actionRecording.crowdMoves?.length ?? 0) !== 1
+                ? 's'
+                : ''}
             </span>
           </div>
 
           {/* List of recorded actions */}
-          {actionRecording.actions.length > 0 && (
-            <div className="space-y-0.5 max-h-20 overflow-y-auto">
+          {(actionRecording.actions.length > 0 ||
+            (actionRecording.crowdMoves?.length ?? 0) > 0) && (
+            <div className="space-y-0.5 max-h-24 overflow-y-auto">
               {actionRecording.actions.map((a, i) => (
-                <div key={i} className="text-[10px] terminal-text text-robotic-yellow/50 truncate">
-                  {i + 1}. {a.label}
+                <div
+                  key={`p-${i}`}
+                  className="text-[10px] terminal-text text-robotic-yellow/50 truncate"
+                >
+                  {i + 1}. Placed {a.label}
+                </div>
+              ))}
+              {actionRecording.crowdMoves?.map((m, i) => (
+                <div key={`m-${i}`} className="text-[10px] terminal-text text-cyan-400/60 truncate">
+                  {actionRecording.actions.length + i + 1}. Moved {m.label}
                 </div>
               ))}
             </div>
@@ -288,9 +300,12 @@ export const AssetPalette = ({
                 onSubmitActions?.(submitDescription.trim());
                 setSubmitDescription('');
               }}
-              disabled={actionRecording.actions.length === 0}
+              disabled={
+                actionRecording.actions.length === 0 &&
+                (actionRecording.crowdMoves?.length ?? 0) === 0
+              }
               className={`flex-1 px-2 py-1.5 rounded border text-xs terminal-text font-medium transition-colors ${
-                actionRecording.actions.length > 0
+                actionRecording.actions.length > 0 || (actionRecording.crowdMoves?.length ?? 0) > 0
                   ? 'border-green-500/70 text-green-300 bg-green-900/50 hover:bg-green-800/60'
                   : 'border-gray-600 text-gray-500 cursor-not-allowed opacity-50'
               }`}

@@ -414,6 +414,54 @@ export async function evaluateDecisionAgainstEnvironment(
     if (!sectorStandards && typeof insiderKnowledge.sector_standards === 'string') {
       sectorStandards = insiderKnowledge.sector_standards;
     }
+
+    // Detect hazard-response decisions and load hazard research data
+    let hazardStandardsBlock = '';
+    const hazardMatch = decision.description.match(/^\[Hazard Response:\s*(.+?)\]/);
+    if (hazardMatch) {
+      const hazardTypeRaw = hazardMatch[1].trim().replace(/\s+/g, '_').toLowerCase();
+      const { data: matchingHazards } = await supabaseAdmin
+        .from('scenario_hazards')
+        .select(
+          'hazard_type, enriched_description, resolution_requirements, personnel_requirements, equipment_requirements, properties',
+        )
+        .eq('scenario_id', scenarioId)
+        .ilike('hazard_type', `%${hazardTypeRaw}%`)
+        .limit(3);
+
+      if (matchingHazards?.length) {
+        const parts: string[] = [];
+        for (const h of matchingHazards) {
+          const lines: string[] = [];
+          lines.push(`Hazard type: ${(h.hazard_type as string).replace(/_/g, ' ')}`);
+          if (h.enriched_description) {
+            lines.push(`Situation: ${h.enriched_description}`);
+          }
+          const reqs = h.resolution_requirements as Record<string, unknown> | null;
+          if (reqs && Object.keys(reqs).length > 0) {
+            lines.push(`Resolution requirements: ${JSON.stringify(reqs)}`);
+          }
+          const personnel = h.personnel_requirements as Record<string, unknown> | null;
+          if (personnel && Object.keys(personnel).length > 0) {
+            lines.push(`Personnel requirements: ${JSON.stringify(personnel)}`);
+          }
+          const equipment = h.equipment_requirements as unknown[] | null;
+          if (equipment && equipment.length > 0) {
+            lines.push(`Equipment requirements: ${JSON.stringify(equipment)}`);
+          }
+          const props = (h.properties ?? {}) as Record<string, unknown>;
+          const propEntries = Object.entries(props).filter(
+            ([k]) => !['deterioration_stage', 'minutes_unaddressed'].includes(k),
+          );
+          if (propEntries.length > 0) {
+            lines.push(`Properties: ${propEntries.map(([k, v]) => `${k}: ${v}`).join(', ')}`);
+          }
+          parts.push(lines.join('\n'));
+        }
+        hazardStandardsBlock = `HAZARD RESPONSE STANDARDS (the player is responding to this hazard — evaluate their response against these requirements):\n${parts.join('\n---\n')}\n\n`;
+      }
+    }
+
     if (!groundTruthSummary) {
       logger.debug(
         { sessionId, scenarioId: (scenario as { id: string }).id },
@@ -428,6 +476,8 @@ export async function evaluateDecisionAgainstEnvironment(
         : '';
 
     const systemPrompt = `You are an expert crisis management evaluator. Given a decision (title and description), the scenario's ENVIRONMENT GROUND TRUTH, and any team doctrines/sector standards, evaluate TWO dimensions: (A) ENVIRONMENTAL CONSISTENCY and (B) OPERATIONAL SPECIFICITY.${incidentBlock}
+
+IMPORTANT — HAZARD RESPONSE EVALUATION: When "HAZARD RESPONSE STANDARDS" are provided, the decision is a direct response to a specific hazard. You MUST evaluate whether the proposed response meets the hazard's resolution requirements, personnel requirements, and equipment requirements. A vague or incomplete response that does not specify the correct equipment, personnel, approach method, or containment procedure should be marked specific: false. A response that proposes incorrect equipment or procedures for the hazard type (e.g. water on a Class B fire) should be marked consistent: false with mismatch_kind "contradiction".
 
 === (A) ENVIRONMENTAL CONSISTENCY ===
 Determine if the decision's details are consistent with the environment.
@@ -521,7 +571,7 @@ Return ONLY valid JSON:
     const escalationLine = `ESCALATION LEVEL: ${escalationLevel} (${escalationLevel === 0 ? 'first offence — minor operational friction' : escalationLevel === 1 ? 'second offence — significant in-world problems' : 'third+ offence — critical in-world damage and casualties'})\n\n`;
     const userPrompt = `ENVIRONMENT GROUND TRUTH: ${groundTruthSummary}
 
-${sectorStandardsLine}${teamRoleLine}${escalationLine}${incidentUserBlock}DECISION:
+${hazardStandardsBlock}${sectorStandardsLine}${teamRoleLine}${escalationLine}${incidentUserBlock}DECISION:
 Title: ${decision.title}
 Description: ${decision.description}
 

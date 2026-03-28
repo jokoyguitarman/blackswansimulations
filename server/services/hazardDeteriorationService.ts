@@ -1,9 +1,12 @@
 /**
  * Hazard Deterioration Service
  *
- * Runs every 10 minutes for active sessions. Unresolved/uncontained hazards
+ * Runs on each scheduler tick for active sessions. Unresolved/uncontained hazards
  * worsen over time based on their deterioration_timeline, potentially spawning
  * new hazard or casualty pins and publishing injects.
+ *
+ * Idempotency: tracks `properties.last_deterioration_level` (10/20/30) so each
+ * stage fires exactly once per hazard.
  */
 
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
@@ -35,32 +38,51 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
     if (!Object.keys(timeline).length) continue;
 
     const minutesSinceAppeared = elapsedMinutes - (hazard.appears_at_minutes ?? 0);
+
+    // Determine which stage we're at (pick the highest applicable)
+    let stageLevel = 0;
     let deteriorationStage: string | null = null;
 
     if (minutesSinceAppeared >= 30 && timeline.at_30min) {
+      stageLevel = 30;
       deteriorationStage = timeline.at_30min as string;
     } else if (minutesSinceAppeared >= 20 && timeline.at_20min) {
+      stageLevel = 20;
       deteriorationStage = timeline.at_20min as string;
     } else if (minutesSinceAppeared >= 10 && timeline.at_10min) {
+      stageLevel = 10;
       deteriorationStage = timeline.at_10min as string;
     }
 
-    if (!deteriorationStage) continue;
+    if (!deteriorationStage || stageLevel === 0) continue;
 
-    // Update hazard to escalating with worsened properties
+    // Idempotency: skip if we've already processed this level
+    const props = (hazard.properties ?? {}) as Record<string, unknown>;
+    const lastLevel = (props.last_deterioration_level as number) ?? 0;
+    if (stageLevel <= lastLevel) continue;
+
     const updatedProps = {
-      ...(hazard.properties as Record<string, unknown>),
+      ...props,
       deterioration_stage: deteriorationStage,
       minutes_unaddressed: minutesSinceAppeared,
+      last_deterioration_level: stageLevel,
     };
 
-    await supabaseAdmin
+    const { error: updateErr } = await supabaseAdmin
       .from('scenario_hazards')
       .update({
         status: 'escalating',
         properties: updatedProps,
       })
       .eq('id', hazard.id);
+
+    if (updateErr) {
+      logger.error(
+        { error: updateErr, hazardId: hazard.id },
+        'Failed to update hazard deterioration',
+      );
+      continue;
+    }
 
     // Spawn new hazards if the timeline says so
     if (timeline.spawns_new_hazards && timeline.new_hazard_description) {
@@ -155,19 +177,28 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
       }
     }
 
-    // Publish inject about the deterioration
-    const injectBody = `${(hazard.hazard_type as string).replace(/_/g, ' ')} at ${hazard.enriched_description?.slice(0, 80) || 'incident area'} has worsened: ${deteriorationStage}`;
+    // Publish inject about the deterioration (correct column names for scenario_injects table)
+    const injectContent = `${(hazard.hazard_type as string).replace(/_/g, ' ')} at ${hazard.enriched_description?.slice(0, 80) || 'incident area'} has worsened: ${deteriorationStage}`;
 
-    await supabaseAdmin.from('scenario_injects').insert({
+    const { error: injectErr } = await supabaseAdmin.from('scenario_injects').insert({
       scenario_id: session.scenario_id,
       title: `Hazard Escalation: ${(hazard.hazard_type as string).replace(/_/g, ' ')}`,
-      body: injectBody,
-      inject_type: 'deterioration',
-      trigger_type: 'time_based',
-      trigger_minutes: elapsedMinutes,
-      target_team: null,
+      content: injectContent,
+      type: 'field_update',
+      trigger_time_minutes: elapsedMinutes,
+      severity: 'high',
+      inject_scope: 'universal',
+      requires_response: true,
+      ai_generated: true,
       generation_source: 'deterioration_cycle',
     });
+
+    if (injectErr) {
+      logger.error(
+        { error: injectErr, hazardId: hazard.id },
+        'Failed to insert deterioration inject',
+      );
+    }
 
     try {
       getWebSocketService().broadcastToSession(sessionId, {
@@ -180,7 +211,7 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
     }
 
     logger.info(
-      { hazardId: hazard.id, minutesSinceAppeared, deteriorationStage },
+      { hazardId: hazard.id, minutesSinceAppeared, stageLevel, deteriorationStage },
       'Hazard deteriorated',
     );
   }

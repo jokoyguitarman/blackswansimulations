@@ -17,6 +17,9 @@ export interface ScenarioLocationPin {
   label: string;
   coordinates: { lat?: number; lng?: number };
   conditions?: Record<string, unknown>;
+  claimable_by?: string[];
+  claimed_by_team?: string | null;
+  claimed_as?: string | null;
 }
 
 interface ScenarioLocationMarkerProps {

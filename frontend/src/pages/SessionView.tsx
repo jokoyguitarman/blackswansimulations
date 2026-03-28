@@ -325,6 +325,14 @@ export const SessionView = () => {
       geometryType: string;
       properties: Record<string, unknown>;
     }>;
+    crowdMoves: Array<{
+      crowdId: string;
+      label: string;
+      fromLat: number;
+      fromLng: number;
+      toLat: number;
+      toLng: number;
+    }>;
   } | null>(null);
 
   const handlePlacementCreated = useCallback(
@@ -356,12 +364,43 @@ export const SessionView = () => {
     [actionRecording?.active],
   );
 
+  const handleCrowdMoved = useCallback(
+    (move: {
+      id: string;
+      label: string;
+      fromLat: number;
+      fromLng: number;
+      toLat: number;
+      toLng: number;
+    }) => {
+      if (!actionRecording?.active) return;
+      setActionRecording((prev) => {
+        if (!prev?.active) return prev;
+        return {
+          ...prev,
+          crowdMoves: [
+            ...prev.crowdMoves,
+            {
+              crowdId: move.id,
+              label: move.label,
+              fromLat: move.fromLat,
+              fromLng: move.fromLng,
+              toLat: move.toLat,
+              toLng: move.toLng,
+            },
+          ],
+        };
+      });
+    },
+    [actionRecording?.active],
+  );
+
   const handleStartRecording = useCallback(() => {
-    setActionRecording({ active: true, actions: [] });
+    setActionRecording({ active: true, actions: [], crowdMoves: [] });
   }, []);
 
   const handleRespondWithAction = useCallback((incidentId: string, incidentTitle: string) => {
-    setActionRecording({ active: true, incidentId, incidentTitle, actions: [] });
+    setActionRecording({ active: true, incidentId, incidentTitle, actions: [], crowdMoves: [] });
   }, []);
 
   const handleCancelRecording = useCallback(() => {
@@ -370,46 +409,61 @@ export const SessionView = () => {
 
   const handleSubmitActions = useCallback(
     async (userDescription: string) => {
-      if (!id || !actionRecording?.active || actionRecording.actions.length === 0) return;
+      const hasActions = (actionRecording?.actions?.length ?? 0) > 0;
+      const hasCrowdMoves = (actionRecording?.crowdMoves?.length ?? 0) > 0;
+      if (!id || !actionRecording?.active || (!hasActions && !hasCrowdMoves)) return;
 
       const teamName = myTeams[0]?.team_name ?? 'Unknown team';
-      const grouped = new Map<string, typeof actionRecording.actions>();
-      for (const a of actionRecording.actions) {
-        const key = a.label;
-        if (!grouped.has(key)) grouped.set(key, []);
-        grouped.get(key)!.push(a);
+      const descParts: string[] = [];
+
+      if (hasActions) {
+        const grouped = new Map<string, typeof actionRecording.actions>();
+        for (const a of actionRecording.actions) {
+          const key = a.label;
+          if (!grouped.has(key)) grouped.set(key, []);
+          grouped.get(key)!.push(a);
+        }
+
+        const parts: string[] = [];
+        for (const [label, group] of grouped) {
+          const count = group.length;
+          for (const item of group) {
+            const details: string[] = [];
+            const p = item.properties;
+            if (p.length_m) details.push(`${p.length_m}m long`);
+            if (p.area_m2) details.push(`${p.area_m2}m² area`);
+            if (p.capacity) {
+              const unit = (p.capacity_unit as string) ?? 'people';
+              details.push(`capacity: ${p.capacity} ${unit}`);
+            }
+            if (p.encloses && Array.isArray(p.encloses) && (p.encloses as string[]).length > 0) {
+              details.push(`encloses ${(p.encloses as string[]).length} asset(s)`);
+            }
+            const geoLabel =
+              item.geometryType === 'Polygon'
+                ? 'zone'
+                : item.geometryType === 'LineString'
+                  ? 'line'
+                  : 'point';
+            const detailStr = details.length ? ` — ${details.join(', ')}` : '';
+            parts.push(`${label} (${geoLabel})${detailStr}`);
+          }
+          if (count > 1) {
+            parts.push(`(${count}x ${label} total)`);
+          }
+        }
+        descParts.push(`${teamName} placed: ${parts.join('; ')}`);
       }
 
-      const parts: string[] = [];
-      for (const [label, group] of grouped) {
-        const count = group.length;
-        for (const item of group) {
-          const details: string[] = [];
-          const p = item.properties;
-          if (p.length_m) details.push(`${p.length_m}m long`);
-          if (p.area_m2) details.push(`${p.area_m2}m² area`);
-          if (p.capacity) {
-            const unit = (p.capacity_unit as string) ?? 'people';
-            details.push(`capacity: ${p.capacity} ${unit}`);
-          }
-          if (p.encloses && Array.isArray(p.encloses) && (p.encloses as string[]).length > 0) {
-            details.push(`encloses ${(p.encloses as string[]).length} asset(s)`);
-          }
-          const geoLabel =
-            item.geometryType === 'Polygon'
-              ? 'zone'
-              : item.geometryType === 'LineString'
-                ? 'line'
-                : 'point';
-          const detailStr = details.length ? ` — ${details.join(', ')}` : '';
-          parts.push(`${label} (${geoLabel})${detailStr}`);
+      if (hasCrowdMoves) {
+        const moveParts: string[] = [];
+        for (const m of actionRecording.crowdMoves) {
+          moveParts.push(`Moved "${m.label}" to new position`);
         }
-        if (count > 1) {
-          parts.push(`(${count}x ${label} total)`);
-        }
+        descParts.push(`${teamName} crowd movements: ${moveParts.join('; ')}`);
       }
 
-      const autoDesc = `${teamName} placed: ${parts.join('; ')}`;
+      const autoDesc = descParts.join('. ');
       const fullDescription = userDescription
         ? `${userDescription}\n\nMap actions: ${autoDesc}`
         : autoDesc;
@@ -442,6 +496,9 @@ export const SessionView = () => {
         }
       } catch (err) {
         console.error('Failed to submit map actions as decision:', err);
+        alert(
+          `Failed to submit map actions: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        );
       }
 
       setActionRecording(null);
@@ -1301,6 +1358,7 @@ export const SessionView = () => {
                   onSubmitActions={handleSubmitActions}
                   onCancelRecording={handleCancelRecording}
                   onStartRecording={handleStartRecording}
+                  onCrowdMoved={handleCrowdMoved}
                 />
               )}
             </div>

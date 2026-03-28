@@ -105,31 +105,47 @@ export const EntryExitPin = ({ location, currentTeam, onClaim }: EntryExitPinPro
           )}
         </div>
       </Tooltip>
-      {!isClaimed && (
-        <Popup>
-          <div className="text-sm min-w-[180px]">
-            <div className="font-semibold mb-2">{location.label}</div>
-            <div className="text-xs text-gray-500 mb-2">Assign this point for your team</div>
-            <select
-              className="w-full p-1 text-xs border border-gray-600 rounded bg-gray-800 text-white mb-2"
-              value={selectedClaim}
-              onChange={(e) => setSelectedClaim(e.target.value)}
-            >
-              {CLAIM_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <button
-              className="w-full px-2 py-1 text-xs font-semibold rounded bg-blue-600 hover:bg-blue-500 text-white"
-              onClick={() => onClaim(location.id, currentTeam, selectedClaim)}
-            >
-              Claim as {currentTeam}
-            </button>
-          </div>
-        </Popup>
-      )}
+      <Popup>
+        <div className="text-sm min-w-[180px]">
+          <div className="font-semibold mb-2">{location.label}</div>
+          {isClaimed ? (
+            <div className="text-center">
+              <div className="text-xs font-semibold text-blue-400 mb-1">Already claimed</div>
+              <div className="text-xs text-gray-300 mb-1">
+                <span className="font-semibold">{location.claimed_by_team}</span> has claimed this
+                as
+              </div>
+              <div className="text-xs font-semibold text-blue-300 mb-2">
+                {location.claimed_as?.replace(/_/g, ' ')}
+              </div>
+              <div className="px-2 py-1 text-xs rounded bg-gray-700 text-gray-400 border border-gray-600">
+                This point is unavailable
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="text-xs text-gray-500 mb-2">Assign this point for your team</div>
+              <select
+                className="w-full p-1 text-xs border border-gray-600 rounded bg-gray-800 text-white mb-2"
+                value={selectedClaim}
+                onChange={(e) => setSelectedClaim(e.target.value)}
+              >
+                {CLAIM_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="w-full px-2 py-1 text-xs font-semibold rounded bg-blue-600 hover:bg-blue-500 text-white"
+                onClick={() => onClaim(location.id, currentTeam, selectedClaim)}
+              >
+                Claim as {currentTeam}
+              </button>
+            </>
+          )}
+        </div>
+      </Popup>
     </Marker>
   );
 };
