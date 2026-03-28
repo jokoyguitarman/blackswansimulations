@@ -402,7 +402,7 @@ router.patch('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) =>
         const { error } = await supabaseAdmin
           .from('scenario_locations')
           .update({
-            coordinates: { type: 'Point', coordinates: [loc.lng, loc.lat] },
+            coordinates: { lat: loc.lat, lng: loc.lng },
           })
           .eq('id', loc.id)
           .eq('scenario_id', scenarioId);

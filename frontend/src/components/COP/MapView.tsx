@@ -696,6 +696,9 @@ export const MapView = ({
   // poi only after Insider reveals it; cordon always hidden from players.
   // Pins with visible_after_state_key only appear once that state key is truthy.
   const scenarioLocationsForMap = scenarioLocationsWithCoords.filter((loc) => {
+    // Entry/exit pins are rendered separately via EntryExitPin component
+    if (loc.pin_category === 'entry_exit') return false;
+
     // State-conditional visibility: hide until the referenced state key becomes truthy
     const visKey = loc.conditions?.visible_after_state_key as string | undefined;
     if (visKey && currentState) {
