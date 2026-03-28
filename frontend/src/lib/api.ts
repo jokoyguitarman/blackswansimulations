@@ -203,6 +203,59 @@ export const api = {
         }>;
       }>(await fetch(apiUrl(`/api/scenarios/${id}/seeds`), { headers }));
     },
+    getScenarioHazards: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          scenario_id: string;
+          hazard_type: string;
+          location_lat: number;
+          location_lng: number;
+          floor_level: string;
+          properties: Record<string, unknown>;
+          status: string;
+          enriched_description?: string;
+          fire_class?: string;
+          debris_type?: string;
+          resolution_requirements?: Record<string, unknown>;
+          personnel_requirements?: Record<string, unknown>;
+          equipment_requirements?: unknown[];
+          deterioration_timeline?: Record<string, unknown>;
+          appears_at_minutes: number;
+        }>;
+      }>(await fetch(apiUrl(`/api/scenarios/${id}/hazards`), { headers }));
+    },
+    getScenarioCasualties: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          scenario_id: string;
+          casualty_type: string;
+          location_lat: number;
+          location_lng: number;
+          floor_level: string;
+          headcount: number;
+          conditions: Record<string, unknown>;
+          status: string;
+          appears_at_minutes: number;
+        }>;
+      }>(await fetch(apiUrl(`/api/scenarios/${id}/casualties`), { headers }));
+    },
+    getScenarioEquipment: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          scenario_id: string;
+          equipment_type: string;
+          label: string;
+          icon?: string;
+          properties: Record<string, unknown>;
+        }>;
+      }>(await fetch(apiUrl(`/api/scenarios/${id}/equipment`), { headers }));
+    },
   },
 
   // Sessions

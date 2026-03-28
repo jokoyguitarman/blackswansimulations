@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { MapContainer, TileLayer } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Tooltip } from 'react-leaflet';
 import { api } from '../../lib/api';
 import { ScenarioLocationMarker, type ScenarioLocationPin } from '../COP/ScenarioLocationMarker';
 
@@ -97,6 +97,44 @@ interface Seed {
   display_order: number;
 }
 
+interface HazardPin {
+  id: string;
+  hazard_type: string;
+  location_lat: number;
+  location_lng: number;
+  floor_level: string;
+  properties: Record<string, unknown>;
+  status: string;
+  enriched_description?: string;
+  fire_class?: string;
+  debris_type?: string;
+  resolution_requirements?: Record<string, unknown>;
+  personnel_requirements?: Record<string, unknown>;
+  equipment_requirements?: unknown[];
+  deterioration_timeline?: Record<string, unknown>;
+  appears_at_minutes: number;
+}
+
+interface CasualtyPin {
+  id: string;
+  casualty_type: string;
+  location_lat: number;
+  location_lng: number;
+  floor_level: string;
+  headcount: number;
+  conditions: Record<string, unknown>;
+  status: string;
+  appears_at_minutes: number;
+}
+
+interface EquipmentItem {
+  id: string;
+  equipment_type: string;
+  label: string;
+  icon?: string;
+  properties: Record<string, unknown>;
+}
+
 interface Props {
   scenarioId: string;
   onClose: () => void;
@@ -135,6 +173,9 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
   const [teams, setTeams] = useState<Team[]>([]);
   const [locations, setLocations] = useState<LocationPin[]>([]);
   const [seeds, setSeeds] = useState<Seed[]>([]);
+  const [hazardPins, setHazardPins] = useState<HazardPin[]>([]);
+  const [casualtyPins, setCasualtyPins] = useState<CasualtyPin[]>([]);
+  const [equipmentItems, setEquipmentItems] = useState<EquipmentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('Overview');
   const [expandedInject, setExpandedInject] = useState<string | null>(null);
@@ -183,18 +224,25 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
   useEffect(() => {
     const load = async () => {
       try {
-        const [scenRes, injectRes, teamRes, locRes, seedRes] = await Promise.all([
-          api.scenarios.get(scenarioId),
-          api.scenarios.getInjects(scenarioId),
-          api.scenarios.getTeams(scenarioId),
-          api.scenarios.getScenarioLocations(scenarioId),
-          api.scenarios.getSeeds(scenarioId),
-        ]);
+        const [scenRes, injectRes, teamRes, locRes, seedRes, hazRes, casRes, eqRes] =
+          await Promise.all([
+            api.scenarios.get(scenarioId),
+            api.scenarios.getInjects(scenarioId),
+            api.scenarios.getTeams(scenarioId),
+            api.scenarios.getScenarioLocations(scenarioId),
+            api.scenarios.getSeeds(scenarioId),
+            api.scenarios.getScenarioHazards(scenarioId).catch(() => ({ data: [] })),
+            api.scenarios.getScenarioCasualties(scenarioId).catch(() => ({ data: [] })),
+            api.scenarios.getScenarioEquipment(scenarioId).catch(() => ({ data: [] })),
+          ]);
         setScenario(scenRes.data as ScenarioFull);
         setInjects((injectRes.data ?? []) as Inject[]);
         setTeams((teamRes.data ?? []) as Team[]);
         setLocations((locRes.data ?? []) as LocationPin[]);
         setSeeds((seedRes.data ?? []) as Seed[]);
+        setHazardPins((hazRes.data ?? []) as HazardPin[]);
+        setCasualtyPins((casRes.data ?? []) as CasualtyPin[]);
+        setEquipmentItems((eqRes.data ?? []) as EquipmentItem[]);
       } catch (err) {
         console.error('Failed to load scenario detail', err);
       } finally {
@@ -472,7 +520,14 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
           )}
 
           {/* ─── MAP PINS ─── */}
-          {activeTab === 'Map Pins' && <MapPinsTab locations={locations} />}
+          {activeTab === 'Map Pins' && (
+            <MapPinsTab
+              locations={locations}
+              hazards={hazardPins}
+              casualties={casualtyPins}
+              equipment={equipmentItems}
+            />
+          )}
 
           {/* ─── ENV TRUTHS ─── */}
           {activeTab === 'Env Truths' && (
@@ -903,13 +958,46 @@ const PIN_LEGEND: Array<{ color: string; label: string }> = [
   { color: '#0891b2', label: 'Staging' },
   { color: '#4338ca', label: 'POI' },
   { color: '#4b5563', label: 'Other' },
+  { color: '#ef4444', label: 'Hazard' },
+  { color: '#f59e0b', label: 'Casualty' },
+  { color: '#8b5cf6', label: 'Crowd' },
+  { color: '#06b6d4', label: 'Entry/Exit' },
 ];
 
-const MapPinsTab = ({ locations }: { locations: LocationPin[] }) => {
+const HAZARD_ICONS: Record<string, string> = {
+  fire: '🔥',
+  structural_collapse: '🏚️',
+  gas_leak: '💨',
+  chemical: '☣️',
+  smoke: '🌫️',
+  debris: '🧱',
+  electrical: '⚡',
+  flooding: '🌊',
+};
+
+const TRIAGE_COLORS: Record<string, string> = {
+  green: '#22c55e',
+  yellow: '#eab308',
+  red: '#ef4444',
+  black: '#1f2937',
+};
+
+const MapPinsTab = ({
+  locations,
+  hazards,
+  casualties,
+  equipment,
+}: {
+  locations: LocationPin[];
+  hazards: HazardPin[];
+  casualties: CasualtyPin[];
+  equipment: EquipmentItem[];
+}) => {
   const [expandedPin, setExpandedPin] = useState<string | null>(null);
 
-  if (locations.length === 0) {
-    return <p className="text-sm terminal-text text-robotic-yellow/50">[NO LOCATIONS]</p>;
+  const totalPins = locations.length + hazards.length + casualties.length;
+  if (totalPins === 0 && equipment.length === 0) {
+    return <p className="text-sm terminal-text text-robotic-yellow/50">[NO MAP DATA]</p>;
   }
 
   const validPins: ScenarioLocationPin[] = locations
@@ -924,18 +1012,44 @@ const MapPinsTab = ({ locations }: { locations: LocationPin[] }) => {
       narrative_description: loc.conditions?.narrative_description as string | undefined,
     }));
 
-  const mapCenter: [number, number] =
-    validPins.length > 0
-      ? [validPins[0].coordinates.lat!, validPins[0].coordinates.lng!]
-      : [1.2931, 103.8558];
+  const patients = casualties.filter((c) => c.casualty_type === 'patient');
+  const crowds = casualties.filter((c) => c.casualty_type === 'crowd');
+
+  const allCoords: [number, number][] = [
+    ...validPins
+      .filter((p) => p.coordinates.lat != null)
+      .map((p) => [p.coordinates.lat!, p.coordinates.lng!] as [number, number]),
+    ...hazards.map((h) => [h.location_lat, h.location_lng] as [number, number]),
+    ...casualties.map((c) => [c.location_lat, c.location_lng] as [number, number]),
+  ];
+  const mapCenter: [number, number] = allCoords.length > 0 ? allCoords[0] : [1.2931, 103.8558];
 
   return (
     <div className="space-y-4">
+      {/* Summary counts */}
+      <div className="flex flex-wrap gap-3 text-xs terminal-text">
+        {locations.length > 0 && (
+          <span className="text-robotic-yellow/70">{locations.length} locations</span>
+        )}
+        {hazards.length > 0 && <span className="text-red-400">{hazards.length} hazards</span>}
+        {patients.length > 0 && (
+          <span className="text-amber-400">{patients.length} casualties</span>
+        )}
+        {crowds.length > 0 && (
+          <span className="text-violet-400">
+            {crowds.length} crowds ({crowds.reduce((s, c) => s + c.headcount, 0)} people)
+          </span>
+        )}
+        {equipment.length > 0 && (
+          <span className="text-cyan-400">{equipment.length} equipment types</span>
+        )}
+      </div>
+
       {/* OSM map */}
       <div className="military-border overflow-hidden" style={{ height: 440 }}>
         <MapContainer
           center={mapCenter}
-          zoom={14}
+          zoom={16}
           style={{ height: '100%', width: '100%' }}
           scrollWheelZoom
         >
@@ -949,6 +1063,61 @@ const MapPinsTab = ({ locations }: { locations: LocationPin[] }) => {
               location={pin}
               position={[pin.coordinates.lat!, pin.coordinates.lng!]}
             />
+          ))}
+          {hazards.map((h) => (
+            <CircleMarker
+              key={`haz-${h.id}`}
+              center={[h.location_lat, h.location_lng]}
+              radius={10}
+              pathOptions={{ color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.7, weight: 2 }}
+            >
+              <Tooltip direction="top" permanent className="hazard-tooltip-label">
+                {HAZARD_ICONS[h.hazard_type] ?? '⚠️'} {h.hazard_type.replace(/_/g, ' ')}
+              </Tooltip>
+            </CircleMarker>
+          ))}
+          {patients.map((c) => {
+            const triageColor =
+              TRIAGE_COLORS[(c.conditions.triage_color as string) ?? 'yellow'] ?? '#eab308';
+            return (
+              <CircleMarker
+                key={`cas-${c.id}`}
+                center={[c.location_lat, c.location_lng]}
+                radius={6}
+                pathOptions={{
+                  color: triageColor,
+                  fillColor: triageColor,
+                  fillOpacity: 0.8,
+                  weight: 2,
+                }}
+              >
+                <Tooltip direction="top">
+                  {c.conditions.mobility === 'trapped'
+                    ? '🪤'
+                    : c.conditions.mobility === 'non_ambulatory'
+                      ? '🚑'
+                      : '🚶'}{' '}
+                  {(c.conditions.visible_description as string)?.slice(0, 80) || 'Patient'}
+                </Tooltip>
+              </CircleMarker>
+            );
+          })}
+          {crowds.map((c) => (
+            <CircleMarker
+              key={`crowd-${c.id}`}
+              center={[c.location_lat, c.location_lng]}
+              radius={Math.min(18, 8 + Math.floor(c.headcount / 10))}
+              pathOptions={{
+                color: '#8b5cf6',
+                fillColor: '#8b5cf6',
+                fillOpacity: 0.5,
+                weight: 2,
+              }}
+            >
+              <Tooltip direction="top">
+                👥 {c.headcount} people — {(c.conditions.behavior as string) ?? 'unknown'}
+              </Tooltip>
+            </CircleMarker>
           ))}
         </MapContainer>
       </div>
@@ -966,92 +1135,349 @@ const MapPinsTab = ({ locations }: { locations: LocationPin[] }) => {
         ))}
       </div>
 
-      {/* Pin list */}
-      <div className="space-y-2">
-        {locations.map((loc) => {
-          const pinCat = loc.conditions?.pin_category as string | undefined;
-          const narrativeDesc = loc.conditions?.narrative_description as string | undefined;
-          const cond = loc.conditions ?? {};
-          const hasConditions = Object.keys(cond).some(
-            (k) => k !== 'pin_category' && k !== 'narrative_description',
-          );
-          const isExpanded = expandedPin === loc.id;
-          const potentialUses = Array.isArray(cond.potential_uses)
-            ? (cond.potential_uses as string[])
-            : [];
-          const quickFacts = [
-            cond.area_m2 != null && `${cond.area_m2}m²`,
-            cond.capacity_persons != null && `cap ${cond.capacity_persons}`,
-            cond.has_water !== undefined && (cond.has_water ? '💧' : 'no water'),
-            cond.has_electricity !== undefined && (cond.has_electricity ? '⚡' : 'no power'),
-            cond.bed_capacity != null && `${cond.bed_capacity} beds`,
-            cond.available_officers_estimate != null &&
-              `~${cond.available_officers_estimate} officers`,
-            cond.appliance_count != null && `${cond.appliance_count} appliances`,
-            cond.distance_from_incident_m != null && `${cond.distance_from_incident_m}m away`,
-          ].filter(Boolean) as string[];
+      {/* ── Location pins ── */}
+      {locations.length > 0 && (
+        <Section title="Locations">
+          <div className="space-y-2">
+            {locations.map((loc) => {
+              const pinCat = loc.conditions?.pin_category as string | undefined;
+              const narrativeDesc = loc.conditions?.narrative_description as string | undefined;
+              const cond = loc.conditions ?? {};
+              const hasConditions = Object.keys(cond).some(
+                (k) => k !== 'pin_category' && k !== 'narrative_description',
+              );
+              const isExpanded = expandedPin === loc.id;
+              const potentialUses = Array.isArray(cond.potential_uses)
+                ? (cond.potential_uses as string[])
+                : [];
+              const quickFacts = [
+                cond.area_m2 != null && `${cond.area_m2}m²`,
+                cond.capacity_persons != null && `cap ${cond.capacity_persons}`,
+                cond.has_water !== undefined && (cond.has_water ? '💧' : 'no water'),
+                cond.has_electricity !== undefined && (cond.has_electricity ? '⚡' : 'no power'),
+                cond.bed_capacity != null && `${cond.bed_capacity} beds`,
+                cond.available_officers_estimate != null &&
+                  `~${cond.available_officers_estimate} officers`,
+                cond.appliance_count != null && `${cond.appliance_count} appliances`,
+                cond.distance_from_incident_m != null && `${cond.distance_from_incident_m}m away`,
+              ].filter(Boolean) as string[];
 
-          return (
-            <div key={loc.id} className="military-border">
-              <div className="p-4 flex gap-4">
-                <div className="shrink-0 w-28">
-                  <div className="text-xs terminal-text text-robotic-yellow/50 uppercase">
-                    {pinCat ?? loc.location_type.replace(/_/g, ' ')}
+              return (
+                <div key={loc.id} className="military-border">
+                  <div className="p-4 flex gap-4">
+                    <div className="shrink-0 w-28">
+                      <div className="text-xs terminal-text text-robotic-yellow/50 uppercase">
+                        {pinCat ?? loc.location_type.replace(/_/g, ' ')}
+                      </div>
+                      {loc.coordinates.lat != null && (
+                        <div className="text-xs terminal-text text-robotic-yellow/30 mt-0.5">
+                          {loc.coordinates.lat.toFixed(4)}, {loc.coordinates.lng?.toFixed(4)}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm terminal-text text-robotic-yellow font-medium">
+                        {loc.label}
+                      </div>
+                      {narrativeDesc && (
+                        <p className="text-xs terminal-text text-robotic-yellow/70 mt-0.5">
+                          {narrativeDesc}
+                        </p>
+                      )}
+                      {quickFacts.length > 0 && (
+                        <div className="text-xs terminal-text text-robotic-yellow/50 mt-0.5">
+                          {quickFacts.join(' · ')}
+                        </div>
+                      )}
+                      {potentialUses.length > 0 && (
+                        <div className="flex gap-1 flex-wrap mt-1">
+                          {potentialUses.map((u) => (
+                            <span
+                              key={u}
+                              className="text-xs terminal-text bg-robotic-yellow/10 text-robotic-yellow/70 px-1 py-0.5 rounded"
+                            >
+                              {u.replace(/_/g, ' ')}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="text-xs terminal-text text-robotic-yellow/40 mt-0.5">
+                        type: {loc.location_type}
+                      </div>
+                    </div>
+                    {hasConditions && (
+                      <button
+                        onClick={() => setExpandedPin(isExpanded ? null : loc.id)}
+                        className="text-robotic-yellow/40 hover:text-robotic-yellow terminal-text text-xs shrink-0 self-start"
+                      >
+                        {isExpanded ? '▲' : '▼'}
+                      </button>
+                    )}
                   </div>
-                  {loc.coordinates.lat != null && (
-                    <div className="text-xs terminal-text text-robotic-yellow/30 mt-0.5">
-                      {loc.coordinates.lat.toFixed(4)}, {loc.coordinates.lng?.toFixed(4)}
+                  {isExpanded && hasConditions && (
+                    <div className="px-4 pb-3 border-t border-robotic-yellow/15 pt-2">
+                      <ConditionsSummary conditions={loc.conditions} />
                     </div>
                   )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm terminal-text text-robotic-yellow font-medium">
-                    {loc.label}
-                  </div>
-                  {narrativeDesc && (
-                    <p className="text-xs terminal-text text-robotic-yellow/70 mt-0.5">
-                      {narrativeDesc}
-                    </p>
-                  )}
-                  {quickFacts.length > 0 && (
-                    <div className="text-xs terminal-text text-robotic-yellow/50 mt-0.5">
-                      {quickFacts.join(' · ')}
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* ── Hazards ── */}
+      {hazards.length > 0 && (
+        <Section title={`Hazards (${hazards.length})`}>
+          <div className="space-y-2">
+            {hazards.map((h) => {
+              const isExpanded = expandedPin === `haz-${h.id}`;
+              return (
+                <div key={h.id} className="military-border">
+                  <div className="p-4 flex gap-4">
+                    <div className="shrink-0 w-28">
+                      <div className="text-xs terminal-text text-red-400/80 uppercase">
+                        {HAZARD_ICONS[h.hazard_type] ?? '⚠️'} {h.hazard_type.replace(/_/g, ' ')}
+                      </div>
+                      <div className="text-xs terminal-text text-robotic-yellow/30 mt-0.5">
+                        {h.location_lat.toFixed(4)}, {h.location_lng.toFixed(4)}
+                      </div>
+                      {h.appears_at_minutes > 0 && (
+                        <div className="text-xs terminal-text text-red-400/50 mt-0.5">
+                          T+{h.appears_at_minutes}min
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {potentialUses.length > 0 && (
-                    <div className="flex gap-1 flex-wrap mt-1">
-                      {potentialUses.map((u) => (
-                        <span
-                          key={u}
-                          className="text-xs terminal-text bg-robotic-yellow/10 text-robotic-yellow/70 px-1 py-0.5 rounded"
-                        >
-                          {u.replace(/_/g, ' ')}
+                    <div className="flex-1 min-w-0">
+                      {h.enriched_description && (
+                        <p className="text-xs terminal-text text-robotic-yellow/80">
+                          {h.enriched_description}
+                        </p>
+                      )}
+                      <div className="flex gap-2 flex-wrap mt-1">
+                        {h.fire_class && (
+                          <span className="text-xs terminal-text bg-red-900/30 text-red-400 px-1 py-0.5 rounded border border-red-400/30">
+                            Class {h.fire_class}
+                          </span>
+                        )}
+                        {h.debris_type && (
+                          <span className="text-xs terminal-text bg-orange-900/30 text-orange-400 px-1 py-0.5 rounded border border-orange-400/30">
+                            {h.debris_type}
+                          </span>
+                        )}
+                        <span className="text-xs terminal-text text-robotic-yellow/40">
+                          floor: {h.floor_level}
                         </span>
-                      ))}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setExpandedPin(isExpanded ? null : `haz-${h.id}`)}
+                      className="text-robotic-yellow/40 hover:text-robotic-yellow terminal-text text-xs shrink-0 self-start"
+                    >
+                      {isExpanded ? '▲' : '▼'}
+                    </button>
+                  </div>
+                  {isExpanded && (
+                    <div className="px-4 pb-3 border-t border-robotic-yellow/15 pt-2 space-y-2">
+                      {h.resolution_requirements &&
+                        Object.keys(h.resolution_requirements).length > 0 && (
+                          <div>
+                            <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-1">
+                              Resolution Requirements
+                            </div>
+                            <pre className="text-xs terminal-text text-robotic-yellow/60 whitespace-pre-wrap">
+                              {JSON.stringify(h.resolution_requirements, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      {h.personnel_requirements &&
+                        Object.keys(h.personnel_requirements).length > 0 && (
+                          <div>
+                            <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-1">
+                              Personnel
+                            </div>
+                            <pre className="text-xs terminal-text text-robotic-yellow/60 whitespace-pre-wrap">
+                              {JSON.stringify(h.personnel_requirements, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      {h.deterioration_timeline &&
+                        Object.keys(h.deterioration_timeline).length > 0 && (
+                          <div>
+                            <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-1">
+                              Deterioration Timeline
+                            </div>
+                            <pre className="text-xs terminal-text text-robotic-yellow/60 whitespace-pre-wrap">
+                              {JSON.stringify(h.deterioration_timeline, null, 2)}
+                            </pre>
+                          </div>
+                        )}
                     </div>
                   )}
-                  <div className="text-xs terminal-text text-robotic-yellow/40 mt-0.5">
-                    type: {loc.location_type}
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* ── Casualties ── */}
+      {patients.length > 0 && (
+        <Section title={`Casualties (${patients.length})`}>
+          <div className="space-y-2">
+            {patients.map((c) => {
+              const conds = c.conditions;
+              const triageColor = (conds.triage_color as string) ?? 'yellow';
+              const injuries = (conds.injuries as Array<Record<string, unknown>>) ?? [];
+              const isExpanded = expandedPin === `cas-${c.id}`;
+              return (
+                <div key={c.id} className="military-border">
+                  <div className="p-4 flex gap-4">
+                    <div className="shrink-0 w-28">
+                      <div
+                        className="text-xs terminal-text uppercase font-bold"
+                        style={{ color: TRIAGE_COLORS[triageColor] ?? '#eab308' }}
+                      >
+                        {triageColor.toUpperCase()}
+                      </div>
+                      <div className="text-xs terminal-text text-robotic-yellow/30 mt-0.5">
+                        {c.location_lat.toFixed(4)}, {c.location_lng.toFixed(4)}
+                      </div>
+                      {c.appears_at_minutes > 0 && (
+                        <div className="text-xs terminal-text text-amber-400/50 mt-0.5">
+                          T+{c.appears_at_minutes}min
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs terminal-text text-robotic-yellow/80">
+                        {(conds.visible_description as string) || 'Patient'}
+                      </p>
+                      <div className="flex gap-2 flex-wrap mt-1">
+                        <span className="text-xs terminal-text text-robotic-yellow/50">
+                          {(conds.mobility as string)?.replace(/_/g, ' ') ?? '?'}
+                        </span>
+                        <span className="text-xs terminal-text text-robotic-yellow/50">
+                          {(conds.accessibility as string)?.replace(/_/g, ' ') ?? 'open'}
+                        </span>
+                        <span className="text-xs terminal-text text-robotic-yellow/50">
+                          {(conds.consciousness as string) ?? '?'}
+                        </span>
+                      </div>
+                    </div>
+                    {injuries.length > 0 && (
+                      <button
+                        onClick={() => setExpandedPin(isExpanded ? null : `cas-${c.id}`)}
+                        className="text-robotic-yellow/40 hover:text-robotic-yellow terminal-text text-xs shrink-0 self-start"
+                      >
+                        {isExpanded ? '▲' : '▼'}
+                      </button>
+                    )}
+                  </div>
+                  {isExpanded && injuries.length > 0 && (
+                    <div className="px-4 pb-3 border-t border-robotic-yellow/15 pt-2">
+                      <div className="space-y-1">
+                        {injuries.map((inj, i) => (
+                          <div
+                            key={i}
+                            className="text-xs terminal-text text-robotic-yellow/60 flex gap-2"
+                          >
+                            <span className="text-robotic-yellow/40">{inj.severity as string}</span>
+                            <span>
+                              {(inj.type as string)?.replace(/_/g, ' ')} — {inj.body_part as string}
+                            </span>
+                            {typeof inj.visible_signs === 'string' && (
+                              <span className="text-robotic-yellow/40">({inj.visible_signs})</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* ── Crowds ── */}
+      {crowds.length > 0 && (
+        <Section
+          title={`Crowds (${crowds.length} groups, ${crowds.reduce((s, c) => s + c.headcount, 0)} total)`}
+        >
+          <div className="space-y-2">
+            {crowds.map((c) => {
+              const conds = c.conditions;
+              const wounded = (conds.mixed_wounded as Array<Record<string, unknown>>) ?? [];
+              return (
+                <div key={c.id} className="military-border">
+                  <div className="p-4 flex gap-4">
+                    <div className="shrink-0 w-28">
+                      <div className="text-xs terminal-text text-violet-400/80 uppercase">
+                        👥 {c.headcount} people
+                      </div>
+                      <div className="text-xs terminal-text text-robotic-yellow/30 mt-0.5">
+                        {c.location_lat.toFixed(4)}, {c.location_lng.toFixed(4)}
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs terminal-text text-robotic-yellow/80">
+                        {(conds.visible_description as string) || `Group of ${c.headcount}`}
+                      </p>
+                      <div className="flex gap-2 flex-wrap mt-1">
+                        <span className="text-xs terminal-text text-violet-400/70">
+                          {(conds.behavior as string) ?? 'unknown'}
+                        </span>
+                        {!!conds.bottleneck && (
+                          <span className="text-xs terminal-text text-red-400/70">bottleneck</span>
+                        )}
+                        {typeof conds.blocking_exit === 'string' && (
+                          <span className="text-xs terminal-text text-red-400/70">
+                            blocking: {conds.blocking_exit}
+                          </span>
+                        )}
+                        {wounded.length > 0 && (
+                          <span className="text-xs terminal-text text-amber-400/70">
+                            {wounded.reduce((s, w) => s + ((w.count as number) ?? 0), 0)} wounded
+                            mixed in
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
-                {hasConditions && (
-                  <button
-                    onClick={() => setExpandedPin(isExpanded ? null : loc.id)}
-                    className="text-robotic-yellow/40 hover:text-robotic-yellow terminal-text text-xs shrink-0 self-start"
-                  >
-                    {isExpanded ? '▲' : '▼'}
-                  </button>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* ── Equipment Palette ── */}
+      {equipment.length > 0 && (
+        <Section title={`Equipment Palette (${equipment.length} types)`}>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {equipment.map((eq) => (
+              <div key={eq.id} className="military-border p-3">
+                <div className="text-sm terminal-text text-cyan-400 font-medium">
+                  {eq.icon && <span className="mr-1">{eq.icon}</span>}
+                  {eq.label}
+                </div>
+                <div className="text-xs terminal-text text-robotic-yellow/40 mt-0.5">
+                  {eq.equipment_type.replace(/_/g, ' ')}
+                </div>
+                {eq.properties && Object.keys(eq.properties).length > 0 && (
+                  <div className="text-xs terminal-text text-robotic-yellow/50 mt-1">
+                    {Object.entries(eq.properties)
+                      .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
+                      .join(' · ')}
+                  </div>
                 )}
               </div>
-              {isExpanded && hasConditions && (
-                <div className="px-4 pb-3 border-t border-robotic-yellow/15 pt-2">
-                  <ConditionsSummary conditions={loc.conditions} />
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+            ))}
+          </div>
+        </Section>
+      )}
     </div>
   );
 };

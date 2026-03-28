@@ -283,6 +283,80 @@ router.get('/:id/seeds', requireAuth, async (req: AuthenticatedRequest, res) => 
   }
 });
 
+// Get all hazards for a scenario (trainer only — war room preview)
+router.get('/:id/hazards', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const { data, error } = await supabaseAdmin
+      .from('scenario_hazards')
+      .select('*')
+      .eq('scenario_id', id)
+      .is('session_id', null)
+      .order('appears_at_minutes', { ascending: true });
+    if (error) {
+      logger.error({ error, scenarioId: id }, 'Failed to fetch scenario hazards');
+      return res.status(500).json({ error: 'Failed to fetch hazards' });
+    }
+    res.json({ data: data ?? [] });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /scenarios/:id/hazards');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get all casualties/crowds for a scenario (trainer only — war room preview)
+router.get('/:id/casualties', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const { data, error } = await supabaseAdmin
+      .from('scenario_casualties')
+      .select('*')
+      .eq('scenario_id', id)
+      .is('session_id', null)
+      .order('appears_at_minutes', { ascending: true });
+    if (error) {
+      logger.error({ error, scenarioId: id }, 'Failed to fetch scenario casualties');
+      return res.status(500).json({ error: 'Failed to fetch casualties' });
+    }
+    res.json({ data: data ?? [] });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /scenarios/:id/casualties');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get all equipment for a scenario (trainer only — war room preview)
+router.get('/:id/equipment', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const { data, error } = await supabaseAdmin
+      .from('scenario_equipment')
+      .select('*')
+      .eq('scenario_id', id)
+      .order('created_at', { ascending: true });
+    if (error) {
+      logger.error({ error, scenarioId: id }, 'Failed to fetch scenario equipment');
+      return res.status(500).json({ error: 'Failed to fetch equipment' });
+    }
+    res.json({ data: data ?? [] });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /scenarios/:id/equipment');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Create scenario (trainers only)
 router.post(
   '/',
