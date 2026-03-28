@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Tooltip } from 'react-leaflet';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { MapContainer, TileLayer, Marker, Tooltip } from 'react-leaflet';
+import { DivIcon } from 'leaflet';
 import { api } from '../../lib/api';
 import { ScenarioLocationMarker, type ScenarioLocationPin } from '../COP/ScenarioLocationMarker';
 
@@ -522,6 +523,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
           {/* ─── MAP PINS ─── */}
           {activeTab === 'Map Pins' && (
             <MapPinsTab
+              scenarioId={scenarioId}
               locations={locations}
               hazards={hazardPins}
               casualties={casualtyPins}
@@ -982,18 +984,90 @@ const TRIAGE_COLORS: Record<string, string> = {
   black: '#1f2937',
 };
 
+const createDivIcon = (color: string, label: string, size = 28): DivIcon =>
+  new DivIcon({
+    className: 'custom-pin-icon',
+    html: `<div style="background:${color};width:${size}px;height:${size}px;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-size:${Math.floor(size * 0.5)}px;line-height:1;cursor:grab"><span style="filter:drop-shadow(0 0 1px rgba(0,0,0,.5))">${label}</span></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+
 const MapPinsTab = ({
+  scenarioId,
   locations,
   hazards,
   casualties,
   equipment,
 }: {
+  scenarioId: string;
   locations: LocationPin[];
   hazards: HazardPin[];
   casualties: CasualtyPin[];
   equipment: EquipmentItem[];
 }) => {
   const [expandedPin, setExpandedPin] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const changesRef = useRef<{
+    locations: Map<string, { lat: number; lng: number }>;
+    hazards: Map<string, { lat: number; lng: number }>;
+    casualties: Map<string, { lat: number; lng: number }>;
+  }>({ locations: new Map(), hazards: new Map(), casualties: new Map() });
+
+  const hasChanges = () => {
+    const c = changesRef.current;
+    return c.locations.size > 0 || c.hazards.size > 0 || c.casualties.size > 0;
+  };
+
+  const [dirty, setDirty] = useState(false);
+
+  const onLocationDrag = useCallback((id: string, lat: number, lng: number) => {
+    changesRef.current.locations.set(id, { lat, lng });
+    setDirty(true);
+  }, []);
+
+  const onHazardDrag = useCallback((id: string, lat: number, lng: number) => {
+    changesRef.current.hazards.set(id, { lat, lng });
+    setDirty(true);
+  }, []);
+
+  const onCasualtyDrag = useCallback((id: string, lat: number, lng: number) => {
+    changesRef.current.casualties.set(id, { lat, lng });
+    setDirty(true);
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    if (!hasChanges()) return;
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const c = changesRef.current;
+      const payload: {
+        locations?: Array<{ id: string; lat: number; lng: number }>;
+        hazards?: Array<{ id: string; lat: number; lng: number }>;
+        casualties?: Array<{ id: string; lat: number; lng: number }>;
+      } = {};
+      if (c.locations.size)
+        payload.locations = [...c.locations.entries()].map(([id, p]) => ({ id, ...p }));
+      if (c.hazards.size)
+        payload.hazards = [...c.hazards.entries()].map(([id, p]) => ({ id, ...p }));
+      if (c.casualties.size)
+        payload.casualties = [...c.casualties.entries()].map(([id, p]) => ({ id, ...p }));
+
+      const res = await api.scenarios.updatePinPositions(scenarioId, payload);
+      if (res.warnings?.length) {
+        setSaveMsg(`Saved with ${res.warnings.length} warning(s)`);
+      } else {
+        setSaveMsg('All pin positions saved');
+      }
+      changesRef.current = { locations: new Map(), hazards: new Map(), casualties: new Map() };
+      setDirty(false);
+    } catch {
+      setSaveMsg('Failed to save — check console');
+    } finally {
+      setSaving(false);
+    }
+  }, [scenarioId]);
 
   const totalPins = locations.length + hazards.length + casualties.length;
   if (totalPins === 0 && equipment.length === 0) {
@@ -1026,8 +1100,8 @@ const MapPinsTab = ({
 
   return (
     <div className="space-y-4">
-      {/* Summary counts */}
-      <div className="flex flex-wrap gap-3 text-xs terminal-text">
+      {/* Summary counts + save bar */}
+      <div className="flex flex-wrap items-center gap-3 text-xs terminal-text">
         {locations.length > 0 && (
           <span className="text-robotic-yellow/70">{locations.length} locations</span>
         )}
@@ -1043,10 +1117,27 @@ const MapPinsTab = ({
         {equipment.length > 0 && (
           <span className="text-cyan-400">{equipment.length} equipment types</span>
         )}
+        <span className="ml-auto text-robotic-yellow/40">drag pins to reposition</span>
       </div>
 
+      {dirty && (
+        <div className="flex items-center gap-3 p-2 military-border bg-robotic-yellow/5">
+          <span className="text-xs terminal-text text-robotic-yellow animate-pulse">
+            Unsaved pin changes
+          </span>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="ml-auto px-4 py-1.5 text-xs terminal-text bg-green-700 hover:bg-green-600 text-white rounded border border-green-500 disabled:opacity-50"
+          >
+            {saving ? 'SAVING...' : 'SAVE CHANGES'}
+          </button>
+        </div>
+      )}
+      {saveMsg && <div className="text-xs terminal-text text-green-400 p-1">{saveMsg}</div>}
+
       {/* OSM map */}
-      <div className="military-border overflow-hidden" style={{ height: 440 }}>
+      <div className="military-border overflow-hidden" style={{ height: 480 }}>
         <MapContainer
           center={mapCenter}
           zoom={16}
@@ -1062,62 +1153,73 @@ const MapPinsTab = ({
               key={pin.id}
               location={pin}
               position={[pin.coordinates.lat!, pin.coordinates.lng!]}
+              draggable
+              onDragEnd={onLocationDrag}
             />
           ))}
           {hazards.map((h) => (
-            <CircleMarker
+            <Marker
               key={`haz-${h.id}`}
-              center={[h.location_lat, h.location_lng]}
-              radius={10}
-              pathOptions={{ color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.7, weight: 2 }}
+              position={[h.location_lat, h.location_lng]}
+              icon={createDivIcon('#ef4444', HAZARD_ICONS[h.hazard_type] ?? '⚠️', 30)}
+              draggable
+              eventHandlers={{
+                dragend: (e) => {
+                  const ll = e.target.getLatLng();
+                  onHazardDrag(h.id, ll.lat, ll.lng);
+                },
+              }}
             >
-              <Tooltip direction="top" permanent className="hazard-tooltip-label">
+              <Tooltip direction="top">
                 {HAZARD_ICONS[h.hazard_type] ?? '⚠️'} {h.hazard_type.replace(/_/g, ' ')}
               </Tooltip>
-            </CircleMarker>
+            </Marker>
           ))}
           {patients.map((c) => {
             const triageColor =
               TRIAGE_COLORS[(c.conditions.triage_color as string) ?? 'yellow'] ?? '#eab308';
+            const mobilityIcon =
+              c.conditions.mobility === 'trapped'
+                ? '🪤'
+                : c.conditions.mobility === 'non_ambulatory'
+                  ? '🚑'
+                  : '🚶';
             return (
-              <CircleMarker
+              <Marker
                 key={`cas-${c.id}`}
-                center={[c.location_lat, c.location_lng]}
-                radius={6}
-                pathOptions={{
-                  color: triageColor,
-                  fillColor: triageColor,
-                  fillOpacity: 0.8,
-                  weight: 2,
+                position={[c.location_lat, c.location_lng]}
+                icon={createDivIcon(triageColor, mobilityIcon, 24)}
+                draggable
+                eventHandlers={{
+                  dragend: (e) => {
+                    const ll = e.target.getLatLng();
+                    onCasualtyDrag(c.id, ll.lat, ll.lng);
+                  },
                 }}
               >
                 <Tooltip direction="top">
-                  {c.conditions.mobility === 'trapped'
-                    ? '🪤'
-                    : c.conditions.mobility === 'non_ambulatory'
-                      ? '🚑'
-                      : '🚶'}{' '}
                   {(c.conditions.visible_description as string)?.slice(0, 80) || 'Patient'}
                 </Tooltip>
-              </CircleMarker>
+              </Marker>
             );
           })}
           {crowds.map((c) => (
-            <CircleMarker
+            <Marker
               key={`crowd-${c.id}`}
-              center={[c.location_lat, c.location_lng]}
-              radius={Math.min(18, 8 + Math.floor(c.headcount / 10))}
-              pathOptions={{
-                color: '#8b5cf6',
-                fillColor: '#8b5cf6',
-                fillOpacity: 0.5,
-                weight: 2,
+              position={[c.location_lat, c.location_lng]}
+              icon={createDivIcon('#8b5cf6', '👥', Math.min(36, 24 + Math.floor(c.headcount / 15)))}
+              draggable
+              eventHandlers={{
+                dragend: (e) => {
+                  const ll = e.target.getLatLng();
+                  onCasualtyDrag(c.id, ll.lat, ll.lng);
+                },
               }}
             >
               <Tooltip direction="top">
                 👥 {c.headcount} people — {(c.conditions.behavior as string) ?? 'unknown'}
               </Tooltip>
-            </CircleMarker>
+            </Marker>
           ))}
         </MapContainer>
       </div>

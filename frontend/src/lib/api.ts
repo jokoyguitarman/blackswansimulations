@@ -256,6 +256,23 @@ export const api = {
         }>;
       }>(await fetch(apiUrl(`/api/scenarios/${id}/equipment`), { headers }));
     },
+    updatePinPositions: async (
+      id: string,
+      payload: {
+        locations?: Array<{ id: string; lat: number; lng: number }>;
+        hazards?: Array<{ id: string; lat: number; lng: number }>;
+        casualties?: Array<{ id: string; lat: number; lng: number }>;
+      },
+    ) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ ok: boolean; warnings?: string[] }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/pins`), {
+          method: 'PATCH',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }),
+      );
+    },
   },
 
   // Sessions

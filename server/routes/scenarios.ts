@@ -357,6 +357,66 @@ router.get('/:id/equipment', requireAuth, async (req: AuthenticatedRequest, res)
   }
 });
 
+// Batch-update pin coordinates (trainer/admin — war room repositioning)
+router.patch('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const { id: scenarioId } = req.params;
+    const { locations, hazards, casualties } = req.body as {
+      locations?: Array<{ id: string; lat: number; lng: number }>;
+      hazards?: Array<{ id: string; lat: number; lng: number }>;
+      casualties?: Array<{ id: string; lat: number; lng: number }>;
+    };
+
+    const errors: string[] = [];
+
+    if (locations?.length) {
+      for (const loc of locations) {
+        const { error } = await supabaseAdmin
+          .from('scenario_locations')
+          .update({
+            coordinates: { type: 'Point', coordinates: [loc.lng, loc.lat] },
+          })
+          .eq('id', loc.id)
+          .eq('scenario_id', scenarioId);
+        if (error) errors.push(`location ${loc.id}: ${error.message}`);
+      }
+    }
+    if (hazards?.length) {
+      for (const h of hazards) {
+        const { error } = await supabaseAdmin
+          .from('scenario_hazards')
+          .update({ location_lat: h.lat, location_lng: h.lng })
+          .eq('id', h.id)
+          .eq('scenario_id', scenarioId);
+        if (error) errors.push(`hazard ${h.id}: ${error.message}`);
+      }
+    }
+    if (casualties?.length) {
+      for (const c of casualties) {
+        const { error } = await supabaseAdmin
+          .from('scenario_casualties')
+          .update({ location_lat: c.lat, location_lng: c.lng })
+          .eq('id', c.id)
+          .eq('scenario_id', scenarioId);
+        if (error) errors.push(`casualty ${c.id}: ${error.message}`);
+      }
+    }
+
+    if (errors.length) {
+      logger.warn({ errors, scenarioId }, 'Some pin updates failed');
+      return res.json({ ok: true, warnings: errors });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in PATCH /scenarios/:id/pins');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Create scenario (trainers only)
 router.post(
   '/',

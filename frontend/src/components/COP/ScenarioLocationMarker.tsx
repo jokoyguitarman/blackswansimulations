@@ -22,6 +22,8 @@ export interface ScenarioLocationPin {
 interface ScenarioLocationMarkerProps {
   location: ScenarioLocationPin;
   position: LatLngExpression;
+  draggable?: boolean;
+  onDragEnd?: (id: string, lat: number, lng: number) => void;
 }
 
 const getPinColor = (pin: ScenarioLocationPin): string => {
@@ -47,6 +49,7 @@ const getPinColor = (pin: ScenarioLocationPin): string => {
     return '#d97706';
   if (
     cat === 'access' ||
+    cat === 'entry_exit' ||
     t.includes('exit') ||
     t.includes('entry') ||
     t.includes('route') ||
@@ -111,6 +114,7 @@ const getSymbol = (pin: ScenarioLocationPin): string => {
   if (cat === 'command') return '🎯';
   if (
     cat === 'access' ||
+    cat === 'entry_exit' ||
     t.includes('exit') ||
     t.includes('entry') ||
     t.includes('route') ||
@@ -164,14 +168,33 @@ const createPinIcon = (pin: ScenarioLocationPin): DivIcon => {
   });
 };
 
-export const ScenarioLocationMarker = ({ location, position }: ScenarioLocationMarkerProps) => {
+export const ScenarioLocationMarker = ({
+  location,
+  position,
+  draggable,
+  onDragEnd,
+}: ScenarioLocationMarkerProps) => {
   const icon = createPinIcon(location);
   const narrativeDesc =
     location.narrative_description ??
     (location.conditions?.narrative_description as string | undefined);
 
   return (
-    <Marker position={position} icon={icon}>
+    <Marker
+      position={position}
+      icon={icon}
+      draggable={draggable}
+      eventHandlers={
+        draggable && onDragEnd
+          ? {
+              dragend: (e) => {
+                const latlng = e.target.getLatLng();
+                onDragEnd(location.id, latlng.lat, latlng.lng);
+              },
+            }
+          : undefined
+      }
+    >
       <Popup>
         <div className="p-2 min-w-[150px] max-w-[220px]">
           <div className="text-sm font-medium terminal-text text-robotic-yellow">
