@@ -27,8 +27,9 @@ interface Decision {
   description: string;
   decision_type: string;
   status: string;
-  required_approvers?: string[]; // Optional, deprecated - use steps instead
+  required_approvers?: string[];
   created_at: string;
+  executed_at?: string;
   creator?: {
     id: string;
     full_name: string;
@@ -36,6 +37,23 @@ interface Decision {
   };
   proposed_by?: string;
   steps?: DecisionStep[];
+  environmental_consistency?: {
+    consistent?: boolean;
+    mismatch_kind?: string;
+    severity?: string;
+    reason?: string;
+    feedback?: string;
+    specific?: string;
+    error_type?: string;
+  } | null;
+  evaluation_reasoning?: {
+    env_prerequisite?: string;
+  } | null;
+  ai_classification?: {
+    category?: string;
+    keywords?: string[];
+    semantic_tags?: string[];
+  } | null;
 }
 
 interface DecisionWorkflowProps {
@@ -73,6 +91,16 @@ export const DecisionWorkflow = ({ sessionId, filterTeam = 'none' }: DecisionWor
   useEffect(() => {
     loadDecisions();
   }, [sessionId]);
+
+  // Poll for AI evaluation results on recently-executed decisions
+  useEffect(() => {
+    const hasAwaitingEval = decisions.some(
+      (d) => d.status === 'executed' && !d.environmental_consistency && d.executed_at,
+    );
+    if (!hasAwaitingEval) return;
+    const timer = setInterval(loadDecisions, 5000);
+    return () => clearInterval(timer);
+  }, [decisions, sessionId]);
 
   // WebSocket subscription for real-time decision updates
   useWebSocket({
@@ -254,6 +282,44 @@ export const DecisionWorkflow = ({ sessionId, filterTeam = 'none' }: DecisionWor
                   <p>{decision.description}</p>
                 )}
               </div>
+              {/* AI Evaluation Feedback */}
+              {decision.status === 'executed' && decision.environmental_consistency && (
+                <div
+                  className={`mt-2 p-2 rounded border text-xs terminal-text ${
+                    decision.environmental_consistency.consistent
+                      ? 'border-green-500/30 bg-green-900/20 text-green-400'
+                      : 'border-red-500/30 bg-red-900/20 text-red-400'
+                  }`}
+                >
+                  <span className="font-bold uppercase">
+                    {decision.environmental_consistency.consistent
+                      ? '✓ Consistent'
+                      : '✗ Issue Detected'}
+                  </span>
+                  {decision.environmental_consistency.severity && (
+                    <span className="ml-2 opacity-70">
+                      [{decision.environmental_consistency.severity}]
+                    </span>
+                  )}
+                  {(decision.environmental_consistency.reason ||
+                    decision.environmental_consistency.feedback ||
+                    decision.environmental_consistency.specific) && (
+                    <p className="mt-1 opacity-90">
+                      {decision.environmental_consistency.feedback ||
+                        decision.environmental_consistency.reason ||
+                        decision.environmental_consistency.specific}
+                    </p>
+                  )}
+                </div>
+              )}
+              {decision.status === 'executed' &&
+                !decision.environmental_consistency &&
+                decision.executed_at && (
+                  <div className="mt-2 p-2 rounded border border-robotic-yellow/20 bg-robotic-yellow/5 text-xs terminal-text text-robotic-yellow/50">
+                    ⏳ Awaiting AI evaluation...
+                  </div>
+                )}
+
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                 <div className="text-xs terminal-text text-robotic-yellow/50">
                   [{decision.decision_type}] • {decision.creator?.full_name || 'Unknown'}
@@ -399,6 +465,59 @@ export const DecisionWorkflow = ({ sessionId, filterTeam = 'none' }: DecisionWor
                   </div>
                 </div>
               )}
+              {/* AI Evaluation Detail */}
+              {selectedDecision.status === 'executed' &&
+                selectedDecision.environmental_consistency && (
+                  <div
+                    className={`p-3 rounded border ${
+                      selectedDecision.environmental_consistency.consistent
+                        ? 'border-green-500/30 bg-green-900/20'
+                        : 'border-red-500/30 bg-red-900/20'
+                    }`}
+                  >
+                    <h3 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
+                      [AI EVALUATION]
+                    </h3>
+                    <div
+                      className={`text-sm terminal-text ${selectedDecision.environmental_consistency.consistent ? 'text-green-400' : 'text-red-400'}`}
+                    >
+                      <span className="font-bold">
+                        {selectedDecision.environmental_consistency.consistent
+                          ? '✓ Decision is consistent with the environment'
+                          : '✗ Issue detected with this decision'}
+                      </span>
+                      {selectedDecision.environmental_consistency.severity && (
+                        <span className="ml-2 opacity-70">
+                          (Severity: {selectedDecision.environmental_consistency.severity})
+                        </span>
+                      )}
+                    </div>
+                    {(selectedDecision.environmental_consistency.feedback ||
+                      selectedDecision.environmental_consistency.reason ||
+                      selectedDecision.environmental_consistency.specific) && (
+                      <p className="mt-2 text-xs terminal-text text-robotic-yellow/80">
+                        {selectedDecision.environmental_consistency.feedback ||
+                          selectedDecision.environmental_consistency.reason ||
+                          selectedDecision.environmental_consistency.specific}
+                      </p>
+                    )}
+                    {selectedDecision.evaluation_reasoning?.env_prerequisite && (
+                      <p className="mt-2 text-xs terminal-text text-robotic-yellow/60 border-t border-robotic-yellow/10 pt-2">
+                        {selectedDecision.evaluation_reasoning.env_prerequisite}
+                      </p>
+                    )}
+                  </div>
+                )}
+              {selectedDecision.status === 'executed' &&
+                !selectedDecision.environmental_consistency &&
+                selectedDecision.executed_at && (
+                  <div className="p-3 rounded border border-robotic-yellow/20 bg-robotic-yellow/5">
+                    <p className="text-xs terminal-text text-robotic-yellow/50">
+                      ⏳ AI evaluation in progress...
+                    </p>
+                  </div>
+                )}
+
               {canApprove(selectedDecision) && (
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 pt-4 border-t border-robotic-yellow/30">
                   <button

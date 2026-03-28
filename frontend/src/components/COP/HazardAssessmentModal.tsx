@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { HazardData } from './HazardMarker';
+import { api } from '../../lib/api';
 
 interface HazardAssessmentModalProps {
   hazard: HazardData;
+  sessionId: string;
+  teamName: string;
   onClose: () => void;
-  onSubmitDecision: (hazardId: string, description: string) => void;
 }
 
 const PROPERTY_LABELS: Record<string, string> = {
@@ -27,18 +29,37 @@ const PROPERTY_LABELS: Record<string, string> = {
 
 export const HazardAssessmentModal = ({
   hazard,
+  sessionId,
+  teamName,
   onClose,
-  onSubmitDecision,
 }: HazardAssessmentModalProps) => {
   const [decision, setDecision] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const handleSubmit = async () => {
     if (!decision.trim()) return;
     setIsSubmitting(true);
+    setResult(null);
     try {
-      await onSubmitDecision(hazard.id, decision.trim());
-      onClose();
+      const createRes = await api.decisions.create({
+        session_id: sessionId,
+        description: `[Hazard Response: ${hazard.hazard_type.replace(/_/g, ' ')}] ${decision.trim()}`,
+        team_name: teamName,
+      });
+      const created = (createRes as { data?: { id: string } })?.data;
+      if (created?.id) {
+        await api.decisions.execute(created.id);
+        setResult({ success: true, message: 'Decision executed. Awaiting AI evaluation...' });
+        setTimeout(onClose, 1500);
+      } else {
+        setResult({ success: false, message: 'Decision created but could not auto-execute.' });
+      }
+    } catch (err) {
+      setResult({
+        success: false,
+        message: err instanceof Error ? err.message : 'Failed to execute decision.',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -135,6 +156,13 @@ export const HazardAssessmentModal = ({
             placeholder={`Describe your response to this ${hazard.hazard_type.replace(/_/g, ' ')}...`}
             className="w-full h-24 px-3 py-2 bg-black/50 border border-robotic-yellow/30 rounded text-xs terminal-text text-robotic-yellow placeholder-robotic-yellow/30 focus:border-robotic-yellow/60 focus:outline-none resize-none"
           />
+          {result && (
+            <div
+              className={`mt-2 p-2 rounded text-xs terminal-text ${result.success ? 'bg-green-900/30 text-green-400 border border-green-500/30' : 'bg-red-900/30 text-red-400 border border-red-500/30'}`}
+            >
+              {result.message}
+            </div>
+          )}
           <div className="flex justify-end gap-2 mt-3">
             <button
               onClick={onClose}
@@ -144,10 +172,10 @@ export const HazardAssessmentModal = ({
             </button>
             <button
               onClick={handleSubmit}
-              disabled={!decision.trim() || isSubmitting}
+              disabled={!decision.trim() || isSubmitting || result?.success === true}
               className="px-4 py-1.5 text-xs terminal-text text-black bg-robotic-yellow rounded hover:bg-robotic-yellow/90 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
             >
-              {isSubmitting ? 'Submitting...' : 'Submit Assessment'}
+              {isSubmitting ? 'Executing...' : 'Execute Decision'}
             </button>
           </div>
         </div>

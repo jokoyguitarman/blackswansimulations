@@ -1196,18 +1196,9 @@ export const MapView = ({
       {selectedHazard && (
         <HazardAssessmentModal
           hazard={selectedHazard}
+          sessionId={sessionId}
+          teamName={teamName ?? 'unknown'}
           onClose={() => setSelectedHazard(null)}
-          onSubmitDecision={async (_hazardId, description) => {
-            try {
-              await api.decisions.create({
-                session_id: sessionId,
-                description: `[Hazard Assessment: ${selectedHazard.hazard_type.replace(/_/g, ' ')}] ${description}`,
-                team_name: teamName,
-              });
-            } catch {
-              /* ignore */
-            }
-          }}
         />
       )}
 
