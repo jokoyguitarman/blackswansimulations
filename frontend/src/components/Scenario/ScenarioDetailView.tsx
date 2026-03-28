@@ -3,6 +3,8 @@ import { MapContainer, TileLayer, Marker, Tooltip } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import { api } from '../../lib/api';
 import { ScenarioLocationMarker, type ScenarioLocationPin } from '../COP/ScenarioLocationMarker';
+import { FloorSelector, type FloorPlan } from '../COP/FloorSelector';
+import { FloorPlanOverlay } from '../COP/FloorPlanOverlay';
 
 interface StandardsFinding {
   domain: string;
@@ -177,6 +179,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
   const [hazardPins, setHazardPins] = useState<HazardPin[]>([]);
   const [casualtyPins, setCasualtyPins] = useState<CasualtyPin[]>([]);
   const [equipmentItems, setEquipmentItems] = useState<EquipmentItem[]>([]);
+  const [floorPlans, setFloorPlans] = useState<FloorPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('Overview');
   const [expandedInject, setExpandedInject] = useState<string | null>(null);
@@ -225,7 +228,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
   useEffect(() => {
     const load = async () => {
       try {
-        const [scenRes, injectRes, teamRes, locRes, seedRes, hazRes, casRes, eqRes] =
+        const [scenRes, injectRes, teamRes, locRes, seedRes, hazRes, casRes, eqRes, fpRes] =
           await Promise.all([
             api.scenarios.get(scenarioId),
             api.scenarios.getInjects(scenarioId),
@@ -235,6 +238,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
             api.scenarios.getScenarioHazards(scenarioId).catch(() => ({ data: [] })),
             api.scenarios.getScenarioCasualties(scenarioId).catch(() => ({ data: [] })),
             api.scenarios.getScenarioEquipment(scenarioId).catch(() => ({ data: [] })),
+            api.scenarios.getScenarioFloorPlans(scenarioId).catch(() => ({ data: [] })),
           ]);
         setScenario(scenRes.data as ScenarioFull);
         setInjects((injectRes.data ?? []) as Inject[]);
@@ -244,6 +248,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
         setHazardPins((hazRes.data ?? []) as HazardPin[]);
         setCasualtyPins((casRes.data ?? []) as CasualtyPin[]);
         setEquipmentItems((eqRes.data ?? []) as EquipmentItem[]);
+        setFloorPlans((fpRes.data ?? []) as FloorPlan[]);
       } catch (err) {
         console.error('Failed to load scenario detail', err);
       } finally {
@@ -528,6 +533,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
               hazards={hazardPins}
               casualties={casualtyPins}
               equipment={equipmentItems}
+              floorPlans={floorPlans}
             />
           )}
 
@@ -998,16 +1004,19 @@ const MapPinsTab = ({
   hazards,
   casualties,
   equipment,
+  floorPlans,
 }: {
   scenarioId: string;
   locations: LocationPin[];
   hazards: HazardPin[];
   casualties: CasualtyPin[];
   equipment: EquipmentItem[];
+  floorPlans: FloorPlan[];
 }) => {
   const [expandedPin, setExpandedPin] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [activeFloor, setActiveFloor] = useState('G');
   const changesRef = useRef<{
     locations: Map<string, { lat: number; lng: number }>;
     hazards: Map<string, { lat: number; lng: number }>;
@@ -1117,6 +1126,7 @@ const MapPinsTab = ({
         {equipment.length > 0 && (
           <span className="text-cyan-400">{equipment.length} equipment types</span>
         )}
+        {floorPlans.length > 1 && <span className="text-blue-400">{floorPlans.length} floors</span>}
         <span className="ml-auto text-robotic-yellow/40">drag pins to reposition</span>
       </div>
 
@@ -1137,7 +1147,7 @@ const MapPinsTab = ({
       {saveMsg && <div className="text-xs terminal-text text-green-400 p-1">{saveMsg}</div>}
 
       {/* OSM map */}
-      <div className="military-border overflow-hidden" style={{ height: 480 }}>
+      <div className="military-border overflow-hidden relative" style={{ height: 480 }}>
         <MapContainer
           center={mapCenter}
           zoom={16}
@@ -1148,6 +1158,12 @@ const MapPinsTab = ({
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          {/* Floor plan overlay for active floor */}
+          {floorPlans
+            .filter((f) => f.floor_level === activeFloor)
+            .map((floor) => (
+              <FloorPlanOverlay key={floor.id} floor={floor} />
+            ))}
           {validPins.map((pin) => (
             <ScenarioLocationMarker
               key={pin.id}
@@ -1157,38 +1173,67 @@ const MapPinsTab = ({
               onDragEnd={onLocationDrag}
             />
           ))}
-          {hazards.map((h) => (
-            <Marker
-              key={`haz-${h.id}`}
-              position={[h.location_lat, h.location_lng]}
-              icon={createDivIcon('#ef4444', HAZARD_ICONS[h.hazard_type] ?? '⚠️', 30)}
-              draggable
-              eventHandlers={{
-                dragend: (e) => {
-                  const ll = e.target.getLatLng();
-                  onHazardDrag(h.id, ll.lat, ll.lng);
-                },
-              }}
-            >
-              <Tooltip direction="top">
-                {HAZARD_ICONS[h.hazard_type] ?? '⚠️'} {h.hazard_type.replace(/_/g, ' ')}
-              </Tooltip>
-            </Marker>
-          ))}
-          {patients.map((c) => {
-            const triageColor =
-              TRIAGE_COLORS[(c.conditions.triage_color as string) ?? 'yellow'] ?? '#eab308';
-            const mobilityIcon =
-              c.conditions.mobility === 'trapped'
-                ? '🪤'
-                : c.conditions.mobility === 'non_ambulatory'
-                  ? '🚑'
-                  : '🚶';
-            return (
+          {hazards
+            .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
+            .map((h) => (
               <Marker
-                key={`cas-${c.id}`}
+                key={`haz-${h.id}`}
+                position={[h.location_lat, h.location_lng]}
+                icon={createDivIcon('#ef4444', HAZARD_ICONS[h.hazard_type] ?? '⚠️', 30)}
+                draggable
+                eventHandlers={{
+                  dragend: (e) => {
+                    const ll = e.target.getLatLng();
+                    onHazardDrag(h.id, ll.lat, ll.lng);
+                  },
+                }}
+              >
+                <Tooltip direction="top">
+                  {HAZARD_ICONS[h.hazard_type] ?? '⚠️'} {h.hazard_type.replace(/_/g, ' ')}
+                </Tooltip>
+              </Marker>
+            ))}
+          {patients
+            .filter((c) => c.floor_level === activeFloor || !floorPlans.length)
+            .map((c) => {
+              const triageColor =
+                TRIAGE_COLORS[(c.conditions.triage_color as string) ?? 'yellow'] ?? '#eab308';
+              const mobilityIcon =
+                c.conditions.mobility === 'trapped'
+                  ? '🪤'
+                  : c.conditions.mobility === 'non_ambulatory'
+                    ? '🚑'
+                    : '🚶';
+              return (
+                <Marker
+                  key={`cas-${c.id}`}
+                  position={[c.location_lat, c.location_lng]}
+                  icon={createDivIcon(triageColor, mobilityIcon, 24)}
+                  draggable
+                  eventHandlers={{
+                    dragend: (e) => {
+                      const ll = e.target.getLatLng();
+                      onCasualtyDrag(c.id, ll.lat, ll.lng);
+                    },
+                  }}
+                >
+                  <Tooltip direction="top">
+                    {(c.conditions.visible_description as string)?.slice(0, 80) || 'Patient'}
+                  </Tooltip>
+                </Marker>
+              );
+            })}
+          {crowds
+            .filter((c) => c.floor_level === activeFloor || !floorPlans.length)
+            .map((c) => (
+              <Marker
+                key={`crowd-${c.id}`}
                 position={[c.location_lat, c.location_lng]}
-                icon={createDivIcon(triageColor, mobilityIcon, 24)}
+                icon={createDivIcon(
+                  '#8b5cf6',
+                  '👥',
+                  Math.min(36, 24 + Math.floor(c.headcount / 15)),
+                )}
                 draggable
                 eventHandlers={{
                   dragend: (e) => {
@@ -1198,30 +1243,22 @@ const MapPinsTab = ({
                 }}
               >
                 <Tooltip direction="top">
-                  {(c.conditions.visible_description as string)?.slice(0, 80) || 'Patient'}
+                  👥 {c.headcount} people — {(c.conditions.behavior as string) ?? 'unknown'}
                 </Tooltip>
               </Marker>
-            );
-          })}
-          {crowds.map((c) => (
-            <Marker
-              key={`crowd-${c.id}`}
-              position={[c.location_lat, c.location_lng]}
-              icon={createDivIcon('#8b5cf6', '👥', Math.min(36, 24 + Math.floor(c.headcount / 15)))}
-              draggable
-              eventHandlers={{
-                dragend: (e) => {
-                  const ll = e.target.getLatLng();
-                  onCasualtyDrag(c.id, ll.lat, ll.lng);
-                },
-              }}
-            >
-              <Tooltip direction="top">
-                👥 {c.headcount} people — {(c.conditions.behavior as string) ?? 'unknown'}
-              </Tooltip>
-            </Marker>
-          ))}
+            ))}
         </MapContainer>
+        {/* Floor Selector */}
+        {floorPlans.length > 1 && (
+          <FloorSelector
+            floors={floorPlans}
+            activeFloor={activeFloor}
+            onFloorChange={setActiveFloor}
+            hazardFloors={
+              new Set(hazards.filter((h) => h.status !== 'resolved').map((h) => h.floor_level))
+            }
+          />
+        )}
       </div>
 
       {/* Legend */}

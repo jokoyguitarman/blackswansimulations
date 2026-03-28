@@ -516,7 +516,12 @@ export const MapView = ({
   // Extract entry/exit pins from scenario locations
   useEffect(() => {
     const eeLocations = scenarioLocations
-      .filter((sl) => sl.pin_category === 'entry_exit')
+      .filter(
+        (sl) =>
+          sl.pin_category === 'entry_exit' &&
+          typeof sl.coordinates?.lat === 'number' &&
+          typeof sl.coordinates?.lng === 'number',
+      )
       .map((sl) => ({
         id: sl.id,
         label: sl.label,

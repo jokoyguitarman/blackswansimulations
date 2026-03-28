@@ -357,6 +357,30 @@ router.get('/:id/equipment', requireAuth, async (req: AuthenticatedRequest, res)
   }
 });
 
+// Get floor plans for a scenario (trainer only — war room preview)
+router.get('/:id/floor-plans', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const { data, error } = await supabaseAdmin
+      .from('scenario_floor_plans')
+      .select('*')
+      .eq('scenario_id', id)
+      .order('floor_level', { ascending: true });
+    if (error) {
+      logger.error({ error, scenarioId: id }, 'Failed to fetch scenario floor plans');
+      return res.status(500).json({ error: 'Failed to fetch floor plans' });
+    }
+    res.json({ data: data ?? [] });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /scenarios/:id/floor-plans');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Batch-update pin coordinates (trainer/admin — war room repositioning)
 router.patch('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {

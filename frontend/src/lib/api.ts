@@ -256,6 +256,28 @@ export const api = {
         }>;
       }>(await fetch(apiUrl(`/api/scenarios/${id}/equipment`), { headers }));
     },
+    getScenarioFloorPlans: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          scenario_id: string;
+          floor_level: string;
+          floor_label: string;
+          plan_svg: string | null;
+          plan_image_url: string | null;
+          bounds: Record<string, unknown> | null;
+          features: Array<{
+            id: string;
+            type: string;
+            label: string;
+            geometry?: Record<string, unknown>;
+            properties?: Record<string, unknown>;
+          }>;
+          environmental_factors: Array<Record<string, unknown>>;
+        }>;
+      }>(await fetch(apiUrl(`/api/scenarios/${id}/floor-plans`), { headers }));
+    },
     updatePinPositions: async (
       id: string,
       payload: {
