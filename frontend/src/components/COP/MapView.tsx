@@ -15,11 +15,11 @@ import { PlacedAssetMarker, type PlacedAsset } from './PlacedAssetMarker';
 import { MapDropHandler } from './MapDropHandler';
 import { MapDrawHandler } from './MapDrawHandler';
 import { HazardMarker, type HazardData } from './HazardMarker';
-import { HazardAssessmentModal } from './HazardAssessmentModal';
 import { CasualtyPin, type CasualtyData } from './CasualtyPin';
 import { CasualtyAssessmentModal } from './CasualtyAssessmentModal';
 import { CrowdPin, type CrowdData } from './CrowdPin';
 import { EntryExitPin, type EntryExitData } from './EntryExitPin';
+import { MapElementResponsePanel, type MapElementTarget } from './MapElementResponsePanel';
 import { FloorSelector, type FloorPlan } from './FloorSelector';
 import { FloorPlanOverlay } from './FloorPlanOverlay';
 import { useWebSocket } from '../../hooks/useWebSocket';
@@ -478,8 +478,8 @@ export const MapView = ({
   const [placedAssets, setPlacedAssets] = useState<PlacedAsset[]>([]);
   const optimisticIdsRef = useRef<Map<string, string>>(new Map());
   const [hazards, setHazards] = useState<HazardData[]>([]);
-  const [selectedHazard, setSelectedHazard] = useState<HazardData | null>(null);
   const [selectedCasualty, setSelectedCasualty] = useState<CasualtyData | null>(null);
+  const [respondToElement, setRespondToElement] = useState<MapElementTarget | null>(null);
   const [casualties, setCasualties] = useState<CasualtyData[]>([]);
   const [crowds, setCrowds] = useState<CrowdData[]>([]);
   const [entryExitPins, setEntryExitPins] = useState<EntryExitData[]>([]);
@@ -487,6 +487,84 @@ export const MapView = ({
   const [activeFloor, setActiveFloor] = useState('G');
   const [isContainerReady, setIsContainerReady] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  const openHazardPanel = useCallback((h: HazardData) => {
+    const details: Array<{ label: string; value: string }> = [];
+    for (const [k, v] of Object.entries(h.properties)) {
+      if (v == null || v === '') continue;
+      details.push({
+        label: k.replace(/_/g, ' '),
+        value: Array.isArray(v) ? v.join(', ') : String(v),
+      });
+    }
+    if (h.fire_class) details.push({ label: 'Fire Class', value: h.fire_class });
+    if (h.debris_type) details.push({ label: 'Debris Type', value: h.debris_type });
+    setRespondToElement({
+      elementType: 'hazard',
+      elementId: h.id,
+      title: h.hazard_type.replace(/_/g, ' '),
+      subtitle: h.status,
+      description: h.current_description || h.enriched_description || undefined,
+      imageUrl: h.current_image_url || h.image_url,
+      status: h.status,
+      details,
+    });
+  }, []);
+
+  const openCrowdPanel = useCallback((c: CrowdData) => {
+    const conds = c.conditions as Record<string, unknown>;
+    const details: Array<{ label: string; value: string }> = [];
+    details.push({ label: 'Headcount', value: String(c.headcount) });
+    if (conds.behavior) details.push({ label: 'Behavior', value: String(conds.behavior) });
+    if (conds.movement_direction)
+      details.push({ label: 'Movement', value: String(conds.movement_direction) });
+    if (conds.bottleneck) details.push({ label: 'Bottleneck', value: 'Yes' });
+    const mixedWounded = (conds.mixed_wounded as Array<Record<string, unknown>>) ?? [];
+    if (mixedWounded.length > 0) {
+      const count = mixedWounded.reduce((s, w) => s + ((w.count as number) ?? 0), 0);
+      details.push({ label: 'Walking Wounded', value: String(count) });
+    }
+    setRespondToElement({
+      elementType: 'crowd',
+      elementId: c.id,
+      title: `Crowd — ${c.headcount} people`,
+      subtitle: String(conds.behavior ?? 'unknown'),
+      description: (conds.visible_description as string) ?? undefined,
+      status: c.status,
+      details,
+    });
+  }, []);
+
+  const openCasualtyPanel = useCallback((c: CasualtyData) => {
+    const conds = c.conditions as Record<string, unknown>;
+    const details: Array<{ label: string; value: string }> = [];
+    if (conds.mobility)
+      details.push({ label: 'Mobility', value: String(conds.mobility).replace(/_/g, ' ') });
+    if (conds.consciousness)
+      details.push({ label: 'Consciousness', value: String(conds.consciousness) });
+    if (conds.breathing) details.push({ label: 'Breathing', value: String(conds.breathing) });
+    if (conds.accessibility && conds.accessibility !== 'open')
+      details.push({
+        label: 'Access',
+        value: String(conds.accessibility).replace(/_/g, ' '),
+      });
+    const injuries = (conds.injuries as Array<Record<string, unknown>>) ?? [];
+    if (injuries.length > 0) {
+      details.push({
+        label: 'Injuries',
+        value: injuries.map((i) => String(i.type ?? '').replace(/_/g, ' ')).join(', '),
+      });
+    }
+    setRespondToElement({
+      elementType: 'casualty',
+      elementId: c.id,
+      title: `Patient — ${c.casualty_type.replace(/_/g, ' ')}`,
+      subtitle: c.status,
+      description: (conds.visible_description as string) ?? undefined,
+      status: c.status,
+      details,
+    });
+  }, []);
 
   // Fetch scenario locations (map pins) and which POI categories the user has asked the Insider about
   useEffect(() => {
@@ -1142,7 +1220,7 @@ export const MapView = ({
           {hazards
             .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
             .map((hazard) => (
-              <HazardMarker key={hazard.id} hazard={hazard} onClick={setSelectedHazard} />
+              <HazardMarker key={hazard.id} hazard={hazard} onClick={openHazardPanel} />
             ))}
 
           {/* Casualty Pins (individual patients) */}
@@ -1160,9 +1238,7 @@ export const MapView = ({
                 key={crowd.id}
                 crowd={crowd}
                 isDraggable={(crowdDraggability.get(crowd.id) ?? false) && !!isRecordingActions}
-                onClick={() => {
-                  /* TODO: open crowd detail modal */
-                }}
+                onClick={openCrowdPanel}
                 onDragEnd={async (c, newLat, newLng) => {
                   const oldLat = c.location_lat;
                   const oldLng = c.location_lng;
@@ -1291,13 +1367,14 @@ export const MapView = ({
         />
       )}
 
-      {/* Hazard Assessment Modal (Phase 4) */}
-      {selectedHazard && (
-        <HazardAssessmentModal
-          hazard={selectedHazard}
+      {/* Unified Response Panel (hazard, crowd, casualty) */}
+      {respondToElement && (
+        <MapElementResponsePanel
+          element={respondToElement}
+          availableAssets={draggableAssets}
           sessionId={sessionId}
           teamName={teamName ?? 'unknown'}
-          onClose={() => setSelectedHazard(null)}
+          onClose={() => setRespondToElement(null)}
         />
       )}
 
@@ -1324,6 +1401,11 @@ export const MapView = ({
                   : c,
               ),
             );
+          }}
+          onDeployResources={() => {
+            const cas = selectedCasualty;
+            setSelectedCasualty(null);
+            openCasualtyPanel(cas);
           }}
         />
       )}

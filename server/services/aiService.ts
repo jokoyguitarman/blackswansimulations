@@ -557,6 +557,7 @@ export const identifyDeEscalationFactors = async (
   recentInjects: Array<{ type?: string; title?: string; content?: string }>,
   escalationFactors: EscalationFactor[],
   openAiApiKey: string,
+  teamFocusContext?: string,
 ): Promise<IdentifyDeEscalationFactorsResult> => {
   const empty: IdentifyDeEscalationFactorsResult = { factors: [] };
   try {
@@ -589,6 +590,8 @@ Use id like DEF-1, DEF-2, etc.`;
         ? escalationFactors.map((f) => `- ${f.id}: ${f.name}: ${f.description}`).join('\n')
         : 'None provided';
 
+    const teamFocusLine = teamFocusContext ? `\n\nTEAM FOCUS: ${teamFocusContext}` : '';
+
     const userPrompt = `Scenario description:
 ${scenarioDescription.slice(0, 1500)}
 
@@ -602,7 +605,7 @@ ${injectsText}
 
 Escalation factors (identify what would help counter these):
 ${escalationFactorsText}
-
+${teamFocusLine}
 ---
 Identify de-escalation factors (what helps mitigate). Return JSON only.`;
 
@@ -663,6 +666,7 @@ export const identifyEscalationFactors = async (
   objectives: Array<{ objective_id?: string; objective_name?: string }>,
   recentInjects: Array<{ type?: string; title?: string; content?: string }>,
   openAiApiKey: string,
+  teamFocusContext?: string,
 ): Promise<IdentifyEscalationFactorsResult> => {
   const empty: IdentifyEscalationFactorsResult = { factors: [] };
   try {
@@ -697,6 +701,8 @@ Include 3 to 8 factors. Use id like EF-1, EF-2, etc. Severity must be one of: lo
             .join('\n\n')
         : 'No recent injects';
 
+    const teamFocusLine = teamFocusContext ? `\n\nTEAM FOCUS: ${teamFocusContext}` : '';
+
     const userPrompt = `Scenario description:
 ${scenarioDescription.slice(0, 1500)}
 
@@ -707,7 +713,7 @@ ${objectivesText}
 
 ${recentInjects.length > 0 ? "Just-published inject (identify escalation factors: how could the team's inaction, delay, or poor choices in response to this development make things worse?):" : 'Recent injects (current situation):'}
 ${injectsText}
-
+${teamFocusLine}
 ---
 Identify escalation factors. Return JSON only.`;
 
@@ -788,6 +794,7 @@ export const generateEscalationPathways = async (
   escalationFactors: EscalationFactor[],
   justPublishedInjectOrApiKey?: { type?: string; title?: string; content?: string } | string | null,
   openAiApiKeyParam?: string,
+  teamFocusContext?: string,
 ): Promise<GenerateEscalationPathwaysResult> => {
   const empty: GenerateEscalationPathwaysResult = { pathways: [] };
   const openAiApiKey =
@@ -835,13 +842,15 @@ Include 2 to 6 pathways. Use pathway_id like EP-1, EP-2, etc. Each pathway shoul
         ? `\nJust-published inject: [${justPublishedInject.type ?? 'update'}] ${justPublishedInject.title ?? 'Untitled'}\n${(justPublishedInject.content ?? '').slice(0, 400)}\n\n`
         : '';
 
+    const teamFocusLine = teamFocusContext ? `\n\nTEAM FOCUS: ${teamFocusContext}` : '';
+
     const userPrompt = `Scenario description:
 ${scenarioDescription.slice(0, 1200)}
 
 Current state (summary): ${JSON.stringify(currentState).slice(0, 400)}
 ${injectBlock}Escalation factors (from Stage 2):
 ${factorsText}
-
+${teamFocusLine}
 ---
 Generate escalation pathways (trajectory + trigger_behaviours). Return JSON only.`;
 
@@ -921,6 +930,7 @@ export const generateDeEscalationPathways = async (
   deEscalationFactors: DeEscalationFactor[],
   justPublishedInjectOrApiKey?: { type?: string; title?: string; content?: string } | string | null,
   openAiApiKeyParam?: string,
+  teamFocusContext?: string,
 ): Promise<GenerateDeEscalationPathwaysResult> => {
   const empty: GenerateDeEscalationPathwaysResult = { pathways: [] };
   const openAiApiKey =
@@ -973,6 +983,8 @@ Include 2 to 6 pathways. Use pathway_id like DEP-1, DEP-2. Each pathway: 1 to 4 
         ? `\nJust-published inject: [${justPublishedInject.type ?? 'update'}] ${justPublishedInject.title ?? 'Untitled'}\n${(justPublishedInject.content ?? '').slice(0, 400)}\n\n`
         : '';
 
+    const teamFocusLine = teamFocusContext ? `\n\nTEAM FOCUS: ${teamFocusContext}` : '';
+
     const userPrompt = `Scenario description:
 ${scenarioDescription.slice(0, 1200)}
 
@@ -982,7 +994,7 @@ ${escalationPathwaysText}
 
 De-escalation factors (what helps mitigate):
 ${deEscalationFactorsText}
-
+${teamFocusLine}
 ---
 Generate de-escalation pathways (trajectory + mitigating_behaviours + optional emerging_challenges). Return JSON only.`;
 
@@ -1082,6 +1094,7 @@ export const generatePathwayOutcomeInjects = async (
   pathwayUsageSummary: string | undefined,
   openAiApiKey: string,
   upcomingPremadeThemes?: string,
+  teamFocusContext?: string,
 ): Promise<GeneratePathwayOutcomeInjectsResult> => {
   const empty: GeneratePathwayOutcomeInjectsResult = { outcomes: [] };
   try {
@@ -1150,6 +1163,8 @@ Rules:
       ? `\n\nUpcoming premade injects in the next 10-15 minutes: ${upcomingPremadeThemes}. Do NOT generate outcome injects that repeat these themes. Instead explore different escalation or de-escalation angles (e.g. misinformation, political pressure, resource gaps, coordination failures).`
       : '';
 
+    const teamFocusLine = teamFocusContext ? `\n\nTEAM FOCUS: ${teamFocusContext}` : '';
+
     const userPrompt = `Scenario description:
 ${scenarioDescription.slice(0, 1200)}
 
@@ -1165,7 +1180,7 @@ De-escalation pathways (how things improve):
 ${deEscalationText}
 ${diversityLine}
 ${upcomingPremadeLine}
-
+${teamFocusLine}
 ---
 Generate 3 to 8 outcome injects (low/medium/high robustness bands). Return JSON only.`;
 

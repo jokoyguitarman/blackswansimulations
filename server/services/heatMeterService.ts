@@ -168,16 +168,40 @@ export async function selectAndPublishPathwayOutcome(
       trigger_inject_id?: string;
     }>;
 
-    // Find a row whose trigger inject targets this team (or is universal)
     let chosenRow: (typeof typedRows)[number] | null = null;
+
+    // First pass: prefer rows whose outcomes explicitly target this team
     for (const row of typedRows) {
       const outcomes = parseOutcomes(row.outcomes);
       if (outcomes.length === 0) continue;
       const scope = outcomes[0]?.inject_payload?.inject_scope ?? 'universal';
       const targetTeams = (outcomes[0]?.inject_payload?.target_teams as string[] | null) ?? [];
-      if (scope !== 'team_specific' || targetTeams.length === 0 || targetTeams.includes(teamName)) {
+      if (
+        (scope === 'team_specific' || scope === 'team') &&
+        targetTeams.length > 0 &&
+        targetTeams.includes(teamName)
+      ) {
         chosenRow = row;
         break;
+      }
+    }
+
+    // Second pass: fall back to universal rows (no team-specific targeting)
+    if (!chosenRow) {
+      for (const row of typedRows) {
+        const outcomes = parseOutcomes(row.outcomes);
+        if (outcomes.length === 0) continue;
+        const scope = outcomes[0]?.inject_payload?.inject_scope ?? 'universal';
+        const targetTeams = (outcomes[0]?.inject_payload?.target_teams as string[] | null) ?? [];
+        if (scope !== 'team_specific' && scope !== 'team') {
+          chosenRow = row;
+          break;
+        }
+        // Also accept team_specific rows with empty target_teams (effectively universal)
+        if (targetTeams.length === 0) {
+          chosenRow = row;
+          break;
+        }
       }
     }
     if (!chosenRow) return;

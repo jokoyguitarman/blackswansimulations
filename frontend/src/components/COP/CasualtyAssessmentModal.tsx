@@ -8,6 +8,7 @@ interface CasualtyAssessmentModalProps {
   teamName: string;
   onClose: () => void;
   onAssess: (casualtyId: string, triageColor: string) => Promise<void>;
+  onDeployResources?: () => void;
 }
 
 const TRIAGE_OPTIONS: Array<{
@@ -51,6 +52,7 @@ export const CasualtyAssessmentModal = ({
   casualty,
   onClose,
   onAssess,
+  onDeployResources,
 }: CasualtyAssessmentModalProps) => {
   const [selected, setSelected] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -194,6 +196,14 @@ export const CasualtyAssessmentModal = ({
           >
             CANCEL
           </button>
+          {onDeployResources && (
+            <button
+              onClick={onDeployResources}
+              className="px-4 py-2 text-xs terminal-text text-cyan-400 hover:text-cyan-300 border border-cyan-500/40 rounded hover:bg-cyan-900/30"
+            >
+              DEPLOY RESOURCES
+            </button>
+          )}
           <button
             onClick={handleSubmit}
             disabled={!selected || submitting}

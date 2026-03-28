@@ -129,12 +129,23 @@ export async function runPathwayOutcomesOnInjectPublished(
     ];
     const justPublishedInject = singleInjectContext[0] ?? null;
 
+    const triggerScope = (inject as { inject_scope?: string | null }).inject_scope;
+    const triggerTargetTeams = (inject as { target_teams?: string[] | null }).target_teams;
+    const isTeamSpecific =
+      (triggerScope === 'team_specific' || triggerScope === 'team') &&
+      Array.isArray(triggerTargetTeams) &&
+      triggerTargetTeams.length > 0;
+    const teamFocusContext = isTeamSpecific
+      ? `This inject targets the ${triggerTargetTeams.join(' and ')} specifically. All factors, pathways, and outcome injects must relate exclusively to this team's domain, responsibilities, and potential actions or failures. Do not generate factors, pathways, or outcomes about other teams' domains.`
+      : undefined;
+
     const factorsResult = await identifyEscalationFactors(
       scenarioDescriptionWithContext,
       (session.current_state as Record<string, unknown>) ?? {},
       objectivesForFactors,
       singleInjectContext,
       env.openAiApiKey,
+      teamFocusContext,
     );
     const baselineFactors = Array.isArray(insiderKnowledge.baseline_escalation_factors)
       ? (insiderKnowledge.baseline_escalation_factors as Array<{
@@ -159,6 +170,7 @@ export async function runPathwayOutcomesOnInjectPublished(
         singleInjectContext,
         mergedFactors,
         env.openAiApiKey,
+        teamFocusContext,
       );
       deEscalationFactors = deEscResult.factors;
     } catch (deEscErr) {
@@ -174,6 +186,7 @@ export async function runPathwayOutcomesOnInjectPublished(
       mergedFactors,
       justPublishedInject,
       env.openAiApiKey,
+      teamFocusContext,
     );
 
     let deEscalationPathways: Array<{
@@ -190,6 +203,7 @@ export async function runPathwayOutcomesOnInjectPublished(
         deEscalationFactors,
         justPublishedInject,
         env.openAiApiKey,
+        teamFocusContext,
       );
       deEscalationPathways = dePathResult.pathways;
     } catch (dePathErr) {
@@ -219,18 +233,10 @@ export async function runPathwayOutcomesOnInjectPublished(
       pathwayUsageSummary,
       env.openAiApiKey,
       upcomingPremadeThemes || undefined,
+      teamFocusContext,
     );
 
-    // Inherit trigger inject's scope when team_specific: outcome is a consequence of that inject,
-    // so the same team(s) should receive it.
-    const triggerScope = (inject as { inject_scope?: string | null }).inject_scope;
-    const triggerTargetTeams = (inject as { target_teams?: string[] | null }).target_teams;
-    const shouldInheritScope =
-      (triggerScope === 'team_specific' || triggerScope === 'team') &&
-      Array.isArray(triggerTargetTeams) &&
-      triggerTargetTeams.length > 0;
-
-    if (shouldInheritScope) {
+    if (isTeamSpecific) {
       for (const outcome of outcomeResult.outcomes) {
         if (outcome.inject_payload) {
           outcome.inject_payload.inject_scope = 'team_specific';
