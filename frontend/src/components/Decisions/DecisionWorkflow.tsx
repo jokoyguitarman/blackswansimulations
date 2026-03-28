@@ -294,7 +294,6 @@ export const DecisionWorkflow = ({ sessionId, filterTeam = 'none' }: DecisionWor
                   const isRejected = ec.rejected === true;
                   const hasEnvIssue = !ec.consistent;
                   const hasSpecificityIssue = ec.specific === false;
-                  const isPass = !isRejected && !hasEnvIssue && !hasSpecificityIssue;
 
                   const borderClass = isRejected
                     ? 'border-red-500/50 bg-red-900/30 text-red-400'
