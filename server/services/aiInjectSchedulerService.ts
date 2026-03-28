@@ -13,6 +13,7 @@ import {
 import { publishInjectToSession } from '../routes/injects.js';
 import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
+import { applyMediaChallengePressure } from './heatMeterService.js';
 import type { Server as SocketServer } from 'socket.io';
 
 /**
@@ -876,6 +877,13 @@ export class AIInjectSchedulerService {
         { err: sentimentErr, sessionId: session.id },
         'Failed to compute or persist public sentiment',
       );
+    }
+
+    // Media challenge pressure: unanswered challenges drag sentiment down
+    try {
+      await applyMediaChallengePressure(session.id);
+    } catch (challengeErr) {
+      logger.warn({ err: challengeErr, sessionId: session.id }, 'Media challenge pressure failed');
     }
 
     // Enrich context for inject generation with matrix and escalation data (Checkpoint 8)

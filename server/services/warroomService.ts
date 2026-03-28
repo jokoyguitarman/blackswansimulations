@@ -25,8 +25,10 @@ import {
   researchArea,
   researchStandards,
   researchSimilarCases,
+  researchCrowdDynamics,
   type StandardsFinding,
   type SimilarCase,
+  type CrowdDynamicsResearch,
 } from './warroomResearchService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -221,6 +223,7 @@ export async function generateAndPersistWarroomScenario(
 
   let geocodeResult = null;
   let similarCases: SimilarCase[] = [];
+  let crowdDynamics: CrowdDynamicsResearch | null = null;
 
   const geocodePromise = parsed.location
     ? (() => {
@@ -236,7 +239,7 @@ export async function generateAndPersistWarroomScenario(
       })()
     : Promise.resolve(null);
 
-  [geocodeResult, similarCases] = await Promise.all([
+  [geocodeResult, similarCases, crowdDynamics] = await Promise.all([
     geocodePromise,
     researchSimilarCases(
       openAiApiKey,
@@ -244,10 +247,22 @@ export async function generateAndPersistWarroomScenario(
       parsed.location ?? undefined,
       venueName,
       parsed.setting,
-    ).catch(() => []),
+    ).catch(() => [] as SimilarCase[]),
+    researchCrowdDynamics(
+      openAiApiKey,
+      parsed.scenario_type,
+      parsed.location ?? undefined,
+      venueName,
+    ).catch(() => null),
   ]);
 
   logger.info({ found: similarCases.length }, 'Similar cases research done');
+  if (crowdDynamics) {
+    logger.info(
+      { crowdTypes: crowdDynamics.convergent_crowd_types.length },
+      'Crowd dynamics research done',
+    );
+  }
 
   let osmVicinity = undefined;
   let osmOpenSpaces: import('./osmVicinityService.js').OsmOpenSpace[] | undefined;
@@ -328,11 +343,13 @@ export async function generateAndPersistWarroomScenario(
       settingSpec,
       terrainSpec,
       researchContext:
-        similarCases.length > 0
-          ? { area_summary: areaSummary || undefined, similar_cases: similarCases }
-          : areaSummary
-            ? { area_summary: areaSummary }
-            : undefined,
+        similarCases.length > 0 || areaSummary || crowdDynamics
+          ? {
+              area_summary: areaSummary || undefined,
+              similar_cases: similarCases.length > 0 ? similarCases : undefined,
+              crowd_dynamics: crowdDynamics || undefined,
+            }
+          : undefined,
       userTeams,
     },
     openAiApiKey,
@@ -386,11 +403,12 @@ export async function generateAndPersistWarroomScenario(
       settingSpec,
       terrainSpec,
       researchContext:
-        areaSummary || standardsFindings.length > 0 || similarCases.length > 0
+        areaSummary || standardsFindings.length > 0 || similarCases.length > 0 || crowdDynamics
           ? {
               area_summary: areaSummary || undefined,
               standards_findings: standardsFindings.length > 0 ? standardsFindings : undefined,
               similar_cases: similarCases.length > 0 ? similarCases : undefined,
+              crowd_dynamics: crowdDynamics || undefined,
             }
           : undefined,
       userTeams,

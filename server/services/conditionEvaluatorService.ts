@@ -396,6 +396,74 @@ conditionRegistry.media_no_regular_updates_decision = (ctx) =>
   getMediaState(ctx).regular_updates_planned !== true;
 
 // ---------------------------------------------------------------------------
+// Chaos-relevant condition keys (pin-driven counters from liveCounterService)
+// ---------------------------------------------------------------------------
+
+function getFireRescueState(ctx: EvaluationContext): Record<string, unknown> {
+  return (ctx.currentState?.fire_rescue_state as Record<string, unknown>) ?? {};
+}
+
+conditionRegistry.casualties_at_assembly_above_20 = (ctx) =>
+  ((getEvacuationState(ctx).civilians_at_assembly as number) ?? 0) > 20;
+
+conditionRegistry.casualties_at_assembly_above_50 = (ctx) =>
+  ((getEvacuationState(ctx).civilians_at_assembly as number) ?? 0) > 50;
+
+conditionRegistry.patients_in_treatment_above_5 = (ctx) =>
+  ((getTriageState(ctx).in_treatment as number) ?? 0) > 5;
+
+conditionRegistry.patients_in_treatment_above_10 = (ctx) =>
+  ((getTriageState(ctx).in_treatment as number) ?? 0) > 10;
+
+conditionRegistry.active_fires_above_0 = (ctx) =>
+  ((getFireRescueState(ctx).active_fires as number) ?? 0) > 0;
+
+conditionRegistry.convergent_crowd_present = (ctx) =>
+  ((getEvacuationState(ctx).convergent_crowds_count as number) ?? 0) > 0;
+
+conditionRegistry.no_zone_identification_decision = (ctx) =>
+  !hasDecisionMatching(ctx, (d) => {
+    const title = (d.title ?? '').toLowerCase();
+    const desc = (d.description ?? '').toLowerCase();
+    return (
+      title.includes('zone') ||
+      desc.includes('zone') ||
+      title.includes('zoning') ||
+      (d.tags ?? []).some((tag) => /zone|zoning|hot.*zone|warm.*zone|cold.*zone/.test(String(tag)))
+    );
+  });
+
+conditionRegistry.perimeter_not_established = (ctx) =>
+  !hasDecisionMatching(ctx, (d) => {
+    const title = (d.title ?? '').toLowerCase();
+    const desc = (d.description ?? '').toLowerCase();
+    return (
+      title.includes('perimeter') ||
+      title.includes('cordon') ||
+      desc.includes('perimeter') ||
+      desc.includes('cordon') ||
+      (d.tags ?? []).some((tag) => /perimeter|cordon/.test(String(tag)))
+    );
+  });
+
+conditionRegistry.exits_congested = (ctx) => {
+  const arr = getEvacuationState(ctx).exits_congested;
+  return Array.isArray(arr) && arr.length > 0;
+};
+
+conditionRegistry.deaths_on_site_above_0 = (ctx) =>
+  ((getTriageState(ctx).deaths_on_site as number) ?? 0) > 0;
+
+conditionRegistry.still_inside_above_50 = (ctx) =>
+  ((getEvacuationState(ctx).still_inside as number) ?? 0) > 50;
+
+conditionRegistry.awaiting_triage_above_10 = (ctx) =>
+  ((getTriageState(ctx).awaiting_triage as number) ?? 0) > 10;
+
+conditionRegistry.transported_above_0 = (ctx) =>
+  ((getTriageState(ctx).transported as number) ?? 0) > 0;
+
+// ---------------------------------------------------------------------------
 // Internal: resolve one condition key (prefix rules + state_path + registry)
 // ---------------------------------------------------------------------------
 

@@ -9,31 +9,12 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from '../services/websocketService.js';
+import {
+  haversineM as haversineMeters,
+  pointInGeoJSONPolygon as pointInPolygon,
+} from './geoUtils.js';
 
 const BASE_FLOW_RATE_PER_MIN = 40;
-
-function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function pointInPolygon(lat: number, lng: number, polygon: number[][]): boolean {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i][1],
-      yi = polygon[i][0];
-    const xj = polygon[j][1],
-      yj = polygon[j][0];
-    const intersect = yi > lng !== yj > lng && lat < ((xj - xi) * (lng - yi)) / (yj - yi) + xi;
-    if (intersect) inside = !inside;
-  }
-  return inside;
-}
 
 /**
  * Check if marshals are within range of a crowd/casualty pin location.
@@ -109,7 +90,7 @@ export async function hasMarshalProximity(
 export async function processExitFlow(sessionId: string): Promise<void> {
   const { data: session } = await supabaseAdmin
     .from('sessions')
-    .select('scenario_id, start_time')
+    .select('scenario_id, start_time, current_state, inject_state_effects')
     .eq('id', sessionId)
     .single();
   if (!session?.start_time) return;
@@ -177,7 +158,16 @@ export async function processExitFlow(sessionId: string): Promise<void> {
     const marshalCount = (marshalsNear ?? []).length;
 
     const marshalModifier = Math.min(2, 1 + (marshalCount > 2 ? 0.15 * (marshalCount - 2) : 0));
-    const effectiveFlowRate = Math.floor(flowRateBase * marshalModifier);
+
+    const rawState = (session.current_state as Record<string, unknown>) ?? {};
+    const injEffects = (session.inject_state_effects as Record<string, unknown>) ?? {};
+    const evacState = {
+      ...((rawState.evacuation_state as Record<string, unknown>) ?? {}),
+      ...((injEffects.evacuation_state as Record<string, unknown>) ?? {}),
+    };
+    const flowRateMod = Math.max(0.1, Number(evacState.flow_rate_modifier) || 1);
+
+    const effectiveFlowRate = Math.floor(flowRateBase * marshalModifier * flowRateMod);
 
     // Process crowd pins inside any of the nearby pathways
     for (const crowd of crowdPins ?? []) {

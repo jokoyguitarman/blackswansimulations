@@ -1,0 +1,6 @@
+ALTER TABLE scenario_casualties
+  ADD COLUMN IF NOT EXISTS destination_lat DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS destination_lng DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS destination_label TEXT,
+  ADD COLUMN IF NOT EXISTS movement_speed_mpm DOUBLE PRECISION NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS destination_reached_status TEXT;

@@ -26,6 +26,7 @@ import {
   selectAndPublishPathwayOutcome,
   nudgePublicSentiment,
 } from '../services/heatMeterService.js';
+import { applyDecisionCasualtyEffects } from '../services/decisionCasualtyEffectsService.js';
 import { teamConsultedInsiderBefore } from '../services/incidentDecisionGradingService.js';
 import { publishInjectToSession } from './injects.js';
 import { evaluateDecisionBasedTriggers } from '../services/injectTriggerService.js';
@@ -1345,6 +1346,16 @@ async function processExecutedDecisionInBackground(
       })().catch((err) => logger.error({ error: err, decisionId }, 'Space claim recording failed')),
     );
   }
+
+  // Casualty movement effects from decision text
+  bgTasks.push(
+    applyDecisionCasualtyEffects(
+      sessionId,
+      (decision.title as string) ?? '',
+      (decision.description as string) ?? '',
+      authorTeamNames[0] ?? null,
+    ).catch((err) => logger.error({ error: err, decisionId }, 'Decision casualty effects failed')),
+  );
 
   // Objective evaluation (fire-and-forget)
   bgTasks.push(

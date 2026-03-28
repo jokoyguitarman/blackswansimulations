@@ -6,6 +6,7 @@ import { getWebSocketService } from '../services/websocketService.js';
 import { validatePlacement } from '../services/placementValidationService.js';
 import { evaluatePlacement } from '../services/spatialScoringService.js';
 import { evaluatePinResolution } from '../services/pinResolutionService.js';
+import { pointInGeoJSONPolygon } from '../services/geoUtils.js';
 
 const router = Router();
 
@@ -27,22 +28,8 @@ function getCapacity(assetType: string, areaM2: number): { capacity: number; uni
   return { capacity: Math.max(1, Math.floor(areaM2 * cfg.rate)), unit: cfg.unit };
 }
 
-function isPointInPolygon(
-  point: { lat: number; lng: number },
-  ring: [number, number][], // [lng, lat][] GeoJSON order
-): boolean {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [lngI, latI] = ring[i];
-    const [lngJ, latJ] = ring[j];
-    if (
-      lngI > point.lng !== lngJ > point.lng &&
-      point.lat < ((latJ - latI) * (point.lng - lngI)) / (lngJ - lngI) + latI
-    ) {
-      inside = !inside;
-    }
-  }
-  return inside;
+function isPointInPolygon(point: { lat: number; lng: number }, ring: [number, number][]): boolean {
+  return pointInGeoJSONPolygon(point.lat, point.lng, ring);
 }
 
 /** Extract a polygon ring from Polygon or closed LineString geometry. */

@@ -16,6 +16,14 @@ import {
   processNonAmbulatoryExtraction,
 } from './exitFlowService.js';
 import { runAreaMonitors } from './areaMonitorService.js';
+import { runMovementTick } from './movementService.js';
+import { computeLiveCounters } from './liveCounterService.js';
+import {
+  evaluateInjectConditions,
+  type EvaluationContext,
+  type ConditionsToAppear,
+  type ConditionsToCancel,
+} from './conditionEvaluatorService.js';
 import type { Server as SocketServer } from 'socket.io';
 import type { CounterDefinition } from '../counterDefinitions.js';
 
@@ -555,101 +563,57 @@ export class InjectSchedulerService {
         nextState[stateKey] = teamState;
       }
       nextState._counter_ticks = counterTicks;
-    } else {
-      // Legacy hardcoded evacuation/triage counter logic (backward compatibility)
-      // Uses delta-based accumulation (same approach as data-driven engine above)
-      const legacyLastTickIso = counterTicks._legacy;
-      const legacyLastTickMs = legacyLastTickIso ? new Date(legacyLastTickIso).getTime() : 0;
-      const legacyNowMs = Date.now();
-      const legacyTickDelta =
-        legacyLastTickMs > 0
-          ? Math.max(0, (legacyNowMs - legacyLastTickMs) / 60000)
-          : elapsedMinutes;
-      counterTicks._legacy = nowIso;
-      nextState._counter_ticks = counterTicks;
+    }
 
-      const BASE_EVAC_RATE_PER_MIN = 40;
-      const evacState = (nextState.evacuation_state as Record<string, unknown>) || {};
-      const totalEvacuees = Math.max(0, Number(evacState.total_evacuees) || 1000);
-      if (evacState.flow_control_decided === true) {
-        let rate = BASE_EVAC_RATE_PER_MIN;
-        const exitsCongested = evacState.exits_congested as string[] | undefined;
-        const managedEffects =
-          (nextState.managed_effects as Record<string, { managed?: boolean }> | undefined) ?? {};
-        const hasUnmanagedCongestedExit =
-          Array.isArray(exitsCongested) &&
-          exitsCongested.some((e) => {
-            if (typeof e !== 'string' || !e.trim()) return false;
-            const key = `evacuation.exits_congested:${e.trim()}`;
-            return managedEffects[key]?.managed !== true;
-          });
-        if (hasUnmanagedCongestedExit) rate = Math.floor(rate / 2);
-        const evacRobustness = robustnessByTeam.Evacuation ?? robustnessByTeam.evacuation ?? null;
-        if (evacRobustness !== null && typeof evacRobustness === 'number') {
-          const mod = evacRobustness <= 7 ? 0.25 : evacRobustness >= 8 ? 1.25 : 1;
-          rate = rate * mod;
-        }
-        const incomingOnEvac = incomingImpactOn(impactMatrix, 'evacuation');
-        if (incomingOnEvac < 0) {
-          rate = rate * Math.max(0.5, 1 + incomingOnEvac * 0.15);
-        }
-        if (hasSuboptimalRoute) {
-          rate = rate * 0.85;
-        }
-        const currentEvacuated = Math.max(0, Number(evacState.evacuated_count) || 0);
-        const evacDelta = Math.max(0, Math.floor(rate * legacyTickDelta));
-        const evacuated = Math.min(totalEvacuees, currentEvacuated + evacDelta);
-        if (evacuated > currentEvacuated) {
-          (nextState.evacuation_state as Record<string, unknown>) = {
-            ...evacState,
-            evacuated_count: evacuated,
-          };
-          stateChanged = true;
-        }
-      }
+    // Live pin-driven counters: replace synthetic accumulators with real counts
+    try {
+      const liveCounters = await computeLiveCounters(session.id, session.scenario_id);
 
-      const triageStateNext = (nextState.triage_state as Record<string, unknown>) || {};
-      const pool =
-        typeof triageStateNext.initial_patients_at_site === 'number'
-          ? Math.max(0, triageStateNext.initial_patients_at_site)
-          : Math.max(0, Math.floor(totalEvacuees * 0.25));
-      const baseRobustness = robustnessByTeam.Triage ?? robustnessByTeam.triage ?? 5.5;
-      const boost = (triageStateNext.robustness_boost as number) ?? 0;
-      const triageRobustness = Math.max(1, Math.min(10, baseRobustness + boost));
-      let band: 'low' | 'mid' | 'high' =
-        triageRobustness <= 4 ? 'low' : triageRobustness <= 7 ? 'mid' : 'high';
-      const incomingOnTriage = incomingImpactOn(impactMatrix, 'triage');
-      if (incomingOnTriage < 0 && band === 'high') band = 'mid';
-      else if (incomingOnTriage < 0 && band === 'mid') band = 'low';
-      if (hasSuboptimalRoute && band === 'high') band = 'mid';
-      else if (hasSuboptimalRoute && band === 'mid') band = 'low';
-      const BASE_TRIAGE_PROCESSED_PER_MIN = 8;
-      const throughputMult = band === 'low' ? 0.5 : band === 'high' ? 1.25 : 1;
-      const triageRate = BASE_TRIAGE_PROCESSED_PER_MIN * throughputMult;
-      const prevProcessed = Math.max(
-        0,
-        (Number(triageStateNext.deaths_on_site) || 0) +
-          (Number(triageStateNext.handed_over_to_hospital) || 0) +
-          (Number(triageStateNext.patients_being_treated) || 0),
-      );
-      const triageDelta = Math.max(0, Math.floor(triageRate * legacyTickDelta));
-      const processed = Math.min(pool, prevProcessed + triageDelta);
-      const deathFrac = band === 'low' ? 0.25 : band === 'high' ? 0.05 : 0.12;
-      const deaths = Math.min(processed, Math.floor(processed * deathFrac));
-      const remaining = processed - deaths;
-      const transportFrac = band === 'low' ? 0.2 : band === 'high' ? 0.6 : 0.4;
-      const handedOver = Math.floor(remaining * transportFrac);
-      const beingTreated = Math.max(0, remaining - handedOver);
-      const patientsWaiting = Math.max(0, pool - processed);
-      (nextState.triage_state as Record<string, unknown>) = {
-        ...triageStateNext,
-        deaths_on_site: deaths,
-        handed_over_to_hospital: handedOver,
-        patients_being_treated: beingTreated,
-        patients_waiting: patientsWaiting,
-        casualties: deaths,
+      // Merge evacuation counters
+      const evacState = (nextState.evacuation_state as Record<string, unknown>) ?? {};
+      (nextState.evacuation_state as Record<string, unknown>) = {
+        ...evacState,
+        evacuated_count: liveCounters.evacuation.total_evacuated,
+        total_evacuated: liveCounters.evacuation.total_evacuated,
+        civilians_at_assembly: liveCounters.evacuation.civilians_at_assembly,
+        still_inside: liveCounters.evacuation.still_inside,
+        in_transit: liveCounters.evacuation.in_transit,
+        convergent_crowds_count: liveCounters.evacuation.convergent_crowds_count,
       };
+
+      // Merge triage counters
+      const triageState = (nextState.triage_state as Record<string, unknown>) ?? {};
+      (nextState.triage_state as Record<string, unknown>) = {
+        ...triageState,
+        awaiting_triage: liveCounters.triage.awaiting_triage,
+        in_treatment: liveCounters.triage.in_treatment,
+        patients_being_treated: liveCounters.triage.in_treatment,
+        red_immediate: liveCounters.triage.red_immediate,
+        yellow_delayed: liveCounters.triage.yellow_delayed,
+        green_minor: liveCounters.triage.green_minor,
+        ready_for_transport: liveCounters.triage.ready_for_transport,
+        transported: liveCounters.triage.transported,
+        handed_over_to_hospital: liveCounters.triage.transported,
+        deaths_on_site: liveCounters.triage.deaths_on_site,
+        casualties: liveCounters.triage.deaths_on_site,
+        patients_waiting: liveCounters.triage.awaiting_triage,
+      };
+
+      // Merge fire/rescue counters
+      const fireState = (nextState.fire_rescue_state as Record<string, unknown>) ?? {};
+      (nextState.fire_rescue_state as Record<string, unknown>) = {
+        ...fireState,
+        active_fires: liveCounters.fire_rescue.active_fires,
+        fires_contained: liveCounters.fire_rescue.fires_contained,
+        fires_resolved: liveCounters.fire_rescue.fires_resolved,
+        casualties_in_hot_zone: liveCounters.fire_rescue.casualties_in_hot_zone,
+        extracted_to_warm: liveCounters.fire_rescue.extracted_to_warm,
+        debris_cleared: liveCounters.fire_rescue.debris_cleared,
+      };
+
       stateChanged = true;
+    } catch (liveErr) {
+      logger.warn({ err: liveErr, sessionId: session.id }, 'Live counter computation failed');
     }
 
     if (stateChanged) {
@@ -929,6 +893,122 @@ export class InjectSchedulerService {
       }
     }
 
+    // --- Condition-based injects: evaluate conditions, pass through AI gate, publish ---
+    try {
+      const { data: condInjectsRaw } = await supabaseAdmin
+        .from('scenario_injects')
+        .select(
+          'id, title, content, severity, target_teams, inject_scope, conditions_to_appear, conditions_to_cancel, eligible_after_minutes, state_effect',
+        )
+        .eq('scenario_id', session.scenario_id)
+        .not('conditions_to_appear', 'is', null)
+        .is('trigger_time_minutes', null);
+
+      const condInjects = (condInjectsRaw ?? []).filter(
+        (inj: { id: string; eligible_after_minutes?: number | null }) =>
+          !publishedInjectIds.has(inj.id) &&
+          !cancelledInjectIds.has(inj.id) &&
+          (inj.eligible_after_minutes == null || inj.eligible_after_minutes <= elapsedMinutes),
+      );
+
+      if (condInjects.length > 0) {
+        const gateStatusByGateId: Record<string, 'pending' | 'met' | 'not_met'> = {};
+        for (const [uuid, status] of gateStatusByGateUuid.entries()) {
+          for (const g of scenarioGates ?? []) {
+            if (g.id === uuid) {
+              gateStatusByGateId[g.gate_id] = status as 'pending' | 'met' | 'not_met';
+            }
+          }
+        }
+
+        const publishedKeysOrTags: string[] = [];
+        for (const event of publishedEvents ?? []) {
+          const meta = event.metadata as { inject_id?: string; title?: string; tags?: string[] };
+          if (meta?.title) publishedKeysOrTags.push(meta.title);
+          if (meta?.tags) publishedKeysOrTags.push(...meta.tags);
+        }
+
+        const evalContext: EvaluationContext = {
+          sessionId: session.id,
+          scenarioId: session.scenario_id,
+          elapsedMinutes,
+          currentState: nextState,
+          executedDecisions: (allDecisions ?? []).map((d) => ({
+            id: d.id,
+            title: d.title ?? '',
+            description: d.description ?? '',
+            decision_type: d.type as string | undefined,
+          })),
+          publishedScenarioInjectIds: [...publishedInjectIds],
+          publishedInjectKeysOrTags: publishedKeysOrTags,
+          gateStatusByGateId,
+        };
+
+        for (const condInject of condInjects) {
+          const result = evaluateInjectConditions(
+            condInject.conditions_to_appear as ConditionsToAppear | null,
+            condInject.conditions_to_cancel as ConditionsToCancel | null,
+            evalContext,
+          );
+
+          if (result.status === 'cancel_met') {
+            await supabaseAdmin.from('session_events').insert({
+              session_id: session.id,
+              event_type: 'inject_cancelled',
+              metadata: { inject_id: condInject.id, reason: 'condition_cancel_met' },
+            });
+            cancelledInjectIds.add(condInject.id);
+            logger.info(
+              { sessionId: session.id, injectId: condInject.id, title: condInject.title },
+              'Condition-based inject cancelled (cancel condition met)',
+            );
+            continue;
+          }
+
+          if (result.status === 'appear_met') {
+            if (!this.io) {
+              const { io } = await import('../index.js');
+              this.io = io;
+            }
+
+            const cancelled = await runAiCancellationGate(
+              {
+                id: condInject.id,
+                title: condInject.title ?? null,
+                content: condInject.content as string | undefined,
+                target_teams: condInject.target_teams as string[] | null,
+                severity: condInject.severity as string | null,
+                inject_scope: condInject.inject_scope as string | null,
+              },
+              { id: session.id, scenario_id: session.scenario_id, trainer_id: session.trainer_id },
+              allDecisionsForAi,
+              userIdToTeam,
+              this.io,
+            );
+            if (cancelled) continue;
+
+            logger.info(
+              {
+                sessionId: session.id,
+                injectId: condInject.id,
+                injectTitle: condInject.title,
+                elapsedMinutes,
+              },
+              'Auto-publishing condition-based inject',
+            );
+
+            await publishInjectToSession(condInject.id, session.id, session.trainer_id, this.io);
+            publishedInjectIds.add(condInject.id);
+          }
+        }
+      }
+    } catch (condErr) {
+      logger.warn(
+        { err: condErr, sessionId: session.id },
+        'Condition-based inject evaluation error',
+      );
+    }
+
     // --- Spatial pin resolution: check if placed assets resolve hazard/casualty pins ---
     try {
       await evaluatePinResolution(session.id);
@@ -953,6 +1033,24 @@ export class InjectSchedulerService {
       ]);
     } catch (evacErr) {
       logger.warn({ err: evacErr, sessionId: session.id }, 'Evacuation pipeline error');
+    }
+
+    // --- Movement tick: interpolate moving casualty/crowd pins ---
+    try {
+      const movementLastTickIso = (
+        (session.current_state as Record<string, unknown>)?._counter_ticks as Record<string, string>
+      )?._movement;
+      const movementLastMs = movementLastTickIso ? new Date(movementLastTickIso).getTime() : 0;
+      const movementDelta =
+        movementLastMs > 0 ? Math.max(0, (Date.now() - movementLastMs) / 60000) : 0.5;
+      await runMovementTick(session.id, session.scenario_id, movementDelta);
+      // Update movement tick timestamp in state (will be persisted next cycle)
+      const csForMovement = (session.current_state ?? {}) as Record<string, unknown>;
+      const ticks = (csForMovement._counter_ticks as Record<string, string>) ?? {};
+      ticks._movement = new Date().toISOString();
+      csForMovement._counter_ticks = ticks;
+    } catch (moveErr) {
+      logger.warn({ err: moveErr, sessionId: session.id }, 'Movement tick error');
     }
 
     // --- Area monitors: capacity, carer ratio, equipment, exit congestion ---

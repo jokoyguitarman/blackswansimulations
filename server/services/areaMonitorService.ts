@@ -12,30 +12,12 @@ import { logger } from '../lib/logger.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { getWebSocketService } from './websocketService.js';
 import type { Server as SocketServer } from 'socket.io';
+import {
+  haversineM as haversineMeters,
+  pointInGeoJSONPolygon as pointInPolygon,
+} from './geoUtils.js';
 
 const PROXIMITY_THRESHOLD_M = 80;
-
-function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function pointInPolygon(lat: number, lng: number, ring: number[][]): boolean {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [lngI, latI] = ring[i];
-    const [lngJ, latJ] = ring[j];
-    if (latI > lng !== latJ > lng && lat < ((latJ - latI) * (lng - lngI)) / (lngJ - lngI) + latI) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
 
 function extractRing(geometry: Record<string, unknown>): number[][] | null {
   if (geometry.type === 'Polygon') {

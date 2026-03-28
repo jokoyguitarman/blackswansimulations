@@ -1120,6 +1120,7 @@ export const SessionView = () => {
             if (/evacuation|evac/.test(n)) return 'evacuation_state';
             if (/triage/.test(n)) return 'triage_state';
             if (/media/.test(n)) return 'media_state';
+            if (/fire|rescue|scdf/.test(n)) return 'fire_rescue_state';
             return `${n.replace(/\s+/g, '_')}_state`;
           };
 
@@ -1198,26 +1199,23 @@ export const SessionView = () => {
                 </div>,
               );
             } else if (stateKey === 'evacuation_state') {
-              // Legacy hardcoded rendering
+              const totalEvac = Math.max(
+                0,
+                Number(state.total_evacuated) || Number(state.evacuated_count) || 0,
+              );
+              const atAssembly = Math.max(0, Number(state.civilians_at_assembly) || 0);
+              const stillIn = Math.max(0, Number(state.still_inside) || 0);
+              const transit = Math.max(0, Number(state.in_transit) || 0);
               blocks.push(
                 <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
                   <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
                     {displayName}
                   </div>
-                  <div className="text-sm terminal-text text-robotic-gray-50">
-                    Evacuated: {Math.max(0, Number(state.evacuated_count) || 0)} /{' '}
-                    {Math.max(0, Number(state.total_evacuees) || 1000)}
-                    {(Number(state.total_evacuees) || 1000) > 0 && (
-                      <span className="text-robotic-yellow/70 ml-1">
-                        (
-                        {Math.round(
-                          ((Number(state.evacuated_count) || 0) /
-                            (Number(state.total_evacuees) || 1000)) *
-                            100,
-                        )}
-                        %)
-                      </span>
-                    )}
+                  <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
+                    <div>At assembly: {atAssembly}</div>
+                    <div>Total evacuated: {totalEvac}</div>
+                    <div>Still inside: {stillIn}</div>
+                    <div>In transit: {transit}</div>
                   </div>
                 </div>,
               );
@@ -1229,23 +1227,56 @@ export const SessionView = () => {
                   </div>
                   <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
                     <div>
-                      Patients being treated:{' '}
-                      {Math.max(0, Number(state.patients_being_treated) || 0)}
+                      Awaiting triage:{' '}
+                      {Math.max(
+                        0,
+                        Number(state.awaiting_triage) || Number(state.patients_waiting) || 0,
+                      )}
                     </div>
                     <div>
-                      Patients waiting medical attention:{' '}
-                      {Math.max(0, Number(state.patients_waiting) || 0)}
+                      In treatment:{' '}
+                      {Math.max(
+                        0,
+                        Number(state.in_treatment) || Number(state.patients_being_treated) || 0,
+                      )}
+                      {(Number(state.red_immediate) > 0 ||
+                        Number(state.yellow_delayed) > 0 ||
+                        Number(state.green_minor) > 0) && (
+                        <span className="text-robotic-yellow/70 ml-1">
+                          (
+                          {Number(state.red_immediate) > 0 && (
+                            <span className="text-red-400">{Number(state.red_immediate)}R</span>
+                          )}
+                          {Number(state.yellow_delayed) > 0 && (
+                            <span className="text-yellow-400 ml-1">
+                              {Number(state.yellow_delayed)}Y
+                            </span>
+                          )}
+                          {Number(state.green_minor) > 0 && (
+                            <span className="text-green-400 ml-1">
+                              {Number(state.green_minor)}G
+                            </span>
+                          )}
+                          )
+                        </span>
+                      )}
                     </div>
                     <div>
-                      Handed over to hospital:{' '}
-                      {Math.max(0, Number(state.handed_over_to_hospital) || 0)}
+                      Ready for transport: {Math.max(0, Number(state.ready_for_transport) || 0)}
                     </div>
-                    <div>Casualties: {Math.max(0, Number(state.casualties) || 0)}</div>
+                    <div>
+                      Transported:{' '}
+                      {Math.max(
+                        0,
+                        Number(state.transported) || Number(state.handed_over_to_hospital) || 0,
+                      )}
+                    </div>
                     <div>Deaths on site: {Math.max(0, Number(state.deaths_on_site) || 0)}</div>
                   </div>
                 </div>,
               );
             } else if (stateKey === 'media_state') {
+              const unanswered = Math.max(0, Number(state.unanswered_challenges) || 0);
               blocks.push(
                 <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
                   <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
@@ -1271,6 +1302,30 @@ export const SessionView = () => {
                         </span>
                       ) : null}
                     </div>
+                    {unanswered > 0 && (
+                      <div className="text-red-400">Unanswered challenges: {unanswered}</div>
+                    )}
+                  </div>
+                </div>,
+              );
+            } else if (stateKey === 'fire_rescue_state') {
+              blocks.push(
+                <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
+                  <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                    {displayName}
+                  </div>
+                  <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
+                    <div>Active fires: {Math.max(0, Number(state.active_fires) || 0)}</div>
+                    <div>Fires contained: {Math.max(0, Number(state.fires_contained) || 0)}</div>
+                    <div>Fires extinguished: {Math.max(0, Number(state.fires_resolved) || 0)}</div>
+                    <div>
+                      Casualties in hot zone:{' '}
+                      {Math.max(0, Number(state.casualties_in_hot_zone) || 0)}
+                    </div>
+                    <div>
+                      Extracted to warm zone: {Math.max(0, Number(state.extracted_to_warm) || 0)}
+                    </div>
+                    <div>Debris cleared: {Math.max(0, Number(state.debris_cleared) || 0)}</div>
                   </div>
                 </div>,
               );

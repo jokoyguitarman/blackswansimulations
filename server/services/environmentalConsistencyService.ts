@@ -12,6 +12,7 @@ import { logger } from '../lib/logger.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { getTeamCatalogAssets } from '../lib/teamAssetCatalog.js';
 import type { Server as SocketServer } from 'socket.io';
+import { haversineM, pointInPolygon, polygonBoundingBox } from './geoUtils.js';
 
 export type EnvironmentalConsistencySeverity = 'low' | 'medium' | 'high';
 export type EnvironmentalConsistencyErrorType =
@@ -252,16 +253,6 @@ async function buildCasualtyContext(sessionId: string): Promise<string> {
   return lines.join('\n') + '\n';
 }
 
-function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
 const PPE_ASSET_TYPES = [
   'breathing_apparatus',
   'hazmat_suit',
@@ -294,6 +285,7 @@ const PERSONNEL_ASSET_TYPES = [
 interface ZoneGroundTruth {
   zone_type: string;
   radius_m: number;
+  polygon?: [number, number][];
   ppe_required: string[];
   allowed_teams: string[];
   activities: string[];
@@ -302,10 +294,16 @@ interface ZoneGroundTruth {
 function classifyByZone(
   dist: number,
   zones: ZoneGroundTruth[],
+  assetLat?: number,
+  assetLng?: number,
 ): { zone: ZoneGroundTruth; zoneName: string } | null {
   const sorted = [...zones].sort((a, b) => a.radius_m - b.radius_m);
   for (const z of sorted) {
-    if (dist <= z.radius_m) return { zone: z, zoneName: z.zone_type };
+    if (z.polygon && assetLat != null && assetLng != null) {
+      if (pointInPolygon(assetLat, assetLng, z.polygon)) return { zone: z, zoneName: z.zone_type };
+    } else if (dist <= z.radius_m) {
+      return { zone: z, zoneName: z.zone_type };
+    }
   }
   return null;
 }
@@ -372,7 +370,16 @@ async function buildHazardSafetyContext(sessionId: string): Promise<string> {
     const hazardType = (h.hazard_type as string).replace(/_/g, ' ');
     const zones = (h.zones ?? []) as ZoneGroundTruth[];
     const hasZoneData = zones.length > 0;
+    const hasPolygons = zones.some((z) => z.polygon?.length);
     const maxRadius = hasZoneData ? Math.max(...zones.map((z) => z.radius_m)) : 120;
+
+    let outerBBox: ReturnType<typeof polygonBoundingBox> | undefined;
+    if (hasPolygons) {
+      const outerZone = [...zones].sort((a, b) => b.radius_m - a.radius_m)[0];
+      if (outerZone?.polygon?.length) {
+        outerBBox = polygonBoundingBox(outerZone.polygon);
+      }
+    }
 
     const hazardLines: string[] = [];
     hazardLines.push(`\nHazard: ${hazardType} [${h.status}] at floor ${h.floor_level ?? 'G'}`);
@@ -386,7 +393,6 @@ async function buildHazardSafetyContext(sessionId: string): Promise<string> {
       }
     }
 
-    // Classify personnel and PPE by zone
     type PersonnelEntry = {
       type: string;
       label: string | null;
@@ -404,15 +410,30 @@ async function buildHazardSafetyContext(sessionId: string): Promise<string> {
       if (geom?.type !== 'Point') continue;
       const coords = geom.coordinates as number[];
       if (!coords || coords.length < 2) continue;
-      const dist = haversineM(hazLat, hazLng, coords[1], coords[0]);
-      if (dist > maxRadius) continue;
+      const assetLat = coords[1];
+      const assetLng = coords[0];
+      const dist = haversineM(hazLat, hazLng, assetLat, assetLng);
+
+      if (outerBBox) {
+        const margin = 0.001;
+        if (
+          assetLat < outerBBox.minLat - margin ||
+          assetLat > outerBBox.maxLat + margin ||
+          assetLng < outerBBox.minLng - margin ||
+          assetLng > outerBBox.maxLng + margin
+        ) {
+          if (dist > maxRadius) continue;
+        }
+      } else if (dist > maxRadius) {
+        continue;
+      }
 
       const assetLower = (a.asset_type as string).toLowerCase();
       const isPersonnel = PERSONNEL_ASSET_TYPES.some((t) => assetLower.includes(t));
       const isPPE = PPE_ASSET_TYPES.some((t) => assetLower.includes(t));
 
       if (isPersonnel) {
-        const zoneMatch = hasZoneData ? classifyByZone(dist, zones) : null;
+        const zoneMatch = hasZoneData ? classifyByZone(dist, zones, assetLat, assetLng) : null;
         personnelInZones.push({
           type: a.asset_type as string,
           label: a.label as string | null,

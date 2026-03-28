@@ -659,6 +659,9 @@ export const MapView = ({
       'placement.updated',
       'placement.removed',
       'location.claimed',
+      'casualty.moved',
+      'casualty.updated',
+      'casualty.created',
     ],
     onEvent: (event: WebSocketEvent) => {
       if (event.type === 'state.updated') {
@@ -721,6 +724,69 @@ export const MapView = ({
           );
         }
       }
+      if (event.type === 'casualty.moved' || event.type === 'casualty.updated') {
+        const d = event.data as {
+          casualty_id?: string;
+          lat?: number;
+          lng?: number;
+          status?: string;
+          arrived?: boolean;
+        };
+        if (d.casualty_id) {
+          setCasualties((prev) =>
+            prev.map((c) =>
+              c.id === d.casualty_id
+                ? {
+                    ...c,
+                    ...(d.lat != null && d.lng != null
+                      ? { location_lat: d.lat, location_lng: d.lng }
+                      : {}),
+                    ...(d.status ? { status: d.status } : {}),
+                  }
+                : c,
+            ),
+          );
+          setCrowds((prev) =>
+            prev.map((c) =>
+              c.id === d.casualty_id
+                ? {
+                    ...c,
+                    ...(d.lat != null && d.lng != null
+                      ? { location_lat: d.lat, location_lng: d.lng }
+                      : {}),
+                    ...(d.status ? { status: d.status } : {}),
+                    ...(d.arrived === true && typeof (c as CrowdData).headcount === 'number'
+                      ? {}
+                      : {}),
+                  }
+                : c,
+            ),
+          );
+        }
+      }
+      if (event.type === 'casualty.created') {
+        const d = event.data as { casualty_id?: string };
+        if (d.casualty_id && sessionId) {
+          api.casualties
+            .list(sessionId)
+            .then((res) => {
+              if (Array.isArray(res.data)) {
+                setCasualties(
+                  (res.data as CasualtyData[]).filter((c) => c.casualty_type === 'patient'),
+                );
+                setCrowds(
+                  (res.data as CrowdData[]).filter(
+                    (c) =>
+                      c.casualty_type === 'crowd' ||
+                      c.casualty_type === 'evacuee_group' ||
+                      c.casualty_type === 'convergent_crowd',
+                  ),
+                );
+              }
+            })
+            .catch(() => {});
+        }
+      }
     },
     enabled: !!sessionId && !isMapDisabled,
   });
@@ -760,7 +826,10 @@ export const MapView = ({
             (c) => c.casualty_type === 'patient',
           );
           const crowdItems = (res.data as CrowdData[]).filter(
-            (c) => c.casualty_type === 'crowd' || c.casualty_type === 'evacuee_group',
+            (c) =>
+              c.casualty_type === 'crowd' ||
+              c.casualty_type === 'evacuee_group' ||
+              c.casualty_type === 'convergent_crowd',
           );
           setCasualties(patients);
           setCrowds(crowdItems);
@@ -807,7 +876,10 @@ export const MapView = ({
               (c) => c.casualty_type === 'patient',
             );
             const crowdItems = (res.data as CrowdData[]).filter(
-              (c) => c.casualty_type === 'crowd' || c.casualty_type === 'evacuee_group',
+              (c) =>
+                c.casualty_type === 'crowd' ||
+                c.casualty_type === 'evacuee_group' ||
+                c.casualty_type === 'convergent_crowd',
             );
             setCasualties(patients);
             setCrowds(crowdItems);

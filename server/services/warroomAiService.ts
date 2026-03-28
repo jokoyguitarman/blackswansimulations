@@ -16,11 +16,19 @@ import type {
 import {
   standardsToPromptBlock,
   similarCasesToPromptBlock,
+  crowdDynamicsToPromptBlock,
   mapStandardsToTeams,
   researchTeamWorkflows,
   type SimilarCase,
 } from './warroomResearchService.js';
 import type { CounterDefinition } from '../counterDefinitions.js';
+import {
+  pointInPolygon,
+  circleToPolygon,
+  scalePolygonFromCentroid,
+  polygonCentroid,
+  haversineM as geoHaversineM,
+} from './geoUtils.js';
 
 export interface WarroomScenarioPayload {
   scenario: {
@@ -150,7 +158,7 @@ export interface WarroomScenarioPayload {
     }>;
   }>;
   casualties?: Array<{
-    casualty_type: 'patient' | 'crowd' | 'evacuee_group';
+    casualty_type: 'patient' | 'crowd' | 'evacuee_group' | 'convergent_crowd';
     location_lat: number;
     location_lng: number;
     floor_level: string;
@@ -158,6 +166,10 @@ export interface WarroomScenarioPayload {
     conditions: Record<string, unknown>;
     status: string;
     appears_at_minutes: number;
+    destination_lat?: number;
+    destination_lng?: number;
+    destination_label?: string;
+    movement_speed_mpm?: number;
   }>;
   equipment?: Array<{
     equipment_type: string;
@@ -206,6 +218,7 @@ export interface WarroomResearchContext {
   standards_summary?: string;
   standards_findings?: import('./warroomResearchService.js').StandardsFinding[];
   similar_cases?: SimilarCase[];
+  crowd_dynamics?: import('./warroomResearchService.js').CrowdDynamicsResearch;
 }
 
 export interface WarroomUserTeam {
@@ -1439,6 +1452,17 @@ Teams available: ${(teamNames ?? []).join(', ') || 'not specified'}`;
     enrichHazardZones(hazardContext, hazard, openAiApiKey),
   ]);
 
+  const rawZones = zonesResult.zones ?? [];
+  const snappedZones =
+    rawZones.length > 0
+      ? computeZonePolygons(
+          Number(hazard.location_lat),
+          Number(hazard.location_lng),
+          rawZones,
+          input.osmBuildings,
+        )
+      : [];
+
   return {
     ...hazard,
     enriched_description: descResult.enriched_description ?? undefined,
@@ -1448,7 +1472,7 @@ Teams available: ${(teamNames ?? []).join(', ') || 'not specified'}`;
     personnel_requirements: reqsResult.personnel_requirements ?? {},
     equipment_requirements: reqsResult.equipment_requirements ?? [],
     deterioration_timeline: deteriorationResult.deterioration_timeline ?? {},
-    zones: zonesResult.zones ?? [],
+    zones: snappedZones,
   };
 }
 
@@ -1604,6 +1628,106 @@ Return ONLY valid JSON:
     logger.warn({ err, hazardType: hazard.hazard_type }, 'Hazard deterioration enrichment failed');
     return {};
   }
+}
+
+// ---------------------------------------------------------------------------
+// Zone polygon computation — snap radii to building footprints
+// ---------------------------------------------------------------------------
+
+interface ZoneWithPolygon {
+  zone_type: string;
+  radius_m: number;
+  polygon: [number, number][];
+  ppe_required: string[];
+  allowed_teams: string[];
+  activities: string[];
+}
+
+/**
+ * Convert radius-based zones into polygon-based zones.
+ * Hot zone: building footprint if available, else circle polygon.
+ * Warm zone: scaled building footprint, else circle polygon.
+ * Cold zone: always circle polygon.
+ */
+function computeZonePolygons(
+  hazardLat: number,
+  hazardLng: number,
+  zones: Array<{
+    zone_type: string;
+    radius_m: number;
+    ppe_required: string[];
+    allowed_teams: string[];
+    activities: string[];
+  }>,
+  osmBuildings?: OsmBuilding[],
+): ZoneWithPolygon[] {
+  let bestFootprint: [number, number][] | undefined;
+
+  if (osmBuildings?.length) {
+    for (const b of osmBuildings) {
+      if (!b.footprint_polygon || b.footprint_polygon.length < 3) continue;
+      if (pointInPolygon(hazardLat, hazardLng, b.footprint_polygon)) {
+        bestFootprint = b.footprint_polygon;
+        break;
+      }
+    }
+    if (!bestFootprint) {
+      let minDist = Infinity;
+      for (const b of osmBuildings) {
+        if (!b.footprint_polygon || b.footprint_polygon.length < 3) continue;
+        const d = geoHaversineM(hazardLat, hazardLng, b.lat, b.lng);
+        if (d < minDist) {
+          minDist = d;
+          bestFootprint = b.footprint_polygon;
+        }
+      }
+      const hotZone = zones.find((z) => z.zone_type === 'hot');
+      if (bestFootprint && minDist > (hotZone?.radius_m ?? 50) * 0.5) {
+        bestFootprint = undefined;
+      }
+    }
+  }
+
+  const sorted = [...zones].sort((a, b) => a.radius_m - b.radius_m);
+  const hotRadius =
+    sorted.find((z) => z.zone_type === 'hot')?.radius_m ?? sorted[0]?.radius_m ?? 50;
+
+  return sorted.map((z) => {
+    let polygon: [number, number][];
+
+    if (z.zone_type === 'hot' && bestFootprint) {
+      polygon = [...bestFootprint];
+      if (
+        polygon.length > 1 &&
+        (polygon[0][0] !== polygon[polygon.length - 1][0] ||
+          polygon[0][1] !== polygon[polygon.length - 1][1])
+      ) {
+        polygon.push(polygon[0]);
+      }
+    } else if (z.zone_type === 'warm' && bestFootprint) {
+      const [cLat, cLng] = polygonCentroid(bestFootprint);
+      const scale = z.radius_m / Math.max(hotRadius, 1);
+      polygon = scalePolygonFromCentroid(bestFootprint, cLat, cLng, scale);
+      if (
+        polygon.length > 1 &&
+        (polygon[0][0] !== polygon[polygon.length - 1][0] ||
+          polygon[0][1] !== polygon[polygon.length - 1][1])
+      ) {
+        polygon.push(polygon[0]);
+      }
+    } else {
+      polygon = circleToPolygon(hazardLat, hazardLng, z.radius_m);
+    }
+
+    return {
+      zone_type: z.zone_type,
+      radius_m: z.radius_m,
+      polygon,
+      ppe_required: z.ppe_required,
+      allowed_teams: z.allowed_teams,
+      activities: z.activities,
+    };
+  });
 }
 
 // Sub-call 4: ICS/NIMS hazard zones (hot/warm/cold) — hidden ground truth
@@ -1889,7 +2013,111 @@ RULES:
 }
 
 // ---------------------------------------------------------------------------
-// Phase 4b2e — Equipment Palette Generation
+// Phase 4b2e — Convergent Crowd Generation (onlookers, media, family arriving later)
+// ---------------------------------------------------------------------------
+
+async function generateConvergentCrowds(
+  input: WarroomGenerateInput,
+  openAiApiKey: string,
+  onProgress?: WarroomAiProgressCallback,
+  narrative?: { title?: string; description?: string; briefing?: string },
+  locations?: WarroomScenarioPayload['locations'],
+): Promise<WarroomScenarioPayload['casualties']> {
+  const include = input.complexity_tier === 'full' || input.complexity_tier === 'rich';
+  if (!include) return undefined;
+
+  onProgress?.('Generating convergent crowd pins (onlookers, media, family)...');
+
+  const { scenario_type, setting, venue_name, location, researchContext } = input;
+  const venue = venue_name || location || setting;
+  const durationMinutes = input.duration_minutes ?? 60;
+
+  const entryExitPins =
+    locations?.filter((l) => l.pin_category === 'entry_exit' || l.pin_category === 'access') ?? [];
+
+  const entryBlock =
+    entryExitPins.length > 0
+      ? `\nEntry/exit points (convergent crowds arrive at these):\n${entryExitPins.map((e) => `- ${e.label} at (${e.coordinates.lat}, ${e.coordinates.lng})`).join('\n')}`
+      : '';
+
+  const incidentPin = locations?.find((l) => l.pin_category === 'incident_site');
+  const incidentBlock = incidentPin
+    ? `\nIncident site: (${incidentPin.coordinates.lat}, ${incidentPin.coordinates.lng})`
+    : '';
+
+  const crowdDynamics = researchContext?.crowd_dynamics;
+  const researchBlock = crowdDynamics
+    ? `\nRESEARCH ON CROWD DYNAMICS FOR THIS SCENARIO TYPE:\n${crowdDynamicsToPromptBlock(crowdDynamics)}`
+    : '';
+
+  const systemPrompt = `You are an expert in crowd dynamics and post-incident convergent behavior, generating convergent crowd pins for a crisis training exercise.
+
+Scenario type: ${scenario_type}
+Venue: ${venue}
+Setting: ${setting}
+Game duration: ${durationMinutes} minutes
+${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
+${entryBlock}
+${incidentBlock}
+${researchBlock}
+
+CONVERGENT CROWDS are people who arrive FROM OUTSIDE the incident after word spreads. They are NOT evacuees. They move TOWARD the incident scene. Types include:
+- onlooker: Curious bystanders gathering near the perimeter to watch. They obstruct access and crowd exits.
+- media: News crews and citizen journalists pushing for access to film. They may breach cordons.
+- family: Distraught family members searching for loved ones, may be hysterical or aggressive toward responders.
+- helper: Self-appointed volunteers who may cause harm by interfering with trained responders.
+
+Generate 4-8 convergent crowd groups that arrive at different entry points at staggered times.
+
+Return ONLY valid JSON:
+{
+  "convergent_crowds": [
+    {
+      "casualty_type": "convergent_crowd",
+      "location_lat": number (at an entry point),
+      "location_lng": number (at an entry point),
+      "floor_level": "G",
+      "headcount": number (5-50 per group),
+      "conditions": {
+        "crowd_origin": "onlooker|media|family|helper",
+        "behavior": "calm|anxious|aggressive|demanding|filming",
+        "visible_description": "1-2 sentence description of what responders see",
+        "obstruction_risk": "low|medium|high"
+      },
+      "status": "identified",
+      "appears_at_minutes": number (5-${Math.min(45, durationMinutes - 5)}),
+      "destination_lat": number (toward the incident site or cordon area),
+      "destination_lng": number (toward the incident site or cordon area),
+      "destination_label": "string (e.g. 'toward incident perimeter')",
+      "movement_speed_mpm": 72
+    }
+  ]
+}
+
+RULES:
+- Stagger arrival times: onlookers earliest (T+3-8), media next (T+8-15), family later (T+12-25), helpers scattered
+- Each group spawns at an entry/exit point coordinate (or nearby if no entry points provided)
+- destination coordinates should be partway between the entry point and the incident site (they move toward it)
+- movement_speed_mpm: 72 for walking crowds, 40 for hesitant/family groups
+- At least 1 onlooker group, 1 media group, 1 family group
+- headcount: onlookers 15-50, media 3-10, family 5-20, helpers 5-15
+- Vary obstruction_risk: media and family tend to be higher risk`;
+
+  const userPrompt = `Generate convergent crowd pins for "${narrative?.title || scenario_type}" at ${venue}. These are people arriving from outside after the incident.`;
+
+  try {
+    const parsed = await callOpenAi<{
+      convergent_crowds?: WarroomScenarioPayload['casualties'];
+    }>(systemPrompt, userPrompt, openAiApiKey, 2500);
+    return parsed.convergent_crowds?.length ? parsed.convergent_crowds : undefined;
+  } catch (err) {
+    logger.warn({ err }, 'Convergent crowd generation failed; continuing without');
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4b2f — Equipment Palette Generation
 // Collects all equipment requirements from hazards + casualties → unified list
 // ---------------------------------------------------------------------------
 
@@ -2781,18 +3009,18 @@ RULES:
 
 /**
  * Generates non-procedural, socially volatile, emotionally charged wildcard events
- * specific to each team's domain. These test composure, judgment, and soft skills
- * rather than operational procedure.
+ * specific to each team's domain. These are CONDITION-BASED: they trigger when
+ * specific game state conditions are met, not at fixed times.
  */
 async function generateChaosInjects(
   input: WarroomGenerateInput,
   teamName: string,
   allTeamNames: string[],
   openAiApiKey: string,
-  assignedSlots: number[],
+  chaosCount: number,
   narrative?: { title?: string; description?: string; briefing?: string },
-): Promise<WarroomScenarioPayload['time_injects']> {
-  if (assignedSlots.length === 0) return [];
+): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
+  if (chaosCount <= 0) return [];
 
   const { scenario_type, setting, venue_name, location, researchContext } = input;
   const venue = venue_name || location || setting;
@@ -2805,75 +3033,108 @@ async function generateChaosInjects(
     researchContext?.similar_cases && researchContext.similar_cases.length > 0
       ? `\nSIMILAR REAL INCIDENTS (use for inspiration on realistic chaos events):\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
       : '';
-
-  const chaosSlotCount = Math.min(
-    assignedSlots.length,
-    Math.max(4, Math.floor(durationMinutes / 10)),
-  );
-  const slotList = assignedSlots.slice(0, chaosSlotCount);
-  const slotsWithPhase = slotList.map((t) => `T+${t} [${getPhaseLabelShort(t)}]`).join(', ');
+  const crowdDynamicsBlock = researchContext?.crowd_dynamics
+    ? `\nCROWD DYNAMICS RESEARCH:\n${crowdDynamicsToPromptBlock(researchContext.crowd_dynamics)}`
+    : '';
 
   const systemPrompt = `You are a crisis simulation chaos designer. Your job is to generate unpredictable, socially volatile, emotionally charged wildcard events for the ${teamName} team. These are NOT operational or procedural events — they are the messy human reality of a crisis.
+
+These chaos events are CONDITION-BASED: instead of firing at a fixed time, each inject specifies CONDITIONS that must be true in the game state before the inject appears. This makes them reactive to player actions and game progression.
 
 Scenario: ${scenario_type} at ${venue}
 All teams: ${allTeamNames.join(', ')}
 Focus team: ${teamName}
+Game duration: ${durationMinutes} minutes
 ${narrativeBlock}
 ${similarCasesBlock}
+${crowdDynamicsBlock}
 
-These events represent the HUMAN CHAOS that overwhelms responders in real crises — the irrational behavior, social tensions, cultural flashpoints, media intrusions, emotional breakdowns, and political interference that no procedure manual covers. They should feel visceral, uncomfortable, and force the team to make judgment calls under pressure.
+These events represent the HUMAN CHAOS that overwhelms responders in real crises — the irrational behavior, social tensions, cultural flashpoints, media intrusions, emotional breakdowns, and political interference that no procedure manual covers.
 
 Generate events from categories like these (tailored to ${teamName}'s domain):
-- SOCIAL TENSION: Ethnic or religious accusations between victims/bystanders, communal blame, hate speech, sectarian conflict triggered by the incident
-- CROWD PSYCHOLOGY: Mob mentality, stampede risk, mass hysteria, people refusing to cooperate, vigilante behavior, self-appointed "helpers" causing harm
-- MEDIA INTRUSION: Bystanders livestreaming casualties, journalists sneaking past cordons, deepfake footage going viral, hostile ambush interviews, unauthorized drone footage
-- FAMILY & GRIEF: Distraught families storming restricted areas, parents searching for children, cultural/religious rites conflicting with procedures, VIPs demanding special treatment for relatives
-- POLITICAL INTERFERENCE: Politicians arriving for photo opportunities, conflicting orders from political vs operational chains, blame game starting before the crisis is resolved
-- MISINFORMATION: Conspiracy theories going viral in real-time, false second-attack rumors, fake authority figures giving contradictory instructions
-- ETHICAL DILEMMAS: Patient refusing treatment on religious grounds, triage decisions with ethical dimensions, choosing between saving evidence and saving lives
-- CULTURAL SENSITIVITY: Body handling conflicts, prayer time during evacuation, language barriers creating dangerous misunderstandings, dietary/medical restrictions in mass care
+- SOCIAL TENSION: Ethnic or religious accusations between victims/bystanders, communal blame, hate speech, sectarian conflict
+- CROWD PSYCHOLOGY: Mob mentality, stampede risk, mass hysteria, people refusing to cooperate, vigilante behavior
+- MEDIA INTRUSION: Bystanders livestreaming casualties, journalists sneaking past cordons, deepfake footage going viral
+- FAMILY & GRIEF: Distraught families storming restricted areas, parents searching for children, VIPs demanding special treatment
+- POLITICAL INTERFERENCE: Politicians arriving for photo opportunities, conflicting orders from political vs operational chains
+- MISINFORMATION: Conspiracy theories going viral in real-time, false second-attack rumors, fake authority figures
+- ETHICAL DILEMMAS: Patient refusing treatment on religious grounds, triage decisions with ethical dimensions
+- CULTURAL SENSITIVITY: Body handling conflicts, prayer time during evacuation, language barriers
 
-The game runs for ${durationMinutes} minutes. Spread chaos events across the timeline — some early (confusion/shock), some mid-game (tensions building), some late (exhaustion/blame).
+AVAILABLE CONDITION KEYS (use these in conditions_to_appear):
+- "casualties_at_assembly_above_20" — people have gathered at assembly areas
+- "patients_in_treatment_above_5" — medical treatment is underway
+- "active_fires_above_0" — fires are still burning
+- "convergent_crowd_present" — onlookers/media/family have arrived from outside
+- "no_zone_identification_decision" — players have not drawn any hazard zones
+- "no_perimeter_establishment_decision" — no cordon/perimeter placed
+- "exits_congested" — at least one exit has congestion
+- "no_media_management_decision" — no media statement has been issued
+- "crowd_density_above_0.6" — crowd density is dangerously high
+- "objective_evacuation_not_completed" — evacuation objective is still active
+
+AVAILABLE STATE EFFECT KEYS (mechanical disruptions the inject causes):
+- evacuation_state.flow_rate_modifier — multiplier on exit flow rate (e.g. 0.5 = halved, 0.3 = severe)
+- movement_state.speed_modifier — multiplier on crowd/patient movement speed (e.g. 0.6 = slowed)
+- triage_state.treatment_time_modifier — multiplier on treatment duration (e.g. 1.5 = 50% longer)
 
 Return ONLY valid JSON:
 {
-  "time_injects": [
+  "condition_injects": [
     {
-      "trigger_time_minutes": <exact value from: ${slotList.join(', ')}>,
       "type": "citizen_call|field_update|media_report|intel_brief",
       "title": "string — vivid, specific headline of the chaos event",
-      "content": "string — 2-4 sentences describing the situation viscerally, with specific details (names, locations, what people are doing/saying)",
+      "content": "string — 2-4 sentences describing the situation viscerally, with specific details",
       "severity": "critical|high|medium",
       "inject_scope": "team_specific",
       "target_teams": ["${teamName}"],
       "requires_response": true,
-      "requires_coordination": false
+      "conditions_to_appear": {
+        "threshold": 1,
+        "conditions": ["condition_key_1", "condition_key_2"]
+      },
+      "conditions_to_cancel": ["condition_key_that_resolves_this"],
+      "eligible_after_minutes": 5,
+      "state_effect": {
+        "evacuation_state": { "flow_rate_modifier": 0.5 }
+      }
     }
   ]
 }
 
 RULES:
-- Exactly ${slotList.length} injects using EXACTLY these times: ${slotsWithPhase}.
+- Exactly ${chaosCount} injects.
 - inject_scope always "team_specific". target_teams always ["${teamName}"].
-- Every inject must be a NON-PROCEDURAL chaos event — NOT a resource shortage, equipment failure, or operational status update.
-- Each inject must be a distinct type of chaos — no two addressing the same social dynamic.
-- requires_response: true when the event is confrontational and demands a judgment call (e.g. angry mob, journalist confrontation, family demanding access). false ONLY when it is pure atmospheric pressure that adds stress but needs no direct action (e.g. distant shouting, background social media chatter).
-- Make events culturally and geographically specific to ${venue} and the scenario context.
-- Be bold and uncomfortable — real crises involve racism, grief, anger, and panic. Do not sanitize.`;
+- Every inject must be a NON-PROCEDURAL chaos event.
+- Each inject must have conditions_to_appear with 1-3 condition keys from the list above.
+- threshold: how many conditions must be true (1 = any of them, 2+ = multiple must co-occur).
+- conditions_to_cancel: 1-2 keys that, if true, mean the chaos has been addressed and the inject should NOT fire.
+- eligible_after_minutes: earliest game time this can fire (stagger: some at 5, some at 10-15, some at 20+).
+- state_effect: include a mechanical disruption for at least half the injects. Use realistic modifiers (0.3-0.8 for slowdowns, 1.3-2.0 for time increases). Leave state_effect as {} for purely narrative injects.
+- Be bold and uncomfortable — real crises involve racism, grief, anger, and panic. Do not sanitize.
+- Make events culturally and geographically specific to ${venue}.`;
 
-  const userPrompt = `Write ${slotList.length} chaos/wildcard injects for ${teamName} at: ${slotsWithPhase} in "${narrative?.title || scenario_type}" at ${venue}. Each must be a distinct, non-procedural social/human chaos event.`;
+  const userPrompt = `Write ${chaosCount} condition-based chaos/wildcard injects for ${teamName} in "${narrative?.title || scenario_type}" at ${venue}. Each must be a distinct, non-procedural social/human chaos event with game-state conditions that trigger it.`;
 
   try {
-    const parsed = await callOpenAi<{ time_injects?: WarroomScenarioPayload['time_injects'] }>(
-      systemPrompt,
-      userPrompt,
-      openAiApiKey,
-      3000,
-    );
-    const raw = parsed.time_injects || [];
+    const parsed = await callOpenAi<{
+      condition_injects?: Array<{
+        type?: string;
+        title?: string;
+        content?: string;
+        severity?: string;
+        inject_scope?: string;
+        target_teams?: string[];
+        requires_response?: boolean;
+        conditions_to_appear?: { threshold?: number; conditions?: string[] } | { all: string[] };
+        conditions_to_cancel?: string[];
+        eligible_after_minutes?: number;
+        state_effect?: Record<string, unknown>;
+      }>;
+    }>(systemPrompt, userPrompt, openAiApiKey, 4000);
+
+    const raw = parsed.condition_injects || [];
     return raw.map((inj) => ({
-      ...inj,
-      trigger_time_minutes: inj.trigger_time_minutes ?? slotList[0],
       type: normalizeInjectType(inj.type || 'citizen_call'),
       title: inj.title || `${teamName} wildcard event`,
       content: inj.content || '',
@@ -2881,7 +3142,11 @@ RULES:
       inject_scope: 'team_specific',
       target_teams: [teamName],
       requires_response: inj.requires_response ?? true,
-      requires_coordination: inj.requires_coordination ?? false,
+      conditions_to_appear: inj.conditions_to_appear ?? { threshold: 1, conditions: [] },
+      conditions_to_cancel: inj.conditions_to_cancel,
+      eligible_after_minutes: inj.eligible_after_minutes ?? 5,
+      state_effect:
+        inj.state_effect && Object.keys(inj.state_effect).length > 0 ? inj.state_effect : undefined,
     }));
   } catch (err) {
     logger.warn({ err, teamName }, 'Chaos injects failed; continuing without');
@@ -3013,7 +3278,7 @@ export async function warroomGenerateScenario(
           t,
           teamNames,
           openAiApiKey,
-          timingManifest.chaosSlots[t] ?? [],
+          Math.max(3, Math.floor(durationMinutes / 15)),
           narrative,
         ),
       ),
@@ -3024,7 +3289,6 @@ export async function warroomGenerateScenario(
   const rawTimeInjects: WarroomScenarioPayload['time_injects'] = [
     ...universalTimeInjects,
     ...perTeamTimeResults.flat(),
-    ...perTeamChaosResults.flat(),
   ];
   const time_injects = normalizeInjectTiming(rawTimeInjects, durationMinutes);
 
@@ -3126,14 +3390,18 @@ export async function warroomGenerateScenario(
   ]);
 
   // Casualty + crowd generation (casualties depend on hazard data for positioning)
-  const [casualtyPins, crowdPins] = await Promise.all([
+  const [casualtyPins, crowdPins, convergentPins] = await Promise.all([
     generateCasualties(input, openAiApiKey, onProgress, narrative, locations, scenarioHazards),
     generateCrowdPins(input, openAiApiKey, onProgress, narrative, locations),
+    generateConvergentCrowds(input, openAiApiKey, onProgress, narrative, locations),
   ]);
+  const allCasualtyPins = [
+    ...(casualtyPins ?? []),
+    ...(crowdPins ?? []),
+    ...(convergentPins ?? []),
+  ];
   const casualties: WarroomScenarioPayload['casualties'] =
-    [...(casualtyPins ?? []), ...(crowdPins ?? [])].length > 0
-      ? [...(casualtyPins ?? []), ...(crowdPins ?? [])]
-      : undefined;
+    allCasualtyPins.length > 0 ? allCasualtyPins : undefined;
 
   // Equipment palette derived from hazard + casualty requirements
   const scenarioEquipment = await generateScenarioEquipment(scenarioHazards, casualties, teamNames);
@@ -3213,11 +3481,15 @@ export async function warroomGenerateScenario(
 
   const hasInsiderKnowledge = Object.keys(insiderKnowledge).length > 0;
 
+  const allConditionInjects = perTeamChaosResults.flat();
+  const condition_driven_injects = allConditionInjects.length > 0 ? allConditionInjects : undefined;
+
   return {
     scenario: scenarioWithType,
     teams: phase1.teams,
     objectives: phase1.objectives,
     time_injects,
+    condition_driven_injects,
     locations,
     environmental_seeds,
     hazards: scenarioHazards,

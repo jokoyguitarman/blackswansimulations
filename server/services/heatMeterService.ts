@@ -290,7 +290,7 @@ export async function nudgePublicSentiment(
   try {
     const { data: session } = await supabaseAdmin
       .from('sessions')
-      .select('current_state')
+      .select('current_state, scenario_id')
       .eq('id', sessionId)
       .single();
     if (!session) return;
@@ -320,11 +320,138 @@ export async function nudgePublicSentiment(
       // non-critical
     }
 
+    // Positive inject when sentiment crosses thresholds upward
+    if (mistakeType === 'good' && nudged > current) {
+      const scenarioId = (session as { scenario_id?: string }).scenario_id;
+      const thresholds = [6, 8];
+      for (const t of thresholds) {
+        if (current < t && nudged >= t && scenarioId) {
+          await supabaseAdmin.from('scenario_injects').insert({
+            scenario_id: scenarioId,
+            title: t >= 8 ? 'Positive public response' : 'Public sentiment stabilising',
+            body:
+              t >= 8
+                ? 'Your communications strategy is working well. Public confidence in the response effort has improved significantly. Media coverage is largely positive.'
+                : 'Your latest press statement has been received positively. Public sentiment is showing early signs of recovery. Maintain the current communications tempo.',
+            inject_type: 'field_update',
+            trigger_type: 'time_based',
+            trigger_minutes: 0,
+            target_team: 'media',
+            generation_source: 'sentiment_positive',
+          });
+          logger.info({ sessionId, threshold: t, nudged }, 'Positive sentiment inject created');
+          break;
+        }
+      }
+    }
+
     logger.info(
       { sessionId, mistakeType, previous: current, nudged, delta },
       'Public sentiment nudged (media decision)',
     );
   } catch (err) {
     logger.warn({ err, sessionId }, 'nudgePublicSentiment failed');
+  }
+}
+
+/**
+ * Compute unanswered media challenges and apply sentiment pressure.
+ * Called from the AI inject scheduler on each cycle.
+ */
+export async function applyMediaChallengePressure(sessionId: string): Promise<void> {
+  try {
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('current_state, scenario_id')
+      .eq('id', sessionId)
+      .single();
+    if (!session) return;
+
+    const scenarioId = (session as { scenario_id?: string }).scenario_id;
+    if (!scenarioId) return;
+
+    // Find injects targeting media team
+    const { data: mediaInjects } = await supabaseAdmin
+      .from('session_published_injects')
+      .select('inject_id')
+      .eq('session_id', sessionId);
+
+    if (!mediaInjects?.length) return;
+
+    const publishedIds = mediaInjects.map((i) => (i as { inject_id: string }).inject_id);
+
+    const { data: mediaTargetedInjects } = await supabaseAdmin
+      .from('scenario_injects')
+      .select('id')
+      .eq('scenario_id', scenarioId)
+      .in('id', publishedIds)
+      .eq('requires_response', true)
+      .or('target_team.eq.media,target_teams.cs.{media}');
+
+    if (!mediaTargetedInjects?.length) return;
+
+    const challengeIds = new Set(mediaTargetedInjects.map((i) => (i as { id: string }).id));
+
+    // Find which challenges have been answered with an executed decision
+    const { data: answeredDecisions } = await supabaseAdmin
+      .from('decisions')
+      .select('response_to_incident_id')
+      .eq('session_id', sessionId)
+      .eq('status', 'executed')
+      .not('response_to_incident_id', 'is', null);
+
+    const answeredIds = new Set(
+      (answeredDecisions ?? []).map(
+        (d) => (d as { response_to_incident_id: string }).response_to_incident_id,
+      ),
+    );
+
+    // Count unanswered
+    let unansweredCount = 0;
+    for (const id of challengeIds) {
+      if (!answeredIds.has(id)) unansweredCount++;
+    }
+
+    const currentState = ((session as { current_state?: Record<string, unknown> }).current_state ??
+      {}) as Record<string, unknown>;
+    const mediaState = (currentState.media_state ?? {}) as Record<string, unknown>;
+    const currentSentiment =
+      typeof mediaState.public_sentiment === 'number' ? mediaState.public_sentiment : 5;
+
+    // Apply pressure: -0.3 per unanswered challenge, capped at -1.5 total
+    const pressure = Math.min(1.5, unansweredCount * 0.3);
+    const nudged =
+      unansweredCount > 0
+        ? Math.max(1, Math.round((currentSentiment - pressure) * 10) / 10)
+        : currentSentiment;
+
+    const nextState = {
+      ...currentState,
+      media_state: {
+        ...mediaState,
+        public_sentiment: nudged,
+        unanswered_challenges: unansweredCount,
+      },
+    };
+
+    await supabaseAdmin.from('sessions').update({ current_state: nextState }).eq('id', sessionId);
+
+    try {
+      getWebSocketService().stateUpdated?.(sessionId, {
+        state: nextState,
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      // non-critical
+    }
+
+    if (unansweredCount > 0) {
+      logger.info(
+        { sessionId, unansweredCount, pressure, from: currentSentiment, to: nudged },
+        'Media challenge pressure applied',
+      );
+    }
+  } catch (err) {
+    logger.warn({ err, sessionId }, 'applyMediaChallengePressure failed');
   }
 }

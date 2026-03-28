@@ -525,6 +525,122 @@ Return ONLY valid JSON:
   }
 }
 
+// ---------------------------------------------------------------------------
+// Crowd Dynamics Research
+// ---------------------------------------------------------------------------
+
+export interface ConvergentCrowdType {
+  type: string;
+  typical_arrival_minutes: number;
+  behavior: string;
+  size_range: string;
+}
+
+export interface CrowdDynamicsResearch {
+  self_evacuation_patterns: string;
+  convergent_crowd_types: ConvergentCrowdType[];
+  movement_notes: string;
+}
+
+/**
+ * Research crowd dynamics for a specific scenario type and venue:
+ * self-evacuation patterns, convergent crowd behavior, arrival schedules.
+ */
+export async function researchCrowdDynamics(
+  openAiApiKey: string,
+  scenarioType: string,
+  location?: string,
+  venueName?: string,
+): Promise<CrowdDynamicsResearch | null> {
+  const venue = venueName || location || scenarioType;
+  const locationHint = location ? ` at or near ${location}` : '';
+
+  const prompt = `You are an expert in crowd psychology, mass casualty incidents, and emergency evacuation dynamics.
+
+Research how crowds behave during and after a ${scenarioType}${locationHint} at a venue like ${venue}.
+
+Cover THREE areas:
+
+1. SELF-EVACUATION PATTERNS: How do people inside the venue react in the first 0-10 minutes? Consider panic flight vs freeze response, shell-shocked individuals, orderly vs disorderly movement, bottleneck formation, stampede risk, and how crowd density affects flow.
+
+2. CONVERGENT CROWD TYPES: After word of the incident spreads, who arrives from OUTSIDE and when? For each type, provide the typical arrival window in minutes after the incident, their behavior, and estimated group size. Types include: onlookers/rubberneckers, media crews, family members searching for loved ones, self-appointed helpers/volunteers, political figures, and religious/community leaders.
+
+3. MOVEMENT NOTES: Which entry/exit points do convergent crowds typically gravitate toward? How does their presence interfere with response operations? What happens when convergent crowds meet evacuees?
+
+Return ONLY valid JSON:
+{
+  "self_evacuation_patterns": "2-4 sentence description of initial crowd behavior inside the venue",
+  "convergent_crowd_types": [
+    {
+      "type": "onlooker|media|family|helper|political|religious",
+      "typical_arrival_minutes": 10,
+      "behavior": "1-2 sentence description of what this group does when they arrive",
+      "size_range": "10-30"
+    }
+  ],
+  "movement_notes": "2-3 sentences about how convergent crowds use entry points and interfere with operations"
+}
+
+Base your response on documented after-action reports and crowd psychology research. Use ONLY real behavioral patterns from real incidents.`;
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
+      body: JSON.stringify({
+        model: SEARCH_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1500,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const msg = (err as { error?: { message?: string } }).error?.message || res.statusText;
+      logger.warn({ status: res.status, msg }, 'Crowd dynamics research failed');
+      return null;
+    }
+
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content as string | undefined;
+    if (!raw) return null;
+
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+
+    const parsed = JSON.parse(jsonMatch[0]) as CrowdDynamicsResearch;
+    if (!parsed.self_evacuation_patterns || !Array.isArray(parsed.convergent_crowd_types)) {
+      return null;
+    }
+
+    logger.info(
+      { scenarioType, crowdTypes: parsed.convergent_crowd_types.length },
+      'Crowd dynamics research complete',
+    );
+    return parsed;
+  } catch (err) {
+    logger.warn({ err, scenarioType }, 'Crowd dynamics research error');
+    return null;
+  }
+}
+
+/**
+ * Serialize CrowdDynamicsResearch into a prompt block for AI generation.
+ */
+export function crowdDynamicsToPromptBlock(research: CrowdDynamicsResearch): string {
+  const types = research.convergent_crowd_types
+    .map(
+      (t) =>
+        `  - ${t.type}: arrives ~T+${t.typical_arrival_minutes}min, size ${t.size_range}, ${t.behavior}`,
+    )
+    .join('\n');
+  return (
+    `Self-evacuation: ${research.self_evacuation_patterns}\n` +
+    `Convergent crowd types:\n${types}\n` +
+    `Movement notes: ${research.movement_notes}`
+  );
+}
+
 /**
  * Serialize StandardsFinding[] to a compact string for embedding in AI prompts.
  */

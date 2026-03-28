@@ -228,17 +228,25 @@ export async function persistWarroomScenario(
 
     if (casualties && casualties.length > 0) {
       const { error: casError } = await supabaseAdmin.from('scenario_casualties').insert(
-        casualties.map((c) => ({
-          scenario_id: scenarioId,
-          casualty_type: c.casualty_type,
-          location_lat: c.location_lat,
-          location_lng: c.location_lng,
-          floor_level: c.floor_level ?? 'G',
-          headcount: c.headcount ?? 1,
-          conditions: c.conditions ?? {},
-          status: c.status ?? 'undiscovered',
-          appears_at_minutes: c.appears_at_minutes ?? 0,
-        })),
+        casualties.map((c) => {
+          const row: Record<string, unknown> = {
+            scenario_id: scenarioId,
+            casualty_type: c.casualty_type,
+            location_lat: c.location_lat,
+            location_lng: c.location_lng,
+            floor_level: c.floor_level ?? 'G',
+            headcount: c.headcount ?? 1,
+            conditions: c.conditions ?? {},
+            status: c.status ?? 'undiscovered',
+            appears_at_minutes: c.appears_at_minutes ?? 0,
+          };
+          if (c.destination_lat != null) row.destination_lat = c.destination_lat;
+          if (c.destination_lng != null) row.destination_lng = c.destination_lng;
+          if (c.destination_label) row.destination_label = c.destination_label;
+          if (c.movement_speed_mpm != null && c.movement_speed_mpm > 0)
+            row.movement_speed_mpm = c.movement_speed_mpm;
+          return row;
+        }),
       );
       if (casError) {
         logger.warn({ error: casError }, 'scenario_casualties insert failed (non-blocking)');
