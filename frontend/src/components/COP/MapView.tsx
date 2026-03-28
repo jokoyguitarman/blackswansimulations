@@ -17,6 +17,7 @@ import { MapDrawHandler } from './MapDrawHandler';
 import { HazardMarker, type HazardData } from './HazardMarker';
 import { HazardAssessmentModal } from './HazardAssessmentModal';
 import { CasualtyPin, type CasualtyData } from './CasualtyPin';
+import { CasualtyAssessmentModal } from './CasualtyAssessmentModal';
 import { CrowdPin, type CrowdData } from './CrowdPin';
 import { EntryExitPin, type EntryExitData } from './EntryExitPin';
 import { FloorSelector, type FloorPlan } from './FloorSelector';
@@ -466,6 +467,7 @@ export const MapView = ({
   const [placedAssets, setPlacedAssets] = useState<PlacedAsset[]>([]);
   const [hazards, setHazards] = useState<HazardData[]>([]);
   const [selectedHazard, setSelectedHazard] = useState<HazardData | null>(null);
+  const [selectedCasualty, setSelectedCasualty] = useState<CasualtyData | null>(null);
   const [casualties, setCasualties] = useState<CasualtyData[]>([]);
   const [crowds, setCrowds] = useState<CrowdData[]>([]);
   const [entryExitPins, setEntryExitPins] = useState<EntryExitData[]>([]);
@@ -1080,13 +1082,7 @@ export const MapView = ({
           {casualties
             .filter((c) => c.floor_level === activeFloor || !floorPlans.length)
             .map((casualty) => (
-              <CasualtyPin
-                key={casualty.id}
-                casualty={casualty}
-                onClick={() => {
-                  /* TODO: open casualty detail modal */
-                }}
-              />
+              <CasualtyPin key={casualty.id} casualty={casualty} onClick={setSelectedCasualty} />
             ))}
 
           {/* Crowd Pins (civilian groups) */}
@@ -1203,6 +1199,33 @@ export const MapView = ({
             } catch {
               /* ignore */
             }
+          }}
+        />
+      )}
+
+      {/* Casualty Assessment / Triage Tagging Modal */}
+      {selectedCasualty && (
+        <CasualtyAssessmentModal
+          casualty={selectedCasualty}
+          sessionId={sessionId}
+          teamName={teamName ?? 'unknown'}
+          onClose={() => setSelectedCasualty(null)}
+          onAssess={async (casualtyId, triageColor) => {
+            await api.casualties.assess(sessionId, casualtyId, {
+              player_triage_color: triageColor,
+              team_name: teamName ?? 'unknown',
+            });
+            setCasualties((prev) =>
+              prev.map((c) =>
+                c.id === casualtyId
+                  ? {
+                      ...c,
+                      status: c.status === 'undiscovered' ? 'identified' : c.status,
+                      conditions: { ...c.conditions, player_triage_color: triageColor },
+                    }
+                  : c,
+              ),
+            );
           }}
         />
       )}

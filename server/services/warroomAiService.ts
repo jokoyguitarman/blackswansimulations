@@ -2313,7 +2313,7 @@ async function generateUniversalTimeInjects(
     .map((t) => `T+${t} [${getPhaseLabelShort(t)}]`)
     .join(', ');
 
-  const systemPrompt = `You are an expert crisis management scenario designer writing universal scene-setting injects visible to ALL teams simultaneously.
+  const systemPrompt = `You are an expert crisis management scenario designer writing EXTERNAL WORLD injects visible to ALL teams simultaneously. These represent events OUTSIDE player control — things happening in the world around the crisis that players must react to but cannot prevent through their operational decisions.
 
 Scenario: ${scenario_type} at ${venue}
 Setting: ${setting} | Terrain: ${terrain}
@@ -2323,16 +2323,31 @@ ${standardsBlock}
 ${similarCasesBlock}
 ${narrativeBlock}
 
-Universal injects are shared operational events: breaking news, environmental changes, senior command directives, political pressure, resource status updates affecting the entire operation. Every team sees them at the same moment.
+WHAT THESE INJECTS ARE:
+- The initial incident (explosion, attack, disaster) and its immediate aftermath
+- Breaking news reports, social media firestorms, viral misinformation
+- Political pressure: ministers arriving, parliamentary questions, conflicting orders from political vs operational chains
+- Black swan events: improbable but possible complications (impostor doctor, secondary device threat, hostile drone, chemical contamination discovery, infrastructure collapse upstream)
+- Weather changes affecting operations (wind shift carrying smoke, rain, temperature drop)
+- Social tensions triggered by the incident (ethnic accusations, protests, vigilante mobs, conspiracy theories)
+- External resource complications (hospital declaring capacity full, ambulance fleet diverted, road closure cutting off access)
+- Media chaos: journalists breaching cordons, deepfake footage, hostile live broadcasts
 
-The game runs for ${input.duration_minutes ?? 60} minutes and must be solvable if teams perform optimally. Arc the narrative across the full duration — distribute setup, escalation, peak, and resolution phases proportionally.
+WHAT THESE INJECTS ARE NOT (these are handled by real-time condition monitoring):
+- Overcrowding in triage or assembly areas
+- Staff shortages or carer-to-patient ratios
+- Equipment shortages in operational areas
+- Exit congestion or evacuation flow problems
+- Patient deterioration or casualty status changes
+
+The game runs for ${input.duration_minutes ?? 60} minutes. Arc the external narrative: initial shock → media/political pressure builds → black swan complications → resolution pressure.
 
 Return ONLY valid JSON:
 {
   "time_injects": [
     {
       "trigger_time_minutes": 0,
-      "type": "field_update|media_report|intel_brief|weather_change|political_pressure",
+      "type": "field_update|media_report|intel_brief|weather_change|political_pressure|black_swan",
       "title": "string",
       "content": "string — 2-3 sentences, specific to THIS scenario and venue",
       "severity": "critical|high|medium|low",
@@ -2349,8 +2364,9 @@ RULES:
 - Each inject MUST use its exact assigned trigger_time_minutes — no substitutions.
 - inject_scope is always "universal". target_teams is always [].
 - Each inject must reference the specific scenario title, venue, and narrative details.
-- No generic filler — every inject advances the story.
-- requires_response: set to true when the inject presents a situation that teams should respond to with decisions or actions (e.g. the initial incident report, escalations, new threats, resource requests, command directives). Set to false ONLY for purely informational items that require no action — background news, weather updates, or public sentiment reports.`;
+- Include at least 1-2 genuine black swan events (improbable but possible: impostor responders, secondary threats, infrastructure failures, rogue actors).
+- No operational/logistical injects (no "triage is overwhelmed" or "exit congested") — those emerge from gameplay.
+- requires_response: set to true when teams must react (e.g. political demand, media confrontation, secondary threat). false ONLY for atmospheric pressure (background news, social media chatter).`;
 
   const userPrompt = `Write ${universalSlots.length} universal injects for "${narrative?.title || scenario_type}" at ${venue} at times: ${slotDescriptions}.`;
 
@@ -2419,7 +2435,7 @@ async function generateTeamTimeInjects(
 
   const slotsWithPhase = assignedSlots.map((t) => `T+${t} [${getPhaseLabelShort(t)}]`).join(', ');
 
-  const systemPrompt = `You are an expert crisis management scenario designer writing injects EXCLUSIVELY for the ${teamName} team.
+  const systemPrompt = `You are an expert crisis management scenario designer writing EXTERNAL WORLD events EXCLUSIVELY for the ${teamName} team. These are events that happen TO this team from the outside world — things they cannot prevent through operational decisions but must react to.
 
 Scenario: ${scenario_type} at ${venue}
 Setting: ${setting} | Terrain: ${terrain}
@@ -2431,22 +2447,36 @@ ${similarCasesBlock}
 Inject style reference (tone and specificity):
 ${JSON.stringify(injectTemplates.slice(0, 3))}
 
-Write DEEP, DETAILED, ROLE-SPECIFIC injects that reflect the real operational challenges of the ${teamName} in THIS exact crisis. Do not write generic status updates — write what a ${teamName} team leader actually receives: a specific field report, resource complication, civilian interaction, or command pressure unique to their role.
+WHAT THESE INJECTS ARE (external events specific to ${teamName}'s domain):
+- Someone impersonating a ${teamName}-related professional (fake doctor, unauthorized volunteer, rogue official)
+- Inter-agency friction: conflicting orders from higher command, turf disputes with other teams
+- External civilian pressure: families demanding access to ${teamName}'s area, VIPs pulling rank, cultural conflicts
+- Supply chain disruptions: ambulance fleet delayed by traffic, equipment shipment lost, vendor refusing to deliver
+- Media targeting: journalist confronting ${teamName} leader on camera, leaked footage of ${teamName}'s area
+- Black swan complications: unexpected discovery (hazmat, secondary device, structural failure) that directly impacts ${teamName}
+- Political interference specific to ${teamName}'s role
 
-The game runs for ${input.duration_minutes ?? 60} minutes and is solvable if teams perform optimally. Arc the ${teamName} narrative deliberately:
-- Setup (T+0–${Math.round((input.duration_minutes ?? 60) * 0.25)}): The ${teamName} faces their initial operational challenge in this crisis.
-- Escalation (T+${Math.round((input.duration_minutes ?? 60) * 0.25)}–${Math.round((input.duration_minutes ?? 60) * 0.55)}): A complication specific to the ${teamName} role raises the stakes.
-- Peak (T+${Math.round((input.duration_minutes ?? 60) * 0.55)}–${Math.round((input.duration_minutes ?? 60) * 0.85)}): The worst-case pressure on ${teamName} — requires urgent decision.
-- Resolution (T+${Math.round((input.duration_minutes ?? 60) * 0.85)}–${input.duration_minutes ?? 60}): Consequence or relief based on how ${teamName} has performed.
+WHAT THESE INJECTS ARE NOT (handled by real-time area monitors):
+- "Your triage is overcrowded" — this is detected automatically by area capacity monitoring
+- "Not enough medics" — detected by carer-ratio monitoring
+- "Exit is congested" — detected by exit flow monitoring
+- "Equipment shortage" — detected by equipment monitoring
+- Any patient status change or deterioration — handled by deterioration services
+
+The game runs for ${input.duration_minutes ?? 60} minutes. Arc the ${teamName}'s external narrative:
+- Setup (T+0–${Math.round((input.duration_minutes ?? 60) * 0.25)}): ${teamName} encounters their first external complication.
+- Escalation (T+${Math.round((input.duration_minutes ?? 60) * 0.25)}–${Math.round((input.duration_minutes ?? 60) * 0.55)}): An outside force raises the stakes for ${teamName}.
+- Peak (T+${Math.round((input.duration_minutes ?? 60) * 0.55)}–${Math.round((input.duration_minutes ?? 60) * 0.85)}): A black swan or worst-case external event.
+- Resolution (T+${Math.round((input.duration_minutes ?? 60) * 0.85)}–${input.duration_minutes ?? 60}): External consequence or relief.
 
 Return ONLY valid JSON:
 {
   "time_injects": [
     {
       "trigger_time_minutes": <exact value from: ${assignedSlots.join(', ')}>,
-      "type": "field_update|citizen_call|intel_brief|resource_shortage|media_report",
-      "title": "string — specific to ${teamName}'s operational situation",
-      "content": "string — 2-4 sentences, highly specific to ${teamName}'s role and current phase",
+      "type": "field_update|citizen_call|intel_brief|media_report|political_pressure|black_swan",
+      "title": "string — specific external event hitting ${teamName}",
+      "content": "string — 2-4 sentences, vivid and specific to ${teamName}'s role",
       "severity": "critical|high|medium|low",
       "inject_scope": "team_specific",
       "target_teams": ["${teamName}"],
@@ -2459,8 +2489,10 @@ Return ONLY valid JSON:
 RULES:
 - Exactly ${assignedSlots.length} injects using EXACTLY these times: ${slotsWithPhase}.
 - inject_scope always "team_specific". target_teams always ["${teamName}"].
-- No two injects should address the same challenge — each one advances the ${teamName} sub-story.
-- requires_response: set to true when the inject presents a situation that ${teamName} should respond to with a decision or action (e.g. new operational challenges, resource shortages, escalations, requests from other teams, field problems). Set to false ONLY for purely informational items that require no action — background updates, confirmations, or environmental observations.`;
+- No operational/logistical status updates — only external world events.
+- Include at least 1 black swan event (impostor, rogue actor, unexpected discovery, infrastructure failure).
+- No two injects should address the same challenge.
+- requires_response: true when ${teamName} must act. false ONLY for atmospheric pressure.`;
 
   const userPrompt = `Write ${assignedSlots.length} deep team-specific injects for ${teamName} at: ${slotsWithPhase} in "${narrative?.title || scenario_type}" at ${venue}.`;
 

@@ -43,8 +43,12 @@ const STATUS_LABELS: Record<string, string> = {
 
 function createCasualtyIcon(casualty: CasualtyData): DivIcon {
   const conds = casualty.conditions as Record<string, unknown>;
-  const triageColor = (conds.triage_color as string) ?? 'yellow';
+  const playerTag =
+    (conds.player_triage_color as string | undefined) ??
+    ((casualty as unknown as Record<string, unknown>).player_triage_color as string | undefined);
+  const triageColor = playerTag ?? (conds.triage_color as string) ?? 'yellow';
   const color = TRIAGE_COLORS[triageColor] ?? '#eab308';
+  const isUnassessed = !playerTag;
   const mobility = (conds.mobility as string) ?? 'ambulatory';
   const isResolved = casualty.status === 'resolved' || casualty.status === 'transported';
   const isDeceased = casualty.status === 'deceased';
@@ -73,12 +77,13 @@ function createCasualtyIcon(casualty: CasualtyData): DivIcon {
           width: 32px;
           height: 32px;
           border-radius: 50%;
-          border: 3px solid ${color};
+          border: 3px solid ${isUnassessed && !isResolved && !isDeceased ? '#9ca3af' : color};
           box-shadow: 0 2px 8px rgba(0,0,0,0.4);
           display: flex;
           align-items: center;
           justify-content: center;
           font-size: 15px;
+          ${isUnassessed && !isResolved && !isDeceased ? 'animation: pulse 2s infinite;' : ''}
         ">
           <span>${emoji}</span>
         </div>
@@ -106,7 +111,10 @@ export const CasualtyPin = ({ casualty, onClick }: CasualtyPinProps) => {
   const position: LatLngExpression = [casualty.location_lat, casualty.location_lng];
   const conds = casualty.conditions as Record<string, unknown>;
   const visibleDesc = (conds.visible_description as string) ?? '';
-  const triageColor = (conds.triage_color as string) ?? '';
+  const playerTag =
+    (conds.player_triage_color as string | undefined) ??
+    ((casualty as unknown as Record<string, unknown>).player_triage_color as string | undefined);
+  const displayColor = playerTag ?? (conds.triage_color as string) ?? '';
   const mobility = (conds.mobility as string) ?? '';
   const accessibility = (conds.accessibility as string) ?? '';
   const consciousness = (conds.consciousness as string) ?? '';
@@ -115,7 +123,10 @@ export const CasualtyPin = ({ casualty, onClick }: CasualtyPinProps) => {
     <Marker position={position} icon={icon} eventHandlers={{ click: () => onClick(casualty) }}>
       <Tooltip>
         <div className="text-xs max-w-xs">
-          <div className="font-semibold">Patient — {triageColor.toUpperCase()} triage</div>
+          <div className="font-semibold">
+            Patient —{' '}
+            {playerTag ? `${displayColor.toUpperCase()} (tagged)` : 'UNASSESSED — click to triage'}
+          </div>
           <div className="capitalize text-gray-500">
             {STATUS_LABELS[casualty.status] ?? casualty.status}
           </div>

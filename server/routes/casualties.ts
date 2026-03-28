@@ -6,6 +6,16 @@ import { hasMarshalProximity } from '../services/exitFlowService.js';
 
 const router = Router();
 
+function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 router.get('/sessions/:id/casualties', requireAuth, async (req, res) => {
   try {
     const { id: sessionId } = req.params;
@@ -110,6 +120,114 @@ router.patch('/sessions/:id/casualties/:casualtyId', requireAuth, async (req, re
     return res.json({ data: updated });
   } catch (err) {
     logger.error({ err }, 'Unexpected error in PATCH casualty');
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Triage assessment: player tags a casualty with a triage color at the scene.
+ * Requires a medic/first-aider asset within proximity of the casualty.
+ */
+router.post('/sessions/:id/casualties/:casualtyId/assess', requireAuth, async (req, res) => {
+  try {
+    const { id: sessionId, casualtyId } = req.params;
+    const { player_triage_color, team_name } = req.body as {
+      player_triage_color: string;
+      team_name: string;
+    };
+
+    const validColors = ['green', 'yellow', 'red', 'black'];
+    if (!validColors.includes(player_triage_color)) {
+      return res
+        .status(400)
+        .json({ error: `Invalid triage color. Must be one of: ${validColors.join(', ')}` });
+    }
+    if (!team_name) {
+      return res.status(400).json({ error: 'team_name is required' });
+    }
+
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('scenario_id, started_at')
+      .eq('id', sessionId)
+      .single();
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    const elapsedMinutes = session.started_at
+      ? Math.floor((Date.now() - new Date(session.started_at).getTime()) / 60000)
+      : 0;
+
+    const { data: casualty, error: casError } = await supabaseAdmin
+      .from('scenario_casualties')
+      .select('id, location_lat, location_lng, status, conditions')
+      .eq('id', casualtyId)
+      .single();
+
+    if (casError || !casualty) {
+      return res.status(404).json({ error: 'Casualty not found' });
+    }
+
+    // Check proximity: at least one medical-type asset within 80m
+    const { data: nearbyAssets } = await supabaseAdmin
+      .from('placed_assets')
+      .select('id, asset_type, geometry')
+      .eq('session_id', sessionId)
+      .eq('status', 'active');
+
+    const MEDIC_TYPES = [
+      'medic',
+      'paramedic',
+      'doctor',
+      'nurse',
+      'emt',
+      'first_aider',
+      'triage_officer',
+    ];
+    let hasMedic = false;
+    for (const asset of nearbyAssets ?? []) {
+      const assetLower = (asset.asset_type as string).toLowerCase();
+      if (!MEDIC_TYPES.some((t) => assetLower.includes(t))) continue;
+      const geom = asset.geometry as Record<string, unknown>;
+      if (geom.type === 'Point') {
+        const coords = geom.coordinates as number[];
+        const dist = haversineM(casualty.location_lat, casualty.location_lng, coords[1], coords[0]);
+        if (dist < 80) {
+          hasMedic = true;
+          break;
+        }
+      }
+    }
+
+    if (!hasMedic) {
+      return res.status(400).json({
+        error:
+          'No medical personnel within range. Deploy a medic or first aider near this casualty first.',
+      });
+    }
+
+    const newStatus = casualty.status === 'undiscovered' ? 'identified' : casualty.status;
+
+    const { data: updated, error } = await supabaseAdmin
+      .from('scenario_casualties')
+      .update({
+        player_triage_color,
+        assessed_by: team_name,
+        assessed_at_minutes: elapsedMinutes,
+        status: newStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', casualtyId)
+      .select()
+      .single();
+
+    if (error) {
+      logger.error({ error, casualtyId }, 'Failed to assess casualty');
+      return res.status(500).json({ error: 'Failed to update assessment' });
+    }
+
+    return res.json({ data: updated });
+  } catch (err) {
+    logger.error({ err }, 'Unexpected error in POST assess casualty');
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

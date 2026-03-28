@@ -15,6 +15,7 @@ import {
   checkPendingEndorsements,
   processNonAmbulatoryExtraction,
 } from './exitFlowService.js';
+import { runAreaMonitors } from './areaMonitorService.js';
 import type { Server as SocketServer } from 'socket.io';
 import type { CounterDefinition } from '../counterDefinitions.js';
 
@@ -952,6 +953,18 @@ export class InjectSchedulerService {
       ]);
     } catch (evacErr) {
       logger.warn({ err: evacErr, sessionId: session.id }, 'Evacuation pipeline error');
+    }
+
+    // --- Area monitors: capacity, carer ratio, equipment, exit congestion ---
+    try {
+      let ioForMonitors = this.io;
+      if (!ioForMonitors) {
+        const { io: serverIo } = await import('../index.js');
+        ioForMonitors = serverIo;
+      }
+      await runAreaMonitors(session.id, session.scenario_id, elapsedMinutes, ioForMonitors);
+    } catch (monErr) {
+      logger.warn({ err: monErr, sessionId: session.id }, 'Area monitor evaluation error');
     }
   }
 }

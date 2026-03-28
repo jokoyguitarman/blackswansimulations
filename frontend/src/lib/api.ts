@@ -672,6 +672,20 @@ export const api = {
         }),
       );
     },
+    assess: async (
+      sessionId: string,
+      casualtyId: string,
+      payload: { player_triage_color: string; team_name: string },
+    ) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/casualties/${casualtyId}/assess`), {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }),
+      );
+    },
   },
 
   marshalCheck: {
