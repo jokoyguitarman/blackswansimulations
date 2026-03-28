@@ -19,135 +19,68 @@ import type { DraggableAssetDef } from '../components/COP/AssetPalette';
 
 const TEAM_ASSET_CATALOG: Record<string, DraggableAssetDef[]> = {
   evacuation: [
-    {
-      asset_type: 'assembly_point',
-      icon: 'flag',
-      geometry_type: 'point',
-      label: 'Assembly Point',
-      max_count: 4,
-    },
-    {
-      asset_type: 'marshal_post',
-      icon: 'person',
-      geometry_type: 'point',
-      label: 'Marshal Post',
-      max_count: 6,
-    },
+    { asset_type: 'assembly_point', icon: 'flag', geometry_type: 'point', label: 'Assembly Point' },
+    { asset_type: 'marshal_post', icon: 'person', geometry_type: 'point', label: 'Marshal Post' },
     {
       asset_type: 'ambulance_staging',
       icon: 'ambulance',
       geometry_type: 'point',
       label: 'Ambulance Staging',
-      max_count: 3,
     },
   ],
   triage: [
-    {
-      asset_type: 'triage_tent',
-      icon: 'tent',
-      geometry_type: 'point',
-      label: 'Triage Tent',
-      max_count: 4,
-    },
+    { asset_type: 'triage_tent', icon: 'tent', geometry_type: 'point', label: 'Triage Tent' },
     {
       asset_type: 'field_hospital',
       icon: 'medical',
       geometry_type: 'point',
       label: 'Field Hospital',
-      max_count: 2,
     },
     {
       asset_type: 'ambulance_staging',
       icon: 'ambulance',
       geometry_type: 'point',
       label: 'Ambulance Staging',
-      max_count: 3,
     },
-    {
-      asset_type: 'decon_zone',
-      icon: 'hazmat',
-      geometry_type: 'point',
-      label: 'Decon Zone',
-      max_count: 2,
-    },
+    { asset_type: 'decon_zone', icon: 'hazmat', geometry_type: 'point', label: 'Decon Zone' },
   ],
   media: [
-    {
-      asset_type: 'press_cordon',
-      icon: 'barrier',
-      geometry_type: 'line',
-      label: 'Press Cordon',
-      max_count: 3,
-    },
+    { asset_type: 'press_cordon', icon: 'barrier', geometry_type: 'line', label: 'Press Cordon' },
     {
       asset_type: 'briefing_point',
       icon: 'podium',
       geometry_type: 'point',
       label: 'Media Briefing Point',
-      max_count: 2,
     },
     {
       asset_type: 'camera_position',
       icon: 'camera',
       geometry_type: 'point',
       label: 'Camera Position',
-      max_count: 4,
     },
   ],
   fire_hazmat: [
-    {
-      asset_type: 'decon_zone',
-      icon: 'hazmat',
-      geometry_type: 'point',
-      label: 'Decon Zone',
-      max_count: 3,
-    },
+    { asset_type: 'decon_zone', icon: 'hazmat', geometry_type: 'point', label: 'Decon Zone' },
     {
       asset_type: 'fire_truck_staging',
       icon: 'fire_truck',
       geometry_type: 'point',
       label: 'Fire Truck Staging',
-      max_count: 3,
     },
-    {
-      asset_type: 'water_point',
-      icon: 'water',
-      geometry_type: 'point',
-      label: 'Water Point',
-      max_count: 4,
-    },
+    { asset_type: 'water_point', icon: 'water', geometry_type: 'point', label: 'Water Point' },
   ],
 };
 
 const UNIVERSAL_ASSETS: DraggableAssetDef[] = [
-  {
-    asset_type: 'barrier',
-    icon: 'barrier',
-    geometry_type: 'line',
-    label: 'Barrier / Cordon',
-    max_count: 6,
-  },
+  { asset_type: 'barrier', icon: 'barrier', geometry_type: 'line', label: 'Barrier / Cordon' },
   {
     asset_type: 'operational_area',
     icon: 'area',
     geometry_type: 'polygon',
     label: 'Operational Area',
-    max_count: 4,
   },
-  {
-    asset_type: 'command_post',
-    icon: 'command',
-    geometry_type: 'point',
-    label: 'Command Post',
-    max_count: 2,
-  },
-  {
-    asset_type: 'radio_relay',
-    icon: 'radio',
-    geometry_type: 'point',
-    label: 'Radio Relay',
-    max_count: 3,
-  },
+  { asset_type: 'command_post', icon: 'command', geometry_type: 'point', label: 'Command Post' },
+  { asset_type: 'radio_relay', icon: 'radio', geometry_type: 'point', label: 'Radio Relay' },
 ];
 
 function getAssetsForTeam(teamName: string): DraggableAssetDef[] {
@@ -161,20 +94,8 @@ function getAssetsForTeam(teamName: string): DraggableAssetDef[] {
   }
   return [
     ...UNIVERSAL_ASSETS,
-    {
-      asset_type: 'assembly_point',
-      icon: 'flag',
-      geometry_type: 'point',
-      label: 'Assembly Point',
-      max_count: 3,
-    },
-    {
-      asset_type: 'triage_tent',
-      icon: 'tent',
-      geometry_type: 'point',
-      label: 'Triage Tent',
-      max_count: 2,
-    },
+    { asset_type: 'assembly_point', icon: 'flag', geometry_type: 'point', label: 'Assembly Point' },
+    { asset_type: 'triage_tent', icon: 'tent', geometry_type: 'point', label: 'Triage Tent' },
   ];
 }
 import { useWebSocket } from '../hooks/useWebSocket';
