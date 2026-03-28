@@ -133,8 +133,11 @@ export const HazardMarker = ({ hazard, onClick }: HazardMarkerProps) => {
 
   return (
     <Marker position={position} icon={icon} eventHandlers={{ click: () => onClick(hazard) }}>
-      <Tooltip>
-        <div className="text-xs max-w-xs">
+      <Tooltip className="pin-tooltip">
+        <div
+          style={{ maxWidth: 320, whiteSpace: 'normal', wordWrap: 'break-word' }}
+          className="text-xs"
+        >
           <div className="font-semibold capitalize">{hazard.hazard_type.replace(/_/g, ' ')}</div>
           <div className="capitalize text-gray-500">
             {hazard.status}
@@ -144,11 +147,7 @@ export const HazardMarker = ({ hazard, onClick }: HazardMarkerProps) => {
           {hazard.debris_type && <div>Debris: {hazard.debris_type}</div>}
           {hazard.properties.size != null && <div>Size: {String(hazard.properties.size)}</div>}
           {hazard.enriched_description && (
-            <div className="mt-1 text-gray-400 leading-tight" style={{ maxWidth: 250 }}>
-              {hazard.enriched_description.length > 200
-                ? hazard.enriched_description.slice(0, 200) + '...'
-                : hazard.enriched_description}
-            </div>
+            <div className="mt-1 text-gray-400 leading-tight">{hazard.enriched_description}</div>
           )}
         </div>
       </Tooltip>

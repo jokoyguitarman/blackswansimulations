@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { HazardData } from './HazardMarker';
 
 interface HazardAssessmentModalProps {
@@ -46,9 +47,9 @@ export const HazardAssessmentModal = ({
   const imageUrl = hazard.current_image_url || hazard.image_url;
   const properties = hazard.properties;
 
-  return (
-    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="bg-black/95 border border-robotic-yellow/40 rounded-lg max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-black/95 border border-robotic-yellow/40 rounded-lg max-w-xl w-full max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-robotic-yellow/20">
           <div>
@@ -67,57 +68,60 @@ export const HazardAssessmentModal = ({
           </button>
         </div>
 
-        {/* Hazard Image */}
-        {imageUrl && (
-          <div className="w-full bg-gray-900 border-b border-robotic-yellow/20">
-            <img
-              src={imageUrl}
-              alt={`${hazard.hazard_type} hazard`}
-              className="w-full h-48 object-cover"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-              }}
-            />
-          </div>
-        )}
+        {/* Scrollable content area */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {/* Hazard Image */}
+          {imageUrl && (
+            <div className="w-full bg-gray-900 border-b border-robotic-yellow/20">
+              <img
+                src={imageUrl}
+                alt={`${hazard.hazard_type} hazard`}
+                className="w-full h-48 object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            </div>
+          )}
 
-        {/* Current description (from time-evolving sequence) */}
-        {hazard.current_description && (
-          <div className="px-4 py-2 bg-red-900/20 border-b border-red-500/20">
-            <p className="text-xs terminal-text text-red-300">{hazard.current_description}</p>
-          </div>
-        )}
+          {/* Current description (from time-evolving sequence) */}
+          {hazard.current_description && (
+            <div className="px-4 py-2 bg-red-900/20 border-b border-red-500/20">
+              <p className="text-xs terminal-text text-red-300">{hazard.current_description}</p>
+            </div>
+          )}
 
-        {/* Properties */}
-        <div className="px-4 py-3 border-b border-robotic-yellow/20">
-          <h3 className="text-xs font-medium terminal-text text-robotic-yellow/70 mb-2 uppercase">
-            Situation Details
-          </h3>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-            {Object.entries(properties).map(([key, value]) => {
-              if (value == null || value === '') return null;
-              const label = PROPERTY_LABELS[key] ?? key.replace(/_/g, ' ');
-              const displayValue =
-                typeof value === 'boolean'
-                  ? value
-                    ? 'Yes'
-                    : 'No'
-                  : Array.isArray(value)
-                    ? value.join(', ')
-                    : String(value);
+          {/* Properties */}
+          <div className="px-4 py-3 border-b border-robotic-yellow/20">
+            <h3 className="text-xs font-medium terminal-text text-robotic-yellow/70 mb-2 uppercase">
+              Situation Details
+            </h3>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+              {Object.entries(properties).map(([key, value]) => {
+                if (value == null || value === '') return null;
+                const label = PROPERTY_LABELS[key] ?? key.replace(/_/g, ' ');
+                const displayValue =
+                  typeof value === 'boolean'
+                    ? value
+                      ? 'Yes'
+                      : 'No'
+                    : Array.isArray(value)
+                      ? value.join(', ')
+                      : String(value);
 
-              return (
-                <div key={key} className="text-xs terminal-text">
-                  <span className="text-robotic-yellow/50 capitalize">{label}: </span>
-                  <span className="text-robotic-yellow/90">{displayValue}</span>
-                </div>
-              );
-            })}
+                return (
+                  <div key={key} className="text-xs terminal-text">
+                    <span className="text-robotic-yellow/50 capitalize">{label}: </span>
+                    <span className="text-robotic-yellow/90">{displayValue}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        {/* Decision Input */}
-        <div className="px-4 py-3">
+        {/* Decision Input — always visible at bottom */}
+        <div className="px-4 py-3 shrink-0 border-t border-robotic-yellow/20">
           <h3 className="text-xs font-medium terminal-text text-robotic-yellow/70 mb-2 uppercase">
             Your Response
           </h3>
@@ -148,6 +152,7 @@ export const HazardAssessmentModal = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };

@@ -121,8 +121,11 @@ export const CasualtyPin = ({ casualty, onClick }: CasualtyPinProps) => {
 
   return (
     <Marker position={position} icon={icon} eventHandlers={{ click: () => onClick(casualty) }}>
-      <Tooltip>
-        <div className="text-xs max-w-xs">
+      <Tooltip className="pin-tooltip">
+        <div
+          style={{ maxWidth: 320, whiteSpace: 'normal', wordWrap: 'break-word' }}
+          className="text-xs"
+        >
           <div className="font-semibold">
             Patient —{' '}
             {playerTag ? `${displayColor.toUpperCase()} (tagged)` : 'UNASSESSED — click to triage'}
@@ -137,11 +140,7 @@ export const CasualtyPin = ({ casualty, onClick }: CasualtyPinProps) => {
             </div>
           )}
           {consciousness && <div className="capitalize">Consciousness: {consciousness}</div>}
-          {visibleDesc && (
-            <div className="mt-1 text-gray-400 leading-tight">
-              {visibleDesc.length > 180 ? visibleDesc.slice(0, 180) + '...' : visibleDesc}
-            </div>
-          )}
+          {visibleDesc && <div className="mt-1 text-gray-400 leading-tight">{visibleDesc}</div>}
         </div>
       </Tooltip>
     </Marker>

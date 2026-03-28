@@ -121,8 +121,11 @@ export const CrowdPin = ({ crowd, onClick, isDraggable = false, onDragEnd }: Cro
         },
       }}
     >
-      <Tooltip>
-        <div className="text-xs max-w-xs">
+      <Tooltip className="pin-tooltip">
+        <div
+          style={{ maxWidth: 320, whiteSpace: 'normal', wordWrap: 'break-word' }}
+          className="text-xs"
+        >
           <div className="font-semibold">Crowd — {crowd.headcount} people</div>
           <div className="capitalize text-gray-500">{crowd.status}</div>
           {behavior && <div className="capitalize">Behavior: {behavior}</div>}
@@ -134,11 +137,7 @@ export const CrowdPin = ({ crowd, onClick, isDraggable = false, onDragEnd }: Cro
               {mixedWounded.reduce((sum, w) => sum + ((w.count as number) ?? 0), 0)}
             </div>
           )}
-          {visibleDesc && (
-            <div className="mt-1 text-gray-400 leading-tight">
-              {visibleDesc.length > 180 ? visibleDesc.slice(0, 180) + '...' : visibleDesc}
-            </div>
-          )}
+          {visibleDesc && <div className="mt-1 text-gray-400 leading-tight">{visibleDesc}</div>}
           {!isDraggable && crowd.status === 'identified' && (
             <div className="mt-1 text-gray-500 italic">
               Place marshals nearby to enable movement

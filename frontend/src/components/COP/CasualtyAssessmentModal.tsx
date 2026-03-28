@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { CasualtyData } from './CasualtyPin';
 
 interface CasualtyAssessmentModalProps {
@@ -80,9 +81,9 @@ export const CasualtyAssessmentModal = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-[#0f1218] border border-robotic-yellow/30 rounded-lg shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-[#0f1218] border border-robotic-yellow/30 rounded-lg shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-robotic-yellow/20">
           <h3 className="text-sm font-bold terminal-text text-robotic-yellow uppercase tracking-wider">
@@ -96,92 +97,96 @@ export const CasualtyAssessmentModal = ({
           </button>
         </div>
 
-        {/* Patient description */}
-        <div className="p-4 space-y-3 border-b border-robotic-yellow/10">
-          {visibleDesc && (
-            <p className="text-sm text-robotic-yellow/80 leading-relaxed">{visibleDesc}</p>
-          )}
+        {/* Patient description + triage options — scrollable area */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="p-4 space-y-3 border-b border-robotic-yellow/10">
+            {visibleDesc && (
+              <p className="text-sm text-robotic-yellow/80 leading-relaxed">{visibleDesc}</p>
+            )}
 
-          <div className="grid grid-cols-3 gap-2 text-xs terminal-text">
-            <div>
-              <span className="text-robotic-yellow/40">Mobility:</span>
-              <span className="ml-1 text-robotic-yellow capitalize">
-                {mobility.replace(/_/g, ' ')}
-              </span>
-            </div>
-            <div>
-              <span className="text-robotic-yellow/40">Conscious:</span>
-              <span className="ml-1 text-robotic-yellow capitalize">{consciousness}</span>
-            </div>
-            <div>
-              <span className="text-robotic-yellow/40">Breathing:</span>
-              <span className="ml-1 text-robotic-yellow capitalize">{breathing}</span>
-            </div>
-          </div>
-
-          {accessibility !== 'open' && (
-            <div className="text-xs terminal-text text-orange-400 capitalize">
-              Access: {accessibility.replace(/_/g, ' ')}
-            </div>
-          )}
-
-          {injuries.length > 0 && (
-            <div className="space-y-1">
-              <div className="text-xs terminal-text text-robotic-yellow/50 uppercase">
-                Visible injuries:
+            <div className="grid grid-cols-3 gap-2 text-xs terminal-text">
+              <div>
+                <span className="text-robotic-yellow/40">Mobility:</span>
+                <span className="ml-1 text-robotic-yellow capitalize">
+                  {mobility.replace(/_/g, ' ')}
+                </span>
               </div>
-              {injuries.map((inj, i) => (
-                <div
-                  key={i}
-                  className="text-xs text-robotic-yellow/70 pl-2 border-l border-robotic-yellow/20"
-                >
-                  <span className="capitalize font-medium">
-                    {String(inj.type ?? '').replace(/_/g, ' ')}
-                  </span>
-                  {typeof inj.severity === 'string' && inj.severity && (
-                    <span className="text-robotic-yellow/40 ml-1">({inj.severity})</span>
-                  )}
-                  {typeof inj.body_part === 'string' && inj.body_part && (
-                    <span className="text-robotic-yellow/50 ml-1">— {inj.body_part}</span>
-                  )}
-                  {typeof inj.visible_signs === 'string' && inj.visible_signs && (
-                    <div className="text-robotic-yellow/40 mt-0.5">{inj.visible_signs}</div>
-                  )}
+              <div>
+                <span className="text-robotic-yellow/40">Conscious:</span>
+                <span className="ml-1 text-robotic-yellow capitalize">{consciousness}</span>
+              </div>
+              <div>
+                <span className="text-robotic-yellow/40">Breathing:</span>
+                <span className="ml-1 text-robotic-yellow capitalize">{breathing}</span>
+              </div>
+            </div>
+
+            {accessibility !== 'open' && (
+              <div className="text-xs terminal-text text-orange-400 capitalize">
+                Access: {accessibility.replace(/_/g, ' ')}
+              </div>
+            )}
+
+            {injuries.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-xs terminal-text text-robotic-yellow/50 uppercase">
+                  Visible injuries:
                 </div>
-              ))}
-            </div>
-          )}
+                {injuries.map((inj, i) => (
+                  <div
+                    key={i}
+                    className="text-xs text-robotic-yellow/70 pl-2 border-l border-robotic-yellow/20"
+                  >
+                    <span className="capitalize font-medium">
+                      {String(inj.type ?? '').replace(/_/g, ' ')}
+                    </span>
+                    {typeof inj.severity === 'string' && inj.severity && (
+                      <span className="text-robotic-yellow/40 ml-1">({inj.severity})</span>
+                    )}
+                    {typeof inj.body_part === 'string' && inj.body_part && (
+                      <span className="text-robotic-yellow/50 ml-1">— {inj.body_part}</span>
+                    )}
+                    {typeof inj.visible_signs === 'string' && inj.visible_signs && (
+                      <div className="text-robotic-yellow/40 mt-0.5">{inj.visible_signs}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
-          {existingTag && (
-            <div className="text-xs terminal-text text-robotic-yellow/50">
-              Previously tagged: <span className="uppercase font-bold">{existingTag}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Triage color selection */}
-        <div className="p-4 space-y-2">
-          <div className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
-            Assign triage tag:
+            {existingTag && (
+              <div className="text-xs terminal-text text-robotic-yellow/50">
+                Previously tagged: <span className="uppercase font-bold">{existingTag}</span>
+              </div>
+            )}
           </div>
-          {TRIAGE_OPTIONS.map((opt) => (
-            <button
-              key={opt.color}
-              onClick={() => setSelected(opt.color)}
-              className={`w-full text-left p-3 rounded border-2 transition-all ${
-                selected === opt.color
-                  ? `${opt.bg} ${opt.border} shadow-lg`
-                  : 'border-transparent bg-white/5 hover:bg-white/10'
-              }`}
-            >
-              <div className="text-sm font-bold terminal-text text-robotic-yellow">{opt.label}</div>
-              <div className="text-xs text-robotic-yellow/50 mt-0.5">{opt.description}</div>
-            </button>
-          ))}
+
+          {/* Triage color selection */}
+          <div className="p-4 space-y-2">
+            <div className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
+              Assign triage tag:
+            </div>
+            {TRIAGE_OPTIONS.map((opt) => (
+              <button
+                key={opt.color}
+                onClick={() => setSelected(opt.color)}
+                className={`w-full text-left p-3 rounded border-2 transition-all ${
+                  selected === opt.color
+                    ? `${opt.bg} ${opt.border} shadow-lg`
+                    : 'border-transparent bg-white/5 hover:bg-white/10'
+                }`}
+              >
+                <div className="text-sm font-bold terminal-text text-robotic-yellow">
+                  {opt.label}
+                </div>
+                <div className="text-xs text-robotic-yellow/50 mt-0.5">{opt.description}</div>
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Actions */}
-        <div className="p-4 border-t border-robotic-yellow/20 flex items-center gap-3">
+        {/* Actions — always visible at bottom */}
+        <div className="p-4 border-t border-robotic-yellow/20 flex items-center gap-3 shrink-0">
           {error && <div className="text-xs text-red-400 flex-1">{error}</div>}
           <button
             onClick={onClose}
@@ -198,6 +203,7 @@ export const CasualtyAssessmentModal = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };

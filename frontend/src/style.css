@@ -325,6 +325,13 @@ button:focus-visible {
   scrollbar-color: #dc2626 rgba(15, 15, 15, 0.8);
 }
 
+/* Leaflet tooltip overrides for map pin tooltips */
+.leaflet-tooltip.pin-tooltip {
+  max-width: 350px;
+  white-space: normal;
+  word-wrap: break-word;
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;
