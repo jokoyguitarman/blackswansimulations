@@ -813,7 +813,13 @@ export const api = {
     getParticipants: async (sessionId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{
-        data: Array<{ id: string; full_name: string; role: string; agency_name?: string }>;
+        data: Array<{
+          id: string;
+          full_name: string;
+          role: string;
+          agency_name?: string;
+          team_name?: string;
+        }>;
       }>(await fetch(apiUrl(`/api/channels/session/${sessionId}/participants`), { headers }));
     },
     createDM: async (sessionId: string, recipientId: string) => {
