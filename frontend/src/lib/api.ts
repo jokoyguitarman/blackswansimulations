@@ -322,6 +322,10 @@ export const api = {
           coordinates: { lat?: number; lng?: number };
           conditions?: Record<string, unknown>;
           display_order?: number;
+          claimable_by?: string[];
+          claimed_by_team?: string | null;
+          claimed_as?: string | null;
+          claim_exclusivity?: string | null;
         }>;
         /** Insider categories the user has asked about this session; only those POI pins are shown. */
         map_revealed_categories?: string[];
