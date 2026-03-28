@@ -553,6 +553,97 @@ export const api = {
     },
   },
 
+  casualties: {
+    list: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          scenario_id: string;
+          session_id: string | null;
+          casualty_type: string;
+          location_lat: number;
+          location_lng: number;
+          floor_level: string;
+          headcount: number;
+          conditions: Record<string, unknown>;
+          status: string;
+          assigned_team: string | null;
+          appears_at_minutes: number;
+          updated_at: string;
+        }>;
+        elapsed_minutes: number;
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/casualties`), { headers }));
+    },
+    get: async (sessionId: string, casualtyId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Record<string, unknown>;
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/casualties/${casualtyId}`), { headers }));
+    },
+    update: async (
+      sessionId: string,
+      casualtyId: string,
+      payload: {
+        status?: string;
+        assigned_team?: string;
+        linked_decision_id?: string;
+        location_lat?: number;
+        location_lng?: number;
+        conditions?: Record<string, unknown>;
+      },
+    ) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/casualties/${casualtyId}`), {
+          method: 'PATCH',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }),
+      );
+    },
+  },
+
+  marshalCheck: {
+    check: async (sessionId: string, lat: number, lng: number) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { has_marshal: boolean } }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/marshal-check?lat=${lat}&lng=${lng}`), {
+          headers,
+        }),
+      );
+    },
+  },
+
+  equipment: {
+    list: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          scenario_id: string;
+          equipment_type: string;
+          label: string;
+          icon: string | null;
+          properties: Record<string, unknown>;
+        }>;
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/equipment`), { headers }));
+    },
+  },
+
+  locations: {
+    claim: async (sessionId: string, locationId: string, team_name: string, claimed_as: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/locations/${locationId}/claim`), {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ team_name, claimed_as }),
+        }),
+      );
+    },
+  },
+
   // Floor Plans (multi-floor maps)
   floorPlans: {
     list: async (sessionId: string) => {

@@ -5,6 +5,7 @@ import { logger } from '../lib/logger.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { validatePlacement } from '../services/placementValidationService.js';
 import { evaluatePlacement } from '../services/spatialScoringService.js';
+import { evaluatePinResolution } from '../services/pinResolutionService.js';
 
 const router = Router();
 
@@ -360,6 +361,11 @@ router.post('/sessions/:id/placements', requireAuth, async (req, res) => {
       logger.warn({ err, sessionId }, 'Enclosure linking error (non-blocking)');
     });
 
+    // Trigger pin resolution in background (don't block response)
+    evaluatePinResolution(sessionId).catch((err) => {
+      logger.warn({ err, sessionId }, 'Pin resolution evaluation error (non-blocking)');
+    });
+
     return res.status(201).json({
       data: placement,
       warnings: validation.warnings,
@@ -447,6 +453,10 @@ router.patch('/sessions/:id/placements/:placementId', requireAuth, async (req, r
     } catch {
       /* non-blocking */
     }
+
+    evaluatePinResolution(sessionId).catch((err) => {
+      logger.warn({ err, sessionId }, 'Pin resolution evaluation error (non-blocking)');
+    });
 
     return res.json({ data: updated });
   } catch (err) {

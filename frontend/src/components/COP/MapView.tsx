@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import { Icon, Marker as LeafletMarker } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -16,6 +16,9 @@ import { MapDropHandler } from './MapDropHandler';
 import { MapDrawHandler } from './MapDrawHandler';
 import { HazardMarker, type HazardData } from './HazardMarker';
 import { HazardAssessmentModal } from './HazardAssessmentModal';
+import { CasualtyPin, type CasualtyData } from './CasualtyPin';
+import { CrowdPin, type CrowdData } from './CrowdPin';
+import { EntryExitPin, type EntryExitData } from './EntryExitPin';
 import { FloorSelector, type FloorPlan } from './FloorSelector';
 import { FloorPlanOverlay } from './FloorPlanOverlay';
 import { useWebSocket } from '../../hooks/useWebSocket';
@@ -463,6 +466,9 @@ export const MapView = ({
   const [placedAssets, setPlacedAssets] = useState<PlacedAsset[]>([]);
   const [hazards, setHazards] = useState<HazardData[]>([]);
   const [selectedHazard, setSelectedHazard] = useState<HazardData | null>(null);
+  const [casualties, setCasualties] = useState<CasualtyData[]>([]);
+  const [crowds, setCrowds] = useState<CrowdData[]>([]);
+  const [entryExitPins, setEntryExitPins] = useState<EntryExitData[]>([]);
   const [floorPlans, setFloorPlans] = useState<FloorPlan[]>([]);
   const [activeFloor, setActiveFloor] = useState('G');
   const [isContainerReady, setIsContainerReady] = useState(false);
@@ -504,6 +510,27 @@ export const MapView = ({
       cancelled = true;
     };
   }, [sessionId, isMapDisabled, locationsRefreshTrigger]);
+
+  // Extract entry/exit pins from scenario locations
+  useEffect(() => {
+    const eeLocations = scenarioLocations
+      .filter((sl) => sl.pin_category === 'entry_exit')
+      .map((sl) => ({
+        id: sl.id,
+        label: sl.label,
+        location_type: sl.location_type,
+        coordinates: sl.coordinates as { lat: number; lng: number },
+        conditions: (sl.conditions ?? {}) as Record<string, unknown>,
+        claimable_by: ((sl.conditions as Record<string, unknown>)?.claimable_by as string[]) ?? [
+          'all',
+        ],
+        claimed_by_team:
+          ((sl.conditions as Record<string, unknown>)?.claimed_by_team as string | null) ?? null,
+        claimed_as:
+          ((sl.conditions as Record<string, unknown>)?.claimed_as as string | null) ?? null,
+      }));
+    setEntryExitPins(eeLocations);
+  }, [scenarioLocations]);
 
   // Listen for state updates: evacuation zones + environmental_state (Step 6)
   useWebSocket({
@@ -577,6 +604,24 @@ export const MapView = ({
       .catch(() => {
         /* ignore */
       });
+    api.casualties
+      .list(sessionId)
+      .then((res) => {
+        if (cancelled) return;
+        if (Array.isArray(res.data)) {
+          const patients = (res.data as CasualtyData[]).filter(
+            (c) => c.casualty_type === 'patient',
+          );
+          const crowdItems = (res.data as CrowdData[]).filter(
+            (c) => c.casualty_type === 'crowd' || c.casualty_type === 'evacuee_group',
+          );
+          setCasualties(patients);
+          setCrowds(crowdItems);
+        }
+      })
+      .catch(() => {
+        /* ignore */
+      });
     api.floorPlans
       .list(sessionId)
       .then((res) => {
@@ -593,7 +638,7 @@ export const MapView = ({
     };
   }, [sessionId, isMapDisabled]);
 
-  // Periodically refresh hazards (new ones may appear over time)
+  // Periodically refresh hazards and casualties (new ones may appear over time)
   useEffect(() => {
     if (!sessionId || isMapDisabled) return;
     const interval = setInterval(() => {
@@ -602,6 +647,23 @@ export const MapView = ({
         .then((res) => {
           if (Array.isArray(res.data)) {
             setHazards(res.data as HazardData[]);
+          }
+        })
+        .catch(() => {
+          /* ignore */
+        });
+      api.casualties
+        .list(sessionId)
+        .then((res) => {
+          if (Array.isArray(res.data)) {
+            const patients = (res.data as CasualtyData[]).filter(
+              (c) => c.casualty_type === 'patient',
+            );
+            const crowdItems = (res.data as CrowdData[]).filter(
+              (c) => c.casualty_type === 'crowd' || c.casualty_type === 'evacuee_group',
+            );
+            setCasualties(patients);
+            setCrowds(crowdItems);
           }
         })
         .catch(() => {
@@ -728,6 +790,50 @@ export const MapView = ({
       containerRef.current = null;
     };
   }, [mapKey]);
+
+  // Compute which crowd pins are near marshals (client-side proximity check)
+  const crowdDraggability = useMemo(() => {
+    const result = new Map<string, boolean>();
+    const MARSHAL_RANGE_DEG = 0.001; // ~100m at equator
+
+    const marshalAssets = placedAssets.filter((a) => {
+      const t = a.asset_type.toLowerCase();
+      return t.includes('marshal') || t.includes('steward') || t.includes('police');
+    });
+
+    for (const crowd of crowds) {
+      let hasMarshal = false;
+      for (const m of marshalAssets) {
+        const geom = m.geometry as Record<string, unknown>;
+        if (!geom) continue;
+        let mLat = 0,
+          mLng = 0;
+        if ((geom.type as string) === 'Point') {
+          const coords = geom.coordinates as number[];
+          mLat = coords[1];
+          mLng = coords[0];
+        } else if ((geom.type as string) === 'Polygon') {
+          const coords = ((geom.coordinates as number[][][]) ?? [[]])[0];
+          for (const c of coords) {
+            mLat += c[1];
+            mLng += c[0];
+          }
+          mLat /= coords.length || 1;
+          mLng /= coords.length || 1;
+        } else continue;
+
+        if (
+          Math.abs(crowd.location_lat - mLat) <= MARSHAL_RANGE_DEG &&
+          Math.abs(crowd.location_lng - mLng) <= MARSHAL_RANGE_DEG
+        ) {
+          hasMarshal = true;
+          break;
+        }
+      }
+      result.set(crowd.id, hasMarshal);
+    }
+    return result;
+  }, [crowds, placedAssets]);
 
   if (isMapDisabled) {
     return <FallbackUI />;
@@ -963,13 +1069,73 @@ export const MapView = ({
               <FloorPlanOverlay key={floor.id} floor={floor} />
             ))}
 
-          {/* Hazard Markers (Phase 4) — filtered by active floor */}
+          {/* Hazard Markers — filtered by active floor, show resolved with reduced opacity */}
           {hazards
-            .filter((h) => h.status !== 'resolved')
             .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
             .map((hazard) => (
               <HazardMarker key={hazard.id} hazard={hazard} onClick={setSelectedHazard} />
             ))}
+
+          {/* Casualty Pins (individual patients) */}
+          {casualties
+            .filter((c) => c.floor_level === activeFloor || !floorPlans.length)
+            .map((casualty) => (
+              <CasualtyPin
+                key={casualty.id}
+                casualty={casualty}
+                onClick={() => {
+                  /* TODO: open casualty detail modal */
+                }}
+              />
+            ))}
+
+          {/* Crowd Pins (civilian groups) */}
+          {crowds
+            .filter((c) => c.floor_level === activeFloor || !floorPlans.length)
+            .map((crowd) => (
+              <CrowdPin
+                key={crowd.id}
+                crowd={crowd}
+                isDraggable={crowdDraggability.get(crowd.id) ?? false}
+                onClick={() => {
+                  /* TODO: open crowd detail modal */
+                }}
+                onDragEnd={async (c, newLat, newLng) => {
+                  try {
+                    await api.casualties.update(sessionId, c.id, {
+                      location_lat: newLat,
+                      location_lng: newLng,
+                    });
+                  } catch {
+                    /* revert will happen on next poll */
+                  }
+                }}
+              />
+            ))}
+
+          {/* Entry/Exit Pins */}
+          {entryExitPins.map((loc) => (
+            <EntryExitPin
+              key={loc.id}
+              location={loc}
+              currentTeam={teamName ?? ''}
+              teamNames={[]}
+              onClaim={async (locationId, tn, claimedAs) => {
+                try {
+                  await api.locations.claim(sessionId, locationId, tn, claimedAs);
+                  setEntryExitPins((prev) =>
+                    prev.map((p) =>
+                      p.id === locationId
+                        ? { ...p, claimed_by_team: tn, claimed_as: claimedAs }
+                        : p,
+                    ),
+                  );
+                } catch {
+                  /* ignore */
+                }
+              }}
+            />
+          ))}
         </MapContainer>
       )}
 

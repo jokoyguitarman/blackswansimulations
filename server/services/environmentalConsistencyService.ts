@@ -288,6 +288,42 @@ function buildGroundTruthSummary(
     parts.push(`Current route status: ${routeLines.join('; ')}`);
   }
 
+  // 7) Entry/exit claims
+  const entryExitLocations = (scenarioLocations ?? []).filter((loc) => {
+    const cond = (loc.conditions ?? {}) as Record<string, unknown>;
+    return cond.pin_category === 'entry_exit';
+  });
+  if (entryExitLocations.length > 0) {
+    const eeParts = entryExitLocations.map((loc) => {
+      const label = loc.label ?? 'Point';
+      const claimed = (loc as Record<string, unknown>).claimed_by_team;
+      const claimedAs = (loc as Record<string, unknown>).claimed_as;
+      if (claimed) return `${label}: claimed by ${claimed} as ${claimedAs}`;
+      return `${label}: unclaimed`;
+    });
+    parts.push(`Entry/exit points: ${eeParts.join('; ')}`);
+  }
+
+  // 8) Team workflow expectations
+  const workflows = insiderKnowledge.team_workflows as
+    | Record<
+        string,
+        { endgame?: string; steps?: string[]; personnel_ratios?: Record<string, string> }
+      >
+    | undefined;
+  if (workflows && Object.keys(workflows).length > 0) {
+    const wfParts = Object.entries(workflows).map(([team, wf]) => {
+      const stepsStr = wf.steps?.length ? ` Steps: ${wf.steps.join(' → ')}` : '';
+      const ratios = wf.personnel_ratios
+        ? ` Ratios: ${Object.entries(wf.personnel_ratios)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(', ')}`
+        : '';
+      return `${team}: endgame="${wf.endgame || 'unspecified'}"${stepsStr}${ratios}`;
+    });
+    parts.push(`Team workflows: ${wfParts.join('; ')}`);
+  }
+
   return parts.length > 0 ? parts.join('. ') : '';
 }
 

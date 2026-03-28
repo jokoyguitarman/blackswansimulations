@@ -15,6 +15,13 @@ export interface HazardData {
   current_description: string | null;
   status: string;
   appears_at_minutes: number;
+  enriched_description?: string | null;
+  fire_class?: string | null;
+  debris_type?: string | null;
+  resolution_requirements?: Record<string, unknown>;
+  personnel_requirements?: Record<string, unknown>;
+  equipment_requirements?: Array<Record<string, unknown>>;
+  deterioration_timeline?: Record<string, unknown>;
 }
 
 interface HazardMarkerProps {
@@ -32,15 +39,24 @@ const HAZARD_ICONS: Record<string, { emoji: string; color: string }> = {
   biological: { emoji: '☢️', color: '#65a30d' },
   explosion: { emoji: '💥', color: '#ef4444' },
   electrical: { emoji: '⚡', color: '#f59e0b' },
+  smoke: { emoji: '🌫️', color: '#6b7280' },
 };
 
 function getHazardVisual(type: string): { emoji: string; color: string } {
   return HAZARD_ICONS[type] ?? { emoji: '⚠️', color: '#f97316' };
 }
 
+function statusColor(status: string, baseColor: string): string {
+  if (status === 'resolved') return '#22c55e';
+  if (status === 'contained') return '#f97316';
+  return baseColor;
+}
+
 function createHazardIcon(hazard: HazardData): DivIcon {
-  const { emoji, color } = getHazardVisual(hazard.hazard_type);
+  const { emoji, color: baseColor } = getHazardVisual(hazard.hazard_type);
+  const color = statusColor(hazard.status, baseColor);
   const isActive = hazard.status === 'active' || hazard.status === 'escalating';
+  const isResolved = hazard.status === 'resolved';
   const pulseClass = isActive ? 'hazard-pulse' : '';
 
   return new DivIcon({
@@ -54,6 +70,7 @@ function createHazardIcon(hazard: HazardData): DivIcon {
         align-items: center;
         justify-content: center;
         cursor: pointer;
+        ${isResolved ? 'opacity: 0.6;' : ''}
       ">
         ${
           isActive
@@ -79,7 +96,7 @@ function createHazardIcon(hazard: HazardData): DivIcon {
           justify-content: center;
           font-size: 18px;
         ">
-          <span>${emoji}</span>
+          <span>${isResolved ? '✅' : emoji}</span>
         </div>
         ${
           hazard.status === 'escalating'
@@ -117,10 +134,22 @@ export const HazardMarker = ({ hazard, onClick }: HazardMarkerProps) => {
   return (
     <Marker position={position} icon={icon} eventHandlers={{ click: () => onClick(hazard) }}>
       <Tooltip>
-        <div className="text-xs">
+        <div className="text-xs max-w-xs">
           <div className="font-semibold capitalize">{hazard.hazard_type.replace(/_/g, ' ')}</div>
-          <div className="capitalize text-gray-500">{hazard.status}</div>
+          <div className="capitalize text-gray-500">
+            {hazard.status}
+            {hazard.status === 'resolved' ? ' — Resolved' : ''}
+          </div>
+          {hazard.fire_class && <div>Fire Class: {hazard.fire_class}</div>}
+          {hazard.debris_type && <div>Debris: {hazard.debris_type}</div>}
           {hazard.properties.size != null && <div>Size: {String(hazard.properties.size)}</div>}
+          {hazard.enriched_description && (
+            <div className="mt-1 text-gray-400 leading-tight" style={{ maxWidth: 250 }}>
+              {hazard.enriched_description.length > 200
+                ? hazard.enriched_description.slice(0, 200) + '...'
+                : hazard.enriched_description}
+            </div>
+          )}
         </div>
       </Tooltip>
     </Marker>

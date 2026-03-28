@@ -16,8 +16,8 @@ import type {
 import {
   standardsToPromptBlock,
   similarCasesToPromptBlock,
-  siteRequirementsToPromptBlock,
   mapStandardsToTeams,
+  researchTeamWorkflows,
   type SimilarCase,
 } from './warroomResearchService.js';
 import type { CounterDefinition } from '../counterDefinitions.js';
@@ -134,6 +134,29 @@ export interface WarroomScenarioPayload {
     image_sequence?: Array<{ at_minutes: number; image_url: string; description: string }>;
     status: string;
     appears_at_minutes: number;
+    resolution_requirements?: Record<string, unknown>;
+    personnel_requirements?: Record<string, unknown>;
+    equipment_requirements?: Array<Record<string, unknown>>;
+    deterioration_timeline?: Record<string, unknown>;
+    enriched_description?: string;
+    fire_class?: string;
+    debris_type?: string;
+  }>;
+  casualties?: Array<{
+    casualty_type: 'patient' | 'crowd' | 'evacuee_group';
+    location_lat: number;
+    location_lng: number;
+    floor_level: string;
+    headcount: number;
+    conditions: Record<string, unknown>;
+    status: string;
+    appears_at_minutes: number;
+  }>;
+  equipment?: Array<{
+    equipment_type: string;
+    label: string;
+    icon?: string;
+    properties: Record<string, unknown>;
   }>;
   insider_knowledge?: {
     osm_vicinity?: OsmVicinity;
@@ -156,6 +179,15 @@ export interface WarroomScenarioPayload {
         category: string;
         answer: string;
       }>
+    >;
+    team_workflows?: Record<
+      string,
+      {
+        endgame: string;
+        steps: string[];
+        personnel_ratios?: Record<string, string>;
+        sop_checklist?: string[];
+      }
     >;
   };
 }
@@ -614,24 +646,6 @@ function normalizeInjectTiming(
   return result.sort((a, b) => a.trigger_time_minutes - b.trigger_time_minutes);
 }
 
-/**
- * Build team pairings for cross-team condition injects, gated by complexity tier.
- * minimal → none; all other tiers → all C(N,2) pairs
- */
-function buildPairs(
-  teamNames: string[],
-  tier: WarroomGenerateInput['complexity_tier'],
-): [string, string][] {
-  if (tier === 'minimal') return [];
-  const all: [string, string][] = [];
-  for (let i = 0; i < teamNames.length; i++) {
-    for (let j = i + 1; j < teamNames.length; j++) {
-      all.push([teamNames[i], teamNames[j]]);
-    }
-  }
-  return all;
-}
-
 // ---------------------------------------------------------------------------
 // Team state schema hint — used by Phase 4b and 4d prompts
 // ---------------------------------------------------------------------------
@@ -902,33 +916,29 @@ ${coords}
 ${buildingBlock}
 ${narrativeBlock}
 
-Generate 4–6 SCENARIO-FIXED pins: locations inherent to the scenario geography.
+Generate SCENARIO-FIXED pins: the incident site and all potential entry/exit points at the venue.
 
 IMPORTANT: Before generating pins, read the scenario narrative carefully to determine WHERE the incident actually occurs within the venue. The venue geocode is just the approximate center of the venue — the actual incident may be in a car park, a specific wing, an outdoor area, or any sub-location described in the narrative. Place pins relative to the ACTUAL incident location, not the venue center.
 
-PIN CATEGORIES:
-- incident_site: Determine the EXACT crisis location from the scenario narrative. If the narrative describes an incident at a specific part of the venue (e.g. "car bomb in the car park", "explosion on the runway", "fire in the loading dock", "shooting in the lobby"), place the pin at THAT specific location — not at the main building center. Use the building outlines to identify which structure or area matches the narrative. Only default to the main building center if the narrative does not specify a sub-location within the venue.
-- access: exits/access points people would use to LEAVE the danger zone described in the narrative. For building incidents: place at the building perimeter where doors meet roads or open areas. For outdoor incidents (car park, runway, open area): place at vehicle exits, pedestrian gates, or emergency paths leading away from the incident site. These must be within 150m of the incident site pin (not the venue geocode center). If building bounds are provided, place exit coordinates ON or VERY NEAR the building boundary edges, NOT in the middle of open areas.
-- cordon: inner/outer perimeter, exclusion zones. Place at road intersections or natural choke points 150–300m from the incident site pin.
-- command: ONLY if the scenario dictates a fixed command location. Place 200–400m from incident site pin.
+PIN CATEGORIES (only these two):
+- incident_site (1 pin): Determine the EXACT crisis location from the scenario narrative. If the narrative describes an incident at a specific part of the venue (e.g. "car bomb in the car park", "explosion on the runway", "fire in the loading dock", "shooting in the lobby"), place the pin at THAT specific location — not at the main building center. Use the building outlines to identify which structure or area matches the narrative. Only default to the main building center if the narrative does not specify a sub-location within the venue.
+- entry_exit (4-8 pins): ALL potential entry/exit points at the venue that response teams could use. These are NEUTRAL — teams will claim them during gameplay. Include building exits, service entrances, loading docks, emergency exits, vehicle access gates, pedestrian paths. For building incidents: place at the building perimeter where doors meet roads or open areas. For outdoor incidents: place at vehicle exits, pedestrian gates, or emergency paths. If building bounds are provided, place exit coordinates ON or VERY NEAR the building boundary edges.
 
 CONDITIONS per pin type:
-- Exits/routes: { width_m, surface, capacity_flow_per_min, is_blocked, lighting, accessibility, distance_from_incident_m, notes }
-- Incident site: { area_m2, structural_damage, hazards[], accessibility, casualty_density, notes }
-- Cordons: { radius_m, terrain, breach_points, notes }
+- entry_exit: { width_m, surface, capacity_flow_per_min, is_blocked, lighting, accessibility, distance_from_incident_m, exit_type (e.g. "double_door", "loading_dock", "vehicle_gate", "emergency_exit", "pedestrian_path"), notes }
+- incident_site: { area_m2, structural_damage, hazards[], accessibility, casualty_density, notes }
 
-Do NOT generate hospital, police station, fire station, or candidate-space pins.
+Do NOT generate hospital, police station, fire station, candidate-space, or cordon pins. Cordons are placed by players during gameplay.
 
 SPATIAL RULES:
 - Incident site pins: first read the scenario narrative to determine WHERE exactly the incident occurs, then place the pin at that specific location. This may be inside a building, in a car park, on an airfield, at a loading dock, or any location described in the briefing — do NOT default to the main building center.
-- Exit/access pins: MUST be at exits people use to leave the danger zone. For building incidents, place at the building perimeter edge. For outdoor incidents, place at vehicle/pedestrian exits from the affected area. NOT floating in open space away from any structure.
-- Cordon pins: place at a realistic perimeter distance (150–300m from the incident site) on roads or intersections
+- Entry/exit pins: MUST be at real building exits, gates, or access paths. NOT floating in open space away from any structure.
 - All coordinates must be realistic for the venue geography
 
 Return ONLY valid JSON:
 { "locations": [ { "location_type": "string", "pin_category": "string", "description": "string", "label": "string (max 5 words)", "coordinates": { "lat": 0.0, "lng": 0.0 }, "conditions": {}, "display_order": 1 } ] }`;
 
-  const userPrompt = `Place scenario-fixed pins (incident site, exits, cordons) for "${narrative?.title || scenario_type}" at ${venue}.`;
+  const userPrompt = `Place scenario-fixed pins (incident site + all entry/exit points) for "${narrative?.title || scenario_type}" at ${venue}.`;
 
   try {
     const parsed = await callOpenAi<{ locations?: WarroomScenarioPayload['locations'] }>(
@@ -940,156 +950,6 @@ Return ONLY valid JSON:
     return parsed.locations?.length ? parsed.locations : undefined;
   } catch (err) {
     logger.warn({ err }, 'Phase 4a-1 scenario-fixed pins failed; continuing without');
-    return undefined;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Phase 4a-2 — Candidate Space Pins  (selected from real OSM open spaces)
-// ---------------------------------------------------------------------------
-
-async function generateCandidateSpacePins(
-  input: WarroomGenerateInput,
-  teamNames: string[],
-  openAiApiKey: string,
-  onProgress?: WarroomAiProgressCallback,
-  narrative?: { title?: string; description?: string; briefing?: string },
-  scenarioFixedPins?: WarroomScenarioPayload['locations'],
-): Promise<WarroomScenarioPayload['locations']> {
-  if (input.complexity_tier === 'minimal') return undefined;
-
-  onProgress?.('Selecting candidate spaces from real map data...');
-
-  const {
-    scenario_type,
-    setting,
-    terrain,
-    venue_name,
-    location,
-    geocode,
-    osmOpenSpaces,
-    researchContext,
-  } = input;
-  const venue = venue_name || location || setting;
-  const coords = geocode ? `Incident center: ${geocode.lat}, ${geocode.lng}` : '';
-
-  // Determine the outermost exit distance for topology enforcement
-  let maxExitDistance = 100;
-  if (scenarioFixedPins && geocode) {
-    for (const pin of scenarioFixedPins) {
-      if (pin.pin_category === 'access' || pin.conditions?.pin_category === 'access') {
-        const dist = haversineDistance(
-          geocode.lat,
-          geocode.lng,
-          pin.coordinates.lat,
-          pin.coordinates.lng,
-        );
-        if (dist > maxExitDistance) maxExitDistance = Math.round(dist);
-      }
-    }
-  }
-  const minCandidateDistance = Math.max(150, maxExitDistance + 50);
-
-  // Build exit positions context for the AI
-  let exitContext = '';
-  if (scenarioFixedPins?.length) {
-    const exitLines = scenarioFixedPins
-      .filter((p) => p.pin_category === 'access' || p.conditions?.pin_category === 'access')
-      .map(
-        (p) =>
-          `  - "${p.label}" at [${p.coordinates.lat.toFixed(5)}, ${p.coordinates.lng.toFixed(5)}]`,
-      );
-    if (exitLines.length > 0) {
-      exitContext = `\nSCENARIO EXIT POSITIONS (for spatial reference — candidate spaces must be OUTSIDE this perimeter):\n${exitLines.join('\n')}\nOutermost exit is ~${maxExitDistance}m from incident center.`;
-    }
-  }
-
-  // Build open spaces menu
-  let openSpacesBlock = '';
-  const hasRealSpaces = osmOpenSpaces && osmOpenSpaces.length > 0;
-  if (hasRealSpaces) {
-    const lines = osmOpenSpaces.map((s, i) => {
-      const areaStr = s.area_m2 != null ? `~${s.area_m2}m²` : 'area unknown';
-      return `  ${i + 1}. "${s.name}" [${s.type}] at ${s.lat.toFixed(5)}, ${s.lng.toFixed(5)} — ${areaStr}, ${s.distance_from_center_m}m from incident`;
-    });
-    openSpacesBlock = `\nREAL OPEN SPACES (from OpenStreetMap — select candidate spaces from this list):\n${lines.join('\n')}`;
-  }
-
-  const siteReqBlock =
-    researchContext?.standards_findings && researchContext.standards_findings.length > 0
-      ? `\nSITE REQUIREMENTS (from standards research — use when assigning potential_uses):\n${siteRequirementsToPromptBlock(researchContext.standards_findings)}`
-      : '';
-
-  const narrativeBlock = narrative
-    ? `\nSCENARIO: ${narrative.title || ''} — ${narrative.description || ''}`
-    : '';
-
-  const selectionRule = hasRealSpaces
-    ? `You MUST select 8–15 spaces from the REAL OPEN SPACES list above.
-- Use the EXACT coordinates from the list — do NOT invent coordinates.
-- You may rename spaces with neutral physical labels (e.g. "Lot A", "Field North", "Bay C").
-- Only select spaces that are at least ${minCandidateDistance}m from the incident center.
-- If fewer than 8 real spaces are available beyond ${minCandidateDistance}m, you may generate additional candidate spaces with estimated coordinates beyond ${minCandidateDistance + 150}m from the incident center.`
-    : `Generate 8–15 candidate spaces with coordinates at least ${minCandidateDistance}m from the incident center (${coords}).
-- Place them on plausible usable areas: parking lots, fields, covered bays, courtyards, alleyways, street segments that can be cordoned, covered walkways, void decks — any space that could physically accommodate an operational function.`;
-
-  const systemPrompt = `You are an expert crisis management scenario designer selecting physical spaces that players must evaluate and assign operational purposes to.
-
-Scenario type: ${scenario_type}
-Venue: ${venue}
-Setting: ${setting}
-Terrain: ${terrain}
-Teams: ${teamNames.join(', ')}
-${coords}
-${exitContext}
-${openSpacesBlock}
-${siteReqBlock}
-${narrativeBlock}
-
-IMPORTANT: This is a ${scenario_type} scenario. potential_uses must reflect functions relevant to THIS scenario type — not generic MCI defaults.
-
-${selectionRule}
-
-Each candidate space must have:
-- location_type: physical descriptor (e.g. "parking", "open_lot", "park", "covered_bay", "courtyard", "grassy_field", "warehouse", "plaza", "alley", "street_segment", "pedestrian_street", "covered_walkway", "void_deck", "marketplace")
-- pin_category: always "candidate_space"
-- label: neutral physical name — NEVER an operational function name like "Triage Area" or "Command Post"
-- conditions: {
-    area_m2: number,
-    capacity_persons: number (estimate from area),
-    has_water: boolean,
-    has_electricity: boolean,
-    has_shelter: boolean,
-    vehicle_access: boolean,
-    distance_from_incident_m: number,
-    surface: "concrete" | "asphalt" | "grass" | "gravel" | "mud" | "tiled" | etc.,
-    potential_uses: ["use1", "use2", ...] — 2-4 operational functions this space COULD serve based on its physical properties and the scenario type,
-    notes: "1 sentence about constraints or advantages"
-  }
-- description: one sentence explaining the space
-- display_order: integer
-
-STREET & LINEAR SPACES: In dense urban environments, alleyways, pedestrian streets, covered walkways, void decks, and street segments that can be cordoned are valid candidate spaces — often more practical than a distant parking lot. Include them when they appear in the open spaces list or when the area is urban and open lots are scarce or far away. For linear spaces, estimate area_m2 from length × typical width (e.g. 100m alley × 4m width = 400m²) and note vehicle access limitations.
-
-SPATIAL TOPOLOGY RULE: EVERY candidate space MUST be further from the incident center than ${minCandidateDistance}m. These are spaces where responders work AFTER exiting the danger zone. No candidate space should be inside the cordon or exit perimeter.
-
-Vary the spaces: mix of large/small, covered/open, with/without water and power, lots and linear spaces. Some should clearly suit certain uses; others should be marginal or involve trade-offs.
-
-Return ONLY valid JSON:
-{ "locations": [ { "location_type": "string", "pin_category": "candidate_space", "description": "string", "label": "string", "coordinates": { "lat": 0.0, "lng": 0.0 }, "conditions": {}, "display_order": 1 } ] }`;
-
-  const userPrompt = `Select candidate spaces for "${narrative?.title || scenario_type}" at ${venue}. Teams: ${teamNames.join(', ')}.`;
-
-  try {
-    const parsed = await callOpenAi<{ locations?: WarroomScenarioPayload['locations'] }>(
-      systemPrompt,
-      userPrompt,
-      openAiApiKey,
-      4000,
-    );
-    return parsed.locations?.length ? parsed.locations : undefined;
-  } catch (err) {
-    logger.warn({ err }, 'Phase 4a-2 candidate space pins failed; continuing without');
     return undefined;
   }
 }
@@ -1440,7 +1300,7 @@ RULES:
 }
 
 // ---------------------------------------------------------------------------
-// Phase 4b2 — Hazard Generation  (2 000 tokens)
+// Phase 4b2 — Step 1: Hazard Identification  (2 500 tokens)
 // ---------------------------------------------------------------------------
 
 async function generateScenarioHazards(
@@ -1449,11 +1309,12 @@ async function generateScenarioHazards(
   onProgress?: WarroomAiProgressCallback,
   narrative?: { title?: string; description?: string; briefing?: string },
   locations?: WarroomScenarioPayload['locations'],
+  teamNames?: string[],
 ): Promise<WarroomScenarioPayload['hazards']> {
   const includeHazards = input.complexity_tier === 'full' || input.complexity_tier === 'rich';
   if (!includeHazards) return undefined;
 
-  onProgress?.('Generating interactive hazards...');
+  onProgress?.('Identifying hazards (step 1)...');
 
   const { scenario_type, setting, venue_name, location } = input;
   const venue = venue_name || location || setting;
@@ -1471,57 +1332,474 @@ async function generateScenarioHazards(
       ? `Incident sites:\n${incidentSites.map((s) => `- ${s.label} at (${s.coordinates.lat}, ${s.coordinates.lng})`).join('\n')}`
       : '';
 
-  const systemPrompt = `You are an expert crisis management scenario designer generating interactive hazards for a training exercise.
+  const systemPrompt = `You are an expert crisis management scenario designer identifying hazards for a realistic training exercise.
 
 Scenario type: ${scenario_type}
 Venue: ${venue}
 Setting: ${setting}
-${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
+${narrative ? `Narrative: ${narrative.title}\nDescription: ${narrative.description}\nBriefing: ${narrative.briefing || ''}` : ''}
 ${incidentBlock}
+Teams available: ${(teamNames ?? []).join(', ') || 'not specified'}
 
-Generate 2-4 hazards appropriate for this ${scenario_type} scenario. Each hazard must be a realistic danger that teams encounter during response.
+Research the venue and scenario type to identify ALL realistic hazards that would result from this incident. Consider:
+- What materials are at this venue? (gas lines in restaurants/kitchens, glass facades, chemical storage, fuel in parking areas, flammable materials in shops, electrical systems)
+- What structural damage would this incident type cause? (blast radius, fire spread, collapse zones, shrapnel patterns)
+- What secondary hazards would develop? (gas leaks from ruptured lines, electrical fires, flooding from burst water mains, smoke in enclosed spaces)
+- What infrastructure is compromised? (elevators, stairwells, fire suppression systems, emergency lighting)
+
+Generate 4-8 hazards. Each hazard is a DISTINCT danger at a SPECIFIC location.
 
 Return ONLY valid JSON:
 {
   "hazards": [
     {
-      "hazard_type": "fire|chemical_spill|structural_collapse|debris|gas_leak|flood|biological|explosion|electrical",
+      "hazard_type": "fire|chemical_spill|structural_collapse|debris|gas_leak|flood|biological|explosion|electrical|smoke",
       "location_lat": number,
       "location_lng": number,
       "floor_level": "G",
       "properties": {
         "size": "small|medium|large",
-        "fuel_source": "description of what is burning/leaking",
+        "fuel_source": "what is burning/leaking/collapsed",
         "adjacent_risks": ["risk1", "risk2"],
         "wind_exposure": true/false,
         "casualties_visible": number,
-        "access_blocked": true/false
+        "access_blocked": true/false,
+        "venue_material_context": "what venue-specific materials are involved"
       },
-      "assessment_criteria": ["criteria1", "criteria2", "criteria3"],
+      "assessment_criteria": ["criteria1", "criteria2"],
       "status": "active",
-      "appears_at_minutes": number (0 = immediate, >0 = appears later)
+      "appears_at_minutes": 0
     }
   ]
 }
 
 RULES:
-- Hazards must be near or at the incident sites (within 200m)
-- At least one immediate hazard (appears_at_minutes: 0) and one delayed hazard
-- assessment_criteria should list what a good response would identify/do
-- Properties must be specific to the hazard type
+- Hazards must be near or at the incident sites (within 300m)
+- At least 2 immediate hazards (appears_at_minutes: 0) and 2+ delayed hazards (appear as situation develops)
+- Include venue-specific material detail in properties.fuel_source and venue_material_context
+- Vary hazard types — not all fires; include structural, debris, gas, smoke as appropriate
 - Locations must be realistic coordinates near the incident sites`;
 
-  const userPrompt = `Generate hazards for "${narrative?.title || scenario_type}" at ${venue}.`;
+  const userPrompt = `Identify all hazards from "${narrative?.title || scenario_type}" at ${venue}. Research what materials and infrastructure exist at this type of venue.`;
 
   try {
     const parsed = await callOpenAi<{
       hazards?: WarroomScenarioPayload['hazards'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 2000);
-    return parsed.hazards?.length ? parsed.hazards : undefined;
+    }>(systemPrompt, userPrompt, openAiApiKey, 2500);
+    const stubs = parsed.hazards?.length ? parsed.hazards : undefined;
+    if (!stubs?.length) return undefined;
+
+    onProgress?.(`Enriching ${stubs.length} hazards in parallel (step 2)...`);
+    const enriched = await Promise.all(
+      stubs.map((h) => enrichHazardDetail(h, input, openAiApiKey, narrative, teamNames)),
+    );
+    return enriched;
   } catch (err) {
-    logger.warn({ err }, 'Hazard generation failed; continuing without');
+    logger.warn({ err }, 'Hazard identification failed; continuing without');
     return undefined;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4b2 — Step 2: Deep Hazard Enrichment  (5 000 tokens each, parallel)
+// ---------------------------------------------------------------------------
+
+async function enrichHazardDetail(
+  hazard: NonNullable<WarroomScenarioPayload['hazards']>[number],
+  input: WarroomGenerateInput,
+  openAiApiKey: string,
+  narrative?: { title?: string; description?: string; briefing?: string },
+  teamNames?: string[],
+): Promise<NonNullable<WarroomScenarioPayload['hazards']>[number]> {
+  const { scenario_type, setting, venue_name, location } = input;
+  const venue = venue_name || location || setting;
+
+  const systemPrompt = `You are an expert hazard assessment specialist providing deep analysis of a specific hazard in a crisis scenario.
+
+Scenario: ${scenario_type} at ${venue}
+${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
+
+HAZARD TO ANALYZE:
+Type: ${hazard.hazard_type}
+Location: (${hazard.location_lat}, ${hazard.location_lng}), floor ${hazard.floor_level}
+Size: ${(hazard.properties as Record<string, unknown>).size || 'unknown'}
+Fuel/source: ${(hazard.properties as Record<string, unknown>).fuel_source || 'unknown'}
+Adjacent risks: ${JSON.stringify((hazard.properties as Record<string, unknown>).adjacent_risks || [])}
+Teams available in this exercise: ${(teamNames ?? []).join(', ') || 'not specified'}
+
+Provide a DEEP, realistic assessment. Research:
+
+1. ENRICHED DESCRIPTION: A detailed paragraph describing the hazard condition — what it looks like, smells like, sounds like. What a responder approaching would see. Include venue-specific materials involved (gas lines in nearby restaurant kitchens, glass from facade, chemical storage, fuel tanks, etc.).
+
+2. FIRE CLASS (if fire): Class A (ordinary combustibles), B (flammable liquids/gases), C (electrical), D (metals), K (cooking oils). null if not a fire.
+
+3. DEBRIS TYPE (if structural): concrete, steel, glass, wood, mixed. null if not debris/collapse.
+
+4. RESOLUTION REQUIREMENTS: What personnel and actions are needed to fully resolve this hazard.
+   - personnel_type: what kind of responder handles this (firefighter, hazmat_specialist, structural_engineer, etc.)
+   - personnel_count: minimum number needed
+   - equipment: list of equipment items needed (e.g. ["foam_unit", "breathing_apparatus", "thermal_camera"])
+   - estimated_time_minutes: how long resolution takes once proper resources deployed
+   - If NO team in the exercise can handle this, note that external resources must be called.
+
+5. DETERIORATION TIMELINE: What happens if this hazard is NOT addressed:
+   - at_10min: description of state after 10 minutes unaddressed
+   - at_20min: description after 20 minutes
+   - at_30min: description after 30 minutes
+   - spawns_new_hazards: can this create new hazard pins? describe what and where
+   - spawns_casualties: can this injure more people? estimate count and injury types
+
+Return ONLY valid JSON:
+{
+  "enriched_description": "detailed paragraph...",
+  "fire_class": "A|B|C|D|K|null",
+  "debris_type": "concrete|steel|glass|wood|mixed|null",
+  "resolution_requirements": {
+    "personnel_type": "string",
+    "personnel_count": number,
+    "equipment": ["item1", "item2"],
+    "estimated_time_minutes": number,
+    "requires_external": false,
+    "external_resource": null
+  },
+  "personnel_requirements": {
+    "primary_responder": "string",
+    "minimum_count": number,
+    "specialist_needed": true/false,
+    "specialist_type": "string|null"
+  },
+  "equipment_requirements": [
+    { "equipment_type": "string", "label": "string", "quantity": 1, "critical": true }
+  ],
+  "deterioration_timeline": {
+    "at_10min": "string",
+    "at_20min": "string",
+    "at_30min": "string",
+    "spawns_new_hazards": true/false,
+    "new_hazard_description": "string|null",
+    "spawns_casualties": true/false,
+    "estimated_new_casualties": 0,
+    "new_casualty_injury_types": []
+  }
+}`;
+
+  const userPrompt = `Deep analysis of ${hazard.hazard_type} hazard at ${venue}: ${(hazard.properties as Record<string, unknown>).fuel_source || hazard.hazard_type}`;
+
+  try {
+    const result = await callOpenAi<{
+      enriched_description?: string;
+      fire_class?: string;
+      debris_type?: string;
+      resolution_requirements?: Record<string, unknown>;
+      personnel_requirements?: Record<string, unknown>;
+      equipment_requirements?: Array<Record<string, unknown>>;
+      deterioration_timeline?: Record<string, unknown>;
+    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
+
+    return {
+      ...hazard,
+      enriched_description: result.enriched_description ?? undefined,
+      fire_class: result.fire_class ?? undefined,
+      debris_type: result.debris_type ?? undefined,
+      resolution_requirements: result.resolution_requirements ?? {},
+      personnel_requirements: result.personnel_requirements ?? {},
+      equipment_requirements: result.equipment_requirements ?? [],
+      deterioration_timeline: result.deterioration_timeline ?? {},
+    };
+  } catch (err) {
+    logger.warn({ err, hazardType: hazard.hazard_type }, 'Hazard enrichment failed; using stub');
+    return hazard;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4b2c — Casualty Identification + Enrichment
+// ---------------------------------------------------------------------------
+
+async function generateCasualties(
+  input: WarroomGenerateInput,
+  openAiApiKey: string,
+  onProgress?: WarroomAiProgressCallback,
+  narrative?: { title?: string; description?: string; briefing?: string },
+  locations?: WarroomScenarioPayload['locations'],
+  hazards?: WarroomScenarioPayload['hazards'],
+): Promise<WarroomScenarioPayload['casualties']> {
+  const include = input.complexity_tier === 'full' || input.complexity_tier === 'rich';
+  if (!include) return undefined;
+
+  onProgress?.('Generating casualty pins...');
+
+  const { scenario_type, setting, venue_name, location } = input;
+  const venue = venue_name || location || setting;
+
+  const incidentSites =
+    locations?.filter(
+      (l) =>
+        l.pin_category === 'incident_site' ||
+        l.location_type?.toLowerCase().includes('blast') ||
+        l.location_type?.toLowerCase().includes('epicentre'),
+    ) ?? [];
+
+  const hazardBlock = hazards?.length
+    ? `\nActive hazards:\n${hazards.map((h) => `- ${h.hazard_type} at (${h.location_lat}, ${h.location_lng}): ${h.enriched_description?.slice(0, 150) || (h.properties as Record<string, unknown>).fuel_source || h.hazard_type}`).join('\n')}`
+    : '';
+
+  const systemPrompt = `You are an expert in mass casualty incident planning generating INDIVIDUAL casualty pins for a training exercise.
+
+Scenario type: ${scenario_type}
+Venue: ${venue}
+Setting: ${setting}
+${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
+${incidentSites.length > 0 ? `Incident site: ${incidentSites[0].label} at (${incidentSites[0].coordinates.lat}, ${incidentSites[0].coordinates.lng})` : ''}
+${hazardBlock}
+
+Generate 15-25 INDIVIDUAL casualty pins. Each pin represents ONE person at a specific location. Consider:
+- Blast/fire physics: injuries are more severe closer to the incident, more crowd-crush injuries at exits
+- Realistic injury distribution for this incident type
+- Some casualties are trapped (behind fire, under debris), some are ambulatory
+- Scatter casualties realistically: near the blast, along corridors, at exits, on different floors if applicable
+
+IMPORTANT: Do NOT reveal what personnel or equipment is needed. Only describe the patient's visible condition and injuries. Players must figure out the right response.
+
+Return ONLY valid JSON:
+{
+  "casualties": [
+    {
+      "casualty_type": "patient",
+      "location_lat": number,
+      "location_lng": number,
+      "floor_level": "G",
+      "headcount": 1,
+      "conditions": {
+        "injuries": [{ "type": "burn|laceration|fracture|blast_injury|crush_injury|smoke_inhalation|concussion|shrapnel_wound|cardiac_arrest|psychological", "severity": "minor|moderate|severe|critical", "body_part": "string", "visible_signs": "string" }],
+        "triage_color": "green|yellow|red|black",
+        "mobility": "ambulatory|non_ambulatory|trapped",
+        "accessibility": "open|behind_fire|under_debris|in_smoke|blocked_corridor",
+        "consciousness": "alert|confused|unconscious|unresponsive",
+        "breathing": "normal|labored|absent",
+        "visible_description": "1-2 sentence description of what a responder sees approaching this person"
+      },
+      "status": "undiscovered",
+      "appears_at_minutes": 0
+    }
+  ]
+}
+
+RULES:
+- Each pin is ONE person (headcount: 1)
+- Realistic triage color distribution: ~10% black, ~20% red, ~30% yellow, ~40% green (adjust for scenario severity)
+- At least 3-4 trapped casualties requiring extraction before they can be moved
+- At least 2-3 casualties behind active hazards (accessibility: "behind_fire" etc.)
+- Some casualties appear later (appears_at_minutes > 0) as they are discovered or as hazards worsen
+- visible_description should be vivid but clinical — what a responder physically observes`;
+
+  const userPrompt = `Generate individual casualty pins for "${narrative?.title || scenario_type}" at ${venue}.`;
+
+  try {
+    const parsed = await callOpenAi<{
+      casualties?: WarroomScenarioPayload['casualties'];
+    }>(systemPrompt, userPrompt, openAiApiKey, 4000);
+    return parsed.casualties?.length ? parsed.casualties : undefined;
+  } catch (err) {
+    logger.warn({ err }, 'Casualty generation failed; continuing without');
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4b2d — Crowd / Evacuee Group Generation
+// ---------------------------------------------------------------------------
+
+async function generateCrowdPins(
+  input: WarroomGenerateInput,
+  openAiApiKey: string,
+  onProgress?: WarroomAiProgressCallback,
+  narrative?: { title?: string; description?: string; briefing?: string },
+  locations?: WarroomScenarioPayload['locations'],
+): Promise<WarroomScenarioPayload['casualties']> {
+  const include = input.complexity_tier === 'full' || input.complexity_tier === 'rich';
+  if (!include) return undefined;
+
+  onProgress?.('Generating crowd/evacuee pins...');
+
+  const { scenario_type, setting, venue_name, location } = input;
+  const venue = venue_name || location || setting;
+
+  const exitPins =
+    locations?.filter((l) => l.pin_category === 'entry_exit' || l.pin_category === 'access') ?? [];
+
+  const exitBlock =
+    exitPins.length > 0
+      ? `\nEntry/exit points:\n${exitPins.map((e) => `- ${e.label} at (${e.coordinates.lat}, ${e.coordinates.lng})`).join('\n')}`
+      : '';
+
+  const systemPrompt = `You are an expert in crowd dynamics and evacuation planning generating civilian crowd pins for a training exercise.
+
+Scenario type: ${scenario_type}
+Venue: ${venue}
+Setting: ${setting}
+${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
+${exitBlock}
+
+Generate 6-12 crowd/evacuee group pins. Each represents a GROUP of civilians at a specific location. Consider:
+- Where would people naturally congregate after an incident? (lobby, exits, open areas, parking lots)
+- Some groups are fleeing, some are sheltering in place, some are confused/stationary
+- Some groups contain walking wounded mixed in with uninjured
+- Groups near exits may be creating bottlenecks
+- Groups further from the incident may not yet know what happened
+
+Return ONLY valid JSON:
+{
+  "crowds": [
+    {
+      "casualty_type": "crowd",
+      "location_lat": number,
+      "location_lng": number,
+      "floor_level": "G",
+      "headcount": number (10-80 per group),
+      "conditions": {
+        "behavior": "calm|anxious|panicking|sheltering|fleeing",
+        "movement_direction": "string|null (e.g. 'toward south exit', 'stationary', 'milling')",
+        "mixed_wounded": [{ "injury_type": "string", "severity": "minor|moderate", "count": number }],
+        "bottleneck": true/false,
+        "blocking_exit": "string|null (label of exit being blocked, if any)",
+        "visible_description": "1-2 sentence description of what a marshal approaching sees"
+      },
+      "status": "identified",
+      "appears_at_minutes": 0
+    }
+  ]
+}
+
+RULES:
+- Total civilian count across all groups should be 200-500 (proportional to venue size)
+- At least 2 groups should contain mixed_wounded (walking wounded mixed in)
+- At least 1-2 groups should be creating bottlenecks near exits
+- Some groups appear later as people emerge from different parts of the venue
+- Vary group sizes: some small (10-20), some large (40-80)`;
+
+  const userPrompt = `Generate crowd/evacuee group pins for "${narrative?.title || scenario_type}" at ${venue}.`;
+
+  try {
+    const parsed = await callOpenAi<{
+      crowds?: WarroomScenarioPayload['casualties'];
+    }>(systemPrompt, userPrompt, openAiApiKey, 3000);
+    return parsed.crowds?.length ? parsed.crowds : undefined;
+  } catch (err) {
+    logger.warn({ err }, 'Crowd pin generation failed; continuing without');
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4b2e — Equipment Palette Generation
+// Collects all equipment requirements from hazards + casualties → unified list
+// ---------------------------------------------------------------------------
+
+async function generateScenarioEquipment(
+  hazards?: WarroomScenarioPayload['hazards'],
+  casualties?: WarroomScenarioPayload['casualties'],
+): Promise<WarroomScenarioPayload['equipment']> {
+  const equipmentMap = new Map<
+    string,
+    { equipment_type: string; label: string; icon?: string; properties: Record<string, unknown> }
+  >();
+
+  for (const h of hazards ?? []) {
+    for (const eq of h.equipment_requirements ?? []) {
+      const eqType = (eq.equipment_type as string) ?? '';
+      if (eqType && !equipmentMap.has(eqType)) {
+        equipmentMap.set(eqType, {
+          equipment_type: eqType,
+          label: (eq.label as string) ?? eqType.replace(/_/g, ' '),
+          icon: iconForEquipment(eqType),
+          properties: {
+            quantity_needed: (eq.quantity as number) ?? 1,
+            critical: (eq.critical as boolean) ?? false,
+            applicable_to: ['hazard'],
+          },
+        });
+      }
+    }
+
+    const resReq = h.resolution_requirements ?? {};
+    const reqEquipment = (resReq.equipment as string[]) ?? [];
+    for (const eqType of reqEquipment) {
+      if (eqType && !equipmentMap.has(eqType)) {
+        equipmentMap.set(eqType, {
+          equipment_type: eqType,
+          label: eqType.replace(/_/g, ' '),
+          icon: iconForEquipment(eqType),
+          properties: { quantity_needed: 1, applicable_to: ['hazard'] },
+        });
+      }
+    }
+  }
+
+  const mobilityEquipment: Record<string, { label: string; icon: string }> = {
+    stretcher: { label: 'Stretcher', icon: 'bed' },
+    spinal_board: { label: 'Spinal Board', icon: 'clipboard' },
+    wheelchair: { label: 'Wheelchair', icon: 'accessibility' },
+    cutting_tools: { label: 'Cutting Tools', icon: 'wrench' },
+    breathing_apparatus: { label: 'Breathing Apparatus', icon: 'wind' },
+  };
+
+  for (const c of casualties ?? []) {
+    const conds = (c.conditions ?? {}) as Record<string, unknown>;
+    const mobility = conds.mobility as string;
+    if (mobility === 'non_ambulatory' || mobility === 'trapped') {
+      if (!equipmentMap.has('stretcher')) {
+        equipmentMap.set('stretcher', {
+          equipment_type: 'stretcher',
+          ...mobilityEquipment.stretcher,
+          properties: { quantity_needed: 1, applicable_to: ['non_ambulatory', 'trapped'] },
+        });
+      }
+    }
+    if (mobility === 'trapped') {
+      if (!equipmentMap.has('cutting_tools')) {
+        equipmentMap.set('cutting_tools', {
+          equipment_type: 'cutting_tools',
+          ...mobilityEquipment.cutting_tools,
+          properties: { quantity_needed: 1, applicable_to: ['trapped'] },
+        });
+      }
+    }
+    const accessibility = conds.accessibility as string;
+    if (accessibility === 'in_smoke') {
+      if (!equipmentMap.has('breathing_apparatus')) {
+        equipmentMap.set('breathing_apparatus', {
+          equipment_type: 'breathing_apparatus',
+          ...mobilityEquipment.breathing_apparatus,
+          properties: { quantity_needed: 1, applicable_to: ['smoke_environment'] },
+        });
+      }
+    }
+  }
+
+  const list = Array.from(equipmentMap.values());
+  return list.length > 0 ? list : undefined;
+}
+
+function iconForEquipment(eqType: string): string {
+  const iconMap: Record<string, string> = {
+    foam_unit: 'droplet',
+    fire_extinguisher: 'flame',
+    thermal_camera: 'camera',
+    breathing_apparatus: 'wind',
+    hose_line: 'droplet',
+    stretcher: 'bed',
+    spinal_board: 'clipboard',
+    cutting_tools: 'wrench',
+    hydraulic_jack: 'wrench',
+    defibrillator: 'heart',
+    iv_kit: 'syringe',
+    burn_kit: 'first-aid',
+    splint: 'bone',
+    oxygen_cylinder: 'wind',
+    hazmat_suit: 'shield',
+  };
+  return iconMap[eqType] ?? 'package';
 }
 
 // ---------------------------------------------------------------------------
@@ -2331,26 +2609,6 @@ RULES:
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Phase 4e — Environment-grounded decision injects  (4 parallel calls per team)
-// ---------------------------------------------------------------------------
-
-/** Raw AI response shape for all env-inject sub-generators. */
-interface EnvInjectRaw {
-  trigger_condition?: Record<string, unknown> | string;
-  conditions_to_appear?: { threshold?: number; conditions?: string[] } | { all: string[] };
-  conditions_to_cancel?: string[];
-  type?: string;
-  title?: string;
-  content?: string;
-  severity?: string;
-  inject_scope?: string;
-  target_teams?: string[];
-  requires_response?: boolean;
-  requires_coordination?: boolean;
-  location_ref?: string;
-  eligible_after_minutes?: number;
-}
-
 /** Route record extracted from environmental seeds. */
 interface SeedRoute {
   label?: string;
@@ -2360,61 +2618,6 @@ interface SeedRoute {
   travel_time_minutes?: number;
   geometry?: [number, number][];
   capacity_per_min?: number;
-}
-
-/** Area record extracted from environmental seeds. */
-interface SeedArea {
-  area_id?: string;
-  label?: string;
-  type?: string;
-  at_capacity?: boolean;
-  capacity?: number;
-  aliases?: string[];
-  problems?: string[];
-}
-
-/**
- * Finds the 1-2 most relevant routes for a given location pin by matching
- * route labels/aliases against the pin label and notes, or by returning all
- * routes if no specific match is found (for general proximity context).
- */
-function findNearestRoutes(
-  pin: { label: string; conditions?: Record<string, unknown> },
-  routes: SeedRoute[],
-  maxResults = 2,
-): SeedRoute[] {
-  if (!routes.length) return [];
-  const pinText =
-    `${pin.label} ${(pin.conditions as Record<string, unknown>)?.notes ?? ''}`.toLowerCase();
-
-  const scored = routes.map((r) => {
-    const routeTerms = [r.label ?? '', ...(r.aliases ?? [])].map((t) => t.toLowerCase());
-    let score = 0;
-    for (const term of routeTerms) {
-      if (!term) continue;
-      if (pinText.includes(term)) score += 3;
-      const words = term.split(/\s+/);
-      for (const w of words) {
-        if (w.length > 2 && pinText.includes(w)) score += 1;
-      }
-    }
-    return { route: r, score };
-  });
-
-  scored.sort((a, b) => b.score - a.score);
-  const matches = scored.filter((s) => s.score > 0).slice(0, maxResults);
-  if (matches.length > 0) return matches.map((m) => m.route);
-  return routes.slice(0, maxResults);
-}
-
-/** Formats a route for prompt inclusion. */
-function formatRouteForPrompt(r: SeedRoute): string {
-  const parts = [`"${r.label ?? 'Unnamed route'}"`];
-  if (r.problem) parts.push(`problem: ${r.problem}`);
-  parts.push(r.managed ? 'managed' : 'unmanaged');
-  if (r.travel_time_minutes != null) parts.push(`travel_time: ${r.travel_time_minutes} min`);
-  if (r.capacity_per_min != null) parts.push(`capacity: ${r.capacity_per_min}/min`);
-  return parts.join(', ');
 }
 
 /**
@@ -2451,879 +2654,8 @@ function matchRouteToOsmGeometry(
   return bestScore > 0 ? bestMatch : osmRoutes[0];
 }
 
-/** Extracts seed routes and areas from environmental seeds. */
-function extractSeedData(seeds?: WarroomScenarioPayload['environmental_seeds']): {
-  routes: SeedRoute[];
-  areas: SeedArea[];
-} {
-  if (!seeds?.[0]) return { routes: [], areas: [] };
-  const sd = seeds[0].seed_data as Record<string, unknown>;
-  const routes = (Array.isArray(sd.routes) ? sd.routes : []) as SeedRoute[];
-  const areas = (Array.isArray(sd.areas) ? sd.areas : []) as SeedArea[];
-  return { routes, areas };
-}
-
-/** Normalizes raw AI env inject output into the condition_driven_injects format. */
-function normalizeEnvConditionInjectResults(
-  raw: EnvInjectRaw[],
-  teamName: string,
-): NonNullable<WarroomScenarioPayload['condition_driven_injects']> {
-  return raw
-    .filter(
-      (inj) =>
-        inj.title &&
-        inj.conditions_to_appear &&
-        (('conditions' in inj.conditions_to_appear &&
-          inj.conditions_to_appear.conditions?.length) ||
-          ('all' in inj.conditions_to_appear && inj.conditions_to_appear.all?.length)),
-    )
-    .map((inj) => ({
-      title: inj.title || 'Environmental condition inject',
-      content: inj.content || inj.title || '',
-      type: normalizeInjectType(inj.type || 'field_update'),
-      severity: inj.severity || 'high',
-      inject_scope: 'team_specific' as const,
-      target_teams: [teamName],
-      requires_response: inj.requires_response ?? true,
-      conditions_to_appear: inj.conditions_to_appear!,
-      conditions_to_cancel: inj.conditions_to_cancel,
-      eligible_after_minutes: inj.eligible_after_minutes ?? 5,
-    }));
-}
-
-/** Shared condition-driven format spec appended to every env sub-generator prompt. */
-function envInjectFormatSpec(teamName: string, maxMinutes: number): string {
-  return `
-CRITICAL — these injects are CONDITION-DRIVEN, not keyword-matched.
-Each inject fires when a player CLAIMS a specific location. The condition key format is:
-  location_claimed:<location_label_lowercased_with_underscores>
-For example: location_claimed:parking_lot_a, location_claimed:north_exit
-
-Return ONLY valid JSON:
-{
-  "condition_driven_injects": [
-    {
-      "title": "string — names the specific environmental consequence or confirmation",
-      "content": "string — 2-3 sentences describing what happens because the constraint was violated or respected",
-      "conditions_to_appear": { "all": ["location_claimed:parking_lot_a"] },
-      "conditions_to_cancel": [],
-      "type": "field_update|media_report|intel_brief|citizen_call",
-      "severity": "critical|high|medium|low",
-      "inject_scope": "team_specific",
-      "target_teams": ["${teamName}"],
-      "requires_response": true,
-      "location_ref": "exact label of the location this inject is about",
-      "eligible_after_minutes": 5
-    }
-  ]
-}
-
-RULES:
-- For EACH relevant item, produce BOTH a contradiction AND a correct-choice inject.
-- conditions_to_appear MUST use the location_claimed:<label> format where <label> is the location label lowercased with spaces replaced by underscores.
-- Content must reference the SPECIFIC environmental property being violated or respected with exact numbers.
-- eligible_after_minutes: vary between 3 and ${maxMinutes} to cover early, mid, and late decisions.
-- Contradiction injects: requires_response=true, severity high/critical, describe realistic consequences of using that location.
-- Correct-choice injects: requires_response=false, severity low/medium, brief status update (1-2 sentences).
-- No two injects should cover the exact same constraint for the same location.`;
-}
-
-// ── Sub-generator 1: Exits / Access Points ──────────────────────────────
-
-async function generateEnvInjects_Exits(
-  input: WarroomGenerateInput,
-  teamName: string,
-  allTeamNames: string[],
-  openAiApiKey: string,
-  exitPins: NonNullable<WarroomScenarioPayload['locations']>,
-  routes: SeedRoute[],
-  narrative?: { title?: string; description?: string; briefing?: string },
-): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
-  if (!exitPins.length) return [];
-  const { scenario_type, venue_name, location: loc, setting } = input;
-  const venue = venue_name || loc || setting;
-  const maxMin = Math.min(input.duration_minutes ?? 60, 40);
-
-  const exitDetails = exitPins
-    .map((p) => {
-      const c = (p.conditions ?? {}) as Record<string, unknown>;
-      const nearRoutes = findNearestRoutes({ label: p.label, conditions: c }, routes);
-      const routeInfo = nearRoutes.length
-        ? `\n    Connecting routes: ${nearRoutes.map(formatRouteForPrompt).join('; ')}`
-        : '';
-      return `- "${p.label}" (${p.location_type}): capacity_flow_per_min=${c.capacity_flow_per_min ?? '?'}, width_m=${c.width_m ?? '?'}, is_blocked=${c.is_blocked ?? false}, surface=${c.surface ?? '?'}, lighting=${c.lighting ?? '?'}, accessibility=${c.accessibility ?? '?'}, distance_from_incident_m=${c.distance_from_incident_m ?? '?'}. ${c.notes ?? ''}${routeInfo}`;
-    })
-    .join('\n');
-
-  const systemPrompt = `You are an expert crisis management scenario designer creating decision-based injects for the ${teamName} team, focused on EXITS and ACCESS POINTS.
-
-Scenario: ${scenario_type} at ${venue}
-Setting: ${setting}
-All teams: ${allTeamNames.join(', ')}
-Focus team: ${teamName}
-Game duration: ${input.duration_minutes ?? 60} minutes
-${narrative ? `NARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}` : ''}
-
-EXITS / ACCESS POINTS (with connecting road conditions):
-${exitDetails}
-
-For EACH exit, produce TWO injects:
-1. CONTRADICTION — fires when ${teamName} uses this exit in a way that VIOLATES its constraints (exceeds capacity, uses a blocked exit, routes too many people through a narrow width, ignores road damage on the connecting route, etc.). Include specific numbers. If the connecting road has problems, describe how that compounds the issue (delays, congestion, danger).
-   requires_response: true, severity: high or critical
-2. CORRECT-CHOICE — fires when ${teamName} respects the exit's capacity and conditions. Brief status update.
-   requires_response: false, severity: low or medium
-${envInjectFormatSpec(teamName, maxMin)}`;
-
-  const userPrompt = `Write exit-focused environment injects for ${teamName}. For each of the ${exitPins.length} exits, produce a contradiction and a correct-choice inject referencing specific capacity limits, widths, blockages, and connecting road conditions.`;
-
-  try {
-    const parsed = await callOpenAi<{ condition_driven_injects?: EnvInjectRaw[] }>(
-      systemPrompt,
-      userPrompt,
-      openAiApiKey,
-      4000,
-    );
-    return normalizeEnvConditionInjectResults(parsed.condition_driven_injects || [], teamName);
-  } catch (err) {
-    logger.warn({ err, teamName }, 'Env injects (exits) failed; continuing without');
-    return [];
-  }
-}
-
-// ── Sub-generator 2: Candidate Operational Spaces ───────────────────────
-
-async function generateEnvInjects_CandidateSpaces(
-  input: WarroomGenerateInput,
-  teamName: string,
-  allTeamNames: string[],
-  openAiApiKey: string,
-  candidatePins: NonNullable<WarroomScenarioPayload['locations']>,
-  routes: SeedRoute[],
-  siteAreas: Array<Record<string, unknown>>,
-  narrative?: { title?: string; description?: string; briefing?: string },
-): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
-  if (!candidatePins.length) return [];
-  const { scenario_type, venue_name, location: loc, setting } = input;
-  const venue = venue_name || loc || setting;
-  const maxMin = Math.min(input.duration_minutes ?? 60, 40);
-
-  const spaceDetails = candidatePins
-    .map((p) => {
-      const c = (p.conditions ?? {}) as Record<string, unknown>;
-      const nearRoutes = findNearestRoutes({ label: p.label, conditions: c }, routes);
-      const routeInfo = nearRoutes.length
-        ? `\n    Access routes: ${nearRoutes.map(formatRouteForPrompt).join('; ')}`
-        : '';
-      return `- "${p.label}" (${p.location_type}): area_m2=${c.area_m2 ?? '?'}, capacity_persons=${c.capacity_persons ?? '?'}, has_water=${c.has_water ?? '?'}, has_electricity=${c.has_electricity ?? '?'}, has_shelter=${c.has_shelter ?? '?'}, vehicle_access=${c.vehicle_access ?? '?'}, surface=${c.surface ?? '?'}, distance_from_incident_m=${c.distance_from_incident_m ?? '?'}, potential_uses=[${Array.isArray(c.potential_uses) ? (c.potential_uses as string[]).join(', ') : ''}]. ${c.notes ?? ''}${routeInfo}`;
-    })
-    .join('\n');
-
-  const siteAreasInfo = siteAreas.length
-    ? `\nSITE AREAS (triage candidates with known capacities):\n${siteAreas
-        .map((a) => {
-          const label =
-            (a as Record<string, unknown>).label ??
-            (a as Record<string, unknown>).area_id ??
-            'Area';
-          const cap =
-            (a as Record<string, unknown>).capacity_lying ??
-            (a as Record<string, unknown>).capacity ??
-            '?';
-          return `- "${label}": capacity=${cap}`;
-        })
-        .join('\n')}`
-    : '';
-
-  const systemPrompt = `You are an expert crisis management scenario designer creating decision-based injects for the ${teamName} team, focused on CANDIDATE OPERATIONAL SPACES — the locations players can claim for triage, staging, command posts, holding areas, etc.
-
-Scenario: ${scenario_type} at ${venue}
-Setting: ${setting}
-All teams: ${allTeamNames.join(', ')}
-Focus team: ${teamName}
-Game duration: ${input.duration_minutes ?? 60} minutes
-${narrative ? `NARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}` : ''}
-
-CANDIDATE OPERATIONAL SPACES (with access route conditions):
-${spaceDetails}
-${siteAreasInfo}
-
-For EACH candidate space, produce TWO injects:
-1. CONTRADICTION — fires when ${teamName} assigns an operational function to this space that VIOLATES its constraints. Examples:
-   - Setting up triage at a location with no water supply
-   - Using a space with capacity 50 for 200 people
-   - Establishing a medical station on muddy/gravel surface
-   - Choosing a space with no vehicle access when ambulances need to reach it
-   - Using a space too close to the incident (inside cordon distance)
-   - Ignoring that the access road to this space is damaged or congested
-   Include the SPECIFIC numbers and properties being violated.
-   requires_response: true, severity: high or critical
-2. CORRECT-CHOICE — fires when ${teamName} uses this space appropriately for a function it can support. Brief confirmation.
-   requires_response: false, severity: low or medium
-${envInjectFormatSpec(teamName, maxMin)}`;
-
-  const userPrompt = `Write candidate-space environment injects for ${teamName}. For each of the ${candidatePins.length} candidate spaces, produce a contradiction and a correct-choice inject referencing specific capacity, utilities, surface, vehicle access, distance, and access road conditions.`;
-
-  try {
-    const parsed = await callOpenAi<{ condition_driven_injects?: EnvInjectRaw[] }>(
-      systemPrompt,
-      userPrompt,
-      openAiApiKey,
-      4000,
-    );
-    return normalizeEnvConditionInjectResults(parsed.condition_driven_injects || [], teamName);
-  } catch (err) {
-    logger.warn({ err, teamName }, 'Env injects (candidate spaces) failed; continuing without');
-    return [];
-  }
-}
-
-// ── Sub-generator 3: POIs (Hospitals, Police Stations, Fire Stations) ───
-
-async function generateEnvInjects_POIs(
-  input: WarroomGenerateInput,
-  teamName: string,
-  allTeamNames: string[],
-  openAiApiKey: string,
-  poiPins: NonNullable<WarroomScenarioPayload['locations']>,
-  routes: SeedRoute[],
-  narrative?: { title?: string; description?: string; briefing?: string },
-): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
-  if (!poiPins.length) return [];
-  const { scenario_type, venue_name, location: loc, setting } = input;
-  const venue = venue_name || loc || setting;
-  const maxMin = Math.min(input.duration_minutes ?? 60, 40);
-
-  const poiDetails = poiPins
-    .map((p) => {
-      const c = (p.conditions ?? {}) as Record<string, unknown>;
-      const nearRoutes = findNearestRoutes({ label: p.label, conditions: c }, routes);
-      const routeInfo = nearRoutes.length
-        ? `\n    Travel routes from incident: ${nearRoutes.map(formatRouteForPrompt).join('; ')}`
-        : '';
-      const distInfo =
-        c.distance_from_incident_m != null
-          ? `, distance_from_incident: ${c.distance_from_incident_m}m`
-          : '';
-      const respTime =
-        c.estimated_response_time_min != null
-          ? `, estimated_response_time: ${c.estimated_response_time_min} min`
-          : '';
-
-      if (p.location_type === 'hospital') {
-        return `- "${p.label}" (hospital): facility_type=${c.facility_type ?? '?'}, trauma_level=${c.trauma_center_level ?? 'N/A'}, bed_capacity=${c.bed_capacity ?? '?'}, emergency_beds_available=${c.emergency_beds_available ?? '?'}, has_helipad=${c.has_helipad ?? '?'}, ambulance_bays=${c.ambulance_bays ?? '?'}, specializations=${JSON.stringify(c.specializations ?? [])}${distInfo}${respTime}. ${c.notes ?? ''}${routeInfo}`;
-      } else if (p.location_type === 'police_station') {
-        return `- "${p.label}" (police station): facility_type=${c.facility_type ?? '?'}, available_officers=${c.available_officers_estimate ?? '?'}, has_tactical_unit=${c.has_tactical_unit ?? '?'}, has_k9=${c.has_k9_unit ?? '?'}, has_negotiation_team=${c.has_negotiation_team ?? '?'}${distInfo}${respTime}. ${c.notes ?? ''}${routeInfo}`;
-      } else {
-        return `- "${p.label}" (${p.location_type}): ${JSON.stringify(c)}${routeInfo}`;
-      }
-    })
-    .join('\n');
-
-  const systemPrompt = `You are an expert crisis management scenario designer creating decision-based injects for the ${teamName} team, focused on POINTS OF INTEREST — hospitals, police stations, and fire stations that teams may send patients/resources to or request support from.
-
-Scenario: ${scenario_type} at ${venue}
-Setting: ${setting}
-All teams: ${allTeamNames.join(', ')}
-Focus team: ${teamName}
-Game duration: ${input.duration_minutes ?? 60} minutes
-${narrative ? `NARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}` : ''}
-
-POINTS OF INTEREST (with travel route conditions):
-${poiDetails}
-
-For EACH POI, produce TWO injects:
-1. CONTRADICTION — fires when ${teamName} uses this facility in a way that VIOLATES its constraints. Examples:
-   - Sending 100 patients to a hospital with only 30 emergency beds available
-   - Requesting tactical support from a station that has no tactical unit
-   - Routing ambulances via a road that is damaged or congested, causing critical delays
-   - Choosing a distant hospital (25 min travel) when a closer one (8 min) has capacity
-   - Expecting helicopter medevac at a facility with no helipad
-   - Overwhelming a community clinic with trauma cases it cannot handle
-   Include SPECIFIC numbers: bed counts, distances, travel times, road problems.
-   requires_response: true, severity: high or critical
-2. CORRECT-CHOICE — fires when ${teamName} appropriately uses this facility within its capabilities. Brief confirmation noting the key factor (e.g. "within bed capacity", "tactical unit available").
-   requires_response: false, severity: low or medium
-${envInjectFormatSpec(teamName, maxMin)}`;
-
-  const userPrompt = `Write POI-focused environment injects for ${teamName}. For each of the ${poiPins.length} facilities, produce a contradiction and a correct-choice inject referencing specific capacities, capabilities, distances, travel times, and road conditions.`;
-
-  try {
-    const parsed = await callOpenAi<{ condition_driven_injects?: EnvInjectRaw[] }>(
-      systemPrompt,
-      userPrompt,
-      openAiApiKey,
-      4000,
-    );
-    return normalizeEnvConditionInjectResults(parsed.condition_driven_injects || [], teamName);
-  } catch (err) {
-    logger.warn({ err, teamName }, 'Env injects (POIs) failed; continuing without');
-    return [];
-  }
-}
-
-// ── Sub-generator 4: Routes and Operational Areas ───────────────────────
-
-async function generateEnvInjects_Routes(
-  input: WarroomGenerateInput,
-  teamName: string,
-  allTeamNames: string[],
-  openAiApiKey: string,
-  routes: SeedRoute[],
-  areas: SeedArea[],
-  narrative?: { title?: string; description?: string; briefing?: string },
-): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
-  if (!routes.length && !areas.length) return [];
-  const { scenario_type, venue_name, location: loc, setting } = input;
-  const venue = venue_name || loc || setting;
-  const maxMin = Math.min(input.duration_minutes ?? 60, 40);
-
-  const routeDetails = routes.length
-    ? `\nROUTES:\n${routes
-        .map((r) => {
-          const parts = [`- "${r.label ?? 'Unnamed'}"`];
-          if (r.problem) parts.push(`PROBLEM: ${r.problem}`);
-          parts.push(r.managed ? 'managed' : 'UNMANAGED');
-          if (r.travel_time_minutes != null)
-            parts.push(`travel_time: ${r.travel_time_minutes} min`);
-          if (r.capacity_per_min != null) parts.push(`capacity: ${r.capacity_per_min} persons/min`);
-          if (r.aliases?.length) parts.push(`aliases: ${r.aliases.join(', ')}`);
-          return parts.join(', ');
-        })
-        .join('\n')}`
-    : '';
-
-  const areaDetails = areas.length
-    ? `\nOPERATIONAL AREAS:\n${areas
-        .map((a) => {
-          const parts = [`- "${a.label ?? a.area_id ?? 'Unnamed'}" (${a.type ?? 'general'})`];
-          if (a.capacity != null) parts.push(`capacity: ${a.capacity}`);
-          parts.push(a.at_capacity ? 'AT CAPACITY' : 'has space');
-          if (a.problems?.length) parts.push(`problems: ${a.problems.join(', ')}`);
-          return parts.join(', ');
-        })
-        .join('\n')}`
-    : '';
-
-  const systemPrompt = `You are an expert crisis management scenario designer creating decision-based injects for the ${teamName} team, focused on ROUTES and OPERATIONAL AREAS — the roads, corridors, and designated zones that teams use for movement, transport, and operations.
-
-Scenario: ${scenario_type} at ${venue}
-Setting: ${setting}
-All teams: ${allTeamNames.join(', ')}
-Focus team: ${teamName}
-Game duration: ${input.duration_minutes ?? 60} minutes
-${narrative ? `NARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}` : ''}
-${routeDetails}
-${areaDetails}
-
-For EACH route and area, produce TWO injects:
-1. CONTRADICTION — fires when ${teamName} uses this route/area in a way that ignores its problems or exceeds its capacity. Examples:
-   - Routing ambulances through a road with known damage or congestion
-   - Sending evacuation traffic down an unmanaged route without traffic control
-   - Exceeding an area's capacity by sending too many people/resources there
-   - Using a route that is known to be slow (high travel time) for time-critical transport
-   - Ignoring route problems that could endanger personnel or civilians
-   Include SPECIFIC numbers: capacities, travel times, problem descriptions.
-   requires_response: true, severity: high or critical
-2. CORRECT-CHOICE — fires when ${teamName} properly accounts for route conditions (avoids damaged routes, manages traffic, respects area capacity). Brief confirmation.
-   requires_response: false, severity: low or medium
-${envInjectFormatSpec(teamName, maxMin)}`;
-
-  const userPrompt = `Write route-and-area environment injects for ${teamName}. For each of the ${routes.length} routes and ${areas.length} operational areas, produce a contradiction and a correct-choice inject referencing specific road conditions, travel times, capacities, and problems.`;
-
-  try {
-    const parsed = await callOpenAi<{ condition_driven_injects?: EnvInjectRaw[] }>(
-      systemPrompt,
-      userPrompt,
-      openAiApiKey,
-      4000,
-    );
-    return normalizeEnvConditionInjectResults(parsed.condition_driven_injects || [], teamName);
-  } catch (err) {
-    logger.warn({ err, teamName }, 'Env injects (routes/areas) failed; continuing without');
-    return [];
-  }
-}
-
-// ── Wrapper: runs all 4 sub-generators in parallel per team ─────────────
-
-/**
- * Generates environment-grounded condition-driven injects split by pin category.
- * Runs 4 focused AI calls in parallel (exits, candidate spaces, POIs,
- * routes/areas) so each call has concentrated context and ample output budget.
- * Returns condition_driven_injects (not decision_injects) — they fire based on
- * location_claimed:<label> game state, not keyword matching.
- */
-async function generateEnvironmentDecisionInjects(
-  input: WarroomGenerateInput,
-  teamName: string,
-  allTeamNames: string[],
-  openAiApiKey: string,
-  narrative?: { title?: string; description?: string; briefing?: string },
-  locations?: WarroomScenarioPayload['locations'],
-  seeds?: WarroomScenarioPayload['environmental_seeds'],
-  siteAreas?: Array<Record<string, unknown>>,
-): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
-  const exitPins = (locations ?? []).filter((l) => l.pin_category === 'access');
-  const candidatePins = (locations ?? []).filter((l) => l.pin_category === 'candidate_space');
-  const poiPins = (locations ?? []).filter((l) => l.pin_category === 'poi');
-  const { routes, areas } = extractSeedData(seeds);
-
-  const [exitResults, candidateResults, poiResults, routeResults] = await Promise.all([
-    generateEnvInjects_Exits(
-      input,
-      teamName,
-      allTeamNames,
-      openAiApiKey,
-      exitPins,
-      routes,
-      narrative,
-    ),
-    generateEnvInjects_CandidateSpaces(
-      input,
-      teamName,
-      allTeamNames,
-      openAiApiKey,
-      candidatePins,
-      routes,
-      siteAreas ?? [],
-      narrative,
-    ),
-    generateEnvInjects_POIs(
-      input,
-      teamName,
-      allTeamNames,
-      openAiApiKey,
-      poiPins,
-      routes,
-      narrative,
-    ),
-    generateEnvInjects_Routes(
-      input,
-      teamName,
-      allTeamNames,
-      openAiApiKey,
-      routes,
-      areas,
-      narrative,
-    ),
-  ]);
-
-  const merged = [...exitResults, ...candidateResults, ...poiResults, ...routeResults];
-  logger.info(
-    {
-      teamName,
-      exits: exitResults.length,
-      candidates: candidateResults.length,
-      pois: poiResults.length,
-      routes: routeResults.length,
-      total: merged.length,
-    },
-    'Environment-grounded decision injects generated',
-  );
-  return merged;
-}
-
 // ---------------------------------------------------------------------------
-// Phase 4d — Condition key validation helper
-// ---------------------------------------------------------------------------
-
-function extractConditionKeys(
-  cta: { threshold?: number; conditions?: string[] } | { all: string[] },
-): string[] {
-  if ('all' in cta && Array.isArray(cta.all)) return cta.all;
-  if ('conditions' in cta && Array.isArray(cta.conditions)) return cta.conditions;
-  return [];
-}
-
-// ---------------------------------------------------------------------------
-// Phase 4d-solo — Per-team condition-driven injects  (1 call per team · 1 200 tokens)
-// ---------------------------------------------------------------------------
-
-/**
- * Generates "perfect storm" failure injects for a single team using full world context.
- * Fires only when that team's state keys indicate sustained poor performance.
- * Skipped for minimal and standard tiers.
- */
-async function generateTeamConditionInjects(
-  input: WarroomGenerateInput,
-  teamName: string,
-  allTeamNames: string[],
-  openAiApiKey: string,
-  narrative?: { title?: string; description?: string; briefing?: string },
-  locations?: WarroomScenarioPayload['locations'],
-  seeds?: WarroomScenarioPayload['environmental_seeds'],
-  siteAreas?: Array<Record<string, unknown>>,
-): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
-  const { scenario_type, venue_name, location, typeSpec, researchContext } = input;
-  const venue = venue_name || location || input.setting;
-
-  const templateConditionKeys = (typeSpec.condition_keys as Array<{ key: string }>) ?? [];
-  const keyNames = templateConditionKeys.map((c) => c.key);
-
-  const stateSchema = buildTeamStateSchemaHint(allTeamNames);
-  const teamStateKey = Object.keys(stateSchema).find((k) =>
-    k.toLowerCase().startsWith(teamName.toLowerCase().replace(/\s+/g, '_').split('_')[0]),
-  );
-  const relevantSchema = teamStateKey ? { [teamStateKey]: stateSchema[teamStateKey] } : stateSchema;
-
-  const validSchemaKeys = teamStateKey
-    ? Object.keys(stateSchema[teamStateKey] || {}).map((k) => `${teamStateKey}.${k}`)
-    : [];
-
-  const conditionKeysHint =
-    keyNames.length > 0
-      ? `Use ONLY these condition keys (unknown keys evaluate to false at runtime): ${keyNames.join(', ')}`
-      : validSchemaKeys.length > 0
-        ? `Use ONLY condition keys from ${teamName}'s state schema. Valid keys: ${validSchemaKeys.join(', ')}. Do NOT use keys from other teams' schemas — those will never be flipped by ${teamName}'s actions and the inject will never fire.`
-        : `Use condition keys from the team state schema below. Only use keys that ${teamName} would logically flip through their own actions.`;
-
-  const locationsBlock = locations?.length
-    ? `\nMap pins:\n${locations.map((l) => `- ${l.label} (${l.location_type}): ${l.description || ''}`).join('\n')}`
-    : '';
-  const areasBlock = siteAreas?.length
-    ? `\nSite areas:\n${siteAreas.map((a) => `- ${(a as Record<string, unknown>).label || (a as Record<string, unknown>).area_id}`).join('\n')}`
-    : '';
-  const seedBlock = seeds?.[0]
-    ? `\nBaseline routes: ${JSON.stringify((seeds[0].seed_data as Record<string, unknown>).routes)}`
-    : '';
-  const narrativeBlock = narrative
-    ? `\nNARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}`
-    : '';
-  const similarCasesBlock =
-    researchContext?.similar_cases && researchContext.similar_cases.length > 0
-      ? `\nSIMILAR REAL INCIDENTS:\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
-      : '';
-  const standardsBlock =
-    researchContext?.standards_findings && researchContext.standards_findings.length > 0
-      ? `\nRESPONSE STANDARDS:\n${standardsToPromptBlock(researchContext.standards_findings)}`
-      : '';
-
-  const durationMins = input.duration_minutes ?? 60;
-  const injectCount = durationMins <= 30 ? '12–18' : durationMins <= 90 ? '18–25' : '25–35';
-
-  const systemPrompt = `You are an expert crisis management scenario designer writing condition-driven injects for the ${teamName} team.
-
-Scenario: ${scenario_type} at ${venue}
-All teams: ${allTeamNames.join(', ')}
-Focus team: ${teamName}
-Game duration: ${durationMins} minutes
-${narrativeBlock}
-${similarCasesBlock}
-${standardsBlock}
-${locationsBlock}
-${areasBlock}
-${seedBlock}
-
-Team state schema for ${teamName}:
-${JSON.stringify(relevantSchema, null, 2)}
-
-${conditionKeysHint}
-
-Condition-driven injects fire automatically when ${teamName}'s game state meets specific conditions. They come in TWO flavours:
-
-1. FAILURE / CONSEQUENCE injects — fire when ${teamName}'s performance has been poor (multiple negative state conditions simultaneously true). They represent cascading failures and compounding consequences. These make the game harder when teams underperform.
-
-2. POSITIVE OUTCOME / STATUS UPDATE injects — fire when ${teamName} has been performing well (positive state conditions met). They reward good decisions with favourable developments: reinforcements arriving, crowds cooperating, intel breakthroughs, media praise, route clearing, etc. These do NOT require a response — they are positive feedback.
-
-3. ESCALATION / BRANCHING injects — fire when game state hits critical thresholds that change the nature of the crisis: secondary explosions, hostage situations, structural failures, VIP arrivals, weather changes, crowd surges, etc. These represent turning points that demand new decisions.
-
-4. DECISION-CONSEQUENCE injects — fire when ${teamName} has claimed a specific location or taken a specific action (using location_claimed:<label> keys or state keys). They represent the consequences (positive or negative) of that specific decision.
-
-The game runs for ${durationMins} minutes. The scenario is solvable if teams play well. Failure injects fire only on poor runs. Positive injects fire on good runs. Escalation injects fire based on game progression.
-
-Cover ALL of these categories for ${teamName}:
-- Operational failures (delayed response, wrong procedures, missed protocols)
-- Resource mismanagement (overcommitted assets, equipment failures, personnel shortages)
-- Communication breakdowns (missed updates, conflicting orders, information silos)
-- Environmental/site failures (capacity overflows, route blockages, unsafe conditions)
-- Escalation triggers (threat level changes, cascading incidents, secondary events)
-- Public impact (civilian complaints, media exposure, community harm OR praise)
-- Coordination (handoff delays, duplicated efforts, or successful joint operations)
-- Intelligence/assessment (missed threat indicators, wrong assessment, or breakthrough intel)
-- Positive outcomes (successful evacuations, contained threats, good media coverage)
-- Decision consequences (results of choosing specific locations, routes, or tactics)
-- Resource arrival/reinforcement (additional teams, equipment, specialists arriving)
-- Morale and fatigue (team burnout, civilian panic, or calm restored)
-
-Return ONLY valid JSON:
-{
-  "condition_driven_injects": [
-    {
-      "title": "string — names the specific event/consequence for ${teamName}",
-      "content": "string — 2-3 sentences referencing SPECIFIC location labels from the map pins above",
-      "type": "field_update|media_report|intel_brief|citizen_call",
-      "severity": "critical|high|medium|low",
-      "inject_scope": "team_specific",
-      "target_teams": ["${teamName}"],
-      "conditions_to_appear": { "threshold": 2, "conditions": ["key_a", "key_b", "key_c"] },
-      "conditions_to_cancel": ["cancellation_key"],
-      "eligible_after_minutes": 12,
-      "requires_response": true,
-      "objective_penalty": { "objective_id": "string", "reason": "string", "points": 10 },
-      "state_effect": { "state_key": { "counter": 1 } }
-    }
-  ]
-}
-
-RULES:
-- Write ${injectCount} injects. At least 40% should be failure/consequence injects, at least 20% positive outcomes, and at least 20% escalation/branching.
-- CRITICAL: conditions_to_appear keys must ONLY reference keys from ${teamStateKey || teamName.toLowerCase().replace(/\\s+/g, '_') + '_state'} (the focus team's schema). Using keys from other teams (e.g. triage_state keys for a fire team inject, or media_state keys for an evacuation inject) will cause the inject to NEVER fire because ${teamName} cannot flip those keys. The only exception is location_claimed:<label> keys.
-- conditions_to_appear keys MUST match the state schema above. You may also use location_claimed:<label> keys (these evaluate to true when a team claims that map pin as a location).
-- Reference SPECIFIC location labels from map pins whenever possible.
-- eligible_after_minutes: vary across the full game duration (5 to ${Math.round(durationMins * 0.8)}) — early-game, mid-game, and late-game injects.
-- Use different thresholds (1, 2, 3) for different severity levels — threshold 1 for early warnings, threshold 2-3 for catastrophic cascades.
-- conditions_to_cancel: provide cancellation keys so injects can be superseded when the situation changes.
-- objective_penalty only for genuine failure consequences.
-- No two injects should have the same title or cover identical conditions.
-- requires_response: true when this inject presents a problem, failure, escalation, or crisis that the team must act on. false when it is a positive status update, acknowledgment, or informational update that does not demand a new action.
-- For positive outcome injects: set requires_response to false and severity to "low" or "medium".
-- Make content specific, vivid, and grounded in the scenario's locations and context.`;
-
-  const userPrompt = `Write ${injectCount} condition-driven injects for ${teamName} in "${narrative?.title || scenario_type}" at ${venue}. Include failure consequences, positive outcomes, escalation triggers, and decision consequences. Cover operational, resource, communication, environmental, escalation, public impact, coordination, intelligence, morale, and reinforcement categories.`;
-
-  const allowedKeyPrefix = teamStateKey ? teamStateKey + '.' : null;
-
-  try {
-    const parsed = await callOpenAi<{
-      condition_driven_injects?: WarroomScenarioPayload['condition_driven_injects'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 8000);
-    const raw = parsed.condition_driven_injects || [];
-    return raw
-      .filter(
-        (inj) =>
-          inj.title &&
-          inj.conditions_to_appear &&
-          (('conditions' in inj.conditions_to_appear &&
-            inj.conditions_to_appear.conditions?.length) ||
-            ('all' in inj.conditions_to_appear && inj.conditions_to_appear.all?.length)),
-      )
-      .filter((inj) => {
-        if (!allowedKeyPrefix) return true;
-        const keys = extractConditionKeys(inj.conditions_to_appear!);
-        const invalid = keys.filter(
-          (k) => !k.startsWith('location_claimed:') && !k.startsWith(allowedKeyPrefix),
-        );
-        if (invalid.length > 0) {
-          logger.warn(
-            { teamName, title: inj.title, invalidKeys: invalid, allowedPrefix: allowedKeyPrefix },
-            'Dropping condition inject with mismatched team keys',
-          );
-          return false;
-        }
-        return true;
-      })
-      .map((inj) => ({
-        title: inj.title,
-        content: inj.content || inj.title,
-        type: normalizeInjectType(inj.type || 'field_update'),
-        severity: inj.severity || 'high',
-        inject_scope: 'team_specific',
-        target_teams: [teamName],
-        requires_response: inj.requires_response,
-        conditions_to_appear: inj.conditions_to_appear,
-        conditions_to_cancel: inj.conditions_to_cancel,
-        eligible_after_minutes: inj.eligible_after_minutes,
-        objective_penalty: inj.objective_penalty,
-        state_effect: inj.state_effect,
-      }));
-  } catch (err) {
-    logger.warn({ err, teamName }, 'Team condition injects failed; continuing without');
-    return [];
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Phase 4d-pair — Cross-team coordination failure injects  (1 call per pair · 1 000 tokens)
-// ---------------------------------------------------------------------------
-
-/**
- * Generates cross-team coordination failure injects for a specific team pairing.
- * Fires when BOTH teams have been performing poorly at their operational interface.
- * Skipped for minimal and standard tiers; full tier caps at 3 pairs.
- */
-async function generatePairConditionInjects(
-  input: WarroomGenerateInput,
-  teamA: string,
-  teamB: string,
-  allTeamNames: string[],
-  openAiApiKey: string,
-  narrative?: { title?: string; description?: string; briefing?: string },
-  locations?: WarroomScenarioPayload['locations'],
-  seeds?: WarroomScenarioPayload['environmental_seeds'],
-  siteAreas?: Array<Record<string, unknown>>,
-): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
-  const { scenario_type, venue_name, location, researchContext } = input;
-  const venue = venue_name || location || input.setting;
-
-  const fullStateSchema = buildTeamStateSchemaHint(allTeamNames);
-
-  const findTeamStateKey = (name: string) =>
-    Object.keys(fullStateSchema).find((k) =>
-      k.toLowerCase().startsWith(name.toLowerCase().replace(/\s+/g, '_').split('_')[0]),
-    );
-  const teamAStateKey = findTeamStateKey(teamA);
-  const teamBStateKey = findTeamStateKey(teamB);
-
-  const pairSchema: Record<string, Record<string, unknown>> = {};
-  if (teamAStateKey) pairSchema[teamAStateKey] = fullStateSchema[teamAStateKey];
-  if (teamBStateKey) pairSchema[teamBStateKey] = fullStateSchema[teamBStateKey];
-  const pairSchemaToUse = Object.keys(pairSchema).length > 0 ? pairSchema : fullStateSchema;
-
-  const allowedPairPrefixes = [teamAStateKey, teamBStateKey].filter(Boolean) as string[];
-
-  const validKeysA = teamAStateKey
-    ? Object.keys(fullStateSchema[teamAStateKey] || {}).map((k) => `${teamAStateKey}.${k}`)
-    : [];
-  const validKeysB = teamBStateKey
-    ? Object.keys(fullStateSchema[teamBStateKey] || {}).map((k) => `${teamBStateKey}.${k}`)
-    : [];
-
-  const locationsBlock = locations?.length
-    ? `\nMap pins:\n${locations.map((l) => `- ${l.label} (${l.location_type})`).join('\n')}`
-    : '';
-  const areasBlock = siteAreas?.length
-    ? `\nSite areas:\n${siteAreas.map((a) => `- ${(a as Record<string, unknown>).label || (a as Record<string, unknown>).area_id}`).join('\n')}`
-    : '';
-  const seedBlock = seeds?.[0]
-    ? `\nBaseline routes: ${JSON.stringify((seeds[0].seed_data as Record<string, unknown>).routes)}`
-    : '';
-  const narrativeBlock = narrative
-    ? `\nNARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}`
-    : '';
-  const similarCasesBlock =
-    researchContext?.similar_cases && researchContext.similar_cases.length > 0
-      ? `\nSIMILAR REAL INCIDENTS:\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
-      : '';
-  const standardsBlock =
-    researchContext?.standards_findings && researchContext.standards_findings.length > 0
-      ? `\nRESPONSE STANDARDS:\n${standardsToPromptBlock(researchContext.standards_findings)}`
-      : '';
-
-  const pairDurationMins = input.duration_minutes ?? 60;
-  const pairInjectCount =
-    pairDurationMins <= 30 ? '6–8' : pairDurationMins <= 90 ? '8–12' : '12–16';
-
-  const pairValidKeysBlock =
-    validKeysA.length > 0 || validKeysB.length > 0
-      ? `\nValid condition keys for ${teamA}: ${validKeysA.join(', ') || 'none'}\nValid condition keys for ${teamB}: ${validKeysB.join(', ') || 'none'}`
-      : '';
-
-  const systemPrompt = `You are an expert crisis management scenario designer writing cross-team coordination injects.
-
-Scenario: ${scenario_type} at ${venue}
-Team pair: ${teamA} and ${teamB}
-All teams: ${allTeamNames.join(', ')}
-Game duration: ${pairDurationMins} minutes
-${narrativeBlock}
-${similarCasesBlock}
-${standardsBlock}
-${locationsBlock}
-${areasBlock}
-${seedBlock}
-
-State schema for ${teamA} and ${teamB} ONLY:
-${JSON.stringify(pairSchemaToUse, null, 2)}
-${pairValidKeysBlock}
-
-Cross-team injects fire based on the combined state of ${teamA} and ${teamB}. They come in TWO flavours:
-
-1. COORDINATION FAILURE injects — fire when BOTH teams have failed to coordinate. They represent cascading failures from breakdown between teams: bottlenecks, contradictory instructions, missed handovers, duplicated efforts, information gaps.
-
-2. COORDINATION SUCCESS injects — fire when both teams ARE coordinating well. They represent positive outcomes: smooth handoffs, effective joint operations, public confidence, efficient resource sharing. These do NOT require a response — they are rewards for good coordination.
-
-Return ONLY valid JSON:
-{
-  "condition_driven_injects": [
-    {
-      "title": "string — names the coordination event between ${teamA} and ${teamB}",
-      "content": "string — 2-3 sentences: the specific outcome from both teams' coordination (or lack thereof), referencing location labels",
-      "type": "field_update|media_report|intel_brief|citizen_call",
-      "severity": "critical|high|medium|low",
-      "inject_scope": "team_specific",
-      "target_teams": ["${teamA}", "${teamB}"],
-      "conditions_to_appear": { "threshold": 2, "conditions": ["key_teamA", "key_teamB", "key_third"] },
-      "conditions_to_cancel": ["resolution_key"],
-      "eligible_after_minutes": 15,
-      "requires_response": true,
-      "objective_penalty": { "objective_id": "obj_coordination", "reason": "string", "points": 15 },
-      "state_effect": {}
-    }
-  ]
-}
-
-RULES:
-- Write ${pairInjectCount} injects for the ${teamA} and ${teamB} interface. At least 60% should be failure injects, at least 25% should be success/positive injects.
-- Each title MUST be unique and specific — include both team names and the event type. Never reuse the same title across injects.
-- CRITICAL: conditions_to_appear keys must ONLY reference keys from ${teamAStateKey || teamA} and/or ${teamBStateKey || teamB} schemas. Do NOT use keys from any other team's schema — those are irrelevant to this pair and will cause broken injects. The only exception is location_claimed:<label> keys.
-- conditions_to_appear must reference state keys from BOTH teams (not just one).
-- Content describes the specific interface outcome between ${teamA} and ${teamB}, referencing location labels.
-- eligible_after_minutes: vary between 5 and ${Math.round(pairDurationMins * 0.8)} to cover different phases.
-- Use different thresholds (1, 2, 3) for different severity cascades.
-- conditions_to_cancel: provide cancellation keys so injects are superseded when the situation changes.
-- requires_response: true for coordination failures/problems teams must act on. false for positive status updates or acknowledgments.
-- For success injects: set requires_response to false and severity to "low" or "medium".`;
-
-  const userPrompt = `Write ${pairInjectCount} cross-team coordination injects for ${teamA} and ${teamB} in "${narrative?.title || scenario_type}" at ${venue}. Include both coordination failures (information sharing failures, resource handoff delays, conflicting directives, missed requests, duplicated efforts, cascading bottlenecks) AND coordination successes (smooth handoffs, effective joint operations, resource sharing, unified messaging).`;
-
-  try {
-    const parsed = await callOpenAi<{
-      condition_driven_injects?: WarroomScenarioPayload['condition_driven_injects'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 6000);
-    const raw = parsed.condition_driven_injects || [];
-    return raw
-      .filter(
-        (inj) =>
-          inj.title &&
-          inj.conditions_to_appear &&
-          (('conditions' in inj.conditions_to_appear &&
-            inj.conditions_to_appear.conditions?.length) ||
-            ('all' in inj.conditions_to_appear && inj.conditions_to_appear.all?.length)),
-      )
-      .filter((inj) => {
-        if (allowedPairPrefixes.length === 0) return true;
-        const keys = extractConditionKeys(inj.conditions_to_appear!);
-        const invalid = keys.filter(
-          (k) =>
-            !k.startsWith('location_claimed:') &&
-            !allowedPairPrefixes.some((prefix) => k.startsWith(prefix + '.')),
-        );
-        if (invalid.length > 0) {
-          logger.warn(
-            {
-              teamA,
-              teamB,
-              title: inj.title,
-              invalidKeys: invalid,
-              allowedPrefixes: allowedPairPrefixes,
-            },
-            'Dropping pair condition inject with keys outside the team pair',
-          );
-          return false;
-        }
-        return true;
-      })
-      .map((inj) => ({
-        title: inj.title,
-        content: inj.content || inj.title,
-        type: normalizeInjectType(inj.type || 'field_update'),
-        severity: inj.severity || 'high',
-        inject_scope: 'team_specific',
-        target_teams: [teamA, teamB],
-        requires_response: inj.requires_response,
-        conditions_to_appear: inj.conditions_to_appear,
-        conditions_to_cancel: inj.conditions_to_cancel,
-        eligible_after_minutes: inj.eligible_after_minutes ?? 15,
-        objective_penalty: inj.objective_penalty,
-        state_effect: inj.state_effect,
-      }));
-  } catch (err) {
-    logger.warn({ err, teamA, teamB }, 'Pair condition injects failed; continuing without');
-    return [];
-  }
-}
-
-// ---------------------------------------------------------------------------
-// DEAD CODE REMOVED — generateLocationsAndSeeds replaced by 4a/4b/4c/4d above
+// Env inject sub-generators removed — replaced by AI runtime evaluation
 // ---------------------------------------------------------------------------
 /**
  * Exported alias so warroomService can run Phase 1 before standards research
@@ -3429,20 +2761,9 @@ export async function warroomGenerateScenario(
       : Promise.resolve([] as NonNullable<WarroomScenarioPayload['locations']>),
   ]);
 
-  // Phase 4a-2 — candidate-space pins (needs exit positions from 4a-1)
-  const candidateSpacePins = await generateCandidateSpacePins(
-    input,
-    teamNames,
-    openAiApiKey,
-    onProgress,
-    narrative,
-    scenarioFixedPins,
-  );
-
-  // Merge and validate all pins
+  // Merge and validate all pins (incident site + entry/exit + POIs)
   const mergedPins: NonNullable<WarroomScenarioPayload['locations']> = [
     ...(scenarioFixedPins ?? []),
-    ...(candidateSpacePins ?? []),
     ...poiPins,
   ];
   const locations =
@@ -3515,9 +2836,22 @@ export async function warroomGenerateScenario(
       locations,
       environmental_seeds,
     ),
-    generateScenarioHazards(input, openAiApiKey, onProgress, narrative, locations),
+    generateScenarioHazards(input, openAiApiKey, onProgress, narrative, locations, teamNames),
     generateFloorPlans(input, openAiApiKey, onProgress, narrative),
   ]);
+
+  // Casualty + crowd generation (casualties depend on hazard data for positioning)
+  const [casualtyPins, crowdPins] = await Promise.all([
+    generateCasualties(input, openAiApiKey, onProgress, narrative, locations, scenarioHazards),
+    generateCrowdPins(input, openAiApiKey, onProgress, narrative, locations),
+  ]);
+  const casualties: WarroomScenarioPayload['casualties'] =
+    [...(casualtyPins ?? []), ...(crowdPins ?? [])].length > 0
+      ? [...(casualtyPins ?? []), ...(crowdPins ?? [])]
+      : undefined;
+
+  // Equipment palette derived from hazard + casualty requirements
+  const scenarioEquipment = await generateScenarioEquipment(scenarioHazards, casualties);
 
   // Phase 4d — Team Intelligence Dossiers (one AI call per team, in parallel)
   const teamDossiers = await generateTeamIntelligenceDossiers(
@@ -3531,67 +2865,6 @@ export async function warroomGenerateScenario(
     environmental_seeds,
     phase4c,
   );
-
-  // Batch B — condition injects + environment-grounded decision injects, all parallel
-  const includeCondition = input.complexity_tier !== 'minimal';
-  let condition_driven_injects: WarroomScenarioPayload['condition_driven_injects'];
-
-  if (includeCondition) {
-    onProgress?.(
-      'Generating condition-driven & environment-grounded injects (parallel batch B)...',
-    );
-    const pairs = buildPairs(teamNames, input.complexity_tier);
-    const [condResults, envDecResults] = await Promise.all([
-      Promise.all([
-        ...teamNames.map((t) =>
-          generateTeamConditionInjects(
-            input,
-            t,
-            teamNames,
-            openAiApiKey,
-            narrative,
-            locations,
-            environmental_seeds,
-            phase4c.site_areas,
-          ),
-        ),
-        ...pairs.map(([a, b]) =>
-          generatePairConditionInjects(
-            input,
-            a,
-            b,
-            teamNames,
-            openAiApiKey,
-            narrative,
-            locations,
-            environmental_seeds,
-            phase4c.site_areas,
-          ),
-        ),
-      ]),
-      Promise.all(
-        teamNames.map((t) =>
-          generateEnvironmentDecisionInjects(
-            input,
-            t,
-            teamNames,
-            openAiApiKey,
-            narrative,
-            locations,
-            environmental_seeds,
-            phase4c.site_areas,
-          ),
-        ),
-      ),
-    ]);
-    const condFlat = condResults.flat();
-    if (condFlat.length > 0) condition_driven_injects = condFlat;
-
-    const envCondFlat = envDecResults.flat();
-    if (envCondFlat.length > 0) {
-      condition_driven_injects = [...(condition_driven_injects ?? []), ...envCondFlat];
-    }
-  }
 
   const scenarioWithType = {
     ...phase1.scenario,
@@ -3637,6 +2910,22 @@ export async function warroomGenerateScenario(
     insiderKnowledge.team_intelligence_dossiers = teamDossiers;
   }
 
+  // Team workflow chains (endgame, steps, ratios, SOP)
+  try {
+    onProgress?.('Researching team workflow chains...');
+    const workflows = await researchTeamWorkflows(
+      openAiApiKey,
+      input.scenario_type,
+      teamNames,
+      narrative,
+    );
+    if (Object.keys(workflows).length > 0) {
+      insiderKnowledge.team_workflows = workflows;
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Team workflow research failed; continuing without');
+  }
+
   const hasInsiderKnowledge = Object.keys(insiderKnowledge).length > 0;
 
   return {
@@ -3644,10 +2933,11 @@ export async function warroomGenerateScenario(
     teams: phase1.teams,
     objectives: phase1.objectives,
     time_injects,
-    condition_driven_injects,
     locations,
     environmental_seeds,
     hazards: scenarioHazards,
+    casualties,
+    equipment: scenarioEquipment,
     floor_plans: floorPlansResult,
     insider_knowledge: hasInsiderKnowledge ? insiderKnowledge : undefined,
   };

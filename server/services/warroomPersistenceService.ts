@@ -60,6 +60,8 @@ export async function persistWarroomScenario(
     environmental_seeds,
     hazards,
     floor_plans,
+    casualties,
+    equipment,
     insider_knowledge,
   } = payload;
 
@@ -159,6 +161,7 @@ export async function persistWarroomScenario(
             ...(loc.description ? { narrative_description: loc.description } : {}),
           },
           display_order: loc.display_order ?? i,
+          ...(loc.pin_category === 'entry_exit' ? { claimable_by: ['all'] } : {}),
         })),
       );
       if (locError) throw new Error(`scenario_locations: ${locError.message}`);
@@ -190,6 +193,13 @@ export async function persistWarroomScenario(
           image_sequence: h.image_sequence ?? null,
           status: h.status ?? 'active',
           appears_at_minutes: h.appears_at_minutes ?? 0,
+          resolution_requirements: h.resolution_requirements ?? {},
+          personnel_requirements: h.personnel_requirements ?? {},
+          equipment_requirements: h.equipment_requirements ?? [],
+          deterioration_timeline: h.deterioration_timeline ?? {},
+          enriched_description: h.enriched_description ?? null,
+          fire_class: h.fire_class ?? null,
+          debris_type: h.debris_type ?? null,
         })),
       );
       if (hazError) {
@@ -212,6 +222,40 @@ export async function persistWarroomScenario(
       );
       if (fpError) {
         logger.warn({ error: fpError }, 'scenario_floor_plans insert failed (non-blocking)');
+      }
+    }
+
+    if (casualties && casualties.length > 0) {
+      const { error: casError } = await supabaseAdmin.from('scenario_casualties').insert(
+        casualties.map((c) => ({
+          scenario_id: scenarioId,
+          casualty_type: c.casualty_type,
+          location_lat: c.location_lat,
+          location_lng: c.location_lng,
+          floor_level: c.floor_level ?? 'G',
+          headcount: c.headcount ?? 1,
+          conditions: c.conditions ?? {},
+          status: c.status ?? 'undiscovered',
+          appears_at_minutes: c.appears_at_minutes ?? 0,
+        })),
+      );
+      if (casError) {
+        logger.warn({ error: casError }, 'scenario_casualties insert failed (non-blocking)');
+      }
+    }
+
+    if (equipment && equipment.length > 0) {
+      const { error: eqError } = await supabaseAdmin.from('scenario_equipment').insert(
+        equipment.map((e) => ({
+          scenario_id: scenarioId,
+          equipment_type: e.equipment_type,
+          label: e.label,
+          icon: e.icon ?? null,
+          properties: e.properties ?? {},
+        })),
+      );
+      if (eqError) {
+        logger.warn({ error: eqError }, 'scenario_equipment insert failed (non-blocking)');
       }
     }
 

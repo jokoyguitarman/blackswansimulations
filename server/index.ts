@@ -28,6 +28,9 @@ import { joinRouter } from './routes/join.js';
 import { warroomRouter } from './routes/warroom.js';
 import placementsRouter from './routes/placements.js';
 import hazardsRouter from './routes/hazards.js';
+import casualtiesRouter from './routes/casualties.js';
+import equipmentRouter from './routes/equipment.js';
+import locationsRouter from './routes/locations.js';
 import floorPlansRouter from './routes/floorPlans.js';
 import { setupWebSocket } from './websocket/index.js';
 import { initializeWebSocketService } from './services/websocketService.js';
@@ -174,6 +177,9 @@ app.use('/api/join', joinRouter);
 app.use('/api/warroom', warroomRouter);
 app.use('/api', placementsRouter);
 app.use('/api', hazardsRouter);
+app.use('/api', casualtiesRouter);
+app.use('/api', equipmentRouter);
+app.use('/api', locationsRouter);
 app.use('/api', floorPlansRouter);
 
 // 404 handler

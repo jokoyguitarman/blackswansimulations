@@ -444,6 +444,87 @@ export function teamDoctrinesToPromptBlock(
     .join('\n\n');
 }
 
+export interface TeamWorkflow {
+  endgame: string;
+  steps: string[];
+  personnel_ratios?: Record<string, string>;
+  sop_checklist?: string[];
+}
+
+/**
+ * Research team-specific workflow chains — endgame definitions, step-by-step
+ * process, personnel ratios, and SOP checklists for each team in the scenario.
+ */
+export async function researchTeamWorkflows(
+  openAiApiKey: string,
+  scenarioType: string,
+  teamNames: string[],
+  narrative?: { title?: string; description?: string; briefing?: string },
+): Promise<Record<string, TeamWorkflow>> {
+  if (teamNames.length === 0) return {};
+
+  const narrativeBlock = narrative
+    ? `\nScenario: ${narrative.title}\nDescription: ${narrative.description || ''}\nBriefing: ${narrative.briefing || ''}`
+    : `\nScenario type: ${scenarioType}`;
+
+  const prompt = `You are an expert in emergency management operations and standard operating procedures.
+${narrativeBlock}
+
+Teams in this exercise: ${teamNames.join(', ')}
+
+For EACH team, research and define:
+
+1. ENDGAME: What does "done" look like for this team? The definitive completion state.
+2. STEPS: The sequential workflow chain this team follows from first action to endgame. Each step should be a discrete, verifiable action. Order matters.
+3. PERSONNEL RATIOS: Key staffing ratios from real SOPs (e.g. "medic_to_patient": "1:4", "marshal_to_exit": "2:1"). Use the format "role_to_role": "N:M".
+4. SOP CHECKLIST: Mandatory procedural items this team must complete per established standards (e.g. "triage_color_coding", "scene_safety_check", "communication_log").
+
+Return ONLY valid JSON:
+{
+  "workflows": {
+    "Team Name": {
+      "endgame": "string",
+      "steps": ["step1", "step2", ...],
+      "personnel_ratios": { "role_to_role": "N:M" },
+      "sop_checklist": ["item1", "item2"]
+    }
+  }
+}`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: SEARCH_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 3000,
+      }),
+    });
+
+    if (!response.ok) {
+      logger.warn({ status: response.status }, 'Team workflow research failed');
+      return {};
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (typeof content !== 'string') return {};
+
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return {};
+
+    const parsed = JSON.parse(jsonMatch[0]) as { workflows?: Record<string, TeamWorkflow> };
+    return parsed.workflows ?? {};
+  } catch (err) {
+    logger.warn({ err }, 'Team workflow research error');
+    return {};
+  }
+}
+
 /**
  * Serialize StandardsFinding[] to a compact string for embedding in AI prompts.
  */

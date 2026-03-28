@@ -4,20 +4,17 @@ import { publishInjectToSession } from '../routes/injects.js';
 import { shouldCancelScheduledInject } from './aiService.js';
 import { updateTeamHeatMeter } from './heatMeterService.js';
 import { runGateEvaluationForSession } from './gateEvaluationService.js';
-import {
-  evaluateInjectConditions,
-  type EvaluationContext,
-  type ConditionsToAppear,
-  type ConditionsToCancel,
-} from './conditionEvaluatorService.js';
-import {
-  evaluateDecisionSemanticConditionKeys,
-  DECISION_SEMANTIC_CONDITION_KEYS,
-} from './decisionEvaluationAiService.js';
-import { getConditionConfigForScenario } from './scenarioConditionConfigService.js';
 import { mergeStateWithInjectEffects } from './injectPublishEffectsService.js';
 import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
+import { evaluatePinResolution } from './pinResolutionService.js';
+import { runHazardDeterioration } from './hazardDeteriorationService.js';
+import { runPeopleDeterioration } from './peopleDeteriorationService.js';
+import {
+  processExitFlow,
+  checkPendingEndorsements,
+  processNonAmbulatoryExtraction,
+} from './exitFlowService.js';
 import type { Server as SocketServer } from 'socket.io';
 import type { CounterDefinition } from '../counterDefinitions.js';
 
@@ -809,132 +806,7 @@ export class InjectSchedulerService {
       );
     }
 
-    // Build evaluation context once per tick (for condition-driven injects; Phase 3 includes ai_classification)
-    const { data: executedDecisionsRows } = await supabaseAdmin
-      .from('decisions')
-      .select('id, title, description, type, ai_classification')
-      .eq('session_id', session.id)
-      .eq('status', 'executed')
-      .order('executed_at', { ascending: false });
-
-    const aiClassification = (d: {
-      ai_classification?: { categories?: string[]; keywords?: string[] };
-    }) => d.ai_classification as { categories?: string[]; keywords?: string[] } | null | undefined;
-    const executedDecisions = (executedDecisionsRows ?? []).map((d) => {
-      const ac = aiClassification(
-        d as { ai_classification?: { categories?: string[]; keywords?: string[] } },
-      );
-      return {
-        id: d.id,
-        decision_type: (d as { type?: string }).type,
-        title: d.title ?? undefined,
-        description: d.description ?? undefined,
-        tags: undefined,
-        categories: ac?.categories ?? [],
-        keywords: ac?.keywords ?? [],
-      };
-    });
-
-    const { data: objectiveRows, error: objectiveError } = await supabaseAdmin
-      .from('scenario_objective_progress')
-      .select('objective_id, objective_name, status, progress_percentage')
-      .eq('session_id', session.id);
-
-    if (objectiveError) {
-      logger.debug(
-        { error: objectiveError, sessionId: session.id },
-        'Failed to load scenario_objective_progress for context, using empty',
-      );
-    }
-    const objectiveProgress = (objectiveRows ?? []).map((r) => ({
-      objective_id: r.objective_id,
-      objective_name: (r as { objective_name?: string }).objective_name,
-      status: r.status,
-      progress_percentage: (r as { progress_percentage?: number }).progress_percentage,
-    }));
-
-    const gateStatusByGateId: Record<string, 'pending' | 'met' | 'not_met'> = {};
-    for (const row of gateProgressRows ?? []) {
-      const s = row.status as string;
-      if (s === 'pending' || s === 'met' || s === 'not_met') gateStatusByGateId[row.gate_id] = s;
-    }
-
-    // Precompute decision-semantic condition keys via AI when key is set (fallback: registry in evaluateKey)
-    let precomputedDecisionKeys: Record<string, boolean> | undefined;
-    const { data: conditionInjectsForKeys } = await supabaseAdmin
-      .from('scenario_injects')
-      .select('conditions_to_appear, conditions_to_cancel')
-      .eq('scenario_id', session.scenario_id)
-      .not('conditions_to_appear', 'is', null);
-    const semanticKeysSet = new Set(DECISION_SEMANTIC_CONDITION_KEYS);
-    const keysUsedInInjects = new Set<string>();
-    for (const row of conditionInjectsForKeys ?? []) {
-      const appear = (row as { conditions_to_appear?: ConditionsToAppear }).conditions_to_appear;
-      const cancel = (row as { conditions_to_cancel?: ConditionsToCancel }).conditions_to_cancel;
-      if (appear && typeof appear === 'object') {
-        const list = 'all' in appear ? appear.all : appear.conditions;
-        if (Array.isArray(list)) list.forEach((k) => keysUsedInInjects.add(k));
-      }
-      if (Array.isArray(cancel)) cancel.forEach((k) => keysUsedInInjects.add(k));
-    }
-    const keysToPrecompute = [...keysUsedInInjects].filter((k) =>
-      semanticKeysSet.has(k as (typeof DECISION_SEMANTIC_CONDITION_KEYS)[number]),
-    ) as string[];
-    if (keysToPrecompute.length > 0 && env.openAiApiKey) {
-      const aiResult = await evaluateDecisionSemanticConditionKeys(
-        {
-          executedDecisions: executedDecisions.map((d) => ({
-            id: d.id,
-            title: d.title,
-            description: d.description,
-            type: d.decision_type,
-          })),
-          conditionKeys: keysToPrecompute,
-        },
-        env.openAiApiKey,
-      );
-      if (aiResult !== null) precomputedDecisionKeys = aiResult;
-    }
-
-    let scenarioConditionKeyDefs:
-      | Array<{ key: string; state_path?: string; negate?: boolean }>
-      | undefined;
-    try {
-      const config = await getConditionConfigForScenario(session.scenario_id);
-      const defsWithPath = config.condition_keys.filter((c) => c.state_path);
-      if (defsWithPath.length > 0) {
-        scenarioConditionKeyDefs = defsWithPath.map((c) => ({
-          key: c.key,
-          state_path: c.state_path,
-          negate: c.negate,
-        }));
-      }
-    } catch (configErr) {
-      logger.debug(
-        { sessionId: session.id, scenarioId: session.scenario_id, err: configErr },
-        'Condition config fetch failed; using registry only',
-      );
-    }
-
-    const evaluationContext: EvaluationContext = {
-      sessionId: session.id,
-      scenarioId: session.scenario_id,
-      elapsedMinutes,
-      currentState: mergeStateWithInjectEffects(
-        (session.current_state as Record<string, unknown>) || {},
-        (session.inject_state_effects as Record<string, unknown>) || {},
-      ),
-      executedDecisions,
-      publishedScenarioInjectIds: Array.from(publishedInjectIds),
-      pathwayOutcomeKeysFired: [], // Optional: populate from session_events metadata when pathway outcome keys are stored
-      objectiveProgress,
-      gateStatusByGateId:
-        Object.keys(gateStatusByGateId).length > 0 ? gateStatusByGateId : undefined,
-      precomputedDecisionKeys,
-      scenarioConditionKeyDefs,
-    };
-
-    // Fetch all decisions and team mappings (shared by time-based and condition-driven AI checks)
+    // Fetch all decisions and team mappings (shared by time-based AI checks)
     const { data: allDecisions } = await supabaseAdmin
       .from('decisions')
       .select('id, title, description, type, proposed_by')
@@ -1056,128 +928,30 @@ export class InjectSchedulerService {
       }
     }
 
-    // --- Condition-driven injects: AI cancellation gate first, then condition fallback ---
-    const { data: conditionInjectsRaw, error: conditionError } = await supabaseAdmin
-      .from('scenario_injects')
-      .select(
-        'id, title, content, severity, conditions_to_appear, conditions_to_cancel, eligible_after_minutes, target_teams, inject_scope',
-      )
-      .eq('scenario_id', session.scenario_id)
-      .not('conditions_to_appear', 'is', null);
-
-    if (conditionError) {
-      logger.debug(
-        { error: conditionError, sessionId: session.id },
-        'Failed to load condition-driven injects, skipping this tick',
-      );
+    // --- Spatial pin resolution: check if placed assets resolve hazard/casualty pins ---
+    try {
+      await evaluatePinResolution(session.id);
+    } catch (pinErr) {
+      logger.warn({ err: pinErr, sessionId: session.id }, 'Pin resolution evaluation error');
     }
-    if (!conditionError && conditionInjectsRaw && conditionInjectsRaw.length > 0) {
-      // Build set of teams that have submitted at least one executed decision (single query)
-      const teamsWithDecisions = new Set<string>();
-      if (executedDecisions.length > 0) {
-        const decisionIds = executedDecisions.map((d) => d.id);
-        const { data: decisionRows } = await supabaseAdmin
-          .from('decisions')
-          .select('proposed_by')
-          .in('id', decisionIds);
-        const proposerIds = [
-          ...new Set(
-            (decisionRows ?? [])
-              .map((r: { proposed_by?: string }) => r.proposed_by)
-              .filter(Boolean) as string[],
-          ),
-        ];
-        if (proposerIds.length > 0) {
-          const { data: teamRows } = await supabaseAdmin
-            .from('session_teams')
-            .select('team_name')
-            .eq('session_id', session.id)
-            .in('user_id', proposerIds);
-          for (const tr of teamRows ?? []) {
-            teamsWithDecisions.add((tr as { team_name: string }).team_name.toLowerCase());
-          }
-        }
-      }
 
-      const conditionInjects = conditionInjectsRaw.filter(
-        (inj) => !publishedInjectIds.has(inj.id) && !cancelledInjectIds.has(inj.id),
-      );
-      for (const inject of conditionInjects) {
-        const eligibleAfter = (inject as { eligible_after_minutes?: number | null })
-          .eligible_after_minutes;
-        if (eligibleAfter != null && elapsedMinutes < eligibleAfter) continue;
+    // --- Deterioration cycles (every 10 minutes — run on every tick, the services
+    //     internally track timing via elapsed minutes) ---
+    try {
+      await Promise.all([runHazardDeterioration(session.id), runPeopleDeterioration(session.id)]);
+    } catch (detErr) {
+      logger.warn({ err: detErr, sessionId: session.id }, 'Deterioration cycle error');
+    }
 
-        // Team guard: skip team-specific condition injects if the target team
-        // hasn't submitted any decisions yet (they haven't had a chance to act)
-        const injectScope = (inject as { inject_scope?: string }).inject_scope;
-        const targetTeams = (inject as { target_teams?: string[] | null }).target_teams;
-        if (
-          injectScope === 'team_specific' &&
-          Array.isArray(targetTeams) &&
-          targetTeams.length > 0
-        ) {
-          const anyTargetTeamActed = targetTeams.some((t) =>
-            teamsWithDecisions.has(t.toLowerCase()),
-          );
-          if (!anyTargetTeamActed) {
-            continue;
-          }
-        }
-
-        const conditionsToAppear = (inject as { conditions_to_appear?: unknown })
-          .conditions_to_appear;
-        const conditionsToCancel = (inject as { conditions_to_cancel?: unknown })
-          .conditions_to_cancel;
-        const result = evaluateInjectConditions(
-          (conditionsToAppear ?? null) as ConditionsToAppear | null,
-          (conditionsToCancel ?? null) as ConditionsToCancel | null,
-          evaluationContext,
-        );
-
-        if (result.status !== 'appear_met') continue;
-
-        try {
-          if (!this.io) {
-            const { io } = await import('../index.js');
-            this.io = io;
-          }
-
-          // AI cancellation gate: check if team decisions already address this concern
-          const cancelled = await runAiCancellationGate(
-            {
-              id: inject.id,
-              title: inject.title ?? null,
-              content: (inject as { content?: string }).content,
-              target_teams: (inject as { target_teams?: string[] | null }).target_teams,
-              severity: (inject as { severity?: string | null }).severity,
-              inject_scope: (inject as { inject_scope?: string | null }).inject_scope,
-            },
-            { id: session.id, scenario_id: session.scenario_id, trainer_id: session.trainer_id },
-            allDecisionsForAi,
-            userIdToTeam,
-            this.io,
-          );
-          if (cancelled) continue;
-
-          if (!this.io) {
-            logger.warn(
-              { sessionId: session.id, injectId: inject.id },
-              'Socket server not available, skipping condition-driven inject publish',
-            );
-            continue;
-          }
-          await publishInjectToSession(inject.id, session.id, session.trainer_id, this.io);
-          logger.info(
-            { sessionId: session.id, injectId: inject.id, title: inject.title },
-            'Condition-driven inject published',
-          );
-        } catch (publishErr) {
-          logger.error(
-            { error: publishErr, sessionId: session.id, injectId: inject.id },
-            'Failed to publish condition-driven inject',
-          );
-        }
-      }
+    // --- Evacuation spatial pipeline ---
+    try {
+      await Promise.all([
+        processExitFlow(session.id),
+        processNonAmbulatoryExtraction(session.id),
+        checkPendingEndorsements(session.id),
+      ]);
+    } catch (evacErr) {
+      logger.warn({ err: evacErr, sessionId: session.id }, 'Evacuation pipeline error');
     }
   }
 }
