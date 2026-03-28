@@ -152,6 +152,17 @@ export class WebSocketService {
   }
 
   /**
+   * Location events
+   */
+  locationClaimed(sessionId: string, location: Record<string, unknown>): void {
+    this.broadcastToSession(sessionId, {
+      type: 'location.claimed',
+      data: { location },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  /**
    * Inject events
    */
   injectPublished(sessionId: string, inject: Record<string, unknown>): void {

@@ -77,7 +77,7 @@ async function applyEnvironmentalConsistencyCap(
   type EnvConsistency = {
     consistent?: boolean;
     severity?: string;
-    mismatch_kind?: 'contradiction' | 'below_standard';
+    mismatch_kind?: 'contradiction' | 'below_standard' | 'infrastructure_gap';
     reason?: string;
   };
   const envByDecision = new Map<string, EnvConsistency>();
@@ -100,9 +100,11 @@ async function applyEnvironmentalConsistencyCap(
       const kind =
         normalizedKind === 'below_standard'
           ? ('below_standard' as const)
-          : normalizedKind === 'contradiction'
-            ? ('contradiction' as const)
-            : undefined;
+          : normalizedKind === 'infrastructure_gap'
+            ? ('infrastructure_gap' as const)
+            : normalizedKind === 'contradiction'
+              ? ('contradiction' as const)
+              : undefined;
       envByDecision.set(r.id, {
         consistent: ec.consistent,
         severity: ec.severity,
@@ -122,7 +124,7 @@ async function applyEnvironmentalConsistencyCap(
     const severity = env?.severity ?? 'medium';
     const mismatch_kind = env?.mismatch_kind ?? 'contradiction';
     let cappedScore: number;
-    if (env.mismatch_kind === 'below_standard') {
+    if (env.mismatch_kind === 'below_standard' || env.mismatch_kind === 'infrastructure_gap') {
       cappedScore = Math.min(score, 6);
     } else if (env?.severity === 'high') {
       cappedScore = Math.min(score, 3);

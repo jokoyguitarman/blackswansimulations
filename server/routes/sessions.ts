@@ -822,7 +822,7 @@ router.get(
       const { data: locations, error: locError } = await supabaseAdmin
         .from('scenario_locations')
         .select(
-          'id, scenario_id, location_type, label, coordinates, conditions, display_order, claimable_by, claimed_by_team, claimed_as',
+          'id, scenario_id, location_type, label, coordinates, conditions, display_order, claimable_by, claimed_by_team, claimed_as, claim_exclusivity',
         )
         .eq('scenario_id', scenarioId)
         .order('display_order', { ascending: true });
@@ -871,9 +871,18 @@ router.get(
         new Set((qaRows ?? []).map((r) => (r as { category: string }).category)),
       );
 
+      const entryExitRows = locRows.filter((r) => {
+        const conds = r.conditions as Record<string, unknown> | null;
+        return conds?.pin_category === 'entry_exit';
+      });
+      const exitClaimTotal = entryExitRows.length;
+      const exitClaimCount = entryExitRows.filter((r) => !!r.claimed_by_team).length;
+
       res.json({
         data: locRows,
         map_revealed_categories: mapRevealedCategories,
+        exit_claim_progress: { claimed: exitClaimCount, total: exitClaimTotal },
+        all_exits_claimed: exitClaimTotal > 0 && exitClaimCount >= exitClaimTotal,
       });
     } catch (err) {
       logger.error({ error: err }, 'Error in GET /sessions/:id/locations');

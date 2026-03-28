@@ -943,7 +943,13 @@ async function processExecutedDecisionInBackground(
     }
 
     // Quality failure inject logic
-    type FailureType = 'vague' | 'contradiction' | 'below_standard' | 'prereq' | 'rejected';
+    type FailureType =
+      | 'vague'
+      | 'contradiction'
+      | 'below_standard'
+      | 'prereq'
+      | 'rejected'
+      | 'infrastructure_gap';
     let failureType: FailureType | null = null;
     let failureContent = '';
 
@@ -958,7 +964,15 @@ async function processExecutedDecisionInBackground(
       failureContent = envResult.feedback;
     } else if (
       !envResult.consistent &&
+      envResult.mismatch_kind === 'infrastructure_gap' &&
+      envResult.reason
+    ) {
+      failureType = 'infrastructure_gap';
+      failureContent = envResult.reason;
+    } else if (
+      !envResult.consistent &&
       envResult.mismatch_kind !== 'below_standard' &&
+      envResult.mismatch_kind !== 'infrastructure_gap' &&
       envResult.reason
     ) {
       failureType = 'contradiction';
@@ -981,6 +995,7 @@ async function processExecutedDecisionInBackground(
       below_standard: 'Field report — standards shortfall',
       prereq: 'Field report — environmental constraint',
       rejected: 'Action cannot be carried out',
+      infrastructure_gap: 'Field report — infrastructure not established',
     };
 
     if (
@@ -1170,7 +1185,13 @@ async function processExecutedDecisionInBackground(
         mistakeType = 'rejected';
       } else if (envResult.specific === false) {
         mistakeType = 'vague';
-      } else if (!envResult.consistent && envResult.mismatch_kind !== 'below_standard') {
+      } else if (!envResult.consistent && envResult.mismatch_kind === 'infrastructure_gap') {
+        mistakeType = 'prereq';
+      } else if (
+        !envResult.consistent &&
+        envResult.mismatch_kind !== 'below_standard' &&
+        envResult.mismatch_kind !== 'infrastructure_gap'
+      ) {
         mistakeType = 'contradiction';
       } else if (!envResult.consistent) {
         mistakeType = 'prereq';

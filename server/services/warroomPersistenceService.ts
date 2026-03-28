@@ -200,6 +200,7 @@ export async function persistWarroomScenario(
           enriched_description: h.enriched_description ?? null,
           fire_class: h.fire_class ?? null,
           debris_type: h.debris_type ?? null,
+          zones: h.zones ?? [],
         })),
       );
       if (hazError) {
@@ -252,6 +253,7 @@ export async function persistWarroomScenario(
           label: e.label,
           icon: e.icon ?? null,
           properties: e.properties ?? {},
+          applicable_teams: e.applicable_teams ?? [],
         })),
       );
       if (eqError) {

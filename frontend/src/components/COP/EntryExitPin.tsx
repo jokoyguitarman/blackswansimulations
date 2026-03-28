@@ -12,13 +12,19 @@ export interface EntryExitData {
   claimable_by: string[];
   claimed_by_team: string | null;
   claimed_as: string | null;
+  claim_exclusivity: string | null;
 }
 
 interface EntryExitPinProps {
   location: EntryExitData;
   currentTeam: string;
   teamNames: string[];
-  onClaim: (locationId: string, teamName: string, claimedAs: string) => void;
+  onClaim: (
+    locationId: string,
+    teamName: string,
+    claimedAs: string,
+    claimExclusivity: string,
+  ) => void;
 }
 
 const CLAIM_OPTIONS = [
@@ -58,6 +64,7 @@ export const EntryExitPin = ({ location, currentTeam, onClaim }: EntryExitPinPro
   const position: LatLngExpression = [location.coordinates.lat, location.coordinates.lng];
   const isClaimed = !!location.claimed_by_team;
   const [selectedClaim, setSelectedClaim] = useState(CLAIM_OPTIONS[0].value);
+  const [exclusivity, setExclusivity] = useState<'exclusive' | 'shared'>('exclusive');
   const conds = location.conditions;
   const exitType = (conds.exit_type as string) ?? '';
   const widthM = conds.width_m as number | undefined;
@@ -74,6 +81,9 @@ export const EntryExitPin = ({ location, currentTeam, onClaim }: EntryExitPinPro
           {isClaimed ? (
             <div className="text-blue-400 mt-1">
               Claimed by {location.claimed_by_team} as {location.claimed_as?.replace(/_/g, ' ')}
+              {location.claim_exclusivity && (
+                <span className="ml-1">({location.claim_exclusivity})</span>
+              )}
             </div>
           ) : (
             <div className="text-gray-400 mt-1 italic">Click to claim</div>
@@ -81,7 +91,7 @@ export const EntryExitPin = ({ location, currentTeam, onClaim }: EntryExitPinPro
         </div>
       </Tooltip>
       <Popup>
-        <div className="text-sm min-w-[180px]">
+        <div className="text-sm min-w-[200px]">
           <div className="font-semibold mb-2">{location.label}</div>
           {isClaimed ? (
             <div className="text-center">
@@ -90,9 +100,16 @@ export const EntryExitPin = ({ location, currentTeam, onClaim }: EntryExitPinPro
                 <span className="font-semibold">{location.claimed_by_team}</span> has claimed this
                 as
               </div>
-              <div className="text-xs font-semibold text-blue-300 mb-2">
+              <div className="text-xs font-semibold text-blue-300 mb-1">
                 {location.claimed_as?.replace(/_/g, ' ')}
               </div>
+              {location.claim_exclusivity && (
+                <div className="text-xs text-gray-400 mb-2">
+                  {location.claim_exclusivity === 'exclusive'
+                    ? `Exclusive to ${location.claimed_by_team}`
+                    : 'Shared with all teams'}
+                </div>
+              )}
               <div className="px-2 py-1 text-xs rounded bg-gray-700 text-gray-400 border border-gray-600">
                 This point is unavailable
               </div>
@@ -100,6 +117,30 @@ export const EntryExitPin = ({ location, currentTeam, onClaim }: EntryExitPinPro
           ) : (
             <>
               <div className="text-xs text-gray-500 mb-2">Assign this point for your team</div>
+
+              <div className="flex gap-1 mb-2">
+                <button
+                  className={`flex-1 px-2 py-1 text-xs font-semibold rounded border ${
+                    exclusivity === 'exclusive'
+                      ? 'bg-amber-600 border-amber-500 text-white'
+                      : 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-500'
+                  }`}
+                  onClick={() => setExclusivity('exclusive')}
+                >
+                  Exclusive
+                </button>
+                <button
+                  className={`flex-1 px-2 py-1 text-xs font-semibold rounded border ${
+                    exclusivity === 'shared'
+                      ? 'bg-green-600 border-green-500 text-white'
+                      : 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-500'
+                  }`}
+                  onClick={() => setExclusivity('shared')}
+                >
+                  Shared
+                </button>
+              </div>
+
               <select
                 className="w-full p-1 text-xs border border-gray-600 rounded bg-gray-800 text-white mb-2"
                 value={selectedClaim}
@@ -113,7 +154,7 @@ export const EntryExitPin = ({ location, currentTeam, onClaim }: EntryExitPinPro
               </select>
               <button
                 className="w-full px-2 py-1 text-xs font-semibold rounded bg-blue-600 hover:bg-blue-500 text-white"
-                onClick={() => onClaim(location.id, currentTeam, selectedClaim)}
+                onClick={() => onClaim(location.id, currentTeam, selectedClaim, exclusivity)}
               >
                 Claim as {currentTeam}
               </button>

@@ -738,13 +738,19 @@ export const api = {
   },
 
   locations: {
-    claim: async (sessionId: string, locationId: string, team_name: string, claimed_as: string) => {
+    claim: async (
+      sessionId: string,
+      locationId: string,
+      team_name: string,
+      claimed_as: string,
+      claim_exclusivity?: string,
+    ) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: Record<string, unknown> }>(
         await fetch(apiUrl(`/api/sessions/${sessionId}/locations/${locationId}/claim`), {
           method: 'POST',
           headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ team_name, claimed_as }),
+          body: JSON.stringify({ team_name, claimed_as, claim_exclusivity }),
         }),
       );
     },

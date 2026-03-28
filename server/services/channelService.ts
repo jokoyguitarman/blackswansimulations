@@ -19,6 +19,12 @@ export const createDefaultChannels = async (
     },
     {
       session_id: sessionId,
+      name: 'All Teams',
+      type: 'inter_agency',
+      role_filter: null,
+    },
+    {
+      session_id: sessionId,
       name: 'Public Channel',
       type: 'public',
       role_filter: null,

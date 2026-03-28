@@ -141,6 +141,13 @@ export interface WarroomScenarioPayload {
     enriched_description?: string;
     fire_class?: string;
     debris_type?: string;
+    zones?: Array<{
+      zone_type: string;
+      radius_m: number;
+      ppe_required: string[];
+      allowed_teams: string[];
+      activities: string[];
+    }>;
   }>;
   casualties?: Array<{
     casualty_type: 'patient' | 'crowd' | 'evacuee_group';
@@ -157,6 +164,7 @@ export interface WarroomScenarioPayload {
     label: string;
     icon?: string;
     properties: Record<string, unknown>;
+    applicable_teams?: string[];
   }>;
   insider_knowledge?: {
     osm_vicinity?: OsmVicinity;
@@ -1423,11 +1431,12 @@ Fuel/source: ${(hazard.properties as Record<string, unknown>).fuel_source || 'un
 Adjacent risks: ${JSON.stringify((hazard.properties as Record<string, unknown>).adjacent_risks || [])}
 Teams available: ${(teamNames ?? []).join(', ') || 'not specified'}`;
 
-  // Run three focused calls in parallel for reliable field population
-  const [descResult, reqsResult, deteriorationResult] = await Promise.all([
+  // Run four focused calls in parallel for reliable field population
+  const [descResult, reqsResult, deteriorationResult, zonesResult] = await Promise.all([
     enrichHazardDescription(hazardContext, hazard, venue, openAiApiKey),
     enrichHazardRequirements(hazardContext, hazard, venue, openAiApiKey),
     enrichHazardDeterioration(hazardContext, hazard, venue, openAiApiKey),
+    enrichHazardZones(hazardContext, hazard, openAiApiKey),
   ]);
 
   return {
@@ -1439,6 +1448,7 @@ Teams available: ${(teamNames ?? []).join(', ') || 'not specified'}`;
     personnel_requirements: reqsResult.personnel_requirements ?? {},
     equipment_requirements: reqsResult.equipment_requirements ?? [],
     deterioration_timeline: deteriorationResult.deterioration_timeline ?? {},
+    zones: zonesResult.zones ?? [],
   };
 }
 
@@ -1519,12 +1529,23 @@ Return ONLY valid JSON:
     "support_roles": ["role1", "role2"]
   },
   "equipment_requirements": [
-    { "equipment_type": "internal_id", "label": "Human readable name", "quantity": <number>, "critical": <true if essential> },
-    { "equipment_type": "another_item", "label": "Display name", "quantity": <number>, "critical": <true/false> }
+    { "equipment_type": "internal_id", "label": "Human readable name", "quantity": <number>, "critical": <true if essential>, "applicable_teams": ["team_name_1", "team_name_2"] },
+    { "equipment_type": "another_item", "label": "Display name", "quantity": <number>, "critical": <true/false>, "applicable_teams": ["team_name"] }
   ]
 }
 
-IMPORTANT: equipment_requirements MUST contain at least 2 items. Be specific — not just "fire_extinguisher" but the correct type (foam, CO2, dry chemical, etc.) for this hazard.`;
+IMPORTANT:
+- equipment_requirements MUST contain at least 2 items. Be specific — not just "fire_extinguisher" but the correct type (foam, CO2, dry chemical, etc.) for this hazard.
+- ALWAYS include the personal protective equipment (PPE) that responders MUST wear when approaching this hazard. Examples: breathing_apparatus, hazmat_suit, fire_protective_gear, safety_vest, helmet, ppe_medical, chemical_gloves, face_shield. Mark PPE items as critical: true.
+- safety_precautions should list procedural safety steps (e.g. "establish exclusion zone", "approach from upwind").
+- applicable_teams: assign each equipment item ONLY to the team(s) trained to use it. Use the EXACT team names from "Teams available" above. Rules:
+  - Fire-fighting gear (turnout gear, hose, foam units, fire extinguishers) → fire/hazmat team only
+  - HAZMAT PPE (hazmat_suit, breathing_apparatus, chemical_gloves) → fire/hazmat team only
+  - Medical equipment (defibrillator, iv_kit, burn_kit, splint, oxygen) → triage/medical team only
+  - Medical PPE (ppe_medical, surgical gloves, face_shield for patient care) → triage/medical team only
+  - Rescue/extrication tools (cutting_tools, hydraulic_jack, stretcher, spinal_board) → evacuation team AND triage team
+  - General safety items (safety_vest, helmet) → any team that operates in the hazard zone
+  - If unsure, assign to the team whose real-world role would use that equipment`;
 
   try {
     return await callOpenAi<{
@@ -1585,6 +1606,101 @@ Return ONLY valid JSON:
   }
 }
 
+// Sub-call 4: ICS/NIMS hazard zones (hot/warm/cold) — hidden ground truth
+async function enrichHazardZones(
+  hazardContext: string,
+  hazard: NonNullable<WarroomScenarioPayload['hazards']>[number],
+  openAiApiKey: string,
+): Promise<{
+  zones?: Array<{
+    zone_type: string;
+    radius_m: number;
+    ppe_required: string[];
+    allowed_teams: string[];
+    activities: string[];
+  }>;
+}> {
+  const size = ((hazard.properties as Record<string, unknown>).size as string) ?? 'medium';
+
+  const systemPrompt = `You are an ICS/NIMS incident safety expert. Define the Hot, Warm, and Cold zone boundaries for this hazard following standardized emergency response doctrine.
+
+${hazardContext}
+
+You MUST return exactly 3 zones. Use the hazard type, size, and fuel/source to determine realistic radii and requirements.
+
+Radius guidelines by hazard size:
+- small: hot ~25-40m, warm ~60-100m, cold ~150-250m
+- medium: hot ~40-70m, warm ~100-150m, cold ~250-400m
+- large: hot ~70-120m, warm ~150-250m, cold ~400-600m
+
+Adjust for hazard type:
+- Chemical/HAZMAT: expand warm zone significantly (decontamination corridor needed)
+- Fire: hot zone based on radiant heat and smoke, warm zone based on smoke drift
+- Structural collapse: smaller hot zone (immediate rubble), large warm zone (aftershock/secondary collapse risk)
+- Gas leak: hot zone based on explosive concentration, expand with wind
+- Explosion/blast: hot zone = blast crater + structural damage, warm = debris field
+- Biological: hot zone = contamination source, warm zone very large (dispersal area)
+- Active threat: hot zone = line of sight to threat, warm = secured but not cleared
+
+Current hazard size: ${size}
+
+Return ONLY valid JSON:
+{
+  "zones": [
+    {
+      "zone_type": "hot",
+      "radius_m": <number>,
+      "ppe_required": ["equipment_type_1", "equipment_type_2"],
+      "allowed_teams": ["team_name_that_may_enter"],
+      "activities": ["what_can_be_done_here"]
+    },
+    {
+      "zone_type": "warm",
+      "radius_m": <number>,
+      "ppe_required": ["equipment_type"],
+      "allowed_teams": ["team1", "team2"],
+      "activities": ["activity1", "activity2"]
+    },
+    {
+      "zone_type": "cold",
+      "radius_m": <number>,
+      "ppe_required": [],
+      "allowed_teams": ["all"],
+      "activities": ["treatment", "staging", "command", "transport"]
+    }
+  ]
+}
+
+RULES:
+- ppe_required: use specific equipment IDs like scba, hazmat_suit, fire_protective_gear, respirator, safety_vest, helmet, ppe_medical, chemical_gloves, face_shield, turnout_gear
+- allowed_teams: use the EXACT team names from "Teams available" above. For hot zone only specialized teams (e.g. fire/hazmat for fire, hazmat specialists for chemical). For warm zone include medical/triage. For cold zone use "all".
+- activities in hot zone: rapid_extrication, suppression, containment, reconnaissance — NO prolonged treatment
+- activities in warm zone: triage, decontamination, stabilization, handoff — bridge between danger and safety
+- activities in cold zone: treatment, staging, command, transport, definitive_care
+- Each zone radius MUST be larger than the previous (hot < warm < cold)`;
+
+  try {
+    const result = await callOpenAi<{
+      zones?: Array<{
+        zone_type: string;
+        radius_m: number;
+        ppe_required: string[];
+        allowed_teams: string[];
+        activities: string[];
+      }>;
+    }>(
+      systemPrompt,
+      `Define the hot, warm, and cold zones for this ${hazard.hazard_type} hazard.`,
+      openAiApiKey,
+      1500,
+    );
+    return { zones: result.zones };
+  } catch (err) {
+    logger.warn({ err, hazardType: hazard.hazard_type }, 'Hazard zone enrichment failed');
+    return {};
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Phase 4b2c — Casualty Identification + Enrichment
 // ---------------------------------------------------------------------------
@@ -1632,7 +1748,9 @@ Generate 15-25 INDIVIDUAL casualty pins. Each pin represents ONE person at a spe
 - Some casualties are trapped (behind fire, under debris), some are ambulatory
 - Scatter casualties realistically: near the blast, along corridors, at exits, on different floors if applicable
 
-IMPORTANT: Do NOT reveal what personnel or equipment is needed. Only describe the patient's visible condition and injuries. Players must figure out the right response.
+IMPORTANT: The "visible_description" must ONLY describe what a responder physically observes — do NOT reveal treatment protocols or equipment needed there. Players must figure out the right response from what they see.
+
+However, you MUST also generate "treatment_requirements", "transport_prerequisites", and "contraindications" as HIDDEN ground truth fields. These are used internally by the evaluation system to judge whether players respond correctly — players never see them.
 
 Return ONLY valid JSON:
 {
@@ -1650,7 +1768,10 @@ Return ONLY valid JSON:
         "accessibility": "open|behind_fire|under_debris|in_smoke|blocked_corridor",
         "consciousness": "alert|confused|unconscious|unresponsive",
         "breathing": "normal|labored|absent",
-        "visible_description": "1-2 sentence description of what a responder sees approaching this person"
+        "visible_description": "1-2 sentence description of what a responder sees approaching this person",
+        "treatment_requirements": [{ "intervention": "string (e.g. splint, burn_dressing, IV_fluids, oxygen, tourniquet, cervical_collar, wound_packing, chest_seal, airway_management)", "priority": "critical|high|medium", "reason": "short clinical rationale" }],
+        "transport_prerequisites": ["string — what MUST be done before this patient can be safely moved (e.g. splint_fracture, secure_airway, spinal_immobilization, control_bleeding)"],
+        "contraindications": ["string — what must NOT be done (e.g. do_not_move_without_spinal_clearance, no_tourniquet_on_crush_injury_without_medical_oversight)"]
       },
       "status": "undiscovered",
       "appears_at_minutes": 0
@@ -1664,7 +1785,10 @@ RULES:
 - At least 3-4 trapped casualties requiring extraction before they can be moved
 - At least 2-3 casualties behind active hazards (accessibility: "behind_fire" etc.)
 - Some casualties appear later (appears_at_minutes > 0) as they are discovered or as hazards worsen
-- visible_description should be vivid but clinical — what a responder physically observes`;
+- visible_description should be vivid but clinical — what a responder physically observes
+- treatment_requirements: derive from injuries using real pre-hospital care protocols. A fracture needs a splint. Burns need burn dressings and IV fluids. Labored breathing needs airway management or oxygen. Blast injuries may need chest seals. Severe bleeding needs tourniquet or wound packing. Be medically accurate.
+- transport_prerequisites: list what MUST be stabilized before moving the patient safely. E.g. fractures must be splinted, spinal injuries need immobilization, bleeding must be controlled.
+- contraindications: list dangerous actions for this specific patient. E.g. crush injuries should not have tourniquets applied without medical oversight (risk of reperfusion syndrome). Spinal injuries must not be moved without immobilization.`;
 
   const userPrompt = `Generate individual casualty pins for "${narrative?.title || scenario_type}" at ${venue}.`;
 
@@ -1772,16 +1896,36 @@ RULES:
 async function generateScenarioEquipment(
   hazards?: WarroomScenarioPayload['hazards'],
   casualties?: WarroomScenarioPayload['casualties'],
+  teamNames?: string[],
 ): Promise<WarroomScenarioPayload['equipment']> {
   const equipmentMap = new Map<
     string,
-    { equipment_type: string; label: string; icon?: string; properties: Record<string, unknown> }
+    {
+      equipment_type: string;
+      label: string;
+      icon?: string;
+      properties: Record<string, unknown>;
+      applicable_teams: string[];
+    }
   >();
+
+  const normalizeTeam = (t: string) => t.toLowerCase().replace(/[\s-]+/g, '_');
+
+  const mergeTeams = (existing: string[], incoming: string[]) => {
+    const set = new Set(existing.map(normalizeTeam));
+    for (const t of incoming) set.add(normalizeTeam(t));
+    return Array.from(set);
+  };
 
   for (const h of hazards ?? []) {
     for (const eq of h.equipment_requirements ?? []) {
       const eqType = (eq.equipment_type as string) ?? '';
-      if (eqType && !equipmentMap.has(eqType)) {
+      if (!eqType) continue;
+      const teams = Array.isArray(eq.applicable_teams) ? (eq.applicable_teams as string[]) : [];
+      const existing = equipmentMap.get(eqType);
+      if (existing) {
+        existing.applicable_teams = mergeTeams(existing.applicable_teams, teams);
+      } else {
         equipmentMap.set(eqType, {
           equipment_type: eqType,
           label: (eq.label as string) ?? eqType.replace(/_/g, ' '),
@@ -1791,6 +1935,7 @@ async function generateScenarioEquipment(
             critical: (eq.critical as boolean) ?? false,
             applicable_to: ['hazard'],
           },
+          applicable_teams: teams.map(normalizeTeam),
         });
       }
     }
@@ -1804,49 +1949,84 @@ async function generateScenarioEquipment(
           label: eqType.replace(/_/g, ' '),
           icon: iconForEquipment(eqType),
           properties: { quantity_needed: 1, applicable_to: ['hazard'] },
+          applicable_teams: [],
         });
       }
     }
   }
 
-  const mobilityEquipment: Record<string, { label: string; icon: string }> = {
-    stretcher: { label: 'Stretcher', icon: 'bed' },
-    spinal_board: { label: 'Spinal Board', icon: 'clipboard' },
-    wheelchair: { label: 'Wheelchair', icon: 'accessibility' },
-    cutting_tools: { label: 'Cutting Tools', icon: 'wrench' },
-    breathing_apparatus: { label: 'Breathing Apparatus', icon: 'wind' },
-  };
+  const mobilityEquipment: Record<string, { label: string; icon: string; defaultTeams: string[] }> =
+    {
+      stretcher: { label: 'Stretcher', icon: 'bed', defaultTeams: ['evacuation', 'triage'] },
+      spinal_board: {
+        label: 'Spinal Board',
+        icon: 'clipboard',
+        defaultTeams: ['evacuation', 'triage'],
+      },
+      wheelchair: {
+        label: 'Wheelchair',
+        icon: 'accessibility',
+        defaultTeams: ['evacuation', 'triage'],
+      },
+      cutting_tools: {
+        label: 'Cutting Tools',
+        icon: 'wrench',
+        defaultTeams: ['fire_hazmat', 'evacuation'],
+      },
+      breathing_apparatus: {
+        label: 'Breathing Apparatus',
+        icon: 'wind',
+        defaultTeams: ['fire_hazmat'],
+      },
+    };
 
   for (const c of casualties ?? []) {
     const conds = (c.conditions ?? {}) as Record<string, unknown>;
     const mobility = conds.mobility as string;
     if (mobility === 'non_ambulatory' || mobility === 'trapped') {
       if (!equipmentMap.has('stretcher')) {
+        const me = mobilityEquipment.stretcher;
         equipmentMap.set('stretcher', {
           equipment_type: 'stretcher',
-          ...mobilityEquipment.stretcher,
+          label: me.label,
+          icon: me.icon,
           properties: { quantity_needed: 1, applicable_to: ['non_ambulatory', 'trapped'] },
+          applicable_teams: me.defaultTeams,
         });
       }
     }
     if (mobility === 'trapped') {
       if (!equipmentMap.has('cutting_tools')) {
+        const me = mobilityEquipment.cutting_tools;
         equipmentMap.set('cutting_tools', {
           equipment_type: 'cutting_tools',
-          ...mobilityEquipment.cutting_tools,
+          label: me.label,
+          icon: me.icon,
           properties: { quantity_needed: 1, applicable_to: ['trapped'] },
+          applicable_teams: me.defaultTeams,
         });
       }
     }
     const accessibility = conds.accessibility as string;
     if (accessibility === 'in_smoke') {
       if (!equipmentMap.has('breathing_apparatus')) {
+        const me = mobilityEquipment.breathing_apparatus;
         equipmentMap.set('breathing_apparatus', {
           equipment_type: 'breathing_apparatus',
-          ...mobilityEquipment.breathing_apparatus,
+          label: me.label,
+          icon: me.icon,
           properties: { quantity_needed: 1, applicable_to: ['smoke_environment'] },
+          applicable_teams: me.defaultTeams,
         });
       }
+    }
+  }
+
+  // Items with empty applicable_teams get assigned to all teams (universal)
+  const allTeamsNormalized = (teamNames ?? []).map(normalizeTeam);
+  for (const entry of equipmentMap.values()) {
+    if (entry.applicable_teams.length === 0) {
+      entry.applicable_teams = allTeamsNormalized;
     }
   }
 
@@ -2956,7 +3136,7 @@ export async function warroomGenerateScenario(
       : undefined;
 
   // Equipment palette derived from hazard + casualty requirements
-  const scenarioEquipment = await generateScenarioEquipment(scenarioHazards, casualties);
+  const scenarioEquipment = await generateScenarioEquipment(scenarioHazards, casualties, teamNames);
 
   // Phase 4d — Team Intelligence Dossiers (one AI call per team, in parallel)
   const teamDossiers = await generateTeamIntelligenceDossiers(

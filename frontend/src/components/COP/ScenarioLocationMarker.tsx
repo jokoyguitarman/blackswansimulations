@@ -20,6 +20,7 @@ export interface ScenarioLocationPin {
   claimable_by?: string[];
   claimed_by_team?: string | null;
   claimed_as?: string | null;
+  claim_exclusivity?: string | null;
 }
 
 interface ScenarioLocationMarkerProps {

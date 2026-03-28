@@ -6,6 +6,26 @@ import { hasMarshalProximity } from '../services/exitFlowService.js';
 
 const router = Router();
 
+const GROUND_TRUTH_KEYS = [
+  'treatment_requirements',
+  'transport_prerequisites',
+  'contraindications',
+];
+
+function stripGroundTruth(
+  casualties: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  return casualties.map((c) => {
+    const conds = c.conditions as Record<string, unknown> | null;
+    if (!conds || typeof conds !== 'object') return c;
+    const hasKeys = GROUND_TRUTH_KEYS.some((k) => k in conds);
+    if (!hasKeys) return c;
+    const cleaned = { ...conds };
+    for (const k of GROUND_TRUTH_KEYS) delete cleaned[k];
+    return { ...c, conditions: cleaned };
+  });
+}
+
 function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -45,7 +65,10 @@ router.get('/sessions/:id/casualties', requireAuth, async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch casualties' });
     }
 
-    return res.json({ data: casualties ?? [], elapsed_minutes: elapsedMinutes });
+    return res.json({
+      data: stripGroundTruth((casualties ?? []) as Array<Record<string, unknown>>),
+      elapsed_minutes: elapsedMinutes,
+    });
   } catch (err) {
     logger.error({ err }, 'Unexpected error in GET casualties');
     return res.status(500).json({ error: 'Internal server error' });
@@ -66,7 +89,8 @@ router.get('/sessions/:id/casualties/:casualtyId', requireAuth, async (req, res)
       return res.status(404).json({ error: 'Casualty not found' });
     }
 
-    return res.json({ data: casualty });
+    const [cleaned] = stripGroundTruth([casualty as Record<string, unknown>]);
+    return res.json({ data: cleaned });
   } catch (err) {
     logger.error({ err }, 'Unexpected error in GET casualty detail');
     return res.status(500).json({ error: 'Internal server error' });

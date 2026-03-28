@@ -78,6 +78,12 @@ const UNIVERSAL_ASSETS: DraggableAssetDef[] = [
     geometry_type: 'polygon',
     label: 'Operational Area',
   },
+  {
+    asset_type: 'hazard_zone',
+    icon: 'zone',
+    geometry_type: 'polygon',
+    label: 'Hazard Zone',
+  },
   { asset_type: 'command_post', icon: 'command', geometry_type: 'point', label: 'Command Post' },
   { asset_type: 'radio_relay', icon: 'radio', geometry_type: 'point', label: 'Radio Relay' },
 ];
@@ -106,6 +112,7 @@ function getAssetsForTeam(
     label: string;
     icon: string | null;
     properties: Record<string, unknown>;
+    applicable_teams?: string[];
   }>,
 ): DraggableAssetDef[] {
   const key = teamName.toLowerCase().replace(/[\s-]/g, '_');
@@ -139,6 +146,12 @@ function getAssetsForTeam(
 
   for (const eq of equipment) {
     if (existingTypes.has(eq.equipment_type)) continue;
+
+    if (eq.applicable_teams && eq.applicable_teams.length > 0) {
+      const matches = eq.applicable_teams.some((t) => key.includes(t) || t.includes(key));
+      if (!matches) continue;
+    }
+
     existingTypes.add(eq.equipment_type);
     base.push({
       asset_type: eq.equipment_type,
@@ -375,6 +388,7 @@ export const SessionView = () => {
       label: string;
       icon: string | null;
       properties: Record<string, unknown>;
+      applicable_teams?: string[];
     }>
   >([]);
 
@@ -1685,6 +1699,7 @@ export const SessionView = () => {
                     isVisible={true}
                     fillHeight
                     showAllPins
+                    bypassExitGate
                     locationsRefreshTrigger={locationsRefreshTrigger}
                     currentState={mergeInjectEffects(
                       (session?.current_state as Record<string, unknown>) ?? {},

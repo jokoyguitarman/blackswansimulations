@@ -181,6 +181,8 @@ interface MapViewProps {
     toLat: number;
     toLng: number;
   }) => void;
+  /** When true (trainer view), skip the exit-claiming gate and always show all operational pins. */
+  bypassExitGate?: boolean;
 }
 
 /**
@@ -463,6 +465,7 @@ export const MapView = ({
   onCancelRecording,
   onStartRecording,
   onCrowdMoved,
+  bypassExitGate = false,
 }: MapViewProps) => {
   const mapDisabledByEnv = import.meta.env.VITE_DISABLE_MAP === 'true';
   const isMapDisabled = disabled || mapDisabledByEnv;
@@ -586,6 +589,10 @@ export const MapView = ({
                 label: loc.label,
                 coordinates: loc.coordinates ?? {},
                 conditions: conds,
+                claimable_by: loc.claimable_by as string[] | undefined,
+                claimed_by_team: (loc.claimed_by_team as string) ?? null,
+                claimed_as: (loc.claimed_as as string) ?? null,
+                claim_exclusivity: (loc.claim_exclusivity as string) ?? null,
               };
             }),
           );
@@ -628,14 +635,31 @@ export const MapView = ({
           (sl.claimed_as as string | null) ??
           ((sl.conditions as Record<string, unknown>)?.claimed_as as string | null) ??
           null,
+        claim_exclusivity:
+          (sl.claim_exclusivity as string | null) ??
+          ((sl.conditions as Record<string, unknown>)?.claim_exclusivity as string | null) ??
+          null,
       }));
     setEntryExitPins(eeLocations);
   }, [scenarioLocations]);
 
-  // Listen for state updates: evacuation zones + environmental_state (Step 6)
+  const allExitsClaimed =
+    bypassExitGate || (entryExitPins.length > 0 && entryExitPins.every((p) => !!p.claimed_by_team));
+  const exitClaimProgress = {
+    claimed: entryExitPins.filter((p) => !!p.claimed_by_team).length,
+    total: entryExitPins.length,
+  };
+
+  // Listen for state updates: evacuation zones, environmental_state, placements, location claims
   useWebSocket({
     sessionId,
-    eventTypes: ['state.updated', 'placement.created', 'placement.updated', 'placement.removed'],
+    eventTypes: [
+      'state.updated',
+      'placement.created',
+      'placement.updated',
+      'placement.removed',
+      'location.claimed',
+    ],
     onEvent: (event: WebSocketEvent) => {
       if (event.type === 'state.updated') {
         const state = (event.data as { state?: Record<string, unknown> })?.state;
@@ -678,6 +702,23 @@ export const MapView = ({
         const { placement } = event.data as { placement: PlacedAsset };
         if (placement) {
           setPlacedAssets((prev) => prev.filter((p) => p.id !== placement.id));
+        }
+      }
+      if (event.type === 'location.claimed') {
+        const { location } = event.data as { location: Record<string, unknown> };
+        if (location?.id) {
+          setEntryExitPins((prev) =>
+            prev.map((p) =>
+              p.id === location.id
+                ? {
+                    ...p,
+                    claimed_by_team: (location.claimed_by_team as string) ?? null,
+                    claimed_as: (location.claimed_as as string) ?? null,
+                    claim_exclusivity: (location.claim_exclusivity as string) ?? null,
+                  }
+                : p,
+            ),
+          );
         }
       }
     },
@@ -885,6 +926,52 @@ export const MapView = ({
   const [drawVertexCount, setDrawVertexCount] = useState(0);
   const [drawFinishSignal, setDrawFinishSignal] = useState(0);
 
+  // Zone classification dialog — shown after a hazard_zone polygon is placed
+  const [zoneClassifyTarget, setZoneClassifyTarget] = useState<{
+    placementId: string;
+    sessionId: string;
+    existingProps: Record<string, unknown>;
+  } | null>(null);
+
+  const handlePlacementCreatedWithZoneCheck = useCallback(
+    (placement: {
+      id: string;
+      label: string;
+      asset_type: string;
+      geometry: Record<string, unknown>;
+      properties: Record<string, unknown>;
+    }) => {
+      onPlacementCreated?.(placement);
+      if (placement.asset_type === 'hazard_zone') {
+        setZoneClassifyTarget({
+          placementId: placement.id,
+          sessionId,
+          existingProps: placement.properties,
+        });
+      }
+    },
+    [onPlacementCreated, sessionId],
+  );
+
+  const handleZoneClassify = useCallback(
+    async (classification: 'hot' | 'warm' | 'cold') => {
+      if (!zoneClassifyTarget) return;
+      try {
+        await api.placements.update(zoneClassifyTarget.sessionId, zoneClassifyTarget.placementId, {
+          properties: {
+            ...zoneClassifyTarget.existingProps,
+            zone_classification: classification,
+          },
+          label: `${classification.charAt(0).toUpperCase() + classification.slice(1)} Zone`,
+        });
+      } catch (err) {
+        console.error('Failed to classify zone:', err);
+      }
+      setZoneClassifyTarget(null);
+    },
+    [zoneClassifyTarget],
+  );
+
   // Key stable per session so map only remounts when session changes, not on every render
   const mapKey = `map-${sessionId}`;
 
@@ -1080,7 +1167,7 @@ export const MapView = ({
               sessionId={sessionId}
               teamName={teamName}
               enabled={draggableAssets.length > 0 && !disabled}
-              onPlacementCreated={onPlacementCreated}
+              onPlacementCreated={handlePlacementCreatedWithZoneCheck}
               onOptimisticPlace={handleOptimisticPlace}
               onOptimisticConfirm={handleOptimisticConfirm}
               onOptimisticRevert={handleOptimisticRevert}
@@ -1103,7 +1190,7 @@ export const MapView = ({
               }}
               finishSignal={drawFinishSignal}
               onVertexCountChange={setDrawVertexCount}
-              onPlacementCreated={onPlacementCreated}
+              onPlacementCreated={handlePlacementCreatedWithZoneCheck}
             />
           )}
 
@@ -1216,60 +1303,65 @@ export const MapView = ({
               <FloorPlanOverlay key={floor.id} floor={floor} />
             ))}
 
-          {/* Hazard Markers — filtered by active floor, show resolved with reduced opacity */}
-          {hazards
-            .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
-            .map((hazard) => (
-              <HazardMarker key={hazard.id} hazard={hazard} onClick={openHazardPanel} />
-            ))}
+          {/* Hazard Markers — gated behind exit claiming, filtered by active floor */}
+          {allExitsClaimed &&
+            hazards
+              .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
+              .map((hazard) => (
+                <HazardMarker key={hazard.id} hazard={hazard} onClick={openHazardPanel} />
+              ))}
 
-          {/* Casualty Pins (individual patients) */}
-          {casualties
-            .filter((c) => c.floor_level === activeFloor || !floorPlans.length)
-            .map((casualty) => (
-              <CasualtyPin key={casualty.id} casualty={casualty} onClick={setSelectedCasualty} />
-            ))}
+          {/* Casualty Pins (individual patients) — gated behind exit claiming */}
+          {allExitsClaimed &&
+            casualties
+              .filter((c) => c.floor_level === activeFloor || !floorPlans.length)
+              .map((casualty) => (
+                <CasualtyPin key={casualty.id} casualty={casualty} onClick={setSelectedCasualty} />
+              ))}
 
-          {/* Crowd Pins (civilian groups) */}
-          {crowds
-            .filter((c) => c.floor_level === activeFloor || !floorPlans.length)
-            .map((crowd) => (
-              <CrowdPin
-                key={crowd.id}
-                crowd={crowd}
-                isDraggable={(crowdDraggability.get(crowd.id) ?? false) && !!isRecordingActions}
-                onClick={openCrowdPanel}
-                onDragEnd={async (c, newLat, newLng) => {
-                  const oldLat = c.location_lat;
-                  const oldLng = c.location_lng;
-                  setCrowds((prev) =>
-                    prev.map((cr) =>
-                      cr.id === c.id ? { ...cr, location_lat: newLat, location_lng: newLng } : cr,
-                    ),
-                  );
-                  try {
-                    await api.casualties.update(sessionId, c.id, {
-                      location_lat: newLat,
-                      location_lng: newLng,
-                    });
-                    onCrowdMoved?.({
-                      id: c.id,
-                      label: `Crowd (${c.headcount} people)`,
-                      fromLat: oldLat,
-                      fromLng: oldLng,
-                      toLat: newLat,
-                      toLng: newLng,
-                    });
-                  } catch {
+          {/* Crowd Pins (civilian groups) — gated behind exit claiming */}
+          {allExitsClaimed &&
+            crowds
+              .filter((c) => c.floor_level === activeFloor || !floorPlans.length)
+              .map((crowd) => (
+                <CrowdPin
+                  key={crowd.id}
+                  crowd={crowd}
+                  isDraggable={(crowdDraggability.get(crowd.id) ?? false) && !!isRecordingActions}
+                  onClick={openCrowdPanel}
+                  onDragEnd={async (c, newLat, newLng) => {
+                    const oldLat = c.location_lat;
+                    const oldLng = c.location_lng;
                     setCrowds((prev) =>
                       prev.map((cr) =>
-                        cr.id === c.id ? { ...cr, location_lat: oldLat, location_lng: oldLng } : cr,
+                        cr.id === c.id ? { ...cr, location_lat: newLat, location_lng: newLng } : cr,
                       ),
                     );
-                  }
-                }}
-              />
-            ))}
+                    try {
+                      await api.casualties.update(sessionId, c.id, {
+                        location_lat: newLat,
+                        location_lng: newLng,
+                      });
+                      onCrowdMoved?.({
+                        id: c.id,
+                        label: `Crowd (${c.headcount} people)`,
+                        fromLat: oldLat,
+                        fromLng: oldLng,
+                        toLat: newLat,
+                        toLng: newLng,
+                      });
+                    } catch {
+                      setCrowds((prev) =>
+                        prev.map((cr) =>
+                          cr.id === c.id
+                            ? { ...cr, location_lat: oldLat, location_lng: oldLng }
+                            : cr,
+                        ),
+                      );
+                    }
+                  }}
+                />
+              ))}
 
           {/* Entry/Exit Pins */}
           {entryExitPins.map((loc) => (
@@ -1278,13 +1370,18 @@ export const MapView = ({
               location={loc}
               currentTeam={teamName ?? ''}
               teamNames={[]}
-              onClaim={async (locationId, tn, claimedAs) => {
+              onClaim={async (locationId, tn, claimedAs, claimExclusivity) => {
                 try {
-                  await api.locations.claim(sessionId, locationId, tn, claimedAs);
+                  await api.locations.claim(sessionId, locationId, tn, claimedAs, claimExclusivity);
                   setEntryExitPins((prev) =>
                     prev.map((p) =>
                       p.id === locationId
-                        ? { ...p, claimed_by_team: tn, claimed_as: claimedAs }
+                        ? {
+                            ...p,
+                            claimed_by_team: tn,
+                            claimed_as: claimedAs,
+                            claim_exclusivity: claimExclusivity,
+                          }
                         : p,
                     ),
                   );
@@ -1316,6 +1413,119 @@ export const MapView = ({
             />
           ))}
         </MapContainer>
+      )}
+
+      {/* Zone classification dialog — appears after drawing a hazard_zone polygon */}
+      {zoneClassifyTarget && (
+        <div
+          className="absolute inset-0 z-[2000] flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.5)' }}
+        >
+          <div
+            className="rounded-lg border p-5 shadow-2xl"
+            style={{
+              background: 'rgba(15,23,42,0.97)',
+              borderColor: 'rgba(148,163,184,0.3)',
+              minWidth: 300,
+            }}
+          >
+            <div className="text-sm font-mono text-gray-200 mb-1 uppercase tracking-wide text-center">
+              Classify This Zone
+            </div>
+            <div className="text-[11px] font-mono text-gray-400 text-center mb-4">
+              What type of hazard zone is this area?
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => handleZoneClassify('hot')}
+                className="flex items-center gap-3 px-4 py-2.5 rounded border text-left transition-colors hover:brightness-125"
+                style={{
+                  background: 'rgba(220,38,38,0.15)',
+                  borderColor: 'rgba(220,38,38,0.5)',
+                }}
+              >
+                <span
+                  className="w-4 h-4 rounded-full flex-shrink-0"
+                  style={{ background: '#dc2626' }}
+                />
+                <div>
+                  <div className="text-xs font-mono font-bold text-red-300">HOT ZONE</div>
+                  <div className="text-[10px] font-mono text-red-400/70">
+                    Immediate danger — specialist access only
+                  </div>
+                </div>
+              </button>
+              <button
+                onClick={() => handleZoneClassify('warm')}
+                className="flex items-center gap-3 px-4 py-2.5 rounded border text-left transition-colors hover:brightness-125"
+                style={{
+                  background: 'rgba(245,158,11,0.15)',
+                  borderColor: 'rgba(245,158,11,0.5)',
+                }}
+              >
+                <span
+                  className="w-4 h-4 rounded-full flex-shrink-0"
+                  style={{ background: '#f59e0b' }}
+                />
+                <div>
+                  <div className="text-xs font-mono font-bold text-amber-300">WARM ZONE</div>
+                  <div className="text-[10px] font-mono text-amber-400/70">
+                    Transition area — triage, decon, stabilization
+                  </div>
+                </div>
+              </button>
+              <button
+                onClick={() => handleZoneClassify('cold')}
+                className="flex items-center gap-3 px-4 py-2.5 rounded border text-left transition-colors hover:brightness-125"
+                style={{
+                  background: 'rgba(34,197,94,0.15)',
+                  borderColor: 'rgba(34,197,94,0.5)',
+                }}
+              >
+                <span
+                  className="w-4 h-4 rounded-full flex-shrink-0"
+                  style={{ background: '#22c55e' }}
+                />
+                <div>
+                  <div className="text-xs font-mono font-bold text-green-300">COLD ZONE</div>
+                  <div className="text-[10px] font-mono text-green-400/70">
+                    Safe area — treatment, staging, command
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Exit claiming progress banner */}
+      {!allExitsClaimed && entryExitPins.length > 0 && (
+        <div
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] px-4 py-2 rounded border"
+          style={{
+            background: 'rgba(0,0,0,0.9)',
+            borderColor: 'rgba(245,158,11,0.6)',
+            maxWidth: '380px',
+          }}
+        >
+          <div className="text-xs font-mono text-amber-300 text-center mb-1 uppercase tracking-wide">
+            Plan Your Pathways
+          </div>
+          <div className="text-[10px] font-mono text-gray-400 text-center mb-2">
+            Claim all entry/exit points before responding to incidents
+          </div>
+          <div className="w-full bg-gray-700 rounded-full h-2 mb-1">
+            <div
+              className="bg-amber-500 h-2 rounded-full transition-all duration-500"
+              style={{
+                width: `${exitClaimProgress.total > 0 ? (exitClaimProgress.claimed / exitClaimProgress.total) * 100 : 0}%`,
+              }}
+            />
+          </div>
+          <div className="text-[10px] font-mono text-amber-400 text-center">
+            {exitClaimProgress.claimed} / {exitClaimProgress.total} assigned
+          </div>
+        </div>
       )}
 
       {/* Recording indicator overlay */}

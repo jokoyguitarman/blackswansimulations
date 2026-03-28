@@ -62,6 +62,7 @@ const ASSET_ICONS: Record<string, string> = {
   fire_truck_staging: '🚒',
   radio_relay: '📻',
   operational_area: '⬡',
+  hazard_zone: '⚠️',
 };
 
 function getAssetIcon(assetType: string): string {
@@ -153,6 +154,54 @@ export const PlacedAssetMarker = ({
     const positions: LatLngExpression[] = coords[0].map(
       ([lng, lat]) => [lat, lng] as LatLngExpression,
     );
+
+    if (asset.asset_type === 'hazard_zone') {
+      const classification = asset.properties?.zone_classification as string | undefined;
+      const zoneColors: Record<string, { fill: string; border: string; label: string }> = {
+        hot: { fill: '#dc2626', border: '#dc2626', label: 'HOT ZONE' },
+        warm: { fill: '#f59e0b', border: '#f59e0b', label: 'WARM ZONE' },
+        cold: { fill: '#22c55e', border: '#22c55e', label: 'COLD ZONE' },
+      };
+      const zone = classification ? zoneColors[classification] : undefined;
+      const fillColor = zone?.fill ?? '#94a3b8';
+      const borderColor = zone?.border ?? '#94a3b8';
+      const zoneLabel = zone?.label ?? 'UNCLASSIFIED ZONE';
+
+      return (
+        <Polygon
+          positions={positions}
+          pathOptions={{
+            color: borderColor,
+            fillColor,
+            fillOpacity: classification === 'hot' ? 0.18 : classification === 'warm' ? 0.13 : 0.08,
+            weight: 2,
+            dashArray: '10, 6',
+          }}
+        >
+          <Tooltip permanent direction="center" className="zone-label-tooltip">
+            <span
+              className="text-[10px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+              style={{
+                color: fillColor,
+                background: 'rgba(0,0,0,0.7)',
+                border: `1px solid ${borderColor}`,
+              }}
+            >
+              {zoneLabel}
+            </span>
+          </Tooltip>
+          <Popup>
+            <AssetPopupContent
+              asset={asset}
+              isOwnTeam={isOwnTeam}
+              onRemove={onRemove}
+              onRelocate={onRelocate}
+            />
+          </Popup>
+        </Polygon>
+      );
+    }
+
     const color = getTeamColor(asset.team_name);
     const lengthM = asset.properties?.length_m as number | undefined;
     const areaM2 = asset.properties?.area_m2 as number | undefined;

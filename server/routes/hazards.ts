@@ -5,6 +5,12 @@ import { logger } from '../lib/logger.js';
 
 const router = Router();
 
+function stripZoneGroundTruth(hazard: Record<string, unknown>): Record<string, unknown> {
+  const copy = { ...hazard };
+  delete copy.zones;
+  return copy;
+}
+
 // GET /sessions/:id/hazards — list hazards visible at current game time
 router.get('/sessions/:id/hazards', requireAuth, async (req, res) => {
   try {
@@ -59,7 +65,7 @@ router.get('/sessions/:id/hazards', requireAuth, async (req, res) => {
       return { ...h, current_image_url: h.image_url, current_description: null };
     });
 
-    return res.json({ data: enriched, elapsed_minutes: elapsedMinutes });
+    return res.json({ data: enriched.map(stripZoneGroundTruth), elapsed_minutes: elapsedMinutes });
   } catch (err) {
     logger.error({ err }, 'Unexpected error in GET hazards');
     return res.status(500).json({ error: 'Internal server error' });
@@ -81,7 +87,7 @@ router.get('/sessions/:id/hazards/:hazardId', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'Hazard not found' });
     }
 
-    return res.json({ data: hazard });
+    return res.json({ data: stripZoneGroundTruth(hazard as Record<string, unknown>) });
   } catch (err) {
     logger.error({ err }, 'Unexpected error in GET hazard detail');
     return res.status(500).json({ error: 'Internal server error' });
