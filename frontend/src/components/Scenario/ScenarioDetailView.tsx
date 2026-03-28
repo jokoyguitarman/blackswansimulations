@@ -1000,9 +1000,9 @@ const createDivIcon = (color: string, label: string, size = 28): DivIcon =>
 
 const MapPinsTab = ({
   scenarioId,
-  locations,
-  hazards,
-  casualties,
+  locations: locationsProp,
+  hazards: hazardsProp,
+  casualties: casualtiesProp,
   equipment,
   floorPlans,
 }: {
@@ -1013,6 +1013,14 @@ const MapPinsTab = ({
   equipment: EquipmentItem[];
   floorPlans: FloorPlan[];
 }) => {
+  const [locations, setLocations] = useState(locationsProp);
+  const [hazards, setHazards] = useState(hazardsProp);
+  const [casualties, setCasualties] = useState(casualtiesProp);
+
+  useEffect(() => setLocations(locationsProp), [locationsProp]);
+  useEffect(() => setHazards(hazardsProp), [hazardsProp]);
+  useEffect(() => setCasualties(casualtiesProp), [casualtiesProp]);
+
   const [expandedPin, setExpandedPin] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -1080,7 +1088,7 @@ const MapPinsTab = ({
         );
       }
       if (c.hazards.size) {
-        setHazardPins((prev) =>
+        setHazards((prev) =>
           prev.map((h) => {
             const moved = c.hazards.get(h.id);
             return moved ? { ...h, location_lat: moved.lat, location_lng: moved.lng } : h;
@@ -1088,7 +1096,7 @@ const MapPinsTab = ({
         );
       }
       if (c.casualties.size) {
-        setCasualtyPins((prev) =>
+        setCasualties((prev) =>
           prev.map((cas) => {
             const moved = c.casualties.get(cas.id);
             return moved ? { ...cas, location_lat: moved.lat, location_lng: moved.lng } : cas;
