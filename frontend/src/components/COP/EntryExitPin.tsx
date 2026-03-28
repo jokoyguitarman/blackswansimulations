@@ -32,49 +32,24 @@ const CLAIM_OPTIONS = [
 
 function createEntryExitIcon(location: EntryExitData): DivIcon {
   const isClaimed = !!location.claimed_by_team;
-  const color = isClaimed ? '#3b82f6' : '#6b7280';
+  const bgColor = isClaimed ? '#3b82f6' : '#6b7280';
+  const emoji = isClaimed ? '🚪' : '🚧';
+  const size = 28;
 
   return new DivIcon({
     className: 'entry-exit-marker',
-    html: `
-      <div style="
-        position: relative;
-        width: 36px;
-        height: 36px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-      ">
-        <div style="
-          background-color: ${isClaimed ? '#1e40af' : '#374151'};
-          width: 32px;
-          height: 32px;
-          border-radius: 6px;
-          border: 2px solid ${color};
-          box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 16px;
-        ">
-          <span>${isClaimed ? '🚪' : '🚧'}</span>
-        </div>
-        ${
-          isClaimed
-            ? `<div style="
-          position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%);
-          font-size: 7px; color: #93c5fd; white-space: nowrap;
-          text-shadow: 0 1px 2px black; font-weight: bold;
-          max-width: 60px; overflow: hidden; text-overflow: ellipsis;
-        ">${location.claimed_as?.replace(/_/g, ' ') ?? ''}</div>`
-            : ''
-        }
-      </div>
-    `,
-    iconSize: [36, 36],
-    iconAnchor: [18, 18],
-    popupAnchor: [0, -18],
+    html: `<div style="
+      background:${bgColor};
+      width:${size}px;height:${size}px;border-radius:50%;
+      border:2px solid #fff;
+      box-shadow:0 2px 6px rgba(0,0,0,.3);
+      display:flex;align-items:center;justify-content:center;
+      font-size:${Math.floor(size * 0.5)}px;line-height:1;
+      cursor:pointer;
+    "><span style="filter:drop-shadow(0 0 1px rgba(0,0,0,.5))">${emoji}</span></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -(size / 2)],
   });
 }
 

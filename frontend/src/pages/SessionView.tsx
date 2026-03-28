@@ -84,17 +84,19 @@ const UNIVERSAL_ASSETS: DraggableAssetDef[] = [
 
 const EQUIPMENT_ICON_MAP: Record<string, string> = {
   droplet: 'water',
-  flame: 'fire_truck',
-  wind: 'hazmat',
-  bed: 'ambulance',
-  clipboard: 'medical',
-  wrench: 'search',
-  heart: 'medical',
-  syringe: 'medical',
-  'first-aid': 'medical',
-  bone: 'medical',
-  shield: 'hazmat',
-  package: 'flag',
+  flame: 'extinguisher',
+  wind: 'oxygen',
+  bed: 'stretcher',
+  clipboard: 'clipboard',
+  wrench: 'wrench',
+  heart: 'heart',
+  syringe: 'syringe',
+  'first-aid': 'bandage',
+  bone: 'splint',
+  shield: 'shield',
+  camera: 'camera',
+  package: 'medical',
+  accessibility: 'stretcher',
 };
 
 function getAssetsForTeam(
@@ -140,7 +142,7 @@ function getAssetsForTeam(
     existingTypes.add(eq.equipment_type);
     base.push({
       asset_type: eq.equipment_type,
-      icon: EQUIPMENT_ICON_MAP[eq.icon ?? ''] ?? 'flag',
+      icon: EQUIPMENT_ICON_MAP[eq.icon ?? ''] ?? 'medical',
       geometry_type: 'point',
       label: eq.label,
     });

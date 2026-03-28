@@ -53,56 +53,37 @@ function createCasualtyIcon(casualty: CasualtyData): DivIcon {
   const isResolved = casualty.status === 'resolved' || casualty.status === 'transported';
   const isDeceased = casualty.status === 'deceased';
 
-  let emoji = '🧑';
+  let emoji = '🚶';
   if (isDeceased) emoji = '💀';
   else if (isResolved) emoji = '✅';
-  else if (mobility === 'trapped') emoji = '🆘';
-  else if (mobility === 'non_ambulatory') emoji = '🛏️';
+  else if (mobility === 'trapped') emoji = '🪤';
+  else if (mobility === 'non_ambulatory') emoji = '🚑';
+
+  const bgColor = isResolved
+    ? '#22c55e'
+    : isDeceased
+      ? '#1f2937'
+      : isUnassessed
+        ? '#9ca3af'
+        : color;
+  const size = 28;
 
   return new DivIcon({
     className: 'casualty-marker',
-    html: `
-      <div style="
-        position: relative;
-        width: 36px;
-        height: 36px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        ${isResolved ? 'opacity: 0.5;' : ''}
-      ">
-        <div style="
-          background-color: ${isResolved ? '#22c55e' : isDeceased ? '#1f2937' : '#18181b'};
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          border: 3px solid ${isUnassessed && !isResolved && !isDeceased ? '#9ca3af' : color};
-          box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 15px;
-          ${isUnassessed && !isResolved && !isDeceased ? 'animation: pulse 2s infinite;' : ''}
-        ">
-          <span>${emoji}</span>
-        </div>
-        ${
-          mobility === 'trapped'
-            ? `<div style="
-          position: absolute; top: -3px; right: -3px;
-          width: 14px; height: 14px; border-radius: 50%;
-          background: #ef4444; border: 1px solid white;
-          display: flex; align-items: center; justify-content: center;
-          font-size: 8px; color: white; font-weight: bold;
-        ">!</div>`
-            : ''
-        }
-      </div>
-    `,
-    iconSize: [36, 36],
-    iconAnchor: [18, 18],
-    popupAnchor: [0, -18],
+    html: `<div style="
+      background:${bgColor};
+      width:${size}px;height:${size}px;border-radius:50%;
+      border:2px solid #fff;
+      box-shadow:0 2px 6px rgba(0,0,0,.3);
+      display:flex;align-items:center;justify-content:center;
+      font-size:${Math.floor(size * 0.5)}px;line-height:1;
+      cursor:pointer;
+      ${isResolved ? 'opacity:0.5;' : ''}
+      ${isUnassessed && !isResolved && !isDeceased ? 'animation:pulse 2s infinite;' : ''}
+    "><span style="filter:drop-shadow(0 0 1px rgba(0,0,0,.5))">${emoji}</span></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -(size / 2)],
   });
 }
 
@@ -122,10 +103,7 @@ export const CasualtyPin = ({ casualty, onClick }: CasualtyPinProps) => {
   return (
     <Marker position={position} icon={icon} eventHandlers={{ click: () => onClick(casualty) }}>
       <Tooltip className="pin-tooltip">
-        <div
-          style={{ maxWidth: 320, whiteSpace: 'normal', wordWrap: 'break-word' }}
-          className="text-xs"
-        >
+        <div className="text-xs">
           <div className="font-semibold">
             Patient —{' '}
             {playerTag ? `${displayColor.toUpperCase()} (tagged)` : 'UNASSESSED — click to triage'}

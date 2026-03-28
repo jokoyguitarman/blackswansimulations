@@ -43,8 +43,12 @@ interface Decision {
     severity?: string;
     reason?: string;
     feedback?: string;
-    specific?: string;
+    specific?: boolean;
+    missing_details?: string[];
     error_type?: string;
+    consequence_title?: string;
+    rejected?: boolean;
+    rejection_reason?: string;
   } | null;
   evaluation_reasoning?: {
     env_prerequisite?: string;
@@ -283,35 +287,48 @@ export const DecisionWorkflow = ({ sessionId, filterTeam = 'none' }: DecisionWor
                 )}
               </div>
               {/* AI Evaluation Feedback */}
-              {decision.status === 'executed' && decision.environmental_consistency && (
-                <div
-                  className={`mt-2 p-2 rounded border text-xs terminal-text ${
-                    decision.environmental_consistency.consistent
-                      ? 'border-green-500/30 bg-green-900/20 text-green-400'
-                      : 'border-red-500/30 bg-red-900/20 text-red-400'
-                  }`}
-                >
-                  <span className="font-bold uppercase">
-                    {decision.environmental_consistency.consistent
-                      ? '✓ Consistent'
-                      : '✗ Issue Detected'}
-                  </span>
-                  {decision.environmental_consistency.severity && (
-                    <span className="ml-2 opacity-70">
-                      [{decision.environmental_consistency.severity}]
-                    </span>
-                  )}
-                  {(decision.environmental_consistency.reason ||
-                    decision.environmental_consistency.feedback ||
-                    decision.environmental_consistency.specific) && (
-                    <p className="mt-1 opacity-90">
-                      {decision.environmental_consistency.feedback ||
-                        decision.environmental_consistency.reason ||
-                        decision.environmental_consistency.specific}
-                    </p>
-                  )}
-                </div>
-              )}
+              {decision.status === 'executed' &&
+                decision.environmental_consistency &&
+                (() => {
+                  const ec = decision.environmental_consistency;
+                  const isRejected = ec.rejected === true;
+                  const hasEnvIssue = !ec.consistent;
+                  const hasSpecificityIssue = ec.specific === false;
+                  const isPass = !isRejected && !hasEnvIssue && !hasSpecificityIssue;
+
+                  const borderClass = isRejected
+                    ? 'border-red-500/50 bg-red-900/30 text-red-400'
+                    : hasEnvIssue
+                      ? 'border-red-500/30 bg-red-900/20 text-red-400'
+                      : hasSpecificityIssue
+                        ? 'border-amber-500/30 bg-amber-900/20 text-amber-400'
+                        : 'border-green-500/30 bg-green-900/20 text-green-400';
+
+                  const badge = isRejected
+                    ? '✗ Rejected'
+                    : hasEnvIssue && ec.mismatch_kind === 'below_standard'
+                      ? '⚠ Below Standard'
+                      : hasEnvIssue
+                        ? '✗ Issue Detected'
+                        : hasSpecificityIssue
+                          ? '⚠ Lacks Specificity'
+                          : '✓ Meets Standards';
+
+                  return (
+                    <div className={`mt-2 p-2 rounded border text-xs terminal-text ${borderClass}`}>
+                      <span className="font-bold uppercase">{badge}</span>
+                      {ec.severity && <span className="ml-2 opacity-70">[{ec.severity}]</span>}
+                      {ec.consequence_title && (
+                        <span className="ml-2 opacity-80 italic">{ec.consequence_title}</span>
+                      )}
+                      {(ec.feedback || ec.reason || ec.rejection_reason) && (
+                        <p className="mt-1 opacity-90">
+                          {ec.rejection_reason || ec.feedback || ec.reason}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
               {decision.status === 'executed' &&
                 !decision.environmental_consistency &&
                 decision.executed_at && (
@@ -467,47 +484,67 @@ export const DecisionWorkflow = ({ sessionId, filterTeam = 'none' }: DecisionWor
               )}
               {/* AI Evaluation Detail */}
               {selectedDecision.status === 'executed' &&
-                selectedDecision.environmental_consistency && (
-                  <div
-                    className={`p-3 rounded border ${
-                      selectedDecision.environmental_consistency.consistent
-                        ? 'border-green-500/30 bg-green-900/20'
-                        : 'border-red-500/30 bg-red-900/20'
-                    }`}
-                  >
-                    <h3 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-                      [AI EVALUATION]
-                    </h3>
-                    <div
-                      className={`text-sm terminal-text ${selectedDecision.environmental_consistency.consistent ? 'text-green-400' : 'text-red-400'}`}
-                    >
-                      <span className="font-bold">
-                        {selectedDecision.environmental_consistency.consistent
-                          ? '✓ Decision is consistent with the environment'
-                          : '✗ Issue detected with this decision'}
-                      </span>
-                      {selectedDecision.environmental_consistency.severity && (
-                        <span className="ml-2 opacity-70">
-                          (Severity: {selectedDecision.environmental_consistency.severity})
-                        </span>
+                selectedDecision.environmental_consistency &&
+                (() => {
+                  const ec = selectedDecision.environmental_consistency;
+                  const isRejected = ec.rejected === true;
+                  const hasEnvIssue = !ec.consistent;
+                  const hasSpecificityIssue = ec.specific === false;
+
+                  const borderClass = isRejected
+                    ? 'border-red-500/50 bg-red-900/30'
+                    : hasEnvIssue
+                      ? 'border-red-500/30 bg-red-900/20'
+                      : hasSpecificityIssue
+                        ? 'border-amber-500/30 bg-amber-900/20'
+                        : 'border-green-500/30 bg-green-900/20';
+
+                  const textClass =
+                    isRejected || hasEnvIssue
+                      ? 'text-red-400'
+                      : hasSpecificityIssue
+                        ? 'text-amber-400'
+                        : 'text-green-400';
+
+                  const statusText = isRejected
+                    ? '✗ Action Rejected'
+                    : hasEnvIssue && ec.mismatch_kind === 'below_standard'
+                      ? '⚠ Below Standard — does not meet sector/response standards'
+                      : hasEnvIssue
+                        ? '✗ Issue detected — decision conflicts with ground conditions'
+                        : hasSpecificityIssue
+                          ? '⚠ Lacks Specificity — decision needs more operational detail'
+                          : '✓ Decision meets standards and is operationally sound';
+
+                  return (
+                    <div className={`p-3 rounded border ${borderClass}`}>
+                      <h3 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
+                        [AI EVALUATION]
+                      </h3>
+                      <div className={`text-sm terminal-text ${textClass}`}>
+                        <span className="font-bold">{statusText}</span>
+                        {ec.severity && (
+                          <span className="ml-2 opacity-70">(Severity: {ec.severity})</span>
+                        )}
+                      </div>
+                      {ec.consequence_title && (
+                        <p className="mt-1 text-xs terminal-text text-robotic-yellow/70 italic">
+                          {ec.consequence_title}
+                        </p>
+                      )}
+                      {(ec.rejection_reason || ec.feedback || ec.reason) && (
+                        <p className="mt-2 text-xs terminal-text text-robotic-yellow/80">
+                          {ec.rejection_reason || ec.feedback || ec.reason}
+                        </p>
+                      )}
+                      {selectedDecision.evaluation_reasoning?.env_prerequisite && (
+                        <p className="mt-2 text-xs terminal-text text-robotic-yellow/60 border-t border-robotic-yellow/10 pt-2">
+                          {selectedDecision.evaluation_reasoning.env_prerequisite}
+                        </p>
                       )}
                     </div>
-                    {(selectedDecision.environmental_consistency.feedback ||
-                      selectedDecision.environmental_consistency.reason ||
-                      selectedDecision.environmental_consistency.specific) && (
-                      <p className="mt-2 text-xs terminal-text text-robotic-yellow/80">
-                        {selectedDecision.environmental_consistency.feedback ||
-                          selectedDecision.environmental_consistency.reason ||
-                          selectedDecision.environmental_consistency.specific}
-                      </p>
-                    )}
-                    {selectedDecision.evaluation_reasoning?.env_prerequisite && (
-                      <p className="mt-2 text-xs terminal-text text-robotic-yellow/60 border-t border-robotic-yellow/10 pt-2">
-                        {selectedDecision.evaluation_reasoning.env_prerequisite}
-                      </p>
-                    )}
-                  </div>
-                )}
+                  );
+                })()}
               {selectedDecision.status === 'executed' &&
                 !selectedDecision.environmental_consistency &&
                 selectedDecision.executed_at && (

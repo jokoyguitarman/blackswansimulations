@@ -53,6 +53,16 @@ const ICON_MAP: Record<string, string> = {
   radio: '📻',
   water: '💧',
   area: '⬡',
+  stretcher: '🛏️',
+  splint: '🦴',
+  syringe: '💉',
+  bandage: '🩹',
+  heart: '💓',
+  oxygen: '💨',
+  wrench: '🔧',
+  extinguisher: '🧯',
+  clipboard: '📋',
+  mask: '😷',
 };
 
 function getAssetEmoji(icon: string): string {

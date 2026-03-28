@@ -34,65 +34,26 @@ const BEHAVIOR_COLORS: Record<string, string> = {
 function createCrowdIcon(crowd: CrowdData, isDraggable: boolean): DivIcon {
   const conds = crowd.conditions as Record<string, unknown>;
   const behavior = (conds.behavior as string) ?? 'calm';
-  const color = BEHAVIOR_COLORS[behavior] ?? '#6b7280';
+  const color = BEHAVIOR_COLORS[behavior] ?? '#8b5cf6';
   const isResolved = crowd.status === 'resolved' || crowd.status === 'at_assembly';
-  const mixedWounded = (conds.mixed_wounded as Array<Record<string, unknown>>) ?? [];
-  const hasWounded = mixedWounded.length > 0;
+  const bgColor = isResolved ? '#22c55e' : color;
+  const size = Math.min(36, 24 + Math.floor(crowd.headcount / 15));
 
   return new DivIcon({
     className: 'crowd-marker',
-    html: `
-      <div style="
-        position: relative;
-        width: 44px;
-        height: 44px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: ${isDraggable ? 'grab' : 'pointer'};
-        ${isResolved ? 'opacity: 0.5;' : ''}
-      ">
-        <div style="
-          background-color: ${isResolved ? '#22c55e' : '#18181b'};
-          width: 40px;
-          height: 40px;
-          border-radius: 8px;
-          border: 3px solid ${color};
-          box-shadow: 0 2px 10px rgba(0,0,0,0.4);
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          font-size: 14px;
-        ">
-          <span>👥</span>
-          <span style="font-size: 10px; font-weight: bold; color: white; line-height: 1;">${crowd.headcount}</span>
-        </div>
-        ${
-          hasWounded
-            ? `<div style="
-          position: absolute; top: -4px; right: -4px;
-          width: 16px; height: 16px; border-radius: 50%;
-          background: #dc2626; border: 1px solid white;
-          display: flex; align-items: center; justify-content: center;
-          font-size: 8px;
-        ">🩹</div>`
-            : ''
-        }
-        ${
-          isDraggable
-            ? `<div style="
-          position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
-          font-size: 8px; color: #22c55e; white-space: nowrap;
-          text-shadow: 0 1px 2px black;
-        ">drag</div>`
-            : ''
-        }
-      </div>
-    `,
-    iconSize: [44, 44],
-    iconAnchor: [22, 22],
-    popupAnchor: [0, -22],
+    html: `<div style="
+      background:${bgColor};
+      width:${size}px;height:${size}px;border-radius:50%;
+      border:2px solid #fff;
+      box-shadow:0 2px 6px rgba(0,0,0,.3);
+      display:flex;align-items:center;justify-content:center;
+      font-size:${Math.floor(size * 0.45)}px;line-height:1;
+      cursor:${isDraggable ? 'grab' : 'pointer'};
+      ${isResolved ? 'opacity:0.5;' : ''}
+    "><span style="filter:drop-shadow(0 0 1px rgba(0,0,0,.5))">👥</span></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -(size / 2)],
   });
 }
 
@@ -122,10 +83,7 @@ export const CrowdPin = ({ crowd, onClick, isDraggable = false, onDragEnd }: Cro
       }}
     >
       <Tooltip className="pin-tooltip">
-        <div
-          style={{ maxWidth: 320, whiteSpace: 'normal', wordWrap: 'break-word' }}
-          className="text-xs"
-        >
+        <div className="text-xs">
           <div className="font-semibold">Crowd — {crowd.headcount} people</div>
           <div className="capitalize text-gray-500">{crowd.status}</div>
           {behavior && <div className="capitalize">Behavior: {behavior}</div>}

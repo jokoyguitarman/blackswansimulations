@@ -327,9 +327,15 @@ button:focus-visible {
 
 /* Leaflet tooltip overrides for map pin tooltips */
 .leaflet-tooltip.pin-tooltip {
-  max-width: 350px;
+  min-width: 260px;
+  max-width: 340px;
+  max-height: 220px;
+  overflow-y: auto;
   white-space: normal;
   word-wrap: break-word;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 8px 10px;
 }
 
 @media (prefers-color-scheme: light) {

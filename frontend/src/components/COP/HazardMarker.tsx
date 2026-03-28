@@ -55,75 +55,25 @@ function statusColor(status: string, baseColor: string): string {
 function createHazardIcon(hazard: HazardData): DivIcon {
   const { emoji, color: baseColor } = getHazardVisual(hazard.hazard_type);
   const color = statusColor(hazard.status, baseColor);
-  const isActive = hazard.status === 'active' || hazard.status === 'escalating';
   const isResolved = hazard.status === 'resolved';
-  const pulseClass = isActive ? 'hazard-pulse' : '';
+  const size = 30;
+  const displayEmoji = isResolved ? '✅' : emoji;
 
   return new DivIcon({
-    className: `hazard-marker ${pulseClass}`,
-    html: `
-      <div style="
-        position: relative;
-        width: 40px;
-        height: 40px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        ${isResolved ? 'opacity: 0.6;' : ''}
-      ">
-        ${
-          isActive
-            ? `<div style="
-          position: absolute;
-          inset: -4px;
-          border-radius: 50%;
-          border: 2px solid ${color};
-          opacity: 0.4;
-          animation: hazardPulse 2s ease-in-out infinite;
-        "></div>`
-            : ''
-        }
-        <div style="
-          background-color: ${color};
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          border: 3px solid ${hazard.status === 'escalating' ? '#fff' : 'rgba(255,255,255,0.7)'};
-          box-shadow: 0 2px 10px rgba(0,0,0,0.5), 0 0 20px ${color}40;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 18px;
-        ">
-          <span>${isResolved ? '✅' : emoji}</span>
-        </div>
-        ${
-          hazard.status === 'escalating'
-            ? `<div style="
-          position: absolute;
-          top: -2px;
-          right: -2px;
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-          background: #ef4444;
-          border: 1px solid white;
-          animation: hazardPulse 1s ease-in-out infinite;
-        "></div>`
-            : ''
-        }
-      </div>
-      <style>
-        @keyframes hazardPulse {
-          0%, 100% { transform: scale(1); opacity: 0.4; }
-          50% { transform: scale(1.3); opacity: 0.1; }
-        }
-      </style>
-    `,
-    iconSize: [40, 40],
-    iconAnchor: [20, 20],
-    popupAnchor: [0, -20],
+    className: 'hazard-marker',
+    html: `<div style="
+      background:${color};
+      width:${size}px;height:${size}px;border-radius:50%;
+      border:2px solid #fff;
+      box-shadow:0 2px 6px rgba(0,0,0,.3);
+      display:flex;align-items:center;justify-content:center;
+      font-size:${Math.floor(size * 0.5)}px;line-height:1;
+      cursor:pointer;
+      ${isResolved ? 'opacity:0.6;' : ''}
+    "><span style="filter:drop-shadow(0 0 1px rgba(0,0,0,.5))">${displayEmoji}</span></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -(size / 2)],
   });
 }
 
@@ -134,10 +84,7 @@ export const HazardMarker = ({ hazard, onClick }: HazardMarkerProps) => {
   return (
     <Marker position={position} icon={icon} eventHandlers={{ click: () => onClick(hazard) }}>
       <Tooltip className="pin-tooltip">
-        <div
-          style={{ maxWidth: 320, whiteSpace: 'normal', wordWrap: 'break-word' }}
-          className="text-xs"
-        >
+        <div className="text-xs">
           <div className="font-semibold capitalize">{hazard.hazard_type.replace(/_/g, ' ')}</div>
           <div className="capitalize text-gray-500">
             {hazard.status}
