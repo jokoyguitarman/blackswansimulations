@@ -355,6 +355,25 @@ router.get(
         }
       }
 
+      // Enrich participants with team names
+      const participantIds = allSessionParticipants.map((p) => p.id).filter(Boolean) as string[];
+      if (participantIds.length > 0) {
+        const { data: teamRows } = await supabaseAdmin
+          .from('session_teams')
+          .select('user_id, team_name')
+          .eq('session_id', sessionId)
+          .in('user_id', participantIds);
+        const userTeamMap = new Map<string, string>();
+        for (const row of teamRows ?? []) {
+          const r = row as { user_id: string; team_name: string };
+          if (!userTeamMap.has(r.user_id)) userTeamMap.set(r.user_id, r.team_name);
+        }
+        for (const p of allSessionParticipants) {
+          const teamName = userTeamMap.get(p.id as string);
+          if (teamName) (p as Record<string, unknown>).team_name = teamName;
+        }
+      }
+
       res.json({
         data: allSessionParticipants,
       });
@@ -583,8 +602,38 @@ router.get(
         return res.status(500).json({ error: 'Failed to fetch messages', details: error.message });
       }
 
+      // Enrich messages with team names from session_teams
+      const messagesArr = data?.reverse() || [];
+      if (messagesArr.length > 0 && channel.session_id) {
+        const senderIds = [
+          ...new Set(
+            messagesArr.map((m: Record<string, unknown>) => m.sender_id as string).filter(Boolean),
+          ),
+        ];
+        if (senderIds.length > 0) {
+          const { data: teamRows } = await supabaseAdmin
+            .from('session_teams')
+            .select('user_id, team_name')
+            .eq('session_id', channel.session_id)
+            .in('user_id', senderIds);
+          const userTeamMap = new Map<string, string>();
+          for (const row of teamRows ?? []) {
+            const r = row as { user_id: string; team_name: string };
+            if (!userTeamMap.has(r.user_id)) userTeamMap.set(r.user_id, r.team_name);
+          }
+          for (const msg of messagesArr) {
+            const m = msg as Record<string, unknown>;
+            const sender = m.sender as Record<string, unknown> | null;
+            const teamName = userTeamMap.get(m.sender_id as string);
+            if (sender && teamName) {
+              sender.team_name = teamName;
+            }
+          }
+        }
+      }
+
       res.json({
-        data: data?.reverse() || [],
+        data: messagesArr,
         count,
         page: Number(page),
         limit: Number(limit),

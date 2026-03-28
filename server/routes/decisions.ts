@@ -207,12 +207,32 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
     let relevantDecisions = allDecisions || [];
 
     if (!isTrainerOrAdmin) {
-      // For regular participants, only show decisions they created or are assigned to approve
       const decisionIds = (allDecisions || []).map((d: Record<string, unknown>) => d.id as string);
 
       if (decisionIds.length === 0) {
         relevantDecisions = [];
       } else {
+        // Get the user's team(s) so teammates can see each other's decisions
+        const { data: userTeamRows } = await supabaseAdmin
+          .from('session_teams')
+          .select('team_name')
+          .eq('session_id', sessionId)
+          .eq('user_id', user.id);
+        const userTeamNames = (userTeamRows ?? []).map((r: { team_name: string }) => r.team_name);
+
+        // Get all user_ids that share those teams
+        const teammateIds = new Set<string>([user.id]);
+        if (userTeamNames.length > 0) {
+          const { data: teammateRows } = await supabaseAdmin
+            .from('session_teams')
+            .select('user_id')
+            .eq('session_id', sessionId)
+            .in('team_name', userTeamNames);
+          for (const row of teammateRows ?? []) {
+            teammateIds.add((row as { user_id: string }).user_id);
+          }
+        }
+
         // Get all decision IDs where the user has a step
         const { data: userSteps, error: stepsError } = await supabaseAdmin
           .from('decision_steps')
@@ -222,13 +242,7 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
 
         if (stepsError) {
           logger.error(
-            {
-              error: stepsError,
-              userId: user.id,
-              sessionId,
-              decisionIdsCount: decisionIds.length,
-              decisionIds: decisionIds.slice(0, 5), // Log first 5 for debugging
-            },
+            { error: stepsError, userId: user.id, sessionId },
             'Failed to fetch user decision steps',
           );
         }
@@ -237,35 +251,23 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
           (userSteps || []).map((step: { decision_id: string }) => step.decision_id),
         );
 
-        logger.info(
-          {
-            userId: user.id,
-            sessionId,
-            userStepsFound: userSteps?.length || 0,
-            userDecisionIds: Array.from(userDecisionIds),
-            totalDecisions: decisionIds.length,
-            decisionsCreatedByUser: (allDecisions || []).filter(
-              (d: Record<string, unknown>) => d.proposed_by === user.id,
-            ).length,
-          },
-          'Filtering decisions for user',
-        );
-
-        // Filter decisions: user can see if they created it OR have a step in it
+        // Filter: user can see if they or a teammate created it, OR they have an approval step
         relevantDecisions = (allDecisions || []).filter((decision: Record<string, unknown>) => {
-          const isCreator = decision.proposed_by === user.id;
+          const isTeamDecision = teammateIds.has(decision.proposed_by as string);
           const hasStep = userDecisionIds.has(decision.id as string);
-          return isCreator || hasStep;
+          return isTeamDecision || hasStep;
         });
 
         logger.info(
           {
             userId: user.id,
             sessionId,
+            teams: userTeamNames,
+            teammateCount: teammateIds.size,
             filteredCount: relevantDecisions.length,
             totalCount: allDecisions?.length || 0,
           },
-          'Filtered decisions for user',
+          'Filtered decisions for user (team-aware)',
         );
       }
     }

@@ -20,6 +20,7 @@ interface DMChannel {
     full_name: string;
     role: string;
     agency_name?: string;
+    team_name?: string;
   } | null;
   last_message: {
     content: string;
@@ -32,6 +33,7 @@ interface Participant {
   full_name: string;
   role: string;
   agency_name?: string;
+  team_name?: string;
 }
 
 interface Message {
@@ -40,11 +42,12 @@ interface Message {
   message_type: string;
   created_at: string;
   channel_id?: string;
-  sender_id?: string; // Store sender_id for side placement when sender is undefined
+  sender_id?: string;
   sender?: {
     id: string;
     full_name: string;
     role: string;
+    team_name?: string;
   };
 }
 
@@ -259,13 +262,17 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
         });
 
         // Get sender info from participants list or current user
-        let senderInfo: { id: string; full_name: string; role: string } | undefined;
+        let senderInfo:
+          | { id: string; full_name: string; role: string; team_name?: string }
+          | undefined;
 
         if (payload.sender_id === user?.id && user) {
+          const selfParticipant = participants.find((p) => p.id === user.id);
           senderInfo = {
             id: user.id,
             full_name: user.displayName || 'You',
             role: user.role || 'unknown',
+            team_name: selfParticipant?.team_name,
           };
         } else {
           const participant = participants.find((p) => p.id === payload.sender_id);
@@ -274,6 +281,7 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
               id: participant.id,
               full_name: participant.full_name,
               role: participant.role,
+              team_name: participant.team_name,
             };
           } else {
             // Try to fetch from API if not in participants list
@@ -289,8 +297,8 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                   id: foundParticipant.id,
                   full_name: foundParticipant.full_name,
                   role: foundParticipant.role,
+                  team_name: foundParticipant.team_name,
                 };
-                // Update participants list
                 setParticipants((prev) => {
                   if (!prev.find((p) => p.id === foundParticipant.id)) {
                     return [...prev, foundParticipant];
@@ -389,24 +397,26 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
 
       // Helper function to create message object
       const createMessage = async (): Promise<Message> => {
-        // First, try to find sender in participants list (already loaded, no RLS issue)
-        let senderInfo: { id: string; full_name: string; role: string } | undefined;
+        let senderInfo:
+          | { id: string; full_name: string; role: string; team_name?: string }
+          | undefined;
 
-        // Check if sender is current user
         if (payload.sender_id === user?.id && user) {
+          const selfParticipant = participants.find((p) => p.id === user.id);
           senderInfo = {
             id: user.id,
             full_name: user.displayName || 'You',
             role: user.role || 'unknown',
+            team_name: selfParticipant?.team_name,
           };
         } else {
-          // Look up sender in participants list
           const participant = participants.find((p) => p.id === payload.sender_id);
           if (participant) {
             senderInfo = {
               id: participant.id,
               full_name: participant.full_name,
               role: participant.role,
+              team_name: participant.team_name,
             };
           } else {
             // Participants list might not be loaded yet - try to fetch via API
@@ -439,6 +449,7 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                   id: foundParticipant.id,
                   full_name: foundParticipant.full_name,
                   role: foundParticipant.role,
+                  team_name: foundParticipant.team_name,
                 };
 
                 // Update participants list for future messages
@@ -559,8 +570,8 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                     id: foundParticipant.id,
                     full_name: foundParticipant.full_name,
                     role: foundParticipant.role,
+                    team_name: foundParticipant.team_name,
                   };
-                  // Update participants list
                   setParticipants((prev) => {
                     if (!prev.find((p) => p.id === foundParticipant.id)) {
                       return [...prev, foundParticipant];
@@ -734,6 +745,7 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                               id: foundParticipant.id,
                               full_name: foundParticipant.full_name,
                               role: foundParticipant.role,
+                              team_name: foundParticipant.team_name,
                             },
                             sender_id: foundParticipant.id,
                           }
@@ -939,6 +951,7 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
               id: participant.id,
               full_name: participant.full_name,
               role: participant.role,
+              team_name: participant.team_name,
             },
           };
         }
@@ -988,6 +1001,7 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                     id: foundParticipant.id,
                     full_name: foundParticipant.full_name,
                     role: foundParticipant.role,
+                    team_name: foundParticipant.team_name,
                   },
                 };
               }
@@ -1509,7 +1523,7 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                     onClick={() => handleStartDM(participant.id)}
                     className="w-full text-left px-2 py-1 text-xs terminal-text hover:bg-green-400/10 border border-transparent hover:border-green-400/30"
                   >
-                    {participant.full_name} [{participant.role}]
+                    {participant.full_name} [{participant.team_name || participant.role}]
                   </button>
                 ))}
               {participants.filter((p) => p.id !== user?.id).length === 0 && (
@@ -1545,7 +1559,7 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
               <div className="mb-3 pb-3 border-b border-green-400/30">
                 <p className="text-xs terminal-text text-green-400 uppercase">
                   Direct Message with: {currentDM.recipient?.full_name || 'Unknown'} [
-                  {currentDM.recipient?.role || 'UNKNOWN'}]
+                  {currentDM.recipient?.team_name || currentDM.recipient?.role || 'UNKNOWN'}]
                 </p>
               </div>
             )}
@@ -1559,7 +1573,12 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                     <div className="flex justify-between items-start mb-1">
                       <span className="text-xs terminal-text font-semibold text-green-400">
                         {msg.role === 'user' ? user?.displayName || 'You' : 'Insider'} [
-                        {msg.role === 'user' ? user?.role || 'unknown' : 'trainer'}]
+                        {msg.role === 'user'
+                          ? participants.find((p) => p.id === user?.id)?.team_name ||
+                            user?.role ||
+                            'unknown'
+                          : 'trainer'}
+                        ]
                       </span>
                       <span className="text-xs terminal-text text-green-400/50">
                         {new Date(msg.created_at).toLocaleTimeString()}
@@ -1599,7 +1618,13 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                             ? user?.displayName || 'You'
                             : (hospitals.find((h) => toHospitalDMId(h.id) === selectedDM)?.label ??
                               'Hospital')}{' '}
-                          [{msg.role === 'user' ? user?.role || 'unknown' : 'hospital'}]
+                          [
+                          {msg.role === 'user'
+                            ? participants.find((p) => p.id === user?.id)?.team_name ||
+                              user?.role ||
+                              'unknown'
+                            : 'hospital'}
+                          ]
                         </span>
                         <span className="text-xs terminal-text text-green-400/50">
                           {new Date(msg.created_at).toLocaleTimeString()}
@@ -1650,7 +1675,7 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                           className={`text-xs terminal-text font-semibold ${selectedDM ? 'text-green-400' : 'text-robotic-yellow'}`}
                         >
                           {message.sender?.full_name || 'Unknown'} [
-                          {message.sender?.role || 'UNKNOWN'}]
+                          {message.sender?.team_name || message.sender?.role || 'UNKNOWN'}]
                         </span>
                         <span
                           className={`text-xs terminal-text ${selectedDM ? 'text-green-400/50' : 'text-robotic-yellow/50'}`}
