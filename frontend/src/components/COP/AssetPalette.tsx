@@ -90,6 +90,8 @@ export const AssetPalette = ({
   if (!assets.length) return null;
 
   const isDrawing = !!drawingAssetType;
+  const isRecording = !!actionRecording?.active;
+  const paletteLocked = !isRecording;
 
   return (
     <div className="absolute bottom-3 left-3 z-[1000] select-none" style={{ maxWidth: '280px' }}>
@@ -152,14 +154,26 @@ export const AssetPalette = ({
         <span className="text-robotic-yellow/50">{isExpanded ? '▼' : '▶'}</span>
       </button>
 
+      {isExpanded && paletteLocked && (
+        <div className="bg-black/90 border border-t-0 border-robotic-yellow/50 px-3 py-2">
+          <div className="text-[11px] terminal-text text-robotic-yellow/50 text-center leading-snug">
+            Press <span className="text-robotic-yellow/80 font-medium">Record Actions</span> below
+            to deploy assets on the map
+          </div>
+        </div>
+      )}
+
       {isExpanded && (
-        <div className="bg-black/90 border border-t-0 border-robotic-yellow/50 p-2 grid grid-cols-2 gap-1.5">
+        <div
+          className={`bg-black/90 border border-t-0 border-robotic-yellow/50 p-2 grid grid-cols-2 gap-1.5 ${paletteLocked ? 'opacity-40 pointer-events-none' : ''}`}
+        >
           {assets.map((asset) => {
             const count = placedCounts[asset.asset_type] ?? 0;
             const atMax = asset.max_count != null && count >= asset.max_count;
             const isDrawable = asset.geometry_type === 'line' || asset.geometry_type === 'polygon';
             const isActiveDrawing = drawingAssetType === asset.asset_type;
-            const isDisabled = disabled || atMax || (isDrawing && !isActiveDrawing);
+            const isDisabled =
+              disabled || atMax || (isDrawing && !isActiveDrawing) || paletteLocked;
 
             if (isDrawable) {
               return (

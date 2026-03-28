@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import { Icon, Marker as LeafletMarker } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -476,6 +476,7 @@ export const MapView = ({
     wind?: WindData;
   } | null>(null);
   const [placedAssets, setPlacedAssets] = useState<PlacedAsset[]>([]);
+  const optimisticIdsRef = useRef<Map<string, string>>(new Map());
   const [hazards, setHazards] = useState<HazardData[]>([]);
   const [selectedHazard, setSelectedHazard] = useState<HazardData | null>(null);
   const [selectedCasualty, setSelectedCasualty] = useState<CasualtyData | null>(null);
@@ -580,7 +581,13 @@ export const MapView = ({
       if (event.type === 'placement.created') {
         const { placement } = event.data as { placement: PlacedAsset };
         if (placement) {
-          setPlacedAssets((prev) => [...prev.filter((p) => p.id !== placement.id), placement]);
+          const confirmedRealIds = new Set(optimisticIdsRef.current.values());
+          if (confirmedRealIds.has(placement.id)) return;
+
+          setPlacedAssets((prev) => {
+            if (prev.some((p) => p.id === placement.id)) return prev;
+            return [...prev, placement];
+          });
         }
       }
       if (event.type === 'placement.updated') {
@@ -762,6 +769,39 @@ export const MapView = ({
       /* handled by WS */
     }
   };
+
+  const handleOptimisticPlace = useCallback((asset: PlacedAsset) => {
+    optimisticIdsRef.current.set(asset.id, '');
+    setPlacedAssets((prev) => [...prev, asset]);
+  }, []);
+
+  const handleOptimisticConfirm = useCallback((tempId: string, realAsset: PlacedAsset) => {
+    optimisticIdsRef.current.set(tempId, realAsset.id);
+    setPlacedAssets((prev) => prev.map((p) => (p.id === tempId ? realAsset : p)));
+    setTimeout(() => optimisticIdsRef.current.delete(tempId), 10000);
+  }, []);
+
+  const handleOptimisticRevert = useCallback((tempId: string) => {
+    optimisticIdsRef.current.delete(tempId);
+    setPlacedAssets((prev) => prev.filter((p) => p.id !== tempId));
+  }, []);
+
+  const handlePlacementDragEnd = useCallback(
+    (assetId: string, newLat: number, newLng: number) => {
+      const newGeom = { type: 'Point' as const, coordinates: [newLng, newLat] };
+      setPlacedAssets((prev) =>
+        prev.map((p) => (p.id === assetId ? { ...p, geometry: newGeom } : p)),
+      );
+      api.placements.update(sessionId, assetId, { geometry: newGeom }).catch(() => {
+        api.placements.list(sessionId).then((res) => {
+          if (Array.isArray(res.data)) {
+            setPlacedAssets(res.data as unknown as PlacedAsset[]);
+          }
+        });
+      });
+    },
+    [sessionId],
+  );
 
   const [drawingAsset, setDrawingAsset] = useState<DraggableAssetDef | null>(null);
   const [drawVertexCount, setDrawVertexCount] = useState(0);
@@ -956,18 +996,21 @@ export const MapView = ({
           <MapSizeInvalidator isVisible={isVisible} />
           <MapCleanup />
 
-          {/* Drop handler for drag-and-drop asset placement (disabled while drawing) */}
-          {teamName && !drawingAsset && (
+          {/* Drop handler for drag-and-drop asset placement (disabled while drawing or not recording) */}
+          {teamName && !drawingAsset && isRecordingActions && (
             <MapDropHandler
               sessionId={sessionId}
               teamName={teamName}
               enabled={draggableAssets.length > 0 && !disabled}
               onPlacementCreated={onPlacementCreated}
+              onOptimisticPlace={handleOptimisticPlace}
+              onOptimisticConfirm={handleOptimisticConfirm}
+              onOptimisticRevert={handleOptimisticRevert}
             />
           )}
 
-          {/* Drawing handler for line/polygon assets */}
-          {teamName && drawingAsset && (
+          {/* Drawing handler for line/polygon assets (only when recording) */}
+          {teamName && drawingAsset && isRecordingActions && (
             <MapDrawHandler
               sessionId={sessionId}
               teamName={teamName}
@@ -1080,9 +1123,11 @@ export const MapView = ({
                 key={asset.id}
                 asset={asset}
                 isOwnTeam={!!teamName && asset.team_name === teamName}
+                isDraggable={!!teamName && asset.team_name === teamName && !!isRecordingActions}
                 onRemove={
                   teamName && asset.team_name === teamName ? handleRemovePlacement : undefined
                 }
+                onDragEnd={handlePlacementDragEnd}
               />
             ))}
 
@@ -1114,7 +1159,7 @@ export const MapView = ({
               <CrowdPin
                 key={crowd.id}
                 crowd={crowd}
-                isDraggable={crowdDraggability.get(crowd.id) ?? false}
+                isDraggable={(crowdDraggability.get(crowd.id) ?? false) && !!isRecordingActions}
                 onClick={() => {
                   /* TODO: open crowd detail modal */
                 }}

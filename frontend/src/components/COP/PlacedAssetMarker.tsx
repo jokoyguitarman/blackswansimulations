@@ -22,8 +22,10 @@ export interface PlacedAsset {
 interface PlacedAssetMarkerProps {
   asset: PlacedAsset;
   isOwnTeam: boolean;
+  isDraggable?: boolean;
   onRemove?: (id: string) => void;
   onRelocate?: (id: string) => void;
+  onDragEnd?: (id: string, newLat: number, newLng: number) => void;
 }
 
 const TEAM_COLORS: Record<string, string> = {
@@ -138,8 +140,10 @@ function createPlacedAssetIcon(asset: PlacedAsset, isOwnTeam: boolean): DivIcon 
 export const PlacedAssetMarker = ({
   asset,
   isOwnTeam,
+  isDraggable = false,
   onRemove,
   onRelocate,
+  onDragEnd,
 }: PlacedAssetMarkerProps) => {
   const geom = asset.geometry;
 
@@ -259,7 +263,19 @@ export const PlacedAssetMarker = ({
   const capacityUnit = asset.properties?.capacity_unit as string | undefined;
 
   return (
-    <Marker position={position} icon={icon} draggable={isOwnTeam}>
+    <Marker
+      position={position}
+      icon={icon}
+      draggable={isDraggable}
+      eventHandlers={{
+        dragend: (e) => {
+          if (onDragEnd) {
+            const { lat, lng } = e.target.getLatLng();
+            onDragEnd(asset.id, lat, lng);
+          }
+        },
+      }}
+    >
       {capacity != null && (
         <Tooltip direction="top" offset={[0, -20]} permanent className="capacity-tooltip">
           <span style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold' }}>

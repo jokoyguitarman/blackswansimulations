@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useMap } from 'react-leaflet';
 import { api } from '../../lib/api';
 import type { DraggableAssetDef } from './AssetPalette';
+import type { PlacedAsset } from './PlacedAssetMarker';
 
 interface MapDropHandlerProps {
   sessionId: string;
@@ -14,6 +15,9 @@ interface MapDropHandlerProps {
     geometry: Record<string, unknown>;
     properties: Record<string, unknown>;
   }) => void;
+  onOptimisticPlace?: (asset: PlacedAsset) => void;
+  onOptimisticConfirm?: (tempId: string, realAsset: PlacedAsset) => void;
+  onOptimisticRevert?: (tempId: string) => void;
 }
 
 export const MapDropHandler = ({
@@ -21,6 +25,9 @@ export const MapDropHandler = ({
   teamName,
   enabled,
   onPlacementCreated,
+  onOptimisticPlace,
+  onOptimisticConfirm,
+  onOptimisticRevert,
 }: MapDropHandlerProps) => {
   const map = useMap();
 
@@ -63,7 +70,7 @@ export const MapDropHandler = ({
       }
     };
 
-    const handleDrop = async (e: DragEvent) => {
+    const handleDrop = (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
       enableMapDrag();
@@ -84,27 +91,54 @@ export const MapDropHandler = ({
       const latlng = map.containerPointToLatLng([x, y]);
 
       const geom = { type: 'Point' as const, coordinates: [latlng.lng, latlng.lat] };
-      try {
-        const result = await api.placements.create(sessionId, {
+      const tempId = `temp_${crypto.randomUUID()}`;
+
+      const optimistic: PlacedAsset = {
+        id: tempId,
+        session_id: sessionId,
+        team_name: teamName,
+        placed_by: 'self',
+        asset_type: asset.asset_type,
+        label: asset.label,
+        geometry: geom,
+        properties: {},
+        placement_score: null,
+        status: 'active',
+        placed_at: new Date().toISOString(),
+      };
+
+      onOptimisticPlace?.(optimistic);
+      onPlacementCreated?.({
+        id: tempId,
+        label: asset.label,
+        asset_type: asset.asset_type,
+        geometry: geom,
+        properties: {},
+      });
+
+      api.placements
+        .create(sessionId, {
           team_name: teamName,
           asset_type: asset.asset_type,
           label: asset.label,
           geometry: geom,
           properties: {},
+        })
+        .then((result) => {
+          const placed = result?.data as Record<string, unknown> | undefined;
+          if (placed?.id) {
+            onOptimisticConfirm?.(tempId, {
+              ...optimistic,
+              id: placed.id as string,
+              geometry: (placed.geometry as PlacedAsset['geometry']) ?? geom,
+              properties: (placed.properties as Record<string, unknown>) ?? {},
+              placement_score: (placed.placement_score as Record<string, unknown> | null) ?? null,
+            });
+          }
+        })
+        .catch(() => {
+          onOptimisticRevert?.(tempId);
         });
-        const placed = result?.data as Record<string, unknown> | undefined;
-        if (placed?.id) {
-          onPlacementCreated?.({
-            id: placed.id as string,
-            label: asset.label,
-            asset_type: asset.asset_type,
-            geometry: (placed.geometry as Record<string, unknown>) ?? geom,
-            properties: (placed.properties as Record<string, unknown>) ?? {},
-          });
-        }
-      } catch {
-        // Validation errors handled by UI
-      }
     };
 
     container.addEventListener('dragenter', handleDragEnter);
@@ -119,7 +153,16 @@ export const MapDropHandler = ({
       container.removeEventListener('drop', handleDrop);
       enableMapDrag();
     };
-  }, [map, sessionId, teamName, enabled, onPlacementCreated]);
+  }, [
+    map,
+    sessionId,
+    teamName,
+    enabled,
+    onPlacementCreated,
+    onOptimisticPlace,
+    onOptimisticConfirm,
+    onOptimisticRevert,
+  ]);
 
   return null;
 };

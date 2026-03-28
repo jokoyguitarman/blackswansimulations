@@ -82,20 +82,71 @@ const UNIVERSAL_ASSETS: DraggableAssetDef[] = [
   { asset_type: 'radio_relay', icon: 'radio', geometry_type: 'point', label: 'Radio Relay' },
 ];
 
-function getAssetsForTeam(teamName: string): DraggableAssetDef[] {
+const EQUIPMENT_ICON_MAP: Record<string, string> = {
+  droplet: 'water',
+  flame: 'fire_truck',
+  wind: 'hazmat',
+  bed: 'ambulance',
+  clipboard: 'medical',
+  wrench: 'search',
+  heart: 'medical',
+  syringe: 'medical',
+  'first-aid': 'medical',
+  bone: 'medical',
+  shield: 'hazmat',
+  package: 'flag',
+};
+
+function getAssetsForTeam(
+  teamName: string,
+  equipment: Array<{
+    equipment_type: string;
+    label: string;
+    icon: string | null;
+    properties: Record<string, unknown>;
+  }>,
+): DraggableAssetDef[] {
   const key = teamName.toLowerCase().replace(/[\s-]/g, '_');
-  const specific = TEAM_ASSET_CATALOG[key];
-  if (specific) return [...specific, ...UNIVERSAL_ASSETS];
-  for (const [catalogKey, assets] of Object.entries(TEAM_ASSET_CATALOG)) {
-    if (key.includes(catalogKey) || catalogKey.includes(key)) {
-      return [...assets, ...UNIVERSAL_ASSETS];
+  let specific = TEAM_ASSET_CATALOG[key];
+  if (!specific) {
+    for (const [catalogKey, assets] of Object.entries(TEAM_ASSET_CATALOG)) {
+      if (key.includes(catalogKey) || catalogKey.includes(key)) {
+        specific = assets;
+        break;
+      }
     }
   }
-  return [
-    ...UNIVERSAL_ASSETS,
-    { asset_type: 'assembly_point', icon: 'flag', geometry_type: 'point', label: 'Assembly Point' },
-    { asset_type: 'triage_tent', icon: 'tent', geometry_type: 'point', label: 'Triage Tent' },
-  ];
+  const base = specific
+    ? [...specific]
+    : [
+        {
+          asset_type: 'assembly_point',
+          icon: 'flag',
+          geometry_type: 'point' as const,
+          label: 'Assembly Point',
+        },
+        {
+          asset_type: 'triage_tent',
+          icon: 'tent',
+          geometry_type: 'point' as const,
+          label: 'Triage Tent',
+        },
+      ];
+
+  const existingTypes = new Set(base.map((a) => a.asset_type));
+
+  for (const eq of equipment) {
+    if (existingTypes.has(eq.equipment_type)) continue;
+    existingTypes.add(eq.equipment_type);
+    base.push({
+      asset_type: eq.equipment_type,
+      icon: EQUIPMENT_ICON_MAP[eq.icon ?? ''] ?? 'flag',
+      geometry_type: 'point',
+      label: eq.label,
+    });
+  }
+
+  return [...base, ...UNIVERSAL_ASSETS];
 }
 import { useWebSocket } from '../hooks/useWebSocket';
 import { type WebSocketEvent } from '../lib/websocketClient';
@@ -310,6 +361,18 @@ export const SessionView = () => {
         mitigating_behaviours: string[];
         emerging_challenges?: string[];
       }>;
+    }>
+  >([]);
+
+  // --- Scenario-generated equipment (dynamic palette) ---
+  const [scenarioEquipment, setScenarioEquipment] = useState<
+    Array<{
+      id: string;
+      scenario_id: string;
+      equipment_type: string;
+      label: string;
+      icon: string | null;
+      properties: Record<string, unknown>;
     }>
   >([]);
 
@@ -547,6 +610,15 @@ export const SessionView = () => {
       .then((r) => setScenarioTeams(r.data || []))
       .catch(() => setScenarioTeams([]));
   }, [session?.scenarios?.id, session?.scenario_id]);
+
+  // Load scenario equipment for dynamic palette
+  useEffect(() => {
+    if (!id) return;
+    api.equipment
+      .list(id)
+      .then((r) => setScenarioEquipment(r.data || []))
+      .catch(() => setScenarioEquipment([]));
+  }, [id]);
 
   // Backend/AI activity log for trainers (poll every 8s when in progress, load once when completed)
   useEffect(() => {
@@ -1350,7 +1422,9 @@ export const SessionView = () => {
                   initialZoom={16}
                   teamName={myTeams[0]?.team_name}
                   draggableAssets={
-                    myTeams[0]?.team_name ? getAssetsForTeam(myTeams[0].team_name) : []
+                    myTeams[0]?.team_name
+                      ? getAssetsForTeam(myTeams[0].team_name, scenarioEquipment)
+                      : []
                   }
                   onPlacementCreated={handlePlacementCreated}
                   isRecordingActions={!!actionRecording?.active}
@@ -1637,7 +1711,7 @@ export const SessionView = () => {
                             ...UNIVERSAL_ASSETS,
                           ]
                         : myTeams[0]?.team_name
-                          ? getAssetsForTeam(myTeams[0].team_name)
+                          ? getAssetsForTeam(myTeams[0].team_name, scenarioEquipment)
                           : []
                     }
                   />

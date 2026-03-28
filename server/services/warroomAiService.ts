@@ -1347,7 +1347,7 @@ Research the venue and scenario type to identify ALL realistic hazards that woul
 - What secondary hazards would develop? (gas leaks from ruptured lines, electrical fires, flooding from burst water mains, smoke in enclosed spaces)
 - What infrastructure is compromised? (elevators, stairwells, fire suppression systems, emergency lighting)
 
-Generate 4-8 hazards. Each hazard is a DISTINCT danger at a SPECIFIC location.
+Generate 8-15 hazards. Each hazard is a DISTINCT danger at a SPECIFIC location. More hazards create a richer, more interactive environment for teams to coordinate.
 
 Return ONLY valid JSON:
 {
@@ -1375,7 +1375,7 @@ Return ONLY valid JSON:
 
 RULES:
 - Hazards must be near or at the incident sites (within 300m)
-- At least 2 immediate hazards (appears_at_minutes: 0) and 2+ delayed hazards (appear as situation develops)
+- At least 4 immediate hazards (appears_at_minutes: 0) and 4+ delayed hazards (appear as situation develops at different times)
 - Include venue-specific material detail in properties.fuel_source and venue_material_context
 - Vary hazard types — not all fires; include structural, debris, gas, smoke as appropriate
 - Locations must be realistic coordinates near the incident sites`;
@@ -1385,7 +1385,7 @@ RULES:
   try {
     const parsed = await callOpenAi<{
       hazards?: WarroomScenarioPayload['hazards'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 2500);
+    }>(systemPrompt, userPrompt, openAiApiKey, 4000);
     const stubs = parsed.hazards?.length ? parsed.hazards : undefined;
     if (!stubs?.length) return undefined;
 
@@ -1414,101 +1414,174 @@ async function enrichHazardDetail(
   const { scenario_type, setting, venue_name, location } = input;
   const venue = venue_name || location || setting;
 
-  const systemPrompt = `You are an expert hazard assessment specialist providing deep analysis of a specific hazard in a crisis scenario.
-
-Scenario: ${scenario_type} at ${venue}
+  const hazardContext = `Scenario: ${scenario_type} at ${venue}
 ${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
-
-HAZARD TO ANALYZE:
-Type: ${hazard.hazard_type}
+Hazard type: ${hazard.hazard_type}
 Location: (${hazard.location_lat}, ${hazard.location_lng}), floor ${hazard.floor_level}
 Size: ${(hazard.properties as Record<string, unknown>).size || 'unknown'}
 Fuel/source: ${(hazard.properties as Record<string, unknown>).fuel_source || 'unknown'}
 Adjacent risks: ${JSON.stringify((hazard.properties as Record<string, unknown>).adjacent_risks || [])}
-Teams available in this exercise: ${(teamNames ?? []).join(', ') || 'not specified'}
+Teams available: ${(teamNames ?? []).join(', ') || 'not specified'}`;
 
-Provide a DEEP, realistic assessment. Research:
+  // Run three focused calls in parallel for reliable field population
+  const [descResult, reqsResult, deteriorationResult] = await Promise.all([
+    enrichHazardDescription(hazardContext, hazard, venue, openAiApiKey),
+    enrichHazardRequirements(hazardContext, hazard, venue, openAiApiKey),
+    enrichHazardDeterioration(hazardContext, hazard, venue, openAiApiKey),
+  ]);
 
-1. ENRICHED DESCRIPTION: A detailed paragraph describing the hazard condition — what it looks like, smells like, sounds like. What a responder approaching would see. Include venue-specific materials involved (gas lines in nearby restaurant kitchens, glass from facade, chemical storage, fuel tanks, etc.).
+  return {
+    ...hazard,
+    enriched_description: descResult.enriched_description ?? undefined,
+    fire_class: descResult.fire_class ?? undefined,
+    debris_type: descResult.debris_type ?? undefined,
+    resolution_requirements: reqsResult.resolution_requirements ?? {},
+    personnel_requirements: reqsResult.personnel_requirements ?? {},
+    equipment_requirements: reqsResult.equipment_requirements ?? [],
+    deterioration_timeline: deteriorationResult.deterioration_timeline ?? {},
+  };
+}
 
-2. FIRE CLASS (if fire): Class A (ordinary combustibles), B (flammable liquids/gases), C (electrical), D (metals), K (cooking oils). null if not a fire.
+// Sub-call 1: Description, fire class, debris type
+async function enrichHazardDescription(
+  hazardContext: string,
+  hazard: NonNullable<WarroomScenarioPayload['hazards']>[number],
+  venue: string,
+  openAiApiKey: string,
+): Promise<{ enriched_description?: string; fire_class?: string; debris_type?: string }> {
+  const systemPrompt = `You are an expert hazard assessment specialist. Describe this hazard in vivid, realistic detail.
 
-3. DEBRIS TYPE (if structural): concrete, steel, glass, wood, mixed. null if not debris/collapse.
+${hazardContext}
 
-4. RESOLUTION REQUIREMENTS: What personnel and actions are needed to fully resolve this hazard.
-   - personnel_type: what kind of responder handles this (firefighter, hazmat_specialist, structural_engineer, etc.)
-   - personnel_count: minimum number needed
-   - equipment: list of equipment items needed (e.g. ["foam_unit", "breathing_apparatus", "thermal_camera"])
-   - estimated_time_minutes: how long resolution takes once proper resources deployed
-   - If NO team in the exercise can handle this, note that external resources must be called.
-
-5. DETERIORATION TIMELINE: What happens if this hazard is NOT addressed:
-   - at_10min: description of state after 10 minutes unaddressed
-   - at_20min: description after 20 minutes
-   - at_30min: description after 30 minutes
-   - spawns_new_hazards: can this create new hazard pins? describe what and where
-   - spawns_casualties: can this injure more people? estimate count and injury types
+Provide:
+1. ENRICHED DESCRIPTION: A detailed paragraph (200+ words) describing the hazard condition — what it looks like, smells like, sounds like. What a responder approaching would see. Include venue-specific materials (gas lines, glass facades, chemical storage, fuel tanks, electrical systems).
+2. FIRE CLASS (if fire): A (ordinary combustibles), B (flammable liquids/gases), C (electrical), D (metals), K (cooking oils). null if not a fire.
+3. DEBRIS TYPE (if structural/collapse): concrete, steel, glass, wood, mixed. null if not debris/collapse.
 
 Return ONLY valid JSON:
 {
   "enriched_description": "detailed paragraph...",
-  "fire_class": "A|B|C|D|K|null",
-  "debris_type": "concrete|steel|glass|wood|mixed|null",
-  "resolution_requirements": {
-    "personnel_type": "string",
-    "personnel_count": number,
-    "equipment": ["item1", "item2"],
-    "estimated_time_minutes": number,
-    "requires_external": false,
-    "external_resource": null
-  },
-  "personnel_requirements": {
-    "primary_responder": "string",
-    "minimum_count": number,
-    "specialist_needed": true/false,
-    "specialist_type": "string|null"
-  },
-  "equipment_requirements": [
-    { "equipment_type": "string", "label": "string", "quantity": 1, "critical": true }
-  ],
-  "deterioration_timeline": {
-    "at_10min": "string",
-    "at_20min": "string",
-    "at_30min": "string",
-    "spawns_new_hazards": true/false,
-    "new_hazard_description": "string|null",
-    "spawns_casualties": true/false,
-    "estimated_new_casualties": 0,
-    "new_casualty_injury_types": []
-  }
+  "fire_class": "A|B|C|D|K" or null,
+  "debris_type": "concrete|steel|glass|wood|mixed" or null
 }`;
 
-  const userPrompt = `Deep analysis of ${hazard.hazard_type} hazard at ${venue}: ${(hazard.properties as Record<string, unknown>).fuel_source || hazard.hazard_type}`;
-
   try {
-    const result = await callOpenAi<{
+    return await callOpenAi<{
       enriched_description?: string;
       fire_class?: string;
       debris_type?: string;
+    }>(
+      systemPrompt,
+      `Describe the ${hazard.hazard_type} hazard at ${venue} in vivid detail.`,
+      openAiApiKey,
+      2000,
+    );
+  } catch (err) {
+    logger.warn({ err, hazardType: hazard.hazard_type }, 'Hazard description enrichment failed');
+    return {};
+  }
+}
+
+// Sub-call 2: Resolution, personnel, and equipment requirements
+async function enrichHazardRequirements(
+  hazardContext: string,
+  hazard: NonNullable<WarroomScenarioPayload['hazards']>[number],
+  venue: string,
+  openAiApiKey: string,
+): Promise<{
+  resolution_requirements?: Record<string, unknown>;
+  personnel_requirements?: Record<string, unknown>;
+  equipment_requirements?: Array<Record<string, unknown>>;
+}> {
+  const systemPrompt = `You are an expert in emergency response requirements. Determine the EXACT personnel, equipment, and procedures needed to resolve this hazard.
+
+${hazardContext}
+
+You MUST fill out ALL three requirement sections. Be specific about quantities and types.
+
+Return ONLY valid JSON:
+{
+  "resolution_requirements": {
+    "personnel_type": "firefighter|hazmat_specialist|structural_engineer|paramedic|bomb_technician|etc.",
+    "personnel_count": <number, minimum needed>,
+    "equipment": ["specific_item_1", "specific_item_2", "specific_item_3"],
+    "approach_method": "describe the correct approach/containment method",
+    "estimated_time_minutes": <number>,
+    "requires_external": <true if none of the exercise teams can handle it>,
+    "external_resource": "<what external resource>" or null,
+    "safety_precautions": ["precaution1", "precaution2"]
+  },
+  "personnel_requirements": {
+    "primary_responder": "role name",
+    "minimum_count": <number>,
+    "specialist_needed": <true/false>,
+    "specialist_type": "type" or null,
+    "support_roles": ["role1", "role2"]
+  },
+  "equipment_requirements": [
+    { "equipment_type": "internal_id", "label": "Human readable name", "quantity": <number>, "critical": <true if essential> },
+    { "equipment_type": "another_item", "label": "Display name", "quantity": <number>, "critical": <true/false> }
+  ]
+}
+
+IMPORTANT: equipment_requirements MUST contain at least 2 items. Be specific — not just "fire_extinguisher" but the correct type (foam, CO2, dry chemical, etc.) for this hazard.`;
+
+  try {
+    return await callOpenAi<{
       resolution_requirements?: Record<string, unknown>;
       personnel_requirements?: Record<string, unknown>;
       equipment_requirements?: Array<Record<string, unknown>>;
-      deterioration_timeline?: Record<string, unknown>;
-    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
-
-    return {
-      ...hazard,
-      enriched_description: result.enriched_description ?? undefined,
-      fire_class: result.fire_class ?? undefined,
-      debris_type: result.debris_type ?? undefined,
-      resolution_requirements: result.resolution_requirements ?? {},
-      personnel_requirements: result.personnel_requirements ?? {},
-      equipment_requirements: result.equipment_requirements ?? [],
-      deterioration_timeline: result.deterioration_timeline ?? {},
-    };
+    }>(
+      systemPrompt,
+      `What personnel, equipment, and procedures are needed to resolve this ${hazard.hazard_type} at ${venue}?`,
+      openAiApiKey,
+      2000,
+    );
   } catch (err) {
-    logger.warn({ err, hazardType: hazard.hazard_type }, 'Hazard enrichment failed; using stub');
-    return hazard;
+    logger.warn({ err, hazardType: hazard.hazard_type }, 'Hazard requirements enrichment failed');
+    return {};
+  }
+}
+
+// Sub-call 3: Deterioration timeline
+async function enrichHazardDeterioration(
+  hazardContext: string,
+  hazard: NonNullable<WarroomScenarioPayload['hazards']>[number],
+  venue: string,
+  openAiApiKey: string,
+): Promise<{ deterioration_timeline?: Record<string, unknown> }> {
+  const systemPrompt = `You are an expert in hazard progression and deterioration. Predict what happens if this hazard is NOT addressed over time.
+
+${hazardContext}
+
+Describe the realistic, cascading deterioration of this hazard at three time checkpoints. Consider venue-specific materials, structural integrity, and secondary effects.
+
+Return ONLY valid JSON:
+{
+  "deterioration_timeline": {
+    "at_10min": "detailed description of state after 10 minutes unaddressed — what has changed, spread, worsened",
+    "at_20min": "detailed description after 20 minutes — escalation, secondary effects beginning",
+    "at_30min": "detailed description after 30 minutes — critical stage, cascading failures",
+    "spawns_new_hazards": <true/false>,
+    "new_hazard_description": "what new hazard(s) would appear and where" or null,
+    "spawns_casualties": <true/false>,
+    "estimated_new_casualties": <number>,
+    "new_casualty_injury_types": ["burn", "smoke_inhalation", "crush", "laceration", etc.]
+  }
+}`;
+
+  try {
+    return await callOpenAi<{
+      deterioration_timeline?: Record<string, unknown>;
+    }>(
+      systemPrompt,
+      `What happens if this ${hazard.hazard_type} at ${venue} is left unaddressed for 30 minutes?`,
+      openAiApiKey,
+      1500,
+    );
+  } catch (err) {
+    logger.warn({ err, hazardType: hazard.hazard_type }, 'Hazard deterioration enrichment failed');
+    return {};
   }
 }
 

@@ -28,18 +28,6 @@ interface ParticipantManagementProps {
   onUpdate: () => void;
 }
 
-const AVAILABLE_ROLES = [
-  { value: 'defence', label: 'Defence' },
-  { value: 'health', label: 'Health Services' },
-  { value: 'civil', label: 'Civil Government' },
-  { value: 'utilities', label: 'Utilities' },
-  { value: 'intelligence', label: 'Intelligence' },
-  { value: 'ngo', label: 'NGO' },
-  { value: 'public_information_officer', label: 'Public Information Officer' },
-  { value: 'police_commander', label: 'Police Commander' },
-  { value: 'legal_oversight', label: 'Legal Oversight' },
-];
-
 export const ParticipantManagement = ({
   sessionId,
   participants,
@@ -49,11 +37,11 @@ export const ParticipantManagement = ({
   const [showAddModal, setShowAddModal] = useState(false);
   const [modalMode, setModalMode] = useState<'existing' | 'email'>('existing');
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [inviteEmail, setInviteEmail] = useState<string>('');
-  const [selectedRole, setSelectedRole] = useState<string>('defence');
   const [loading, setLoading] = useState(false);
   const [processingInvitations, setProcessingInvitations] = useState(false);
+  const [searchFilter, setSearchFilter] = useState('');
 
   useEffect(() => {
     if (showAddModal && isTrainer) {
@@ -71,35 +59,55 @@ export const ParticipantManagement = ({
     }
   };
 
-  const handleAddParticipant = async () => {
-    if (!selectedUserId || !selectedRole) {
-      alert('Please select a user and role');
+  const toggleUser = (userId: string) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
+  const handleAddParticipants = async () => {
+    if (selectedUserIds.size === 0) {
+      alert('Please select at least one user');
       return;
     }
 
     setLoading(true);
-    try {
-      await api.sessions.addParticipant(sessionId, selectedUserId, selectedRole);
-      setShowAddModal(false);
-      setSelectedUserId('');
-      setSelectedRole('defence');
-      setModalMode('existing');
-      onUpdate();
-    } catch (error) {
-      console.error('Failed to add participant:', error);
-      alert('Failed to add participant');
-    } finally {
-      setLoading(false);
+    const defaultRole = 'defence';
+    let successCount = 0;
+    const errors: string[] = [];
+
+    for (const userId of selectedUserIds) {
+      try {
+        await api.sessions.addParticipant(sessionId, userId, defaultRole);
+        successCount++;
+      } catch {
+        const user = availableUsers.find((u) => u.id === userId);
+        errors.push(user?.full_name ?? userId);
+      }
     }
+
+    setLoading(false);
+
+    if (errors.length > 0) {
+      alert(`Added ${successCount} user(s). Failed for: ${errors.join(', ')}`);
+    }
+
+    setShowAddModal(false);
+    setSelectedUserIds(new Set());
+    setSearchFilter('');
+    setModalMode('existing');
+    onUpdate();
   };
 
   const handleInviteByEmail = async () => {
-    if (!inviteEmail || !selectedRole) {
-      alert('Please enter an email address and select a role');
+    if (!inviteEmail) {
+      alert('Please enter an email address');
       return;
     }
 
-    // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(inviteEmail)) {
       alert('Please enter a valid email address');
@@ -108,10 +116,9 @@ export const ParticipantManagement = ({
 
     setLoading(true);
     try {
-      const result = await api.sessions.inviteByEmail(sessionId, inviteEmail, selectedRole);
+      const result = await api.sessions.inviteByEmail(sessionId, inviteEmail, 'defence');
       setShowAddModal(false);
       setInviteEmail('');
-      setSelectedRole('defence');
       setModalMode('existing');
       alert(
         result.isNewUser
@@ -251,9 +258,9 @@ export const ParticipantManagement = ({
       {/* Add Participant Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="military-border bg-robotic-gray-300 p-8 max-w-md w-full">
+          <div className="military-border bg-robotic-gray-300 p-8 max-w-lg w-full max-h-[85vh] flex flex-col">
             <h3 className="text-xl terminal-text uppercase mb-4">
-              {modalMode === 'email' ? '[INVITE_BY_EMAIL]' : '[ADD_PARTICIPANT]'}
+              {modalMode === 'email' ? '[INVITE_BY_EMAIL]' : '[ADD_PARTICIPANTS]'}
             </h3>
 
             {/* Mode Toggle */}
@@ -266,7 +273,7 @@ export const ParticipantManagement = ({
                     : 'border border-robotic-yellow/50 text-robotic-yellow/70 hover:bg-robotic-yellow/10'
                 }`}
               >
-                [EXISTING_USER]
+                [EXISTING_USERS]
               </button>
               <button
                 onClick={() => setModalMode('email')}
@@ -280,93 +287,142 @@ export const ParticipantManagement = ({
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
               {modalMode === 'existing' ? (
                 <>
                   <div>
-                    <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                      [SELECT_USER]
-                    </label>
-                    <select
-                      value={selectedUserId}
-                      onChange={(e) => setSelectedUserId(e.target.value)}
-                      className="w-full px-4 py-3 military-input terminal-text"
-                    >
-                      <option value="">-- Select a user --</option>
-                      {availableToAdd.map((user) => (
-                        <option key={user.id} value={user.id}>
-                          {user.full_name} ({user.email}){' '}
-                          {user.agency_name ? `- ${user.agency_name}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    {availableToAdd.length === 0 && (
-                      <p className="text-xs terminal-text text-robotic-yellow/50 mt-2">
+                    <input
+                      type="text"
+                      value={searchFilter}
+                      onChange={(e) => setSearchFilter(e.target.value)}
+                      placeholder="Search by name, email, or agency..."
+                      className="w-full px-4 py-2 military-input terminal-text text-sm"
+                    />
+                  </div>
+
+                  {selectedUserIds.size > 0 && (
+                    <div className="text-xs terminal-text text-robotic-yellow/80">
+                      {selectedUserIds.size} user{selectedUserIds.size > 1 ? 's' : ''} selected
+                      <button
+                        onClick={() => setSelectedUserIds(new Set())}
+                        className="ml-2 text-robotic-orange hover:underline"
+                      >
+                        clear
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex-1 overflow-y-auto space-y-1 min-h-0 max-h-[40vh] pr-1">
+                    {availableToAdd.length === 0 ? (
+                      <p className="text-xs terminal-text text-robotic-yellow/50 text-center py-4">
                         All users are already participants
                       </p>
+                    ) : (
+                      (() => {
+                        const query = searchFilter.toLowerCase();
+                        const filtered = query
+                          ? availableToAdd.filter(
+                              (u) =>
+                                u.full_name.toLowerCase().includes(query) ||
+                                u.email.toLowerCase().includes(query) ||
+                                (u.agency_name ?? '').toLowerCase().includes(query),
+                            )
+                          : availableToAdd;
+                        if (filtered.length === 0) {
+                          return (
+                            <p className="text-xs terminal-text text-robotic-yellow/50 text-center py-4">
+                              No matching users
+                            </p>
+                          );
+                        }
+                        return filtered.map((user) => {
+                          const isSelected = selectedUserIds.has(user.id);
+                          return (
+                            <button
+                              key={user.id}
+                              onClick={() => toggleUser(user.id)}
+                              className={`w-full text-left px-3 py-2 rounded border text-xs terminal-text transition-colors ${
+                                isSelected
+                                  ? 'border-robotic-yellow bg-robotic-yellow/15 text-robotic-yellow'
+                                  : 'border-robotic-yellow/20 text-robotic-yellow/70 hover:border-robotic-yellow/40 hover:bg-robotic-yellow/5'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`w-4 h-4 border rounded flex items-center justify-center flex-shrink-0 text-[10px] ${
+                                    isSelected
+                                      ? 'border-robotic-yellow bg-robotic-yellow text-black'
+                                      : 'border-robotic-yellow/40'
+                                  }`}
+                                >
+                                  {isSelected ? '✓' : ''}
+                                </span>
+                                <div className="min-w-0">
+                                  <div className="font-medium truncate">{user.full_name}</div>
+                                  <div className="text-robotic-yellow/50 truncate">
+                                    {user.email}
+                                    {user.agency_name ? ` · ${user.agency_name}` : ''}
+                                  </div>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        });
+                      })()
                     )}
                   </div>
+
+                  {availableToAdd.length > 0 && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        onClick={() => setSelectedUserIds(new Set(availableToAdd.map((u) => u.id)))}
+                        className="text-[10px] terminal-text text-robotic-yellow/60 hover:text-robotic-yellow underline"
+                      >
+                        Select all
+                      </button>
+                    </div>
+                  )}
                 </>
               ) : (
-                <>
-                  <div>
-                    <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                      [EMAIL_ADDRESS]
-                    </label>
-                    <input
-                      type="email"
-                      value={inviteEmail}
-                      onChange={(e) => setInviteEmail(e.target.value)}
-                      placeholder="participant@example.com"
-                      className="w-full px-4 py-3 military-input terminal-text"
-                    />
-                    <p className="text-xs terminal-text text-robotic-yellow/50 mt-2">
-                      They will receive an email with a signup link if not registered
-                    </p>
-                  </div>
-                </>
+                <div>
+                  <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
+                    [EMAIL_ADDRESS]
+                  </label>
+                  <input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="participant@example.com"
+                    className="w-full px-4 py-3 military-input terminal-text"
+                  />
+                  <p className="text-xs terminal-text text-robotic-yellow/50 mt-2">
+                    They will receive an email with a signup link if not registered
+                  </p>
+                </div>
               )}
 
-              <div>
-                <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                  [ASSIGN_ROLE]
-                </label>
-                <select
-                  value={selectedRole}
-                  onChange={(e) => setSelectedRole(e.target.value)}
-                  className="w-full px-4 py-3 military-input terminal-text"
-                >
-                  {AVAILABLE_ROLES.map((role) => (
-                    <option key={role.value} value={role.value}>
-                      {role.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex gap-4 pt-4">
+              <div className="flex gap-4 pt-4 flex-shrink-0">
                 <button
-                  onClick={modalMode === 'email' ? handleInviteByEmail : handleAddParticipant}
+                  onClick={modalMode === 'email' ? handleInviteByEmail : handleAddParticipants}
                   disabled={
                     loading ||
-                    (modalMode === 'existing' &&
-                      (!selectedUserId || availableToAdd.length === 0)) ||
+                    (modalMode === 'existing' && selectedUserIds.size === 0) ||
                     (modalMode === 'email' && !inviteEmail)
                   }
                   className="military-button px-6 py-3 flex-1 disabled:opacity-50"
                 >
                   {loading
-                    ? '[PROCESSING...]'
+                    ? `[ADDING ${selectedUserIds.size}...]`
                     : modalMode === 'email'
                       ? '[SEND_INVITATION]'
-                      : '[ADD]'}
+                      : `[ADD ${selectedUserIds.size > 0 ? selectedUserIds.size + ' ' : ''}USER${selectedUserIds.size !== 1 ? 'S' : ''}]`}
                 </button>
                 <button
                   onClick={() => {
                     setShowAddModal(false);
-                    setSelectedUserId('');
+                    setSelectedUserIds(new Set());
                     setInviteEmail('');
-                    setSelectedRole('defence');
+                    setSearchFilter('');
                     setModalMode('existing');
                   }}
                   className="military-button px-6 py-3 flex-1 border-robotic-orange text-robotic-orange"

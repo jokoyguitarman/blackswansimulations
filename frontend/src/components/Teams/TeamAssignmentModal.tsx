@@ -22,11 +22,12 @@ interface TeamAssignment {
   user_id: string;
   team_name: string;
   team_role?: string;
-  user?: {
-    id: string;
-    full_name: string;
-    role: string;
-  };
+}
+
+interface PendingChange {
+  type: 'add' | 'remove';
+  userId: string;
+  teamName: string;
 }
 
 export const TeamAssignmentModal = ({
@@ -35,11 +36,11 @@ export const TeamAssignmentModal = ({
   onSuccess,
 }: TeamAssignmentModalProps) => {
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [teamAssignments, setTeamAssignments] = useState<TeamAssignment[]>([]);
   const [availableTeams, setAvailableTeams] = useState<string[]>([]);
-  const [selectedParticipant, setSelectedParticipant] = useState<string | null>(null);
-  const [selectedTeam, setSelectedTeam] = useState<string>('');
+  const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([]);
 
   useEffect(() => {
     loadData();
@@ -48,15 +49,12 @@ export const TeamAssignmentModal = ({
   const loadData = async () => {
     try {
       setLoading(true);
-
-      // Load session (includes participants and scenario_id)
       const sessionResult = await api.sessions.get(sessionId);
       const session = sessionResult.data as { participants?: Participant[]; scenario_id?: string };
       if (session?.participants) {
         setParticipants(session.participants);
       }
 
-      // Load teams for this scenario so dropdown shows scenario-specific teams
       const scenarioId = session?.scenario_id;
       if (scenarioId) {
         const scenarioTeamsResult = await api.teams.getScenarioTeams(scenarioId);
@@ -66,7 +64,6 @@ export const TeamAssignmentModal = ({
         setAvailableTeams([]);
       }
 
-      // Load team assignments
       const teamsResult = await api.teams.getSessionTeams(sessionId);
       setTeamAssignments(teamsResult.data || []);
     } catch (error) {
@@ -77,47 +74,85 @@ export const TeamAssignmentModal = ({
     }
   };
 
-  const handleAssignTeam = async () => {
-    if (!selectedParticipant || !selectedTeam) {
-      alert('Please select a participant and team');
+  const getUserName = (userId: string): string => {
+    const participant = participants.find((p) => p.user_id === userId);
+    return participant?.user?.full_name ?? userId;
+  };
+
+  const getEffectiveTeams = (userId: string): string[] => {
+    const serverTeams = teamAssignments.filter((a) => a.user_id === userId).map((a) => a.team_name);
+
+    const result = new Set(serverTeams);
+
+    for (const change of pendingChanges) {
+      if (change.userId !== userId) continue;
+      if (change.type === 'add') result.add(change.teamName);
+      if (change.type === 'remove') result.delete(change.teamName);
+    }
+
+    return Array.from(result);
+  };
+
+  const isTeamAssignedOnServer = (userId: string, teamName: string): boolean => {
+    return teamAssignments.some((a) => a.user_id === userId && a.team_name === teamName);
+  };
+
+  const handleToggleTeam = (userId: string, teamName: string) => {
+    const currentlyAssigned = getEffectiveTeams(userId).includes(teamName);
+
+    setPendingChanges((prev) => {
+      const filtered = prev.filter((c) => !(c.userId === userId && c.teamName === teamName));
+
+      if (currentlyAssigned) {
+        if (isTeamAssignedOnServer(userId, teamName)) {
+          return [...filtered, { type: 'remove', userId, teamName }];
+        }
+        return filtered;
+      } else {
+        if (!isTeamAssignedOnServer(userId, teamName)) {
+          return [...filtered, { type: 'add', userId, teamName }];
+        }
+        return filtered;
+      }
+    });
+  };
+
+  const handleSaveAll = async () => {
+    if (pendingChanges.length === 0) {
+      onClose();
       return;
     }
 
-    try {
-      await api.teams.assignTeam(sessionId, selectedParticipant, selectedTeam);
-      await loadData();
-      setSelectedParticipant(null);
-      setSelectedTeam('');
-      if (onSuccess) onSuccess();
-    } catch (error) {
-      console.error('Failed to assign team:', error);
-      alert('Failed to assign team');
+    setSaving(true);
+    const errors: string[] = [];
+
+    for (const change of pendingChanges) {
+      try {
+        if (change.type === 'add') {
+          await api.teams.assignTeam(sessionId, change.userId, change.teamName);
+        } else {
+          await api.teams.removeTeamAssignment(sessionId, change.userId, change.teamName);
+        }
+      } catch {
+        const name = getUserName(change.userId);
+        errors.push(`${change.type === 'add' ? 'Assign' : 'Remove'} ${name} → ${change.teamName}`);
+      }
     }
-  };
 
-  const handleRemoveAssignment = async (userId: string, teamName: string) => {
-    if (!confirm(`Remove ${teamName} assignment?`)) return;
+    setSaving(false);
 
-    try {
-      await api.teams.removeTeamAssignment(sessionId, userId, teamName);
-      await loadData();
-      if (onSuccess) onSuccess();
-    } catch (error) {
-      console.error('Failed to remove team assignment:', error);
-      alert('Failed to remove team assignment');
+    if (errors.length > 0) {
+      alert(`Some changes failed:\n${errors.join('\n')}`);
     }
+
+    setPendingChanges([]);
+    onSuccess?.();
+    onClose();
   };
 
-  const getUserTeams = (userId: string): string[] => {
-    return teamAssignments
-      .filter((assignment) => assignment.user_id === userId)
-      .map((assignment) => assignment.team_name);
-  };
-
-  const getUserName = (userId: string): string => {
-    const participant = participants.find((p) => p.user_id === userId);
-    if (participant?.user?.full_name) return participant.user.full_name;
-    return userId;
+  const handleCancel = () => {
+    setPendingChanges([]);
+    onClose();
   };
 
   if (loading) {
@@ -130,132 +165,131 @@ export const TeamAssignmentModal = ({
     );
   }
 
+  const unassigned = participants.filter((p) => getEffectiveTeams(p.user_id).length === 0);
+  const assigned = participants.filter((p) => getEffectiveTeams(p.user_id).length > 0);
+
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="military-border bg-robotic-gray-300 p-8 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        <h2 className="text-xl terminal-text uppercase mb-6">[TEAM_ASSIGNMENTS]</h2>
-
-        {/* Assign New Team */}
-        <div className="mb-6 p-4 military-border">
-          <h3 className="text-sm terminal-text uppercase text-robotic-yellow mb-4">
-            [ASSIGN_TEAM]
-          </h3>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                [PARTICIPANT]
-              </label>
-              <select
-                value={selectedParticipant || ''}
-                onChange={(e) => setSelectedParticipant(e.target.value)}
-                className="w-full px-4 py-3 military-input terminal-text"
-              >
-                <option value="">Select participant</option>
-                {participants.map((p) => (
-                  <option key={p.user_id} value={p.user_id}>
-                    {getUserName(p.user_id)} ({p.role})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                [TEAM]
-              </label>
-              <select
-                value={selectedTeam}
-                onChange={(e) => setSelectedTeam(e.target.value)}
-                className="w-full px-4 py-3 military-input terminal-text"
-              >
-                <option value="">Select team</option>
-                {availableTeams.map((team) => (
-                  <option key={team} value={team}>
-                    {team.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-end">
-              <button
-                onClick={handleAssignTeam}
-                disabled={!selectedParticipant || !selectedTeam}
-                className="military-button px-6 py-3 w-full disabled:opacity-50"
-              >
-                [ASSIGN]
-              </button>
-            </div>
-          </div>
+      <div className="military-border bg-robotic-gray-300 p-6 max-w-5xl w-full max-h-[90vh] flex flex-col">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl terminal-text uppercase">[TEAM_ASSIGNMENTS]</h2>
+          {pendingChanges.length > 0 && (
+            <span className="text-xs terminal-text text-robotic-orange px-2 py-1 border border-robotic-orange/50 rounded">
+              {pendingChanges.length} unsaved change{pendingChanges.length !== 1 ? 's' : ''}
+            </span>
+          )}
         </div>
 
-        {/* Current Assignments */}
-        <div>
-          <h3 className="text-sm terminal-text uppercase text-robotic-yellow mb-4">
-            [CURRENT_ASSIGNMENTS]
-          </h3>
-          <div className="space-y-3">
-            {participants.map((participant) => {
-              const userTeams = getUserTeams(participant.user_id);
-              if (userTeams.length === 0) return null;
+        <div className="flex-1 overflow-y-auto min-h-0 space-y-1 pr-1">
+          {/* Header row */}
+          <div
+            className="grid gap-2 items-center sticky top-0 bg-robotic-gray-300 z-10 py-2 border-b border-robotic-yellow/30"
+            style={{ gridTemplateColumns: `200px repeat(${availableTeams.length}, 1fr)` }}
+          >
+            <div className="text-xs terminal-text text-robotic-yellow/60 uppercase">
+              Participant
+            </div>
+            {availableTeams.map((team) => (
+              <div
+                key={team}
+                className="text-xs terminal-text text-robotic-yellow/60 uppercase text-center truncate px-1"
+                title={team}
+              >
+                {team}
+              </div>
+            ))}
+          </div>
 
-              return (
-                <div key={participant.user_id} className="military-border p-4">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="text-sm terminal-text font-semibold">
-                        {getUserName(participant.user_id)}
-                      </h4>
-                      <p className="text-xs terminal-text text-robotic-yellow/70">
-                        Role: {participant.role}
-                      </p>
-                    </div>
-                    <div className="flex-1 ml-4">
-                      <div className="flex flex-wrap gap-2">
-                        {userTeams.map((teamName) => {
-                          const assignment = teamAssignments.find(
-                            (a) => a.user_id === participant.user_id && a.team_name === teamName,
-                          );
-                          return (
-                            <div
-                              key={teamName}
-                              className="flex items-center gap-2 px-3 py-1 military-border bg-robotic-gray-200"
-                            >
-                              <span className="text-xs terminal-text">
-                                {teamName.toUpperCase()}
-                              </span>
-                              {assignment?.team_role && (
-                                <span className="text-xs terminal-text text-robotic-yellow/70">
-                                  ({assignment.team_role})
-                                </span>
-                              )}
-                              <button
-                                onClick={() =>
-                                  handleRemoveAssignment(participant.user_id, teamName)
-                                }
-                                className="text-xs terminal-text text-robotic-orange hover:text-robotic-red"
-                              >
-                                [X]
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
+          {/* Participant rows */}
+          {participants.map((participant) => {
+            const effectiveTeams = getEffectiveTeams(participant.user_id);
+
+            return (
+              <div
+                key={participant.user_id}
+                className="grid gap-2 items-center py-2 border-b border-robotic-yellow/10"
+                style={{ gridTemplateColumns: `200px repeat(${availableTeams.length}, 1fr)` }}
+              >
+                <div className="min-w-0">
+                  <div className="text-sm terminal-text font-medium truncate">
+                    {getUserName(participant.user_id)}
                   </div>
+                  {effectiveTeams.length === 0 && (
+                    <div className="text-[10px] terminal-text text-robotic-yellow/40">
+                      unassigned
+                    </div>
+                  )}
                 </div>
-              );
-            })}
-            {participants.every((p) => getUserTeams(p.user_id).length === 0) && (
-              <p className="text-xs terminal-text text-robotic-yellow/50 text-center py-8">
-                No team assignments yet
-              </p>
+
+                {availableTeams.map((team) => {
+                  const isActive = effectiveTeams.includes(team);
+                  const hasPending = pendingChanges.some(
+                    (c) => c.userId === participant.user_id && c.teamName === team,
+                  );
+
+                  return (
+                    <div key={team} className="flex justify-center">
+                      <button
+                        onClick={() => handleToggleTeam(participant.user_id, team)}
+                        className={`w-8 h-8 rounded border text-xs font-bold transition-all ${
+                          isActive
+                            ? hasPending
+                              ? 'border-green-500 bg-green-500/30 text-green-300 ring-1 ring-green-400/50'
+                              : 'border-robotic-yellow bg-robotic-yellow/20 text-robotic-yellow'
+                            : hasPending
+                              ? 'border-red-500/60 bg-red-500/10 text-red-400 ring-1 ring-red-400/30 line-through'
+                              : 'border-robotic-yellow/20 text-robotic-yellow/30 hover:border-robotic-yellow/40 hover:bg-robotic-yellow/5'
+                        }`}
+                        title={
+                          isActive
+                            ? `Remove ${getUserName(participant.user_id)} from ${team}`
+                            : `Assign ${getUserName(participant.user_id)} to ${team}`
+                        }
+                      >
+                        {isActive ? '✓' : ''}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Summary */}
+        {(unassigned.length > 0 || assigned.length > 0) && (
+          <div className="flex gap-4 text-[10px] terminal-text text-robotic-yellow/50 mt-3 pt-2 border-t border-robotic-yellow/20">
+            <span>{assigned.length} assigned</span>
+            {unassigned.length > 0 && (
+              <span className="text-robotic-orange/70">{unassigned.length} unassigned</span>
             )}
           </div>
-        </div>
+        )}
 
-        <div className="flex gap-4 pt-4 border-t border-robotic-yellow/30 mt-6">
-          <button onClick={onClose} className="military-button px-6 py-3 flex-1">
-            [CLOSE]
+        {/* Actions */}
+        <div className="flex gap-4 pt-4 mt-2 border-t border-robotic-yellow/30 flex-shrink-0">
+          <button
+            onClick={handleSaveAll}
+            disabled={saving}
+            className={`military-button px-6 py-3 flex-1 ${
+              pendingChanges.length > 0 ? '' : 'opacity-70'
+            } disabled:opacity-50`}
+          >
+            {saving
+              ? '[SAVING...]'
+              : pendingChanges.length > 0
+                ? `[SAVE ${pendingChanges.length} CHANGE${pendingChanges.length !== 1 ? 'S' : ''}]`
+                : '[CLOSE]'}
           </button>
+          {pendingChanges.length > 0 && (
+            <button
+              onClick={handleCancel}
+              disabled={saving}
+              className="military-button px-6 py-3 flex-1 border-robotic-orange text-robotic-orange disabled:opacity-50"
+            >
+              [DISCARD_CHANGES]
+            </button>
+          )}
         </div>
       </div>
     </div>
