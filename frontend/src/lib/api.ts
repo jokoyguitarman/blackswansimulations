@@ -291,6 +291,7 @@ export const api = {
         locations?: Array<{ id: string; lat: number; lng: number }>;
         hazards?: Array<{ id: string; lat: number; lng: number }>;
         casualties?: Array<{ id: string; lat: number; lng: number }>;
+        zones?: Array<{ hazard_id: string; zone_type: string; radius_m: number }>;
       },
     ) => {
       const headers = await getAuthHeaders();

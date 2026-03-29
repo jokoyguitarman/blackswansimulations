@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Tooltip, Polygon } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Tooltip, Popup, Polygon } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import { api } from '../../lib/api';
 import { ScenarioLocationMarker, type ScenarioLocationPin } from '../COP/ScenarioLocationMarker';
@@ -1005,6 +1005,35 @@ const createDivIcon = (color: string, label: string, size = 28): DivIcon =>
     iconAnchor: [size / 2, size / 2],
   });
 
+function generateCirclePolygon(
+  centerLat: number,
+  centerLng: number,
+  radiusM: number,
+  segments = 32,
+): number[][] {
+  const ring: number[][] = [];
+  const R = 6371000;
+  const latRad = (centerLat * Math.PI) / 180;
+  const lngRad = (centerLng * Math.PI) / 180;
+  const angDist = radiusM / R;
+  for (let i = 0; i < segments; i++) {
+    const bearing = (2 * Math.PI * i) / segments;
+    const destLat = Math.asin(
+      Math.sin(latRad) * Math.cos(angDist) +
+        Math.cos(latRad) * Math.sin(angDist) * Math.cos(bearing),
+    );
+    const destLng =
+      lngRad +
+      Math.atan2(
+        Math.sin(bearing) * Math.sin(angDist) * Math.cos(latRad),
+        Math.cos(angDist) - Math.sin(latRad) * Math.sin(destLat),
+      );
+    ring.push([(destLat * 180) / Math.PI, (destLng * 180) / Math.PI]);
+  }
+  ring.push(ring[0]);
+  return ring;
+}
+
 const MapPinsTab = ({
   scenarioId,
   locations: locationsProp,
@@ -1036,11 +1065,12 @@ const MapPinsTab = ({
     locations: Map<string, { lat: number; lng: number }>;
     hazards: Map<string, { lat: number; lng: number }>;
     casualties: Map<string, { lat: number; lng: number }>;
-  }>({ locations: new Map(), hazards: new Map(), casualties: new Map() });
+    zones: Map<string, { hazard_id: string; zone_type: string; radius_m: number }>;
+  }>({ locations: new Map(), hazards: new Map(), casualties: new Map(), zones: new Map() });
 
   const hasChanges = () => {
     const c = changesRef.current;
-    return c.locations.size > 0 || c.hazards.size > 0 || c.casualties.size > 0;
+    return c.locations.size > 0 || c.hazards.size > 0 || c.casualties.size > 0 || c.zones.size > 0;
   };
 
   const [dirty, setDirty] = useState(false);
@@ -1060,6 +1090,31 @@ const MapPinsTab = ({
     setDirty(true);
   }, []);
 
+  const onZoneRadiusChange = useCallback(
+    (hazardId: string, zoneType: string, newRadius: number) => {
+      const key = `${hazardId}:${zoneType}`;
+      changesRef.current.zones.set(key, {
+        hazard_id: hazardId,
+        zone_type: zoneType,
+        radius_m: newRadius,
+      });
+      // Update local state to re-render the polygon at the new radius
+      setHazards((prev) =>
+        prev.map((h) => {
+          if (h.id !== hazardId) return h;
+          const updatedZones = (h.zones ?? []).map((z) => {
+            if (z.zone_type !== zoneType) return z;
+            const newPolygon = generateCirclePolygon(h.location_lat, h.location_lng, newRadius);
+            return { ...z, radius_m: newRadius, polygon: newPolygon };
+          });
+          return { ...h, zones: updatedZones };
+        }),
+      );
+      setDirty(true);
+    },
+    [],
+  );
+
   const handleSave = useCallback(async () => {
     if (!hasChanges()) return;
     setSaving(true);
@@ -1070,6 +1125,7 @@ const MapPinsTab = ({
         locations?: Array<{ id: string; lat: number; lng: number }>;
         hazards?: Array<{ id: string; lat: number; lng: number }>;
         casualties?: Array<{ id: string; lat: number; lng: number }>;
+        zones?: Array<{ hazard_id: string; zone_type: string; radius_m: number }>;
       } = {};
       if (c.locations.size)
         payload.locations = [...c.locations.entries()].map(([id, p]) => ({ id, ...p }));
@@ -1077,6 +1133,7 @@ const MapPinsTab = ({
         payload.hazards = [...c.hazards.entries()].map(([id, p]) => ({ id, ...p }));
       if (c.casualties.size)
         payload.casualties = [...c.casualties.entries()].map(([id, p]) => ({ id, ...p }));
+      if (c.zones.size) payload.zones = [...c.zones.values()];
 
       const res = await api.scenarios.updatePinPositions(scenarioId, payload);
       if (res.warnings?.length) {
@@ -1111,7 +1168,12 @@ const MapPinsTab = ({
         );
       }
 
-      changesRef.current = { locations: new Map(), hazards: new Map(), casualties: new Map() };
+      changesRef.current = {
+        locations: new Map(),
+        hazards: new Map(),
+        casualties: new Map(),
+        zones: new Map(),
+      };
       setDirty(false);
     } catch {
       setSaveMsg('Failed to save — check console');
@@ -1189,16 +1251,21 @@ const MapPinsTab = ({
       {saveMsg && <div className="text-xs terminal-text text-green-400 p-1">{saveMsg}</div>}
 
       {/* OSM map */}
-      <div className="military-border overflow-hidden relative" style={{ height: 480 }}>
+      <div className="military-border overflow-hidden relative" style={{ height: 600 }}>
         <MapContainer
           center={mapCenter}
           zoom={16}
           style={{ height: '100%', width: '100%' }}
-          scrollWheelZoom
+          scrollWheelZoom={true}
+          doubleClickZoom={true}
+          zoomControl={true}
+          maxZoom={22}
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            maxNativeZoom={19}
+            maxZoom={22}
           />
           {/* Floor plan overlay for active floor */}
           {floorPlans
@@ -1206,7 +1273,7 @@ const MapPinsTab = ({
             .map((floor) => (
               <FloorPlanOverlay key={floor.id} floor={floor} />
             ))}
-          {/* Ground-truth zone polygons */}
+          {/* Ground-truth zone polygons with editable radius */}
           {hazards
             .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
             .flatMap((hazard) =>
@@ -1238,6 +1305,68 @@ const MapPinsTab = ({
                       <Tooltip direction="center" permanent={false}>
                         {zone.zone_type.toUpperCase()} zone ({zone.radius_m}m)
                       </Tooltip>
+                      <Popup>
+                        <div style={{ minWidth: 160 }}>
+                          <div
+                            style={{
+                              fontWeight: 700,
+                              fontSize: 13,
+                              color: style.color,
+                              marginBottom: 6,
+                              textTransform: 'uppercase',
+                              letterSpacing: 1,
+                            }}
+                          >
+                            {zone.zone_type} zone
+                          </div>
+                          <label
+                            style={{
+                              fontSize: 11,
+                              display: 'block',
+                              marginBottom: 2,
+                              color: '#666',
+                            }}
+                          >
+                            Radius (meters)
+                          </label>
+                          <input
+                            type="number"
+                            min={10}
+                            max={5000}
+                            step={5}
+                            defaultValue={zone.radius_m}
+                            onBlur={(e) => {
+                              const val = parseInt(e.target.value, 10);
+                              if (!isNaN(val) && val >= 10 && val !== zone.radius_m) {
+                                onZoneRadiusChange(hazard.id, zone.zone_type, val);
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                (e.target as HTMLInputElement).blur();
+                              }
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '4px 6px',
+                              fontSize: 13,
+                              border: `1px solid ${style.color}`,
+                              borderRadius: 4,
+                              outline: 'none',
+                            }}
+                          />
+                          {zone.ppe_required?.length ? (
+                            <div style={{ marginTop: 6, fontSize: 10, color: '#888' }}>
+                              PPE: {zone.ppe_required.join(', ')}
+                            </div>
+                          ) : null}
+                          {zone.allowed_teams?.length ? (
+                            <div style={{ fontSize: 10, color: '#888' }}>
+                              Teams: {zone.allowed_teams.join(', ')}
+                            </div>
+                          ) : null}
+                        </div>
+                      </Popup>
                     </Polygon>
                   );
                 }),

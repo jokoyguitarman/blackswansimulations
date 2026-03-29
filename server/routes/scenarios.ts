@@ -8,6 +8,7 @@ import { refreshOsmVicinityForScenario } from '../services/osmVicinityService.js
 import { generateScenarioMaps } from '../services/scenarioMapImageService.js';
 import { uploadScenarioMap } from '../lib/storage.js';
 import { getConditionConfigForScenario } from '../services/scenarioConditionConfigService.js';
+import { circleToPolygon } from '../services/geoUtils.js';
 
 const router = Router();
 
@@ -415,10 +416,11 @@ router.patch('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) =>
       return res.status(403).json({ error: 'Access denied' });
     }
     const { id: scenarioId } = req.params;
-    const { locations, hazards, casualties } = req.body as {
+    const { locations, hazards, casualties, zones } = req.body as {
       locations?: Array<{ id: string; lat: number; lng: number }>;
       hazards?: Array<{ id: string; lat: number; lng: number }>;
       casualties?: Array<{ id: string; lat: number; lng: number }>;
+      zones?: Array<{ hazard_id: string; zone_type: string; radius_m: number }>;
     };
 
     const errors: string[] = [];
@@ -453,6 +455,38 @@ router.patch('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) =>
           .eq('id', c.id)
           .eq('scenario_id', scenarioId);
         if (error) errors.push(`casualty ${c.id}: ${error.message}`);
+      }
+    }
+    if (zones?.length) {
+      const hazardIds = [...new Set(zones.map((z) => z.hazard_id))];
+      for (const hid of hazardIds) {
+        const { data: hazardRow, error: fetchErr } = await supabaseAdmin
+          .from('scenario_hazards')
+          .select('location_lat, location_lng, zones')
+          .eq('id', hid)
+          .eq('scenario_id', scenarioId)
+          .single();
+        if (fetchErr || !hazardRow) {
+          errors.push(`zone hazard ${hid}: ${fetchErr?.message ?? 'not found'}`);
+          continue;
+        }
+        const existing = (hazardRow.zones ?? []) as Array<Record<string, unknown>>;
+        const centerLat = Number(hazardRow.location_lat);
+        const centerLng = Number(hazardRow.location_lng);
+        const updated = existing.map((ez) => {
+          const match = zones.find(
+            (z) => z.hazard_id === hid && z.zone_type === (ez.zone_type as string),
+          );
+          if (!match) return ez;
+          const newPolygon = circleToPolygon(centerLat, centerLng, match.radius_m);
+          return { ...ez, radius_m: match.radius_m, polygon: newPolygon };
+        });
+        const { error: updateErr } = await supabaseAdmin
+          .from('scenario_hazards')
+          .update({ zones: updated })
+          .eq('id', hid)
+          .eq('scenario_id', scenarioId);
+        if (updateErr) errors.push(`zone ${hid}: ${updateErr.message}`);
       }
     }
 
