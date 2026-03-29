@@ -7,6 +7,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { refreshOsmVicinityForScenario } from './osmVicinityService.js';
 import type { WarroomScenarioPayload } from './warroomAiService.js';
+import { haversineM } from './geoUtils.js';
 
 const VALID_INJECT_TYPES = [
   'media_report',
@@ -240,8 +241,9 @@ export async function persistWarroomScenario(
         'evacuee_group',
         'convergent_crowd',
       ]);
+      const spacedCasualties = enforceMinSpacing(casualties, 12);
       const { error: casError } = await supabaseAdmin.from('scenario_casualties').insert(
-        casualties.map((c) => {
+        spacedCasualties.map((c) => {
           return {
             scenario_id: scenarioId,
             casualty_type: VALID_CASUALTY_TYPES.has(c.casualty_type) ? c.casualty_type : 'crowd',
@@ -391,4 +393,36 @@ export async function persistWarroomScenario(
     await supabaseAdmin.from('scenarios').delete().eq('id', scenarioId);
     throw err;
   }
+}
+
+/**
+ * Nudge pins that are closer than `minMeters` apart so they don't overlap.
+ * Iterates each pin; if it's too close to an already-placed pin, it gets
+ * shifted by a small random offset until it's spaced out (up to 8 attempts).
+ */
+function enforceMinSpacing<T extends { location_lat: number; location_lng: number }>(
+  pins: T[],
+  minMeters: number,
+): T[] {
+  const placed: { lat: number; lng: number }[] = [];
+  const METER_TO_DEG_LAT = 1 / 111_320;
+
+  return pins.map((pin) => {
+    let lat = pin.location_lat;
+    let lng = pin.location_lng;
+
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const tooClose = placed.some((p) => haversineM(lat, lng, p.lat, p.lng) < minMeters);
+      if (!tooClose) break;
+      const angle = Math.random() * 2 * Math.PI;
+      const dist = minMeters + Math.random() * minMeters * 0.5;
+      lat = pin.location_lat + Math.cos(angle) * dist * METER_TO_DEG_LAT;
+      lng =
+        pin.location_lng +
+        Math.sin(angle) * dist * METER_TO_DEG_LAT * (1 / Math.cos((lat * Math.PI) / 180));
+    }
+
+    placed.push({ lat, lng });
+    return { ...pin, location_lat: lat, location_lng: lng };
+  });
 }

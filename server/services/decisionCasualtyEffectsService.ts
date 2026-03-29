@@ -17,6 +17,13 @@ import {
   AMBULATORY_PATIENT_MPM,
   AMBULANCE_MPM,
 } from './movementService.js';
+import {
+  randomPointInGeoJSONPolygon,
+  randomPointInPolygon,
+  pointInPolygon,
+  pointInGeoJSONPolygon,
+  haversineM,
+} from './geoUtils.js';
 interface CasualtyEffect {
   target_type: 'crowd' | 'patient';
   target_description: string;
@@ -69,16 +76,20 @@ export async function applyDecisionCasualtyEffects(
     .eq('status', 'active')
     .in('asset_type', [
       'operating_area',
+      'operational_area',
       'assembly_point',
       'triage_tent',
       'field_hospital',
       'exit_pathway',
+      'hazard_zone',
+      'decon_zone',
     ]);
 
   for (const effect of effects) {
     try {
       await resolveAndApply(
         sessionId,
+        session.scenario_id as string,
         effect,
         (casualties ?? []) as CasualtyRow[],
         (locations ?? []) as LocationRow[],
@@ -170,6 +181,7 @@ Only include effects where the decision clearly implies physical movement or rel
 
 async function resolveAndApply(
   sessionId: string,
+  scenarioId: string,
   effect: CasualtyEffect,
   casualties: CasualtyRow[],
   locations: LocationRow[],
@@ -178,9 +190,21 @@ async function resolveAndApply(
   const targetCasualty = resolveTarget(effect, casualties);
   if (!targetCasualty) return;
 
-  const destination = effect.destination_description
-    ? resolveDestination(effect.destination_description, locations, placedAreas)
+  let destination = effect.destination_description
+    ? resolveDestination(effect.destination_description, locations, placedAreas, casualties)
     : null;
+
+  // Zone-step fallback: when no explicit destination, move one zone outward
+  if (!destination && effect.action !== 'treat') {
+    destination = await resolveZoneStepFallback(
+      sessionId,
+      scenarioId,
+      targetCasualty,
+      placedAreas,
+      casualties,
+      effect.action,
+    );
+  }
 
   switch (effect.action) {
     case 'direct_to': {
@@ -283,14 +307,52 @@ function resolveTarget(effect: CasualtyEffect, casualties: CasualtyRow[]): Casua
   return candidates[0];
 }
 
+const ZONE_CLASSIFICATION_ALIASES: Record<string, string[]> = {
+  hot: ['hot zone', 'danger zone', 'exclusion zone', 'inner cordon'],
+  warm: ['warm zone', 'buffer zone', 'transition zone', 'decon zone', 'casualty collection'],
+  cold: ['cold zone', 'safe zone', 'outer cordon', 'support zone', 'staging area'],
+};
+
 function resolveDestination(
   desc: string,
   locations: LocationRow[],
   placedAreas: PlacedAreaRow[],
+  casualties: CasualtyRow[],
 ): { lat: number; lng: number; label: string } | null {
   const descLower = desc.toLowerCase();
+  const existing = casualties.map((c) => ({ lat: c.location_lat, lng: c.location_lng }));
 
-  // Try scenario_locations first
+  // 1. Try player-drawn hazard_zone polygons first (zone_classification match)
+  const matchedZoneClass = matchZoneClassification(descLower);
+  if (matchedZoneClass) {
+    const zoneArea = placedAreas.find(
+      (a) =>
+        a.asset_type === 'hazard_zone' &&
+        (a.properties?.zone_classification as string) === matchedZoneClass,
+    );
+    if (zoneArea) {
+      const pt = pickPointInArea(zoneArea.geometry, existing);
+      if (pt) {
+        const label = zoneArea.label ?? `${matchedZoneClass.toUpperCase()} ZONE`;
+        return { ...pt, label };
+      }
+    }
+  }
+
+  // 2. Try placed polygon areas (triage_tent, field_hospital, assembly_point, etc.)
+  for (const area of placedAreas) {
+    const label = area.label ?? area.asset_type.replace(/_/g, ' ');
+    if (
+      label.toLowerCase().includes(descLower) ||
+      descLower.includes(label.toLowerCase()) ||
+      descLower.includes(area.asset_type.replace(/_/g, ' '))
+    ) {
+      const pt = pickPointInArea(area.geometry, existing);
+      if (pt) return { ...pt, label };
+    }
+  }
+
+  // 3. Try scenario_locations (pre-generated exits, POIs)
   for (const loc of locations) {
     if (!loc.coordinates?.lat || !loc.coordinates?.lng) continue;
     if (
@@ -301,38 +363,223 @@ function resolveDestination(
     }
   }
 
-  // Try placed operational areas
-  for (const area of placedAreas) {
-    const label = area.label ?? area.asset_type.replace(/_/g, ' ');
-    if (
-      label.toLowerCase().includes(descLower) ||
-      descLower.includes(label.toLowerCase()) ||
-      descLower.includes(area.asset_type.replace(/_/g, ' '))
-    ) {
-      const center = extractCenter(area.geometry);
-      if (center) return { ...center, label };
+  return null;
+}
+
+function matchZoneClassification(desc: string): string | null {
+  for (const [classification, aliases] of Object.entries(ZONE_CLASSIFICATION_ALIASES)) {
+    if (aliases.some((alias) => desc.includes(alias))) return classification;
+  }
+  return null;
+}
+
+function pickPointInArea(
+  geom: Record<string, unknown>,
+  existing: { lat: number; lng: number }[],
+): { lat: number; lng: number } | null {
+  if (geom.type === 'Point') {
+    const coords = geom.coordinates as number[];
+    return { lat: coords[1], lng: coords[0] };
+  }
+  if (geom.type === 'Polygon') {
+    const ring = (geom.coordinates as number[][][])[0];
+    return randomPointInGeoJSONPolygon(ring, existing, 15);
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Zone-step fallback: move casualty one zone outward when no destination given
+// ---------------------------------------------------------------------------
+
+const ZONE_ORDER = ['hot', 'warm', 'cold'] as const;
+
+function nextZoneOutward(current: string): string | null {
+  const idx = ZONE_ORDER.indexOf(current as (typeof ZONE_ORDER)[number]);
+  if (idx < 0 || idx >= ZONE_ORDER.length - 1) return null;
+  return ZONE_ORDER[idx + 1];
+}
+
+interface WarRoomZone {
+  zone_type: string;
+  radius_m: number;
+  polygon?: [number, number][];
+}
+
+function detectCurrentZone(
+  lat: number,
+  lng: number,
+  playerZones: PlacedAreaRow[],
+  warRoomZones: WarRoomZone[],
+  incidentLat: number,
+  incidentLng: number,
+): string | null {
+  // 1. Check player-drawn zones (most authoritative)
+  for (const zone of playerZones) {
+    if (zone.asset_type !== 'hazard_zone') continue;
+    const classification = zone.properties?.zone_classification as string | undefined;
+    if (!classification) continue;
+    const geom = zone.geometry;
+    if (geom.type === 'Polygon') {
+      const ring = (geom.coordinates as number[][][])[0];
+      if (pointInGeoJSONPolygon(lat, lng, ring)) return classification;
+    }
+  }
+
+  // 2. Check war room ground-truth zones (sorted inner→outer)
+  const sorted = [...warRoomZones].sort((a, b) => a.radius_m - b.radius_m);
+  for (const z of sorted) {
+    if (z.polygon?.length) {
+      if (pointInPolygon(lat, lng, z.polygon)) return z.zone_type;
+    } else {
+      const dist = haversineM(lat, lng, incidentLat, incidentLng);
+      if (dist <= z.radius_m) return z.zone_type;
     }
   }
 
   return null;
 }
 
-function extractCenter(geom: Record<string, unknown>): { lat: number; lng: number } | null {
-  if (geom.type === 'Point') {
-    const coords = geom.coordinates as number[];
-    return { lat: coords[1], lng: coords[0] };
+function findPlayerZoneByClassification(
+  classification: string,
+  playerZones: PlacedAreaRow[],
+): PlacedAreaRow | null {
+  return (
+    playerZones.find(
+      (z) =>
+        z.asset_type === 'hazard_zone' &&
+        (z.properties?.zone_classification as string) === classification,
+    ) ?? null
+  );
+}
+
+function findWarRoomZoneByType(zoneType: string, zones: WarRoomZone[]): WarRoomZone | null {
+  return zones.find((z) => z.zone_type === zoneType) ?? null;
+}
+
+async function resolveZoneStepFallback(
+  sessionId: string,
+  scenarioId: string,
+  casualty: CasualtyRow,
+  placedAreas: PlacedAreaRow[],
+  allCasualties: CasualtyRow[],
+  action: string,
+): Promise<{ lat: number; lng: number; label: string } | null> {
+  const { data: hazards } = await supabaseAdmin
+    .from('scenario_hazards')
+    .select('location_lat, location_lng, zones')
+    .eq('scenario_id', scenarioId)
+    .or(`session_id.is.null,session_id.eq.${sessionId}`);
+
+  if (!hazards?.length) return null;
+
+  // Compute incident centroid from all hazards
+  let cLat = 0,
+    cLng = 0;
+  for (const h of hazards) {
+    cLat += Number(h.location_lat);
+    cLng += Number(h.location_lng);
   }
-  if (geom.type === 'Polygon') {
-    const coords = (geom.coordinates as number[][][])[0];
-    let latSum = 0,
-      lngSum = 0;
-    for (const c of coords) {
-      latSum += c[1];
-      lngSum += c[0];
+  cLat /= hazards.length;
+  cLng /= hazards.length;
+
+  // Get war room unified zones (stored on the first hazard with non-empty zones)
+  const warRoomZones: WarRoomZone[] =
+    hazards.map((h) => (h.zones ?? []) as WarRoomZone[]).find((z) => z.length > 0) ?? [];
+
+  const playerZones = placedAreas.filter((a) => a.asset_type === 'hazard_zone');
+  const existing = allCasualties.map((c) => ({ lat: c.location_lat, lng: c.location_lng }));
+
+  const currentZone = detectCurrentZone(
+    casualty.location_lat,
+    casualty.location_lng,
+    placedAreas,
+    warRoomZones,
+    cLat,
+    cLng,
+  );
+
+  // For transport with no destination, try to find nearest hospital/facility
+  if (action === 'transport') {
+    const { data: facilities } = await supabaseAdmin
+      .from('scenario_locations')
+      .select('label, coordinates')
+      .eq('scenario_id', scenarioId)
+      .or('label.ilike.%hospital%,label.ilike.%medical%,label.ilike.%clinic%')
+      .limit(5);
+    if (facilities?.length) {
+      let nearest = facilities[0];
+      let nearestDist = Infinity;
+      for (const f of facilities) {
+        const coords = f.coordinates as { lat?: number; lng?: number } | null;
+        if (!coords?.lat || !coords?.lng) continue;
+        const d = haversineM(casualty.location_lat, casualty.location_lng, coords.lat, coords.lng);
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearest = f;
+        }
+      }
+      const coords = nearest.coordinates as { lat?: number; lng?: number } | null;
+      if (coords?.lat && coords?.lng) {
+        return { lat: coords.lat, lng: coords.lng, label: nearest.label as string };
+      }
     }
-    return { lat: latSum / coords.length, lng: lngSum / coords.length };
+    return null;
   }
-  return null;
+
+  const targetZoneType = currentZone ? nextZoneOutward(currentZone) : 'warm';
+
+  if (!targetZoneType) {
+    logger.info(
+      { casualtyId: casualty.id, currentZone },
+      'Casualty already in outermost zone, no further extraction needed',
+    );
+    return null;
+  }
+
+  // 1. Try player-drawn zone polygon for the target zone
+  const playerTarget = findPlayerZoneByClassification(targetZoneType, playerZones);
+  if (playerTarget?.geometry?.type === 'Polygon') {
+    const ring = (playerTarget.geometry.coordinates as number[][][])[0];
+    const pt = randomPointInGeoJSONPolygon(ring, existing, 15);
+    return { ...pt, label: playerTarget.label ?? `${targetZoneType.toUpperCase()} ZONE` };
+  }
+
+  // 2. Try war room ground-truth zone
+  const wrTarget = findWarRoomZoneByType(targetZoneType, warRoomZones);
+  if (wrTarget?.polygon?.length) {
+    const pt = randomPointInPolygon(wrTarget.polygon, existing, 15);
+    return { ...pt, label: `${targetZoneType.toUpperCase()} ZONE (ground truth)` };
+  }
+
+  // 3. No zones at all — nudge outward from incident centroid
+  const currentDist = haversineM(casualty.location_lat, casualty.location_lng, cLat, cLng);
+  const nudgeDist = currentDist + 40;
+  const bearing = Math.atan2(casualty.location_lng - cLng, casualty.location_lat - cLat);
+  const R = 6371000;
+  const latRad = (cLat * Math.PI) / 180;
+  const angDist = nudgeDist / R;
+  const destLat =
+    (Math.asin(
+      Math.sin(latRad) * Math.cos(angDist) +
+        Math.cos(latRad) * Math.sin(angDist) * Math.cos(bearing),
+    ) *
+      180) /
+    Math.PI;
+  const destLng =
+    cLng +
+    (Math.atan2(
+      Math.sin(bearing) * Math.sin(angDist) * Math.cos(latRad),
+      Math.cos(angDist) - Math.sin(latRad) * Math.sin((destLat * Math.PI) / 180),
+    ) *
+      180) /
+      Math.PI;
+
+  logger.info(
+    { casualtyId: casualty.id, nudgeDist },
+    'No zones found — nudging casualty outward from incident centroid',
+  );
+  return { lat: destLat, lng: destLng, label: 'Extracted to safety' };
 }
 
 async function setCasualtyMovement(

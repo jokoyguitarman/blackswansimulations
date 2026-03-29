@@ -142,3 +142,62 @@ export function polygonBoundingBox(ring: [number, number][]): {
   }
   return { minLat, maxLat, minLng, maxLng };
 }
+
+// ---------------------------------------------------------------------------
+// Random point-in-polygon with minimum spacing
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate a random point inside a polygon ([lat, lng][] convention),
+ * ensuring it is at least `minSpacingM` meters from all `existing` points.
+ * Falls back to centroid with jitter after `maxAttempts` failures.
+ */
+export function randomPointInPolygon(
+  ring: [number, number][],
+  existing: { lat: number; lng: number }[],
+  minSpacingM = 15,
+  maxAttempts = 60,
+): { lat: number; lng: number } {
+  const bbox = polygonBoundingBox(ring);
+
+  for (let i = 0; i < maxAttempts; i++) {
+    const lat = bbox.minLat + Math.random() * (bbox.maxLat - bbox.minLat);
+    const lng = bbox.minLng + Math.random() * (bbox.maxLng - bbox.minLng);
+
+    if (!pointInPolygon(lat, lng, ring)) continue;
+    if (isTooClose(lat, lng, existing, minSpacingM)) continue;
+
+    return { lat, lng };
+  }
+
+  const [cLat, cLng] = polygonCentroid(ring);
+  const jitterLat = (Math.random() - 0.5) * 0.0002;
+  const jitterLng = (Math.random() - 0.5) * 0.0002;
+  return { lat: cLat + jitterLat, lng: cLng + jitterLng };
+}
+
+/**
+ * Same as randomPointInPolygon but for GeoJSON [lng, lat][] rings
+ * (used by placed_assets geometry).
+ */
+export function randomPointInGeoJSONPolygon(
+  ring: number[][],
+  existing: { lat: number; lng: number }[],
+  minSpacingM = 15,
+  maxAttempts = 60,
+): { lat: number; lng: number } {
+  const latLngRing: [number, number][] = ring.map((c) => [c[1], c[0]]);
+  return randomPointInPolygon(latLngRing, existing, minSpacingM, maxAttempts);
+}
+
+function isTooClose(
+  lat: number,
+  lng: number,
+  existing: { lat: number; lng: number }[],
+  minM: number,
+): boolean {
+  for (const pt of existing) {
+    if (haversineM(lat, lng, pt.lat, pt.lng) < minM) return true;
+  }
+  return false;
+}
