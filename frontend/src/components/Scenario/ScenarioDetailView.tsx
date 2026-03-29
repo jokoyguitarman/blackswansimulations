@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Tooltip, Polygon } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import { api } from '../../lib/api';
 import { ScenarioLocationMarker, type ScenarioLocationPin } from '../COP/ScenarioLocationMarker';
@@ -116,6 +116,13 @@ interface HazardPin {
   equipment_requirements?: unknown[];
   deterioration_timeline?: Record<string, unknown>;
   appears_at_minutes: number;
+  zones?: Array<{
+    zone_type: string;
+    radius_m: number;
+    polygon?: number[][];
+    ppe_required?: string[];
+    allowed_teams?: string[];
+  }>;
 }
 
 interface CasualtyPin {
@@ -1199,6 +1206,42 @@ const MapPinsTab = ({
             .map((floor) => (
               <FloorPlanOverlay key={floor.id} floor={floor} />
             ))}
+          {/* Ground-truth zone polygons */}
+          {hazards
+            .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
+            .flatMap((hazard) =>
+              (hazard.zones ?? [])
+                .filter((z) => z.polygon && z.polygon.length >= 3)
+                .map((zone) => {
+                  const ZONE_COLORS: Record<string, { color: string; fillColor: string }> = {
+                    hot: { color: '#dc2626', fillColor: '#dc262640' },
+                    warm: { color: '#f59e0b', fillColor: '#f59e0b30' },
+                    cold: { color: '#3b82f6', fillColor: '#3b82f620' },
+                  };
+                  const style = ZONE_COLORS[zone.zone_type] ?? {
+                    color: '#6b7280',
+                    fillColor: '#6b728020',
+                  };
+                  const positions = zone.polygon!.map((p) => [p[0], p[1]] as [number, number]);
+                  return (
+                    <Polygon
+                      key={`zone-${hazard.id}-${zone.zone_type}`}
+                      positions={positions}
+                      pathOptions={{
+                        color: style.color,
+                        fillColor: style.fillColor,
+                        fillOpacity: 0.3,
+                        weight: 2,
+                        dashArray: '6 4',
+                      }}
+                    >
+                      <Tooltip direction="center" permanent={false}>
+                        {zone.zone_type.toUpperCase()} zone ({zone.radius_m}m)
+                      </Tooltip>
+                    </Polygon>
+                  );
+                }),
+            )}
           {validPins.map((pin) => (
             <ScenarioLocationMarker
               key={pin.id}

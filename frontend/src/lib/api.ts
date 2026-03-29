@@ -223,6 +223,13 @@ export const api = {
           equipment_requirements?: unknown[];
           deterioration_timeline?: Record<string, unknown>;
           appears_at_minutes: number;
+          zones?: Array<{
+            zone_type: string;
+            radius_m: number;
+            polygon?: number[][];
+            ppe_required?: string[];
+            allowed_teams?: string[];
+          }>;
         }>;
       }>(await fetch(apiUrl(`/api/scenarios/${id}/hazards`), { headers }));
     },
