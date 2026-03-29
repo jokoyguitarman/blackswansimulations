@@ -1909,12 +1909,12 @@ ${incidentSites.length > 0 ? `Incident site: ${incidentSites[0].label} at (${inc
 ${hazardBlock}
 ${zoneSummaryBlock || ''}
 
-Generate 40-60 INDIVIDUAL casualty pins. In a major incident at a venue with hundreds of people, at least 40% of the population sustains injuries ranging from walking wounded to fatal. This must feel like a realistic mass casualty event.
+Generate 15-20 INDIVIDUAL casualty pins representing the most clinically significant casualties that responders will encounter. Focus on variety of injury types and severity.
 
 ZONE-BASED PLACEMENT — place casualties where they would realistically be found:
-- HOT ZONE (inside the danger area): Trapped casualties under debris, behind fire, in smoke. These are the most severely injured — burns, blast injuries, crush injuries. Many are unconscious or unresponsive. They CANNOT be reached without specialized teams in full PPE. Place 8-15 casualties here.
-- WARM ZONE (buffer/transition area): Casualties who were near the blast but managed to crawl or stagger away. Mix of moderate-to-severe injuries. Some confused, some in shock. Place 10-15 casualties here.
-- COLD ZONE / OUTSIDE: Walking wounded who made it out. Minor injuries — lacerations, minor burns, psychological trauma, concussions. Some collapsed just outside exits. Place 15-25 casualties here.
+- HOT ZONE (inside the danger area): Trapped casualties under debris, behind fire, in smoke. These are the most severely injured — burns, blast injuries, crush injuries. Many are unconscious or unresponsive. They CANNOT be reached without specialized teams in full PPE. Place 3-5 casualties here.
+- WARM ZONE (buffer/transition area): Casualties who were near the blast but managed to crawl or stagger away. Mix of moderate-to-severe injuries. Some confused, some in shock. Place 5-7 casualties here.
+- COLD ZONE / OUTSIDE: Walking wounded who made it out. Minor injuries — lacerations, minor burns, psychological trauma, concussions. Some collapsed just outside exits. Place 5-8 casualties here.
 - DELAYED DISCOVERY: Some casualties appear later (appears_at_minutes 5-20) as smoke clears or areas become accessible.
 
 IMPORTANT: The "visible_description" must ONLY describe what a responder physically observes — do NOT reveal treatment protocols or equipment needed. Players must figure out the right response.
@@ -1951,20 +1951,20 @@ Return ONLY valid JSON:
 RULES:
 - Each pin is ONE person (headcount: 1)
 - Realistic triage color distribution for a major bombing: ~8% black (deceased), ~18% red (immediate/critical), ~30% yellow (delayed/serious), ~44% green (walking wounded/minor)
-- At least 6-8 trapped casualties requiring extraction before they can be moved
-- At least 5-6 casualties behind active hazards (accessibility: "behind_fire", "under_debris", "in_smoke")
+- At least 3-4 trapped casualties requiring extraction before they can be moved
+- At least 2-3 casualties behind active hazards (accessibility: "behind_fire", "under_debris", "in_smoke")
 - Scatter casualties realistically using zone guidance above — most severe near blast center, severity decreasing outward
 - treatment_requirements: derive from injuries using real pre-hospital care protocols. Be medically accurate.
 - transport_prerequisites: what MUST be stabilized before moving the patient safely
 - contraindications: dangerous actions for this specific patient (e.g. crush syndrome risks, spinal precautions)
-- Generate at least 40 casualties. A major incident demands realistic scale.`;
+- Generate 15-20 casualties total.`;
 
-  const userPrompt = `Generate 40-60 individual casualty pins for "${narrative?.title || scenario_type}" at ${venue}. This is a major mass casualty incident — generate a realistic number of injured.`;
+  const userPrompt = `Generate 15-20 individual casualty pins for "${narrative?.title || scenario_type}" at ${venue}.`;
 
   try {
     const parsed = await callOpenAi<{
       casualties?: WarroomScenarioPayload['casualties'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 16000);
+    }>(systemPrompt, userPrompt, openAiApiKey, 8000);
     return parsed.casualties?.length ? parsed.casualties : undefined;
   } catch (err) {
     logger.warn({ err }, 'Casualty generation failed; continuing without');
