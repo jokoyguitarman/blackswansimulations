@@ -1469,24 +1469,12 @@ Fuel/source: ${(hazard.properties as Record<string, unknown>).fuel_source || 'un
 Adjacent risks: ${JSON.stringify((hazard.properties as Record<string, unknown>).adjacent_risks || [])}
 Teams available: ${(teamNames ?? []).join(', ') || 'not specified'}`;
 
-  // Run four focused calls in parallel for reliable field population
-  const [descResult, reqsResult, deteriorationResult, zonesResult] = await Promise.all([
+  // Run three focused calls in parallel (zones are now unified per-incident, not per-hazard)
+  const [descResult, reqsResult, deteriorationResult] = await Promise.all([
     enrichHazardDescription(hazardContext, hazard, venue, openAiApiKey),
     enrichHazardRequirements(hazardContext, hazard, venue, openAiApiKey),
     enrichHazardDeterioration(hazardContext, hazard, venue, openAiApiKey),
-    enrichHazardZones(hazardContext, hazard, openAiApiKey),
   ]);
-
-  const rawZones = zonesResult.zones ?? [];
-  const snappedZones =
-    rawZones.length > 0
-      ? computeZonePolygons(
-          Number(hazard.location_lat),
-          Number(hazard.location_lng),
-          rawZones,
-          input.osmBuildings,
-        )
-      : [];
 
   return {
     ...hazard,
@@ -1497,7 +1485,7 @@ Teams available: ${(teamNames ?? []).join(', ') || 'not specified'}`;
     personnel_requirements: reqsResult.personnel_requirements ?? {},
     equipment_requirements: reqsResult.equipment_requirements ?? [],
     deterioration_timeline: deteriorationResult.deterioration_timeline ?? {},
-    zones: snappedZones,
+    zones: [],
   };
 }
 
@@ -1755,43 +1743,62 @@ function computeZonePolygons(
   });
 }
 
-// Sub-call 4: ICS/NIMS hazard zones (hot/warm/cold) — hidden ground truth
-async function enrichHazardZones(
-  hazardContext: string,
-  hazard: NonNullable<WarroomScenarioPayload['hazards']>[number],
+// ---------------------------------------------------------------------------
+// Unified Incident Zones — ONE set of hot/warm/cold for the entire incident
+// ---------------------------------------------------------------------------
+
+async function generateUnifiedIncidentZones(
+  input: WarroomGenerateInput,
+  hazards: NonNullable<WarroomScenarioPayload['hazards']>,
   openAiApiKey: string,
-): Promise<{
-  zones?: Array<{
-    zone_type: string;
-    radius_m: number;
-    ppe_required: string[];
-    allowed_teams: string[];
-    activities: string[];
-  }>;
-}> {
-  const size = ((hazard.properties as Record<string, unknown>).size as string) ?? 'medium';
+  teamNames: string[],
+  onProgress?: WarroomAiProgressCallback,
+): Promise<ZoneWithPolygon[]> {
+  onProgress?.('Generating unified incident zones (hot/warm/cold)...');
 
-  const systemPrompt = `You are an ICS/NIMS incident safety expert. Define the Hot, Warm, and Cold zone boundaries for this hazard following standardized emergency response doctrine.
+  const { scenario_type, setting, venue_name, location } = input;
+  const venue = venue_name || location || setting;
 
-${hazardContext}
+  const hazardSummary = hazards
+    .map(
+      (h) =>
+        `- ${h.hazard_type} (${(h.properties as Record<string, unknown>).size || 'medium'}) at (${h.location_lat}, ${h.location_lng}): ${(h.properties as Record<string, unknown>).fuel_source || h.hazard_type}`,
+    )
+    .join('\n');
 
-You MUST return exactly 3 zones. Use the hazard type, size, and fuel/source to determine realistic radii and requirements.
+  const incidentLat = hazards.reduce((s, h) => s + Number(h.location_lat), 0) / hazards.length;
+  const incidentLng = hazards.reduce((s, h) => s + Number(h.location_lng), 0) / hazards.length;
 
-Radius guidelines by hazard size:
-- small: hot ~25-40m, warm ~60-100m, cold ~150-250m
-- medium: hot ~40-70m, warm ~100-150m, cold ~250-400m
-- large: hot ~70-120m, warm ~150-250m, cold ~400-600m
+  const worstSize = hazards.some((h) => (h.properties as Record<string, unknown>).size === 'large')
+    ? 'large'
+    : hazards.some((h) => (h.properties as Record<string, unknown>).size === 'medium')
+      ? 'medium'
+      : 'small';
 
-Adjust for hazard type:
-- Chemical/HAZMAT: expand warm zone significantly (decontamination corridor needed)
-- Fire: hot zone based on radiant heat and smoke, warm zone based on smoke drift
-- Structural collapse: smaller hot zone (immediate rubble), large warm zone (aftershock/secondary collapse risk)
-- Gas leak: hot zone based on explosive concentration, expand with wind
-- Explosion/blast: hot zone = blast crater + structural damage, warm = debris field
-- Biological: hot zone = contamination source, warm zone very large (dispersal area)
-- Active threat: hot zone = line of sight to threat, warm = secured but not cleared
+  const systemPrompt = `You are an ICS/NIMS Incident Safety Officer. Define ONE unified set of Hot, Warm, and Cold zone boundaries for this ENTIRE incident — not per-hazard.
 
-Current hazard size: ${size}
+Scenario: ${scenario_type} at ${venue}
+Teams available: ${teamNames.join(', ')}
+
+ALL active hazards at this incident:
+${hazardSummary}
+
+Incident centroid: (${incidentLat.toFixed(5)}, ${incidentLng.toFixed(5)})
+Worst-case hazard size: ${worstSize}
+Number of hazards: ${hazards.length}
+
+The zones must ENVELOPE all hazards. The hot zone must contain ALL hazard locations plus a safety buffer. Consider the combined threat footprint — multiple overlapping hazards create a larger danger area than any single hazard.
+
+Radius guidelines (adjust UP for multiple hazards):
+- Single small hazard: hot ~30-50m, warm ~80-120m, cold ~200-350m
+- Single large hazard: hot ~80-120m, warm ~180-280m, cold ~400-600m
+- Multiple clustered hazards: hot ~100-200m, warm ~250-400m, cold ~500-800m
+- CBRNE or major explosion: hot ~150-300m, warm ~400-600m, cold ~800-1200m
+
+Adjust for hazard mix:
+- Chemical/HAZMAT present: expand warm zone for decontamination corridor
+- Fire + gas leak: expand hot zone for explosive risk
+- Structural collapse: consider aftershock/secondary collapse in warm zone
 
 Return ONLY valid JSON:
 {
@@ -1799,34 +1806,35 @@ Return ONLY valid JSON:
     {
       "zone_type": "hot",
       "radius_m": <number>,
-      "ppe_required": ["equipment_type_1", "equipment_type_2"],
-      "allowed_teams": ["team_name_that_may_enter"],
-      "activities": ["what_can_be_done_here"]
+      "ppe_required": ["equipment_ids"],
+      "allowed_teams": ["team_names"],
+      "activities": ["rapid_extrication", "suppression", "containment", "reconnaissance"],
+      "pin_guidance": "What belongs here: trapped casualties, active hazards, structural damage. Only specialized rescue teams (fire/hazmat) with full PPE. NO prolonged treatment — extract and move to warm zone."
     },
     {
       "zone_type": "warm",
       "radius_m": <number>,
-      "ppe_required": ["equipment_type"],
-      "allowed_teams": ["team1", "team2"],
-      "activities": ["activity1", "activity2"]
+      "ppe_required": ["equipment_ids"],
+      "allowed_teams": ["team_names"],
+      "activities": ["triage", "decontamination", "stabilization", "handoff"],
+      "pin_guidance": "What belongs here: triage points, decontamination stations, casualty collection points. Extracted casualties move here for initial assessment. Medical/triage teams operate here with respiratory protection."
     },
     {
       "zone_type": "cold",
       "radius_m": <number>,
       "ppe_required": [],
       "allowed_teams": ["all"],
-      "activities": ["treatment", "staging", "command", "transport"]
+      "activities": ["treatment", "staging", "command", "transport", "definitive_care"],
+      "pin_guidance": "What belongs here: command post, staging areas, treatment areas, ambulance loading, assembly points for evacuees. Walking wounded and evacuee crowds congregate here. Media staging. Convergent crowds (onlookers, family) gather at the outer edge."
     }
   ]
 }
 
 RULES:
-- ppe_required: use specific equipment IDs like scba, hazmat_suit, fire_protective_gear, respirator, safety_vest, helmet, ppe_medical, chemical_gloves, face_shield, turnout_gear
-- allowed_teams: use the EXACT team names from "Teams available" above. For hot zone only specialized teams (e.g. fire/hazmat for fire, hazmat specialists for chemical). For warm zone include medical/triage. For cold zone use "all".
-- activities in hot zone: rapid_extrication, suppression, containment, reconnaissance — NO prolonged treatment
-- activities in warm zone: triage, decontamination, stabilization, handoff — bridge between danger and safety
-- activities in cold zone: treatment, staging, command, transport, definitive_care
-- Each zone radius MUST be larger than the previous (hot < warm < cold)`;
+- ppe_required: use equipment IDs like scba, hazmat_suit, fire_protective_gear, respirator, safety_vest, helmet, ppe_medical, chemical_gloves, face_shield, turnout_gear
+- allowed_teams: use EXACT team names from above. Hot zone = only fire/hazmat specialists. Warm zone = add triage/medical. Cold zone = "all".
+- Each zone radius MUST be larger than the previous (hot < warm < cold)
+- The hot zone MUST be large enough to contain ALL hazard locations`;
 
   try {
     const result = await callOpenAi<{
@@ -1836,17 +1844,25 @@ RULES:
         ppe_required: string[];
         allowed_teams: string[];
         activities: string[];
+        pin_guidance?: string;
       }>;
     }>(
       systemPrompt,
-      `Define the hot, warm, and cold zones for this ${hazard.hazard_type} hazard.`,
+      `Define the unified hot, warm, and cold zones for this ${scenario_type} incident with ${hazards.length} active hazards.`,
       openAiApiKey,
-      1500,
+      2000,
     );
-    return { zones: result.zones };
+
+    const rawZones = result.zones ?? [];
+    if (rawZones.length === 0) {
+      logger.warn('Unified zone generation returned empty; using defaults');
+      return [];
+    }
+
+    return computeZonePolygons(incidentLat, incidentLng, rawZones, input.osmBuildings);
   } catch (err) {
-    logger.warn({ err, hazardType: hazard.hazard_type }, 'Hazard zone enrichment failed');
-    return {};
+    logger.warn({ err }, 'Unified incident zone generation failed');
+    return [];
   }
 }
 
@@ -1861,6 +1877,7 @@ async function generateCasualties(
   narrative?: { title?: string; description?: string; briefing?: string },
   locations?: WarroomScenarioPayload['locations'],
   hazards?: WarroomScenarioPayload['hazards'],
+  zoneSummaryBlock?: string,
 ): Promise<WarroomScenarioPayload['casualties']> {
   const include = input.complexity_tier === 'full' || input.complexity_tier === 'rich';
   if (!include) return undefined;
@@ -1890,16 +1907,19 @@ Setting: ${setting}
 ${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
 ${incidentSites.length > 0 ? `Incident site: ${incidentSites[0].label} at (${incidentSites[0].coordinates.lat}, ${incidentSites[0].coordinates.lng})` : ''}
 ${hazardBlock}
+${zoneSummaryBlock || ''}
 
-Generate 15-25 INDIVIDUAL casualty pins. Each pin represents ONE person at a specific location. Consider:
-- Blast/fire physics: injuries are more severe closer to the incident, more crowd-crush injuries at exits
-- Realistic injury distribution for this incident type
-- Some casualties are trapped (behind fire, under debris), some are ambulatory
-- Scatter casualties realistically: near the blast, along corridors, at exits, on different floors if applicable
+Generate 40-60 INDIVIDUAL casualty pins. In a major incident at a venue with hundreds of people, at least 40% of the population sustains injuries ranging from walking wounded to fatal. This must feel like a realistic mass casualty event.
 
-IMPORTANT: The "visible_description" must ONLY describe what a responder physically observes — do NOT reveal treatment protocols or equipment needed there. Players must figure out the right response from what they see.
+ZONE-BASED PLACEMENT — place casualties where they would realistically be found:
+- HOT ZONE (inside the danger area): Trapped casualties under debris, behind fire, in smoke. These are the most severely injured — burns, blast injuries, crush injuries. Many are unconscious or unresponsive. They CANNOT be reached without specialized teams in full PPE. Place 8-15 casualties here.
+- WARM ZONE (buffer/transition area): Casualties who were near the blast but managed to crawl or stagger away. Mix of moderate-to-severe injuries. Some confused, some in shock. Place 10-15 casualties here.
+- COLD ZONE / OUTSIDE: Walking wounded who made it out. Minor injuries — lacerations, minor burns, psychological trauma, concussions. Some collapsed just outside exits. Place 15-25 casualties here.
+- DELAYED DISCOVERY: Some casualties appear later (appears_at_minutes 5-20) as smoke clears or areas become accessible.
 
-However, you MUST also generate "treatment_requirements", "transport_prerequisites", and "contraindications" as HIDDEN ground truth fields. These are used internally by the evaluation system to judge whether players respond correctly — players never see them.
+IMPORTANT: The "visible_description" must ONLY describe what a responder physically observes — do NOT reveal treatment protocols or equipment needed. Players must figure out the right response.
+
+Generate "treatment_requirements", "transport_prerequisites", and "contraindications" as HIDDEN ground truth fields for the evaluation system.
 
 Return ONLY valid JSON:
 {
@@ -1911,16 +1931,16 @@ Return ONLY valid JSON:
       "floor_level": "G",
       "headcount": 1,
       "conditions": {
-        "injuries": [{ "type": "burn|laceration|fracture|blast_injury|crush_injury|smoke_inhalation|concussion|shrapnel_wound|cardiac_arrest|psychological", "severity": "minor|moderate|severe|critical", "body_part": "string", "visible_signs": "string" }],
+        "injuries": [{ "type": "burn|laceration|fracture|blast_injury|crush_injury|smoke_inhalation|concussion|shrapnel_wound|cardiac_arrest|psychological|hemorrhage|amputation|penetrating_wound", "severity": "minor|moderate|severe|critical", "body_part": "string", "visible_signs": "string" }],
         "triage_color": "green|yellow|red|black",
         "mobility": "ambulatory|non_ambulatory|trapped",
         "accessibility": "open|behind_fire|under_debris|in_smoke|blocked_corridor",
         "consciousness": "alert|confused|unconscious|unresponsive",
         "breathing": "normal|labored|absent",
         "visible_description": "1-2 sentence description of what a responder sees approaching this person",
-        "treatment_requirements": [{ "intervention": "string (e.g. splint, burn_dressing, IV_fluids, oxygen, tourniquet, cervical_collar, wound_packing, chest_seal, airway_management)", "priority": "critical|high|medium", "reason": "short clinical rationale" }],
-        "transport_prerequisites": ["string — what MUST be done before this patient can be safely moved (e.g. splint_fracture, secure_airway, spinal_immobilization, control_bleeding)"],
-        "contraindications": ["string — what must NOT be done (e.g. do_not_move_without_spinal_clearance, no_tourniquet_on_crush_injury_without_medical_oversight)"]
+        "treatment_requirements": [{ "intervention": "string", "priority": "critical|high|medium", "reason": "short clinical rationale" }],
+        "transport_prerequisites": ["string"],
+        "contraindications": ["string"]
       },
       "status": "undiscovered",
       "appears_at_minutes": 0
@@ -1930,21 +1950,21 @@ Return ONLY valid JSON:
 
 RULES:
 - Each pin is ONE person (headcount: 1)
-- Realistic triage color distribution: ~10% black, ~20% red, ~30% yellow, ~40% green (adjust for scenario severity)
-- At least 3-4 trapped casualties requiring extraction before they can be moved
-- At least 2-3 casualties behind active hazards (accessibility: "behind_fire" etc.)
-- Some casualties appear later (appears_at_minutes > 0) as they are discovered or as hazards worsen
-- visible_description should be vivid but clinical — what a responder physically observes
-- treatment_requirements: derive from injuries using real pre-hospital care protocols. A fracture needs a splint. Burns need burn dressings and IV fluids. Labored breathing needs airway management or oxygen. Blast injuries may need chest seals. Severe bleeding needs tourniquet or wound packing. Be medically accurate.
-- transport_prerequisites: list what MUST be stabilized before moving the patient safely. E.g. fractures must be splinted, spinal injuries need immobilization, bleeding must be controlled.
-- contraindications: list dangerous actions for this specific patient. E.g. crush injuries should not have tourniquets applied without medical oversight (risk of reperfusion syndrome). Spinal injuries must not be moved without immobilization.`;
+- Realistic triage color distribution for a major bombing: ~8% black (deceased), ~18% red (immediate/critical), ~30% yellow (delayed/serious), ~44% green (walking wounded/minor)
+- At least 6-8 trapped casualties requiring extraction before they can be moved
+- At least 5-6 casualties behind active hazards (accessibility: "behind_fire", "under_debris", "in_smoke")
+- Scatter casualties realistically using zone guidance above — most severe near blast center, severity decreasing outward
+- treatment_requirements: derive from injuries using real pre-hospital care protocols. Be medically accurate.
+- transport_prerequisites: what MUST be stabilized before moving the patient safely
+- contraindications: dangerous actions for this specific patient (e.g. crush syndrome risks, spinal precautions)
+- Generate at least 40 casualties. A major incident demands realistic scale.`;
 
-  const userPrompt = `Generate individual casualty pins for "${narrative?.title || scenario_type}" at ${venue}.`;
+  const userPrompt = `Generate 40-60 individual casualty pins for "${narrative?.title || scenario_type}" at ${venue}. This is a major mass casualty incident — generate a realistic number of injured.`;
 
   try {
     const parsed = await callOpenAi<{
       casualties?: WarroomScenarioPayload['casualties'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 8000);
+    }>(systemPrompt, userPrompt, openAiApiKey, 16000);
     return parsed.casualties?.length ? parsed.casualties : undefined;
   } catch (err) {
     logger.warn({ err }, 'Casualty generation failed; continuing without');
@@ -1962,6 +1982,7 @@ async function generateCrowdPins(
   onProgress?: WarroomAiProgressCallback,
   narrative?: { title?: string; description?: string; briefing?: string },
   locations?: WarroomScenarioPayload['locations'],
+  zoneSummaryBlock?: string,
 ): Promise<WarroomScenarioPayload['casualties']> {
   const include = input.complexity_tier === 'full' || input.complexity_tier === 'rich';
   if (!include) return undefined;
@@ -1986,12 +2007,21 @@ Venue: ${venue}
 Setting: ${setting}
 ${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
 ${exitBlock}
+${zoneSummaryBlock || ''}
 
-Generate 6-12 crowd/evacuee group pins. Each represents a GROUP of civilians at a specific location. Consider:
-- Where would people naturally congregate after an incident? (lobby, exits, open areas, parking lots)
+Generate 8-15 crowd/evacuee group pins. Each represents a GROUP of civilians at a specific location.
+
+ZONE-BASED PLACEMENT — place crowds where they would realistically be:
+- WARM ZONE: Small groups (5-15) of dazed people who staggered out of the danger area. Confused, some injured. These need to be moved further out.
+- COLD ZONE (near exits): Large groups (30-80) bottlenecking at exits. Panicking, some crushing. These are the primary evacuation challenge.
+- COLD ZONE (assembly areas): Groups (20-60) who made it outside. Anxious but calmer. Some contain walking wounded mixed in.
+- OUTSIDE PERIMETER: Groups of bystanders, people from nearby buildings who came to look. Curious, filming, some trying to get back in to find family.
+
+Consider:
+- Where would people naturally congregate after an incident? (near exits, open areas, parking lots)
 - Some groups are fleeing, some are sheltering in place, some are confused/stationary
 - Some groups contain walking wounded mixed in with uninjured
-- Groups near exits may be creating bottlenecks
+- Groups near exits may be creating bottlenecks — stampede risk
 - Groups further from the incident may not yet know what happened
 
 Return ONLY valid JSON:
@@ -2002,7 +2032,7 @@ Return ONLY valid JSON:
       "location_lat": number,
       "location_lng": number,
       "floor_level": "G",
-      "headcount": number (10-80 per group),
+      "headcount": number (5-80 per group),
       "conditions": {
         "behavior": "calm|anxious|panicking|sheltering|fleeing",
         "movement_direction": "string|null (e.g. 'toward south exit', 'stationary', 'milling')",
@@ -2019,10 +2049,10 @@ Return ONLY valid JSON:
 
 RULES:
 - Total civilian count across all groups should be 200-500 (proportional to venue size)
-- At least 2 groups should contain mixed_wounded (walking wounded mixed in)
-- At least 1-2 groups should be creating bottlenecks near exits
+- At least 3 groups should contain mixed_wounded (walking wounded mixed in)
+- At least 2-3 groups should be creating bottlenecks near exits
 - Some groups appear later as people emerge from different parts of the venue
-- Vary group sizes: some small (10-20), some large (40-80)`;
+- Vary group sizes: some small (5-15 near danger), some large (40-80 at exits)`;
 
   const userPrompt = `Generate crowd/evacuee group pins for "${narrative?.title || scenario_type}" at ${venue}.`;
 
@@ -3381,10 +3411,44 @@ export async function warroomGenerateScenario(
   ]);
   const floorPlansResult = undefined;
 
-  // Casualty + crowd generation (casualties depend on hazard data for positioning)
+  // Generate unified incident zones (one hot/warm/cold set for the whole incident)
+  let unifiedZones: ZoneWithPolygon[] = [];
+  if (scenarioHazards?.length) {
+    unifiedZones = await generateUnifiedIncidentZones(
+      input,
+      scenarioHazards,
+      openAiApiKey,
+      teamNames,
+      onProgress,
+    );
+    // Store zones on the first hazard only; others get empty arrays
+    if (unifiedZones.length > 0) {
+      scenarioHazards[0].zones = unifiedZones;
+      for (let i = 1; i < scenarioHazards.length; i++) {
+        scenarioHazards[i].zones = [];
+      }
+    }
+  }
+
+  // Build a zone summary block for casualty/crowd generation prompts
+  const zoneSummaryBlock =
+    unifiedZones.length > 0
+      ? `\nUNIFIED INCIDENT ZONES (use these for pin placement):
+${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radius_m}m from incident center. ${z.activities.join(', ')}. Allowed teams: ${z.allowed_teams.join(', ')}`).join('\n')}`
+      : '';
+
+  // Casualty + crowd generation (casualties depend on hazard data + zone info for positioning)
   const [casualtyPins, crowdPins, convergentResult] = await Promise.all([
-    generateCasualties(input, openAiApiKey, onProgress, narrative, locations, scenarioHazards),
-    generateCrowdPins(input, openAiApiKey, onProgress, narrative, locations),
+    generateCasualties(
+      input,
+      openAiApiKey,
+      onProgress,
+      narrative,
+      locations,
+      scenarioHazards,
+      zoneSummaryBlock,
+    ),
+    generateCrowdPins(input, openAiApiKey, onProgress, narrative, locations, zoneSummaryBlock),
     generateConvergentCrowds(input, openAiApiKey, onProgress, narrative, locations, teamNames),
   ]);
   const convergentPins = convergentResult?.crowds;

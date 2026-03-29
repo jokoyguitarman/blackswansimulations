@@ -364,11 +364,15 @@ async function buildHazardSafetyContext(sessionId: string): Promise<string> {
     lines.push(`\nPLAYER ZONE ESTABLISHMENT: ${zoneSummary.join(', ')}`);
   }
 
+  // Unified zones: find the first hazard that has non-empty zones (zones are stored on primary hazard only)
+  const unifiedZones =
+    hazards.map((h) => (h.zones ?? []) as ZoneGroundTruth[]).find((z) => z.length > 0) ?? [];
+
   for (const h of hazards) {
     const hazLat = Number(h.location_lat);
     const hazLng = Number(h.location_lng);
     const hazardType = (h.hazard_type as string).replace(/_/g, ' ');
-    const zones = (h.zones ?? []) as ZoneGroundTruth[];
+    const zones = unifiedZones;
     const hasZoneData = zones.length > 0;
     const hasPolygons = zones.some((z) => z.polygon?.length);
     const maxRadius = hasZoneData ? Math.max(...zones.map((z) => z.radius_m)) : 120;
