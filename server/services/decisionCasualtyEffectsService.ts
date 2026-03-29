@@ -229,9 +229,19 @@ async function resolveAndApply(
     }
     case 'treat': {
       if (['endorsed_to_triage', 'identified', 'being_evacuated'].includes(targetCasualty.status)) {
+        const treatConds = { ...(targetCasualty.conditions ?? {}) };
+        const triageColor = (treatConds.triage_color as string) ?? 'green';
+        if (triageColor === 'red') {
+          treatConds.critical_clock_started_at = new Date().toISOString();
+        }
+
         await supabaseAdmin
           .from('scenario_casualties')
-          .update({ status: 'in_treatment', updated_at: new Date().toISOString() })
+          .update({
+            status: 'in_treatment',
+            conditions: treatConds,
+            updated_at: new Date().toISOString(),
+          })
           .eq('id', targetCasualty.id);
 
         try {

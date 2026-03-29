@@ -1,9 +1,16 @@
 /**
  * People Deterioration Service
  *
- * Runs every 10 minutes for active sessions. Untreated casualties worsen
- * (triage color escalates), unmanaged crowds escalate in behavior, and
- * patients waiting without care are flagged.
+ * Runs every scheduler tick for active sessions. Untreated casualties worsen
+ * (triage color escalates every ESCALATION_INTERVAL minutes), unmanaged crowds
+ * escalate in behavior, and critical patients in treatment die if not
+ * transported within the critical transport window.
+ *
+ * Escalation timeline for a fully neglected patient:
+ *   green ─(10 min)─> yellow ─(10 min)─> red ─(10 min)─> black (deceased)
+ *
+ * Critical transport window:
+ *   red patient in_treatment/endorsed_to_transport without transport ─(20 min)─> deceased
  */
 
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
@@ -21,6 +28,32 @@ const BEHAVIOR_ESCALATION: Record<string, string> = {
   anxious: 'panicking',
 };
 
+/** Minutes between each triage color escalation step for untreated patients */
+const ESCALATION_INTERVAL_MIN = 10;
+/** Minutes a critical (red) patient can remain in treatment/endorsed_to_transport before dying */
+const CRITICAL_TRANSPORT_WINDOW_MIN = 20;
+/** Warning issued this many minutes before the critical transport deadline */
+const CRITICAL_TRANSPORT_WARNING_BEFORE_MIN = 5;
+
+const UNTREATED_STATUSES = ['undiscovered', 'identified', 'endorsed_to_triage', 'at_assembly'];
+
+/**
+ * Compute minutes since last deterioration step. Uses `last_deterioration_at`
+ * stored in conditions JSONB when available; otherwise falls back to time
+ * since the casualty first appeared.
+ */
+function minutesSinceLastDeterioration(
+  conds: Record<string, unknown>,
+  sessionStartMs: number,
+  appearsAtMinutes: number,
+): number {
+  const lastDetAt = conds.last_deterioration_at as string | undefined;
+  const referenceMs = lastDetAt
+    ? new Date(lastDetAt).getTime()
+    : sessionStartMs + appearsAtMinutes * 60000;
+  return Math.floor((Date.now() - referenceMs) / 60000);
+}
+
 export async function runPeopleDeterioration(sessionId: string): Promise<void> {
   const { data: session } = await supabaseAdmin
     .from('sessions')
@@ -29,7 +62,8 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
     .single();
   if (!session?.start_time) return;
 
-  const elapsedMinutes = Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000);
+  const sessionStartMs = new Date(session.start_time).getTime();
+  const elapsedMinutes = Math.floor((Date.now() - sessionStartMs) / 60000);
 
   const { data: casualties } = await supabaseAdmin
     .from('scenario_casualties')
@@ -45,18 +79,24 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
 
   for (const cas of casualties) {
     const conds = { ...(cas.conditions as Record<string, unknown>) };
-    const minutesSinceAppeared = elapsedMinutes - (cas.appears_at_minutes ?? 0);
     let updated = false;
     let statusChange: string | null = null;
 
     if (cas.casualty_type === 'patient') {
-      // Patients deteriorate every 10 minutes if not being treated
-      if (['undiscovered', 'identified'].includes(cas.status) && minutesSinceAppeared >= 10) {
-        const currentTriage = (conds.triage_color as string) ?? 'green';
+      const currentTriage = (conds.triage_color as string) ?? 'green';
+      const sinceLastDet = minutesSinceLastDeterioration(
+        conds,
+        sessionStartMs,
+        cas.appears_at_minutes ?? 0,
+      );
+
+      // --- Untreated patients: escalate triage color every ESCALATION_INTERVAL_MIN ---
+      if (UNTREATED_STATUSES.includes(cas.status) && sinceLastDet >= ESCALATION_INTERVAL_MIN) {
         const newTriage = TRIAGE_ESCALATION[currentTriage];
 
-        if (newTriage && newTriage !== currentTriage) {
+        if (newTriage) {
           conds.triage_color = newTriage;
+          conds.last_deterioration_at = new Date().toISOString();
           updated = true;
 
           if (newTriage === 'black') {
@@ -74,7 +114,7 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
           } else {
             injectsToCreate.push({
               scenario_id: session.scenario_id,
-              title: `Patient Condition Worsening`,
+              title: 'Patient Condition Worsening',
               body: `A patient's condition has deteriorated from ${currentTriage.toUpperCase()} to ${newTriage.toUpperCase()} triage. ${(conds.visible_description as string)?.slice(0, 100) || ''}`,
               inject_type: 'deterioration',
               trigger_type: 'time_based',
@@ -86,12 +126,19 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
         }
       }
 
-      // Patients endorsed but not in treatment for too long
-      if (cas.status === 'endorsed_to_triage' && minutesSinceAppeared >= 15) {
+      // --- Endorsed-to-triage waiting warning (once only) ---
+      if (
+        cas.status === 'endorsed_to_triage' &&
+        !statusChange &&
+        sinceLastDet >= ESCALATION_INTERVAL_MIN &&
+        !conds.waiting_warned
+      ) {
+        conds.waiting_warned = true;
+        updated = true;
         injectsToCreate.push({
           scenario_id: session.scenario_id,
           title: 'Patient Waiting Without Care',
-          body: `A patient endorsed to triage has been waiting for treatment for ${minutesSinceAppeared} minutes without care.`,
+          body: `A patient endorsed to triage has been waiting for treatment without care. Condition: ${currentTriage.toUpperCase()}.`,
           inject_type: 'deterioration',
           trigger_type: 'time_based',
           trigger_minutes: elapsedMinutes,
@@ -99,14 +146,75 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
           generation_source: 'deterioration_cycle',
         });
       }
+
+      // --- Critical transport window: red patients in treatment or endorsed_to_transport ---
+      if (
+        ['in_treatment', 'endorsed_to_transport'].includes(cas.status) &&
+        currentTriage === 'red' &&
+        !statusChange
+      ) {
+        if (!conds.critical_clock_started_at) {
+          conds.critical_clock_started_at = new Date().toISOString();
+          updated = true;
+        } else {
+          const clockStartMs = new Date(conds.critical_clock_started_at as string).getTime();
+          const minutesInCritical = Math.floor((Date.now() - clockStartMs) / 60000);
+
+          if (minutesInCritical >= CRITICAL_TRANSPORT_WINDOW_MIN) {
+            conds.triage_color = 'black';
+            statusChange = 'deceased';
+            updated = true;
+
+            const context =
+              cas.status === 'in_treatment'
+                ? 'despite receiving field treatment — required hospital intervention'
+                : 'while awaiting transport — ambulance did not arrive in time';
+            injectsToCreate.push({
+              scenario_id: session.scenario_id,
+              title: 'Critical Patient Deceased — Transport Failure',
+              body: `A critical (RED) patient has died ${context}. ${(conds.visible_description as string)?.slice(0, 100) || ''}`,
+              inject_type: 'deterioration',
+              trigger_type: 'time_based',
+              trigger_minutes: elapsedMinutes,
+              target_team: cas.assigned_team,
+              generation_source: 'deterioration_cycle',
+            });
+          } else if (
+            minutesInCritical >=
+              CRITICAL_TRANSPORT_WINDOW_MIN - CRITICAL_TRANSPORT_WARNING_BEFORE_MIN &&
+            !conds.critical_transport_warned
+          ) {
+            conds.critical_transport_warned = true;
+            updated = true;
+
+            const remainingMin = CRITICAL_TRANSPORT_WINDOW_MIN - minutesInCritical;
+            injectsToCreate.push({
+              scenario_id: session.scenario_id,
+              title: 'URGENT: Critical Patient Requires Immediate Transport',
+              body: `A critical (RED) patient's condition is deteriorating rapidly. Without hospital transfer within ~${remainingMin} minutes, this patient will not survive. ${(conds.visible_description as string)?.slice(0, 100) || ''}`,
+              inject_type: 'deterioration',
+              trigger_type: 'time_based',
+              trigger_minutes: elapsedMinutes,
+              target_team: cas.assigned_team,
+              generation_source: 'deterioration_cycle',
+            });
+          }
+        }
+      }
     } else if (cas.casualty_type === 'crowd') {
-      // Crowds escalate behavior if unmanaged
-      if (['identified'].includes(cas.status) && minutesSinceAppeared >= 10) {
+      const sinceLastDet = minutesSinceLastDeterioration(
+        conds,
+        sessionStartMs,
+        cas.appears_at_minutes ?? 0,
+      );
+
+      if (['identified'].includes(cas.status) && sinceLastDet >= ESCALATION_INTERVAL_MIN) {
         const currentBehavior = (conds.behavior as string) ?? 'calm';
         const newBehavior = BEHAVIOR_ESCALATION[currentBehavior];
 
-        if (newBehavior && newBehavior !== currentBehavior) {
+        if (newBehavior) {
           conds.behavior = newBehavior;
+          conds.last_deterioration_at = new Date().toISOString();
           updated = true;
 
           injectsToCreate.push({
@@ -120,7 +228,6 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
             generation_source: 'deterioration_cycle',
           });
 
-          // Panicking crowds can cause stampede injuries
           if (newBehavior === 'panicking' && cas.headcount > 20) {
             const stampedeCasualties = Math.min(Math.floor(cas.headcount * 0.05), 3);
             for (let i = 0; i < stampedeCasualties; i++) {
@@ -206,7 +313,6 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
     }
   }
 
-  // Batch insert all deterioration injects
   if (injectsToCreate.length > 0) {
     await supabaseAdmin.from('scenario_injects').insert(injectsToCreate);
     logger.info(
