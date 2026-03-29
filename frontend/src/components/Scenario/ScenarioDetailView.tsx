@@ -1273,12 +1273,13 @@ const MapPinsTab = ({
             .map((floor) => (
               <FloorPlanOverlay key={floor.id} floor={floor} />
             ))}
-          {/* Ground-truth zone polygons with editable radius */}
+          {/* Ground-truth zone polygons with editable radius — render largest first so smallest is on top */}
           {hazards
             .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
             .flatMap((hazard) =>
-              (hazard.zones ?? [])
+              [...(hazard.zones ?? [])]
                 .filter((z) => z.polygon && z.polygon.length >= 3)
+                .sort((a, b) => b.radius_m - a.radius_m)
                 .map((zone) => {
                   const ZONE_COLORS: Record<string, { color: string; fillColor: string }> = {
                     hot: { color: '#dc2626', fillColor: '#dc262640' },

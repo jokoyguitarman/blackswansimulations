@@ -1375,13 +1375,14 @@ export const MapView = ({
               <FloorPlanOverlay key={floor.id} floor={floor} />
             ))}
 
-          {/* Ground-truth zone polygons — trainer view only */}
+          {/* Ground-truth zone polygons — trainer view only, largest first so smallest is clickable on top */}
           {showAllPins &&
             hazards
               .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
               .flatMap((hazard) =>
-                (hazard.zones ?? [])
+                [...(hazard.zones ?? [])]
                   .filter((z) => z.polygon && z.polygon.length >= 3)
+                  .sort((a, b) => b.radius_m - a.radius_m)
                   .map((zone) => {
                     const ZONE_COLORS: Record<string, { color: string; fillColor: string }> = {
                       hot: { color: '#dc2626', fillColor: '#dc262640' },
