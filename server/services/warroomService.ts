@@ -279,7 +279,7 @@ export async function generateAndPersistWarroomScenario(
       const vicinity = await fetchOsmVicinityByCoordinates(
         geocodeResult.lat,
         geocodeResult.lng,
-        10000,
+        5000,
       );
       await delay(1500);
 

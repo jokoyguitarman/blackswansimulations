@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, useMap, Polygon } from 'react-leaflet';
 import { Icon, Marker as LeafletMarker } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { IncidentMarker } from './IncidentMarker';
@@ -807,7 +807,7 @@ export const MapView = ({
         /* ignore */
       });
     api.hazards
-      .list(sessionId)
+      .list(sessionId, { includeZones: showAllPins })
       .then((res) => {
         if (cancelled) return;
         if (Array.isArray(res.data)) {
@@ -859,7 +859,7 @@ export const MapView = ({
     if (!sessionId || isMapDisabled) return;
     const interval = setInterval(() => {
       api.hazards
-        .list(sessionId)
+        .list(sessionId, { includeZones: showAllPins })
         .then((res) => {
           if (Array.isArray(res.data)) {
             setHazards(res.data as HazardData[]);
@@ -1374,6 +1374,40 @@ export const MapView = ({
             .map((floor) => (
               <FloorPlanOverlay key={floor.id} floor={floor} />
             ))}
+
+          {/* Ground-truth zone polygons — trainer view only */}
+          {showAllPins &&
+            hazards
+              .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
+              .flatMap((hazard) =>
+                (hazard.zones ?? [])
+                  .filter((z) => z.polygon && z.polygon.length >= 3)
+                  .map((zone) => {
+                    const ZONE_COLORS: Record<string, { color: string; fillColor: string }> = {
+                      hot: { color: '#dc2626', fillColor: '#dc262640' },
+                      warm: { color: '#f59e0b', fillColor: '#f59e0b30' },
+                      cold: { color: '#3b82f6', fillColor: '#3b82f620' },
+                    };
+                    const style = ZONE_COLORS[zone.zone_type] ?? {
+                      color: '#6b7280',
+                      fillColor: '#6b728020',
+                    };
+                    const positions = zone.polygon!.map((p) => [p[0], p[1]] as [number, number]);
+                    return (
+                      <Polygon
+                        key={`zone-${hazard.id}-${zone.zone_type}`}
+                        positions={positions}
+                        pathOptions={{
+                          color: style.color,
+                          fillColor: style.fillColor,
+                          fillOpacity: 0.3,
+                          weight: 2,
+                          dashArray: '6 4',
+                        }}
+                      />
+                    );
+                  }),
+              )}
 
           {/* Hazard Markers — gated behind exit claiming, filtered by active floor */}
           {allExitsClaimed &&

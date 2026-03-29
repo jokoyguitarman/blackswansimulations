@@ -180,6 +180,13 @@ export async function persistWarroomScenario(
     }
 
     if (hazards && hazards.length > 0) {
+      const VALID_HAZARD_STATUSES = new Set([
+        'active',
+        'escalating',
+        'contained',
+        'resolved',
+        'delayed',
+      ]);
       const { error: hazError } = await supabaseAdmin.from('scenario_hazards').insert(
         hazards.map((h) => ({
           scenario_id: scenarioId,
@@ -191,7 +198,7 @@ export async function persistWarroomScenario(
           assessment_criteria: h.assessment_criteria ?? [],
           image_url: h.image_url ?? null,
           image_sequence: h.image_sequence ?? null,
-          status: h.status ?? 'active',
+          status: VALID_HAZARD_STATUSES.has(h.status ?? '') ? h.status : 'active',
           appears_at_minutes: h.appears_at_minutes ?? 0,
           resolution_requirements: h.resolution_requirements ?? {},
           personnel_requirements: h.personnel_requirements ?? {},
@@ -227,11 +234,17 @@ export async function persistWarroomScenario(
     }
 
     if (casualties && casualties.length > 0) {
+      const VALID_CASUALTY_TYPES = new Set([
+        'patient',
+        'crowd',
+        'evacuee_group',
+        'convergent_crowd',
+      ]);
       const { error: casError } = await supabaseAdmin.from('scenario_casualties').insert(
         casualties.map((c) => {
           return {
             scenario_id: scenarioId,
-            casualty_type: c.casualty_type,
+            casualty_type: VALID_CASUALTY_TYPES.has(c.casualty_type) ? c.casualty_type : 'crowd',
             location_lat: c.location_lat,
             location_lng: c.location_lng,
             floor_level: c.floor_level ?? 'G',

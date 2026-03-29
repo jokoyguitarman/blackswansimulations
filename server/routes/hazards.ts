@@ -65,7 +65,9 @@ router.get('/sessions/:id/hazards', requireAuth, async (req, res) => {
       return { ...h, current_image_url: h.image_url, current_description: null };
     });
 
-    return res.json({ data: enriched.map(stripZoneGroundTruth), elapsed_minutes: elapsedMinutes });
+    const includeZones = req.query.include_zones === 'true';
+    const responseData = includeZones ? enriched : enriched.map(stripZoneGroundTruth);
+    return res.json({ data: responseData, elapsed_minutes: elapsedMinutes });
   } catch (err) {
     logger.error({ err }, 'Unexpected error in GET hazards');
     return res.status(500).json({ error: 'Internal server error' });

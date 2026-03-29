@@ -614,7 +614,7 @@ export const api = {
 
   // Hazards (interactive hazard assessment)
   hazards: {
-    list: async (sessionId: string) => {
+    list: async (sessionId: string, options?: { includeZones?: boolean }) => {
       const headers = await getAuthHeaders();
       return handleResponse<{
         data: Array<{
@@ -637,9 +637,23 @@ export const api = {
           current_description: string | null;
           status: string;
           appears_at_minutes: number;
+          zones?: Array<{
+            zone_type: string;
+            radius_m: number;
+            polygon?: number[][];
+            required_ppe?: string[];
+            authorized_teams?: string[];
+          }>;
         }>;
         elapsed_minutes: number;
-      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/hazards`), { headers }));
+      }>(
+        await fetch(
+          apiUrl(
+            `/api/sessions/${sessionId}/hazards${options?.includeZones ? '?include_zones=true' : ''}`,
+          ),
+          { headers },
+        ),
+      );
     },
     get: async (sessionId: string, hazardId: string) => {
       const headers = await getAuthHeaders();

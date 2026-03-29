@@ -2,6 +2,14 @@ import { Marker, Tooltip } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
 
+export interface HazardZone {
+  zone_type: string;
+  radius_m: number;
+  polygon?: number[][];
+  required_ppe?: string[];
+  authorized_teams?: string[];
+}
+
 export interface HazardData {
   id: string;
   hazard_type: string;
@@ -22,6 +30,7 @@ export interface HazardData {
   personnel_requirements?: Record<string, unknown>;
   equipment_requirements?: Array<Record<string, unknown>>;
   deterioration_timeline?: Record<string, unknown>;
+  zones?: HazardZone[];
 }
 
 interface HazardMarkerProps {

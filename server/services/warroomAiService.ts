@@ -1247,7 +1247,20 @@ export async function generatePoiPinsFromOsm(
 
   if (stubs.length === 0) return [];
 
-  const stubSummary = stubs
+  const POI_CAPS: Record<string, number> = { hospital: 5, police_station: 3, fire_station: 3 };
+  const byType: Record<string, PoiStub[]> = {};
+  for (const s of stubs) {
+    (byType[s.location_type] ??= []).push(s);
+  }
+  const capped: PoiStub[] = [];
+  for (const [type, items] of Object.entries(byType)) {
+    items.sort((a, b) => a.distance_from_incident_m - b.distance_from_incident_m);
+    capped.push(...items.slice(0, POI_CAPS[type] ?? 5));
+  }
+  capped.sort((a, b) => a.distance_from_incident_m - b.distance_from_incident_m);
+  const cappedStubs = capped;
+
+  const stubSummary = cappedStubs
     .map(
       (s, i) =>
         `${i + 1}. [${s.location_type}] "${s.label}" — ${s.distance_from_incident_m}m from incident`,
@@ -1287,9 +1300,9 @@ Base response times on distance. Use the facility name to infer size/capabilitie
       facilities?: Array<{ index: number; conditions: Record<string, unknown> }>;
     }>(
       systemPrompt,
-      `Enrich ${stubs.length} facilities for a ${scenarioType} response.`,
+      `Enrich ${cappedStubs.length} facilities for a ${scenarioType} response.`,
       openAiApiKey,
-      4000,
+      6000,
     );
 
     const enriched = parsed.facilities ?? [];
@@ -1300,7 +1313,7 @@ Base response times on distance. Use the facility name to infer size/capabilitie
       }
     }
 
-    return stubs.map((stub, i) => {
+    return cappedStubs.map((stub, i) => {
       const aiConditions = conditionsMap.get(i + 1) ?? {};
       return {
         location_type: stub.location_type,
@@ -1317,10 +1330,10 @@ Base response times on distance. Use the facility name to infer size/capabilitie
     });
   } catch (err) {
     logger.warn(
-      { err, count: stubs.length },
+      { err, count: cappedStubs.length },
       'POI enrichment failed; using stubs with distance only',
     );
-    return stubs.map((stub, i) => ({
+    return cappedStubs.map((stub, i) => ({
       location_type: stub.location_type,
       pin_category: stub.pin_category as string,
       label: stub.label,
@@ -1931,7 +1944,7 @@ RULES:
   try {
     const parsed = await callOpenAi<{
       casualties?: WarroomScenarioPayload['casualties'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 4000);
+    }>(systemPrompt, userPrompt, openAiApiKey, 8000);
     return parsed.casualties?.length ? parsed.casualties : undefined;
   } catch (err) {
     logger.warn({ err }, 'Casualty generation failed; continuing without');
@@ -2016,7 +2029,7 @@ RULES:
   try {
     const parsed = await callOpenAi<{
       crowds?: WarroomScenarioPayload['casualties'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 3000);
+    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
     return parsed.crowds?.length ? parsed.crowds : undefined;
   } catch (err) {
     logger.warn({ err }, 'Crowd pin generation failed; continuing without');
@@ -2150,7 +2163,7 @@ RULES:
     const parsed = await callOpenAi<{
       convergent_crowds?: WarroomScenarioPayload['casualties'];
       alert_injects?: WarroomScenarioPayload['time_injects'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 4000);
+    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
     return {
       crowds: parsed.convergent_crowds?.length ? parsed.convergent_crowds : undefined,
       alertInjects: parsed.alert_injects?.length ? parsed.alert_injects : undefined,
