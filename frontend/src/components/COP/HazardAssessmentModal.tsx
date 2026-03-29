@@ -173,7 +173,8 @@ export const HazardAssessmentModal = ({
             <button
               onClick={handleSubmit}
               disabled={!decision.trim() || isSubmitting || result?.success === true}
-              className="px-4 py-1.5 text-xs terminal-text text-black bg-robotic-yellow rounded hover:bg-robotic-yellow/90 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
+              className="px-4 py-1.5 text-xs font-mono font-medium bg-robotic-yellow rounded hover:bg-robotic-yellow/90 disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ color: '#0f0f0f' }}
             >
               {isSubmitting ? 'Executing...' : 'Execute Decision'}
             </button>
