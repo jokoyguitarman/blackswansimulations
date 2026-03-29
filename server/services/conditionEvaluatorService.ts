@@ -39,8 +39,6 @@ export interface EvaluationContext {
     progress_percentage?: number;
   }>;
   gateStatusByGateId?: Record<string, 'pending' | 'met' | 'not_met'>;
-  /** When set, decision-semantic condition keys use these values instead of registry (AI precomputed). */
-  precomputedDecisionKeys?: Record<string, boolean>;
   /** Keys with state_path for generic resolution from currentState (e.g. police_state.perimeter_established). */
   scenarioConditionKeyDefs?: Array<{ key: string; state_path?: string; negate?: boolean }>;
 }
@@ -56,78 +54,21 @@ type ConditionFn = (ctx: EvaluationContext) => boolean;
 // Condition registry: key -> (context) => boolean
 // ---------------------------------------------------------------------------
 
-function hasDecisionMatching(
-  ctx: EvaluationContext,
-  predicate: (d: EvaluationContext['executedDecisions'][0]) => boolean,
-): boolean {
-  return ctx.executedDecisions.some(predicate);
-}
-
 const conditionRegistry: Record<string, ConditionFn> = {
-  // Decision not made
-  no_media_management_decision: (ctx) =>
-    !hasDecisionMatching(ctx, (d) => {
-      const t = (d.decision_type ?? '').toLowerCase();
-      const title = (d.title ?? '').toLowerCase();
-      const desc = (d.description ?? '').toLowerCase();
-      return (
-        t.includes('media') ||
-        t.includes('statement') ||
-        title.includes('media') ||
-        desc.includes('media') ||
-        (d.tags ?? []).some((tag) => /media|statement/.test(String(tag)))
-      );
-    }),
-  no_perimeter_establishment_decision: (ctx) =>
-    !hasDecisionMatching(ctx, (d) => {
-      const title = (d.title ?? '').toLowerCase();
-      const desc = (d.description ?? '').toLowerCase();
-      return (
-        title.includes('perimeter') ||
-        desc.includes('perimeter') ||
-        (d.tags ?? []).some((tag) => /perimeter|cordon/.test(String(tag)))
-      );
-    }),
+  // Decision-intent conditions — AI-flipped flags via decision_toggle counter definitions
+  no_media_management_decision: (ctx) => getMediaState(ctx).first_statement_issued !== true,
+  no_perimeter_establishment_decision: (ctx) => getPoliceState(ctx).perimeter_established !== true,
   no_patient_privacy_or_access_control_decision: (ctx) =>
-    !hasDecisionMatching(ctx, (d) => {
-      const title = (d.title ?? '').toLowerCase();
-      const desc = (d.description ?? '').toLowerCase();
-      return (
-        title.includes('privacy') ||
-        desc.includes('privacy') ||
-        title.includes('access control') ||
-        desc.includes('access control')
-      );
-    }),
+    getTriageState(ctx).patient_privacy_decided !== true,
   no_triage_perimeter_security_decision: (ctx) =>
-    !hasDecisionMatching(ctx, (d) => {
-      const title = (d.title ?? '').toLowerCase();
-      const desc = (d.description ?? '').toLowerCase();
-      return (
-        (title.includes('triage') && (title.includes('perimeter') || title.includes('security'))) ||
-        (desc.includes('triage') && (desc.includes('perimeter') || desc.includes('security')))
-      );
-    }),
+    getTriageState(ctx).perimeter_security_decided !== true,
 
-  // Decision made
-  official_public_statement_issued: (ctx) =>
-    hasDecisionMatching(ctx, (d) => {
-      const t = (d.decision_type ?? '').toLowerCase();
-      const title = (d.title ?? '').toLowerCase();
-      return t.includes('statement') || title.includes('statement') || title.includes('public');
-    }),
+  // Decision-intent positive checks
+  official_public_statement_issued: (ctx) => getMediaState(ctx).first_statement_issued === true,
   triage_zone_established_as_incident_location: (ctx) =>
-    hasDecisionMatching(ctx, (d) => {
-      const title = (d.title ?? '').toLowerCase();
-      const desc = (d.description ?? '').toLowerCase();
-      return (
-        title.includes('triage') ||
-        desc.includes('triage') ||
-        (d.tags ?? []).some((tag) => /triage/.test(String(tag)))
-      );
-    }),
+    getTriageState(ctx).triage_zone_established === true,
 
-  // Prior inject fired (by key/tag; engine populates publishedInjectKeysOrTags or we match by scenario inject id)
+  // Prior inject fired (by key/tag)
   prior_social_media_rumour_inject_fired: (ctx) =>
     (ctx.publishedInjectKeysOrTags ?? []).some((k) =>
       /social_media|rumour|rumor|viral|misinformation/.test(String(k)),
@@ -136,12 +77,7 @@ const conditionRegistry: Record<string, ConditionFn> = {
     (ctx.publishedInjectKeysOrTags ?? []).some((k) =>
       /panic|rumour|rumor|civilian|misinformation/.test(String(k)),
     ),
-  public_comms_channel_inactive: (ctx) =>
-    !hasDecisionMatching(ctx, (d) => {
-      const t = (d.decision_type ?? '').toLowerCase();
-      const title = (d.title ?? '').toLowerCase();
-      return t.includes('statement') || t.includes('comms') || title.includes('communication');
-    }),
+  public_comms_channel_inactive: (ctx) => getMediaState(ctx).first_statement_issued !== true,
 
   // Pathway outcome fired (no double-hit)
   pathway_fired_exit_b_congestion: (ctx) =>
@@ -172,6 +108,9 @@ function getTriageState(ctx: EvaluationContext): Record<string, unknown> {
 }
 function getMediaState(ctx: EvaluationContext): Record<string, unknown> {
   return (ctx.currentState?.media_state as Record<string, unknown>) ?? {};
+}
+function getPoliceState(ctx: EvaluationContext): Record<string, unknown> {
+  return (ctx.currentState?.police_state as Record<string, unknown>) ?? {};
 }
 
 conditionRegistry['crowd_density_above_0.6'] = (ctx) =>
@@ -277,21 +216,7 @@ conditionRegistry.evac_holding_no_cover = (ctx) => {
 
 // Evacuation (from current_state.evacuation_state)
 conditionRegistry.evacuation_no_flow_control_decision = (ctx) =>
-  !hasDecisionMatching(ctx, (d) => {
-    if (d.categories?.includes('flow_control')) return true;
-    const t = (d.decision_type ?? '').toLowerCase();
-    const title = (d.title ?? '').toLowerCase();
-    const desc = (d.description ?? '').toLowerCase();
-    const text = `${t} ${title} ${desc}`;
-    return (
-      /flow|bottleneck|stagger|exit capacity|congestion|egress|exit width|flow rate|people per minute|capacity per exit/.test(
-        text,
-      ) ||
-      (d.tags ?? []).some((tag) =>
-        /flow|bottleneck|congestion|egress|exit capacity|width|flow rate/.test(String(tag)),
-      )
-    );
-  });
+  getEvacuationState(ctx).flow_control_decided !== true;
 conditionRegistry.evacuation_flow_control_decided = (ctx) =>
   getEvacuationState(ctx).flow_control_decided === true;
 conditionRegistry.evacuation_exit_bottleneck_active = (ctx) => {
@@ -336,33 +261,9 @@ conditionRegistry.triage_surge_active = (ctx) => {
   return managed['triage.surge_active']?.managed !== true;
 };
 conditionRegistry.triage_no_supply_management_decision = (ctx) =>
-  !hasDecisionMatching(ctx, (d) => {
-    if (d.categories?.includes('supply_management')) return true;
-    const t = (d.decision_type ?? '').toLowerCase();
-    const title = (d.title ?? '').toLowerCase();
-    const desc = (d.description ?? '').toLowerCase();
-    const text = `${t} ${title} ${desc}`;
-    return (
-      /supply|supplies|request|ration|equipment|shortage|tourniquet|stretcher|triage tag|triage tags|airway kit|oxygen|iv fluid|trauma kit|gauze|bandage|first aid kit|medical kit/.test(
-        text,
-      ) ||
-      (d.tags ?? []).some((tag) =>
-        /supply|ration|shortage|equipment|tourniquet|stretcher|kit/.test(String(tag)),
-      )
-    );
-  });
+  getTriageState(ctx).supply_request_made !== true;
 conditionRegistry.triage_no_prioritisation_decision = (ctx) =>
-  !hasDecisionMatching(ctx, (d) => {
-    if (d.categories?.includes('prioritisation')) return true;
-    const title = (d.title ?? '').toLowerCase();
-    const desc = (d.description ?? '').toLowerCase();
-    const text = `${title} ${desc}`;
-    return (
-      /prioritise|prioritize|priority|critical first|severity|triage protocol|red|yellow|green/.test(
-        text,
-      ) || (d.tags ?? []).some((tag) => /priorit|severity|triage/.test(String(tag)))
-    );
-  });
+  getTriageState(ctx).prioritisation_decided !== true;
 conditionRegistry.triage_prioritisation_decided = (ctx) =>
   getTriageState(ctx).prioritisation_decided === true;
 conditionRegistry.triage_supply_request_made = (ctx) =>
@@ -422,29 +323,10 @@ conditionRegistry.convergent_crowd_present = (ctx) =>
   ((getEvacuationState(ctx).convergent_crowds_count as number) ?? 0) > 0;
 
 conditionRegistry.no_zone_identification_decision = (ctx) =>
-  !hasDecisionMatching(ctx, (d) => {
-    const title = (d.title ?? '').toLowerCase();
-    const desc = (d.description ?? '').toLowerCase();
-    return (
-      title.includes('zone') ||
-      desc.includes('zone') ||
-      title.includes('zoning') ||
-      (d.tags ?? []).some((tag) => /zone|zoning|hot.*zone|warm.*zone|cold.*zone/.test(String(tag)))
-    );
-  });
+  getEvacuationState(ctx).zone_identification_decided !== true;
 
 conditionRegistry.perimeter_not_established = (ctx) =>
-  !hasDecisionMatching(ctx, (d) => {
-    const title = (d.title ?? '').toLowerCase();
-    const desc = (d.description ?? '').toLowerCase();
-    return (
-      title.includes('perimeter') ||
-      title.includes('cordon') ||
-      desc.includes('perimeter') ||
-      desc.includes('cordon') ||
-      (d.tags ?? []).some((tag) => /perimeter|cordon/.test(String(tag)))
-    );
-  });
+  getPoliceState(ctx).perimeter_established !== true;
 
 conditionRegistry.exits_congested = (ctx) => {
   const arr = getEvacuationState(ctx).exits_congested;
@@ -530,10 +412,6 @@ function evaluateKey(key: string, context: EvaluationContext): boolean {
       const resolved = value === true || value === 'true';
       return def.negate ? !resolved : resolved;
     }
-  }
-
-  if (context.precomputedDecisionKeys != null && key in context.precomputedDecisionKeys) {
-    return context.precomputedDecisionKeys[key] === true;
   }
 
   const fn = conditionRegistry[key];

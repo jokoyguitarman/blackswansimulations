@@ -880,12 +880,144 @@ Return ONLY valid JSON:
         });
     }
 
+    enrichWithStandardDecisionIntentKeys(parsed.counter_definitions, teamNames);
+
     return Object.keys(parsed.counter_definitions).length > 0
       ? parsed.counter_definitions
       : undefined;
   } catch (err) {
     logger.warn({ err }, 'Counter definitions generation failed; continuing without');
     return undefined;
+  }
+}
+
+const STANDARD_DECISION_INTENT_KEYS: Record<string, CounterDefinition[]> = {
+  evacuation_state: [
+    {
+      key: 'zone_identification_decided',
+      label: 'Zone Identification',
+      type: 'boolean',
+      initial_value: false,
+      behavior: 'decision_toggle',
+      visible_to: 'trainer_only',
+    },
+    {
+      key: 'flow_control_decided',
+      label: 'Flow Control Established',
+      type: 'boolean',
+      initial_value: false,
+      behavior: 'decision_toggle',
+      visible_to: 'trainer_only',
+    },
+  ],
+  triage_state: [
+    {
+      key: 'prioritisation_decided',
+      label: 'Triage Prioritisation Set',
+      type: 'boolean',
+      initial_value: false,
+      behavior: 'decision_toggle',
+      visible_to: 'trainer_only',
+    },
+    {
+      key: 'supply_request_made',
+      label: 'Supply Request Made',
+      type: 'boolean',
+      initial_value: false,
+      behavior: 'decision_toggle',
+      visible_to: 'trainer_only',
+    },
+    {
+      key: 'patient_privacy_decided',
+      label: 'Patient Privacy Managed',
+      type: 'boolean',
+      initial_value: false,
+      behavior: 'decision_toggle',
+      visible_to: 'trainer_only',
+    },
+    {
+      key: 'perimeter_security_decided',
+      label: 'Triage Perimeter Security',
+      type: 'boolean',
+      initial_value: false,
+      behavior: 'decision_toggle',
+      visible_to: 'trainer_only',
+    },
+    {
+      key: 'triage_zone_established',
+      label: 'Triage Zone Established',
+      type: 'boolean',
+      initial_value: false,
+      behavior: 'decision_toggle',
+      visible_to: 'trainer_only',
+    },
+  ],
+  media_state: [
+    {
+      key: 'first_statement_issued',
+      label: 'Public Statement Issued',
+      type: 'boolean',
+      initial_value: false,
+      behavior: 'decision_toggle',
+      visible_to: 'trainer_only',
+    },
+    {
+      key: 'spokesperson_designated',
+      label: 'Spokesperson Designated',
+      type: 'boolean',
+      initial_value: false,
+      behavior: 'decision_toggle',
+      visible_to: 'trainer_only',
+    },
+  ],
+  police_state: [
+    {
+      key: 'perimeter_established',
+      label: 'Perimeter Established',
+      type: 'boolean',
+      initial_value: false,
+      behavior: 'decision_toggle',
+      visible_to: 'trainer_only',
+    },
+  ],
+};
+
+function teamNameToStateKey(teamName: string): string {
+  const lower = teamName.toLowerCase();
+  if (lower.includes('evacuation') || lower.includes('evac')) return 'evacuation_state';
+  if (lower.includes('triage') || lower.includes('medical') || lower.includes('medic'))
+    return 'triage_state';
+  if (
+    lower.includes('media') ||
+    lower.includes('comms') ||
+    lower.includes('communication') ||
+    lower.includes('public')
+  )
+    return 'media_state';
+  if (lower.includes('police') || lower.includes('security') || lower.includes('law'))
+    return 'police_state';
+  if (lower.includes('fire') || lower.includes('hazard') || lower.includes('hazmat'))
+    return 'fire_state';
+  return lower.replace(/[\s-]+/g, '_') + '_state';
+}
+
+function enrichWithStandardDecisionIntentKeys(
+  counterDefs: Record<string, CounterDefinition[]>,
+  teamNames: string[],
+): void {
+  for (const teamName of teamNames) {
+    const stateKey = teamNameToStateKey(teamName);
+    const standardKeys = STANDARD_DECISION_INTENT_KEYS[stateKey];
+    if (!standardKeys) continue;
+
+    if (!counterDefs[teamName]) counterDefs[teamName] = [];
+
+    const existingKeys = new Set(counterDefs[teamName].map((d) => d.key));
+    for (const def of standardKeys) {
+      if (!existingKeys.has(def.key)) {
+        counterDefs[teamName].push(def);
+      }
+    }
   }
 }
 
@@ -1135,7 +1267,19 @@ For police_station: { facility_type: "division_hq"|"district_station"|"neighbour
 
 For fire_station: { facility_type: "headquarters"|"standard_station"|"substation", appliance_count: number, has_hazmat_unit: boolean, has_rescue_unit: boolean, has_aerial_platform: boolean, estimated_response_time_min: number, notes: string }
 
-Return ONLY valid JSON: { "facilities": [ { "index": 1, "conditions": { ... } } ] }
+ENVIRONMENTAL CHALLENGES:
+For each facility, also generate an "environmental_challenges" array with 0-2 realistic operational challenges that responders would face. NOT every facility has a problem — leave the array empty for facilities with no issues (at least half should have none). Challenges make the scenario more realistic and test player adaptability.
+
+Challenge types: "traffic_congestion", "at_capacity", "power_outage", "road_closure", "equipment_shortage", "structural_damage", "staffing_shortage", "communication_failure"
+
+Each challenge: { challenge_type: string, description: string (1-2 sentences, specific and actionable), severity: "high"|"medium"|"low", affected_route?: string (if traffic/road related), alternative?: string (workaround hint, e.g. alternate route name) }
+
+Examples:
+- Hospital closest to incident: { challenge_type: "traffic_congestion", description: "Main access via Bayfront Avenue is gridlocked due to emergency vehicle convergence and fleeing pedestrians.", severity: "high", affected_route: "Bayfront Avenue", alternative: "Approach via Sheares Avenue from the south" }
+- Hospital at capacity: { challenge_type: "at_capacity", description: "Emergency department already handling mass casualty patients from a separate industrial accident. Only 3 trauma bays available.", severity: "medium" }
+- Fire station with equipment issue: { challenge_type: "equipment_shortage", description: "Primary aerial platform undergoing maintenance. Only ground-level appliances available.", severity: "low" }
+
+Return ONLY valid JSON: { "facilities": [ { "index": 1, "conditions": { ..., "environmental_challenges": [...] } } ] }
 Base response times on distance. Use the facility name to infer size/capabilities where possible.`;
 
   try {
@@ -1185,138 +1329,6 @@ Base response times on distance. Use the facility name to infer size/capabilitie
       conditions: { distance_from_incident_m: stub.distance_from_incident_m },
       display_order: 100 + i,
     }));
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Phase 4b — Environmental Seeds  (rich routes / areas / team states, 5 000 tokens)
-// ---------------------------------------------------------------------------
-
-async function generateEnvironmentalSeeds(
-  input: WarroomGenerateInput,
-  teamNames: string[],
-  openAiApiKey: string,
-  onProgress?: WarroomAiProgressCallback,
-  narrative?: { title?: string; description?: string; briefing?: string },
-  locations?: WarroomScenarioPayload['locations'],
-  counterDefsMap?: Record<string, CounterDefinition[]>,
-): Promise<WarroomScenarioPayload['environmental_seeds']> {
-  const includeSeeds = input.complexity_tier === 'full' || input.complexity_tier === 'rich';
-  if (!includeSeeds) return undefined;
-
-  onProgress?.('Generating environmental seeds...');
-
-  const { scenario_type, setting, terrain, venue_name, location, researchContext } = input;
-  const venue = venue_name || location || setting;
-
-  // Build state schema from counter_definitions when available, else fall back to legacy hint
-  let stateSchemaJson: string;
-  if (counterDefsMap && Object.keys(counterDefsMap).length > 0) {
-    const schema: Record<string, Record<string, unknown>> = {};
-    const teamToStateKey = (name: string): string => {
-      const n = (name ?? '').toLowerCase();
-      if (/evacuation|evac/.test(n)) return 'evacuation_state';
-      if (/triage/.test(n)) return 'triage_state';
-      if (/media/.test(n)) return 'media_state';
-      return `${n.replace(/\s+/g, '_')}_state`;
-    };
-    for (const teamName of teamNames) {
-      const stateKey = teamToStateKey(teamName);
-      const defs =
-        counterDefsMap[teamName] ??
-        counterDefsMap[teamName.toLowerCase()] ??
-        Object.entries(counterDefsMap).find(
-          ([k]) => k.toLowerCase() === teamName.toLowerCase(),
-        )?.[1];
-      if (defs?.length) {
-        const obj: Record<string, unknown> = {};
-        for (const d of defs) {
-          obj[d.key] = d.initial_value;
-        }
-        schema[stateKey] = obj;
-      }
-    }
-    stateSchemaJson = JSON.stringify(
-      Object.keys(schema).length > 0 ? schema : buildTeamStateSchemaHint(teamNames),
-      null,
-      2,
-    );
-  } else {
-    const stateSchema = buildTeamStateSchemaHint(teamNames);
-    stateSchemaJson = JSON.stringify(stateSchema, null, 2);
-  }
-
-  const locationsBlock = locations?.length
-    ? `\nMap pins for this scenario:\n${locations.map((l) => `- ${l.label} (${l.location_type}, category: ${l.pin_category}): ${l.description || ''}`).join('\n')}`
-    : '';
-  const standardsBlock =
-    researchContext?.standards_findings && researchContext.standards_findings.length > 0
-      ? `\nResponse standards:\n${standardsToPromptBlock(researchContext.standards_findings)}`
-      : '';
-  const similarCasesBlock =
-    researchContext?.similar_cases && researchContext.similar_cases.length > 0
-      ? `\nSIMILAR REAL INCIDENTS:\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
-      : '';
-  const narrativeBlock = narrative
-    ? `\nNARRATIVE:\nTitle: ${narrative.title || ''}\nDescription: ${narrative.description || ''}\nBriefing: ${narrative.briefing || ''}`
-    : '';
-
-  const systemPrompt = `You are an expert crisis management scenario designer building the world state for a training exercise.
-
-Scenario type: ${scenario_type}
-Venue: ${venue}
-Setting: ${setting} | Terrain: ${terrain}
-Teams: ${teamNames.join(', ')}
-${narrativeBlock}
-${locationsBlock}
-${standardsBlock}
-${similarCasesBlock}
-
-IMPORTANT: This is a ${scenario_type} scenario. Every route, area, and state value you generate MUST be appropriate to how a ${scenario_type} actually unfolds. Do NOT use mass-casualty-incident terminology (triage zones, casualty collection points, stretcher routes, crowd evacuation) unless this scenario genuinely involves those elements.
-
-You must generate 2–3 seed VARIANTS that set a different starting world state for each playthrough. Each variant makes the scenario harder or easier via different route/area conditions and different initial team state values.
-
-MANDATORY team state schema (you MUST include ALL keys below in every variant, varying the VALUES to reflect that variant's difficulty — change values, do NOT change key names):
-${stateSchemaJson}
-
-For each variant also include:
-- routes[]: named movement corridors, access paths, or communication lines relevant to THIS ${scenario_type}. Name them specifically (e.g. for a kidnapping: "Jungle Extraction Path", "Service Road North"; for a fire: "Stairwell B", "Loading Bay Access").
-  Each route: { "label": string, "aliases": string[], "problem": string|null, "managed": boolean, "travel_time_minutes": number, "capacity_per_min": number }
-- areas[]: operational areas used by teams in THIS ${scenario_type}. Name them specifically to the scenario (e.g. for a kidnapping: "Negotiation Forward Post", "Sniper Overwatch Position", "Command Post Alpha"; for a fire: "Incident Command Point", "Water Supply Station").
-  Each area: { "area_id": string (snake_case), "label": string, "type": string, "at_capacity": boolean, "capacity": number, "aliases": string[], "problems": string[] }
-
-Return ONLY valid JSON:
-{
-  "environmental_seeds": [
-    {
-      "variant_label": "string — a short label specific to this variant's key difference (e.g. for kidnapping: 'contact_established', 'hostile_extraction', 'intelligence_gap')",
-      "seed_data": {
-        "routes": [ { "label": "Scenario-specific route name", "aliases": [], "problem": null, "managed": false, "travel_time_minutes": 5, "capacity_per_min": 10 } ],
-        "areas": [ { "area_id": "scenario_specific_area", "label": "Scenario-specific area name", "type": "operational_type", "at_capacity": false, "capacity": 10, "aliases": [], "problems": [] } ],
-        ... (all team state keys from schema above with values appropriate for this variant)
-      },
-      "display_order": 1
-    }
-  ]
-}
-
-RULES:
-- 2–3 variants. First = baseline/moderate; second = harder (complication, perimeter breach, intelligence gap, communication failure, etc.); optional third = favourable.
-- Vary the team state VALUES per variant to reflect the difficulty (e.g. for kidnapping variant 2: contact_established: false, threat_level: "critical", perimeter_established: false).
-- routes and areas must be SPECIFIC to this ${scenario_type} — named realistically for this incident type, not generic MCI/bombing names.
-- Every route and area must represent a real game decision point for these teams.
-- Include ALL team state keys from the schema in every variant.`;
-
-  const userPrompt = `Build ${2} environmental seed variants for "${narrative?.title || scenario_type}" at ${venue}. Teams: ${teamNames.join(', ')}.`;
-
-  try {
-    const parsed = await callOpenAi<{
-      environmental_seeds?: WarroomScenarioPayload['environmental_seeds'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
-    return parsed.environmental_seeds?.length ? parsed.environmental_seeds : undefined;
-  } catch (err) {
-    logger.warn({ err }, 'Phase 4b environmental seeds failed; continuing without');
-    return undefined;
   }
 }
 
@@ -2016,15 +2028,21 @@ RULES:
 // Phase 4b2e — Convergent Crowd Generation (onlookers, media, family arriving later)
 // ---------------------------------------------------------------------------
 
+interface ConvergentCrowdResult {
+  crowds?: WarroomScenarioPayload['casualties'];
+  alertInjects?: WarroomScenarioPayload['time_injects'];
+}
+
 async function generateConvergentCrowds(
   input: WarroomGenerateInput,
   openAiApiKey: string,
   onProgress?: WarroomAiProgressCallback,
   narrative?: { title?: string; description?: string; briefing?: string },
   locations?: WarroomScenarioPayload['locations'],
-): Promise<WarroomScenarioPayload['casualties']> {
+  teamNames?: string[],
+): Promise<ConvergentCrowdResult> {
   const include = input.complexity_tier === 'full' || input.complexity_tier === 'rich';
-  if (!include) return undefined;
+  if (!include) return {};
 
   onProgress?.('Generating convergent crowd pins (onlookers, media, family)...');
 
@@ -2050,6 +2068,8 @@ async function generateConvergentCrowds(
     ? `\nRESEARCH ON CROWD DYNAMICS FOR THIS SCENARIO TYPE:\n${crowdDynamicsToPromptBlock(crowdDynamics)}`
     : '';
 
+  const teamsBlock = teamNames?.length ? `\nAvailable teams: ${teamNames.join(', ')}` : '';
+
   const systemPrompt = `You are an expert in crowd dynamics and post-incident convergent behavior, generating convergent crowd pins for a crisis training exercise.
 
 Scenario type: ${scenario_type}
@@ -2060,6 +2080,7 @@ ${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
 ${entryBlock}
 ${incidentBlock}
 ${researchBlock}
+${teamsBlock}
 
 CONVERGENT CROWDS are people who arrive FROM OUTSIDE the incident after word spreads. They are NOT evacuees. They move TOWARD the incident scene. Types include:
 - onlooker: Curious bystanders gathering near the perimeter to watch. They obstruct access and crowd exits.
@@ -2068,6 +2089,13 @@ CONVERGENT CROWDS are people who arrive FROM OUTSIDE the incident after word spr
 - helper: Self-appointed volunteers who may cause harm by interfering with trained responders.
 
 Generate 4-8 convergent crowd groups that arrive at different entry points at staggered times.
+For EACH crowd group, also generate a paired ALERT INJECT that fires at the same time the crowd appears. The alert inject notifies the relevant team that a crowd is building up.
+
+Target team mapping by crowd type:
+- onlooker -> police/security team (perimeter concern)
+- media -> media/communications team
+- family -> evacuation or triage team
+- helper -> whichever team is most affected
 
 Return ONLY valid JSON:
 {
@@ -2091,6 +2119,18 @@ Return ONLY valid JSON:
       "destination_label": "string (e.g. 'toward incident perimeter')",
       "movement_speed_mpm": 72
     }
+  ],
+  "alert_injects": [
+    {
+      "trigger_time_minutes": number (SAME as the crowd's appears_at_minutes),
+      "type": "intel brief",
+      "title": "short (5-8 words) alert headline (e.g. 'News Crew Arriving at North Entrance')",
+      "content": "1-2 sentence in-world description of what's happening — describe the crowd arriving and the potential impact on operations",
+      "severity": "low|medium",
+      "inject_scope": "team_specific",
+      "target_teams": ["team name"],
+      "requires_response": true
+    }
   ]
 }
 
@@ -2101,18 +2141,23 @@ RULES:
 - movement_speed_mpm: 72 for walking crowds, 40 for hesitant/family groups
 - At least 1 onlooker group, 1 media group, 1 family group
 - headcount: onlookers 15-50, media 3-10, family 5-20, helpers 5-15
-- Vary obstruction_risk: media and family tend to be higher risk`;
+- Vary obstruction_risk: media and family tend to be higher risk
+- Each convergent_crowd entry MUST have a matching alert_inject with the SAME trigger_time_minutes as the crowd's appears_at_minutes`;
 
   const userPrompt = `Generate convergent crowd pins for "${narrative?.title || scenario_type}" at ${venue}. These are people arriving from outside after the incident.`;
 
   try {
     const parsed = await callOpenAi<{
       convergent_crowds?: WarroomScenarioPayload['casualties'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 2500);
-    return parsed.convergent_crowds?.length ? parsed.convergent_crowds : undefined;
+      alert_injects?: WarroomScenarioPayload['time_injects'];
+    }>(systemPrompt, userPrompt, openAiApiKey, 4000);
+    return {
+      crowds: parsed.convergent_crowds?.length ? parsed.convergent_crowds : undefined,
+      alertInjects: parsed.alert_injects?.length ? parsed.alert_injects : undefined,
+    };
   } catch (err) {
     logger.warn({ err }, 'Convergent crowd generation failed; continuing without');
-    return undefined;
+    return {};
   }
 }
 
@@ -2288,6 +2333,7 @@ function iconForEquipment(eqType: string): string {
 // Uses real building polygon from OSM + AI features → server-side SVG render
 // ---------------------------------------------------------------------------
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function generateFloorPlans(
   input: WarroomGenerateInput,
   openAiApiKey: string,
@@ -3159,52 +3205,6 @@ RULES:
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-/** Route record extracted from environmental seeds. */
-interface SeedRoute {
-  label?: string;
-  aliases?: string[];
-  problem?: string | null;
-  managed?: boolean;
-  travel_time_minutes?: number;
-  geometry?: [number, number][];
-  capacity_per_min?: number;
-}
-
-/**
- * Best-effort match of an AI-generated route label to a real OSM road geometry.
- * Matches by substring overlap between route label/aliases and OSM road name.
- */
-function matchRouteToOsmGeometry(
-  route: SeedRoute,
-  osmRoutes: OsmRouteGeometry[],
-): OsmRouteGeometry | null {
-  if (!osmRoutes.length) return null;
-  const routeText = [route.label ?? '', ...(route.aliases ?? [])].join(' ').toLowerCase();
-  if (!routeText.trim()) return null;
-
-  let bestMatch: OsmRouteGeometry | null = null;
-  let bestScore = 0;
-
-  for (const osm of osmRoutes) {
-    const osmName = osm.name.toLowerCase();
-    const words = routeText.split(/[\s,/]+/).filter((w) => w.length > 2);
-    let score = 0;
-    for (const word of words) {
-      if (osmName.includes(word)) score++;
-    }
-    if (osmName.includes(routeText) || routeText.includes(osmName)) {
-      score += 5;
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      bestMatch = osm;
-    }
-  }
-
-  return bestScore > 0 ? bestMatch : osmRoutes[0];
-}
-
-// ---------------------------------------------------------------------------
 // Env inject sub-generators removed — replaced by AI runtime evaluation
 // ---------------------------------------------------------------------------
 /**
@@ -3337,28 +3337,7 @@ export async function warroomGenerateScenario(
     narrative,
   );
 
-  const environmental_seeds = await generateEnvironmentalSeeds(
-    input,
-    teamNames,
-    openAiApiKey,
-    onProgress,
-    narrative,
-    locations,
-    counterDefsMap,
-  );
-
-  // Attach OSM route geometries to seed routes by matching labels
-  if (environmental_seeds?.length && input.osmRouteGeometries?.length) {
-    for (const seed of environmental_seeds) {
-      const sd = seed.seed_data as Record<string, unknown>;
-      const routes = Array.isArray(sd.routes) ? (sd.routes as SeedRoute[]) : [];
-      for (const route of routes) {
-        if (route.geometry?.length) continue;
-        const matched = matchRouteToOsmGeometry(route, input.osmRouteGeometries);
-        if (matched) route.geometry = matched.coordinates;
-      }
-    }
-  }
+  const environmental_seeds = undefined;
 
   // Attach counter definitions to teams (AI-generated or template fallback)
   const effectiveDefsMap = counterDefsMap ?? loadTemplateCounterDefs(input.scenario_type);
@@ -3375,7 +3354,7 @@ export async function warroomGenerateScenario(
     }
   }
 
-  const [phase4c, scenarioHazards, floorPlansResult] = await Promise.all([
+  const [phase4c, scenarioHazards] = await Promise.all([
     generateLayoutAndSiteKnowledge(
       input,
       teamNames,
@@ -3386,15 +3365,17 @@ export async function warroomGenerateScenario(
       environmental_seeds,
     ),
     generateScenarioHazards(input, openAiApiKey, onProgress, narrative, locations, teamNames),
-    generateFloorPlans(input, openAiApiKey, onProgress, narrative),
   ]);
+  const floorPlansResult = undefined;
 
   // Casualty + crowd generation (casualties depend on hazard data for positioning)
-  const [casualtyPins, crowdPins, convergentPins] = await Promise.all([
+  const [casualtyPins, crowdPins, convergentResult] = await Promise.all([
     generateCasualties(input, openAiApiKey, onProgress, narrative, locations, scenarioHazards),
     generateCrowdPins(input, openAiApiKey, onProgress, narrative, locations),
-    generateConvergentCrowds(input, openAiApiKey, onProgress, narrative, locations),
+    generateConvergentCrowds(input, openAiApiKey, onProgress, narrative, locations, teamNames),
   ]);
+  const convergentPins = convergentResult?.crowds;
+  const convergentAlertInjects = convergentResult?.alertInjects;
   const allCasualtyPins = [
     ...(casualtyPins ?? []),
     ...(crowdPins ?? []),
@@ -3484,11 +3465,17 @@ export async function warroomGenerateScenario(
   const allConditionInjects = perTeamChaosResults.flat();
   const condition_driven_injects = allConditionInjects.length > 0 ? allConditionInjects : undefined;
 
+  const finalTimeInjects = convergentAlertInjects?.length
+    ? [...time_injects, ...convergentAlertInjects].sort(
+        (a, b) => (a.trigger_time_minutes ?? 0) - (b.trigger_time_minutes ?? 0),
+      )
+    : time_injects;
+
   return {
     scenario: scenarioWithType,
     teams: phase1.teams,
     objectives: phase1.objectives,
-    time_injects,
+    time_injects: finalTimeInjects,
     condition_driven_injects,
     locations,
     environmental_seeds,

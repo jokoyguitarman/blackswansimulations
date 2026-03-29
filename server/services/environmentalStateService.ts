@@ -4,11 +4,9 @@ import { getWebSocketService } from './websocketService.js';
 import type { CounterDefinition } from '../counterDefinitions.js';
 
 /**
- * Environmental State Service — Step 2
- * Loads a pre-authored environmental seed (one of multiple variants per scenario) from the DB
- * at session start. Writes routes/areas into session.current_state.environmental_state and
- * optional team state (evacuation_state, triage_state, media_state) at top level of current_state.
- * No generation from scratch; all content comes from scenario_environmental_seeds.
+ * Environmental State Service
+ * Initializes team state containers and counter_definitions at session start.
+ * Seeds are no longer generated; counters are derived live from scenario_casualties/hazards.
  */
 
 /** Facility (hospital/police) in environmental seed areas; constrains decisions when at_capacity. */
@@ -150,9 +148,9 @@ const DEFAULT_FIRE_STATE: Record<string, unknown> = {
 };
 
 /**
- * Load environmental seed variants for the session's scenario, pick one (at random),
- * merge into current_state.environmental_state, persist and broadcast.
- * No-op if the scenario has no seeds.
+ * Initialize team state containers and counter_definitions at session start.
+ * Seeds are no longer generated or loaded; all counters are computed live from
+ * scenario_casualties / scenario_hazards via liveCounterService.
  */
 export async function loadAndApplyEnvironmentalState(sessionId: string): Promise<void> {
   try {
@@ -173,21 +171,8 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
       return;
     }
 
-    // Fetch all variants for this scenario; pick one at random (no ORDER BY RANDOM() in client)
-    const { data: allSeeds } = await supabaseAdmin
-      .from('scenario_environmental_seeds')
-      .select('id, scenario_id, variant_label, seed_data')
-      .eq('scenario_id', scenarioId);
-
-    let chosen: EnvironmentalSeedRow | null = null;
-    let seed: Record<string, unknown> = {};
-    if (allSeeds?.length) {
-      chosen = allSeeds[Math.floor(Math.random() * allSeeds.length)] as EnvironmentalSeedRow;
-      seed = (chosen.seed_data ?? {}) as Record<string, unknown>;
-    }
     const currentState = (session.current_state as Record<string, unknown>) || {};
 
-    // Fetch scenario teams (including counter_definitions) to write state for teams that exist
     const { data: scenarioTeams } = await supabaseAdmin
       .from('scenario_teams')
       .select('team_name, counter_definitions')
@@ -199,16 +184,8 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
     }
     const teamRows = (scenarioTeams ?? []) as ScenarioTeamRow[];
 
-    const nextState: Record<string, unknown> = {
-      ...currentState,
-      environmental_state: {
-        routes: (seed.routes as unknown[]) ?? [],
-        areas: (seed.areas as EnvironmentalAreaSeed[]) ?? [],
-      },
-      ...(chosen ? { environmental_variant: chosen.variant_label } : {}),
-    };
+    const nextState: Record<string, unknown> = { ...currentState };
 
-    // Add team state only for teams in the scenario (backward compat: if no teams, use evac/triage/media)
     const teamsToInit: ScenarioTeamRow[] =
       teamRows.length > 0
         ? teamRows
@@ -223,7 +200,6 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
       const defs = teamRow.counter_definitions;
 
       if (defs && Array.isArray(defs) && defs.length > 0) {
-        // Data-driven initialization from counter definitions
         const teamState: Record<string, unknown> = {};
         for (const def of defs) {
           const iv = def.initial_value;
@@ -236,61 +212,28 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
                   : ''
               : iv;
         }
-        // Overlay with seed values (seed variant can override initial_value per key)
-        const seedForTeam = seed[stateKey] as Record<string, unknown> | undefined;
-        if (seedForTeam && typeof seedForTeam === 'object') {
-          for (const [k, v] of Object.entries(seedForTeam)) {
-            if (k in teamState && (v == null || typeof v !== 'object')) {
-              teamState[k] = v;
-            }
-          }
-        }
         nextState[stateKey] = teamState;
       } else {
-        // Legacy hardcoded defaults (backward compatibility)
         if (stateKey === 'evacuation_state') {
-          nextState.evacuation_state = {
-            ...DEFAULT_EVACUATION_STATE,
-            ...(seed.evacuation_state as EvacuationStateSeed),
-          };
+          nextState.evacuation_state = { ...DEFAULT_EVACUATION_STATE };
         } else if (stateKey === 'triage_state') {
-          nextState.triage_state = {
-            ...DEFAULT_TRIAGE_STATE,
-            ...(seed.triage_state as TriageStateSeed),
-          };
+          nextState.triage_state = { ...DEFAULT_TRIAGE_STATE };
         } else if (stateKey === 'media_state') {
-          nextState.media_state = {
-            ...DEFAULT_MEDIA_STATE,
-            ...(seed.media_state as MediaStateSeed),
-          };
+          nextState.media_state = { ...DEFAULT_MEDIA_STATE };
         } else if (stateKey === 'police_state') {
-          nextState.police_state = {
-            ...DEFAULT_POLICE_STATE,
-            ...(seed.police_state as Record<string, unknown> | undefined),
-          };
+          nextState.police_state = { ...DEFAULT_POLICE_STATE };
         } else if (stateKey === 'negotiation_state') {
-          nextState.negotiation_state = {
-            ...DEFAULT_NEGOTIATION_STATE,
-            ...(seed.negotiation_state as Record<string, unknown> | undefined),
-          };
+          nextState.negotiation_state = { ...DEFAULT_NEGOTIATION_STATE };
         } else if (stateKey === 'intelligence_state') {
-          nextState.intelligence_state = {
-            ...DEFAULT_INTELLIGENCE_STATE,
-            ...(seed.intelligence_state as Record<string, unknown> | undefined),
-          };
+          nextState.intelligence_state = { ...DEFAULT_INTELLIGENCE_STATE };
         } else if (stateKey === 'fire_state') {
-          nextState.fire_state = {
-            ...DEFAULT_FIRE_STATE,
-            ...(seed.fire_state as Record<string, unknown> | undefined),
-          };
+          nextState.fire_state = { ...DEFAULT_FIRE_STATE };
         } else {
-          const teamSeed = seed[stateKey] as Record<string, unknown> | undefined;
-          nextState[stateKey] = teamSeed && typeof teamSeed === 'object' ? { ...teamSeed } : {};
+          nextState[stateKey] = {};
         }
       }
     }
 
-    // Store counter_definitions lookup on the session for the game engine
     const counterDefsMap: Record<string, CounterDefinition[]> = {};
     for (const teamRow of teamsToInit) {
       if (teamRow.counter_definitions?.length) {
@@ -310,14 +253,14 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
     if (updateError) {
       logger.error(
         { sessionId, error: updateError },
-        'Failed to write environmental state to session',
+        'Failed to write initial team state to session',
       );
       return;
     }
 
     logger.info(
-      { sessionId, scenarioId, variant: chosen?.variant_label, teams: teamsToInit.length },
-      'Environmental state loaded and applied',
+      { sessionId, scenarioId, teams: teamsToInit.length },
+      'Team state initialized (no seeds)',
     );
 
     getWebSocketService().stateUpdated?.(sessionId, {

@@ -25,8 +25,6 @@ import {
   type ConditionsToCancel,
 } from './conditionEvaluatorService.js';
 import type { Server as SocketServer } from 'socket.io';
-import type { CounterDefinition } from '../counterDefinitions.js';
-
 /**
  * Shared AI cancellation gate for any inject about to be published.
  * Returns true if the inject was cancelled (caller should skip publishing).
@@ -201,29 +199,6 @@ async function runAiCancellationGate(
 /** Per-session lock: avoid processing the same session in two overlapping ticks (prevents double publish). */
 const sessionsInProgress = new Set<string>();
 
-/**
- * Sum of impact scores where the affected team matches the given key (case-insensitive).
- * Used to penalize evacuation rate, triage band, and media sentiment when other teams hurt this one.
- */
-function incomingImpactOn(
-  matrix: Record<string, Record<string, number>> | null | undefined,
-  affectedTeamKey: string,
-): number {
-  if (!matrix || typeof matrix !== 'object') return 0;
-  const keyLower = affectedTeamKey.toLowerCase();
-  let sum = 0;
-  for (const [acting, affectedMap] of Object.entries(matrix)) {
-    if (typeof affectedMap !== 'object' || affectedMap === null) continue;
-    if (acting.toLowerCase() === keyLower) continue; // exclude self
-    for (const [affected, score] of Object.entries(affectedMap)) {
-      if (affected.toLowerCase() === keyLower && typeof score === 'number') {
-        sum += score;
-      }
-    }
-  }
-  return sum;
-}
-
 export class InjectSchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
@@ -369,203 +344,14 @@ export class InjectSchedulerService {
       'Processing session for inject triggers',
     );
 
-    // Phase 6 (optional): time-based state updates — set surge_active at T+10, supply_level at T+15 if no supply decision
-    // Merge inject_state_effects so counters see bomb-related state changes
+    // Merge inject_state_effects so live counters see disruption-related modifiers
     const rawState = (session.current_state as Record<string, unknown>) || {};
     const injectEffects = (session.inject_state_effects as Record<string, unknown>) || {};
     const currentState = mergeStateWithInjectEffects(rawState, injectEffects);
     const nextState: Record<string, unknown> = { ...currentState };
     let stateChanged = false;
 
-    // Fetch latest impact matrix for robustness-based rate modulation (evac and triage) and incoming-impact penalties
-    let robustnessByTeam: Record<string, number> = {};
-    let impactMatrix: Record<string, Record<string, number>> = {};
-    const { data: latestMatrix } = await supabaseAdmin
-      .from('session_impact_matrix')
-      .select('robustness_by_team, matrix')
-      .eq('session_id', session.id)
-      .order('evaluated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (latestMatrix?.robustness_by_team && typeof latestMatrix.robustness_by_team === 'object') {
-      robustnessByTeam = latestMatrix.robustness_by_team as Record<string, number>;
-    }
-    if (latestMatrix?.matrix && typeof latestMatrix.matrix === 'object') {
-      impactMatrix = latestMatrix.matrix as Record<string, Record<string, number>>;
-    }
-
-    // Route-effect pressure: recent decisions with slow/congested route apply penalty to evac rate and triage band
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const { data: recentDecisionsWithRoute } = await supabaseAdmin
-      .from('decisions')
-      .select('id, environmental_consistency')
-      .eq('session_id', session.id)
-      .eq('status', 'executed')
-      .gte('executed_at', fiveMinutesAgo);
-    const hasSuboptimalRoute = (recentDecisionsWithRoute ?? []).some((d) => {
-      const ec = (d as { environmental_consistency?: { route_effect?: string } })
-        .environmental_consistency;
-      const re = ec?.route_effect;
-      return re === 'slow' || re === 'congested';
-    });
-
-    const triageState = (nextState.triage_state as Record<string, unknown>) || {};
-    if (elapsedMinutes >= 10 && triageState.surge_active !== true) {
-      (nextState.triage_state as Record<string, unknown>) = { ...triageState, surge_active: true };
-      stateChanged = true;
-    }
-    const triageAfterSurge = (nextState.triage_state as Record<string, unknown>) || {};
-    if (
-      elapsedMinutes >= 15 &&
-      triageAfterSurge.supply_request_made !== true &&
-      triageAfterSurge.supply_level !== 'critical'
-    ) {
-      (nextState.triage_state as Record<string, unknown>) = {
-        ...triageAfterSurge,
-        supply_level: 'low',
-      };
-      stateChanged = true;
-    }
-    // --- Generic counter engine (data-driven from counter_definitions) ---
-    const counterDefsMap = (nextState._counter_definitions ?? {}) as Record<
-      string,
-      CounterDefinition[]
-    >;
-    const hasCounterDefs = Object.keys(counterDefsMap).length > 0;
-
-    const nowIso = new Date().toISOString();
-    const counterTicks = (nextState._counter_ticks as Record<string, string>) ?? {};
-
-    if (hasCounterDefs) {
-      for (const [stateKey, defs] of Object.entries(counterDefsMap)) {
-        const teamState = (nextState[stateKey] as Record<string, unknown>) ?? {};
-        const teamNameRaw = stateKey.replace(/_state$/, '');
-
-        // Resolve team robustness (try Title-case and lowercase)
-        const teamRobustness =
-          robustnessByTeam[teamNameRaw.charAt(0).toUpperCase() + teamNameRaw.slice(1)] ??
-          robustnessByTeam[teamNameRaw] ??
-          null;
-
-        // Delta-based accumulation: compute minutes since last tick for this team
-        const lastTickIso = counterTicks[stateKey];
-        const lastTickMs = lastTickIso ? new Date(lastTickIso).getTime() : 0;
-        const nowMs = Date.now();
-        const tickDeltaMinutes =
-          lastTickMs > 0 ? Math.max(0, (nowMs - lastTickMs) / 60000) : elapsedMinutes;
-        counterTicks[stateKey] = nowIso;
-
-        // Process time_rate counters (delta-based accumulation)
-        for (const def of defs) {
-          if (def.behavior !== 'time_rate' || def.type !== 'number') continue;
-          const cfg = def.config ?? {};
-
-          if (cfg.requires_flag && teamState[cfg.requires_flag] !== true) continue;
-
-          let rate = cfg.base_rate_per_min ?? 10;
-
-          // Robustness modifier
-          if (
-            cfg.robustness_affects &&
-            teamRobustness !== null &&
-            typeof teamRobustness === 'number'
-          ) {
-            const lowMult = cfg.robustness_low_mult ?? 0.25;
-            const highMult = cfg.robustness_high_mult ?? 1.25;
-            const mod = teamRobustness <= 4 ? lowMult : teamRobustness >= 8 ? highMult : 1;
-            rate = rate * mod;
-          }
-
-          // Congestion penalty
-          if (cfg.congestion_halves) {
-            const exitsCongested = teamState.exits_congested as string[] | undefined;
-            const managedEffects =
-              (nextState.managed_effects as Record<string, { managed?: boolean }> | undefined) ??
-              {};
-            const hasUnmanagedCongestion =
-              Array.isArray(exitsCongested) &&
-              exitsCongested.some((e) => {
-                if (typeof e !== 'string' || !e.trim()) return false;
-                const key = `${teamNameRaw}.exits_congested:${e.trim()}`;
-                return managedEffects[key]?.managed !== true;
-              });
-            if (hasUnmanagedCongestion) rate = Math.floor(rate / 2);
-          }
-
-          // Cross-team impact penalty
-          if (cfg.impact_sensitive) {
-            const incoming = incomingImpactOn(impactMatrix, teamNameRaw);
-            if (incoming < 0) {
-              rate = rate * Math.max(0.5, 1 + incoming * 0.15);
-            }
-          }
-
-          // Route pressure
-          if (hasSuboptimalRoute) {
-            rate = rate * 0.85;
-          }
-
-          // Inject-driven rate modifier (e.g. equipment failure → 0.5, extra resources → 1.3)
-          if (cfg.rate_modifier_key) {
-            const modifier = Number(teamState[cfg.rate_modifier_key]);
-            if (modifier > 0) rate = rate * modifier;
-          }
-
-          // Marshal/steward boost (e.g. marshals_deployed → 1.15x)
-          if (cfg.marshal_boost_key && teamState[cfg.marshal_boost_key] === true) {
-            rate = rate * (cfg.marshal_boost_mult ?? 1.15);
-          }
-
-          // Delta-based accumulation: add rate * tickDelta to current value
-          const cap = cfg.cap_key ? Math.max(0, Number(teamState[cfg.cap_key]) || 0) : Infinity;
-          const curVal = Math.max(0, Number(teamState[def.key]) || 0);
-          const delta = Math.max(0, Math.floor(rate * tickDeltaMinutes));
-          const newVal = Math.min(cap === Infinity ? Infinity : cap, curVal + delta);
-          if (newVal > curVal) {
-            teamState[def.key] = newVal;
-            stateChanged = true;
-          }
-        }
-
-        // Process derived counters (with robustness-driven split fractions)
-        for (const def of defs) {
-          if (def.behavior !== 'derived' || def.type !== 'number') continue;
-          const cfg = def.config ?? {};
-
-          if (cfg.source_pool_key && cfg.split_fractions) {
-            const poolVal = Math.max(0, Number(teamState[cfg.source_pool_key]) || 0);
-            const pool = cfg.pool_fraction ? Math.floor(poolVal * cfg.pool_fraction) : poolVal;
-
-            const processedKey = cfg.rate_key;
-            const processed = processedKey
-              ? Math.min(pool, Math.max(0, Number(teamState[processedKey]) || 0))
-              : pool;
-
-            // Select split fractions based on team robustness band
-            let activeSplits = cfg.split_fractions;
-            if (teamRobustness !== null && typeof teamRobustness === 'number') {
-              if (teamRobustness <= 4 && cfg.split_fractions_low) {
-                activeSplits = cfg.split_fractions_low;
-              } else if (teamRobustness >= 8 && cfg.split_fractions_high) {
-                activeSplits = cfg.split_fractions_high;
-              }
-            }
-
-            for (const [fracKey, frac] of Object.entries(activeSplits)) {
-              const derivedVal = Math.floor(processed * (frac as number));
-              teamState[fracKey] = derivedVal;
-            }
-            teamState[def.key] = Math.max(0, pool - processed);
-            stateChanged = true;
-          }
-        }
-
-        nextState[stateKey] = teamState;
-      }
-      nextState._counter_ticks = counterTicks;
-    }
-
-    // Live pin-driven counters: replace synthetic accumulators with real counts
+    // Live pin-driven counters: all counters derived from scenario_casualties / scenario_hazards
     try {
       const liveCounters = await computeLiveCounters(session.id, session.scenario_id);
 

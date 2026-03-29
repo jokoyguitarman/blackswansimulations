@@ -274,21 +274,40 @@ export async function generateAndPersistWarroomScenario(
       'Fetching nearby facilities, open spaces, building outlines, and route geometries...',
     );
     try {
-      const [vicinity, spaces, buildings, routeGeoms] = await Promise.all([
-        fetchOsmVicinityByCoordinates(geocodeResult.lat, geocodeResult.lng, 10000),
-        fetchOsmOpenSpaces(geocodeResult.lat, geocodeResult.lng, 1500).catch((err) => {
-          logger.warn({ err }, 'OSM open spaces fetch failed; continuing without');
-          return [] as import('./osmVicinityService.js').OsmOpenSpace[];
-        }),
-        fetchVenueBuilding(geocodeResult.lat, geocodeResult.lng, 300).catch((err) => {
+      const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+      const vicinity = await fetchOsmVicinityByCoordinates(
+        geocodeResult.lat,
+        geocodeResult.lng,
+        10000,
+      );
+      await delay(1500);
+
+      const buildings = await fetchVenueBuilding(geocodeResult.lat, geocodeResult.lng, 300).catch(
+        (err) => {
           logger.warn({ err }, 'OSM venue building fetch failed; continuing without');
           return [] as import('./osmVicinityService.js').OsmBuilding[];
-        }),
-        fetchRouteGeometries(geocodeResult.lat, geocodeResult.lng, 2000).catch((err) => {
-          logger.warn({ err }, 'OSM route geometries fetch failed; continuing without');
-          return [] as import('./osmVicinityService.js').OsmRouteGeometry[];
-        }),
-      ]);
+        },
+      );
+      await delay(1500);
+
+      const spaces = await fetchOsmOpenSpaces(geocodeResult.lat, geocodeResult.lng, 1500).catch(
+        (err) => {
+          logger.warn({ err }, 'OSM open spaces fetch failed; continuing without');
+          return [] as import('./osmVicinityService.js').OsmOpenSpace[];
+        },
+      );
+      await delay(1500);
+
+      const routeGeoms = await fetchRouteGeometries(
+        geocodeResult.lat,
+        geocodeResult.lng,
+        2000,
+      ).catch((err) => {
+        logger.warn({ err }, 'OSM route geometries fetch failed; continuing without');
+        return [] as import('./osmVicinityService.js').OsmRouteGeometry[];
+      });
+
       osmVicinity = vicinity;
       osmOpenSpaces = spaces.length > 0 ? spaces : undefined;
       osmBuildings = buildings.length > 0 ? buildings : undefined;

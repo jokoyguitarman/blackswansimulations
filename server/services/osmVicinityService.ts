@@ -522,10 +522,28 @@ out body geom center bb;
       distance_from_center_m: dist,
     };
 
-    // Extract actual building footprint polygon from `geom` output
+    // Extract building footprint polygon — ways have top-level geometry,
+    // relations have members with role/geometry arrays.
     const geometry = el.geometry as Array<{ lat: number; lon: number }> | undefined;
     if (geometry?.length && geometry.length >= 3) {
       building.footprint_polygon = geometry.map((pt) => [pt.lat, pt.lon] as [number, number]);
+    } else {
+      const members = (el as Record<string, unknown>).members as
+        | Array<{ role?: string; type?: string; geometry?: Array<{ lat: number; lon: number }> }>
+        | undefined;
+      if (members?.length) {
+        const outerPoints: [number, number][] = [];
+        for (const m of members) {
+          if (m.role === 'outer' && m.geometry?.length) {
+            for (const pt of m.geometry) {
+              outerPoints.push([pt.lat, pt.lon]);
+            }
+          }
+        }
+        if (outerPoints.length >= 3) {
+          building.footprint_polygon = outerPoints;
+        }
+      }
     }
 
     if (tags['building:levels'])

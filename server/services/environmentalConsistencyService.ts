@@ -515,6 +515,61 @@ async function buildHazardSafetyContext(sessionId: string): Promise<string> {
   return lines.join('\n') + '\n';
 }
 
+interface FacilityChallenge {
+  challenge_type: string;
+  description: string;
+  severity: string;
+  affected_route?: string;
+  alternative?: string;
+}
+
+async function buildFacilityChallengesContext(sessionId: string): Promise<string> {
+  const { data: session } = await supabaseAdmin
+    .from('sessions')
+    .select('scenario_id')
+    .eq('id', sessionId)
+    .single();
+  if (!session) return '';
+
+  const scenarioId = (session as { scenario_id: string }).scenario_id;
+  const { data: locations } = await supabaseAdmin
+    .from('scenario_locations')
+    .select('label, location_type, conditions')
+    .eq('scenario_id', scenarioId)
+    .eq('pin_category', 'poi');
+
+  if (!locations || locations.length === 0) return '';
+
+  const lines: string[] = [
+    'FACILITY ENVIRONMENTAL CHALLENGES (hidden ground truth — evaluate player decisions against these):',
+  ];
+  let hasChallenges = false;
+
+  for (const loc of locations) {
+    const conditions = (loc.conditions ?? {}) as Record<string, unknown>;
+    const challenges = conditions.environmental_challenges as FacilityChallenge[] | undefined;
+    if (!challenges || !Array.isArray(challenges) || challenges.length === 0) continue;
+
+    hasChallenges = true;
+    lines.push(`\n${loc.label} (${(loc.location_type as string).replace(/_/g, ' ')}):`);
+    for (const c of challenges) {
+      let line = `  - [${c.severity?.toUpperCase()}] ${c.challenge_type.replace(/_/g, ' ')}: ${c.description}`;
+      if (c.affected_route) line += ` (affected route: ${c.affected_route})`;
+      if (c.alternative) line += ` (alternative: ${c.alternative})`;
+      lines.push(line);
+    }
+  }
+
+  if (!hasChallenges) return '';
+
+  lines.push('');
+  lines.push(
+    "If the player's decision references a facility above and ignores or contradicts its challenge (e.g., sends ambulances via a congested route without addressing it, relies on a hospital at capacity without alternatives), set consistent: false with an in-world consequence describing the operational disruption. If the player addresses the challenge (e.g., deploys traffic marshals, chooses alternate route, requests additional capacity), that is acceptable.",
+  );
+  lines.push('');
+  return lines.join('\n') + '\n';
+}
+
 /**
  * Evaluate whether a decision meets professional response standards, sector doctrine,
  * hazard-specific requirements, operational specificity, infrastructure readiness,
@@ -527,6 +582,7 @@ async function buildHazardSafetyContext(sessionId: string): Promise<string> {
  *  - Casualty treatment adequacy (matching patient needs)
  *  - Personnel safety (PPE near hazards)
  *  - Safety guardrails (forbidden actions)
+ *  - Facility environmental challenges (traffic, capacity, outages)
  *
  * Returns consistent: true when the decision meets standards.
  * On AI failure/timeout, returns consistent to avoid blocking execute.
@@ -632,11 +688,13 @@ export async function evaluateDecisionAgainstEnvironment(
       }
     }
 
-    const [infrastructureBlock, casualtyBlock, hazardSafetyBlock] = await Promise.all([
-      buildInfrastructureContext(sessionId, teamName),
-      buildCasualtyContext(sessionId),
-      buildHazardSafetyContext(sessionId),
-    ]);
+    const [infrastructureBlock, casualtyBlock, hazardSafetyBlock, facilityChallengesBlock] =
+      await Promise.all([
+        buildInfrastructureContext(sessionId, teamName),
+        buildCasualtyContext(sessionId),
+        buildHazardSafetyContext(sessionId),
+        buildFacilityChallengesContext(sessionId),
+      ]);
 
     const incidentUserBlock =
       incident?.title != null || incident?.description != null
@@ -786,11 +844,11 @@ Return ONLY valid JSON:
   "feedback": "..." (only if specific is false — in-world consequence)
 }`;
 
-    const userPrompt = `${hazardStandardsBlock}${sectorStandardsLine}${teamRoleLine}${escalationLine}${infrastructureBlock}${casualtyBlock}${hazardSafetyBlock}${incidentUserBlock}DECISION:
+    const userPrompt = `${hazardStandardsBlock}${sectorStandardsLine}${teamRoleLine}${escalationLine}${infrastructureBlock}${casualtyBlock}${hazardSafetyBlock}${facilityChallengesBlock}${incidentUserBlock}DECISION:
 Title: ${decision.title}
 Description: ${decision.description}
 
-Evaluate this decision against professional response standards, operational specificity, infrastructure readiness, casualty treatment adequacy, and personnel safety. ALL "reason" and "feedback" text must be IN-WORLD CONSEQUENCES only — describe what is happening on the ground as a result of the decision. NEVER tell the player what is wrong, what they should do, or what is missing.
+Evaluate this decision against professional response standards, operational specificity, infrastructure readiness, casualty treatment adequacy, personnel safety, and facility environmental challenges. ALL "reason" and "feedback" text must be IN-WORLD CONSEQUENCES only — describe what is happening on the ground as a result of the decision. NEVER tell the player what is wrong, what they should do, or what is missing.
 
 Return JSON only.`;
 
