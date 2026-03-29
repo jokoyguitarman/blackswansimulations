@@ -207,14 +207,14 @@ export const ParticipantManagement = ({
               setModalMode('email');
               setShowAddModal(true);
             }}
-            className="military-button px-4 py-2 text-sm border-robotic-yellow text-robotic-yellow"
+            className="military-button-outline px-4 py-2 text-sm border border-robotic-yellow text-robotic-yellow"
           >
             [INVITE_BY_EMAIL]
           </button>
           <button
             onClick={handleProcessAllInvitations}
             disabled={processingInvitations}
-            className="military-button px-4 py-2 text-sm border-robotic-green text-robotic-green disabled:opacity-50"
+            className="military-button-outline px-4 py-2 text-sm border border-robotic-green text-robotic-green disabled:opacity-50"
           >
             {processingInvitations ? '[PROCESSING...]' : '[PROCESS_INVITATIONS]'}
           </button>
@@ -429,7 +429,7 @@ export const ParticipantManagement = ({
                       setSearchFilter('');
                       setModalMode('existing');
                     }}
-                    className="military-button px-6 py-3 flex-1 border-robotic-orange text-robotic-orange"
+                    className="military-button-outline px-6 py-3 flex-1 border border-robotic-orange text-robotic-orange"
                   >
                     [CANCEL]
                   </button>

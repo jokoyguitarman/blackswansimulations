@@ -107,7 +107,7 @@ export const CreateDecisionForm = ({
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="military-button px-6 py-3 flex-1 border-robotic-orange text-robotic-orange disabled:opacity-50"
+              className="military-button-outline px-6 py-3 flex-1 border border-robotic-orange text-robotic-orange disabled:opacity-50"
             >
               [CANCEL]
             </button>

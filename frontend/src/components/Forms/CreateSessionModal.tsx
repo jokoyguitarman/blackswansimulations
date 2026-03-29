@@ -107,7 +107,7 @@ export const CreateSessionModal = ({ scenarios, onClose, onSuccess }: CreateSess
             <button
               type="button"
               onClick={onClose}
-              className="military-button px-6 py-3 flex-1 border-robotic-orange text-robotic-orange"
+              className="military-button-outline px-6 py-3 flex-1 border border-robotic-orange text-robotic-orange"
             >
               [CANCEL]
             </button>

@@ -185,7 +185,7 @@ export const AssignIncidentModal = ({
             <button
               type="button"
               onClick={onClose}
-              className="military-button px-6 py-3 flex-1 border-robotic-gray-200 text-robotic-gray-50"
+              className="military-button-outline px-6 py-3 flex-1 border border-robotic-gray-200 text-robotic-gray-50"
             >
               [CANCEL]
             </button>

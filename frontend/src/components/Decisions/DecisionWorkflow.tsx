@@ -564,7 +564,7 @@ export const DecisionWorkflow = ({ sessionId, filterTeam = 'none' }: DecisionWor
                   </button>
                   <button
                     onClick={() => handleApprove(selectedDecision.id, false)}
-                    className="military-button px-6 py-3 flex-1 border-robotic-orange text-robotic-orange whitespace-nowrap"
+                    className="military-button-outline px-6 py-3 flex-1 border border-robotic-orange text-robotic-orange whitespace-nowrap"
                   >
                     [REJECT]
                   </button>

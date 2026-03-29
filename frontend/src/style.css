@@ -9,6 +9,7 @@
   font-family: 'JetBrains Mono', 'Courier New', monospace;
   line-height: 1.5;
   font-weight: 400;
+  color-scheme: dark;
 }
 
 body {
@@ -147,6 +148,24 @@ body {
     border-color: rgba(255, 184, 0, 0.2);
     color: rgba(255, 184, 0, 0.4);
     box-shadow: none;
+    cursor: not-allowed;
+  }
+
+  .military-button-outline {
+    background: transparent;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    transition: all 0.3s ease;
+  }
+
+  .military-button-outline:hover {
+    background: rgba(255, 184, 0, 0.1);
+  }
+
+  .military-button-outline:disabled {
+    opacity: 0.4;
     cursor: not-allowed;
   }
 }
@@ -338,15 +357,3 @@ button:focus-visible {
   padding: 8px 10px;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
-}
