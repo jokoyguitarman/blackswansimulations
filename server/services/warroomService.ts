@@ -297,12 +297,12 @@ export async function generateAndPersistWarroomScenario(
           return [] as import('./osmVicinityService.js').OsmOpenSpace[];
         },
       );
-      await delay(1500);
+      await delay(3000);
 
       const routeGeoms = await fetchRouteGeometries(
         geocodeResult.lat,
         geocodeResult.lng,
-        2000,
+        6000,
       ).catch((err) => {
         logger.warn({ err }, 'OSM route geometries fetch failed; continuing without');
         return [] as import('./osmVicinityService.js').OsmRouteGeometry[];

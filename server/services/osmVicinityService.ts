@@ -7,7 +7,11 @@
 import { logger } from '../lib/logger.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 
-const OVERPASS_ENDPOINT = 'https://overpass-api.de/api/interpreter';
+const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+];
 
 export interface OsmVicinity {
   center?: { lat: number; lng: number };
@@ -63,20 +67,67 @@ function getAddress(element: { tags?: Record<string, string> }): string | undefi
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
-const OVERPASS_MAX_RETRIES = 3;
-const OVERPASS_BACKOFF_MS = 2000;
+const OVERPASS_BACKOFF_MS = 3000;
+
+/**
+ * Send a query to the Overpass API, cycling through fallback endpoints
+ * on failure. Each endpoint gets one attempt; on 5xx or network error
+ * the next endpoint is tried after an exponential backoff.
+ */
+async function queryOverpass(query: string): Promise<Array<Record<string, unknown>>> {
+  let lastError: Error | null = null;
+
+  for (let i = 0; i < OVERPASS_ENDPOINTS.length; i++) {
+    const endpoint = OVERPASS_ENDPOINTS[i];
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        body: query,
+        headers: { 'Content-Type': 'text/plain' },
+        signal: AbortSignal.timeout(35_000),
+      });
+      if (res.ok) {
+        const json = (await res.json()) as { elements?: Array<Record<string, unknown>> };
+        return json.elements || [];
+      }
+      lastError = new Error(`Overpass API error: ${res.status} ${res.statusText} (${endpoint})`);
+      if (res.status >= 500 && i < OVERPASS_ENDPOINTS.length - 1) {
+        const delay = OVERPASS_BACKOFF_MS * (i + 1);
+        logger.warn(
+          { endpoint, status: res.status, nextEndpoint: OVERPASS_ENDPOINTS[i + 1], delayMs: delay },
+          'Overpass endpoint failed, trying next',
+        );
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw lastError;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (i < OVERPASS_ENDPOINTS.length - 1) {
+        const delay = OVERPASS_BACKOFF_MS * (i + 1);
+        logger.warn(
+          { endpoint, delayMs: delay, err: lastError.message },
+          'Overpass endpoint failed, trying next',
+        );
+        await new Promise((r) => setTimeout(r, delay));
+      } else {
+        throw lastError;
+      }
+    }
+  }
+  throw lastError ?? new Error('Overpass API failed after all endpoints');
+}
 
 /**
  * Build and run Overpass query for a radius around (lat, lng).
  * Returns raw elements (nodes, ways) for hospitals, police, highways, surveillance.
- * Retries up to 3 times with exponential backoff on 5xx errors.
  */
 async function runOverpassQuery(
   lat: number,
   lng: number,
   radiusMeters: number,
 ): Promise<{ elements: Array<Record<string, unknown>> }> {
-  const radius = Math.min(radiusMeters, 10000); // cap 10km for API sanity
+  const radius = Math.min(radiusMeters, 10000);
   const query = `
 [out:json][timeout:30];
 (
@@ -94,44 +145,8 @@ async function runOverpassQuery(
 );
 out body center;
 `;
-  let lastError: Error | null = null;
-  for (let attempt = 0; attempt < OVERPASS_MAX_RETRIES; attempt++) {
-    try {
-      const res = await fetch(OVERPASS_ENDPOINT, {
-        method: 'POST',
-        body: query,
-        headers: { 'Content-Type': 'text/plain' },
-      });
-      if (res.ok) {
-        const json = (await res.json()) as { elements?: Array<Record<string, unknown>> };
-        return { elements: json.elements || [] };
-      }
-      lastError = new Error(`Overpass API error: ${res.status} ${res.statusText}`);
-      if (res.status >= 500 && attempt < OVERPASS_MAX_RETRIES - 1) {
-        const delay = OVERPASS_BACKOFF_MS * Math.pow(2, attempt);
-        logger.warn(
-          { attempt: attempt + 1, maxRetries: OVERPASS_MAX_RETRIES, delayMs: delay },
-          'Overpass API 5xx, retrying',
-        );
-        await new Promise((r) => setTimeout(r, delay));
-        continue;
-      }
-      throw lastError;
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      if (attempt < OVERPASS_MAX_RETRIES - 1) {
-        const delay = OVERPASS_BACKOFF_MS * Math.pow(2, attempt);
-        logger.warn(
-          { attempt: attempt + 1, maxRetries: OVERPASS_MAX_RETRIES, delayMs: delay, err },
-          'Overpass API request failed, retrying',
-        );
-        await new Promise((r) => setTimeout(r, delay));
-      } else {
-        throw lastError;
-      }
-    }
-  }
-  throw lastError ?? new Error('Overpass API failed after retries');
+  const elements = await queryOverpass(query);
+  return { elements };
 }
 
 /**
@@ -244,41 +259,7 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
 // ---------------------------------------------------------------------------
 
 async function runRawOverpassQuery(query: string): Promise<Array<Record<string, unknown>>> {
-  let lastError: Error | null = null;
-  for (let attempt = 0; attempt < OVERPASS_MAX_RETRIES; attempt++) {
-    try {
-      const res = await fetch(OVERPASS_ENDPOINT, {
-        method: 'POST',
-        body: query,
-        headers: { 'Content-Type': 'text/plain' },
-      });
-      if (res.ok) {
-        const json = (await res.json()) as { elements?: Array<Record<string, unknown>> };
-        return json.elements || [];
-      }
-      lastError = new Error(`Overpass API error: ${res.status} ${res.statusText}`);
-      if (res.status >= 500 && attempt < OVERPASS_MAX_RETRIES - 1) {
-        const delay = OVERPASS_BACKOFF_MS * Math.pow(2, attempt);
-        logger.warn({ attempt: attempt + 1, delayMs: delay }, 'Overpass 5xx, retrying');
-        await new Promise((r) => setTimeout(r, delay));
-        continue;
-      }
-      throw lastError;
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      if (attempt < OVERPASS_MAX_RETRIES - 1) {
-        const delay = OVERPASS_BACKOFF_MS * Math.pow(2, attempt);
-        logger.warn(
-          { attempt: attempt + 1, delayMs: delay, err },
-          'Overpass request failed, retrying',
-        );
-        await new Promise((r) => setTimeout(r, delay));
-      } else {
-        throw lastError;
-      }
-    }
-  }
-  throw lastError ?? new Error('Overpass API failed after retries');
+  return queryOverpass(query);
 }
 
 // ---------------------------------------------------------------------------
@@ -436,11 +417,11 @@ export interface OsmRouteGeometry {
 export async function fetchRouteGeometries(
   lat: number,
   lng: number,
-  radiusMeters: number = 2000,
+  radiusMeters: number = 6000,
 ): Promise<OsmRouteGeometry[]> {
-  const radius = Math.min(radiusMeters, 5000);
+  const radius = Math.min(radiusMeters, 8000);
   const query = `
-[out:json][timeout:25];
+[out:json][timeout:60];
 (
   way["highway"~"^(primary|secondary|tertiary|trunk|motorway|residential|unclassified)"](around:${radius},${lat},${lng});
 );
@@ -477,7 +458,7 @@ out body geom;
 
   results.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
 
-  const MAX_ROUTES = 20;
+  const MAX_ROUTES = 40;
   logger.info(
     { total: results.length, returned: Math.min(results.length, MAX_ROUTES), radius },
     'OSM route geometries fetched',
