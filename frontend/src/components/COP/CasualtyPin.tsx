@@ -91,34 +91,21 @@ export const CasualtyPin = ({ casualty, onClick }: CasualtyPinProps) => {
   const icon = createCasualtyIcon(casualty);
   const position: LatLngExpression = [casualty.location_lat, casualty.location_lng];
   const conds = casualty.conditions as Record<string, unknown>;
-  const visibleDesc = (conds.visible_description as string) ?? '';
   const playerTag =
     (conds.player_triage_color as string | undefined) ??
     ((casualty as unknown as Record<string, unknown>).player_triage_color as string | undefined);
   const displayColor = playerTag ?? (conds.triage_color as string) ?? '';
-  const mobility = (conds.mobility as string) ?? '';
-  const accessibility = (conds.accessibility as string) ?? '';
-  const consciousness = (conds.consciousness as string) ?? '';
 
   return (
     <Marker position={position} icon={icon} eventHandlers={{ click: () => onClick(casualty) }}>
       <Tooltip className="pin-tooltip">
         <div className="text-xs">
           <div className="font-semibold">
-            Patient —{' '}
-            {playerTag ? `${displayColor.toUpperCase()} (tagged)` : 'UNASSESSED — click to triage'}
+            {playerTag ? `${displayColor.toUpperCase()}` : 'UNASSESSED'}
           </div>
           <div className="capitalize text-gray-500">
             {STATUS_LABELS[casualty.status] ?? casualty.status}
           </div>
-          {mobility && <div className="capitalize">Mobility: {mobility.replace(/_/g, ' ')}</div>}
-          {accessibility && accessibility !== 'open' && (
-            <div className="capitalize text-orange-400">
-              Access: {accessibility.replace(/_/g, ' ')}
-            </div>
-          )}
-          {consciousness && <div className="capitalize">Consciousness: {consciousness}</div>}
-          {visibleDesc && <div className="mt-1 text-gray-400 leading-tight">{visibleDesc}</div>}
         </div>
       </Tooltip>
     </Marker>

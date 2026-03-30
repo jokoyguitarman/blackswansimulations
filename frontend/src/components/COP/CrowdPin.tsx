@@ -88,13 +88,7 @@ export const CrowdPin = ({ crowd, onClick, isDraggable = false, onDragEnd }: Cro
   const icon = createCrowdIcon(crowd, isDraggable);
   const position: LatLngExpression = [crowd.location_lat, crowd.location_lng];
   const conds = crowd.conditions as Record<string, unknown>;
-  const behavior = (conds.behavior as string) ?? '';
-  const movement = (conds.movement_direction as string) ?? '';
-  const visibleDesc = (conds.visible_description as string) ?? '';
-  const mixedWounded = (conds.mixed_wounded as Array<Record<string, unknown>>) ?? [];
-  const bottleneck = conds.bottleneck as boolean;
   const crowdOrigin = (conds.crowd_origin as string) ?? '';
-  const obstructionRisk = (conds.obstruction_risk as string) ?? '';
 
   return (
     <Marker
@@ -113,44 +107,12 @@ export const CrowdPin = ({ crowd, onClick, isDraggable = false, onDragEnd }: Cro
     >
       <Tooltip className="pin-tooltip">
         <div className="text-xs">
-          {crowd.casualty_type === 'convergent_crowd' ? (
-            <>
-              <div className="font-semibold capitalize">
-                {crowdOrigin || 'Convergent'} — {crowd.headcount} people
-              </div>
-              <div className="capitalize text-gray-500">{crowd.status}</div>
-              {behavior && <div className="capitalize">Behavior: {behavior}</div>}
-              {obstructionRisk && obstructionRisk !== 'low' && (
-                <div
-                  className={`font-semibold ${obstructionRisk === 'high' ? 'text-red-400' : 'text-yellow-400'}`}
-                >
-                  Obstruction risk: {obstructionRisk}
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="font-semibold">Crowd — {crowd.headcount} people</div>
-              <div className="capitalize text-gray-500">{crowd.status}</div>
-              {behavior && <div className="capitalize">Behavior: {behavior}</div>}
-              {movement && <div>Movement: {movement}</div>}
-              {bottleneck && <div className="text-red-400 font-semibold">Bottleneck!</div>}
-              {mixedWounded.length > 0 && (
-                <div className="text-orange-400">
-                  Walking wounded:{' '}
-                  {mixedWounded.reduce((sum, w) => sum + ((w.count as number) ?? 0), 0)}
-                </div>
-              )}
-            </>
-          )}
-          {visibleDesc && <div className="mt-1 text-gray-400 leading-tight">{visibleDesc}</div>}
-          {!isDraggable && crowd.status === 'identified' && (
-            <div className="mt-1 text-gray-500 italic">
-              {crowd.casualty_type === 'convergent_crowd'
-                ? 'Approaching the incident area'
-                : 'Place marshals nearby to enable movement'}
-            </div>
-          )}
+          <div className="font-semibold">
+            {crowd.casualty_type === 'convergent_crowd'
+              ? `${crowdOrigin || 'Convergent'} — ${crowd.headcount}`
+              : `Crowd — ${crowd.headcount}`}
+          </div>
+          <div className="capitalize text-gray-500">{crowd.status}</div>
         </div>
       </Tooltip>
     </Marker>

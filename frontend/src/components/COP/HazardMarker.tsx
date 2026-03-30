@@ -99,12 +99,6 @@ export const HazardMarker = ({ hazard, onClick }: HazardMarkerProps) => {
             {hazard.status}
             {hazard.status === 'resolved' ? ' — Resolved' : ''}
           </div>
-          {hazard.fire_class && <div>Fire Class: {hazard.fire_class}</div>}
-          {hazard.debris_type && <div>Debris: {hazard.debris_type}</div>}
-          {hazard.properties.size != null && <div>Size: {String(hazard.properties.size)}</div>}
-          {hazard.enriched_description && (
-            <div className="mt-1 text-gray-400 leading-tight">{hazard.enriched_description}</div>
-          )}
         </div>
       </Tooltip>
     </Marker>
