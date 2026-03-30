@@ -104,7 +104,7 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
         .eq('session_id', sessionId)
         .neq('type', 'direct')
         .order('created_at', { ascending: true });
-      channels = refetch.data;
+      channels = refetch.data ?? [];
     }
 
     res.json({ data: channels });
