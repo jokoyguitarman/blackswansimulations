@@ -13,6 +13,7 @@ import {
   haversineM as haversineMeters,
   pointInGeoJSONPolygon as pointInPolygon,
 } from './geoUtils.js';
+import { placeOutsideAllZones } from './zonePlacementService.js';
 
 const BASE_FLOW_RATE_PER_MIN = 40;
 
@@ -247,9 +248,11 @@ export async function processExitFlow(sessionId: string): Promise<void> {
         | { lat: number; lng: number; label: string }
         | undefined;
 
-      // Create materialized evacuees outside the exit
-      const outsideLat = exitCoords.lat + (Math.random() - 0.5) * 0.0003;
-      const outsideLng = exitCoords.lng + (Math.random() - 0.5) * 0.0003;
+      // Place evacuees outside all player-drawn zones (near the exit)
+      const exitRef = { lat: exitCoords.lat, lng: exitCoords.lng };
+      const evacueeCoord = await placeOutsideAllZones(sessionId, exitRef, 17);
+      const outsideLat = evacueeCoord.lat;
+      const outsideLng = evacueeCoord.lng;
 
       const evacueeConditions: Record<string, unknown> = {
         behavior: 'calm',

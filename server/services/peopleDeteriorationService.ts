@@ -16,6 +16,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from '../services/websocketService.js';
+import { placeOutsideZoneType } from './zonePlacementService.js';
 
 const TRIAGE_ESCALATION: Record<string, string> = {
   green: 'yellow',
@@ -236,13 +237,15 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
 
           if (newBehavior === 'panicking' && cas.headcount > 20) {
             const stampedeCasualties = Math.min(Math.floor(cas.headcount * 0.05), 3);
+            const crowdRef = { lat: cas.location_lat, lng: cas.location_lng };
             for (let i = 0; i < stampedeCasualties; i++) {
+              const coord = await placeOutsideZoneType(sessionId, 'hot', crowdRef, 28);
               await supabaseAdmin.from('scenario_casualties').insert({
                 scenario_id: session.scenario_id,
                 session_id: sessionId,
                 casualty_type: 'patient',
-                location_lat: cas.location_lat + (Math.random() - 0.5) * 0.0005,
-                location_lng: cas.location_lng + (Math.random() - 0.5) * 0.0005,
+                location_lat: coord.lat,
+                location_lng: coord.lng,
                 floor_level: cas.floor_level,
                 headcount: 1,
                 conditions: {

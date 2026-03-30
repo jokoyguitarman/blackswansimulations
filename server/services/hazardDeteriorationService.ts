@@ -12,6 +12,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from '../services/websocketService.js';
+import { placeInsideZoneType } from './zonePlacementService.js';
 
 export async function runHazardDeterioration(sessionId: string): Promise<void> {
   const { data: session } = await supabaseAdmin
@@ -86,12 +87,14 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
 
     // Spawn new hazards if the timeline says so
     if (timeline.spawns_new_hazards && timeline.new_hazard_description) {
+      const hazRef = { lat: hazard.location_lat as number, lng: hazard.location_lng as number };
+      const hazCoord = await placeInsideZoneType(sessionId, 'hot', hazRef, 55);
       const newHazard = {
         scenario_id: session.scenario_id,
         session_id: sessionId,
         hazard_type: hazard.hazard_type,
-        location_lat: (hazard.location_lat as number) + (Math.random() - 0.5) * 0.001,
-        location_lng: (hazard.location_lng as number) + (Math.random() - 0.5) * 0.001,
+        location_lat: hazCoord.lat,
+        location_lng: hazCoord.lng,
         floor_level: hazard.floor_level,
         properties: {
           size: 'small',
@@ -128,13 +131,15 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
       const count = Math.min(timeline.estimated_new_casualties as number, 5);
       const injuryTypes = (timeline.new_casualty_injury_types as string[]) ?? ['blast_injury'];
 
+      const casRef = { lat: hazard.location_lat as number, lng: hazard.location_lng as number };
       for (let i = 0; i < count; i++) {
+        const casCoord = await placeInsideZoneType(sessionId, 'hot', casRef, 44);
         const newCas = {
           scenario_id: session.scenario_id,
           session_id: sessionId,
           casualty_type: 'patient',
-          location_lat: (hazard.location_lat as number) + (Math.random() - 0.5) * 0.0008,
-          location_lng: (hazard.location_lng as number) + (Math.random() - 0.5) * 0.0008,
+          location_lat: casCoord.lat,
+          location_lng: casCoord.lng,
           floor_level: hazard.floor_level,
           headcount: 1,
           conditions: {
