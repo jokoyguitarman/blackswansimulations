@@ -323,7 +323,6 @@ export const TrainerEnvironmentalTruths = ({
         const env = cs.environmental_state as
           | { routes?: SessionRoute[]; areas?: EnvArea[] }
           | undefined;
-        // Extract all *_state keys as team states
         const teamStates: Record<string, TeamState> = {};
         for (const [k, v] of Object.entries(cs)) {
           if (
@@ -411,6 +410,7 @@ export const TrainerEnvironmentalTruths = ({
   const poiHospitals = locations.filter((l) => l.location_type === 'hospital');
   const poiPolice = locations.filter((l) => l.location_type === 'police_station');
   const poiFire = locations.filter((l) => l.location_type === 'fire_station');
+  const routeLocs = locations.filter((l) => l.location_type === 'route');
   const hasNewModel = candidateSpaceLocs.length > 0 || poiPolice.length > 0 || poiFire.length > 0;
   const siteRequirements = insiderKnowledge?.site_requirements;
 
@@ -426,6 +426,7 @@ export const TrainerEnvironmentalTruths = ({
         'cordon',
         'police_station',
         'fire_station',
+        'route',
       ].includes(l.location_type ?? '') && !candidateSpaceLocs.includes(l),
   );
 
@@ -742,26 +743,30 @@ export const TrainerEnvironmentalTruths = ({
       )}
 
       {/* Routes */}
-      {(sessionRoutes.length > 0 || (osm?.emergency_routes?.length ?? 0) > 0) && (
-        <Section title="Routes (environmental_state)">
+      {(sessionRoutes.length > 0 || routeLocs.length > 0) && (
+        <Section title="Routes">
           <p className="text-white text-xs mb-1">
             Used for consistency checks; affects robustness cap and counter pressure.
           </p>
           <ul className="list-disc pl-4 space-y-0.5">
-            {sessionRoutes.length > 0
-              ? sessionRoutes.map((r, i) => (
-                  <li key={i}>
-                    {r.label ?? 'Route'} — {r.problem?.trim() || 'clear'},{' '}
-                    {r.managed ? 'managed' : 'unmanaged'}
-                    {r.travel_time_minutes != null ? `, ${r.travel_time_minutes} min` : ''}
-                  </li>
-                ))
-              : (osm?.emergency_routes ?? []).map((r, i) => (
-                  <li key={i}>
-                    {r.description ?? 'Route'}
-                    {r.one_way ? ' [one-way]' : ''} — (no session status)
-                  </li>
-                ))}
+            {(sessionRoutes.length > 0
+              ? sessionRoutes
+              : routeLocs.map((loc) => {
+                  const c = (loc.conditions ?? {}) as Record<string, unknown>;
+                  return {
+                    label: loc.label,
+                    problem: (c.problem as string) ?? null,
+                    managed: (c.managed as boolean) ?? true,
+                    travel_time_minutes: (c.travel_time_minutes as number) ?? null,
+                  } as SessionRoute;
+                })
+            ).map((r, i) => (
+              <li key={i}>
+                {r.label ?? 'Route'} — {r.problem?.trim() || 'clear'},{' '}
+                {r.managed ? 'managed' : 'unmanaged'}
+                {r.travel_time_minutes != null ? `, ${r.travel_time_minutes} min` : ''}
+              </li>
+            ))}
           </ul>
         </Section>
       )}

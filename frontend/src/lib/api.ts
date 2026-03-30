@@ -190,19 +190,6 @@ export const api = {
         }>;
       }>(await fetch(apiUrl(`/api/scenarios/${id}/locations`), { headers }));
     },
-    /** Get all environmental seeds for a scenario (trainer only). */
-    getSeeds: async (id: string) => {
-      const headers = await getAuthHeaders();
-      return handleResponse<{
-        data: Array<{
-          id: string;
-          scenario_id: string;
-          variant_label: string;
-          seed_data: Record<string, unknown>;
-          display_order: number;
-        }>;
-      }>(await fetch(apiUrl(`/api/scenarios/${id}/seeds`), { headers }));
-    },
     getScenarioHazards: async (id: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{

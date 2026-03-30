@@ -96,16 +96,11 @@ router.post(
         sources_used = 'interactive_map';
       } else {
         // Gather all scenario context for the AI
-        const [locationsResult, seedsResult, teamsResult, userTeamResult, publishedInjectsResult] =
+        const [locationsResult, teamsResult, userTeamResult, publishedInjectsResult] =
           await Promise.all([
             supabaseAdmin
               .from('scenario_locations')
               .select('label, location_type, description, conditions')
-              .eq('scenario_id', session.scenario_id)
-              .order('display_order', { ascending: true }),
-            supabaseAdmin
-              .from('scenario_environmental_seeds')
-              .select('variant_label, seed_data')
               .eq('scenario_id', session.scenario_id)
               .order('display_order', { ascending: true }),
             supabaseAdmin
@@ -178,12 +173,6 @@ router.post(
               location_type: l.location_type,
               description: l.description,
               conditions: (l.conditions as Record<string, unknown> | null) ?? undefined,
-            }),
-          ),
-          environmentalSeeds: (seedsResult.data ?? []).map(
-            (s: { variant_label: string; seed_data: unknown }) => ({
-              variant_label: s.variant_label,
-              seed_data: (s.seed_data as Record<string, unknown>) ?? {},
             }),
           ),
           teams: (teamsResult.data ?? []).map(

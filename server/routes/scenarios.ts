@@ -286,30 +286,6 @@ router.get('/:id/locations', requireAuth, async (req: AuthenticatedRequest, res)
   }
 });
 
-// Get all environmental seeds for a scenario (trainer only)
-router.get('/:id/seeds', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const { id } = req.params;
-    const user = req.user!;
-    if (user.role !== 'trainer' && user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    const { data, error } = await supabaseAdmin
-      .from('scenario_environmental_seeds')
-      .select('*')
-      .eq('scenario_id', id)
-      .order('display_order', { ascending: true });
-    if (error) {
-      logger.error({ error, scenarioId: id }, 'Failed to fetch scenario seeds');
-      return res.status(500).json({ error: 'Failed to fetch seeds' });
-    }
-    res.json({ data: data ?? [] });
-  } catch (err) {
-    logger.error({ error: err }, 'Error in GET /scenarios/:id/seeds');
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
 // Get all hazards for a scenario (trainer only — war room preview)
 router.get('/:id/hazards', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {

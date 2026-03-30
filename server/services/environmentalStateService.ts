@@ -244,39 +244,35 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
       nextState._counter_definitions = counterDefsMap;
     }
 
-    // Load environmental seed variant (routes + areas) into session state
-    const { data: seeds } = await supabaseAdmin
-      .from('scenario_environmental_seeds')
-      .select('variant_label, seed_data, display_order')
+    // Load route locations from scenario_locations into session environmental_state
+    const { data: routeLocations } = await supabaseAdmin
+      .from('scenario_locations')
+      .select('label, conditions')
       .eq('scenario_id', scenarioId)
-      .order('display_order', { ascending: true });
+      .eq('location_type', 'route');
 
-    if (seeds && seeds.length > 0) {
-      const nonClear = seeds.filter((s) => (s.variant_label as string) !== 'all_clear');
-      const picked =
-        nonClear.length > 0 ? nonClear[Math.floor(Math.random() * nonClear.length)] : seeds[0];
-
-      const seedData = (picked.seed_data ?? {}) as {
-        routes?: unknown[];
-        areas?: unknown[];
-      };
+    if (routeLocations && routeLocations.length > 0) {
+      const routes = routeLocations.map((r) => {
+        const c = (r.conditions ?? {}) as Record<string, unknown>;
+        return {
+          route_id: c.route_id ?? '',
+          label: r.label,
+          travel_time_minutes: c.travel_time_minutes ?? null,
+          problem: c.problem ?? null,
+          managed: c.managed ?? true,
+          connects_to: c.connects_to ?? [],
+          is_optimal_for: c.is_optimal_for ?? [],
+          highway_type: c.highway_type,
+          geometry: c.geometry,
+        };
+      });
 
       const envState = (nextState.environmental_state as Record<string, unknown>) ?? {};
-      nextState.environmental_state = {
-        ...envState,
-        ...(seedData.routes?.length ? { routes: seedData.routes } : {}),
-        ...(seedData.areas?.length ? { areas: seedData.areas } : {}),
-      };
-      nextState._active_seed_variant = picked.variant_label;
+      nextState.environmental_state = { ...envState, routes };
 
       logger.info(
-        {
-          sessionId,
-          variant: picked.variant_label,
-          routes: seedData.routes?.length ?? 0,
-          areas: seedData.areas?.length ?? 0,
-        },
-        'Environmental seed variant loaded',
+        { sessionId, routes: routes.length },
+        'Route locations loaded into environmental state',
       );
     }
 

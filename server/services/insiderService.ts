@@ -795,7 +795,6 @@ export interface InsiderContext {
     description?: string;
     conditions?: Record<string, unknown>;
   }>;
-  environmentalSeeds: Array<{ variant_label: string; seed_data: Record<string, unknown> }>;
   teams: Array<{ team_name: string; team_description: string }>;
   currentState?: Record<string, unknown>;
   locationState?: Record<
@@ -928,13 +927,8 @@ function buildInsiderContextBlock(ctx: InsiderContext): string {
     }
   }
 
-  if (ctx.environmentalSeeds.length > 0) {
-    for (const seed of ctx.environmentalSeeds.slice(0, 2)) {
-      parts.push(
-        `ENVIRONMENTAL SEED (${seed.variant_label}):\n${truncateJson(seed.seed_data, 2000)}`,
-      );
-    }
-  }
+  // Route conditions are now in locations (location_type = 'route') and already
+  // included in the locations block above.
 
   if (ctx.currentState && Object.keys(ctx.currentState).length > 0) {
     const stateToShow = { ...ctx.currentState };

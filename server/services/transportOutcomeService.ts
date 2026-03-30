@@ -239,7 +239,34 @@ export async function evaluateTransportOutcome(
     unknown
   >;
   const envState = currentState.environmental_state as { routes?: RouteRow[] } | undefined;
-  const routes = Array.isArray(envState?.routes) ? envState.routes : [];
+  let routes = Array.isArray(envState?.routes) ? envState.routes : [];
+
+  // Fallback: load routes directly from scenario_locations if not in session state
+  if (routes.length === 0) {
+    const scenarioId = (session as Record<string, unknown>).scenario_id as string;
+    if (scenarioId) {
+      const { data: routeLocs } = await supabaseAdmin
+        .from('scenario_locations')
+        .select('label, conditions')
+        .eq('scenario_id', scenarioId)
+        .eq('location_type', 'route');
+
+      if (routeLocs && routeLocs.length > 0) {
+        routes = routeLocs.map((r) => {
+          const c = (r.conditions ?? {}) as Record<string, unknown>;
+          return {
+            route_id: (c.route_id as string) ?? '',
+            label: r.label as string,
+            travel_time_minutes: (c.travel_time_minutes as number) ?? null,
+            problem: (c.problem as string) ?? null,
+            managed: (c.managed as boolean) ?? true,
+            connects_to: (c.connects_to as string[]) ?? [],
+            is_optimal_for: (c.is_optimal_for as string[]) ?? [],
+          };
+        });
+      }
+    }
+  }
 
   if (routes.length === 0) return;
 

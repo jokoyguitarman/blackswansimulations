@@ -72,7 +72,33 @@ async function buildUnmanagedConditions(sessionId: string): Promise<{
 
   const conditions: UnmanagedCondition[] = [];
 
-  const routes = Array.isArray(envState?.routes) ? envState.routes : [];
+  let routes = Array.isArray(envState?.routes) ? envState.routes : [];
+
+  const { data: locations, error: locErr } = await supabaseAdmin
+    .from('scenario_locations')
+    .select('id, location_type, label, conditions')
+    .eq('scenario_id', scenarioId);
+
+  // Fallback: load routes from scenario_locations if not in session state
+  if (routes.length === 0 && !locErr && locations?.length) {
+    const routeLocs = locations.filter(
+      (l) => (l as { location_type: string }).location_type === 'route',
+    );
+    routes = routeLocs.map((r) => {
+      const c = ((r as { conditions?: Record<string, unknown> }).conditions ?? {}) as Record<
+        string,
+        unknown
+      >;
+      return {
+        route_id: (c.route_id as string) ?? '',
+        label: (r as { label: string }).label,
+        problem: (c.problem as string) ?? null,
+        managed: (c.managed as boolean) ?? true,
+        travel_time_minutes: (c.travel_time_minutes as number) ?? null,
+      };
+    });
+  }
+
   for (const r of routes) {
     if (r.managed === true) continue;
     const id = (r.route_id || r.label || '').trim() || `route-${routes.indexOf(r)}`;
@@ -83,11 +109,6 @@ async function buildUnmanagedConditions(sessionId: string): Promise<{
       problem: r.problem ?? undefined,
     });
   }
-
-  const { data: locations, error: locErr } = await supabaseAdmin
-    .from('scenario_locations')
-    .select('id, location_type, label, conditions')
-    .eq('scenario_id', scenarioId);
 
   if (!locErr && locations?.length) {
     for (const loc of locations) {

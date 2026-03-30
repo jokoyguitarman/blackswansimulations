@@ -193,7 +193,7 @@ function normalizeToOsmVicinity(
       }
     } else if (tags.highway) {
       const desc = tags.name || tags.ref || `${tags.highway} road`;
-      const routeKey = `${desc}-${key}`;
+      const routeKey = `${desc}-${tags.highway}`;
       if (!seenRoutes.has(routeKey)) {
         seenRoutes.add(routeKey);
         emergency_routes.push({

@@ -42,8 +42,7 @@ export interface PersistOptions {
 /**
  * Persist War Room scenario to Supabase.
  * Insert order: scenarios → scenario_teams → scenario_injects (time) → scenario_objectives →
- * scenario_locations → scenario_environmental_seeds → update insider_knowledge →
- * scenario_injects (decision).
+ * scenario_locations → update insider_knowledge → scenario_injects (decision).
  */
 export async function persistWarroomScenario(
   payload: WarroomScenarioPayload,
@@ -58,7 +57,6 @@ export async function persistWarroomScenario(
     decision_injects,
     condition_driven_injects,
     locations,
-    environmental_seeds,
     hazards,
     floor_plans,
     casualties,
@@ -166,18 +164,6 @@ export async function persistWarroomScenario(
         })),
       );
       if (locError) throw new Error(`scenario_locations: ${locError.message}`);
-    }
-
-    if (environmental_seeds && environmental_seeds.length > 0) {
-      const { error: seedError } = await supabaseAdmin.from('scenario_environmental_seeds').insert(
-        environmental_seeds.map((s, i) => ({
-          scenario_id: scenarioId,
-          variant_label: s.variant_label,
-          seed_data: s.seed_data ?? {},
-          display_order: s.display_order ?? i,
-        })),
-      );
-      if (seedError) throw new Error(`scenario_environmental_seeds: ${seedError.message}`);
     }
 
     if (hazards && hazards.length > 0) {

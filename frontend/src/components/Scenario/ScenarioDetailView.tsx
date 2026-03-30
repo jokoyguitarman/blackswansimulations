@@ -93,13 +93,6 @@ interface LocationPin {
   display_order: number;
 }
 
-interface Seed {
-  id: string;
-  variant_label: string;
-  seed_data: Record<string, unknown>;
-  display_order: number;
-}
-
 interface HazardPin {
   id: string;
   hazard_type: string;
@@ -172,7 +165,7 @@ const tabs = [
   'Injects',
   'Map Pins',
   'Env Truths',
-  'Env Seeds',
+  'Routes',
   'Standards',
 ] as const;
 type Tab = (typeof tabs)[number];
@@ -182,7 +175,6 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
   const [injects, setInjects] = useState<Inject[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [locations, setLocations] = useState<LocationPin[]>([]);
-  const [seeds, setSeeds] = useState<Seed[]>([]);
   const [hazardPins, setHazardPins] = useState<HazardPin[]>([]);
   const [casualtyPins, setCasualtyPins] = useState<CasualtyPin[]>([]);
   const [equipmentItems, setEquipmentItems] = useState<EquipmentItem[]>([]);
@@ -235,13 +227,12 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
   useEffect(() => {
     const load = async () => {
       try {
-        const [scenRes, injectRes, teamRes, locRes, seedRes, hazRes, casRes, eqRes, fpRes] =
+        const [scenRes, injectRes, teamRes, locRes, hazRes, casRes, eqRes, fpRes] =
           await Promise.all([
             api.scenarios.get(scenarioId),
             api.scenarios.getInjects(scenarioId),
             api.scenarios.getTeams(scenarioId),
             api.scenarios.getScenarioLocations(scenarioId),
-            api.scenarios.getSeeds(scenarioId),
             api.scenarios.getScenarioHazards(scenarioId).catch(() => ({ data: [] })),
             api.scenarios.getScenarioCasualties(scenarioId).catch(() => ({ data: [] })),
             api.scenarios.getScenarioEquipment(scenarioId).catch(() => ({ data: [] })),
@@ -251,7 +242,6 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
         setInjects((injectRes.data ?? []) as Inject[]);
         setTeams((teamRes.data ?? []) as Team[]);
         setLocations((locRes.data ?? []) as LocationPin[]);
-        setSeeds((seedRes.data ?? []) as Seed[]);
         setHazardPins((hazRes.data ?? []) as HazardPin[]);
         setCasualtyPins((casRes.data ?? []) as CasualtyPin[]);
         setEquipmentItems((eqRes.data ?? []) as EquipmentItem[]);
@@ -549,25 +539,58 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
             <EnvTruthsTab locations={locations} siteRequirements={ik?.site_requirements} />
           )}
 
-          {/* ─── ENV SEEDS ─── */}
-          {activeTab === 'Env Seeds' && (
+          {/* ─── ROUTES ─── */}
+          {activeTab === 'Routes' && (
             <div>
-              {seeds.length === 0 ? (
-                <p className="text-sm terminal-text text-robotic-yellow/50">
-                  [NO ENVIRONMENTAL SEEDS]
-                </p>
-              ) : (
-                <div className="space-y-4">
-                  {seeds.map((seed) => (
-                    <div key={seed.id} className="military-border p-4">
-                      <div className="text-sm terminal-text text-robotic-yellow uppercase mb-3">
-                        {seed.variant_label}
-                      </div>
-                      <SeedDataView data={seed.seed_data} />
-                    </div>
-                  ))}
-                </div>
-              )}
+              {(() => {
+                const routePins = locations.filter((l) => l.location_type === 'route');
+                if (routePins.length === 0) {
+                  return (
+                    <p className="text-sm terminal-text text-robotic-yellow/50">[NO ROUTE DATA]</p>
+                  );
+                }
+                return (
+                  <div className="space-y-2">
+                    <p className="text-xs terminal-text text-robotic-yellow/60 mb-3">
+                      Enriched route conditions — used by transport outcome service and
+                      environmental condition management.
+                    </p>
+                    {routePins.map((r, i) => {
+                      const c = (r.conditions ?? {}) as Record<string, unknown>;
+                      return (
+                        <div key={r.id ?? i} className="military-border p-3">
+                          <div className="text-sm terminal-text text-robotic-yellow font-medium">
+                            {r.label}
+                          </div>
+                          <div className="text-xs terminal-text mt-1 space-y-0.5">
+                            <div>
+                              {c.problem ? (
+                                <span className="text-orange-400">{String(c.problem)}</span>
+                              ) : (
+                                <span className="text-green-400">Clear</span>
+                              )}
+                              {' — '}
+                              {c.managed ? 'managed' : 'unmanaged'}
+                            </div>
+                            <div>
+                              {c.highway_type && `${String(c.highway_type)} `}
+                              {c.one_way ? '[one-way] ' : ''}
+                              {c.distance_m != null && `${c.distance_m}m `}
+                              {c.travel_time_minutes != null && `~${c.travel_time_minutes} min`}
+                            </div>
+                            {Array.isArray(c.connects_to) &&
+                              (c.connects_to as string[]).length > 0 && (
+                                <div className="text-robotic-yellow/50">
+                                  Connects to: {(c.connects_to as string[]).join(', ')}
+                                </div>
+                              )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -2246,70 +2269,6 @@ const ConditionsSummary = ({ conditions }: { conditions?: Record<string, unknown
           ) : (
             <span>{String(val)}</span>
           )}
-        </div>
-      ))}
-    </div>
-  );
-};
-
-const SeedDataView = ({ data }: { data: Record<string, unknown> }) => {
-  const routes = data.routes as Array<Record<string, unknown>> | undefined;
-  const areas = data.areas as Array<Record<string, unknown>> | undefined;
-  const stateKeys = Object.entries(data).filter(
-    ([k]) => k.endsWith('_state') && typeof data[k] === 'object',
-  );
-
-  return (
-    <div className="space-y-3">
-      {routes && routes.length > 0 && (
-        <div>
-          <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-1">Routes</div>
-          <div className="space-y-1">
-            {routes.map((r, i) => (
-              <div key={i} className="flex gap-2 text-xs terminal-text">
-                <span className="text-robotic-yellow/80">{String(r.label ?? '—')}</span>
-                {r.problem != null && (
-                  <span className="text-orange-400/80">{'⚠ ' + String(r.problem)}</span>
-                )}
-                {r.travel_time_minutes != null && (
-                  <span className="text-robotic-yellow/40">
-                    {String(r.travel_time_minutes) + 'min'}
-                  </span>
-                )}
-                {r.managed === false && <span className="text-red-400/70">[UNMANAGED]</span>}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {areas && areas.length > 0 && (
-        <div>
-          <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-1">Areas</div>
-          <div className="space-y-1">
-            {areas.map((a, i) => (
-              <div key={i} className="flex gap-2 text-xs terminal-text">
-                <span className="text-robotic-yellow/80">
-                  {String(a.label ?? a.area_id ?? '—')}
-                </span>
-                {a.at_capacity === true && <span className="text-red-400/70">[AT CAPACITY]</span>}
-                {a.capacity != null && (
-                  <span className="text-robotic-yellow/40">{'cap: ' + String(a.capacity)}</span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {stateKeys.map(([key, val]) => (
-        <div key={key}>
-          <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-1">
-            {key.replace(/_/g, ' ')}
-          </div>
-          <div className="text-xs terminal-text font-mono bg-black/20 p-2 rounded">
-            {JSON.stringify(val as Record<string, unknown>, null, 2)}
-          </div>
         </div>
       ))}
     </div>
