@@ -108,13 +108,21 @@ export async function persistWarroomScenario(
       if (teamsError) throw new Error(`scenario_teams: ${teamsError.message}`);
     }
 
+    const timeUsedTitles = new Set<string>();
     for (const inj of time_injects) {
+      let title = inj.title || 'Timed inject';
+      if (timeUsedTitles.has(title)) {
+        let suffix = 1;
+        while (timeUsedTitles.has(`${title} (${suffix})`)) suffix++;
+        title = `${title} (${suffix})`;
+      }
+      timeUsedTitles.add(title);
       const { error: injError } = await supabaseAdmin.from('scenario_injects').insert({
         scenario_id: scenarioId,
         trigger_time_minutes: inj.trigger_time_minutes,
         trigger_condition: null,
         type: normalizeInjectType(inj.type),
-        title: inj.title,
+        title,
         content: inj.content,
         affected_roles: [],
         severity: inj.severity || 'high',
@@ -277,7 +285,7 @@ export async function persistWarroomScenario(
       if (updError) throw new Error(`insider_knowledge update: ${updError.message}`);
     }
 
-    const usedTitles = new Set<string>(time_injects.map((i) => i.title).filter(Boolean));
+    const usedTitles = new Set<string>(timeUsedTitles);
 
     if (decision_injects && decision_injects.length > 0) {
       for (const inj of decision_injects) {
