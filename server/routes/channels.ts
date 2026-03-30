@@ -7,6 +7,7 @@ import { validate, schemas } from '../lib/validation.js';
 import { logAndBroadcastEvent } from '../services/eventService.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { createNotification } from '../services/notificationService.js';
+import { createDefaultChannels } from '../services/channelService.js';
 import { io } from '../index.js';
 
 const router = Router();
@@ -79,19 +80,34 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
     }
 
     // Get all channels except direct messages
-    const { data, error } = await supabaseAdmin
+    const result = await supabaseAdmin
       .from('chat_channels')
       .select('*')
       .eq('session_id', sessionId)
       .neq('type', 'direct')
       .order('created_at', { ascending: true });
 
-    if (error) {
-      logger.error({ error, sessionId }, 'Failed to fetch channels');
+    if (result.error) {
+      logger.error({ error: result.error, sessionId }, 'Failed to fetch channels');
       return res.status(500).json({ error: 'Failed to fetch channels' });
     }
 
-    res.json({ data });
+    let channels = result.data;
+
+    // Self-heal: auto-create default channels if none exist for this session
+    if (!channels || channels.length === 0) {
+      logger.info({ sessionId }, 'No channels found — auto-creating defaults');
+      await createDefaultChannels(sessionId, session.trainer_id ?? user.id);
+      const refetch = await supabaseAdmin
+        .from('chat_channels')
+        .select('*')
+        .eq('session_id', sessionId)
+        .neq('type', 'direct')
+        .order('created_at', { ascending: true });
+      channels = refetch.data;
+    }
+
+    res.json({ data: channels });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /channels/session/:sessionId');
     res.status(500).json({ error: 'Internal server error' });
