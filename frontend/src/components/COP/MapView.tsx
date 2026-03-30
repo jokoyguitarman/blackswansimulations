@@ -16,7 +16,6 @@ import { MapDropHandler } from './MapDropHandler';
 import { MapDrawHandler } from './MapDrawHandler';
 import { HazardMarker, type HazardData } from './HazardMarker';
 import { CasualtyPin, type CasualtyData } from './CasualtyPin';
-import { CasualtyAssessmentModal } from './CasualtyAssessmentModal';
 import { CrowdPin, type CrowdData } from './CrowdPin';
 import { EntryExitPin, type EntryExitData } from './EntryExitPin';
 import { MapElementResponsePanel, type MapElementTarget } from './MapElementResponsePanel';
@@ -488,7 +487,6 @@ export const MapView = ({
   const [placedAssets, setPlacedAssets] = useState<PlacedAsset[]>([]);
   const optimisticIdsRef = useRef<Map<string, string>>(new Map());
   const [hazards, setHazards] = useState<HazardData[]>([]);
-  const [selectedCasualty, setSelectedCasualty] = useState<CasualtyData | null>(null);
   const [respondToElement, setRespondToElement] = useState<MapElementTarget | null>(null);
   const [casualties, setCasualties] = useState<CasualtyData[]>([]);
   const [crowds, setCrowds] = useState<CrowdData[]>([]);
@@ -565,6 +563,12 @@ export const MapView = ({
         value: injuries.map((i) => String(i.type ?? '').replace(/_/g, ' ')).join(', '),
       });
     }
+    const playerTag =
+      (conds.player_triage_color as string | undefined) ??
+      ((c as unknown as Record<string, unknown>).player_triage_color as string | undefined);
+    if (playerTag) {
+      details.push({ label: 'Triage Tag', value: playerTag.toUpperCase() });
+    }
     setRespondToElement({
       elementType: 'casualty',
       elementId: c.id,
@@ -573,6 +577,8 @@ export const MapView = ({
       description: (conds.visible_description as string) ?? undefined,
       status: c.status,
       details,
+      lat: c.location_lat,
+      lng: c.location_lng,
     });
   }, []);
 
@@ -1439,7 +1445,7 @@ export const MapView = ({
             casualties
               .filter((c) => c.floor_level === activeFloor || !floorPlans.length)
               .map((casualty) => (
-                <CasualtyPin key={casualty.id} casualty={casualty} onClick={setSelectedCasualty} />
+                <CasualtyPin key={casualty.id} casualty={casualty} onClick={openCasualtyPanel} />
               ))}
 
           {/* Crowd Pins (civilian groups) — gated behind exit claiming */}
@@ -1708,17 +1714,9 @@ export const MapView = ({
           sessionId={sessionId}
           teamName={teamName ?? 'unknown'}
           onClose={() => setRespondToElement(null)}
-        />
-      )}
-
-      {/* Casualty Assessment / Triage Tagging Modal */}
-      {selectedCasualty && (
-        <CasualtyAssessmentModal
-          casualty={selectedCasualty}
-          sessionId={sessionId}
-          teamName={teamName ?? 'unknown'}
-          onClose={() => setSelectedCasualty(null)}
-          onAssess={async (casualtyId, triageColor) => {
+          placedAssets={placedAssets}
+          scenarioLocations={scenarioLocations}
+          onTriageAssess={async (casualtyId, triageColor) => {
             await api.casualties.assess(sessionId, casualtyId, {
               player_triage_color: triageColor,
               team_name: teamName ?? 'unknown',
@@ -1734,11 +1732,6 @@ export const MapView = ({
                   : c,
               ),
             );
-          }}
-          onDeployResources={() => {
-            const cas = selectedCasualty;
-            setSelectedCasualty(null);
-            openCasualtyPanel(cas);
           }}
         />
       )}
