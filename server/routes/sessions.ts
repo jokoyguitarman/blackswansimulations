@@ -819,26 +819,52 @@ router.get(
         return res.json({ data: [] });
       }
 
-      const { data: locations, error: locError } = await supabaseAdmin
-        .from('scenario_locations')
-        .select(
-          'id, scenario_id, location_type, label, coordinates, conditions, display_order, claimable_by, claimed_by_team, claimed_as, claim_exclusivity',
-        )
-        .eq('scenario_id', scenarioId)
-        .order('display_order', { ascending: true });
+      const [locResult, claimsResult] = await Promise.all([
+        supabaseAdmin
+          .from('scenario_locations')
+          .select(
+            'id, scenario_id, location_type, label, coordinates, conditions, display_order, claimable_by',
+          )
+          .eq('scenario_id', scenarioId)
+          .order('display_order', { ascending: true }),
+        supabaseAdmin
+          .from('session_location_claims')
+          .select('location_id, claimed_by_team, claimed_as, claim_exclusivity')
+          .eq('session_id', sessionId),
+      ]);
 
-      if (locError) {
+      if (locResult.error) {
         logger.error(
-          { error: locError, sessionId, scenarioId },
+          { error: locResult.error, sessionId, scenarioId },
           'Failed to fetch scenario locations',
         );
         return res.status(500).json({ error: 'Failed to fetch locations' });
       }
 
+      // Build a lookup of per-session claims
+      const claimMap = new Map<
+        string,
+        { claimed_by_team: string; claimed_as: string; claim_exclusivity: string | null }
+      >();
+      for (const c of claimsResult.data ?? []) {
+        claimMap.set(c.location_id, {
+          claimed_by_team: c.claimed_by_team,
+          claimed_as: c.claimed_as,
+          claim_exclusivity: c.claim_exclusivity ?? null,
+        });
+      }
+
       // Auto-repair GeoJSON-corrupted coordinates ({type:'Point',coordinates:[lng,lat]} → {lat,lng})
-      const locRows = locations ?? [];
-      for (const row of locRows) {
-        const coords = row.coordinates as Record<string, unknown> | null;
+      const locRows = (locResult.data ?? []).map((row) => {
+        const claim = claimMap.get(row.id);
+        const merged = {
+          ...row,
+          claimed_by_team: claim?.claimed_by_team ?? null,
+          claimed_as: claim?.claimed_as ?? null,
+          claim_exclusivity: claim?.claim_exclusivity ?? null,
+        };
+
+        const coords = merged.coordinates as Record<string, unknown> | null;
         if (
           coords &&
           coords.type === 'Point' &&
@@ -846,7 +872,7 @@ router.get(
           coords.coordinates.length >= 2
         ) {
           const [lng, lat] = coords.coordinates as number[];
-          row.coordinates = { lat, lng };
+          merged.coordinates = { lat, lng };
           supabaseAdmin
             .from('scenario_locations')
             .update({ coordinates: { lat, lng } })
@@ -857,7 +883,8 @@ router.get(
               else logger.info({ id: row.id }, 'Auto-repaired GeoJSON coordinates');
             });
         }
-      }
+        return merged;
+      });
 
       // Pins for establishments (hospital, police, fire, cctv, community) only show when THIS user has asked the Insider about that category (per-player view).
       const { data: qaRows } = await supabaseAdmin

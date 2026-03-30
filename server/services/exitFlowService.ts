@@ -95,14 +95,33 @@ export async function processExitFlow(sessionId: string): Promise<void> {
     .single();
   if (!session?.start_time) return;
 
-  // Find claimed exits
-  const { data: claimedExits } = await supabaseAdmin
+  // Find per-session claimed exits
+  const { data: claims } = await supabaseAdmin
+    .from('session_location_claims')
+    .select('location_id, claimed_by_team, claimed_as, claim_exclusivity')
+    .eq('session_id', sessionId);
+
+  if (!claims?.length) return;
+
+  const claimedLocationIds = claims.map((c) => c.location_id);
+  const { data: claimedLocations } = await supabaseAdmin
     .from('scenario_locations')
     .select('*')
-    .eq('scenario_id', session.scenario_id)
-    .not('claimed_by_team', 'is', null);
+    .in('id', claimedLocationIds);
 
-  if (!claimedExits?.length) return;
+  if (!claimedLocations?.length) return;
+
+  // Merge claim data onto location rows
+  const claimMap = new Map(claims.map((c) => [c.location_id, c]));
+  const claimedExits = claimedLocations.map((loc) => {
+    const claim = claimMap.get(loc.id);
+    return {
+      ...loc,
+      claimed_by_team: claim?.claimed_by_team ?? null,
+      claimed_as: claim?.claimed_as ?? null,
+      claim_exclusivity: claim?.claim_exclusivity ?? null,
+    };
+  });
 
   // Find operational area polygons placed by teams near claimed exits
   const { data: exitPathways } = await supabaseAdmin

@@ -65,10 +65,25 @@ export async function applyDecisionCasualtyEffects(
     .or(`session_id.is.null,session_id.eq.${sessionId}`)
     .not('status', 'in', '("resolved","transported","deceased")');
 
-  const { data: locations } = await supabaseAdmin
-    .from('scenario_locations')
-    .select('id, label, coordinates, conditions, claimed_by_team, claimed_as')
-    .eq('scenario_id', session.scenario_id);
+  const [locResult, claimResult] = await Promise.all([
+    supabaseAdmin
+      .from('scenario_locations')
+      .select('id, label, coordinates, conditions')
+      .eq('scenario_id', session.scenario_id),
+    supabaseAdmin
+      .from('session_location_claims')
+      .select('location_id, claimed_by_team, claimed_as')
+      .eq('session_id', sessionId),
+  ]);
+  const claimLookup = new Map((claimResult.data ?? []).map((c) => [c.location_id, c]));
+  const locations = (locResult.data ?? []).map((loc) => {
+    const claim = claimLookup.get(loc.id);
+    return {
+      ...loc,
+      claimed_by_team: claim?.claimed_by_team ?? null,
+      claimed_as: claim?.claimed_as ?? null,
+    };
+  });
 
   const { data: placedAreas } = await supabaseAdmin
     .from('placed_assets')

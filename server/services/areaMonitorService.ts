@@ -173,12 +173,36 @@ export async function runAreaMonitors(
       .select('equipment_type, label, properties')
       .eq('scenario_id', scenarioId);
 
-    // 5. Load claimed exits for congestion checks
-    const { data: claimedExits } = await supabaseAdmin
-      .from('scenario_locations')
-      .select('id, label, coordinates, conditions, claimed_by_team, claimed_as')
-      .eq('scenario_id', scenarioId)
-      .not('claimed_by_team', 'is', null);
+    // 5. Load per-session claimed exits for congestion checks
+    const { data: exitClaims } = await supabaseAdmin
+      .from('session_location_claims')
+      .select('location_id, claimed_by_team, claimed_as')
+      .eq('session_id', sessionId);
+
+    let claimedExits: Array<{
+      id: string;
+      label: string;
+      coordinates: unknown;
+      conditions: unknown;
+      claimed_by_team: string | null;
+      claimed_as: string | null;
+    }> | null = null;
+    if (exitClaims?.length) {
+      const claimedIds = exitClaims.map((c) => c.location_id);
+      const { data: exitLocs } = await supabaseAdmin
+        .from('scenario_locations')
+        .select('id, label, coordinates, conditions')
+        .in('id', claimedIds);
+      const ecMap = new Map(exitClaims.map((c) => [c.location_id, c]));
+      claimedExits = (exitLocs ?? []).map((loc) => {
+        const claim = ecMap.get(loc.id);
+        return {
+          ...loc,
+          claimed_by_team: claim?.claimed_by_team ?? null,
+          claimed_as: claim?.claimed_as ?? null,
+        };
+      });
+    }
 
     const alerts: AreaAlert[] = [];
 

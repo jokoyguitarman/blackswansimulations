@@ -29,9 +29,17 @@ router.post('/sessions/:id/locations/:locationId/claim', requireAuth, async (req
       return res.status(404).json({ error: 'Location not found' });
     }
 
-    if (loc.claimed_by_team) {
+    // Check for existing claim in THIS session (not on the shared scenario_locations row)
+    const { data: existingClaim } = await supabaseAdmin
+      .from('session_location_claims')
+      .select('id, claimed_by_team, claimed_as')
+      .eq('session_id', sessionId)
+      .eq('location_id', locationId)
+      .maybeSingle();
+
+    if (existingClaim) {
       return res.status(409).json({
-        error: `Already claimed by ${loc.claimed_by_team} as ${loc.claimed_as}`,
+        error: `Already claimed by ${existingClaim.claimed_by_team} as ${existingClaim.claimed_as}`,
       });
     }
 
@@ -40,33 +48,40 @@ router.post('/sessions/:id/locations/:locationId/claim', requireAuth, async (req
       return res.status(403).json({ error: `${team_name} cannot claim this location` });
     }
 
-    const updatePayload: Record<string, unknown> = {
+    const claimRow: Record<string, unknown> = {
+      session_id: sessionId,
+      location_id: locationId,
       claimed_by_team: team_name,
       claimed_as,
     };
     if (claim_exclusivity === 'exclusive' || claim_exclusivity === 'shared') {
-      updatePayload.claim_exclusivity = claim_exclusivity;
+      claimRow.claim_exclusivity = claim_exclusivity;
     }
 
-    const { data: updated, error: updateError } = await supabaseAdmin
-      .from('scenario_locations')
-      .update(updatePayload)
-      .eq('id', locationId)
-      .select()
-      .single();
+    const { error: insertError } = await supabaseAdmin
+      .from('session_location_claims')
+      .insert(claimRow);
 
-    if (updateError) {
-      logger.error({ error: updateError, locationId }, 'Failed to claim location');
+    if (insertError) {
+      logger.error({ error: insertError, locationId, sessionId }, 'Failed to claim location');
       return res.status(500).json({ error: 'Failed to claim location' });
     }
 
+    // Return location data merged with the claim for frontend compatibility
+    const merged = {
+      ...loc,
+      claimed_by_team: team_name,
+      claimed_as,
+      claim_exclusivity: claimRow.claim_exclusivity ?? null,
+    };
+
     try {
-      getWebSocketService().locationClaimed(sessionId, updated as Record<string, unknown>);
+      getWebSocketService().locationClaimed(sessionId, merged);
     } catch (wsErr) {
       logger.warn({ error: wsErr, sessionId, locationId }, 'Failed to broadcast location.claimed');
     }
 
-    return res.json({ data: updated });
+    return res.json({ data: merged });
   } catch (err) {
     logger.error({ err }, 'Unexpected error in POST location claim');
     return res.status(500).json({ error: 'Internal server error' });
