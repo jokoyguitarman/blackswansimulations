@@ -415,7 +415,14 @@ function resolveDestination(
       loc.label.toLowerCase().includes(descLower) ||
       descLower.includes(loc.label.toLowerCase())
     ) {
-      return { lat: loc.coordinates.lat, lng: loc.coordinates.lng, label: loc.label };
+      const center = { lat: loc.coordinates.lat, lng: loc.coordinates.lng };
+      const scattered = scatterAroundPoint(
+        center,
+        existing,
+        POINT_SCATTER_RADIUS_M,
+        MIN_PIN_SPACING_M,
+      );
+      return { ...scattered, label: loc.label };
     }
   }
 
@@ -429,19 +436,66 @@ function matchZoneClassification(desc: string): string | null {
   return null;
 }
 
+const MIN_PIN_SPACING_M = 20;
+const POINT_SCATTER_RADIUS_M = 60;
+
 function pickPointInArea(
   geom: Record<string, unknown>,
   existing: { lat: number; lng: number }[],
 ): { lat: number; lng: number } | null {
   if (geom.type === 'Point') {
     const coords = geom.coordinates as number[];
-    return { lat: coords[1], lng: coords[0] };
+    const center = { lat: coords[1], lng: coords[0] };
+    return scatterAroundPoint(center, existing, POINT_SCATTER_RADIUS_M, MIN_PIN_SPACING_M);
   }
   if (geom.type === 'Polygon') {
     const ring = (geom.coordinates as number[][][])[0];
-    return randomPointInGeoJSONPolygon(ring, existing, 15);
+    return randomPointInGeoJSONPolygon(ring, existing, MIN_PIN_SPACING_M);
   }
   return null;
+}
+
+/**
+ * Pick a random point within `radiusM` of `center` that is at least
+ * `minSpacingM` from every point in `existing`. Falls back to a bearing-based
+ * offset if no collision-free spot is found after several attempts.
+ */
+function scatterAroundPoint(
+  center: { lat: number; lng: number },
+  existing: { lat: number; lng: number }[],
+  radiusM: number,
+  minSpacingM: number,
+  maxAttempts = 40,
+): { lat: number; lng: number } {
+  const degPerM = 1 / 111_320;
+  const cosLat = Math.cos((center.lat * Math.PI) / 180);
+
+  for (let i = 0; i < maxAttempts; i++) {
+    const angle = Math.random() * 2 * Math.PI;
+    const dist = (Math.random() * 0.7 + 0.3) * radiusM; // 30-100% of radius
+    const lat = center.lat + dist * Math.cos(angle) * degPerM;
+    const lng = center.lng + (dist * Math.sin(angle) * degPerM) / cosLat;
+
+    let tooClose = false;
+    for (const pt of existing) {
+      if (haversineM(lat, lng, pt.lat, pt.lng) < minSpacingM) {
+        tooClose = true;
+        break;
+      }
+    }
+    if (!tooClose) return { lat, lng };
+  }
+
+  // Deterministic fallback: pick bearing based on count of nearby pins
+  const nearbyCount = existing.filter(
+    (p) => haversineM(p.lat, p.lng, center.lat, center.lng) < radiusM * 2,
+  ).length;
+  const bearing = ((nearbyCount * 137.508) % 360) * (Math.PI / 180); // golden angle spread
+  const fallbackDist = minSpacingM + 10;
+  return {
+    lat: center.lat + fallbackDist * Math.cos(bearing) * degPerM,
+    lng: center.lng + (fallbackDist * Math.sin(bearing) * degPerM) / cosLat,
+  };
 }
 
 function resolveExitLocation(

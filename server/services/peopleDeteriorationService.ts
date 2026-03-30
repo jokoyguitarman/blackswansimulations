@@ -239,7 +239,14 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
             const stampedeCasualties = Math.min(Math.floor(cas.headcount * 0.05), 3);
             const crowdRef = { lat: cas.location_lat, lng: cas.location_lng };
             for (let i = 0; i < stampedeCasualties; i++) {
-              const coord = await placeOutsideZoneType(sessionId, 'hot', crowdRef, 28);
+              const coord = await placeOutsideZoneType(
+                sessionId,
+                'hot',
+                crowdRef,
+                28,
+                undefined,
+                session.scenario_id as string,
+              );
               await supabaseAdmin.from('scenario_casualties').insert({
                 scenario_id: session.scenario_id,
                 session_id: sessionId,

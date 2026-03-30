@@ -88,7 +88,14 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
     // Spawn new hazards if the timeline says so
     if (timeline.spawns_new_hazards && timeline.new_hazard_description) {
       const hazRef = { lat: hazard.location_lat as number, lng: hazard.location_lng as number };
-      const hazCoord = await placeInsideZoneType(sessionId, 'hot', hazRef, 55);
+      const hazCoord = await placeInsideZoneType(
+        sessionId,
+        'hot',
+        hazRef,
+        55,
+        undefined,
+        session.scenario_id as string,
+      );
       const newHazard = {
         scenario_id: session.scenario_id,
         session_id: sessionId,
@@ -133,7 +140,14 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
 
       const casRef = { lat: hazard.location_lat as number, lng: hazard.location_lng as number };
       for (let i = 0; i < count; i++) {
-        const casCoord = await placeInsideZoneType(sessionId, 'hot', casRef, 44);
+        const casCoord = await placeInsideZoneType(
+          sessionId,
+          'hot',
+          casRef,
+          44,
+          undefined,
+          session.scenario_id as string,
+        );
         const newCas = {
           scenario_id: session.scenario_id,
           session_id: sessionId,

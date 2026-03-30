@@ -248,9 +248,15 @@ export async function processExitFlow(sessionId: string): Promise<void> {
         | { lat: number; lng: number; label: string }
         | undefined;
 
-      // Place evacuees outside all player-drawn zones (near the exit)
+      // Place evacuees outside all zones (near the exit)
       const exitRef = { lat: exitCoords.lat, lng: exitCoords.lng };
-      const evacueeCoord = await placeOutsideAllZones(sessionId, exitRef, 17);
+      const evacueeCoord = await placeOutsideAllZones(
+        sessionId,
+        exitRef,
+        17,
+        undefined,
+        session.scenario_id as string,
+      );
       const outsideLat = evacueeCoord.lat;
       const outsideLng = evacueeCoord.lng;
 

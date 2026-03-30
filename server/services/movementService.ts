@@ -112,10 +112,23 @@ function applySpeedModifiers(cas: MovingCasualty): number {
   return speed;
 }
 
+const ARRIVAL_MIN_SPACING_M = 20;
+const ARRIVAL_SCATTER_RADIUS_M = 50;
+
 async function handleArrival(sessionId: string, cas: MovingCasualty): Promise<void> {
+  // Find other pins already near the destination so we don't overlap
+  const destLat = cas.destination_lat;
+  const destLng = cas.destination_lng;
+  const { lat: finalLat, lng: finalLng } = await findSpacedArrivalPoint(
+    sessionId,
+    cas.id,
+    destLat,
+    destLng,
+  );
+
   const update: Record<string, unknown> = {
-    location_lat: cas.destination_lat,
-    location_lng: cas.destination_lng,
+    location_lat: finalLat,
+    location_lng: finalLng,
     destination_lat: null,
     destination_lng: null,
     destination_label: null,
@@ -128,7 +141,6 @@ async function handleArrival(sessionId: string, cas: MovingCasualty): Promise<vo
     update.status = cas.destination_reached_status;
   }
 
-  // Set current_area label from destination_label so counters can track location
   if (cas.destination_label) {
     const existingConds = (cas.conditions ?? {}) as Record<string, unknown>;
     update.conditions = { ...existingConds, current_area: cas.destination_label };
@@ -138,7 +150,7 @@ async function handleArrival(sessionId: string, cas: MovingCasualty): Promise<vo
 
   const finalStatus = (cas.destination_reached_status ?? cas.status) as string;
 
-  broadcastMove(sessionId, cas.id, cas.destination_lat, cas.destination_lng, finalStatus, true);
+  broadcastMove(sessionId, cas.id, finalLat, finalLng, finalStatus, true);
 
   logger.info(
     {
@@ -149,6 +161,61 @@ async function handleArrival(sessionId: string, cas: MovingCasualty): Promise<vo
     },
     'Casualty arrived at destination',
   );
+}
+
+/**
+ * Find a position near `destLat/destLng` that doesn't overlap existing
+ * stationary pins. Uses a golden-angle spiral so successive arrivals fan
+ * out evenly around the destination point.
+ */
+async function findSpacedArrivalPoint(
+  sessionId: string,
+  excludeId: string,
+  destLat: number,
+  destLng: number,
+): Promise<{ lat: number; lng: number }> {
+  const { data: nearby } = await supabaseAdmin
+    .from('scenario_casualties')
+    .select('id, location_lat, location_lng')
+    .eq('session_id', sessionId)
+    .is('destination_lat', null)
+    .neq('id', excludeId);
+
+  const neighbours = (nearby ?? []).filter(
+    (p) =>
+      haversineM(p.location_lat, p.location_lng, destLat, destLng) < ARRIVAL_SCATTER_RADIUS_M * 2,
+  );
+
+  if (neighbours.length === 0) return { lat: destLat, lng: destLng };
+
+  // Check if the exact destination is already clear
+  const destClear = neighbours.every(
+    (p) => haversineM(p.location_lat, p.location_lng, destLat, destLng) >= ARRIVAL_MIN_SPACING_M,
+  );
+  if (destClear) return { lat: destLat, lng: destLng };
+
+  const degPerM = 1 / 111_320;
+  const cosLat = Math.cos((destLat * Math.PI) / 180);
+
+  for (let i = 0; i < 36; i++) {
+    const angle = i * 137.508 * (Math.PI / 180); // golden angle
+    const dist = ARRIVAL_MIN_SPACING_M + i * 5;
+    const lat = destLat + dist * Math.cos(angle) * degPerM;
+    const lng = destLng + (dist * Math.sin(angle) * degPerM) / cosLat;
+
+    const clear = neighbours.every(
+      (p) => haversineM(p.location_lat, p.location_lng, lat, lng) >= ARRIVAL_MIN_SPACING_M,
+    );
+    if (clear) return { lat, lng };
+  }
+
+  // Last resort: random offset
+  const angle = Math.random() * 2 * Math.PI;
+  const dist = ARRIVAL_MIN_SPACING_M + 10;
+  return {
+    lat: destLat + dist * Math.cos(angle) * degPerM,
+    lng: destLng + (dist * Math.sin(angle) * degPerM) / cosLat,
+  };
 }
 
 function broadcastMove(
