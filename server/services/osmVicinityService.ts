@@ -10,7 +10,6 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
 export interface OsmVicinity {
@@ -67,54 +66,73 @@ function getAddress(element: { tags?: Record<string, string> }): string | undefi
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
-const OVERPASS_BACKOFF_MS = 3000;
+const RETRIES_PER_ENDPOINT = 2;
+const BACKOFF_BASE_MS = 4000;
 
 /**
- * Send a query to the Overpass API, cycling through fallback endpoints
- * on failure. Each endpoint gets one attempt; on 5xx or network error
- * the next endpoint is tried after an exponential backoff.
+ * Send a query to the Overpass API. Each endpoint is tried up to
+ * RETRIES_PER_ENDPOINT times with exponential backoff. On exhaustion
+ * of retries the next endpoint is attempted.
  */
 async function queryOverpass(query: string): Promise<Array<Record<string, unknown>>> {
   let lastError: Error | null = null;
 
-  for (let i = 0; i < OVERPASS_ENDPOINTS.length; i++) {
-    const endpoint = OVERPASS_ENDPOINTS[i];
-    try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        body: query,
-        headers: { 'Content-Type': 'text/plain' },
-        signal: AbortSignal.timeout(35_000),
-      });
-      if (res.ok) {
-        const json = (await res.json()) as { elements?: Array<Record<string, unknown>> };
-        return json.elements || [];
-      }
-      lastError = new Error(`Overpass API error: ${res.status} ${res.statusText} (${endpoint})`);
-      if (res.status >= 500 && i < OVERPASS_ENDPOINTS.length - 1) {
-        const delay = OVERPASS_BACKOFF_MS * (i + 1);
-        logger.warn(
-          { endpoint, status: res.status, nextEndpoint: OVERPASS_ENDPOINTS[i + 1], delayMs: delay },
-          'Overpass endpoint failed, trying next',
-        );
-        await new Promise((r) => setTimeout(r, delay));
-        continue;
-      }
-      throw lastError;
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      if (i < OVERPASS_ENDPOINTS.length - 1) {
-        const delay = OVERPASS_BACKOFF_MS * (i + 1);
-        logger.warn(
-          { endpoint, delayMs: delay, err: lastError.message },
-          'Overpass endpoint failed, trying next',
-        );
-        await new Promise((r) => setTimeout(r, delay));
-      } else {
-        throw lastError;
+  for (let ep = 0; ep < OVERPASS_ENDPOINTS.length; ep++) {
+    const endpoint = OVERPASS_ENDPOINTS[ep];
+
+    for (let attempt = 0; attempt < RETRIES_PER_ENDPOINT; attempt++) {
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          body: query,
+          headers: { 'Content-Type': 'text/plain' },
+          signal: AbortSignal.timeout(45_000),
+        });
+
+        if (res.ok) {
+          const json = (await res.json()) as { elements?: Array<Record<string, unknown>> };
+          return json.elements || [];
+        }
+
+        lastError = new Error(`Overpass API error: ${res.status} ${res.statusText} (${endpoint})`);
+
+        if (res.status === 403) {
+          logger.warn({ endpoint, status: 403 }, 'Overpass endpoint forbidden, skipping');
+          break;
+        }
+
+        if (attempt < RETRIES_PER_ENDPOINT - 1) {
+          const delay = BACKOFF_BASE_MS * Math.pow(2, attempt);
+          logger.warn(
+            { endpoint, status: res.status, attempt: attempt + 1, delayMs: delay },
+            'Overpass request failed, retrying same endpoint',
+          );
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt < RETRIES_PER_ENDPOINT - 1) {
+          const delay = BACKOFF_BASE_MS * Math.pow(2, attempt);
+          logger.warn(
+            { endpoint, attempt: attempt + 1, delayMs: delay, err: lastError.message },
+            'Overpass request failed, retrying same endpoint',
+          );
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
       }
     }
+
+    if (ep < OVERPASS_ENDPOINTS.length - 1) {
+      logger.warn(
+        { failedEndpoint: endpoint, nextEndpoint: OVERPASS_ENDPOINTS[ep + 1] },
+        'Overpass endpoint exhausted retries, trying next endpoint',
+      );
+      await new Promise((r) => setTimeout(r, 2000));
+    }
   }
+
   throw lastError ?? new Error('Overpass API failed after all endpoints');
 }
 
