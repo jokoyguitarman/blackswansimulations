@@ -51,6 +51,7 @@ const getPinColor = (pin: ScenarioLocationPin): string => {
     return '#7c3aed';
   if (cat === 'triage' || t.includes('triage') || t.includes('casualty') || t.includes('medical'))
     return '#d97706';
+  if (cat === 'route' || t === 'route') return '#15803d';
   if (
     cat === 'access' ||
     cat === 'entry_exit' ||
@@ -116,6 +117,7 @@ const getSymbol = (pin: ScenarioLocationPin): string => {
   if (t.includes('negotiat') || t.includes('ops') || t.includes('command') || t.includes('icp'))
     return '🎯';
   if (cat === 'command') return '🎯';
+  if (cat === 'route' || t === 'route') return '🚦';
   if (
     cat === 'access' ||
     cat === 'entry_exit' ||
