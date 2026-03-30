@@ -177,7 +177,7 @@ export const PlacedAssetMarker = ({
             dashArray: '10, 6',
           }}
         >
-          <Popup>
+          <Popup autoPan={false}>
             <AssetPopupContent
               asset={asset}
               isOwnTeam={isOwnTeam}
@@ -234,7 +234,7 @@ export const PlacedAssetMarker = ({
             )}
           </div>
         </Tooltip>
-        <Popup>
+        <Popup autoPan={false}>
           <AssetPopupContent
             asset={asset}
             isOwnTeam={isOwnTeam}
@@ -278,7 +278,7 @@ export const PlacedAssetMarker = ({
             )}
           </div>
         </Tooltip>
-        <Popup>
+        <Popup autoPan={false}>
           <AssetPopupContent
             asset={asset}
             isOwnTeam={isOwnTeam}
@@ -319,7 +319,7 @@ export const PlacedAssetMarker = ({
           </span>
         </Tooltip>
       )}
-      <Popup>
+      <Popup autoPan={false}>
         <AssetPopupContent
           asset={asset}
           isOwnTeam={isOwnTeam}
@@ -342,77 +342,15 @@ function AssetPopupContent({
   onRemove?: (id: string) => void;
   onRelocate?: (id: string) => void;
 }) {
-  const scoreInd = getScoreIndicator(asset.placement_score);
-  const placedTime = new Date(asset.placed_at).toLocaleTimeString();
-
   return (
-    <div className="p-2 min-w-[160px] max-w-[240px]">
+    <div className="p-2 min-w-[140px] max-w-[200px]">
       <div className="text-sm font-semibold terminal-text text-robotic-yellow">{asset.label}</div>
       <div className="text-xs text-robotic-yellow/60 mt-0.5">{asset.team_name}</div>
-      <div className="text-xs text-robotic-yellow/50 mt-0.5">Placed at {placedTime}</div>
 
       {asset.properties?.capacity != null && (
-        <div className="mt-1.5 px-2 py-1 bg-robotic-yellow/10 border border-robotic-yellow/30 rounded text-xs">
-          <div className="font-medium text-robotic-yellow">
-            Capacity: {String(asset.properties.capacity)}{' '}
-            {(asset.properties.capacity_unit as string) ?? 'units'}
-          </div>
-          {asset.properties.enclosed_area_m2 != null && (
-            <div className="text-robotic-yellow/50 mt-0.5">
-              Floor area: {Math.round(asset.properties.enclosed_area_m2 as number)} m²
-            </div>
-          )}
-        </div>
-      )}
-
-      {Array.isArray(asset.properties?.encloses) &&
-        (asset.properties.encloses as string[]).length > 0 && (
-          <div className="mt-1 text-xs text-robotic-yellow/50">
-            Encloses {(asset.properties.encloses as string[]).length} asset
-            {(asset.properties.encloses as string[]).length > 1 ? 's' : ''}
-          </div>
-        )}
-
-      {asset.placement_score && (
-        <div className="mt-1.5 text-xs">
-          <span style={{ color: scoreInd.color }} className="font-medium">
-            {scoreInd.symbol === '✓'
-              ? 'Good placement'
-              : scoreInd.symbol === '!'
-                ? 'Warnings'
-                : 'Issues'}
-            {typeof asset.placement_score.overall === 'number' && (
-              <span className="ml-1">
-                ({Math.round((asset.placement_score.overall as number) * 100)}%)
-              </span>
-            )}
-          </span>
-          {Array.isArray(asset.placement_score.dimensions) && (
-            <ul className="mt-0.5 space-y-0.5">
-              {(
-                asset.placement_score.dimensions as Array<{
-                  dimension: string;
-                  score: number;
-                  reasoning: string;
-                }>
-              ).map((dim) => (
-                <li key={dim.dimension} className="text-robotic-yellow/60">
-                  <span className="capitalize">{dim.dimension.replace(/_/g, ' ')}</span>:{' '}
-                  <span
-                    style={{
-                      color:
-                        dim.score >= 0.7 ? '#22c55e' : dim.score >= 0.4 ? '#f59e0b' : '#ef4444',
-                    }}
-                  >
-                    {Math.round(dim.score * 100)}%
-                  </span>
-                  {dim.score < 0.7 && (
-                    <span className="ml-1 text-robotic-yellow/40">— {dim.reasoning}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
+        <div className="mt-1.5 text-xs font-medium text-robotic-yellow">
+          Capacity: {String(asset.properties.capacity)}{' '}
+          {(asset.properties.capacity_unit as string) ?? 'units'}
         </div>
       )}
 
