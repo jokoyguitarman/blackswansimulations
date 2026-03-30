@@ -9,6 +9,11 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { haversineM, pointInPolygon } from './geoUtils.js';
 
+export interface AreaOccupancy {
+  area_label: string;
+  headcount: number;
+}
+
 export interface LiveCounters {
   fire_rescue: {
     active_fires: number;
@@ -35,6 +40,7 @@ export interface LiveCounters {
     transported: number;
     deaths_on_site: number;
   };
+  area_occupancy: AreaOccupancy[];
 }
 
 /**
@@ -165,6 +171,19 @@ export async function computeLiveCounters(
   const yellowDelayed = inTreatmentPatients.filter((c) => triageColor(c) === 'yellow').length;
   const greenMinor = inTreatmentPatients.filter((c) => triageColor(c) === 'green').length;
 
+  // --- Area occupancy: aggregate headcounts by current_area label ---
+  const areaMap = new Map<string, number>();
+  for (const c of casualties) {
+    if (['resolved', 'transported', 'deceased'].includes(c.status)) continue;
+    const conds = (c.conditions ?? {}) as Record<string, unknown>;
+    const areaLabel = conds.current_area as string | undefined;
+    if (!areaLabel) continue;
+    areaMap.set(areaLabel, (areaMap.get(areaLabel) ?? 0) + c.headcount);
+  }
+  const areaOccupancy: AreaOccupancy[] = Array.from(areaMap.entries())
+    .map(([area_label, headcount]) => ({ area_label, headcount }))
+    .sort((a, b) => b.headcount - a.headcount);
+
   const counters: LiveCounters = {
     fire_rescue: {
       active_fires: activeFires,
@@ -191,6 +210,7 @@ export async function computeLiveCounters(
       transported,
       deaths_on_site: deathsOnSite,
     },
+    area_occupancy: areaOccupancy,
   };
 
   logger.debug({ sessionId, counters }, 'Live counters computed');

@@ -148,9 +148,8 @@ const DEFAULT_FIRE_STATE: Record<string, unknown> = {
 };
 
 /**
- * Initialize team state containers and counter_definitions at session start.
- * Seeds are no longer generated or loaded; all counters are computed live from
- * scenario_casualties / scenario_hazards via liveCounterService.
+ * Initialize team state containers, counter_definitions, and environmental
+ * route/area seeds at session start.
  */
 export async function loadAndApplyEnvironmentalState(sessionId: string): Promise<void> {
   try {
@@ -245,6 +244,42 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
       nextState._counter_definitions = counterDefsMap;
     }
 
+    // Load environmental seed variant (routes + areas) into session state
+    const { data: seeds } = await supabaseAdmin
+      .from('scenario_environmental_seeds')
+      .select('variant_label, seed_data, display_order')
+      .eq('scenario_id', scenarioId)
+      .order('display_order', { ascending: true });
+
+    if (seeds && seeds.length > 0) {
+      const nonClear = seeds.filter((s) => (s.variant_label as string) !== 'all_clear');
+      const picked =
+        nonClear.length > 0 ? nonClear[Math.floor(Math.random() * nonClear.length)] : seeds[0];
+
+      const seedData = (picked.seed_data ?? {}) as {
+        routes?: unknown[];
+        areas?: unknown[];
+      };
+
+      const envState = (nextState.environmental_state as Record<string, unknown>) ?? {};
+      nextState.environmental_state = {
+        ...envState,
+        ...(seedData.routes?.length ? { routes: seedData.routes } : {}),
+        ...(seedData.areas?.length ? { areas: seedData.areas } : {}),
+      };
+      nextState._active_seed_variant = picked.variant_label;
+
+      logger.info(
+        {
+          sessionId,
+          variant: picked.variant_label,
+          routes: seedData.routes?.length ?? 0,
+          areas: seedData.areas?.length ?? 0,
+        },
+        'Environmental seed variant loaded',
+      );
+    }
+
     const { error: updateError } = await supabaseAdmin
       .from('sessions')
       .update({ current_state: nextState })
@@ -260,7 +295,7 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
 
     logger.info(
       { sessionId, scenarioId, teams: teamsToInit.length },
-      'Team state initialized (no seeds)',
+      'Team and environmental state initialized',
     );
 
     getWebSocketService().stateUpdated?.(sessionId, {

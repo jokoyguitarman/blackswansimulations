@@ -112,16 +112,34 @@ export async function processExitFlow(sessionId: string): Promise<void> {
     .eq('status', 'active')
     .in('asset_type', ['operating_area', 'assembly_point', 'exit_pathway']);
 
-  // Find crowd/evacuee pins that are in "being_evacuated" or "identified" status
+  // Find crowd/evacuee pins that are eligible for exit flow processing
   const { data: crowdPins } = await supabaseAdmin
     .from('scenario_casualties')
     .select('*')
     .eq('scenario_id', session.scenario_id)
     .or(`session_id.is.null,session_id.eq.${sessionId}`)
     .eq('casualty_type', 'crowd')
-    .in('status', ['being_evacuated', 'identified']);
+    .in('status', ['being_evacuated', 'identified', 'at_exit']);
 
-  if (!crowdPins?.length || !exitPathways?.length) return;
+  if (!crowdPins?.length) return;
+
+  // Pre-compute shared state modifiers
+  const rawState = (session.current_state as Record<string, unknown>) ?? {};
+  const injEffects = (session.inject_state_effects as Record<string, unknown>) ?? {};
+  const evacState = {
+    ...((rawState.evacuation_state as Record<string, unknown>) ?? {}),
+    ...((injEffects.evacuation_state as Record<string, unknown>) ?? {}),
+  };
+  const flowRateMod = Math.max(0.1, Number(evacState.flow_rate_modifier) || 1);
+
+  // Count marshals for flow rate modifier
+  const { data: marshalsNear } = await supabaseAdmin
+    .from('placed_assets')
+    .select('id')
+    .eq('session_id', sessionId)
+    .eq('status', 'active');
+  const marshalCount = (marshalsNear ?? []).length;
+  const marshalModifier = Math.min(2, 1 + (marshalCount > 2 ? 0.15 * (marshalCount - 2) : 0));
 
   for (const exit of claimedExits) {
     const exitCoords = exit.coordinates as { lat: number; lng: number };
@@ -129,6 +147,7 @@ export async function processExitFlow(sessionId: string): Promise<void> {
 
     const exitConds = (exit.conditions as Record<string, unknown>) ?? {};
     const flowRateBase = (exitConds.capacity_flow_per_min as number) ?? BASE_FLOW_RATE_PER_MIN;
+    const effectiveFlowRate = Math.floor(flowRateBase * marshalModifier * flowRateMod);
 
     // Find operational areas within 200m of this exit
     const nearbyPathways = (exitPathways ?? []).filter((p) => {
@@ -146,43 +165,36 @@ export async function processExitFlow(sessionId: string): Promise<void> {
       return haversineMeters(exitCoords.lat, exitCoords.lng, cLat, cLng) <= 200;
     });
 
-    if (!nearbyPathways.length) continue;
-
-    // Count marshals near exit for flow rate modifier
-    const { data: marshalsNear } = await supabaseAdmin
-      .from('placed_assets')
-      .select('id')
-      .eq('session_id', sessionId)
-      .eq('status', 'active');
-
-    const marshalCount = (marshalsNear ?? []).length;
-
-    const marshalModifier = Math.min(2, 1 + (marshalCount > 2 ? 0.15 * (marshalCount - 2) : 0));
-
-    const rawState = (session.current_state as Record<string, unknown>) ?? {};
-    const injEffects = (session.inject_state_effects as Record<string, unknown>) ?? {};
-    const evacState = {
-      ...((rawState.evacuation_state as Record<string, unknown>) ?? {}),
-      ...((injEffects.evacuation_state as Record<string, unknown>) ?? {}),
-    };
-    const flowRateMod = Math.max(0.1, Number(evacState.flow_rate_modifier) || 1);
-
-    const effectiveFlowRate = Math.floor(flowRateBase * marshalModifier * flowRateMod);
-
-    // Process crowd pins inside any of the nearby pathways
+    // Process crowd pins that are either:
+    // 1. Inside a nearby exit pathway polygon (legacy spatial trigger), OR
+    // 2. Have status 'at_exit' and are within 80m of this exit (decision-routed)
     for (const crowd of crowdPins ?? []) {
-      let isInsidePathway = false;
-      for (const pathway of nearbyPathways) {
-        const pg = pathway.geometry as Record<string, unknown>;
-        if (!pg || pg.type !== 'Polygon') continue;
-        const coords = (pg.coordinates as number[][][])[0];
-        if (pointInPolygon(crowd.location_lat, crowd.location_lng, coords)) {
-          isInsidePathway = true;
-          break;
+      let eligible = false;
+
+      // Decision-routed: crowd arrived at exit via movement system
+      if (crowd.status === 'at_exit') {
+        if (
+          haversineMeters(crowd.location_lat, crowd.location_lng, exitCoords.lat, exitCoords.lng) <=
+          80
+        ) {
+          eligible = true;
         }
       }
 
-      if (!isInsidePathway) continue;
+      // Legacy: crowd is inside a pathway polygon near this exit
+      if (!eligible && nearbyPathways.length > 0) {
+        for (const pathway of nearbyPathways) {
+          const pg = pathway.geometry as Record<string, unknown>;
+          if (!pg || pg.type !== 'Polygon') continue;
+          const coords = (pg.coordinates as number[][][])[0];
+          if (pointInPolygon(crowd.location_lat, crowd.location_lng, coords)) {
+            eligible = true;
+            break;
+          }
+        }
+      }
+
+      if (!eligible) continue;
 
       // Process flow: deduct from headcount
       const processed = Math.min(crowd.headcount, effectiveFlowRate);
@@ -210,37 +222,55 @@ export async function processExitFlow(sessionId: string): Promise<void> {
           .eq('id', crowd.id);
       }
 
+      // Check if the original crowd had a final_destination stored by the decision system
+      const crowdConds = (crowd.conditions ?? {}) as Record<string, unknown>;
+      const finalDest = crowdConds.final_destination as
+        | { lat: number; lng: number; label: string }
+        | undefined;
+
       // Create materialized evacuees outside the exit
       const outsideLat = exitCoords.lat + (Math.random() - 0.5) * 0.0003;
       const outsideLng = exitCoords.lng + (Math.random() - 0.5) * 0.0003;
 
-      const newPin = {
+      const evacueeConditions: Record<string, unknown> = {
+        behavior: 'calm',
+        movement_direction: finalDest ? 'moving' : 'stationary',
+        visible_description: `${processed} people evacuated through ${exit.label}`,
+        mixed_wounded:
+          mixedWounded.length > 0
+            ? mixedWounded.map((w) => ({
+                ...w,
+                count: Math.ceil(
+                  ((w.count as number) ?? 0) * (processed / (processed + remaining)),
+                ),
+              }))
+            : [],
+        pending_triage_endorsement: mixedWounded.length > 0,
+        evacuated_through: exit.label,
+        current_area: exit.label,
+      };
+
+      const newPin: Record<string, unknown> = {
         scenario_id: session.scenario_id,
         session_id: sessionId,
-        casualty_type: 'evacuee_group' as const,
+        casualty_type: 'evacuee_group',
         location_lat: outsideLat,
         location_lng: outsideLng,
         floor_level: 'G',
         headcount: processed,
-        conditions: {
-          behavior: 'calm',
-          movement_direction: 'stationary',
-          visible_description: `${processed} people evacuated through ${exit.label}`,
-          mixed_wounded:
-            mixedWounded.length > 0
-              ? mixedWounded.map((w) => ({
-                  ...w,
-                  count: Math.ceil(
-                    ((w.count as number) ?? 0) * (processed / (processed + remaining)),
-                  ),
-                }))
-              : [],
-          pending_triage_endorsement: mixedWounded.length > 0,
-          evacuated_through: exit.label,
-        },
-        status: 'at_assembly',
+        conditions: evacueeConditions,
+        status: finalDest ? 'being_evacuated' : 'at_assembly',
         appears_at_minutes: 0,
       };
+
+      // If there's a final destination, set movement fields so evacuees walk there
+      if (finalDest) {
+        newPin.destination_lat = finalDest.lat;
+        newPin.destination_lng = finalDest.lng;
+        newPin.destination_label = finalDest.label;
+        newPin.movement_speed_mpm = 72; // walking speed
+        newPin.destination_reached_status = 'at_assembly';
+      }
 
       const { data: created } = await supabaseAdmin
         .from('scenario_casualties')

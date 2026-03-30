@@ -397,6 +397,11 @@ export class InjectSchedulerService {
         debris_cleared: liveCounters.fire_rescue.debris_cleared,
       };
 
+      // Merge area occupancy breakdown
+      if (liveCounters.area_occupancy?.length) {
+        nextState.area_occupancy = liveCounters.area_occupancy;
+      }
+
       stateChanged = true;
     } catch (liveErr) {
       logger.warn({ err: liveErr, sessionId: session.id }, 'Live counter computation failed');

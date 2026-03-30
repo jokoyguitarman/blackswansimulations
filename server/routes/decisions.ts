@@ -27,6 +27,7 @@ import {
   nudgePublicSentiment,
 } from '../services/heatMeterService.js';
 import { applyDecisionCasualtyEffects } from '../services/decisionCasualtyEffectsService.js';
+import { evaluateTransportOutcome } from '../services/transportOutcomeService.js';
 import { teamConsultedInsiderBefore } from '../services/incidentDecisionGradingService.js';
 import { publishInjectToSession } from './injects.js';
 import { evaluateDecisionBasedTriggers } from '../services/injectTriggerService.js';
@@ -1356,6 +1357,26 @@ async function processExecutedDecisionInBackground(
       authorTeamNames[0] ?? null,
     ).catch((err) => logger.error({ error: err, decisionId }, 'Decision casualty effects failed')),
   );
+
+  // Transport outcome evaluation (route conditions → outcome inject)
+  if (authorTeamNames.length > 0) {
+    bgTasks.push(
+      evaluateTransportOutcome(
+        sessionId,
+        {
+          id: decisionId,
+          title: (decision.title as string) ?? '',
+          description: (decision.description as string) ?? '',
+          type: (decision.type as string) ?? null,
+        },
+        authorTeamNames[0],
+        env.openAiApiKey,
+        io,
+      ).catch((err) =>
+        logger.error({ error: err, decisionId }, 'Transport outcome evaluation failed'),
+      ),
+    );
+  }
 
   // Objective evaluation (fire-and-forget)
   bgTasks.push(

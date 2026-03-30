@@ -128,6 +128,12 @@ async function handleArrival(sessionId: string, cas: MovingCasualty): Promise<vo
     update.status = cas.destination_reached_status;
   }
 
+  // Set current_area label from destination_label so counters can track location
+  if (cas.destination_label) {
+    const existingConds = (cas.conditions ?? {}) as Record<string, unknown>;
+    update.conditions = { ...existingConds, current_area: cas.destination_label };
+  }
+
   await supabaseAdmin.from('scenario_casualties').update(update).eq('id', cas.id);
 
   const finalStatus = (cas.destination_reached_status ?? cas.status) as string;

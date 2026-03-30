@@ -1346,6 +1346,252 @@ Base response times on distance. Use the facility name to infer size/capabilitie
 }
 
 // ---------------------------------------------------------------------------
+// Phase 4b — Route Network (corridor computation + AI enrichment)
+// ---------------------------------------------------------------------------
+
+interface RouteCorridor {
+  route_id: string;
+  label: string;
+  highway_type: string;
+  one_way: boolean;
+  geometry: [number, number][];
+  distance_m: number;
+  baseline_travel_min: number;
+  connects_to: string[];
+}
+
+const HIGHWAY_SPEED_KPH: Record<string, number> = {
+  motorway: 80,
+  trunk: 60,
+  primary: 50,
+  secondary: 40,
+  tertiary: 30,
+  residential: 20,
+  unclassified: 25,
+};
+
+function polylineLength(coords: [number, number][]): number {
+  let total = 0;
+  for (let i = 1; i < coords.length; i++) {
+    total += geoHaversineM(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]);
+  }
+  return total;
+}
+
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '');
+}
+
+/**
+ * Deterministic corridor computation: link OSM road polylines to nearby
+ * facilities (hospitals, police, fire) and the incident site.
+ */
+function computeRouteCorridors(
+  routeGeometries: OsmRouteGeometry[],
+  facilities: Array<{
+    label: string;
+    coordinates: { lat: number; lng: number };
+    location_type: string;
+  }>,
+  incidentCoords: { lat: number; lng: number },
+): RouteCorridor[] {
+  const PROXIMITY_THRESHOLD_M = 400;
+  const corridors: RouteCorridor[] = [];
+  const seenIds = new Set<string>();
+
+  for (const route of routeGeometries) {
+    if (!route.coordinates?.length || route.coordinates.length < 2) continue;
+
+    const routeId = slugify(route.name);
+    if (seenIds.has(routeId)) continue;
+    seenIds.add(routeId);
+
+    const nearIncident = route.coordinates.some(
+      ([lat, lng]) =>
+        geoHaversineM(lat, lng, incidentCoords.lat, incidentCoords.lng) < PROXIMITY_THRESHOLD_M,
+    );
+    if (!nearIncident) continue;
+
+    const connectsTo: string[] = [];
+    for (const facility of facilities) {
+      const nearFacility = route.coordinates.some(
+        ([lat, lng]) =>
+          geoHaversineM(lat, lng, facility.coordinates.lat, facility.coordinates.lng) <
+          PROXIMITY_THRESHOLD_M,
+      );
+      if (nearFacility) connectsTo.push(facility.label);
+    }
+
+    const lengthM = polylineLength(route.coordinates);
+    const speedKph = HIGHWAY_SPEED_KPH[route.highway_type] ?? 30;
+    const travelMin = Math.round((lengthM / 1000 / speedKph) * 60 * 10) / 10;
+
+    const suffix = connectsTo.length > 0 ? ` – toward ${connectsTo[0]}` : '';
+    corridors.push({
+      route_id: routeId,
+      label: `${route.name}${suffix}`,
+      highway_type: route.highway_type,
+      one_way: route.one_way,
+      geometry: route.coordinates,
+      distance_m: Math.round(lengthM),
+      baseline_travel_min: Math.max(1, travelMin),
+      connects_to: connectsTo,
+    });
+  }
+
+  corridors.sort((a, b) => a.baseline_travel_min - b.baseline_travel_min);
+  return corridors.slice(0, 12);
+}
+
+/**
+ * AI enrichment: assign traffic conditions and create 3 seed variants
+ * from the pre-computed route corridors.
+ */
+async function generateRouteNetwork(
+  input: WarroomGenerateInput,
+  corridors: RouteCorridor[],
+  facilities: Array<{ label: string; location_type: string; conditions?: Record<string, unknown> }>,
+  openAiApiKey: string,
+  onProgress?: WarroomAiProgressCallback,
+  narrative?: { title?: string; description?: string; briefing?: string },
+): Promise<WarroomScenarioPayload['environmental_seeds']> {
+  if (corridors.length === 0) return undefined;
+
+  onProgress?.('Enriching route network with traffic conditions...');
+
+  const { scenario_type, venue_name, location, setting } = input;
+  const venue = venue_name || location || setting;
+
+  const corridorSummary = corridors
+    .map(
+      (c, i) =>
+        `${i + 1}. "${c.label}" (${c.highway_type}, ${c.distance_m}m, ~${c.baseline_travel_min} min)${c.one_way ? ' [one-way]' : ''}${c.connects_to.length > 0 ? ` → connects to: ${c.connects_to.join(', ')}` : ''}`,
+    )
+    .join('\n');
+
+  const facilitySummary = facilities
+    .filter((f) => f.location_type === 'hospital')
+    .map((f) => {
+      const conds = f.conditions as Record<string, unknown> | undefined;
+      const beds = conds?.emergency_beds_available ?? '?';
+      return `- ${f.label} (${beds} emergency beds)`;
+    })
+    .join('\n');
+
+  const systemPrompt = `You are an expert in urban traffic management during crisis incidents. Given real road corridors near a ${scenario_type} incident at ${venue}, create 3 environmental seed variants with realistic route and facility conditions.
+
+ROAD CORRIDORS (computed from real OpenStreetMap data):
+${corridorSummary}
+
+HOSPITALS:
+${facilitySummary}
+
+SCENARIO: ${narrative?.title ?? scenario_type} — ${narrative?.description ?? ''}
+
+For each variant, assign EVERY route a condition. Also include an "areas" array describing hospital/facility status.
+
+Return ONLY valid JSON:
+{
+  "variants": [
+    {
+      "variant_label": "string (e.g. all_clear, main_route_congested, alternate_blocked)",
+      "routes": [
+        {
+          "route_id": "string (use the exact route_id from above)",
+          "label": "string (use the exact label from above)",
+          "travel_time_minutes": number (baseline if clear, inflated if congested, null if impassable),
+          "problem": null or "string describing the specific issue (e.g. 'Multi-vehicle accident blocking 2 lanes', 'Emergency vehicle convergence causing gridlock')",
+          "active": true,
+          "managed": boolean (false if problem exists, true if clear),
+          "connects_to": ["facility labels"],
+          "is_optimal_for": ["facility labels this is the best route to"]
+        }
+      ],
+      "areas": [
+        {
+          "area_id": "string",
+          "label": "string (facility name)",
+          "type": "hospital",
+          "at_capacity": boolean,
+          "problem": null or "string",
+          "active": true,
+          "managed": boolean,
+          "aliases": ["short names"]
+        }
+      ]
+    }
+  ]
+}
+
+VARIANT RULES:
+- Variant 1 ("all_clear"): All routes open at baseline travel times. All hospitals operational.
+- Variant 2: The shortest/most obvious route to the nearest hospital is congested or blocked with a problem realistic for a ${scenario_type} incident. At least one hospital may be at capacity.
+- Variant 3: A DIFFERENT route is affected (not the same as variant 2). Different facility pressure pattern.
+- Problems must be specific and scenario-appropriate (not generic). Reference real road names.
+- travel_time_minutes for congested routes should be 2-4x the baseline. For blocked routes, use null.
+- Include geometry coordinates from the input data unchanged — do NOT modify coordinates.`;
+
+  const userPrompt = `Create 3 environmental seed variants for "${narrative?.title || scenario_type}" at ${venue}.`;
+
+  try {
+    const parsed = await callOpenAi<{
+      variants?: Array<{
+        variant_label: string;
+        routes: Array<{
+          route_id: string;
+          label: string;
+          travel_time_minutes: number | null;
+          problem: string | null;
+          active: boolean;
+          managed: boolean;
+          connects_to?: string[];
+          is_optimal_for?: string[];
+        }>;
+        areas?: Array<{
+          area_id: string;
+          label: string;
+          type: string;
+          at_capacity: boolean;
+          problem?: string | null;
+          active?: boolean;
+          managed?: boolean;
+          aliases?: string[];
+        }>;
+      }>;
+    }>(systemPrompt, userPrompt, openAiApiKey, 4000);
+
+    if (!parsed.variants?.length) {
+      logger.warn('Route network AI returned no variants');
+      return undefined;
+    }
+
+    const corridorMap = new Map(corridors.map((c) => [c.route_id, c]));
+
+    return parsed.variants.map((v, i) => ({
+      variant_label: v.variant_label || `variant_${i}`,
+      seed_data: {
+        routes: v.routes.map((r) => {
+          const corridor = corridorMap.get(r.route_id);
+          return {
+            ...r,
+            geometry: corridor?.geometry,
+            highway_type: corridor?.highway_type,
+          };
+        }),
+        areas: v.areas ?? [],
+      },
+      display_order: i,
+    }));
+  } catch (err) {
+    logger.warn({ err }, 'Route network generation failed; continuing without');
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Phase 4b2 — Step 1: Hazard Identification  (2 500 tokens)
 // ---------------------------------------------------------------------------
 
@@ -3380,7 +3626,38 @@ export async function warroomGenerateScenario(
     narrative,
   );
 
-  const environmental_seeds = undefined;
+  // Route network: compute corridors from OSM data, then AI-enrich with conditions
+  let environmental_seeds: WarroomScenarioPayload['environmental_seeds'] = undefined;
+  if (input.osmRouteGeometries?.length && locations?.length) {
+    const incidentPin = locations.find((l) => l.pin_category === 'incident_site');
+    const incidentCoords = incidentPin?.coordinates ?? input.geocode;
+    if (incidentCoords) {
+      const facilityPins = locations.filter((l) => l.pin_category === 'poi');
+      const corridors = computeRouteCorridors(
+        input.osmRouteGeometries,
+        facilityPins.map((p) => ({
+          label: p.label,
+          coordinates: p.coordinates,
+          location_type: p.location_type,
+        })),
+        incidentCoords,
+      );
+      if (corridors.length > 0) {
+        environmental_seeds = await generateRouteNetwork(
+          input,
+          corridors,
+          facilityPins.map((p) => ({
+            label: p.label,
+            location_type: p.location_type,
+            conditions: p.conditions,
+          })),
+          openAiApiKey,
+          onProgress,
+          narrative,
+        );
+      }
+    }
+  }
 
   // Attach counter definitions to teams (AI-generated or template fallback)
   const effectiveDefsMap = counterDefsMap ?? loadTemplateCounterDefs(input.scenario_type);
@@ -3460,6 +3737,35 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
   ];
   const casualties: WarroomScenarioPayload['casualties'] =
     allCasualtyPins.length > 0 ? allCasualtyPins : undefined;
+
+  // Reconcile counter pool caps with actual pin counts so UI totals match reality
+  if (allCasualtyPins.length > 0) {
+    let totalPatients = 0;
+    let totalEvacuees = 0;
+    for (const pin of allCasualtyPins) {
+      const hc = pin.headcount ?? 1;
+      if (pin.casualty_type === 'patient') {
+        totalPatients += hc;
+      } else {
+        totalEvacuees += hc;
+      }
+    }
+    for (const team of phase1.teams) {
+      if (!team.counter_definitions?.length) continue;
+      for (const def of team.counter_definitions) {
+        if (def.key === 'total_patients' && def.behavior === 'static' && totalPatients > 0) {
+          def.initial_value = totalPatients;
+        }
+        if (def.key === 'total_evacuees' && def.behavior === 'static' && totalEvacuees > 0) {
+          def.initial_value = totalEvacuees;
+        }
+      }
+    }
+    logger.info(
+      { totalPatients, totalEvacuees, pinCount: allCasualtyPins.length },
+      'Counter pool caps reconciled with actual pin counts',
+    );
+  }
 
   // Equipment palette derived from hazard + casualty requirements
   const scenarioEquipment = await generateScenarioEquipment(scenarioHazards, casualties, teamNames);

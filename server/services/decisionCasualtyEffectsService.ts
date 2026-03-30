@@ -29,6 +29,7 @@ interface CasualtyEffect {
   target_description: string;
   action: 'direct_to' | 'extract' | 'treat' | 'transport';
   destination_description?: string;
+  via_exit?: string;
 }
 
 interface CasualtyEffectsResult {
@@ -153,7 +154,8 @@ Each effect object has:
 - target_type: "crowd" or "patient"
 - target_description: brief description of who is being moved (e.g. "crowd near Building C", "trapped patient")
 - action: one of "direct_to" (guide crowd), "extract" (rescue/carry patient), "treat" (begin treatment), "transport" (ambulance transport)
-- destination_description: where they are going (e.g. "Exit A", "triage area", "hospital"). Omit for "treat".
+- destination_description: the FINAL destination (e.g. "holding area", "triage area", "assembly point", "hospital"). Omit for "treat".
+- via_exit: if the decision specifies routing THROUGH a particular exit or doorway (e.g. "Exit A", "Main Gate", "South Door"), include the exit name here. Omit if no specific exit is mentioned.
 
 If the decision does NOT involve moving people, return {"casualty_effects": []}.
 Only include effects where the decision clearly implies physical movement or relocation of people.`,
@@ -206,19 +208,54 @@ async function resolveAndApply(
     );
   }
 
+  // Via-exit routing: resolve the exit as the first waypoint, store final destination for later
+  let exitWaypoint: { lat: number; lng: number; label: string } | null = null;
+  if (effect.via_exit && effect.action === 'direct_to') {
+    exitWaypoint = resolveExitLocation(effect.via_exit, locations);
+  }
+
   switch (effect.action) {
     case 'direct_to': {
-      if (!destination) return;
+      if (!exitWaypoint && !destination) return;
       const speed =
         targetCasualty.casualty_type === 'crowd' ? CROWD_WALK_MPM : AMBULATORY_PATIENT_MPM;
-      await setCasualtyMovement(sessionId, targetCasualty, {
-        destination_lat: destination.lat,
-        destination_lng: destination.lng,
-        destination_label: destination.label,
-        movement_speed_mpm: speed,
-        destination_reached_status: 'being_evacuated',
-        status: targetCasualty.status === 'identified' ? 'being_evacuated' : targetCasualty.status,
-      });
+
+      if (exitWaypoint) {
+        // Two-step: walk to exit first, store final destination in conditions
+        const updatedConds = { ...(targetCasualty.conditions ?? {}) };
+        if (destination) {
+          updatedConds.final_destination = {
+            lat: destination.lat,
+            lng: destination.lng,
+            label: destination.label,
+          };
+        }
+        await supabaseAdmin
+          .from('scenario_casualties')
+          .update({ conditions: updatedConds })
+          .eq('id', targetCasualty.id);
+
+        await setCasualtyMovement(sessionId, targetCasualty, {
+          destination_lat: exitWaypoint.lat,
+          destination_lng: exitWaypoint.lng,
+          destination_label: exitWaypoint.label,
+          movement_speed_mpm: speed,
+          destination_reached_status: 'at_exit',
+          status:
+            targetCasualty.status === 'identified' ? 'being_evacuated' : targetCasualty.status,
+        });
+      } else {
+        // Direct: walk straight to final destination
+        await setCasualtyMovement(sessionId, targetCasualty, {
+          destination_lat: destination!.lat,
+          destination_lng: destination!.lng,
+          destination_label: destination!.label,
+          movement_speed_mpm: speed,
+          destination_reached_status: 'being_evacuated',
+          status:
+            targetCasualty.status === 'identified' ? 'being_evacuated' : targetCasualty.status,
+        });
+      }
       break;
     }
     case 'extract': {
@@ -384,6 +421,35 @@ function pickPointInArea(
   if (geom.type === 'Polygon') {
     const ring = (geom.coordinates as number[][][])[0];
     return randomPointInGeoJSONPolygon(ring, existing, 15);
+  }
+  return null;
+}
+
+function resolveExitLocation(
+  exitName: string,
+  locations: LocationRow[],
+): { lat: number; lng: number; label: string } | null {
+  const name = exitName.toLowerCase();
+  for (const loc of locations) {
+    if (!loc.coordinates?.lat || !loc.coordinates?.lng) continue;
+    const locLabel = loc.label.toLowerCase();
+    if (locLabel.includes(name) || name.includes(locLabel)) {
+      return { lat: loc.coordinates.lat, lng: loc.coordinates.lng, label: loc.label };
+    }
+  }
+  // Fuzzy: try matching just the identifier part (e.g. "A" from "Exit A")
+  const parts = name.split(/\s+/);
+  const identifier = parts[parts.length - 1];
+  if (identifier.length <= 3) {
+    for (const loc of locations) {
+      if (!loc.coordinates?.lat || !loc.coordinates?.lng) continue;
+      if (
+        loc.label.toLowerCase().includes(identifier) &&
+        loc.label.toLowerCase().includes('exit')
+      ) {
+        return { lat: loc.coordinates.lat, lng: loc.coordinates.lng, label: loc.label };
+      }
+    }
   }
   return null;
 }

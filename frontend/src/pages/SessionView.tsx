@@ -443,6 +443,23 @@ export const SessionView = () => {
     [actionRecording?.active],
   );
 
+  const handlePlacementUpdated = useCallback(
+    (placementId: string, label: string, properties: Record<string, unknown>) => {
+      setActionRecording((prev) => {
+        if (!prev?.active) return prev;
+        return {
+          ...prev,
+          actions: prev.actions.map((a) =>
+            a.placementId === placementId
+              ? { ...a, label, properties: { ...a.properties, ...properties } }
+              : a,
+          ),
+        };
+      });
+    },
+    [],
+  );
+
   const handleCrowdMoved = useCallback(
     (move: {
       id: string;
@@ -1382,6 +1399,41 @@ export const SessionView = () => {
           );
         })()}
 
+      {/* Area Occupancy Breakdown */}
+      {session.status === 'in_progress' &&
+        (() => {
+          const areaOccupancy = (session.current_state as Record<string, unknown> | undefined)
+            ?.area_occupancy as Array<{ area_label: string; headcount: number }> | undefined;
+          if (!areaOccupancy?.length) return null;
+          return (
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
+              <div className="military-border p-4 bg-robotic-gray-200">
+                <h3 className="text-sm terminal-text uppercase text-robotic-yellow mb-3">
+                  [AREA OCCUPANCY]
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                  {areaOccupancy.map((a) => (
+                    <div
+                      key={a.area_label}
+                      className="military-border p-2 bg-robotic-gray-300 text-center"
+                    >
+                      <div className="text-xs terminal-text text-robotic-yellow/80 uppercase truncate">
+                        {a.area_label}
+                      </div>
+                      <div className="text-lg terminal-text text-robotic-gray-50 font-bold">
+                        {a.headcount}
+                      </div>
+                      <div className="text-[10px] terminal-text text-robotic-gray-500 uppercase">
+                        people
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
       {/* Full-Width Heat Meter Bar */}
       {session.status === 'in_progress' &&
         (() => {
@@ -1498,6 +1550,7 @@ export const SessionView = () => {
                       : []
                   }
                   onPlacementCreated={handlePlacementCreated}
+                  onPlacementUpdated={handlePlacementUpdated}
                   isRecordingActions={!!actionRecording?.active}
                   actionRecording={actionRecording}
                   onSubmitActions={handleSubmitActions}

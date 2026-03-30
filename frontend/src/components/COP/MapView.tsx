@@ -156,6 +156,12 @@ interface MapViewProps {
     geometry: Record<string, unknown>;
     properties: Record<string, unknown>;
   }) => void;
+  /** Called when a placement's label/properties are updated after creation (e.g. zone classification). */
+  onPlacementUpdated?: (
+    placementId: string,
+    label: string,
+    properties: Record<string, unknown>,
+  ) => void;
   /** True when actions are being recorded — shows a visual indicator. */
   isRecordingActions?: boolean;
   /** Action recording state for the AssetPalette. */
@@ -459,6 +465,7 @@ export const MapView = ({
   draggableAssets = [],
   teamName,
   onPlacementCreated,
+  onPlacementUpdated,
   isRecordingActions,
   actionRecording,
   onSubmitActions,
@@ -1028,20 +1035,23 @@ export const MapView = ({
   const handleZoneClassify = useCallback(
     async (classification: 'hot' | 'warm' | 'cold') => {
       if (!zoneClassifyTarget) return;
+      const newLabel = `${classification.charAt(0).toUpperCase() + classification.slice(1)} Zone`;
+      const newProps = {
+        ...zoneClassifyTarget.existingProps,
+        zone_classification: classification,
+      };
       try {
         await api.placements.update(zoneClassifyTarget.sessionId, zoneClassifyTarget.placementId, {
-          properties: {
-            ...zoneClassifyTarget.existingProps,
-            zone_classification: classification,
-          },
-          label: `${classification.charAt(0).toUpperCase() + classification.slice(1)} Zone`,
+          properties: newProps,
+          label: newLabel,
         });
+        onPlacementUpdated?.(zoneClassifyTarget.placementId, newLabel, newProps);
       } catch (err) {
         console.error('Failed to classify zone:', err);
       }
       setZoneClassifyTarget(null);
     },
-    [zoneClassifyTarget],
+    [zoneClassifyTarget, onPlacementUpdated],
   );
 
   // Key stable per session so map only remounts when session changes, not on every render
