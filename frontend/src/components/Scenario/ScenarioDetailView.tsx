@@ -573,10 +573,12 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                               {c.managed ? 'managed' : 'unmanaged'}
                             </div>
                             <div>
-                              {c.highway_type && `${String(c.highway_type)} `}
+                              {c.highway_type ? `${String(c.highway_type)} ` : null}
                               {c.one_way ? '[one-way] ' : ''}
-                              {c.distance_m != null && `${c.distance_m}m `}
-                              {c.travel_time_minutes != null && `~${c.travel_time_minutes} min`}
+                              {c.distance_m != null ? `${c.distance_m}m ` : null}
+                              {c.travel_time_minutes != null
+                                ? `~${c.travel_time_minutes} min`
+                                : null}
                             </div>
                             {Array.isArray(c.connects_to) &&
                               (c.connects_to as string[]).length > 0 && (
