@@ -219,10 +219,26 @@ export async function runAreaMonitors(
       }
       const totalPeople = occupants.reduce((s, c) => s + c.headcount, 0);
 
-      // Compute area capacity
-      const capacityRate = CAPACITY_PER_M2[area.asset_type] ?? 1 / 5;
-      const areaM2 = (area.properties as Record<string, unknown>)?.area_m2 as number | undefined;
-      const capacity = areaM2 ? Math.max(1, Math.floor(areaM2 * capacityRate)) : null;
+      // Compute area capacity — prefer pre-computed capacity from enclosed point assets
+      // (set by placements.ts enclosure linking), fall back to m²-based estimate.
+      let capacity: number | null = null;
+      for (const asset of (pointAssets ?? []) as AreaAsset[]) {
+        const assetCap = (asset.properties as Record<string, unknown>)?.capacity as
+          | number
+          | undefined;
+        if (!assetCap) continue;
+        const enclosedBy = (asset.properties as Record<string, unknown>)?.enclosed_by as
+          | string
+          | undefined;
+        if (enclosedBy === area.id) {
+          capacity = Math.max(capacity ?? 0, assetCap);
+        }
+      }
+      if (capacity == null) {
+        const capacityRate = CAPACITY_PER_M2[area.asset_type] ?? 1 / 5;
+        const areaM2 = (area.properties as Record<string, unknown>)?.area_m2 as number | undefined;
+        capacity = areaM2 ? Math.max(1, Math.floor(areaM2 * capacityRate)) : null;
+      }
 
       // ── Overcrowding check ──
       if (capacity && totalPeople > 0) {

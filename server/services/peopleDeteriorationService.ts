@@ -35,7 +35,13 @@ const CRITICAL_TRANSPORT_WINDOW_MIN = 20;
 /** Warning issued this many minutes before the critical transport deadline */
 const CRITICAL_TRANSPORT_WARNING_BEFORE_MIN = 5;
 
-const UNTREATED_STATUSES = ['undiscovered', 'identified', 'endorsed_to_triage', 'at_assembly'];
+const UNTREATED_STATUSES = [
+  'undiscovered',
+  'identified',
+  'awaiting_triage',
+  'endorsed_to_triage',
+  'at_assembly',
+];
 
 /**
  * Compute minutes since last deterioration step. Uses `last_deterioration_at`

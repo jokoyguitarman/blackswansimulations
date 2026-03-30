@@ -33,6 +33,7 @@ const STATUS_LABELS: Record<string, string> = {
   identified: 'Identified',
   being_evacuated: 'Being Evacuated',
   at_assembly: 'At Assembly',
+  awaiting_triage: 'Awaiting Triage',
   endorsed_to_triage: 'Endorsed to Triage',
   in_treatment: 'In Treatment',
   endorsed_to_transport: 'Ready for Transport',

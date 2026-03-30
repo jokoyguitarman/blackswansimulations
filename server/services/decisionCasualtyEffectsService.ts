@@ -286,7 +286,7 @@ async function resolveAndApply(
         destination_lng: destination.lng,
         destination_label: destination.label,
         movement_speed_mpm: speed,
-        destination_reached_status: 'endorsed_to_triage',
+        destination_reached_status: 'awaiting_triage',
         status: targetCasualty.status === 'identified' ? 'being_evacuated' : targetCasualty.status,
       });
       break;
@@ -304,7 +304,11 @@ async function resolveAndApply(
       break;
     }
     case 'treat': {
-      if (['endorsed_to_triage', 'identified', 'being_evacuated'].includes(targetCasualty.status)) {
+      if (
+        ['awaiting_triage', 'endorsed_to_triage', 'identified', 'being_evacuated'].includes(
+          targetCasualty.status,
+        )
+      ) {
         const treatConds = { ...(targetCasualty.conditions ?? {}) };
         const triageColor = (treatConds.triage_color as string) ?? 'green';
         if (triageColor === 'red') {

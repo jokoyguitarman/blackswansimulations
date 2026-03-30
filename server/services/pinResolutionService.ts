@@ -212,26 +212,9 @@ async function handleHazardResolutionCascade(
   }
 }
 
-const TREATMENT_DURATIONS: Record<string, number> = {
-  red: 20,
-  yellow: 12,
-  green: 5,
-  black: 0,
-};
-
 function isMedicalAsset(assetType: string): boolean {
   const t = assetType.toLowerCase();
   return t.includes('medic') || t.includes('paramedic') || t.includes('emt');
-}
-
-function isTransportAsset(assetType: string): boolean {
-  const t = assetType.toLowerCase();
-  return t.includes('ambulance') || t.includes('transport') || t.includes('medevac');
-}
-
-function isMedicalArea(assetType: string): boolean {
-  const t = assetType.toLowerCase();
-  return t.includes('triage') || t.includes('treatment') || t.includes('field_hospital');
 }
 
 function isInsideArea(lat: number, lng: number, asset: PlacedAssetRow): boolean {
@@ -248,22 +231,10 @@ function isInsideArea(lat: number, lng: number, asset: PlacedAssetRow): boolean 
 export async function evaluateCasualtyResolution(sessionId: string): Promise<void> {
   const { data: session } = await supabaseAdmin
     .from('sessions')
-    .select('scenario_id, start_time, current_state, inject_state_effects')
+    .select('scenario_id')
     .eq('id', sessionId)
     .single();
   if (!session) return;
-
-  const elapsedMinutes = session.start_time
-    ? Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000)
-    : 0;
-
-  const rawState = (session.current_state as Record<string, unknown>) ?? {};
-  const injEffects = (session.inject_state_effects as Record<string, unknown>) ?? {};
-  const triageModState = {
-    ...((rawState.triage_state as Record<string, unknown>) ?? {}),
-    ...((injEffects.triage_state as Record<string, unknown>) ?? {}),
-  };
-  const treatmentTimeMod = Math.max(0.5, Number(triageModState.treatment_time_modifier) || 1);
 
   const { data: casualties } = await supabaseAdmin
     .from('scenario_casualties')
@@ -282,23 +253,12 @@ export async function evaluateCasualtyResolution(sessionId: string): Promise<voi
 
   const assetList = (assets ?? []) as PlacedAssetRow[];
 
-  // Find medical area polygons for triage containment checks
-  const medicalAreas = assetList.filter(
-    (a) => a.geometry?.type === 'Polygon' && isMedicalArea(a.asset_type),
-  );
   const assemblyAreas = assetList.filter(
     (a) =>
       a.geometry?.type === 'Polygon' &&
       (a.asset_type.toLowerCase().includes('assembly') ||
         a.asset_type.toLowerCase().includes('gathering')),
   );
-
-  // Find hospital/off-map locations for transport destination
-  const { data: hospitalLocs } = await supabaseAdmin
-    .from('scenario_locations')
-    .select('id, label, coordinates')
-    .eq('scenario_id', session.scenario_id)
-    .or('location_type.ilike.%hospital%,claimed_as.eq.hospital,conditions->>pin_category.eq.poi');
 
   for (const cas of casualties) {
     const conds = (cas.conditions ?? {}) as Record<string, unknown>;
@@ -327,100 +287,16 @@ export async function evaluateCasualtyResolution(sessionId: string): Promise<voi
 
     if (cas.casualty_type !== 'patient') continue;
 
-    // --- endorsed_to_transport → transported (ambulance nearby) ---
-    if (cas.status === 'endorsed_to_transport') {
-      const nearbyTransport = assetList.filter((a) => {
-        if (!isTransportAsset(a.asset_type)) return false;
-        const center = extractAssetCenter(a);
-        if (!center) return false;
-        return (
-          haversineMeters(cas.location_lat, cas.location_lng, center.lat, center.lng) <=
-          PROXIMITY_THRESHOLD_M
-        );
-      });
-
-      if (nearbyTransport.length > 0) {
-        // Find nearest hospital to set as destination
-        let destLat = cas.location_lat + 0.005;
-        let destLng = cas.location_lng;
-        let destLabel = 'Hospital';
-        if (hospitalLocs?.length) {
-          let bestDist = Infinity;
-          for (const h of hospitalLocs) {
-            const hCoords = h.coordinates as { lat?: number; lng?: number } | null;
-            if (!hCoords?.lat) continue;
-            const d = haversineMeters(
-              cas.location_lat,
-              cas.location_lng,
-              hCoords.lat!,
-              hCoords.lng!,
-            );
-            if (d < bestDist) {
-              bestDist = d;
-              destLat = hCoords.lat!;
-              destLng = hCoords.lng!;
-              destLabel = (h.label as string) ?? 'Hospital';
-            }
-          }
-        }
-
-        await supabaseAdmin
-          .from('scenario_casualties')
-          .update({
-            status: 'transported',
-            destination_lat: destLat,
-            destination_lng: destLng,
-            destination_label: destLabel,
-            movement_speed_mpm: 500,
-            destination_reached_status: 'transported',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', cas.id);
-
-        broadcastStatus(sessionId, cas.id, 'transported');
-      }
-      continue;
-    }
-
-    // --- in_treatment → endorsed_to_transport (treatment duration elapsed) ---
-    if (cas.status === 'in_treatment') {
-      const treatmentStarted = conds.treatment_started_at as number | undefined;
-      const triageColor = (conds.player_triage_color ?? conds.triage_color ?? 'green') as string;
-      const baseDuration = TREATMENT_DURATIONS[triageColor] ?? 12;
-      const duration = baseDuration * treatmentTimeMod;
-      if (treatmentStarted != null && elapsedMinutes - treatmentStarted >= duration) {
-        await updateCasualtyStatus(sessionId, cas.id, 'endorsed_to_transport');
-      }
-      continue;
-    }
-
-    // --- endorsed_to_triage → in_treatment (inside medical area with medic) ---
-    if (cas.status === 'endorsed_to_triage') {
-      const insideMedical = medicalAreas.some((a) =>
-        isInsideArea(cas.location_lat, cas.location_lng, a),
-      );
-      const nearbyMedic = assetList.some((a) => {
-        if (!isMedicalAsset(a.asset_type)) return false;
-        const center = extractAssetCenter(a);
-        if (!center) return false;
-        return (
-          haversineMeters(cas.location_lat, cas.location_lng, center.lat, center.lng) <=
-          PROXIMITY_THRESHOLD_M
-        );
-      });
-
-      if (insideMedical && nearbyMedic) {
-        const updatedConds = { ...conds, treatment_started_at: elapsedMinutes };
-        await supabaseAdmin
-          .from('scenario_casualties')
-          .update({
-            status: 'in_treatment',
-            conditions: updatedConds,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', cas.id);
-        broadcastStatus(sessionId, cas.id, 'in_treatment');
-      }
+    // Positive care-chain statuses (awaiting_triage, endorsed_to_triage,
+    // in_treatment, endorsed_to_transport) only advance via explicit player
+    // decisions — never auto-promoted by proximity or timers.
+    // Deterioration (worsening triage color, death) is handled separately
+    // by peopleDeteriorationService.
+    if (
+      ['awaiting_triage', 'endorsed_to_triage', 'in_treatment', 'endorsed_to_transport'].includes(
+        cas.status,
+      )
+    ) {
       continue;
     }
 

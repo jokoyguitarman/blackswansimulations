@@ -3,11 +3,13 @@ import { useMap } from 'react-leaflet';
 import { api } from '../../lib/api';
 import type { DraggableAssetDef } from './AssetPalette';
 import type { PlacedAsset } from './PlacedAssetMarker';
+import { nextAssetLabel } from '../../lib/assetNaming';
 
 interface MapDropHandlerProps {
   sessionId: string;
   teamName: string;
   enabled: boolean;
+  placedAssets: PlacedAsset[];
   onPlacementCreated?: (placement: {
     id: string;
     label: string;
@@ -28,6 +30,7 @@ export const MapDropHandler = ({
   onOptimisticPlace,
   onOptimisticConfirm,
   onOptimisticRevert,
+  placedAssets,
 }: MapDropHandlerProps) => {
   const map = useMap();
 
@@ -92,6 +95,7 @@ export const MapDropHandler = ({
 
       const geom = { type: 'Point' as const, coordinates: [latlng.lng, latlng.lat] };
       const tempId = `temp_${crypto.randomUUID()}`;
+      const suffixedLabel = nextAssetLabel(asset.asset_type, asset.label, placedAssets);
 
       const optimistic: PlacedAsset = {
         id: tempId,
@@ -99,7 +103,7 @@ export const MapDropHandler = ({
         team_name: teamName,
         placed_by: 'self',
         asset_type: asset.asset_type,
-        label: asset.label,
+        label: suffixedLabel,
         geometry: geom,
         properties: {},
         placement_score: null,
@@ -110,7 +114,7 @@ export const MapDropHandler = ({
       onOptimisticPlace?.(optimistic);
       onPlacementCreated?.({
         id: tempId,
-        label: asset.label,
+        label: suffixedLabel,
         asset_type: asset.asset_type,
         geometry: geom,
         properties: {},
@@ -120,7 +124,7 @@ export const MapDropHandler = ({
         .create(sessionId, {
           team_name: teamName,
           asset_type: asset.asset_type,
-          label: asset.label,
+          label: suffixedLabel,
           geometry: geom,
           properties: {},
         })

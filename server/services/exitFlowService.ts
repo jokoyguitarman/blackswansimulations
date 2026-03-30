@@ -479,7 +479,7 @@ export async function processNonAmbulatoryExtraction(sessionId: string): Promise
       .update({
         location_lat: destLat,
         location_lng: destLng,
-        status: 'endorsed_to_triage',
+        status: 'awaiting_triage',
         conditions: { ...conds, mobility: 'non_ambulatory', extracted: true },
         updated_at: new Date().toISOString(),
       })
@@ -488,7 +488,7 @@ export async function processNonAmbulatoryExtraction(sessionId: string): Promise
     try {
       getWebSocketService().broadcastToSession(sessionId, {
         type: 'casualty.updated',
-        data: { casualty_id: patient.id, status: 'endorsed_to_triage', extracted: true },
+        data: { casualty_id: patient.id, status: 'awaiting_triage', extracted: true },
         timestamp: new Date().toISOString(),
       });
     } catch {
@@ -497,7 +497,7 @@ export async function processNonAmbulatoryExtraction(sessionId: string): Promise
 
     logger.info(
       { sessionId, casualtyId: patient.id },
-      'Non-ambulatory patient extracted to triage',
+      'Non-ambulatory patient extracted — awaiting triage decision',
     );
   }
 }

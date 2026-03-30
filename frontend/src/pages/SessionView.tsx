@@ -15,6 +15,7 @@ import { NotificationBell } from '../components/Notifications/NotificationBell';
 import { IncidentsPanel } from '../components/Incidents/IncidentsPanel';
 import { MapView } from '../components/COP/MapView';
 import type { DraggableAssetDef } from '../components/COP/AssetPalette';
+import { CreateDecisionForm } from '../components/Forms/CreateDecisionForm';
 
 const TEAM_ASSET_CATALOG: Record<string, DraggableAssetDef[]> = {
   evacuation: [
@@ -29,6 +30,12 @@ const TEAM_ASSET_CATALOG: Record<string, DraggableAssetDef[]> = {
   ],
   triage: [
     { asset_type: 'triage_tent', icon: 'tent', geometry_type: 'point', label: 'Triage Tent' },
+    {
+      asset_type: 'triage_officer',
+      icon: 'person',
+      geometry_type: 'point',
+      label: 'Triage Officer',
+    },
     {
       asset_type: 'field_hospital',
       icon: 'medical',
@@ -45,6 +52,7 @@ const TEAM_ASSET_CATALOG: Record<string, DraggableAssetDef[]> = {
   ],
   media: [
     { asset_type: 'press_cordon', icon: 'barrier', geometry_type: 'line', label: 'Press Cordon' },
+    { asset_type: 'media_liaison', icon: 'person', geometry_type: 'point', label: 'Media Liaison' },
     {
       asset_type: 'briefing_point',
       icon: 'podium',
@@ -60,6 +68,12 @@ const TEAM_ASSET_CATALOG: Record<string, DraggableAssetDef[]> = {
   ],
   fire_hazmat: [
     { asset_type: 'decon_zone', icon: 'hazmat', geometry_type: 'point', label: 'Decon Zone' },
+    {
+      asset_type: 'firefighter_post',
+      icon: 'person',
+      geometry_type: 'point',
+      label: 'Firefighter Post',
+    },
     {
       asset_type: 'fire_truck_staging',
       icon: 'fire_truck',
@@ -306,6 +320,7 @@ export const SessionView = () => {
   const [showMapModule, setShowMapModule] = useState(true);
   const [mapModuleReady, setMapModuleReady] = useState(false);
   const [mapHasBeenOpened, setMapHasBeenOpened] = useState(false);
+  const [showMapDecisionForm, setShowMapDecisionForm] = useState(false);
   const [locationsRefreshTrigger, setLocationsRefreshTrigger] = useState(0);
   const sessionContentRef = useRef<HTMLDivElement | null>(null);
   const [_incidents, setIncidents] = useState<
@@ -1162,7 +1177,10 @@ export const SessionView = () => {
 
             const defs = (team as ScenarioTeamWithCounters).counter_definitions;
 
-            if (defs && Array.isArray(defs) && defs.length > 0) {
+            // Trainer view always uses the live-counter sections below (which
+            // read real-time values from the scheduler). Players see the
+            // counter_definitions-driven display with template-defined caps.
+            if (!isTrainer && defs && Array.isArray(defs) && defs.length > 0) {
               // Data-driven rendering from counter_definitions
               const visibleDefs = defs.filter((d) => d.visible_to !== 'trainer_only' || isTrainer);
               if (visibleDefs.length === 0 && !isTrainer) continue;
@@ -1499,29 +1517,28 @@ export const SessionView = () => {
           className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 ${showMapModule ? '' : 'hidden'}`}
           aria-hidden={!showMapModule}
         >
-          <div className="military-border p-6 bg-robotic-gray-300 flex flex-col h-[700px]">
+          <div className="military-border p-6 bg-robotic-gray-300 flex flex-col h-[calc(100vh-120px)] min-h-[700px]">
             <div className="flex justify-between items-center mb-3 flex-shrink-0">
               <h3 className="text-lg terminal-text uppercase">[MAP]</h3>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => {
-                    sessionContentRef.current?.focus({ preventScroll: true });
-                    setShowMapModule(false);
-                    if (window.location.hash === '#show-map') {
-                      window.history.replaceState(
-                        null,
-                        '',
-                        window.location.pathname + window.location.search,
-                      );
-                    }
-                  }}
-                  className="px-3 py-1 text-xs terminal-text uppercase border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
+                  onClick={() => setShowMapDecisionForm(true)}
+                  className="military-button px-4 py-2 text-xs terminal-text whitespace-nowrap border-green-400 text-green-400 hover:bg-green-400/10"
                 >
-                  [HIDE MAP]
+                  [CREATE_DECISION]
                 </button>
               </div>
             </div>
-            <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden h-[620px]">
+            {showMapDecisionForm && (
+              <div className="mb-3 flex-shrink-0">
+                <CreateDecisionForm
+                  sessionId={id}
+                  onClose={() => setShowMapDecisionForm(false)}
+                  onSuccess={() => setShowMapDecisionForm(false)}
+                />
+              </div>
+            )}
+            <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden">
               {mapModuleReady && mapHasBeenOpened && (
                 <MapView
                   sessionId={id}
@@ -1621,7 +1638,28 @@ export const SessionView = () => {
             </div>
           )}
 
-          {/* Row 1: Decisions Card */}
+          {/* Media Card */}
+          {id && (
+            <div
+              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
+              onClick={() => markCardViewed('media')}
+            >
+              <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                <h3 className="text-lg terminal-text uppercase">[MEDIA]</h3>
+                {cardNotifications['media'] === 'new' && (
+                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                )}
+                {cardNotifications['media'] === 'viewed' && (
+                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                )}
+              </div>
+              <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
+                <MediaFeed sessionId={id} />
+              </div>
+            </div>
+          )}
+
+          {/* Decisions Card */}
           {id && (
             <div
               className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
@@ -1637,7 +1675,7 @@ export const SessionView = () => {
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
-                <DecisionWorkflow sessionId={id} filterTeam={filterTeam} />
+                <DecisionWorkflow sessionId={id} filterTeam={filterTeam} hideCreateButton />
               </div>
             </div>
           )}
@@ -1666,28 +1704,7 @@ export const SessionView = () => {
             </div>
           )}
 
-          {/* Row 3: Media Card */}
-          {id && (
-            <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
-              onClick={() => markCardViewed('media')}
-            >
-              <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-lg terminal-text uppercase">[MEDIA]</h3>
-                {cardNotifications['media'] === 'new' && (
-                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
-                )}
-                {cardNotifications['media'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
-                )}
-              </div>
-              <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
-                <MediaFeed sessionId={id} />
-              </div>
-            </div>
-          )}
-
-          {/* Row 3+: Injects Card - Trainer only */}
+          {/* Injects Card - Trainer only */}
           {id && session.scenarios && session.scenarios.id && isTrainer && (
             <div
               className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
@@ -1708,7 +1725,7 @@ export const SessionView = () => {
             </div>
           )}
 
-          {/* Row 3+: Participants Card - Trainer only */}
+          {/* Participants Card - Trainer only */}
           {id && session && isTrainer && (
             <div
               className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
@@ -1793,13 +1810,13 @@ export const SessionView = () => {
               </div>
 
               {/* Trainer map - 2 columns, always visible, all pins */}
-              <div className="md:col-span-2 military-border p-6 bg-robotic-gray-300 flex flex-col h-[700px]">
+              <div className="md:col-span-2 military-border p-6 bg-robotic-gray-300 flex flex-col h-[calc(100vh-120px)] min-h-[700px]">
                 <div className="flex justify-between items-center mb-3 flex-shrink-0">
                   <h3 className="text-lg terminal-text uppercase">
                     [TRAINER MAP] All markings and pins
                   </h3>
                 </div>
-                <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden h-[620px]">
+                <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden">
                   <MapView
                     sessionId={id}
                     incidents={[]}

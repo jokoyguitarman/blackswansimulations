@@ -3,11 +3,14 @@ import { useMap, useMapEvents, Polyline, Polygon, Tooltip, CircleMarker } from '
 import type { LatLng, LeafletMouseEvent } from 'leaflet';
 import { api } from '../../lib/api';
 import type { DraggableAssetDef } from './AssetPalette';
+import type { PlacedAsset } from './PlacedAssetMarker';
+import { nextAssetLabel } from '../../lib/assetNaming';
 
 interface MapDrawHandlerProps {
   sessionId: string;
   teamName: string;
   drawingAsset: DraggableAssetDef;
+  placedAssets: PlacedAsset[];
   onFinish: () => void;
   onCancel: () => void;
   /** Increment to trigger finish from outside (e.g. a Finish button). */
@@ -75,6 +78,7 @@ export const MapDrawHandler = ({
   sessionId,
   teamName,
   drawingAsset,
+  placedAssets,
   onFinish,
   onCancel,
   finishSignal,
@@ -122,11 +126,17 @@ export const MapDrawHandler = ({
         props.area_m2 = Math.round(polygonArea(pts));
       }
 
+      const suffixedLabel = nextAssetLabel(
+        drawingAsset.asset_type,
+        drawingAsset.label,
+        placedAssets,
+      );
+
       try {
         const result = await api.placements.create(sessionId, {
           team_name: teamName,
           asset_type: drawingAsset.asset_type,
-          label: drawingAsset.label,
+          label: suffixedLabel,
           geometry,
           properties: props,
         });
@@ -134,7 +144,7 @@ export const MapDrawHandler = ({
         if (placed?.id) {
           onPlacementCreated?.({
             id: placed.id as string,
-            label: drawingAsset.label,
+            label: suffixedLabel,
             asset_type: drawingAsset.asset_type,
             geometry: (placed.geometry as Record<string, unknown>) ?? geometry,
             properties: (placed.properties as Record<string, unknown>) ?? props,

@@ -1150,8 +1150,8 @@ export const MapView = ({
     return <FallbackUI />;
   }
 
-  // When fillHeight, use fixed pixel height so Leaflet always has dimensions (avoids blank map from 100% resolving to 0)
-  const mapHeight = fillHeight ? '620px' : '600px';
+  // When fillHeight, stretch to fill the parent container; standalone uses a sensible default.
+  const mapHeight = fillHeight ? '100%' : '600px';
 
   return (
     <div
@@ -1249,6 +1249,7 @@ export const MapView = ({
               sessionId={sessionId}
               teamName={teamName}
               enabled={draggableAssets.length > 0 && !disabled}
+              placedAssets={placedAssets}
               onPlacementCreated={handlePlacementCreatedWithZoneCheck}
               onOptimisticPlace={handleOptimisticPlace}
               onOptimisticConfirm={handleOptimisticConfirm}
@@ -1262,6 +1263,7 @@ export const MapView = ({
               sessionId={sessionId}
               teamName={teamName}
               drawingAsset={drawingAsset}
+              placedAssets={placedAssets}
               onFinish={() => {
                 setDrawingAsset(null);
                 setDrawVertexCount(0);

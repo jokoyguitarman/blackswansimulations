@@ -63,9 +63,14 @@ interface Decision {
 interface DecisionWorkflowProps {
   sessionId: string;
   filterTeam?: string;
+  hideCreateButton?: boolean;
 }
 
-export const DecisionWorkflow = ({ sessionId, filterTeam = 'none' }: DecisionWorkflowProps) => {
+export const DecisionWorkflow = ({
+  sessionId,
+  filterTeam = 'none',
+  hideCreateButton = false,
+}: DecisionWorkflowProps) => {
   const { user } = useAuth();
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [loading, setLoading] = useState(true);
@@ -215,12 +220,14 @@ export const DecisionWorkflow = ({ sessionId, filterTeam = 'none' }: DecisionWor
               Respond to incidents from the Incidents panel, or create pre-emptive decisions below.
             </p>
           </div>
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="military-button px-4 py-2 text-xs terminal-text whitespace-nowrap border-green-400 text-green-400 hover:bg-green-400/10"
-          >
-            [CREATE_DECISION]
-          </button>
+          {!hideCreateButton && (
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="military-button px-4 py-2 text-xs terminal-text whitespace-nowrap border-green-400 text-green-400 hover:bg-green-400/10"
+            >
+              [CREATE_DECISION]
+            </button>
+          )}
         </div>
       </div>
 

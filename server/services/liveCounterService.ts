@@ -156,7 +156,9 @@ export async function computeLiveCounters(
   // --- Triage counters ---
   const patients = casualties.filter((c) => c.casualty_type === 'patient');
 
-  const awaitingTriage = patients.filter((c) => c.status === 'endorsed_to_triage').length;
+  const awaitingTriage = patients.filter(
+    (c) => c.status === 'awaiting_triage' || c.status === 'endorsed_to_triage',
+  ).length;
   const inTreatment = patients.filter((c) => c.status === 'in_treatment').length;
   const readyForTransport = patients.filter((c) => c.status === 'endorsed_to_transport').length;
   const transported = patients.filter((c) => c.status === 'transported').length;
