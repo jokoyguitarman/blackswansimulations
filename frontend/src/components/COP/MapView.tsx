@@ -918,6 +918,9 @@ export const MapView = ({
     // Entry/exit pins are rendered separately via EntryExitPin component
     if (loc.pin_category === 'entry_exit') return false;
 
+    // Route locations are data-only (used by AI for transport evaluation) — no map pins
+    if (loc.location_type === 'route' || loc.pin_category === 'route') return false;
+
     // State-conditional visibility: hide until the referenced state key becomes truthy
     const visKey = loc.conditions?.visible_after_state_key as string | undefined;
     if (visKey && currentState) {
@@ -1208,7 +1211,7 @@ export const MapView = ({
             right: 0,
             bottom: 0,
           }}
-          className="leaflet-container"
+          className={`leaflet-container${drawingAsset ? ' drawing-mode-active' : ''}`}
           scrollWheelZoom={true}
           doubleClickZoom={true}
           zoomControl={true}
@@ -1373,6 +1376,7 @@ export const MapView = ({
                 asset={asset}
                 isOwnTeam={!!teamName && asset.team_name === teamName}
                 isDraggable={!!teamName && asset.team_name === teamName && !!isRecordingActions}
+                drawingActive={!!drawingAsset}
                 onRemove={
                   teamName && asset.team_name === teamName ? handleRemovePlacement : undefined
                 }

@@ -1393,7 +1393,7 @@ function computeRouteCorridors(
   }>,
   incidentCoords: { lat: number; lng: number },
 ): RouteCorridor[] {
-  const PROXIMITY_THRESHOLD_M = 400;
+  const PROXIMITY_THRESHOLD_M = 6000;
   const corridors: RouteCorridor[] = [];
   const seenIds = new Set<string>();
 

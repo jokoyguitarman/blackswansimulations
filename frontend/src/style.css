@@ -357,3 +357,15 @@ button:focus-visible {
   padding: 8px 10px;
 }
 
+/*
+ * Drawing mode: disable pointer events on all interactive Leaflet layers
+ * so click events pass through to the map for polygon vertex placement.
+ */
+.drawing-mode-active .leaflet-marker-pane,
+.drawing-mode-active .leaflet-shadow-pane,
+.drawing-mode-active .leaflet-overlay-pane path,
+.drawing-mode-active .leaflet-popup-pane,
+.drawing-mode-active .leaflet-tooltip-pane {
+  pointer-events: none !important;
+}
+

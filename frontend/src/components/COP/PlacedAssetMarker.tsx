@@ -23,6 +23,8 @@ interface PlacedAssetMarkerProps {
   asset: PlacedAsset;
   isOwnTeam: boolean;
   isDraggable?: boolean;
+  /** When true, disables interactivity so map click events pass through (for polygon drawing). */
+  drawingActive?: boolean;
   onRemove?: (id: string) => void;
   onRelocate?: (id: string) => void;
   onDragEnd?: (id: string, newLat: number, newLng: number) => void;
@@ -142,6 +144,7 @@ export const PlacedAssetMarker = ({
   asset,
   isOwnTeam,
   isDraggable = false,
+  drawingActive = false,
   onRemove,
   onRelocate,
   onDragEnd,
@@ -169,6 +172,8 @@ export const PlacedAssetMarker = ({
       return (
         <Polygon
           positions={positions}
+          interactive={!drawingActive}
+          bubblingMouseEvents={drawingActive}
           pathOptions={{
             color: borderColor,
             fillColor,
@@ -177,14 +182,16 @@ export const PlacedAssetMarker = ({
             dashArray: '10, 6',
           }}
         >
-          <Popup autoPan={false}>
-            <AssetPopupContent
-              asset={asset}
-              isOwnTeam={isOwnTeam}
-              onRemove={onRemove}
-              onRelocate={onRelocate}
-            />
-          </Popup>
+          {!drawingActive && (
+            <Popup autoPan={false}>
+              <AssetPopupContent
+                asset={asset}
+                isOwnTeam={isOwnTeam}
+                onRemove={onRemove}
+                onRelocate={onRelocate}
+              />
+            </Popup>
+          )}
         </Polygon>
       );
     }
@@ -199,6 +206,8 @@ export const PlacedAssetMarker = ({
     return (
       <Polygon
         positions={positions}
+        interactive={!drawingActive}
+        bubblingMouseEvents={drawingActive}
         pathOptions={{
           color,
           fillColor: color,
@@ -207,41 +216,47 @@ export const PlacedAssetMarker = ({
           dashArray: isOwnTeam ? undefined : '6, 4',
         }}
       >
-        <Tooltip sticky>
-          <div className="text-xs">
-            <div className="font-semibold">
-              {getAssetIcon(asset.asset_type)} {asset.label}
-            </div>
-            <div className="text-gray-500">{asset.team_name}</div>
-            {areaM2 != null && (
-              <div className="text-gray-400 font-mono">
-                {areaM2 >= 1_000_000
-                  ? `${(areaM2 / 1_000_000).toFixed(2)} km²`
-                  : areaM2 >= 10_000
-                    ? `${(areaM2 / 10_000).toFixed(2)} ha`
-                    : `${Math.round(areaM2)} m²`}
+        {!drawingActive && (
+          <>
+            <Tooltip sticky>
+              <div className="text-xs">
+                <div className="font-semibold">
+                  {getAssetIcon(asset.asset_type)} {asset.label}
+                </div>
+                <div className="text-gray-500">{asset.team_name}</div>
+                {areaM2 != null && (
+                  <div className="text-gray-400 font-mono">
+                    {areaM2 >= 1_000_000
+                      ? `${(areaM2 / 1_000_000).toFixed(2)} km²`
+                      : areaM2 >= 10_000
+                        ? `${(areaM2 / 10_000).toFixed(2)} ha`
+                        : `${Math.round(areaM2)} m²`}
+                  </div>
+                )}
+                {lengthM != null && !areaM2 && (
+                  <div className="text-gray-400 font-mono">
+                    {lengthM >= 1000
+                      ? `${(lengthM / 1000).toFixed(2)} km`
+                      : `${Math.round(lengthM)} m`}
+                  </div>
+                )}
+                {enclosesCount > 0 && (
+                  <div className="text-green-500 font-medium">
+                    {enclosesCount} asset{enclosesCount > 1 ? 's' : ''} enclosed
+                  </div>
+                )}
               </div>
-            )}
-            {lengthM != null && !areaM2 && (
-              <div className="text-gray-400 font-mono">
-                {lengthM >= 1000 ? `${(lengthM / 1000).toFixed(2)} km` : `${Math.round(lengthM)} m`}
-              </div>
-            )}
-            {enclosesCount > 0 && (
-              <div className="text-green-500 font-medium">
-                {enclosesCount} asset{enclosesCount > 1 ? 's' : ''} enclosed
-              </div>
-            )}
-          </div>
-        </Tooltip>
-        <Popup autoPan={false}>
-          <AssetPopupContent
-            asset={asset}
-            isOwnTeam={isOwnTeam}
-            onRemove={onRemove}
-            onRelocate={onRelocate}
-          />
-        </Popup>
+            </Tooltip>
+            <Popup autoPan={false}>
+              <AssetPopupContent
+                asset={asset}
+                isOwnTeam={isOwnTeam}
+                onRemove={onRemove}
+                onRelocate={onRelocate}
+              />
+            </Popup>
+          </>
+        )}
       </Polygon>
     );
   }
@@ -258,6 +273,8 @@ export const PlacedAssetMarker = ({
     return (
       <Polyline
         positions={positions}
+        interactive={!drawingActive}
+        bubblingMouseEvents={drawingActive}
         pathOptions={{
           color,
           weight: 4,
@@ -265,27 +282,33 @@ export const PlacedAssetMarker = ({
           dashArray: isOwnTeam ? undefined : '8, 4',
         }}
       >
-        <Tooltip sticky>
-          <div className="text-xs">
-            <div className="font-semibold">
-              {getAssetIcon(asset.asset_type)} {asset.label}
-            </div>
-            <div className="text-gray-500">{asset.team_name}</div>
-            {lengthM != null && (
-              <div className="text-gray-400 font-mono">
-                {lengthM >= 1000 ? `${(lengthM / 1000).toFixed(2)} km` : `${Math.round(lengthM)} m`}
+        {!drawingActive && (
+          <>
+            <Tooltip sticky>
+              <div className="text-xs">
+                <div className="font-semibold">
+                  {getAssetIcon(asset.asset_type)} {asset.label}
+                </div>
+                <div className="text-gray-500">{asset.team_name}</div>
+                {lengthM != null && (
+                  <div className="text-gray-400 font-mono">
+                    {lengthM >= 1000
+                      ? `${(lengthM / 1000).toFixed(2)} km`
+                      : `${Math.round(lengthM)} m`}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </Tooltip>
-        <Popup autoPan={false}>
-          <AssetPopupContent
-            asset={asset}
-            isOwnTeam={isOwnTeam}
-            onRemove={onRemove}
-            onRelocate={onRelocate}
-          />
-        </Popup>
+            </Tooltip>
+            <Popup autoPan={false}>
+              <AssetPopupContent
+                asset={asset}
+                isOwnTeam={isOwnTeam}
+                onRemove={onRemove}
+                onRelocate={onRelocate}
+              />
+            </Popup>
+          </>
+        )}
       </Polyline>
     );
   }
@@ -302,7 +325,9 @@ export const PlacedAssetMarker = ({
     <Marker
       position={position}
       icon={icon}
-      draggable={isDraggable}
+      draggable={drawingActive ? false : isDraggable}
+      interactive={!drawingActive}
+      bubblingMouseEvents={drawingActive}
       eventHandlers={{
         dragend: (e) => {
           if (onDragEnd) {
@@ -312,21 +337,23 @@ export const PlacedAssetMarker = ({
         },
       }}
     >
-      {capacity != null && (
+      {!drawingActive && capacity != null && (
         <Tooltip direction="top" offset={[0, -20]} permanent className="capacity-tooltip">
           <span style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold' }}>
             {capacity} {capacityUnit ?? 'units'}
           </span>
         </Tooltip>
       )}
-      <Popup autoPan={false}>
-        <AssetPopupContent
-          asset={asset}
-          isOwnTeam={isOwnTeam}
-          onRemove={onRemove}
-          onRelocate={onRelocate}
-        />
-      </Popup>
+      {!drawingActive && (
+        <Popup autoPan={false}>
+          <AssetPopupContent
+            asset={asset}
+            isOwnTeam={isOwnTeam}
+            onRemove={onRemove}
+            onRelocate={onRelocate}
+          />
+        </Popup>
+      )}
     </Marker>
   );
 };
