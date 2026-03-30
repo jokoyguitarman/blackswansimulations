@@ -234,6 +234,44 @@ function getNextDestinations(
   return destinations;
 }
 
+function getCrowdDestinations(
+  placedAssets: PlacedAsset[],
+  scenarioLocations: ScenarioLocationPin[],
+): DestinationOption[] {
+  const destinations: DestinationOption[] = [];
+  const crowdAssetTypes = ['assembly_point', 'holding_area', 'evacuation_point', 'decon_zone'];
+
+  const seenLabels = new Set<string>();
+  for (const asset of placedAssets) {
+    if (asset.status !== 'active') continue;
+    if (!crowdAssetTypes.includes(asset.asset_type)) continue;
+    const key = `${asset.asset_type}:${asset.label}`;
+    if (seenLabels.has(key)) continue;
+    seenLabels.add(key);
+    const meta = DESTINATION_ASSET_TYPES[asset.asset_type];
+    destinations.push({
+      id: asset.id,
+      label: asset.label || meta?.label || asset.asset_type.replace(/_/g, ' '),
+      icon: meta?.icon ?? '📍',
+      type: 'placed_asset',
+    });
+  }
+
+  for (const loc of scenarioLocations) {
+    const cat = (loc.pin_category ?? loc.location_type ?? '').toLowerCase();
+    if (cat.includes('entry_exit') || cat.includes('exit') || cat.includes('entry')) {
+      destinations.push({
+        id: loc.id,
+        label: loc.label,
+        icon: '🚪',
+        type: 'placed_asset',
+      });
+    }
+  }
+
+  return destinations;
+}
+
 /* ── Haversine ── */
 
 function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -290,10 +328,13 @@ export const MapElementResponsePanel = ({
       : false;
   const triageEnabled = isCasualty && isTriageTeam && medicNearby;
 
-  const destinations = useMemo(
-    () => (isCasualty ? getNextDestinations(element.status, placedAssets, scenarioLocations) : []),
-    [isCasualty, element.status, placedAssets, scenarioLocations],
-  );
+  const isCrowd = element.elementType === 'crowd';
+
+  const destinations = useMemo(() => {
+    if (isCasualty) return getNextDestinations(element.status, placedAssets, scenarioLocations);
+    if (isCrowd) return getCrowdDestinations(placedAssets, scenarioLocations);
+    return [];
+  }, [isCasualty, isCrowd, element.status, placedAssets, scenarioLocations]);
 
   const pointAssets = availableAssets.filter((a) => a.geometry_type === 'point');
 
@@ -367,7 +408,8 @@ export const MapElementResponsePanel = ({
       parts.push(`Triage tag: ${triageColor.toUpperCase()}`);
     }
     if (selectedDestination) {
-      parts.push(`Move patient to ${selectedDestination.label}`);
+      const moveVerb = element.elementType === 'crowd' ? 'Direct crowd to' : 'Move patient to';
+      parts.push(`${moveVerb} ${selectedDestination.label}`);
     }
     if (description.trim()) {
       parts.push(description.trim());
@@ -524,11 +566,11 @@ export const MapElementResponsePanel = ({
             </div>
           )}
 
-          {/* ── Patient Destination Picker (casualty only) ── */}
-          {isCasualty && destinations.length > 0 && (
+          {/* ── Destination Picker (casualty + crowd) ── */}
+          {(isCasualty || isCrowd) && destinations.length > 0 && (
             <div className="px-5 py-3 border-b border-robotic-yellow/20">
               <h3 className="text-xs font-medium terminal-text text-robotic-yellow/70 mb-2 uppercase">
-                Move Patient To
+                {isCrowd ? 'Direct Crowd To' : 'Move Patient To'}
               </h3>
               <div className="flex flex-wrap gap-2">
                 {destinations.map((dest) => {
