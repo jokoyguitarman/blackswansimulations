@@ -57,12 +57,12 @@ export async function computeLiveCounters(
         'id, casualty_type, status, headcount, conditions, location_lat, location_lng, destination_lat',
       )
       .eq('scenario_id', scenarioId)
-      .or(`session_id.is.null,session_id.eq.${sessionId}`),
+      .eq('session_id', sessionId),
     supabaseAdmin
       .from('scenario_hazards')
       .select('id, hazard_type, status, location_lat, location_lng, zones')
       .eq('scenario_id', scenarioId)
-      .or(`session_id.is.null,session_id.eq.${sessionId}`),
+      .eq('session_id', sessionId),
   ]);
 
   const casualties = (casualtyResult.data ?? []) as CasualtyRow[];

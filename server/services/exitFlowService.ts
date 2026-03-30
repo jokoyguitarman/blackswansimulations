@@ -136,7 +136,7 @@ export async function processExitFlow(sessionId: string): Promise<void> {
     .from('scenario_casualties')
     .select('*')
     .eq('scenario_id', session.scenario_id)
-    .or(`session_id.is.null,session_id.eq.${sessionId}`)
+    .eq('session_id', sessionId)
     .eq('casualty_type', 'crowd')
     .in('status', ['being_evacuated', 'identified', 'at_exit']);
 
@@ -349,7 +349,7 @@ export async function checkPendingEndorsements(sessionId: string): Promise<void>
     .from('scenario_casualties')
     .select('*')
     .eq('scenario_id', session.scenario_id)
-    .or(`session_id.is.null,session_id.eq.${sessionId}`)
+    .eq('session_id', sessionId)
     .eq('casualty_type', 'evacuee_group')
     .eq('status', 'at_assembly');
 
@@ -404,7 +404,7 @@ export async function processNonAmbulatoryExtraction(sessionId: string): Promise
     .from('scenario_casualties')
     .select('*')
     .eq('scenario_id', session.scenario_id)
-    .or(`session_id.is.null,session_id.eq.${sessionId}`)
+    .eq('session_id', sessionId)
     .eq('casualty_type', 'patient')
     .eq('status', 'being_evacuated');
 

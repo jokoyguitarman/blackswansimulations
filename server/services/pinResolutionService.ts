@@ -69,7 +69,7 @@ export async function evaluateHazardResolution(sessionId: string): Promise<void>
     .from('scenario_hazards')
     .select('*')
     .eq('scenario_id', session.scenario_id)
-    .or(`session_id.is.null,session_id.eq.${sessionId}`)
+    .eq('session_id', sessionId)
     .in('status', ['active', 'escalating', 'contained']);
 
   if (!hazards?.length) return;
@@ -175,7 +175,7 @@ async function handleHazardResolutionCascade(
     .from('scenario_casualties')
     .select('*')
     .eq('scenario_id', scenarioId)
-    .or(`session_id.is.null,session_id.eq.${sessionId}`)
+    .eq('session_id', sessionId)
     .in('status', ['undiscovered', 'identified']);
 
   if (!blockedCasualties?.length) return;
@@ -240,7 +240,7 @@ export async function evaluateCasualtyResolution(sessionId: string): Promise<voi
     .from('scenario_casualties')
     .select('*')
     .eq('scenario_id', session.scenario_id)
-    .or(`session_id.is.null,session_id.eq.${sessionId}`)
+    .eq('session_id', sessionId)
     .not('status', 'in', '("resolved","transported","deceased")');
 
   if (!casualties?.length) return;

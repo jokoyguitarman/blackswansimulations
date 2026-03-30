@@ -11,6 +11,7 @@ import { initializeSessionObjectives } from '../services/objectiveTrackingServic
 import { initializeSessionGateProgress } from '../services/gateEvaluationService.js';
 import { snapshotFinalStateOnCompletion } from '../services/scenarioStateService.js';
 import { loadAndApplyEnvironmentalState } from '../services/environmentalStateService.js';
+import { cloneScenarioPinsForSession } from '../services/sessionPinCloningService.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { identifyEscalationFactors, generateEscalationPathways } from '../services/aiService.js';
 import { generateScenarioMaps } from '../services/scenarioMapImageService.js';
@@ -1110,7 +1111,7 @@ router.patch(
       // Check if user is trainer of this session
       const { data: session } = await supabaseAdmin
         .from('sessions')
-        .select('trainer_id, start_time, status')
+        .select('trainer_id, start_time, status, scenario_id')
         .eq('id', id)
         .single();
 
@@ -1131,6 +1132,19 @@ router.patch(
 
       if (status === 'in_progress' && !session.start_time) {
         updates.start_time = new Date().toISOString();
+
+        // Clone scenario-level pins so each session has independent state
+        const scenarioId = (session as { scenario_id?: string }).scenario_id;
+        if (scenarioId) {
+          try {
+            await cloneScenarioPinsForSession(id, scenarioId);
+          } catch (cloneError) {
+            logger.error(
+              { error: cloneError, sessionId: id },
+              'Failed to clone scenario pins, continuing with session start',
+            );
+          }
+        }
 
         // Initialize objectives when session starts
         try {

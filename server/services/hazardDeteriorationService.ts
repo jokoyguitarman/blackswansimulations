@@ -27,7 +27,7 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
     .from('scenario_hazards')
     .select('*')
     .eq('scenario_id', session.scenario_id)
-    .or(`session_id.is.null,session_id.eq.${sessionId}`)
+    .eq('session_id', sessionId)
     .in('status', ['active', 'escalating'])
     .lte('appears_at_minutes', elapsedMinutes);
 

@@ -62,7 +62,7 @@ export async function applyDecisionCasualtyEffects(
     .from('scenario_casualties')
     .select('id, casualty_type, location_lat, location_lng, conditions, status, headcount')
     .eq('scenario_id', session.scenario_id)
-    .or(`session_id.is.null,session_id.eq.${sessionId}`)
+    .eq('session_id', sessionId)
     .not('status', 'in', '("resolved","transported","deceased")');
 
   const [locResult, claimResult] = await Promise.all([
@@ -554,7 +554,7 @@ async function resolveZoneStepFallback(
     .from('scenario_hazards')
     .select('location_lat, location_lng, zones')
     .eq('scenario_id', scenarioId)
-    .or(`session_id.is.null,session_id.eq.${sessionId}`);
+    .eq('session_id', sessionId);
 
   if (!hazards?.length) return null;
 

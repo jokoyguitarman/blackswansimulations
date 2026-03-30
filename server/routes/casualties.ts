@@ -55,7 +55,7 @@ router.get('/sessions/:id/casualties', requireAuth, async (req, res) => {
     const { data: casualties, error } = await supabaseAdmin
       .from('scenario_casualties')
       .select('*')
-      .or(`session_id.is.null,session_id.eq.${sessionId}`)
+      .eq('session_id', sessionId)
       .eq('scenario_id', session.scenario_id)
       .lte('appears_at_minutes', elapsedMinutes)
       .order('appears_at_minutes', { ascending: true });

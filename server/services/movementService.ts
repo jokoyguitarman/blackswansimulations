@@ -49,7 +49,7 @@ export async function runMovementTick(
       'id, location_lat, location_lng, destination_lat, destination_lng, destination_label, movement_speed_mpm, destination_reached_status, status, conditions, casualty_type',
     )
     .eq('scenario_id', scenarioId)
-    .or(`session_id.is.null,session_id.eq.${sessionId}`)
+    .eq('session_id', sessionId)
     .not('destination_lat', 'is', null)
     .not('status', 'in', '("resolved","transported","deceased")');
 

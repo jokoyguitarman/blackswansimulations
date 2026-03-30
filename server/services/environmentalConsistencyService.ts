@@ -186,7 +186,7 @@ async function buildCasualtyContext(sessionId: string): Promise<string> {
       'id, casualty_type, headcount, conditions, status, assigned_team, player_triage_color, floor_level',
     )
     .eq('scenario_id', session.scenario_id)
-    .or(`session_id.is.null,session_id.eq.${sessionId}`)
+    .eq('session_id', sessionId)
     .not('status', 'in', '("resolved","transported","deceased")')
     .lte('appears_at_minutes', elapsedMinutes);
 
@@ -330,7 +330,7 @@ async function buildHazardSafetyContext(sessionId: string): Promise<string> {
       'id, hazard_type, location_lat, location_lng, floor_level, properties, equipment_requirements, personnel_requirements, status, zones',
     )
     .eq('scenario_id', session.scenario_id)
-    .or(`session_id.is.null,session_id.eq.${sessionId}`)
+    .eq('session_id', sessionId)
     .in('status', ['active', 'escalating'])
     .lte('appears_at_minutes', elapsedMinutes);
 

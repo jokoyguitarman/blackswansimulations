@@ -75,7 +75,7 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
     .from('scenario_casualties')
     .select('*')
     .eq('scenario_id', session.scenario_id)
-    .or(`session_id.is.null,session_id.eq.${sessionId}`)
+    .eq('session_id', sessionId)
     .not('status', 'in', '("resolved","transported","deceased")')
     .lte('appears_at_minutes', elapsedMinutes);
 

@@ -155,7 +155,7 @@ export async function runAreaMonitors(
     const { data: casualties } = await supabaseAdmin
       .from('scenario_casualties')
       .select('id, casualty_type, location_lat, location_lng, headcount, conditions, status')
-      .or(`session_id.is.null,session_id.eq.${sessionId}`)
+      .eq('session_id', sessionId)
       .eq('scenario_id', scenarioId)
       .lte('appears_at_minutes', elapsedMinutes)
       .not('status', 'in', '("resolved","deceased","transported")');
