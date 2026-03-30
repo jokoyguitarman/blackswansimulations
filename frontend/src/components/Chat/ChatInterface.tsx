@@ -5,6 +5,9 @@ import { useWebSocket, type WebSocketEvent } from '../../hooks/useWebSocket';
 import { useRealtime } from '../../hooks/useRealtime';
 import { supabase } from '../../lib/supabase';
 import { VoiceMicButton } from '../VoiceMicButton';
+import { VoiceCallPanel } from './VoiceCallPanel';
+import { IncomingCallToast } from './IncomingCallToast';
+import { useWebRTC } from '../../hooks/useWebRTC';
 
 interface Channel {
   id: string;
@@ -110,12 +113,13 @@ interface InsiderMessage {
 
 export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps) => {
   const { user } = useAuth();
+  const webrtc = useWebRTC(user?.id);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [dmChannels, setDmChannels] = useState<DMChannel[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
   const [selectedDM, setSelectedDM] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'channels' | 'dms'>('channels');
+  const [viewMode, setViewMode] = useState<'channels' | 'dms' | 'voice'>('channels');
   const [showUserList, setShowUserList] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState('');
@@ -1438,6 +1442,20 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
           >
             [DIRECT MESSAGES]
           </button>
+          <button
+            onClick={() => {
+              setViewMode('voice');
+              setSelectedChannel(null);
+              setSelectedDM(null);
+            }}
+            className={`px-3 py-1 text-xs terminal-text uppercase border transition-all ${
+              viewMode === 'voice'
+                ? 'border-green-500 text-green-400 bg-green-500/10'
+                : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-green-500/50'
+            }`}
+          >
+            {webrtc.state.isInCall ? '🔴 ' : '🎙 '}[VOICE]
+          </button>
           {viewMode === 'dms' && (
             <button
               onClick={() => setShowUserList(!showUserList)}
@@ -1536,8 +1554,29 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
         )}
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto mb-4 space-y-2">
+      {/* Incoming call toast — always visible */}
+      {webrtc.incomingCall && (
+        <IncomingCallToast
+          callId={webrtc.incomingCall.callId}
+          callerName={
+            participants.find((p) => p.id === webrtc.incomingCall?.from)?.full_name ?? 'Unknown'
+          }
+          onAccept={webrtc.acceptCall}
+          onReject={webrtc.rejectCall}
+        />
+      )}
+
+      {/* Voice panel */}
+      {viewMode === 'voice' && user && (
+        <div className="flex-1 overflow-y-auto mb-4">
+          <VoiceCallPanel sessionId={sessionId} currentUserId={user.id} />
+        </div>
+      )}
+
+      {/* Messages (hidden in voice mode) */}
+      <div
+        className={`flex-1 overflow-y-auto mb-4 space-y-2 ${viewMode === 'voice' ? 'hidden' : ''}`}
+      >
         {currentChannelId ? (
           <>
             {selectedDM === INSIDER_DM_ID && (
@@ -1686,6 +1725,11 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                       <p
                         className={`text-sm terminal-text ${selectedDM ? 'text-green-400/90' : 'text-robotic-yellow/90'}`}
                       >
+                        {message.message_type === 'voice_transcript' && (
+                          <span className="mr-1" title="Voice transcript">
+                            🎙
+                          </span>
+                        )}
                         {typeof message.content === 'string'
                           ? message.content
                           : JSON.stringify(message.content)}
@@ -1717,8 +1761,8 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
         )}
       </div>
 
-      {/* Message Input */}
-      {currentChannelId && (
+      {/* Message Input (hidden in voice mode) */}
+      {currentChannelId && viewMode !== 'voice' && (
         <form onSubmit={(e) => handleSendMessage(e)} className="flex gap-2">
           <input
             type="text"

@@ -3,6 +3,7 @@ import { type Server } from 'http';
 import { env } from '../env.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { registerVoiceSignaling } from './voiceSignaling.js';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -155,6 +156,8 @@ export const setupWebSocket = (httpServer: Server): SocketServer => {
       logger.error({ socketId: socket.id, userId: socket.userId, error }, 'WebSocket error');
     });
   });
+
+  registerVoiceSignaling(io);
 
   return io;
 };

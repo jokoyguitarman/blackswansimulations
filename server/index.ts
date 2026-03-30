@@ -32,6 +32,7 @@ import casualtiesRouter from './routes/casualties.js';
 import equipmentRouter from './routes/equipment.js';
 import locationsRouter from './routes/locations.js';
 import floorPlansRouter from './routes/floorPlans.js';
+import { voiceRouter } from './routes/voice.js';
 import { setupWebSocket } from './websocket/index.js';
 import { initializeWebSocketService } from './services/websocketService.js';
 import { initializeInjectScheduler } from './services/injectSchedulerService.js';
@@ -181,6 +182,7 @@ app.use('/api', casualtiesRouter);
 app.use('/api', equipmentRouter);
 app.use('/api', locationsRouter);
 app.use('/api', floorPlansRouter);
+app.use('/api/voice', voiceRouter);
 
 // 404 handler
 app.use((req, res) => {

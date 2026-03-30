@@ -189,6 +189,13 @@ class WebSocketClient {
   }
 
   /**
+   * Get the raw Socket.IO socket instance (for direct event handling, e.g. voice signaling)
+   */
+  getSocket(): Socket | null {
+    return this.socket;
+  }
+
+  /**
    * Get connection status
    */
   isConnected(): boolean {
