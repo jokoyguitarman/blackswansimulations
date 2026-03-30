@@ -165,7 +165,6 @@ export const PlacedAssetMarker = ({
       const zone = classification ? zoneColors[classification] : undefined;
       const fillColor = zone?.fill ?? '#94a3b8';
       const borderColor = zone?.border ?? '#94a3b8';
-      const zoneLabel = zone?.label ?? 'UNCLASSIFIED ZONE';
 
       return (
         <Polygon
@@ -178,18 +177,6 @@ export const PlacedAssetMarker = ({
             dashArray: '10, 6',
           }}
         >
-          <Tooltip permanent direction="center" className="zone-label-tooltip">
-            <span
-              className="text-[10px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-              style={{
-                color: fillColor,
-                background: 'rgba(0,0,0,0.7)',
-                border: `1px solid ${borderColor}`,
-              }}
-            >
-              {zoneLabel}
-            </span>
-          </Tooltip>
           <Popup>
             <AssetPopupContent
               asset={asset}
