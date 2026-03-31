@@ -6,12 +6,29 @@ const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
 
-if (import.meta.env.VITE_TURN_URL) {
-  ICE_SERVERS.push({
-    urls: import.meta.env.VITE_TURN_URL,
-    username: import.meta.env.VITE_TURN_USERNAME ?? '',
-    credential: import.meta.env.VITE_TURN_CREDENTIAL ?? '',
-  });
+if (import.meta.env.VITE_TURN_USERNAME && import.meta.env.VITE_TURN_CREDENTIAL) {
+  const turnUser = import.meta.env.VITE_TURN_USERNAME;
+  const turnCred = import.meta.env.VITE_TURN_CREDENTIAL;
+
+  if (import.meta.env.VITE_TURN_URL) {
+    ICE_SERVERS.push({
+      urls: import.meta.env.VITE_TURN_URL,
+      username: turnUser,
+      credential: turnCred,
+    });
+  }
+
+  // Metered.ca TURN endpoints -- add all transports for maximum NAT traversal
+  if (import.meta.env.VITE_TURN_DOMAIN) {
+    const domain = import.meta.env.VITE_TURN_DOMAIN;
+    ICE_SERVERS.push(
+      { urls: `stun:${domain}:80` },
+      { urls: `turn:${domain}:80`, username: turnUser, credential: turnCred },
+      { urls: `turn:${domain}:80?transport=tcp`, username: turnUser, credential: turnCred },
+      { urls: `turn:${domain}:443`, username: turnUser, credential: turnCred },
+      { urls: `turns:${domain}:443?transport=tcp`, username: turnUser, credential: turnCred },
+    );
+  }
 }
 
 export interface VoiceCallState {
