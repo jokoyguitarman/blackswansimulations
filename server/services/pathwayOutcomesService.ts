@@ -135,18 +135,24 @@ export async function runPathwayOutcomesOnInjectPublished(
       (triggerScope === 'team_specific' || triggerScope === 'team') &&
       Array.isArray(triggerTargetTeams) &&
       triggerTargetTeams.length > 0;
-    const teamFocusContext = isTeamSpecific
-      ? `This inject targets the ${triggerTargetTeams.join(' and ')} specifically. All factors, pathways, and outcome injects must relate exclusively to this team's domain, responsibilities, and potential actions or failures. Do not generate factors, pathways, or outcomes about other teams' domains.`
-      : undefined;
 
-    const factorsResult = await identifyEscalationFactors(
-      scenarioDescriptionWithContext,
-      (session.current_state as Record<string, unknown>) ?? {},
-      objectivesForFactors,
-      singleInjectContext,
-      env.openAiApiKey,
-      teamFocusContext,
-    );
+    // For universal / all-teams injects, generate per-team pathway batches
+    // so each team is evaluated independently against factors relevant to
+    // their domain. For team-specific injects, run once with team focus.
+    let teamsToProcess: string[];
+    if (isTeamSpecific) {
+      teamsToProcess = triggerTargetTeams!;
+    } else {
+      const { data: teamRows } = await supabaseAdmin
+        .from('session_teams')
+        .select('team_name')
+        .eq('session_id', sessionId);
+      const uniqueTeams = [
+        ...new Set((teamRows ?? []).map((r: { team_name: string }) => r.team_name)),
+      ];
+      teamsToProcess = uniqueTeams.length > 0 ? uniqueTeams : ['all'];
+    }
+
     const baselineFactors = Array.isArray(insiderKnowledge.baseline_escalation_factors)
       ? (insiderKnowledge.baseline_escalation_factors as Array<{
           id: string;
@@ -155,66 +161,8 @@ export async function runPathwayOutcomesOnInjectPublished(
           severity: string;
         }>)
       : [];
-    const existingFactorIds = new Set(factorsResult.factors.map((f) => f.id));
-    const mergedFactors = [
-      ...factorsResult.factors,
-      ...baselineFactors.filter((f) => f && !existingFactorIds.has(f.id)),
-    ];
-
-    let deEscalationFactors: Array<{ id: string; name: string; description: string }> = [];
-    try {
-      const deEscResult = await identifyDeEscalationFactors(
-        scenarioDescriptionWithContext,
-        (session.current_state as Record<string, unknown>) ?? {},
-        objectivesForFactors,
-        singleInjectContext,
-        mergedFactors,
-        env.openAiApiKey,
-        teamFocusContext,
-      );
-      deEscalationFactors = deEscResult.factors;
-    } catch (deEscErr) {
-      logger.warn(
-        { error: deEscErr, sessionId },
-        'Pathway outcomes: de-escalation factors failed, continuing',
-      );
-    }
-
-    const pathwaysResult = await generateEscalationPathways(
-      scenarioDescriptionWithContext,
-      (session.current_state as Record<string, unknown>) ?? {},
-      mergedFactors,
-      justPublishedInject,
-      env.openAiApiKey,
-      teamFocusContext,
-    );
-
-    let deEscalationPathways: Array<{
-      pathway_id: string;
-      trajectory: string;
-      mitigating_behaviours: string[];
-      emerging_challenges?: string[];
-    }> = [];
-    try {
-      const dePathResult = await generateDeEscalationPathways(
-        scenarioDescriptionWithContext,
-        (session.current_state as Record<string, unknown>) ?? {},
-        pathwaysResult.pathways,
-        deEscalationFactors,
-        justPublishedInject,
-        env.openAiApiKey,
-        teamFocusContext,
-      );
-      deEscalationPathways = dePathResult.pathways;
-    } catch (dePathErr) {
-      logger.warn(
-        { error: dePathErr, sessionId },
-        'Pathway outcomes: de-escalation pathways failed, continuing',
-      );
-    }
 
     const pathwayUsageSummary = await buildPathwayUsageSummary(sessionId);
-
     const sessionStartTime = (session as { start_time?: string | null }).start_time;
     const elapsedMinutes =
       sessionStartTime != null
@@ -225,69 +173,154 @@ export async function runPathwayOutcomesOnInjectPublished(
         ? await buildUpcomingPremadeThemes(session.scenario_id, elapsedMinutes)
         : '';
 
-    const outcomeResult = await generatePathwayOutcomeInjects(
-      scenarioDescriptionWithContext,
-      { type: inject.type, title: inject.title, content: inject.content },
-      pathwaysResult.pathways,
-      deEscalationPathways,
-      pathwayUsageSummary,
-      env.openAiApiKey,
-      upcomingPremadeThemes || undefined,
-      teamFocusContext,
-    );
+    let totalOutcomeCount = 0;
 
-    if (isTeamSpecific) {
+    for (const teamName of teamsToProcess) {
+      const isSingleTeamFallback = teamName === 'all';
+      const teamFocusContext = isSingleTeamFallback
+        ? undefined
+        : `This inject targets the ${teamName} team specifically. All factors, pathways, and outcome injects must relate exclusively to this team's domain, responsibilities, and potential actions or failures. Do not generate factors, pathways, or outcomes about other teams' domains.`;
+
+      logger.info({ sessionId, injectId, team: teamName }, 'Pathway outcomes: generating for team');
+
+      const factorsResult = await identifyEscalationFactors(
+        scenarioDescriptionWithContext,
+        (session.current_state as Record<string, unknown>) ?? {},
+        objectivesForFactors,
+        singleInjectContext,
+        env.openAiApiKey,
+        teamFocusContext,
+      );
+      const existingFactorIds = new Set(factorsResult.factors.map((f) => f.id));
+      const mergedFactors = [
+        ...factorsResult.factors,
+        ...baselineFactors.filter((f) => f && !existingFactorIds.has(f.id)),
+      ];
+
+      let deEscalationFactors: Array<{ id: string; name: string; description: string }> = [];
+      try {
+        const deEscResult = await identifyDeEscalationFactors(
+          scenarioDescriptionWithContext,
+          (session.current_state as Record<string, unknown>) ?? {},
+          objectivesForFactors,
+          singleInjectContext,
+          mergedFactors,
+          env.openAiApiKey,
+          teamFocusContext,
+        );
+        deEscalationFactors = deEscResult.factors;
+      } catch (deEscErr) {
+        logger.warn(
+          { error: deEscErr, sessionId, team: teamName },
+          'Pathway outcomes: de-escalation factors failed, continuing',
+        );
+      }
+
+      const pathwaysResult = await generateEscalationPathways(
+        scenarioDescriptionWithContext,
+        (session.current_state as Record<string, unknown>) ?? {},
+        mergedFactors,
+        justPublishedInject,
+        env.openAiApiKey,
+        teamFocusContext,
+      );
+
+      let deEscalationPathways: Array<{
+        pathway_id: string;
+        trajectory: string;
+        mitigating_behaviours: string[];
+        emerging_challenges?: string[];
+      }> = [];
+      try {
+        const dePathResult = await generateDeEscalationPathways(
+          scenarioDescriptionWithContext,
+          (session.current_state as Record<string, unknown>) ?? {},
+          pathwaysResult.pathways,
+          deEscalationFactors,
+          justPublishedInject,
+          env.openAiApiKey,
+          teamFocusContext,
+        );
+        deEscalationPathways = dePathResult.pathways;
+      } catch (dePathErr) {
+        logger.warn(
+          { error: dePathErr, sessionId, team: teamName },
+          'Pathway outcomes: de-escalation pathways failed, continuing',
+        );
+      }
+
+      const outcomeResult = await generatePathwayOutcomeInjects(
+        scenarioDescriptionWithContext,
+        { type: inject.type, title: inject.title, content: inject.content },
+        pathwaysResult.pathways,
+        deEscalationPathways,
+        pathwayUsageSummary,
+        env.openAiApiKey,
+        upcomingPremadeThemes || undefined,
+        teamFocusContext,
+      );
+
+      // Tag every outcome as team_specific so the selection logic in
+      // heatMeterService and aiInjectSchedulerService routes them only
+      // to the correct team.
+      const targetTeamsForRow = isSingleTeamFallback ? null : [teamName];
       for (const outcome of outcomeResult.outcomes) {
         if (outcome.inject_payload) {
-          outcome.inject_payload.inject_scope = 'team_specific';
-          outcome.inject_payload.target_teams = triggerTargetTeams;
+          if (!isSingleTeamFallback) {
+            outcome.inject_payload.inject_scope = 'team_specific';
+            outcome.inject_payload.target_teams = targetTeamsForRow;
+          }
         }
       }
-      logger.debug(
-        { sessionId, injectId, target_teams: triggerTargetTeams },
-        'Pathway outcomes: inherited team_specific scope from trigger inject',
+
+      const factorsSnapshot = {
+        escalation: mergedFactors,
+        de_escalation: deEscalationFactors,
+      };
+      const pathwaysSnapshot = {
+        escalation: pathwaysResult.pathways,
+        de_escalation: deEscalationPathways,
+      };
+
+      await supabaseAdmin.from('session_escalation_factors').insert({
+        session_id: sessionId,
+        evaluated_at: new Date().toISOString(),
+        factors: mergedFactors,
+        de_escalation_factors: deEscalationFactors,
+      });
+
+      await supabaseAdmin.from('session_escalation_pathways').insert({
+        session_id: sessionId,
+        evaluated_at: new Date().toISOString(),
+        pathways: pathwaysResult.pathways,
+        de_escalation_pathways: deEscalationPathways,
+      });
+
+      await supabaseAdmin.from('session_pathway_outcomes').insert({
+        session_id: sessionId,
+        trigger_inject_id: injectId,
+        evaluated_at: new Date().toISOString(),
+        factors_snapshot: factorsSnapshot,
+        pathways_snapshot: pathwaysSnapshot,
+        outcomes: outcomeResult.outcomes,
+      });
+
+      totalOutcomeCount += outcomeResult.outcomes.length;
+
+      logger.info(
+        { sessionId, injectId, team: teamName, outcomeCount: outcomeResult.outcomes.length },
+        'Pathway outcomes generated for team',
       );
     }
-
-    const factorsSnapshot = {
-      escalation: mergedFactors,
-      de_escalation: deEscalationFactors,
-    };
-    const pathwaysSnapshot = {
-      escalation: pathwaysResult.pathways,
-      de_escalation: deEscalationPathways,
-    };
-
-    await supabaseAdmin.from('session_escalation_factors').insert({
-      session_id: sessionId,
-      evaluated_at: new Date().toISOString(),
-      factors: mergedFactors,
-      de_escalation_factors: deEscalationFactors,
-    });
-
-    await supabaseAdmin.from('session_escalation_pathways').insert({
-      session_id: sessionId,
-      evaluated_at: new Date().toISOString(),
-      pathways: pathwaysResult.pathways,
-      de_escalation_pathways: deEscalationPathways,
-    });
-
-    await supabaseAdmin.from('session_pathway_outcomes').insert({
-      session_id: sessionId,
-      trigger_inject_id: injectId,
-      evaluated_at: new Date().toISOString(),
-      factors_snapshot: factorsSnapshot,
-      pathways_snapshot: pathwaysSnapshot,
-      outcomes: outcomeResult.outcomes,
-    });
 
     logger.info(
       {
         sessionId,
         injectId,
-        outcomeCount: outcomeResult.outcomes.length,
+        teamsProcessed: teamsToProcess,
+        totalOutcomeCount,
       },
-      'Pathway outcomes generated and stored',
+      'Pathway outcomes generated and stored for all teams',
     );
 
     await supabaseAdmin.from('session_events').insert({
