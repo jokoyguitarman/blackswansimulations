@@ -364,8 +364,8 @@ export const MapElementResponsePanel = ({
   const isCrowd = element.elementType === 'crowd';
 
   const teamActions = useMemo(
-    () => getTeamActions(teamName, element.elementType),
-    [teamName, element.elementType],
+    () => getTeamActions(teamName, element.elementType, scenarioType),
+    [teamName, element.elementType, scenarioType],
   );
 
   const toggleAction = useCallback((actionId: string) => {
