@@ -38,10 +38,26 @@ const generateSchema = z.object({
         'kidnapping',
         'car_bomb',
         'bombing_mall',
+        'assassination',
+        'stampede_crush',
+        'active_shooter',
       ])
       .optional(),
     setting: z
-      .enum(['beach', 'subway', 'mall', 'resort', 'hotel', 'train', 'open_field'])
+      .enum([
+        'beach',
+        'subway',
+        'mall',
+        'resort',
+        'hotel',
+        'train',
+        'open_field',
+        'stadium',
+        'concert',
+        'festival',
+        'government',
+        'conference',
+      ])
       .optional(),
     terrain: z
       .enum(['jungle', 'mountain', 'coastal', 'desert', 'urban', 'rural', 'swamp', 'island'])
@@ -64,10 +80,26 @@ const suggestTeamsSchema = z.object({
         'kidnapping',
         'car_bomb',
         'bombing_mall',
+        'assassination',
+        'stampede_crush',
+        'active_shooter',
       ])
       .optional(),
     setting: z
-      .enum(['beach', 'subway', 'mall', 'resort', 'hotel', 'train', 'open_field'])
+      .enum([
+        'beach',
+        'subway',
+        'mall',
+        'resort',
+        'hotel',
+        'train',
+        'open_field',
+        'stadium',
+        'concert',
+        'festival',
+        'government',
+        'conference',
+      ])
       .optional(),
     terrain: z
       .enum(['jungle', 'mountain', 'coastal', 'desert', 'urban', 'rural', 'swamp', 'island'])

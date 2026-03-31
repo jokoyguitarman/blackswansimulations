@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
-import { CreateScenarioForm } from '../components/Forms/CreateScenarioForm';
+
 import { ScenarioDetailView } from '../components/Scenario/ScenarioDetailView';
 
 interface Scenario {
@@ -21,7 +21,7 @@ export const Scenarios = () => {
   const { isTrainer } = useRoleVisibility();
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+
   const [selectedScenario, setSelectedScenario] = useState<Scenario | null>(null);
   const [detailScenarioId, setDetailScenarioId] = useState<string | null>(null);
 
@@ -38,10 +38,6 @@ export const Scenarios = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleCreateScenario = () => {
-    setShowCreateModal(true);
   };
 
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -107,9 +103,6 @@ export const Scenarios = () => {
                 >
                   [WAR_ROOM]
                 </Link>
-                <button onClick={handleCreateScenario} className="military-button px-6 py-3">
-                  [CREATE_SCENARIO]
-                </button>
               </div>
             )}
           </div>
@@ -181,11 +174,6 @@ export const Scenarios = () => {
           </div>
         )}
       </div>
-
-      {/* Create Scenario Modal */}
-      {showCreateModal && (
-        <CreateScenarioForm onClose={() => setShowCreateModal(false)} onSuccess={loadScenarios} />
-      )}
 
       {/* Trainer full detail view */}
       {detailScenarioId && (

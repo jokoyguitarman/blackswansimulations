@@ -17,6 +17,9 @@ const SCENARIO_TYPES = [
   { id: 'kidnapping', label: 'Kidnapping' },
   { id: 'car_bomb', label: 'Car bomb / suicide bomber' },
   { id: 'bombing_mall', label: 'Mall bombing' },
+  { id: 'assassination', label: 'Assassination (public venue)' },
+  { id: 'stampede_crush', label: 'Concert stampede / crush' },
+  { id: 'active_shooter', label: 'Active shooter (enclosed)' },
 ];
 
 const SETTINGS = [
@@ -27,6 +30,11 @@ const SETTINGS = [
   { id: 'hotel', label: 'Hotel' },
   { id: 'train', label: 'Train' },
   { id: 'open_field', label: 'Open field' },
+  { id: 'stadium', label: 'Stadium' },
+  { id: 'concert', label: 'Concert venue' },
+  { id: 'festival', label: 'Festival / outdoor event' },
+  { id: 'government', label: 'Government building' },
+  { id: 'conference', label: 'Conference centre' },
 ];
 
 const TERRAINS = [
@@ -38,13 +46,6 @@ const TERRAINS = [
   { id: 'rural', label: 'Rural' },
   { id: 'swamp', label: 'Swamp' },
   { id: 'island', label: 'Island' },
-];
-
-const COMPLEXITY_TIERS = [
-  { id: 'minimal', label: 'Minimal', desc: '4 injects, no decision branches' },
-  { id: 'standard', label: 'Standard', desc: '8 injects, 2 decision branches' },
-  { id: 'full', label: 'Full', desc: '12 injects, 4 decision branches, locations, env seeds' },
-  { id: 'rich', label: 'Rich', desc: '18 injects, 6 decision branches, full content' },
 ];
 
 const GENERATION_PHASES: { id: string; label: string; desc: string }[] = [
@@ -66,9 +67,7 @@ export const WarRoom = () => {
   const [setting, setSetting] = useState('');
   const [terrain, setTerrain] = useState('');
   const [location, setLocation] = useState('');
-  const [complexityTier, setComplexityTier] = useState<'minimal' | 'standard' | 'full' | 'rich'>(
-    'full',
-  );
+  const [complexityTier] = useState<'minimal' | 'standard' | 'full' | 'rich'>('rich');
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -324,31 +323,6 @@ export const WarRoom = () => {
               </div>
             </div>
           )}
-
-          <div className="mt-6">
-            <label className="block text-xs terminal-text text-robotic-yellow/70 mb-2">
-              [COMPLEXITY]
-            </label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {COMPLEXITY_TIERS.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setComplexityTier(t.id as typeof complexityTier)}
-                  className={`p-3 text-left border transition-all ${
-                    complexityTier === t.id
-                      ? 'border-robotic-yellow bg-robotic-yellow/10'
-                      : 'border-robotic-gray-200 hover:border-robotic-yellow/50'
-                  }`}
-                  disabled={loading}
-                >
-                  <span className="text-sm terminal-text text-robotic-yellow">{t.label}</span>
-                  <span className="block text-xs terminal-text text-robotic-yellow/60 mt-1">
-                    {t.desc}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
 
           <div className="mt-6">
             <label className="block text-xs terminal-text text-robotic-yellow/70 mb-2">

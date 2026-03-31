@@ -6,6 +6,7 @@ import type { ScenarioLocationPin } from './ScenarioLocationMarker';
 import { api } from '../../lib/api';
 import { VoiceMicButton } from '../VoiceMicButton';
 import { svg } from './mapIcons';
+import { getTeamActions } from './teamResponseActions';
 
 export interface MapElementTarget {
   elementType: 'hazard' | 'casualty' | 'crowd' | 'entry_exit';
@@ -41,6 +42,8 @@ interface MapElementResponsePanelProps {
   scenarioLocations?: ScenarioLocationPin[];
   /** Callback to update triage tag on the casualty after successful submit */
   onTriageAssess?: (casualtyId: string, triageColor: string) => Promise<void>;
+  /** Scenario type for context-aware team actions */
+  scenarioType?: string;
 }
 
 const ICON_MAP: Record<string, string> = {
@@ -75,6 +78,29 @@ const ICON_MAP: Record<string, string> = {
   extinguisher: svg('extinguisher', 14),
   clipboard: svg('clipboard', 14),
   mask: svg('mask', 14),
+  sniper: svg('sniper', 14),
+  k9: svg('k9', 14),
+  tactical_unit: svg('tactical_unit', 14),
+  arrest_team: svg('arrest_team', 14),
+  armored_vehicle: svg('armored_vehicle', 14),
+  negotiation_post: svg('negotiation_post', 14),
+  listening_post: svg('listening_post', 14),
+  drone: svg('drone', 14),
+  intel_hub: svg('intel_hub', 14),
+  covert: svg('covert', 14),
+  safe_room: svg('safe_room', 14),
+  protection_detail: svg('protection_detail', 14),
+  vip_extract: svg('vip_extract', 14),
+  checkpoint: svg('checkpoint', 14),
+  cctv: svg('cctv', 14),
+  steward: svg('steward', 14),
+  search_point: svg('search_point', 14),
+  crush_barrier: svg('crush_barrier', 14),
+  pa_system: svg('pa_system', 14),
+  capacity_monitor: svg('capacity_monitor', 14),
+  platform_barrier: svg('platform_barrier', 14),
+  service_control: svg('service_control', 14),
+  emergency_light: svg('emergency_light', 14),
 };
 
 function getEmoji(icon: string): string {
@@ -315,6 +341,7 @@ export const MapElementResponsePanel = ({
   placedAssets = [],
   scenarioLocations = [],
   onTriageAssess,
+  scenarioType,
 }: MapElementResponsePanelProps) => {
   const [deployed, setDeployed] = useState<DeployedAsset[]>([]);
   const [description, setDescription] = useState('');
@@ -323,6 +350,7 @@ export const MapElementResponsePanel = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const [triageColor, setTriageColor] = useState<string | null>(null);
   const [selectedDestination, setSelectedDestination] = useState<DestinationOption | null>(null);
+  const [selectedActions, setSelectedActions] = useState<Set<string>>(new Set());
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
   const isCasualty = element.elementType === 'casualty';
@@ -334,6 +362,20 @@ export const MapElementResponsePanel = ({
   const triageEnabled = isCasualty && isTriageTeam && medicNearby;
 
   const isCrowd = element.elementType === 'crowd';
+
+  const teamActions = useMemo(
+    () => getTeamActions(teamName, element.elementType),
+    [teamName, element.elementType],
+  );
+
+  const toggleAction = useCallback((actionId: string) => {
+    setSelectedActions((prev) => {
+      const next = new Set(prev);
+      if (next.has(actionId)) next.delete(actionId);
+      else next.add(actionId);
+      return next;
+    });
+  }, []);
 
   const destinations = useMemo(() => {
     if (isCasualty) return getNextDestinations(element.status, placedAssets, scenarioLocations);
@@ -397,7 +439,11 @@ export const MapElementResponsePanel = ({
   );
 
   const hasContent =
-    deployed.length > 0 || description.trim() || triageColor || selectedDestination;
+    deployed.length > 0 ||
+    description.trim() ||
+    triageColor ||
+    selectedDestination ||
+    selectedActions.size > 0;
 
   const handleSubmit = async () => {
     if (!hasContent) return;
@@ -405,6 +451,10 @@ export const MapElementResponsePanel = ({
     setResult(null);
 
     const parts: string[] = [];
+    if (selectedActions.size > 0) {
+      const actionLabels = teamActions.filter((a) => selectedActions.has(a.id)).map((a) => a.label);
+      parts.push(`Actions taken: ${actionLabels.join(', ')}`);
+    }
     if (deployed.length > 0) {
       const resourceList = deployed.map((d) => `${d.quantity}x ${d.label}`).join(', ');
       parts.push(`Resources deployed: ${resourceList}`);
@@ -602,6 +652,45 @@ export const MapElementResponsePanel = ({
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* ── Team Actions (contextual per team) ── */}
+          {teamActions.length > 0 && (
+            <div className="px-5 py-3 border-b border-robotic-yellow/20">
+              <h3 className="text-xs font-medium terminal-text text-robotic-yellow/70 mb-2 uppercase">
+                Team Actions — {teamName}
+              </h3>
+              <div className="flex flex-wrap gap-1.5">
+                {teamActions.map((action) => {
+                  const isSelected = selectedActions.has(action.id);
+                  return (
+                    <button
+                      key={action.id}
+                      onClick={() => toggleAction(action.id)}
+                      title={action.description}
+                      className={`px-2.5 py-1.5 rounded border text-xs terminal-text transition-all flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'border-robotic-yellow bg-robotic-yellow/20 text-robotic-yellow shadow-lg'
+                          : 'border-robotic-yellow/20 bg-robotic-yellow/5 text-robotic-yellow/70 hover:border-robotic-yellow/40 hover:bg-robotic-yellow/10'
+                      }`}
+                    >
+                      <span
+                        className="inline-flex"
+                        dangerouslySetInnerHTML={{
+                          __html: ICON_MAP[action.icon] ?? svg('pin', 14),
+                        }}
+                      />
+                      <span className="truncate max-w-[140px]">{action.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedActions.size > 0 && (
+                <div className="mt-2 text-[10px] terminal-text text-robotic-yellow/50">
+                  {selectedActions.size} action{selectedActions.size !== 1 ? 's' : ''} selected
+                </div>
+              )}
             </div>
           )}
         </div>

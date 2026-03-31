@@ -1,0 +1,463 @@
+{
+  "id": "assassination",
+  "display_name": "Assassination (public venue / stage)",
+  "category": "terrorism",
+  "required_teams": [
+    {
+      "team_name": "close_protection",
+      "team_description": "VIP extraction, safe room establishment, protection detail coordination",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "police",
+      "team_description": "Perimeter control, suspect pursuit, tactical response, crime scene preservation",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "triage",
+      "team_description": "Casualty triage, gunshot/blast wound treatment, warm-zone medical response",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "media",
+      "team_description": "Public communication, political messaging coordination, counter misinformation",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "event_security",
+      "team_description": "Venue lockdown, CCTV coordination, steward deployment, gate control",
+      "min_participants": 2,
+      "max_participants": 8
+    }
+  ],
+  "environmental_factors": [
+    "stage_layout",
+    "crowd_density",
+    "exit_routes",
+    "vantage_points",
+    "backstage_access",
+    "vip_holding_area"
+  ],
+  "adversary_behaviors": [
+    "sniper_from_vantage",
+    "stage_rush",
+    "blending_in_crowd",
+    "accomplice_distraction",
+    "secondary_device"
+  ],
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "field_update",
+      "template": "Attack on VIP at {venue}. VIP down on stage. Crowd in shock. Attacker location and method unclear.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+3",
+      "type": "field_update",
+      "template": "VIP status unknown. Close protection team requesting extraction route. Crowd beginning to panic. Possible second attacker unconfirmed.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+5",
+      "type": "intel_brief",
+      "template": "Possible shooter position identified — elevated vantage point. Area not yet secured. Additional casualties near stage.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+8",
+      "type": "field_update",
+      "template": "Crowd surge toward exits. Crush risk at main gates. Stewards overwhelmed. Event security requesting guidance on gate management.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+12",
+      "type": "media_report",
+      "template": "Live footage circulating on social media. International media converging. Government demanding immediate statement.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+15",
+      "type": "political_pressure",
+      "template": "Senior officials demanding situation update. Diplomatic implications if VIP is foreign dignitary. Pressure for visible police response.",
+      "severity": "high"
+    }
+  ],
+  "decision_branches": [
+    {
+      "branch_id": "evacuate_vs_lockdown",
+      "keywords": ["evacuate", "lockdown", "shelter", "hold"],
+      "trigger_condition": "when event security decides between full venue evacuation or lockdown",
+      "inject_template": "Evacuate risks crush at exits. Lockdown risks trapping people with possible second attacker. Decision required."
+    },
+    {
+      "branch_id": "vip_extraction",
+      "keywords": ["extract", "safe room", "armored", "evacuate VIP"],
+      "trigger_condition": "when close protection decides VIP extraction route",
+      "inject_template": "Multiple extraction routes available. Primary route may be compromised. Safe room available backstage. Armored vehicle staged at rear."
+    },
+    {
+      "branch_id": "media_blackout",
+      "keywords": ["blackout", "statement", "press", "media"],
+      "trigger_condition": "when media team decides on information strategy",
+      "inject_template": "Media demanding comment. Speculation spreading. Official statement could reassure or reveal operational details."
+    },
+    {
+      "branch_id": "suspect_pursuit",
+      "keywords": ["pursue", "contain", "search", "sweep"],
+      "trigger_condition": "when police decide on suspect pursuit vs scene containment",
+      "inject_template": "Suspect sighted near exit. Pursuit risks losing crime scene integrity. Containment risks suspect escape."
+    }
+  ],
+  "compatible_settings": ["stadium", "concert", "government", "hotel", "worship", "conference"],
+  "compatible_terrains": ["urban", "coastal"],
+  "condition_keys": [
+    {
+      "key": "close_protection_no_extraction_decision",
+      "meaning": "No decision matches extraction/safe room keywords",
+      "team": "close_protection"
+    },
+    {
+      "key": "police_perimeter_not_established",
+      "meaning": "police_state.perimeter_established !== true",
+      "team": "police",
+      "state_path": "police_state.perimeter_established",
+      "negate": true
+    },
+    {
+      "key": "event_security_no_lockdown_decision",
+      "meaning": "No lockdown or gate control decision made",
+      "team": "event_security"
+    },
+    {
+      "key": "media_no_statement_by_T12",
+      "meaning": "elapsedMinutes >= 12 and no statement",
+      "team": "media"
+    }
+  ],
+  "keyword_patterns": [
+    {
+      "category": "VIP Extraction (close protection)",
+      "keywords": ["extract", "safe room", "armored", "evacuate VIP", "protection detail"],
+      "state_key": "close_protection_state.extraction_initiated"
+    },
+    {
+      "category": "Perimeter (police)",
+      "keywords": ["perimeter", "cordon", "secure", "contain", "lockdown"],
+      "state_key": "police_state.perimeter_established"
+    },
+    {
+      "category": "Suspect pursuit (police)",
+      "keywords": ["pursue", "suspect", "chase", "apprehend", "search"],
+      "state_key": "police_state.pursuit_initiated"
+    },
+    {
+      "category": "Venue control (event security)",
+      "keywords": ["lockdown", "gates", "close", "seal", "stewards"],
+      "state_key": "event_security_state.venue_locked_down"
+    },
+    {
+      "category": "Statement (media)",
+      "keywords": ["statement", "press", "announce", "release"],
+      "state_key": "media_state.first_statement_issued"
+    }
+  ],
+  "team_counter_definitions": {
+    "close_protection": [
+      {
+        "key": "extraction_initiated",
+        "label": "VIP Extraction Initiated",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["extract", "safe room", "armored", "evacuate VIP", "move VIP"]
+        }
+      },
+      {
+        "key": "safe_room_established",
+        "label": "Safe Room Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["safe room", "shelter", "holding area", "secure location"]
+        }
+      },
+      {
+        "key": "protection_detail_deployed",
+        "label": "Protection Detail Deployed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["detail", "bodyguard", "protection", "close protection"]
+        }
+      },
+      {
+        "key": "vip_status",
+        "label": "VIP Status",
+        "type": "enum",
+        "initial_value": "unknown",
+        "behavior": "state_effect",
+        "visible_to": "all",
+        "config": {
+          "values": ["unknown", "alive", "injured", "critical", "deceased"]
+        }
+      }
+    ],
+    "police": [
+      {
+        "key": "perimeter_established",
+        "label": "Perimeter Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["perimeter", "cordon", "secure", "contain"]
+        }
+      },
+      {
+        "key": "pursuit_initiated",
+        "label": "Suspect Pursuit Initiated",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["pursue", "chase", "hunt", "search", "apprehend"]
+        }
+      },
+      {
+        "key": "crime_scene_preserved",
+        "label": "Crime Scene Preserved",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["crime scene", "preserve", "forensic", "evidence"]
+        }
+      },
+      {
+        "key": "tactical_team_deployed",
+        "label": "Tactical Team Deployed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["tactical", "armed response", "swat", "sniper team"]
+        }
+      },
+      {
+        "key": "armed_units",
+        "label": "Armed Units Deployed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ],
+    "triage": [
+      {
+        "key": "total_patients",
+        "label": "Total Patients",
+        "type": "number",
+        "initial_value": 30,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "triage_processed",
+        "label": "Patients Processed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "trainer_only",
+        "config": {
+          "base_rate_per_min": 6,
+          "cap_key": "total_patients",
+          "robustness_affects": true,
+          "robustness_low_mult": 0.5,
+          "robustness_high_mult": 1.25,
+          "impact_sensitive": true,
+          "rate_modifier_key": "treatment_rate_modifier"
+        }
+      },
+      {
+        "key": "treatment_rate_modifier",
+        "label": "Treatment Rate Modifier",
+        "type": "number",
+        "initial_value": 1,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "patients_being_treated",
+        "label": "Patients Being Treated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all",
+        "config": {
+          "source_pool_key": "total_patients",
+          "rate_key": "triage_processed",
+          "split_fractions": {
+            "deaths_on_site": 0.15,
+            "handed_over_to_hospital": 0.45
+          },
+          "split_fractions_low": {
+            "deaths_on_site": 0.3,
+            "handed_over_to_hospital": 0.2
+          },
+          "split_fractions_high": {
+            "deaths_on_site": 0.05,
+            "handed_over_to_hospital": 0.6
+          }
+        }
+      },
+      {
+        "key": "warm_zone_entry",
+        "label": "Warm-Zone Medical Entry",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["warm zone", "enter", "forward triage", "stage area"]
+        }
+      }
+    ],
+    "media": [
+      {
+        "key": "public_sentiment",
+        "label": "Public Sentiment",
+        "type": "number",
+        "initial_value": 3,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "media_protocol_score",
+        "label": "Protocol Adherence",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "statements_issued",
+        "label": "Statements Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "unaddressed_misinformation_count",
+        "label": "Unaddressed Misinformation",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "victim_dignity_respected",
+        "label": "Victim Dignity Respected",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": [
+            "no names",
+            "family first",
+            "notify family",
+            "victim dignity",
+            "do not release names"
+          ]
+        }
+      },
+      {
+        "key": "diplomatic_coordination",
+        "label": "Diplomatic Coordination",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["embassy", "diplomat", "foreign office", "consulate", "government liaison"]
+        }
+      }
+    ],
+    "event_security": [
+      {
+        "key": "venue_locked_down",
+        "label": "Venue Locked Down",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["lockdown", "seal", "close gates", "lock"]
+        }
+      },
+      {
+        "key": "cctv_sweep_active",
+        "label": "CCTV Sweep Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["cctv", "camera", "footage", "review", "sweep"]
+        }
+      },
+      {
+        "key": "stewards_deployed",
+        "label": "Stewards Deployed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["steward", "marshal", "guide", "usher", "deploy"]
+        }
+      },
+      {
+        "key": "secondary_sweep_done",
+        "label": "Secondary Device Sweep",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["sweep", "secondary", "device", "bomb", "search"]
+        }
+      }
+    ]
+  }
+}

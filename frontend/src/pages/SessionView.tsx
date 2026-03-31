@@ -87,6 +87,192 @@ const TEAM_ASSET_CATALOG: Record<string, DraggableAssetDef[]> = {
     },
     { asset_type: 'water_point', icon: 'water', geometry_type: 'point', label: 'Water Point' },
   ],
+  police: [
+    {
+      asset_type: 'tactical_unit',
+      icon: 'tactical_unit',
+      geometry_type: 'point',
+      label: 'Tactical Unit',
+    },
+    {
+      asset_type: 'sniper_position',
+      icon: 'sniper',
+      geometry_type: 'point',
+      label: 'Sniper Position',
+    },
+    { asset_type: 'k9_unit', icon: 'k9', geometry_type: 'point', label: 'K9 Unit' },
+    {
+      asset_type: 'arrest_team',
+      icon: 'arrest_team',
+      geometry_type: 'point',
+      label: 'Arrest Team',
+    },
+    {
+      asset_type: 'police_cordon',
+      icon: 'barrier',
+      geometry_type: 'line',
+      label: 'Police Cordon',
+    },
+    {
+      asset_type: 'armed_response_vehicle',
+      icon: 'armored_vehicle',
+      geometry_type: 'point',
+      label: 'Armed Response Vehicle',
+    },
+  ],
+  negotiation: [
+    {
+      asset_type: 'negotiation_post',
+      icon: 'negotiation_post',
+      geometry_type: 'point',
+      label: 'Negotiation Post',
+    },
+    {
+      asset_type: 'listening_post',
+      icon: 'listening_post',
+      geometry_type: 'point',
+      label: 'Listening Post',
+    },
+    {
+      asset_type: 'communication_relay',
+      icon: 'radio',
+      geometry_type: 'point',
+      label: 'Communication Relay',
+    },
+    {
+      asset_type: 'safe_perimeter',
+      icon: 'barrier',
+      geometry_type: 'line',
+      label: 'Safe Perimeter',
+    },
+  ],
+  intelligence: [
+    {
+      asset_type: 'observation_post',
+      icon: 'eye',
+      geometry_type: 'point',
+      label: 'Observation Post',
+    },
+    {
+      asset_type: 'surveillance_drone',
+      icon: 'drone',
+      geometry_type: 'point',
+      label: 'Surveillance Drone',
+    },
+    { asset_type: 'intel_hub', icon: 'intel_hub', geometry_type: 'point', label: 'Intel Hub' },
+    {
+      asset_type: 'covert_position',
+      icon: 'covert',
+      geometry_type: 'point',
+      label: 'Covert Position',
+    },
+  ],
+  close_protection: [
+    {
+      asset_type: 'protection_detail',
+      icon: 'protection_detail',
+      geometry_type: 'point',
+      label: 'Protection Detail',
+    },
+    { asset_type: 'safe_room', icon: 'safe_room', geometry_type: 'point', label: 'Safe Room' },
+    {
+      asset_type: 'vip_extraction_point',
+      icon: 'vip_extract',
+      geometry_type: 'point',
+      label: 'VIP Extraction Point',
+    },
+    {
+      asset_type: 'armored_vehicle_staging',
+      icon: 'armored_vehicle',
+      geometry_type: 'point',
+      label: 'Armored Vehicle Staging',
+    },
+  ],
+  event_security: [
+    {
+      asset_type: 'security_checkpoint',
+      icon: 'checkpoint',
+      geometry_type: 'point',
+      label: 'Security Checkpoint',
+    },
+    { asset_type: 'cctv_monitor', icon: 'cctv', geometry_type: 'point', label: 'CCTV Monitor' },
+    {
+      asset_type: 'crowd_barrier',
+      icon: 'barrier',
+      geometry_type: 'line',
+      label: 'Crowd Barrier',
+    },
+    {
+      asset_type: 'steward_post',
+      icon: 'steward',
+      geometry_type: 'point',
+      label: 'Steward Post',
+    },
+    {
+      asset_type: 'search_point',
+      icon: 'search_point',
+      geometry_type: 'point',
+      label: 'Search Point',
+    },
+  ],
+  crowd_management: [
+    {
+      asset_type: 'crush_barrier',
+      icon: 'crush_barrier',
+      geometry_type: 'line',
+      label: 'Crush Barrier',
+    },
+    {
+      asset_type: 'pa_announcement_point',
+      icon: 'pa_system',
+      geometry_type: 'point',
+      label: 'PA Announcement Point',
+    },
+    {
+      asset_type: 'crowd_flow_marshal',
+      icon: 'marshal',
+      geometry_type: 'point',
+      label: 'Crowd Flow Marshal',
+    },
+    {
+      asset_type: 'capacity_monitor_post',
+      icon: 'capacity_monitor',
+      geometry_type: 'point',
+      label: 'Capacity Monitor Post',
+    },
+    {
+      asset_type: 'crowd_barrier_line',
+      icon: 'barrier',
+      geometry_type: 'line',
+      label: 'Crowd Barrier',
+    },
+  ],
+  transit_security: [
+    {
+      asset_type: 'platform_barrier',
+      icon: 'platform_barrier',
+      geometry_type: 'line',
+      label: 'Platform Barrier',
+    },
+    {
+      asset_type: 'service_control_point',
+      icon: 'service_control',
+      geometry_type: 'point',
+      label: 'Service Control Point',
+    },
+    {
+      asset_type: 'station_lockdown_post',
+      icon: 'checkpoint',
+      geometry_type: 'point',
+      label: 'Station Lockdown Post',
+    },
+    {
+      asset_type: 'transit_cctv_monitor',
+      icon: 'cctv',
+      geometry_type: 'point',
+      label: 'CCTV Monitor',
+    },
+  ],
 };
 
 const UNIVERSAL_ASSETS: DraggableAssetDef[] = [
@@ -1571,6 +1757,10 @@ export const SessionView = () => {
                       ? getAssetsForTeam(myTeams[0].team_name, scenarioEquipment)
                       : []
                   }
+                  scenarioType={
+                    ((session?.current_state as Record<string, unknown>)
+                      ?.scenario_type as string) ?? undefined
+                  }
                   onPlacementCreated={handlePlacementCreated}
                   onPlacementUpdated={handlePlacementUpdated}
                   isRecordingActions={!!actionRecording?.active}
@@ -1860,6 +2050,10 @@ export const SessionView = () => {
                         : myTeams[0]?.team_name
                           ? getAssetsForTeam(myTeams[0].team_name, scenarioEquipment)
                           : []
+                    }
+                    scenarioType={
+                      ((session?.current_state as Record<string, unknown>)
+                        ?.scenario_type as string) ?? undefined
                     }
                   />
                 </div>

@@ -113,24 +113,11 @@ export function validateCompatibility(
     return { valid: false, message: `Unknown terrain: ${terrain}` };
   }
 
-  if (typeSpec.compatible_settings && !typeSpec.compatible_settings.includes(setting)) {
-    return {
-      valid: false,
-      message: `Scenario type "${scenarioType}" is not compatible with setting "${setting}"`,
-    };
-  }
-  if (typeSpec.compatible_terrains && !typeSpec.compatible_terrains.includes(terrain)) {
-    return {
-      valid: false,
-      message: `Scenario type "${scenarioType}" is not compatible with terrain "${terrain}"`,
-    };
-  }
-  if (settingSpec.compatible_terrains && !settingSpec.compatible_terrains.includes(terrain)) {
-    return {
-      valid: false,
-      message: `Setting "${setting}" is not compatible with terrain "${terrain}"`,
-    };
-  }
+  // Compatibility checks removed: any incident type can occur at any
+  // location the player chooses. The AI adapts the scenario narrative
+  // to fit unconventional combinations (e.g. car bomb on a campus).
+  // The compatible_settings / compatible_terrains fields in template
+  // JSON files are retained for reference but no longer enforced.
 
   return { valid: true };
 }

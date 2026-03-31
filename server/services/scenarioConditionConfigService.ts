@@ -202,9 +202,25 @@ export async function getConditionConfigForScenario(
     };
   }
 
-  const inferredType = teamNames.some((t) => /police|negotiation|intelligence/i.test(t))
-    ? 'kidnapping'
-    : 'car_bomb';
+  const lower = teamNames.map((t) => (t || '').toLowerCase());
+  const hasPolice = lower.some((t) => /police|negotiation|intelligence/.test(t));
+  const hasCloseProtection = lower.some((t) => /close_protection|protection|vip/.test(t));
+  const hasCrowdMgmt = lower.some((t) => /crowd_management|crowd/.test(t));
+  const hasEventSecurity = lower.some((t) => /event_security|venue/.test(t));
+  const hasTransit = lower.some((t) => /transit_security|transit|platform/.test(t));
+
+  let inferredType: string;
+  if (hasCloseProtection && hasPolice) {
+    inferredType = 'assassination';
+  } else if (hasCrowdMgmt || (hasEventSecurity && !hasPolice)) {
+    inferredType = 'stampede_crush';
+  } else if (hasTransit) {
+    inferredType = 'knife_attack';
+  } else if (hasPolice) {
+    inferredType = 'kidnapping';
+  } else {
+    inferredType = 'car_bomb';
+  }
   const template = loadTemplate(inferredType);
   if (template) {
     const conditionKeys = (template.condition_keys as ConditionKeyDef[] | undefined) ?? [];

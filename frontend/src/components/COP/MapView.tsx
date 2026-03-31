@@ -188,6 +188,8 @@ interface MapViewProps {
   }) => void;
   /** When true (trainer view), skip the exit-claiming gate and always show all operational pins. */
   bypassExitGate?: boolean;
+  /** Scenario type for context-aware team response actions. */
+  scenarioType?: string;
 }
 
 /**
@@ -472,6 +474,7 @@ export const MapView = ({
   onStartRecording,
   onCrowdMoved,
   bypassExitGate = false,
+  scenarioType,
 }: MapViewProps) => {
   const mapDisabledByEnv = import.meta.env.VITE_DISABLE_MAP === 'true';
   const isMapDisabled = disabled || mapDisabledByEnv;
@@ -1713,6 +1716,7 @@ export const MapView = ({
           onClose={() => setRespondToElement(null)}
           placedAssets={placedAssets}
           scenarioLocations={scenarioLocations}
+          scenarioType={scenarioType}
           onTriageAssess={async (casualtyId, triageColor) => {
             await api.casualties.assess(sessionId, casualtyId, {
               player_triage_color: triageColor,

@@ -1,0 +1,537 @@
+{
+  "id": "stampede_crush",
+  "display_name": "Concert stampede / crowd crush",
+  "category": "civil_unrest",
+  "required_teams": [
+    {
+      "team_name": "crowd_management",
+      "team_description": "Crowd flow control, barrier management, crush prevention, ingress/egress coordination",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "evacuation",
+      "team_description": "Emergency evacuation coordination, route management, assembly point operation",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "triage",
+      "team_description": "Crush injury triage, compressive asphyxia response, field medical treatment",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "media",
+      "team_description": "Public communication, crowd guidance via PA and social media, counter misinformation",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "event_security",
+      "team_description": "Gate control, barrier removal, CCTV monitoring, steward coordination",
+      "min_participants": 2,
+      "max_participants": 8
+    }
+  ],
+  "environmental_factors": [
+    "venue_capacity",
+    "exit_width",
+    "crowd_density_zones",
+    "barrier_placement",
+    "slope_grade",
+    "weather_conditions",
+    "lighting_conditions"
+  ],
+  "adversary_behaviors": [],
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "field_update",
+      "template": "Crowd crush reported at {venue}. People trapped in dense crowd. Reports of people falling. Exits congested.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+3",
+      "type": "field_update",
+      "template": "Casualties mounting. People unable to breathe in crush zone. Barriers preventing crowd dispersal. Immediate intervention needed.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+5",
+      "type": "citizen_call",
+      "template": "Multiple exits blocked by crowd pressure. People climbing over barriers. Trampling injuries at bottleneck points.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+8",
+      "type": "media_report",
+      "template": "Social media footage showing crush. Panic spreading beyond immediate area. Families at home calling emergency lines.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+10",
+      "type": "field_update",
+      "template": "Triage overwhelmed. Compressive asphyxia cases require immediate intervention. Field hospital capacity at limit.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+15",
+      "type": "resource_shortage",
+      "template": "Hospital surge underway. Ambulance staging full. Additional resources requested. Mutual aid activated.",
+      "severity": "high"
+    }
+  ],
+  "decision_branches": [
+    {
+      "branch_id": "open_barriers_vs_controlled_flow",
+      "keywords": ["open", "barriers", "remove", "controlled", "flow"],
+      "trigger_condition": "when crowd management decides between opening all barriers or maintaining controlled flow",
+      "inject_template": "Open barriers to relieve pressure? Risk of secondary surge. Controlled flow maintains order but people still trapped."
+    },
+    {
+      "branch_id": "cancel_event_vs_pause",
+      "keywords": ["cancel", "stop", "pause", "continue"],
+      "trigger_condition": "when event security decides to cancel, pause, or continue the event",
+      "inject_template": "Cancel event? Entire crowd moves at once. Pause? Crowd confusion. Continue? Risk of worsening crush in other areas."
+    },
+    {
+      "branch_id": "reverse_crowd_direction",
+      "keywords": ["reverse", "redirect", "alternative", "route"],
+      "trigger_condition": "when evacuation or crowd management redirects crowd flow",
+      "inject_template": "Reverse crowd direction? Counter-flow risk. Open alternative routes? May spread problem. PA announcement to redirect?"
+    }
+  ],
+  "compatible_settings": ["stadium", "concert", "festival", "subway", "mall", "street"],
+  "compatible_terrains": ["urban", "coastal", "rural"],
+  "condition_keys": [
+    {
+      "key": "crowd_management_no_barrier_decision",
+      "meaning": "No decision matches barrier/gate/flow keywords",
+      "team": "crowd_management"
+    },
+    {
+      "key": "crowd_management_barriers_opened",
+      "meaning": "crowd_management_state.barriers_opened === true",
+      "team": "crowd_management",
+      "state_path": "crowd_management_state.barriers_opened",
+      "negate": false
+    },
+    {
+      "key": "evacuation_no_flow_control_decision",
+      "meaning": "No decision matches flow/egress/route keywords",
+      "team": "evacuation"
+    },
+    {
+      "key": "event_security_event_not_stopped",
+      "meaning": "event_security_state.event_stopped !== true",
+      "team": "event_security",
+      "state_path": "event_security_state.event_stopped",
+      "negate": true
+    },
+    {
+      "key": "media_no_statement_by_T8",
+      "meaning": "elapsedMinutes >= 8 and no statement",
+      "team": "media"
+    }
+  ],
+  "keyword_patterns": [
+    {
+      "category": "Barrier management (crowd mgmt)",
+      "keywords": ["barrier", "open", "remove", "gate", "fence", "crush barrier"],
+      "state_key": "crowd_management_state.barriers_opened"
+    },
+    {
+      "category": "Crowd reversal (crowd mgmt)",
+      "keywords": ["reverse", "redirect", "counter-flow", "alternative route"],
+      "state_key": "crowd_management_state.crowd_redirected"
+    },
+    {
+      "category": "Flow control (evac)",
+      "keywords": ["flow", "bottleneck", "stagger", "egress", "congestion"],
+      "state_key": "evacuation_state.flow_control_decided"
+    },
+    {
+      "category": "Event stop (event security)",
+      "keywords": ["cancel", "stop", "halt", "pause", "end event"],
+      "state_key": "event_security_state.event_stopped"
+    },
+    {
+      "category": "PA announcement (media/crowd mgmt)",
+      "keywords": ["announce", "PA", "public address", "broadcast", "loudspeaker"],
+      "state_key": "media_state.pa_announcement_made"
+    },
+    {
+      "category": "Statement (media)",
+      "keywords": ["statement", "press", "announce", "release"],
+      "state_key": "media_state.first_statement_issued"
+    }
+  ],
+  "team_counter_definitions": {
+    "crowd_management": [
+      {
+        "key": "barriers_opened",
+        "label": "Emergency Barriers Opened",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["open", "barrier", "remove", "gate", "fence"]
+        }
+      },
+      {
+        "key": "crowd_redirected",
+        "label": "Crowd Flow Redirected",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["reverse", "redirect", "reroute", "alternative", "counter-flow"]
+        }
+      },
+      {
+        "key": "ingress_stopped",
+        "label": "Ingress Stopped",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["stop entry", "ingress", "no more", "close entrance", "halt admission"]
+        }
+      },
+      {
+        "key": "crush_zones_identified",
+        "label": "Crush Zones Identified",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["crush zone", "density", "pressure point", "bottleneck"]
+        }
+      },
+      {
+        "key": "crowd_density_monitored",
+        "label": "Density Monitoring Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["monitor", "density", "count", "capacity", "headcount"]
+        }
+      },
+      {
+        "key": "pa_announcements_made",
+        "label": "PA Announcements Made",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["announce", "PA", "loudspeaker", "broadcast", "public address"]
+        }
+      }
+    ],
+    "evacuation": [
+      {
+        "key": "total_evacuees",
+        "label": "Total Evacuees",
+        "type": "number",
+        "initial_value": 5000,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "evacuated_count",
+        "label": "People Evacuated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 50,
+          "cap_key": "total_evacuees",
+          "requires_flag": "flow_control_decided",
+          "robustness_affects": true,
+          "congestion_halves": true,
+          "impact_sensitive": true,
+          "rate_modifier_key": "evac_rate_modifier",
+          "marshal_boost_key": "marshals_deployed",
+          "marshal_boost_mult": 1.2
+        }
+      },
+      {
+        "key": "evac_rate_modifier",
+        "label": "Evacuation Rate Modifier",
+        "type": "number",
+        "initial_value": 1,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "flow_control_decided",
+        "label": "Flow Control Decided",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["flow", "bottleneck", "stagger", "egress", "congestion", "route"]
+        }
+      },
+      {
+        "key": "marshals_deployed",
+        "label": "Marshals / Stewards Deployed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["marshal", "steward", "guide", "warden", "usher"]
+        }
+      },
+      {
+        "key": "alternative_routes_opened",
+        "label": "Alternative Routes Opened",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["alternative", "secondary", "route", "service entrance", "back gate"]
+        }
+      }
+    ],
+    "triage": [
+      {
+        "key": "total_patients",
+        "label": "Total Patients",
+        "type": "number",
+        "initial_value": 200,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "triage_processed",
+        "label": "Patients Processed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "trainer_only",
+        "config": {
+          "base_rate_per_min": 10,
+          "cap_key": "total_patients",
+          "robustness_affects": true,
+          "robustness_low_mult": 0.4,
+          "robustness_high_mult": 1.3,
+          "impact_sensitive": true,
+          "rate_modifier_key": "treatment_rate_modifier"
+        }
+      },
+      {
+        "key": "treatment_rate_modifier",
+        "label": "Treatment Rate Modifier",
+        "type": "number",
+        "initial_value": 1,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "patients_being_treated",
+        "label": "Patients Being Treated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all",
+        "config": {
+          "source_pool_key": "total_patients",
+          "rate_key": "triage_processed",
+          "split_fractions": {
+            "deaths_on_site": 0.08,
+            "handed_over_to_hospital": 0.5
+          },
+          "split_fractions_low": {
+            "deaths_on_site": 0.2,
+            "handed_over_to_hospital": 0.25
+          },
+          "split_fractions_high": {
+            "deaths_on_site": 0.03,
+            "handed_over_to_hospital": 0.65
+          }
+        }
+      },
+      {
+        "key": "patients_waiting",
+        "label": "Patients Waiting",
+        "type": "number",
+        "initial_value": 200,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "handed_over_to_hospital",
+        "label": "Handed Over to Hospital",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "deaths_on_site",
+        "label": "Deaths on Site",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "supply_request_made",
+        "label": "Supply Request Made",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["supply", "request", "stretcher", "oxygen", "equipment"]
+        }
+      }
+    ],
+    "media": [
+      {
+        "key": "public_sentiment",
+        "label": "Public Sentiment",
+        "type": "number",
+        "initial_value": 4,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "media_protocol_score",
+        "label": "Protocol Adherence",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "statements_issued",
+        "label": "Statements Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "pa_announcement_made",
+        "label": "PA Announcement Made",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["PA", "loudspeaker", "public address", "broadcast", "announce"]
+        }
+      },
+      {
+        "key": "unaddressed_misinformation_count",
+        "label": "Unaddressed Misinformation",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "victim_dignity_respected",
+        "label": "Victim Dignity Respected",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": [
+            "no names",
+            "family first",
+            "notify family",
+            "victim dignity",
+            "do not release names"
+          ]
+        }
+      }
+    ],
+    "event_security": [
+      {
+        "key": "event_stopped",
+        "label": "Event Stopped",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["cancel", "stop", "halt", "pause", "end event"]
+        }
+      },
+      {
+        "key": "gates_controlled",
+        "label": "Gates Controlled",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["gate", "entrance", "close", "open", "control"]
+        }
+      },
+      {
+        "key": "cctv_monitoring_active",
+        "label": "CCTV Monitoring Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["cctv", "camera", "monitor", "footage", "surveillance"]
+        }
+      },
+      {
+        "key": "stewards_repositioned",
+        "label": "Stewards Repositioned",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["steward", "reposition", "deploy", "move", "reassign"]
+        }
+      },
+      {
+        "key": "emergency_lighting",
+        "label": "Emergency Lighting Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["lighting", "lights", "illuminate", "emergency light"]
+        }
+      }
+    ]
+  }
+}
