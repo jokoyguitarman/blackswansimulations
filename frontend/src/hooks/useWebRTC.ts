@@ -47,6 +47,7 @@ export function useWebRTC(currentUserId: string | undefined) {
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const localStream = useRef<MediaStream | null>(null);
   const callIdRef = useRef<string | null>(null);
+  const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const analysersRef = useRef<Map<string, { analyser: AnalyserNode; ctx: AudioContext }>>(
     new Map(),
   );
@@ -103,8 +104,46 @@ export function useWebRTC(currentUserId: string | undefined) {
     [startSpeakingDetection],
   );
 
+  const playRemoteStream = useCallback((userId: string, stream: MediaStream) => {
+    let audio = audioElementsRef.current.get(userId);
+    if (!audio) {
+      audio = document.createElement('audio');
+      audio.autoplay = true;
+      (audio as unknown as { playsInline: boolean }).playsInline = true;
+      audio.id = `voice-remote-${userId}`;
+      document.body.appendChild(audio);
+      audioElementsRef.current.set(userId, audio);
+    }
+    audio.srcObject = stream;
+    audio.play().catch((err) => {
+      console.warn('[VoiceChat] Audio autoplay blocked for', userId, err);
+    });
+  }, []);
+
+  const removeRemoteAudio = useCallback((userId: string) => {
+    const audio = audioElementsRef.current.get(userId);
+    if (audio) {
+      audio.pause();
+      audio.srcObject = null;
+      audio.remove();
+      audioElementsRef.current.delete(userId);
+    }
+  }, []);
+
+  const removeAllRemoteAudio = useCallback(() => {
+    for (const [userId] of audioElementsRef.current) {
+      removeRemoteAudio(userId);
+    }
+  }, [removeRemoteAudio]);
+
   const createPeerConnection = useCallback(
     (remoteUserId: string): RTCPeerConnection => {
+      const existing = peerConnections.current.get(remoteUserId);
+      if (existing) {
+        existing.close();
+        peerConnections.current.delete(remoteUserId);
+      }
+
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
       if (localStream.current) {
@@ -133,16 +172,14 @@ export function useWebRTC(currentUserId: string | undefined) {
             return { ...prev, remoteStreams: newStreams };
           });
           addRemoteStreamAnalyser(remoteUserId, stream);
-
-          const audio = new Audio();
-          audio.srcObject = stream;
-          audio.play().catch(() => {});
+          playRemoteStream(remoteUserId, stream);
         }
       };
 
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
           peerConnections.current.delete(remoteUserId);
+          removeRemoteAudio(remoteUserId);
           setState((prev) => {
             const newStreams = new Map(prev.remoteStreams);
             newStreams.delete(remoteUserId);
@@ -154,7 +191,7 @@ export function useWebRTC(currentUserId: string | undefined) {
       peerConnections.current.set(remoteUserId, pc);
       return pc;
     },
-    [getSocket, addRemoteStreamAnalyser],
+    [getSocket, addRemoteStreamAnalyser, playRemoteStream, removeRemoteAudio],
   );
 
   const cleanup = useCallback(() => {
@@ -168,6 +205,7 @@ export function useWebRTC(currentUserId: string | undefined) {
       localStream.current = null;
     }
 
+    removeAllRemoteAudio();
     stopSpeakingDetection();
 
     callIdRef.current = null;
@@ -180,7 +218,7 @@ export function useWebRTC(currentUserId: string | undefined) {
       remoteStreams: new Map(),
       speakingUsers: new Set(),
     });
-  }, [stopSpeakingDetection]);
+  }, [stopSpeakingDetection, removeAllRemoteAudio]);
 
   const initiateCall = useCallback(
     async (sessionId: string, targetUserIds: string[]) => {
@@ -207,6 +245,10 @@ export function useWebRTC(currentUserId: string | undefined) {
     [getSocket, currentUserId],
   );
 
+  // Callee only acquires mic and signals acceptance.
+  // The caller will send the offer via handleParticipantJoined,
+  // which the callee answers in handleOffer. This prevents the
+  // "offer glare" where both sides send offers simultaneously.
   const acceptCall = useCallback(
     async (callId: string) => {
       const socket = getSocket();
@@ -226,13 +268,8 @@ export function useWebRTC(currentUserId: string | undefined) {
 
       socket.emit('voice:accept', { callId, to: incomingCall.from });
       setIncomingCall(null);
-
-      const pc = createPeerConnection(incomingCall.from);
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socket.emit('voice:offer', { callId, to: incomingCall.from, sdp: offer });
     },
-    [getSocket, incomingCall, createPeerConnection],
+    [getSocket, incomingCall],
   );
 
   const rejectCall = useCallback(
@@ -273,6 +310,10 @@ export function useWebRTC(currentUserId: string | undefined) {
       setIncomingCall(data);
     };
 
+    // Only the caller (initiator) creates offers. When the callee
+    // accepts, this fires on the caller side, which creates the
+    // peer connection and sends the offer. The callee answers in
+    // handleOffer below.
     const handleParticipantJoined = async (data: { callId: string; userId: string }) => {
       if (data.callId !== callIdRef.current) return;
 
@@ -283,10 +324,14 @@ export function useWebRTC(currentUserId: string | undefined) {
           : [...prev.participants, data.userId],
       }));
 
-      const pc = createPeerConnection(data.userId);
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socket.emit('voice:offer', { callId: data.callId, to: data.userId, sdp: offer });
+      try {
+        const pc = createPeerConnection(data.userId);
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit('voice:offer', { callId: data.callId, to: data.userId, sdp: offer });
+      } catch (err) {
+        console.error('[VoiceChat] Failed to create offer for', data.userId, err);
+      }
     };
 
     const handleOffer = async (data: {
@@ -296,13 +341,25 @@ export function useWebRTC(currentUserId: string | undefined) {
     }) => {
       if (data.callId !== callIdRef.current) return;
 
-      let pc = peerConnections.current.get(data.from);
-      if (!pc) pc = createPeerConnection(data.from);
+      try {
+        let pc = peerConnections.current.get(data.from);
+        if (!pc) {
+          pc = createPeerConnection(data.from);
+        } else if (pc.signalingState !== 'stable') {
+          // Glare recovery: if we somehow have a pending offer, close
+          // and recreate so we can cleanly accept the remote offer.
+          pc.close();
+          peerConnections.current.delete(data.from);
+          pc = createPeerConnection(data.from);
+        }
 
-      await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      socket.emit('voice:answer', { callId: data.callId, to: data.from, sdp: answer });
+        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        socket.emit('voice:answer', { callId: data.callId, to: data.from, sdp: answer });
+      } catch (err) {
+        console.error('[VoiceChat] Failed to handle offer from', data.from, err);
+      }
     };
 
     const handleAnswer = async (data: {
@@ -312,9 +369,13 @@ export function useWebRTC(currentUserId: string | undefined) {
     }) => {
       if (data.callId !== callIdRef.current) return;
 
-      const pc = peerConnections.current.get(data.from);
-      if (pc) {
-        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      try {
+        const pc = peerConnections.current.get(data.from);
+        if (pc && pc.signalingState === 'have-local-offer') {
+          await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        }
+      } catch (err) {
+        console.error('[VoiceChat] Failed to handle answer from', data.from, err);
       }
     };
 
@@ -325,9 +386,13 @@ export function useWebRTC(currentUserId: string | undefined) {
     }) => {
       if (data.callId !== callIdRef.current) return;
 
-      const pc = peerConnections.current.get(data.from);
-      if (pc) {
-        await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+      try {
+        const pc = peerConnections.current.get(data.from);
+        if (pc && pc.remoteDescription) {
+          await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+        }
+      } catch (err) {
+        console.error('[VoiceChat] Failed to add ICE candidate from', data.from, err);
       }
     };
 
@@ -344,6 +409,7 @@ export function useWebRTC(currentUserId: string | undefined) {
         pc.close();
         peerConnections.current.delete(data.userId);
       }
+      removeRemoteAudio(data.userId);
 
       setState((prev) => {
         const newStreams = new Map(prev.remoteStreams);
@@ -373,7 +439,7 @@ export function useWebRTC(currentUserId: string | undefined) {
       socket.off('voice:ended', handleEnded);
       socket.off('voice:participant_left', handleParticipantLeft);
     };
-  }, [getSocket, currentUserId, state.isInCall, createPeerConnection, cleanup]);
+  }, [getSocket, currentUserId, state.isInCall, createPeerConnection, cleanup, removeRemoteAudio]);
 
   return {
     state,
