@@ -62,24 +62,53 @@ function statusColor(status: string, baseColor: string): string {
   return baseColor;
 }
 
+function isPrimaryHazard(hazard: HazardData): boolean {
+  return (
+    hazard.appears_at_minutes === 0 &&
+    (hazard.hazard_type === 'explosion' ||
+      hazard.hazard_type === 'fire' ||
+      hazard.hazard_type === 'chemical_spill' ||
+      hazard.hazard_type === 'gas_leak' ||
+      hazard.hazard_type === 'biological')
+  );
+}
+
 function createHazardIcon(hazard: HazardData): DivIcon {
   const { icon, color: baseColor } = getHazardVisual(hazard.hazard_type);
   const color = statusColor(hazard.status, baseColor);
   const isResolved = hazard.status === 'resolved';
-  const size = 30;
+  const primary = !isResolved && isPrimaryHazard(hazard);
+  const size = primary ? 44 : 30;
   const displayIcon = isResolved ? svg('resolved') : icon;
 
   return new DivIcon({
-    className: 'hazard-marker',
-    html: `<div style="
-      background:${color};
-      width:${size}px;height:${size}px;border-radius:50%;
-      border:2px solid #fff;
-      box-shadow:0 2px 6px rgba(0,0,0,.3);
-      display:flex;align-items:center;justify-content:center;
-      cursor:pointer;
-      ${isResolved ? 'opacity:0.6;' : ''}
-    ">${displayIcon}</div>`,
+    className: `hazard-marker${primary ? ' primary-incident' : ''}`,
+    html: `
+      ${
+        primary
+          ? `<div class="primary-incident-pulse" style="
+        position:absolute;
+        top:50%;left:50%;
+        width:${size + 14}px;height:${size + 14}px;
+        margin-left:-${(size + 14) / 2}px;margin-top:-${(size + 14) / 2}px;
+        border-radius:50%;
+        border:2px solid ${color};
+        opacity:0;
+        pointer-events:none;
+      "></div>`
+          : ''
+      }
+      <div style="
+        position:relative;
+        background:${color};
+        width:${size}px;height:${size}px;border-radius:50%;
+        border:${primary ? '3px solid #fbbf24' : '2px solid #fff'};
+        box-shadow:${primary ? `0 0 14px 3px ${color}88, 0 4px 10px rgba(0,0,0,.4)` : '0 2px 6px rgba(0,0,0,.3)'};
+        display:flex;align-items:center;justify-content:center;
+        cursor:pointer;
+        ${isResolved ? 'opacity:0.6;' : ''}
+        z-index:10;
+      ">${primary ? displayIcon.replace(/width="16"/, 'width="22"').replace(/height="16"/, 'height="22"') : displayIcon}</div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
     popupAnchor: [0, -(size / 2)],

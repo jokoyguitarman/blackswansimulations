@@ -19,7 +19,6 @@ import {
   standardsToPromptBlock,
   similarCasesToPromptBlock,
   crowdDynamicsToPromptBlock,
-  mapStandardsToTeams,
   researchTeamWorkflows,
   type SimilarCase,
 } from './warroomResearchService.js';
@@ -214,6 +213,8 @@ export interface WarroomResearchContext {
   /** @deprecated use standards_findings instead */
   standards_summary?: string;
   standards_findings?: import('./warroomResearchService.js').StandardsFinding[];
+  /** Pre-built per-team doctrine mapping from researchStandardsPerTeam */
+  team_doctrines?: Record<string, import('./warroomResearchService.js').StandardsFinding[]>;
   similar_cases?: SimilarCase[];
   crowd_dynamics?: import('./warroomResearchService.js').CrowdDynamicsResearch;
 }
@@ -3904,19 +3905,14 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
     insiderKnowledge.sector_standards = standardsToPromptBlock(
       input.researchContext.standards_findings,
     );
+  }
 
-    const teamNames = phase1.teams.map((t) => t.team_name);
-    if (teamNames.length > 0) {
-      const teamDoctrines = await mapStandardsToTeams(
-        openAiApiKey,
-        teamNames,
-        input.researchContext.standards_findings,
-      );
-      if (Object.keys(teamDoctrines).length > 0) {
-        insiderKnowledge.team_doctrines = teamDoctrines;
-      }
-    }
-  } else if (input.researchContext?.standards_summary) {
+  if (
+    input.researchContext?.team_doctrines &&
+    Object.keys(input.researchContext.team_doctrines).length > 0
+  ) {
+    insiderKnowledge.team_doctrines = input.researchContext.team_doctrines;
+  } else if (!insiderKnowledge.sector_standards && input.researchContext?.standards_summary) {
     insiderKnowledge.sector_standards = input.researchContext.standards_summary;
   }
   if (phase4c.layout_ground_truth)

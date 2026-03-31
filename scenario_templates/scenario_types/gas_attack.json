@@ -26,6 +26,12 @@
       "team_description": "Hazmat response, ventilation, substance identification",
       "min_participants": 2,
       "max_participants": 8
+    },
+    {
+      "team_name": "police",
+      "team_description": "Crime scene management, suspect identification, cordon, public order",
+      "min_participants": 2,
+      "max_participants": 8
     }
   ],
   "environmental_factors": ["enclosed_space", "ventilation", "station_vs_tunnel", "decon_site"],
@@ -379,6 +385,41 @@
         "initial_value": 0,
         "behavior": "state_effect",
         "visible_to": "all"
+      }
+    ],
+    "police": [
+      {
+        "key": "outer_cordon_set",
+        "label": "Outer Cordon Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["cordon", "perimeter", "outer", "secure"]
+        }
+      },
+      {
+        "key": "suspect_identified",
+        "label": "Suspect Identified",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["suspect", "identified", "description", "cctv"]
+        }
+      },
+      {
+        "key": "evidence_preserved",
+        "label": "Evidence Preservation Started",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["evidence", "preserve", "scene", "forensic"]
+        }
       }
     ]
   }

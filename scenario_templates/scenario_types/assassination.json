@@ -32,6 +32,12 @@
       "team_description": "Venue lockdown, CCTV coordination, steward deployment, gate control",
       "min_participants": 2,
       "max_participants": 8
+    },
+    {
+      "team_name": "intelligence",
+      "team_description": "Threat intelligence, suspect identification, prior-warning analysis, real-time surveillance",
+      "min_participants": 2,
+      "max_participants": 6
     }
   ],
   "environmental_factors": [
@@ -456,6 +462,52 @@
         "visible_to": "all",
         "config": {
           "keywords": ["sweep", "secondary", "device", "bomb", "search"]
+        }
+      }
+    ],
+    "intelligence": [
+      {
+        "key": "threat_assessment_complete",
+        "label": "Threat Assessment Complete",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["threat", "assessment", "profile", "intelligence", "analysis"]
+        }
+      },
+      {
+        "key": "suspect_identified",
+        "label": "Suspect(s) Identified",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["identified", "suspect", "perpetrator", "description"]
+        }
+      },
+      {
+        "key": "surveillance_deployed",
+        "label": "Surveillance Deployed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["surveillance", "drone", "cctv", "monitor", "observe"]
+        }
+      },
+      {
+        "key": "intel_reports_issued",
+        "label": "Intelligence Reports Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["report", "brief", "intel", "update", "sitrep"]
         }
       }
     ]

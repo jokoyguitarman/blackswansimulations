@@ -148,31 +148,68 @@ const getSymbol = (pin: ScenarioLocationPin): string => {
   return svg('pin');
 };
 
+const isIncidentSite = (pin: ScenarioLocationPin): boolean => {
+  const cat = pin.pin_category?.toLowerCase() ?? '';
+  const t = pin.location_type.toLowerCase();
+  return (
+    cat === 'incident_site' ||
+    t.includes('blast') ||
+    t.includes('epicentre') ||
+    t.includes('device') ||
+    t.includes('attack') ||
+    t.includes('explosion') ||
+    t.includes('detonation') ||
+    t.includes('impact')
+  );
+};
+
 const createPinIcon = (pin: ScenarioLocationPin): DivIcon => {
   const color = getPinColor(pin);
   const symbol = getSymbol(pin);
+  const primary = isIncidentSite(pin);
+  const size = primary ? 48 : 32;
+  const borderWidth = primary ? 3 : 2;
+  const svgSize = primary ? 24 : 16;
+
   return new DivIcon({
-    className: 'scenario-location-marker',
+    className: `scenario-location-marker${primary ? ' primary-incident' : ''}`,
     html: `
+      ${
+        primary
+          ? `<div class="primary-incident-pulse" style="
+        position:absolute;
+        top:50%;left:50%;
+        width:${size + 16}px;height:${size + 16}px;
+        margin-left:-${(size + 16) / 2}px;margin-top:-${(size + 16) / 2}px;
+        border-radius:50%;
+        border:2px solid ${color};
+        opacity:0;
+        animation:incident-pulse 2s ease-out infinite;
+        pointer-events:none;
+      "></div>`
+          : ''
+      }
       <div style="
+        position:relative;
         background-color: ${color};
-        width: 32px;
-        height: 32px;
+        width: ${size}px;
+        height: ${size}px;
         border-radius: 50%;
-        border: 2px solid white;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        border: ${borderWidth}px solid ${primary ? '#fbbf24' : 'white'};
+        box-shadow: ${primary ? `0 0 16px 4px ${color}88, 0 4px 12px rgba(0,0,0,0.4)` : '0 2px 6px rgba(0,0,0,0.3)'};
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 16px;
+        font-size: ${svgSize}px;
         line-height: 1;
+        z-index:10;
       ">
-        ${symbol}
+        ${primary ? symbol.replace(/width="16"/, `width="${svgSize}"`).replace(/height="16"/, `height="${svgSize}"`) : symbol}
       </div>
     `,
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-    popupAnchor: [0, -16],
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
   });
 };
 

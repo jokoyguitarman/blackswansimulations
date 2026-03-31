@@ -208,16 +208,38 @@ export async function getConditionConfigForScenario(
   const hasCrowdMgmt = lower.some((t) => /crowd_management|crowd/.test(t));
   const hasEventSecurity = lower.some((t) => /event_security|venue/.test(t));
   const hasTransit = lower.some((t) => /transit_security|transit|platform/.test(t));
+  const hasBombSquad = lower.some((t) => /bomb_squad|bomb|eod/.test(t));
+  const hasMallSecurity = lower.some((t) => /mall_security|mall/.test(t));
+  const hasResort = lower.some((t) => /resort_security|resort/.test(t));
+  const hasFireHazmat = lower.some((t) => /fire_hazmat|hazmat/.test(t));
+  const hasPublicHealth = lower.some((t) => /public_health/.test(t));
+  const hasNegotiation = lower.some((t) => /negotiation/.test(t));
 
   let inferredType: string;
   if (hasCloseProtection && hasPolice) {
     inferredType = 'assassination';
+  } else if (hasNegotiation && hasResort) {
+    inferredType = 'kidnapping';
+  } else if (hasNegotiation && hasPolice) {
+    inferredType = 'hostage_siege';
+  } else if (hasBombSquad && hasMallSecurity) {
+    inferredType = 'bombing_mall';
+  } else if (hasBombSquad) {
+    inferredType = 'bombing';
+  } else if (hasMallSecurity) {
+    inferredType = 'active_shooter';
+  } else if (hasPublicHealth || (hasFireHazmat && !hasBombSquad)) {
+    inferredType = 'poisoning';
+  } else if (hasFireHazmat) {
+    inferredType = 'gas_attack';
   } else if (hasCrowdMgmt || (hasEventSecurity && !hasPolice)) {
     inferredType = 'stampede_crush';
   } else if (hasTransit) {
     inferredType = 'knife_attack';
-  } else if (hasPolice) {
+  } else if (hasResort) {
     inferredType = 'kidnapping';
+  } else if (hasPolice) {
+    inferredType = 'car_bomb';
   } else {
     inferredType = 'car_bomb';
   }

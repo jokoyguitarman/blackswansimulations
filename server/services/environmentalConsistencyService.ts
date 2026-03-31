@@ -14,6 +14,41 @@ import { getTeamCatalogAssets } from '../lib/teamAssetCatalog.js';
 import type { Server as SocketServer } from 'socket.io';
 import { haversineM, pointInPolygon, polygonBoundingBox } from './geoUtils.js';
 
+/**
+ * Fuzzy team-doctrine lookup: tries exact match, then case-insensitive, then
+ * partial substring match (e.g. "police" matches "Singapore Police Force").
+ * Returns the findings array for the first match found, or [].
+ */
+function resolveTeamDoctrines(
+  teamDoctrines: Record<string, unknown[]>,
+  teamName: string,
+): unknown[] {
+  if (Array.isArray(teamDoctrines[teamName]) && teamDoctrines[teamName].length > 0) {
+    return teamDoctrines[teamName];
+  }
+  const lowerName = teamName.toLowerCase().replace(/[\s-]+/g, '_');
+  for (const [key, findings] of Object.entries(teamDoctrines)) {
+    if (
+      key.toLowerCase().replace(/[\s-]+/g, '_') === lowerName &&
+      Array.isArray(findings) &&
+      findings.length > 0
+    ) {
+      return findings;
+    }
+  }
+  for (const [key, findings] of Object.entries(teamDoctrines)) {
+    const lowerKey = key.toLowerCase().replace(/[\s-]+/g, '_');
+    if (
+      (lowerKey.includes(lowerName) || lowerName.includes(lowerKey)) &&
+      Array.isArray(findings) &&
+      findings.length > 0
+    ) {
+      return findings;
+    }
+  }
+  return [];
+}
+
 export type EnvironmentalConsistencySeverity = 'low' | 'medium' | 'high';
 export type EnvironmentalConsistencyErrorType =
   | 'capacity'
@@ -624,21 +659,20 @@ export async function evaluateDecisionAgainstEnvironment(
     const insiderKnowledge = ((scenario as { insider_knowledge?: Record<string, unknown> })
       .insider_knowledge ?? {}) as Record<string, unknown>;
 
-    // Load sector standards / team doctrines
+    // Load sector standards / team doctrines (with fuzzy name matching)
     let sectorStandards: string | undefined;
     if (teamName) {
       const teamDoctrines = insiderKnowledge.team_doctrines as
         | Record<string, unknown[]>
         | undefined;
-      if (
-        teamDoctrines &&
-        Array.isArray(teamDoctrines[teamName]) &&
-        teamDoctrines[teamName].length > 0
-      ) {
+      if (teamDoctrines) {
         const { standardsToPromptBlock } = await import('./warroomResearchService.js');
-        sectorStandards = standardsToPromptBlock(
-          teamDoctrines[teamName] as import('./warroomResearchService.js').StandardsFinding[],
-        );
+        const findings = resolveTeamDoctrines(teamDoctrines, teamName);
+        if (findings.length > 0) {
+          sectorStandards = standardsToPromptBlock(
+            findings as import('./warroomResearchService.js').StandardsFinding[],
+          );
+        }
       }
     }
     if (!sectorStandards && typeof insiderKnowledge.sector_standards === 'string') {

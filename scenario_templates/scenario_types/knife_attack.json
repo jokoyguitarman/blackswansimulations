@@ -26,6 +26,12 @@
       "team_description": "Transit security, coordinate station/platform evacuation",
       "min_participants": 2,
       "max_participants": 6
+    },
+    {
+      "team_name": "police",
+      "team_description": "Active attacker pursuit, neutralisation, perimeter, witness management",
+      "min_participants": 2,
+      "max_participants": 10
     }
   ],
   "environmental_factors": [
@@ -359,6 +365,52 @@
         "visible_to": "all",
         "config": {
           "keywords": ["secure", "lockdown", "cleared"]
+        }
+      }
+    ],
+    "police": [
+      {
+        "key": "attacker_neutralised",
+        "label": "Attacker Neutralised",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["neutralised", "apprehended", "detained", "subdued", "tasered"]
+        }
+      },
+      {
+        "key": "outer_cordon_set",
+        "label": "Outer Cordon Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["cordon", "perimeter", "outer", "secure area"]
+        }
+      },
+      {
+        "key": "armed_response_deployed",
+        "label": "Armed Response Deployed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["armed", "firearms", "tactical", "armed response"]
+        }
+      },
+      {
+        "key": "witness_management_started",
+        "label": "Witness Management Started",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["witness", "statement", "interview", "account"]
         }
       }
     ]

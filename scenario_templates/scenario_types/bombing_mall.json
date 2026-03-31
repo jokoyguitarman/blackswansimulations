@@ -26,6 +26,24 @@
       "team_description": "Fire containment, smoke control, structural assessment, search and rescue",
       "min_participants": 2,
       "max_participants": 8
+    },
+    {
+      "team_name": "police",
+      "team_description": "Cordon, secondary device sweep, evidence preservation, suspect identification",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "mall_security",
+      "team_description": "Store lockdown, CCTV tracking, PA announcements, patron sweep, access control",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "bomb_squad",
+      "team_description": "Secondary device sweep, render safe procedures, forensic IED analysis",
+      "min_participants": 2,
+      "max_participants": 6
     }
   ],
   "environmental_factors": [
@@ -517,6 +535,119 @@
         "initial_value": 0,
         "behavior": "state_effect",
         "visible_to": "all"
+      }
+    ],
+    "police": [
+      {
+        "key": "outer_cordon_set",
+        "label": "Outer Cordon Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["cordon", "perimeter", "outer", "secure area"]
+        }
+      },
+      {
+        "key": "evidence_preserved",
+        "label": "Evidence Preservation Started",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["evidence", "preserve", "scene", "forensic"]
+        }
+      },
+      {
+        "key": "suspect_status",
+        "label": "Suspect Status",
+        "type": "text",
+        "initial_value": "unknown",
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ],
+    "mall_security": [
+      {
+        "key": "stores_locked_down",
+        "label": "Stores Locked Down",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["lockdown", "shutter", "store", "lock in place"]
+        }
+      },
+      {
+        "key": "pa_activated",
+        "label": "PA System Activated",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["pa", "announcement", "tannoy", "broadcast"]
+        }
+      },
+      {
+        "key": "cctv_tracking_active",
+        "label": "CCTV Tracking Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["cctv", "camera", "track", "monitor"]
+        }
+      },
+      {
+        "key": "floors_swept",
+        "label": "Floors Swept",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["sweep", "floor", "clear", "patron", "all clear"]
+        }
+      }
+    ],
+    "bomb_squad": [
+      {
+        "key": "secondary_sweep_done",
+        "label": "Secondary Device Sweep Done",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["secondary", "sweep", "additional", "device", "check"]
+        }
+      },
+      {
+        "key": "blast_cordon_set",
+        "label": "Blast Cordon Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["blast", "cordon", "standoff", "exclusion"]
+        }
+      },
+      {
+        "key": "devices_rendered_safe",
+        "label": "Devices Rendered Safe",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["render safe", "neutralise", "disarm", "cleared"]
+        }
       }
     ]
   }

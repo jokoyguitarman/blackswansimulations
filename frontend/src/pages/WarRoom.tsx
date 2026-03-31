@@ -15,8 +15,16 @@ const SCENARIO_TYPES = [
   { id: 'knife_attack', label: 'Knife attack' },
   { id: 'gas_attack', label: 'Gas attack' },
   { id: 'kidnapping', label: 'Kidnapping' },
-  { id: 'car_bomb', label: 'Car bomb / suicide bomber' },
+  { id: 'car_bomb', label: 'Car bomb / VBIED' },
+  { id: 'bombing', label: 'Bombing (open-air)' },
   { id: 'bombing_mall', label: 'Mall bombing' },
+  { id: 'suicide_bombing', label: 'Suicide bombing (PBIED)' },
+  { id: 'vehicle_ramming', label: 'Vehicle ramming attack' },
+  { id: 'poisoning', label: 'Poisoning / contamination' },
+  { id: 'infrastructure_attack', label: 'Infrastructure attack' },
+  { id: 'hostage_siege', label: 'Hostage siege / barricade' },
+  { id: 'hijacking', label: 'Hijacking' },
+  { id: 'arson', label: 'Arson / deliberate fire' },
   { id: 'assassination', label: 'Assassination (public venue)' },
   { id: 'stampede_crush', label: 'Concert stampede / crush' },
   { id: 'active_shooter', label: 'Active shooter (enclosed)' },
@@ -35,6 +43,10 @@ const SETTINGS = [
   { id: 'festival', label: 'Festival / outdoor event' },
   { id: 'government', label: 'Government building' },
   { id: 'conference', label: 'Conference centre' },
+  { id: 'airport', label: 'Airport' },
+  { id: 'school', label: 'School / University' },
+  { id: 'hospital', label: 'Hospital' },
+  { id: 'embassy', label: 'Embassy / Diplomatic' },
 ];
 
 const TERRAINS = [

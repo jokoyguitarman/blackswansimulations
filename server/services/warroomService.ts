@@ -23,12 +23,13 @@ import { warroomGenerateScenario, type WarroomScenarioPayload } from './warroomA
 import { persistWarroomScenario } from './warroomPersistenceService.js';
 import {
   researchArea,
-  researchStandards,
+  researchStandardsPerTeam,
   researchSimilarCases,
   researchCrowdDynamics,
   type StandardsFinding,
   type SimilarCase,
   type CrowdDynamicsResearch,
+  type TeamInput,
 } from './warroomResearchService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -210,8 +211,6 @@ export async function generateAndPersistWarroomScenario(
   const duration_minutes = options.duration_minutes || 60;
 
   const venueName = parsed.venue_name || parsed.location || parsed.setting;
-  const teamNames = options.teams?.map((t) => t.team_name) ?? [];
-
   // Run geocoding and similar-cases research in parallel (both can start right after parsing)
   onProgress?.(
     'geocoding',
@@ -375,23 +374,29 @@ export async function generateAndPersistWarroomScenario(
     aiProgress,
   );
 
-  // Phase C: narrative-driven standards research using the real story
+  // Phase C: per-team standards research using the real story + team descriptions
   onProgress?.(
     'standards_research',
-    'Researching response standards for this specific scenario...',
+    'Researching response standards per team for this scenario...',
   );
   let standardsFindings: StandardsFinding[] = [];
+  let perTeamDoctrines: Record<string, StandardsFinding[]> = {};
   try {
-    standardsFindings = await researchStandards(
-      openAiApiKey,
-      parsed.scenario_type,
-      teamNames.length > 0 ? teamNames : phase1Preview.teams.map((t) => t.team_name),
-      {
-        title: phase1Preview.scenario.title,
-        description: phase1Preview.scenario.description,
-        briefing: phase1Preview.scenario.briefing,
-      },
-    );
+    const teamInputs: TeamInput[] =
+      userTeams && userTeams.length > 0
+        ? userTeams.map((t) => ({ team_name: t.team_name, team_description: t.team_description }))
+        : phase1Preview.teams.map((t) => ({
+            team_name: t.team_name,
+            team_description: t.team_description || undefined,
+          }));
+
+    const result = await researchStandardsPerTeam(openAiApiKey, parsed.scenario_type, teamInputs, {
+      title: phase1Preview.scenario.title,
+      description: phase1Preview.scenario.description,
+      briefing: phase1Preview.scenario.briefing,
+    });
+    standardsFindings = result.allFindings;
+    perTeamDoctrines = result.teamDoctrines;
   } catch (err) {
     logger.warn({ err }, 'Standards research failed; continuing without');
   }
@@ -422,10 +427,16 @@ export async function generateAndPersistWarroomScenario(
       settingSpec,
       terrainSpec,
       researchContext:
-        areaSummary || standardsFindings.length > 0 || similarCases.length > 0 || crowdDynamics
+        areaSummary ||
+        standardsFindings.length > 0 ||
+        similarCases.length > 0 ||
+        crowdDynamics ||
+        Object.keys(perTeamDoctrines).length > 0
           ? {
               area_summary: areaSummary || undefined,
               standards_findings: standardsFindings.length > 0 ? standardsFindings : undefined,
+              team_doctrines:
+                Object.keys(perTeamDoctrines).length > 0 ? perTeamDoctrines : undefined,
               similar_cases: similarCases.length > 0 ? similarCases : undefined,
               crowd_dynamics: crowdDynamics || undefined,
             }

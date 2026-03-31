@@ -82,107 +82,85 @@ export async function researchArea(
 }
 
 /**
- * Two-step narrative-driven standards research.
+ * Per-team standards research.
  *
- * Step 1: From the scenario story, identify which response disciplines apply and name
- *         the authoritative frameworks/doctrines for each.
- * Step 2: For each domain, fetch specific protocols, thresholds, and procedures.
+ * For each team, makes a dedicated research call that considers the team's name,
+ * description, role within the scenario, and the scenario narrative. Produces
+ * rich, team-specific doctrine at 4000 tokens per team — including overarching
+ * command frameworks (ICS/AIIMS/NIMS) as they apply to each team's role.
  *
- * Returns structured StandardsFinding[] so each inject/phase generation call can
- * reference precise content rather than a generic summary blob.
+ * Returns { teamDoctrines, allFindings } — no separate mapping step needed.
  */
-export async function researchStandards(
-  openAiApiKey: string,
-  scenarioType: string,
-  teams?: string[],
-  narrative?: { title?: string; description?: string; briefing?: string },
-): Promise<StandardsFinding[]> {
-  const teamContext =
-    teams && teams.length > 0 ? ` Response teams involved: ${teams.join(', ')}.` : '';
-
-  const narrativeBlock = narrative
-    ? `\n\nScenario narrative:\nTitle: ${narrative.title || ''}\nDescription: ${narrative.description || ''}\nBriefing: ${narrative.briefing || ''}`
-    : `\n\nScenario type: ${scenarioType}`;
-
-  // Step 1: Identify relevant domains and named standards from the narrative
-  const domainPrompt = `You are an expert in emergency management and crisis response.${narrativeBlock}${teamContext}
-
-Based ONLY on what this specific incident requires — not generic templates — identify the 3-5 response disciplines that would actually be deployed. For each, name the specific authoritative standard, doctrine, or framework that governs it (e.g. "ICS NIMS 2017", "START Triage Protocol", "FBI Crisis Negotiation Unit Manual", "CBRN STANAG 2513", "Singapore Civil Defence Act").
-
-Return ONLY valid JSON:
-{
-  "domains": [
-    { "discipline": "string", "standard_name": "string", "reason": "why this applies to THIS incident" }
-  ]
-}`;
-
-  let domains: Array<{ discipline: string; standard_name: string; reason: string }> = [];
-
-  try {
-    const step1Res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
-      body: JSON.stringify({
-        model: SEARCH_MODEL,
-        messages: [{ role: 'user', content: domainPrompt }],
-        max_tokens: 600,
-      }),
-    });
-
-    if (step1Res.ok) {
-      const data = await step1Res.json();
-      const raw = data.choices?.[0]?.message?.content as string | undefined;
-      if (raw) {
-        const jsonMatch = raw.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]) as {
-            domains?: Array<{ discipline: string; standard_name: string; reason: string }>;
-          };
-          domains = parsed.domains?.slice(0, 5) ?? [];
-        }
-      }
-    }
-  } catch (err) {
-    logger.warn({ err }, 'Standards domain identification failed');
-  }
-
-  if (domains.length === 0) {
-    logger.warn({ scenarioType }, 'No domains identified; skipping standards deep fetch');
-    return [];
-  }
-
-  // Step 2: For each domain, fetch specific actionable content
-  const findings: StandardsFinding[] = [];
-
-  await Promise.all(
-    domains.map(async ({ discipline, standard_name, reason }) => {
-      const fetchPrompt = `You are an expert in ${discipline}.${narrativeBlock}
-
-Look up "${standard_name}" and extract the specific content relevant to this incident.
-Return ONLY valid JSON:
-{
-  "domain": "${discipline}",
-  "source": "${standard_name}",
-  "key_points": ["specific protocol or threshold 1", "specific protocol or threshold 2", "..."],
-  "decision_thresholds": "any numeric thresholds or decision gates (e.g. triage colour criteria, response time targets, resource ratios)",
-  "site_requirements": {
-    "operational_area_type": {
-      "min_area_m2": 100,
-      "requires_water": true,
-      "requires_shelter": false,
-      "requires_vehicle_access": true,
-      "requires_electricity": false,
-      "min_capacity": 20,
-      "max_distance_from_incident_m": 150,
-      "notes": "why these requirements matter"
-    }
-  }
+export interface TeamInput {
+  team_name: string;
+  team_description?: string;
 }
 
-Focus on: decision gates, time thresholds, role responsibilities, command structure, and any criteria that determine correct vs incorrect team responses.
+export async function researchStandardsPerTeam(
+  openAiApiKey: string,
+  scenarioType: string,
+  teams: TeamInput[],
+  narrative?: { title?: string; description?: string; briefing?: string },
+): Promise<{ teamDoctrines: Record<string, StandardsFinding[]>; allFindings: StandardsFinding[] }> {
+  if (teams.length === 0) return { teamDoctrines: {}, allFindings: [] };
 
-For site_requirements: extract the PHYSICAL requirements for any operational area types governed by this standard. What does a site need to function as a triage area, evacuation assembly point, command post, negotiation post, decontamination zone, etc.? Include min area, water/power/shelter needs, vehicle access, capacity, and maximum distance from incident. Only include area types relevant to THIS standard and THIS incident — do not invent generic requirements.
-Context for why this matters here: ${reason}`;
+  const narrativeBlock = narrative
+    ? `\nScenario: ${narrative.title || scenarioType}\nDescription: ${(narrative.description || '').slice(0, 800)}\nBriefing: ${(narrative.briefing || '').slice(0, 400)}`
+    : `\nScenario type: ${scenarioType}`;
+
+  const otherTeamsContext = teams
+    .map((t) => `${t.team_name}${t.team_description ? ` — ${t.team_description}` : ''}`)
+    .join('; ');
+
+  const teamDoctrines: Record<string, StandardsFinding[]> = {};
+  const allFindings: StandardsFinding[] = [];
+
+  await Promise.all(
+    teams.map(async (team) => {
+      const descLine = team.team_description ? `\nTeam description: ${team.team_description}` : '';
+
+      const prompt = `You are an expert in emergency management, crisis response, and sector-specific operational standards.
+${narrativeBlock}
+
+All teams in this exercise: ${otherTeamsContext}
+
+FOCUS TEAM: ${team.team_name}${descLine}
+
+Research the specific standards, doctrines, frameworks, and operational protocols that govern how "${team.team_name}" should operate during this kind of incident. Consider:
+
+1. What is this team's FUNCTIONAL ROLE in the response — infer from the team name, description, the scenario type, and how they fit alongside the other teams? For example, a "Railway Maintenance Team" in a subway bombing would handle power isolation, ventilation, structural assessment. An "Interreligious Organisation" placed alongside media/police teams is likely handling community communications and interfaith liaison.
+
+2. What SPECIFIC authoritative standards or doctrines govern this functional role? Name real frameworks (e.g. "ICS NIMS 2017", "START Triage Protocol", "Rail Safety Directive 2016/798", "Singapore Civil Defence Act", "CBRN STANAG 2513"). Include sector-specific regulations (rail, aviation, maritime, hospitality, etc.) where applicable.
+
+3. Include any OVERARCHING command frameworks (ICS, AIIMS, NIMS, SCDF) as they specifically apply to this team's position in the command structure.
+
+Return ONLY valid JSON — an array of 2-4 findings:
+[
+  {
+    "domain": "the discipline area",
+    "source": "specific named standard or doctrine",
+    "key_points": [
+      "specific protocol, procedure, or threshold 1",
+      "specific protocol, procedure, or threshold 2",
+      "..."
+    ],
+    "decision_thresholds": "any numeric thresholds, time targets, or decision gates relevant to this team",
+    "site_requirements": {
+      "operational_area_type": {
+        "min_area_m2": 100,
+        "requires_water": true,
+        "requires_shelter": false,
+        "requires_vehicle_access": true,
+        "requires_electricity": false,
+        "min_capacity": 20,
+        "max_distance_from_incident_m": 150,
+        "notes": "why these requirements matter"
+      }
+    }
+  }
+]
+
+Focus on: decision gates, time thresholds, role responsibilities, handover procedures, and any criteria that determine correct vs incorrect responses by this team. For site_requirements, include only area types this team would actually set up or manage.`;
 
       try {
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -193,42 +171,88 @@ Context for why this matters here: ${reason}`;
           },
           body: JSON.stringify({
             model: SEARCH_MODEL,
-            messages: [{ role: 'user', content: fetchPrompt }],
-            max_tokens: 600,
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 4000,
           }),
         });
 
-        if (!res.ok) return;
+        if (!res.ok) {
+          logger.warn(
+            { status: res.status, team: team.team_name },
+            'Per-team standards research failed',
+          );
+          return;
+        }
+
         const data = await res.json();
         const raw = data.choices?.[0]?.message?.content as string | undefined;
         if (!raw) return;
 
-        const jsonMatch = raw.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) return;
-
-        const finding = JSON.parse(jsonMatch[0]) as StandardsFinding;
-        if (finding.domain && finding.source && Array.isArray(finding.key_points)) {
-          if (
-            finding.site_requirements &&
-            typeof finding.site_requirements === 'object' &&
-            Object.keys(finding.site_requirements).length === 0
-          ) {
-            delete finding.site_requirements;
+        let parsed: StandardsFinding[] = [];
+        const jsonArrMatch = raw.match(/\[[\s\S]*\]/);
+        if (jsonArrMatch) {
+          parsed = JSON.parse(jsonArrMatch[0]) as StandardsFinding[];
+        } else {
+          const objMatch = raw.match(/\{[\s\S]*\}/);
+          if (objMatch) {
+            const single = JSON.parse(objMatch[0]) as StandardsFinding;
+            parsed = [single];
           }
-          findings.push(finding);
+        }
+
+        const valid = (Array.isArray(parsed) ? parsed : []).filter(
+          (f) => f.domain && f.source && Array.isArray(f.key_points),
+        );
+        for (const f of valid) {
+          if (
+            f.site_requirements &&
+            typeof f.site_requirements === 'object' &&
+            Object.keys(f.site_requirements).length === 0
+          ) {
+            delete f.site_requirements;
+          }
+        }
+        if (valid.length > 0) {
+          teamDoctrines[team.team_name] = valid;
+          allFindings.push(...valid);
         }
       } catch (err) {
-        logger.warn({ err, discipline, standard_name }, 'Standards deep fetch failed for domain');
+        logger.warn({ err, team: team.team_name }, 'Per-team standards research error');
       }
     }),
   );
 
   logger.info(
-    { scenarioType, domainCount: domains.length, fetchedCount: findings.length },
-    'Standards research complete',
+    {
+      scenarioType,
+      teamCount: teams.length,
+      teamsWithDoctrines: Object.keys(teamDoctrines).length,
+      totalFindings: allFindings.length,
+    },
+    'Per-team standards research complete',
   );
 
-  return findings;
+  return { teamDoctrines, allFindings };
+}
+
+/**
+ * @deprecated Use researchStandardsPerTeam instead.
+ * Legacy wrapper — converts string[] team names into TeamInput[] and delegates.
+ */
+export async function researchStandards(
+  openAiApiKey: string,
+  scenarioType: string,
+  teams?: string[],
+  narrative?: { title?: string; description?: string; briefing?: string },
+): Promise<StandardsFinding[]> {
+  const teamInputs: TeamInput[] = (teams ?? []).map((t) => ({ team_name: t }));
+  const { allFindings } = await researchStandardsPerTeam(
+    openAiApiKey,
+    scenarioType,
+    teamInputs,
+    narrative,
+  );
+  return allFindings;
 }
 
 /**

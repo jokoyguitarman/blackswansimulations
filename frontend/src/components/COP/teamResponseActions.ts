@@ -423,6 +423,259 @@ const FIRE_HAZMAT_ACTIONS: TeamAction[] = [
   },
 ];
 
+const FIRE_ACTIONS: TeamAction[] = [
+  {
+    id: 'fire_attack',
+    label: 'Initiate Fire Attack',
+    description: 'Deploy crews for direct fire suppression.',
+    icon: 'firefighter',
+    keywords: ['fire attack', 'suppression', 'hose', 'extinguish'],
+    requiresElement: ['hazard'],
+  },
+  {
+    id: 'search_rescue',
+    label: 'Search & Rescue',
+    description: 'Enter structure to locate and extract trapped persons.',
+    icon: 'person',
+    keywords: ['search', 'rescue', 'trapped', 'victim', 'sweep'],
+  },
+  {
+    id: 'fire_ventilate',
+    label: 'Ventilate Structure',
+    description: 'Open or cut roof/windows to release heat and smoke.',
+    icon: 'water',
+    keywords: ['ventilate', 'roof', 'smoke', 'heat release'],
+  },
+  {
+    id: 'structural_assessment',
+    label: 'Structural Assessment',
+    description: 'Assess building integrity and collapse risk before entry.',
+    icon: 'barrier',
+    keywords: ['structural', 'collapse', 'integrity', 'assessment'],
+  },
+  {
+    id: 'establish_fire_cordon',
+    label: 'Establish Fire Cordon',
+    description: 'Cordon the area to prevent public access during operations.',
+    icon: 'barrier',
+    keywords: ['cordon', 'perimeter', 'exclusion', 'barrier'],
+  },
+  {
+    id: 'water_supply_relay',
+    label: 'Water Supply Relay',
+    description: 'Establish water relay from hydrant or tanker to scene.',
+    icon: 'water',
+    keywords: ['water supply', 'hydrant', 'tanker', 'relay'],
+  },
+];
+
+const BOMB_SQUAD_ACTIONS: TeamAction[] = [
+  {
+    id: 'render_safe',
+    label: 'Render Safe Procedure',
+    description: 'Approach and neutralise the suspected device using RSP.',
+    icon: 'bomb',
+    keywords: ['render safe', 'neutralise', 'disarm', 'rsp'],
+    requiresElement: ['hazard'],
+  },
+  {
+    id: 'deploy_robot',
+    label: 'Deploy Bomb Robot',
+    description: 'Send remote-controlled robot for reconnaissance or disruption.',
+    icon: 'bomb_robot',
+    keywords: ['robot', 'remote', 'recon', 'eod'],
+  },
+  {
+    id: 'blast_cordon',
+    label: 'Set Blast Cordon',
+    description: 'Establish the appropriate blast-radius exclusion zone.',
+    icon: 'barrier',
+    keywords: ['blast', 'cordon', 'exclusion', 'radius', 'standoff'],
+  },
+  {
+    id: 'secondary_sweep',
+    label: 'Secondary Device Sweep',
+    description: 'Sweep surroundings for additional concealed devices.',
+    icon: 'search_point',
+    keywords: ['secondary', 'sweep', 'additional', 'concealed'],
+  },
+  {
+    id: 'controlled_detonation',
+    label: 'Controlled Detonation',
+    description: 'Detonate the device in situ when removal is not viable.',
+    icon: 'bomb',
+    keywords: ['controlled detonation', 'detonate', 'in situ'],
+    requiresElement: ['hazard'],
+  },
+  {
+    id: 'xray_scan',
+    label: 'X-Ray Scan',
+    description: 'Image a suspicious package to assess internal components.',
+    icon: 'xray_scanner',
+    keywords: ['xray', 'scan', 'image', 'package'],
+  },
+];
+
+const MALL_SECURITY_ACTIONS: TeamAction[] = [
+  {
+    id: 'store_lockdown',
+    label: 'Store Lockdown',
+    description: 'Direct individual stores to shutter and lock in place.',
+    icon: 'barrier',
+    keywords: ['lockdown', 'shutter', 'store', 'lock in place'],
+  },
+  {
+    id: 'pa_announcement',
+    label: 'PA Announcement',
+    description: 'Broadcast evacuation or shelter-in-place instructions.',
+    icon: 'pa_system',
+    keywords: ['announcement', 'pa', 'broadcast', 'tannoy'],
+  },
+  {
+    id: 'cctv_tracking',
+    label: 'CCTV Tracking',
+    description: 'Monitor and track suspects via the mall CCTV network.',
+    icon: 'cctv',
+    keywords: ['cctv', 'camera', 'track', 'monitor', 'suspect'],
+  },
+  {
+    id: 'access_control',
+    label: 'Access Point Control',
+    description: 'Restrict or channel entry/exit through specific doors.',
+    icon: 'checkpoint',
+    keywords: ['access', 'entry', 'exit', 'door', 'control'],
+    requiresElement: ['entry_exit'],
+  },
+  {
+    id: 'patron_sweep',
+    label: 'Patron Floor Sweep',
+    description: 'Security teams sweep each floor to guide patrons to exits.',
+    icon: 'steward',
+    keywords: ['sweep', 'floor', 'patron', 'guide', 'clear'],
+  },
+  {
+    id: 'rendezvous_point',
+    label: 'Set Rendezvous Point',
+    description: 'Designate external assembly area for evacuated patrons.',
+    icon: 'staging',
+    keywords: ['rendezvous', 'assembly', 'muster', 'meeting point'],
+  },
+];
+
+const RESORT_SECURITY_ACTIONS: TeamAction[] = [
+  {
+    id: 'guest_lockdown',
+    label: 'Guest Lockdown',
+    description: 'Direct guests to remain in rooms and secure wing access.',
+    icon: 'barrier',
+    keywords: ['lockdown', 'guest', 'room', 'shelter'],
+  },
+  {
+    id: 'perimeter_patrol',
+    label: 'Perimeter Patrol',
+    description: 'Deploy patrol units along the resort perimeter and entry points.',
+    icon: 'resort_patrol',
+    keywords: ['perimeter', 'patrol', 'entry', 'fence'],
+  },
+  {
+    id: 'guest_manifest_check',
+    label: 'Guest Manifest Check',
+    description: 'Cross-reference guest list to identify missing or unaccounted persons.',
+    icon: 'person',
+    keywords: ['manifest', 'guest list', 'unaccounted', 'headcount'],
+  },
+  {
+    id: 'vip_relocation',
+    label: 'VIP Relocation',
+    description: 'Move high-profile guests to a secure area or extraction point.',
+    icon: 'vip_extract',
+    keywords: ['vip', 'relocate', 'extraction', 'secure', 'high profile'],
+  },
+  {
+    id: 'beach_water_closure',
+    label: 'Beach / Water Closure',
+    description: 'Close beach access and recall water activity participants.',
+    icon: 'beach_patrol',
+    keywords: ['beach', 'water', 'close', 'recall', 'lifeguard'],
+  },
+];
+
+const PUBLIC_HEALTH_ACTIONS: TeamAction[] = [
+  {
+    id: 'epi_investigation',
+    label: 'Epidemiological Investigation',
+    description: 'Map the exposure timeline, vector, and affected population.',
+    icon: 'biohazard_suit',
+    keywords: ['epidemiological', 'investigation', 'exposure', 'vector', 'mapping'],
+  },
+  {
+    id: 'hospital_surge',
+    label: 'Hospital Surge Coordination',
+    description: 'Coordinate with hospitals to prepare for a surge of patients.',
+    icon: 'ambulance',
+    keywords: ['hospital', 'surge', 'capacity', 'beds', 'coordinate'],
+  },
+  {
+    id: 'alt_supply',
+    label: 'Alternative Supply Setup',
+    description: 'Establish alternative water or food distribution.',
+    icon: 'supply',
+    keywords: ['alternative', 'supply', 'water', 'food', 'distribution'],
+  },
+  {
+    id: 'public_advisory',
+    label: 'Public Health Advisory',
+    description: 'Issue a health advisory with precautions for the affected area.',
+    icon: 'pa_system',
+    keywords: ['advisory', 'warning', 'precaution', 'health alert'],
+  },
+  {
+    id: 'sample_collection',
+    label: 'Sample Collection',
+    description: 'Collect environmental and biological samples for analysis.',
+    icon: 'water_sample',
+    keywords: ['sample', 'collection', 'environmental', 'biological', 'lab'],
+  },
+];
+
+const OPERATIONS_ACTIONS: TeamAction[] = [
+  {
+    id: 'activate_ops_center',
+    label: 'Activate Operations Centre',
+    description: 'Stand up the central operations / command centre.',
+    icon: 'ops_center',
+    keywords: ['operations', 'command', 'centre', 'activate', 'stand up'],
+  },
+  {
+    id: 'utility_isolation',
+    label: 'Utility Isolation',
+    description: 'Shut off gas, electricity, or water mains to the affected area.',
+    icon: 'utility',
+    keywords: ['utility', 'gas', 'electricity', 'water', 'isolate', 'shut off'],
+  },
+  {
+    id: 'generator_deploy',
+    label: 'Deploy Emergency Generators',
+    description: 'Position portable generators to restore critical power.',
+    icon: 'supply',
+    keywords: ['generator', 'power', 'emergency', 'backup'],
+  },
+  {
+    id: 'route_clearance',
+    label: 'Route Clearance',
+    description: 'Clear debris and ensure access routes for emergency vehicles.',
+    icon: 'barrier',
+    keywords: ['route', 'clearance', 'debris', 'access', 'road'],
+  },
+  {
+    id: 'structural_shoring',
+    label: 'Structural Shoring',
+    description: 'Shore up compromised structures to prevent further collapse.',
+    icon: 'barrier',
+    keywords: ['shoring', 'structural', 'collapse', 'support'],
+  },
+];
+
 const TEAM_ACTION_REGISTRY: Record<string, TeamAction[]> = {
   police: POLICE_ACTIONS,
   negotiation: NEGOTIATION_ACTIONS,
@@ -435,6 +688,12 @@ const TEAM_ACTION_REGISTRY: Record<string, TeamAction[]> = {
   triage: TRIAGE_ACTIONS,
   media: MEDIA_ACTIONS,
   fire_hazmat: FIRE_HAZMAT_ACTIONS,
+  fire: FIRE_ACTIONS,
+  bomb_squad: BOMB_SQUAD_ACTIONS,
+  mall_security: MALL_SECURITY_ACTIONS,
+  resort_security: RESORT_SECURITY_ACTIONS,
+  public_health: PUBLIC_HEALTH_ACTIONS,
+  operations: OPERATIONS_ACTIONS,
 };
 
 export function getTeamActions(

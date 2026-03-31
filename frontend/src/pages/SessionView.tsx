@@ -273,6 +273,193 @@ const TEAM_ASSET_CATALOG: Record<string, DraggableAssetDef[]> = {
       label: 'CCTV Monitor',
     },
   ],
+  fire: [
+    {
+      asset_type: 'firefighter_post',
+      icon: 'firefighter',
+      geometry_type: 'point',
+      label: 'Firefighter Post',
+    },
+    {
+      asset_type: 'fire_truck_staging',
+      icon: 'fire_truck',
+      geometry_type: 'point',
+      label: 'Fire Truck Staging',
+    },
+    { asset_type: 'water_point', icon: 'water', geometry_type: 'point', label: 'Water Point' },
+    {
+      asset_type: 'search_rescue_team',
+      icon: 'person',
+      geometry_type: 'point',
+      label: 'Search & Rescue Team',
+    },
+    {
+      asset_type: 'fire_cordon',
+      icon: 'barrier',
+      geometry_type: 'line',
+      label: 'Fire Cordon',
+    },
+  ],
+  bomb_squad: [
+    {
+      asset_type: 'eod_operator',
+      icon: 'blast_shield',
+      geometry_type: 'point',
+      label: 'EOD Operator',
+    },
+    {
+      asset_type: 'bomb_disposal_robot',
+      icon: 'bomb_robot',
+      geometry_type: 'point',
+      label: 'Bomb Disposal Robot',
+    },
+    {
+      asset_type: 'blast_cordon',
+      icon: 'barrier',
+      geometry_type: 'line',
+      label: 'Blast Cordon',
+    },
+    {
+      asset_type: 'xray_station',
+      icon: 'xray_scanner',
+      geometry_type: 'point',
+      label: 'X-Ray Station',
+    },
+    {
+      asset_type: 'controlled_detonation_zone',
+      icon: 'bomb',
+      geometry_type: 'polygon',
+      label: 'Controlled Detonation Zone',
+    },
+  ],
+  mall_security: [
+    {
+      asset_type: 'security_desk',
+      icon: 'mall_badge',
+      geometry_type: 'point',
+      label: 'Security Desk',
+    },
+    {
+      asset_type: 'mall_cctv_monitor',
+      icon: 'cctv',
+      geometry_type: 'point',
+      label: 'CCTV Monitor',
+    },
+    {
+      asset_type: 'metal_detector_gate',
+      icon: 'metal_detector',
+      geometry_type: 'point',
+      label: 'Metal Detector Gate',
+    },
+    {
+      asset_type: 'security_patrol',
+      icon: 'steward',
+      geometry_type: 'point',
+      label: 'Security Patrol',
+    },
+    {
+      asset_type: 'mall_lockdown_gate',
+      icon: 'barrier',
+      geometry_type: 'line',
+      label: 'Lockdown Gate',
+    },
+    {
+      asset_type: 'mall_pa_point',
+      icon: 'pa_system',
+      geometry_type: 'point',
+      label: 'PA Announcement Point',
+    },
+  ],
+  resort_security: [
+    {
+      asset_type: 'resort_patrol_post',
+      icon: 'resort_patrol',
+      geometry_type: 'point',
+      label: 'Resort Patrol Post',
+    },
+    {
+      asset_type: 'beach_patrol_post',
+      icon: 'beach_patrol',
+      geometry_type: 'point',
+      label: 'Beach Patrol Post',
+    },
+    {
+      asset_type: 'perimeter_fence_line',
+      icon: 'perimeter_fence',
+      geometry_type: 'line',
+      label: 'Perimeter Fence',
+    },
+    {
+      asset_type: 'resort_cctv',
+      icon: 'cctv',
+      geometry_type: 'point',
+      label: 'CCTV Monitor',
+    },
+    {
+      asset_type: 'guest_holding_area',
+      icon: 'staging',
+      geometry_type: 'point',
+      label: 'Guest Holding Area',
+    },
+  ],
+  public_health: [
+    {
+      asset_type: 'testing_station',
+      icon: 'test_kit',
+      geometry_type: 'point',
+      label: 'Testing Station',
+    },
+    {
+      asset_type: 'water_sampling_point',
+      icon: 'water_sample',
+      geometry_type: 'point',
+      label: 'Water Sampling Point',
+    },
+    {
+      asset_type: 'quarantine_zone',
+      icon: 'hexagon',
+      geometry_type: 'polygon',
+      label: 'Quarantine Zone',
+    },
+    {
+      asset_type: 'public_health_officer',
+      icon: 'biohazard_suit',
+      geometry_type: 'point',
+      label: 'Public Health Officer',
+    },
+    {
+      asset_type: 'distribution_point',
+      icon: 'supply',
+      geometry_type: 'point',
+      label: 'Supply Distribution Point',
+    },
+  ],
+  operations: [
+    {
+      asset_type: 'ops_center_post',
+      icon: 'ops_center',
+      geometry_type: 'point',
+      label: 'Operations Centre',
+    },
+    {
+      asset_type: 'utility_control',
+      icon: 'utility',
+      geometry_type: 'point',
+      label: 'Utility Control Point',
+    },
+    {
+      asset_type: 'generator_staging',
+      icon: 'supply',
+      geometry_type: 'point',
+      label: 'Generator Staging',
+    },
+    {
+      asset_type: 'ops_cordon',
+      icon: 'barrier',
+      geometry_type: 'line',
+      label: 'Operations Cordon',
+    },
+  ],
 };
 
 const UNIVERSAL_ASSETS: DraggableAssetDef[] = [

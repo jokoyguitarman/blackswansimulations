@@ -32,6 +32,12 @@
       "team_description": "Gate control, barrier removal, CCTV monitoring, steward coordination",
       "min_participants": 2,
       "max_participants": 8
+    },
+    {
+      "team_name": "police",
+      "team_description": "Crowd control assistance, perimeter management, public order, traffic control",
+      "min_participants": 2,
+      "max_participants": 8
     }
   ],
   "environmental_factors": [
@@ -531,6 +537,38 @@
         "config": {
           "keywords": ["lighting", "lights", "illuminate", "emergency light"]
         }
+      }
+    ],
+    "police": [
+      {
+        "key": "outer_cordon_set",
+        "label": "Outer Cordon Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["cordon", "perimeter", "outer", "secure"]
+        }
+      },
+      {
+        "key": "traffic_control_active",
+        "label": "Traffic Control Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["traffic", "diversion", "road", "access route"]
+        }
+      },
+      {
+        "key": "public_order_units",
+        "label": "Public Order Units Deployed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
       }
     ]
   }

@@ -32,6 +32,12 @@
       "team_description": "Cordon, crowd control, EOD sweep for secondary devices, evidence preservation",
       "min_participants": 2,
       "max_participants": 8
+    },
+    {
+      "team_name": "bomb_squad",
+      "team_description": "Secondary device sweep, render safe procedures, controlled detonation, forensic IED analysis",
+      "min_participants": 2,
+      "max_participants": 6
     }
   ],
   "environmental_factors": [
@@ -546,6 +552,52 @@
         "initial_value": 0,
         "behavior": "state_effect",
         "visible_to": "all"
+      }
+    ],
+    "bomb_squad": [
+      {
+        "key": "secondary_sweep_done",
+        "label": "Secondary Device Sweep Done",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["secondary", "sweep", "additional", "device", "check"]
+        }
+      },
+      {
+        "key": "blast_cordon_set",
+        "label": "Blast Cordon Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["blast", "cordon", "standoff", "exclusion"]
+        }
+      },
+      {
+        "key": "devices_rendered_safe",
+        "label": "Devices Rendered Safe",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["render safe", "neutralise", "disarm", "cleared"]
+        }
+      },
+      {
+        "key": "robot_deployed",
+        "label": "Robot Deployed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["robot", "remote", "eod", "deploy robot"]
+        }
       }
     ]
   }

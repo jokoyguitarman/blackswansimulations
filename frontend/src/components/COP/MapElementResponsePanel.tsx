@@ -101,6 +101,21 @@ const ICON_MAP: Record<string, string> = {
   platform_barrier: svg('platform_barrier', 14),
   service_control: svg('service_control', 14),
   emergency_light: svg('emergency_light', 14),
+  bomb: svg('bomb', 14),
+  bomb_robot: svg('bomb_robot', 14),
+  blast_shield: svg('blast_shield', 14),
+  xray_scanner: svg('xray_scanner', 14),
+  mall_badge: svg('mall_badge', 14),
+  walkie: svg('walkie', 14),
+  metal_detector: svg('metal_detector', 14),
+  resort_patrol: svg('resort_patrol', 14),
+  beach_patrol: svg('beach_patrol', 14),
+  perimeter_fence: svg('perimeter_fence', 14),
+  biohazard_suit: svg('biohazard_suit', 14),
+  test_kit: svg('test_kit', 14),
+  water_sample: svg('water_sample', 14),
+  ops_center: svg('ops_center', 14),
+  utility: svg('utility', 14),
 };
 
 function getEmoji(icon: string): string {

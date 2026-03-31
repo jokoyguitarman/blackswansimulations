@@ -32,6 +32,12 @@
       "team_description": "Fire suppression, debris clearance, search and rescue",
       "min_participants": 2,
       "max_participants": 8
+    },
+    {
+      "team_name": "bomb_squad",
+      "team_description": "Accomplice / secondary PBIED assessment, device sweep, forensic analysis",
+      "min_participants": 2,
+      "max_participants": 6
     }
   ],
   "environmental_factors": [
@@ -480,6 +486,41 @@
         "initial_value": 0,
         "behavior": "state_effect",
         "visible_to": "all"
+      }
+    ],
+    "bomb_squad": [
+      {
+        "key": "secondary_sweep_done",
+        "label": "Secondary Threat Sweep Done",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["secondary", "sweep", "accomplice", "pbied", "additional"]
+        }
+      },
+      {
+        "key": "blast_cordon_set",
+        "label": "Blast Cordon Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["blast", "cordon", "standoff", "exclusion"]
+        }
+      },
+      {
+        "key": "devices_rendered_safe",
+        "label": "Threats Rendered Safe",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["render safe", "neutralise", "cleared", "no further threat"]
+        }
       }
     ]
   }

@@ -17,6 +17,40 @@ import { applyMediaChallengePressure } from './heatMeterService.js';
 import type { Server as SocketServer } from 'socket.io';
 
 /**
+ * Fuzzy team-doctrine lookup: tries exact match, then case-insensitive, then
+ * partial substring match (e.g. "police" matches "Singapore Police Force").
+ */
+function resolveTeamDoctrines(
+  teamDoctrines: Record<string, unknown[]>,
+  teamName: string,
+): unknown[] {
+  if (Array.isArray(teamDoctrines[teamName]) && teamDoctrines[teamName].length > 0) {
+    return teamDoctrines[teamName];
+  }
+  const lowerName = teamName.toLowerCase().replace(/[\s-]+/g, '_');
+  for (const [key, findings] of Object.entries(teamDoctrines)) {
+    if (
+      key.toLowerCase().replace(/[\s-]+/g, '_') === lowerName &&
+      Array.isArray(findings) &&
+      findings.length > 0
+    ) {
+      return findings;
+    }
+  }
+  for (const [key, findings] of Object.entries(teamDoctrines)) {
+    const lowerKey = key.toLowerCase().replace(/[\s-]+/g, '_');
+    if (
+      (lowerKey.includes(lowerName) || lowerName.includes(lowerKey)) &&
+      Array.isArray(findings) &&
+      findings.length > 0
+    ) {
+      return findings;
+    }
+  }
+  return [];
+}
+
+/**
  * Compute per-team average robustness from decisions in the window.
  * Used for evac/triage rate modulation in the inject scheduler.
  */
@@ -1242,7 +1276,7 @@ export class AIInjectSchedulerService {
       type: 'coordination_order',
     };
 
-    // Use per-team doctrine if available, otherwise fall back to full sector_standards
+    // Use per-team doctrine if available (with fuzzy matching), otherwise fall back to full sector_standards
     let teamSectorStandards = context.sectorStandards as string | undefined;
     try {
       const { data: scenarioRow } = await supabaseAdmin
@@ -1253,11 +1287,14 @@ export class AIInjectSchedulerService {
       const ik = (scenarioRow as { insider_knowledge?: Record<string, unknown> } | null)
         ?.insider_knowledge;
       const teamDoctrines = ik?.team_doctrines as Record<string, unknown[]> | undefined;
-      if (teamDoctrines && teamDoctrines[teamName]) {
-        const { standardsToPromptBlock } = await import('./warroomResearchService.js');
-        teamSectorStandards = standardsToPromptBlock(
-          teamDoctrines[teamName] as import('./warroomResearchService.js').StandardsFinding[],
-        );
+      if (teamDoctrines) {
+        const findings = resolveTeamDoctrines(teamDoctrines, teamName);
+        if (findings.length > 0) {
+          const { standardsToPromptBlock } = await import('./warroomResearchService.js');
+          teamSectorStandards = standardsToPromptBlock(
+            findings as import('./warroomResearchService.js').StandardsFinding[],
+          );
+        }
       }
     } catch {
       // non-critical

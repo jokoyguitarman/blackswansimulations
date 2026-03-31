@@ -26,6 +26,12 @@
       "team_description": "Public communication, family reunification info, counter misinformation",
       "min_participants": 2,
       "max_participants": 6
+    },
+    {
+      "team_name": "mall_security",
+      "team_description": "Store lockdown enforcement, CCTV tracking, PA shelter-in-place, access control",
+      "min_participants": 2,
+      "max_participants": 8
     }
   ],
   "environmental_factors": [
@@ -389,6 +395,52 @@
         "visible_to": "trainer_only",
         "config": {
           "keywords": ["30 min", "60 min", "next update", "regular updates", "update every"]
+        }
+      }
+    ],
+    "mall_security": [
+      {
+        "key": "stores_locked_down",
+        "label": "Stores Locked Down",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["lockdown", "shutter", "store", "lock in place", "shelter"]
+        }
+      },
+      {
+        "key": "pa_activated",
+        "label": "PA System Activated",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["pa", "announcement", "tannoy", "broadcast", "shelter in place"]
+        }
+      },
+      {
+        "key": "cctv_tracking_active",
+        "label": "CCTV Tracking Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["cctv", "camera", "track", "monitor", "suspect"]
+        }
+      },
+      {
+        "key": "access_points_controlled",
+        "label": "Access Points Controlled",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["access", "entry", "exit", "door", "control", "restrict"]
         }
       }
     ]
