@@ -20,7 +20,7 @@ import { CreateDecisionForm } from '../components/Forms/CreateDecisionForm';
 const TEAM_ASSET_CATALOG: Record<string, DraggableAssetDef[]> = {
   evacuation: [
     { asset_type: 'assembly_point', icon: 'flag', geometry_type: 'point', label: 'Assembly Point' },
-    { asset_type: 'marshal_post', icon: 'person', geometry_type: 'point', label: 'Marshal Post' },
+    { asset_type: 'marshal_post', icon: 'marshal', geometry_type: 'point', label: 'Marshal Post' },
     {
       asset_type: 'ambulance_staging',
       icon: 'ambulance',
@@ -32,7 +32,7 @@ const TEAM_ASSET_CATALOG: Record<string, DraggableAssetDef[]> = {
     { asset_type: 'triage_tent', icon: 'tent', geometry_type: 'point', label: 'Triage Tent' },
     {
       asset_type: 'triage_officer',
-      icon: 'person',
+      icon: 'triage_officer',
       geometry_type: 'point',
       label: 'Triage Officer',
     },
@@ -52,7 +52,12 @@ const TEAM_ASSET_CATALOG: Record<string, DraggableAssetDef[]> = {
   ],
   media: [
     { asset_type: 'press_cordon', icon: 'barrier', geometry_type: 'line', label: 'Press Cordon' },
-    { asset_type: 'media_liaison', icon: 'person', geometry_type: 'point', label: 'Media Liaison' },
+    {
+      asset_type: 'media_liaison',
+      icon: 'media_officer',
+      geometry_type: 'point',
+      label: 'Media Liaison',
+    },
     {
       asset_type: 'briefing_point',
       icon: 'podium',
@@ -70,7 +75,7 @@ const TEAM_ASSET_CATALOG: Record<string, DraggableAssetDef[]> = {
     { asset_type: 'decon_zone', icon: 'hazmat', geometry_type: 'point', label: 'Decon Zone' },
     {
       asset_type: 'firefighter_post',
-      icon: 'person',
+      icon: 'firefighter',
       geometry_type: 'point',
       label: 'Firefighter Post',
     },

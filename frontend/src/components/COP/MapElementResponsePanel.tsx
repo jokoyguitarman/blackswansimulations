@@ -46,6 +46,10 @@ interface MapElementResponsePanelProps {
 const ICON_MAP: Record<string, string> = {
   barrier: svg('barrier', 14),
   person: svg('person', 14),
+  marshal: svg('marshal', 14),
+  triage_officer: svg('triage_officer', 14),
+  media_officer: svg('media_officer', 14),
+  firefighter: svg('firefighter', 14),
   tent: svg('tent', 14),
   medical: svg('medical_cross', 14),
   ambulance: svg('ambulance', 14),
