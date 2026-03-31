@@ -1,6 +1,7 @@
 import { Marker, Tooltip } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { svg } from './mapIcons';
 
 export interface CasualtyData {
   id: string;
@@ -54,11 +55,11 @@ function createCasualtyIcon(casualty: CasualtyData): DivIcon {
   const isResolved = casualty.status === 'resolved' || casualty.status === 'transported';
   const isDeceased = casualty.status === 'deceased';
 
-  let emoji = '🚶';
-  if (isDeceased) emoji = '💀';
-  else if (isResolved) emoji = '✅';
-  else if (mobility === 'trapped') emoji = '🪤';
-  else if (mobility === 'non_ambulatory') emoji = '🚑';
+  let icon = svg('person');
+  if (isDeceased) icon = svg('deceased');
+  else if (isResolved) icon = svg('resolved');
+  else if (mobility === 'trapped') icon = svg('person_trapped');
+  else if (mobility === 'non_ambulatory') icon = svg('stretcher');
 
   const bgColor = isResolved
     ? '#22c55e'
@@ -77,11 +78,10 @@ function createCasualtyIcon(casualty: CasualtyData): DivIcon {
       border:2px solid #fff;
       box-shadow:0 2px 6px rgba(0,0,0,.3);
       display:flex;align-items:center;justify-content:center;
-      font-size:${Math.floor(size * 0.5)}px;line-height:1;
       cursor:pointer;
       ${isResolved ? 'opacity:0.5;' : ''}
       ${isUnassessed && !isResolved && !isDeceased ? 'animation:pulse 2s infinite;' : ''}
-    "><span style="filter:drop-shadow(0 0 1px rgba(0,0,0,.5))">${emoji}</span></div>`,
+    ">${icon}</div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
     popupAnchor: [0, -(size / 2)],

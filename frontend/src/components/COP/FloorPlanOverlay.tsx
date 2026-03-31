@@ -3,6 +3,7 @@ import { ImageOverlay, Marker, Tooltip, useMap } from 'react-leaflet';
 import { DivIcon, LatLngBounds, SVGOverlay as LeafletSVGOverlay } from 'leaflet';
 import type { LatLngBoundsExpression, LatLngExpression } from 'leaflet';
 import type { FloorPlan } from './FloorSelector';
+import { svg } from './mapIcons';
 
 interface FloorPlanOverlayProps {
   floor: FloorPlan;
@@ -10,29 +11,29 @@ interface FloorPlanOverlayProps {
 
 function createFeatureIcon(feature: FloorPlan['features'][0]): DivIcon {
   const typeIcons: Record<string, string> = {
-    escalator: '↕️',
-    elevator: '🛗',
-    stairs: '🪜',
-    emergency_exit: '🚪',
-    exit: '🚪',
-    entrance: '🚶',
-    room: '🏠',
-    corridor: '↔️',
-    food_court: '🍽️',
-    retail: '🏪',
-    restroom: '🚻',
-    fire_extinguisher: '🧯',
-    fire_alarm: '🔔',
-    first_aid: '⚕️',
-    electrical_panel: '⚡',
-    ventilation: '💨',
-    water_supply: '💧',
-    parking: '🅿️',
-    office: '🏢',
-    storage: '📦',
+    escalator: svg('escalator', 12),
+    elevator: svg('elevator', 12),
+    stairs: svg('stairs', 12),
+    emergency_exit: svg('exit_sign', 12),
+    exit: svg('exit_sign', 12),
+    entrance: svg('person', 12),
+    room: svg('room', 12),
+    corridor: svg('corridor', 12),
+    food_court: svg('food_court', 12),
+    retail: svg('retail', 12),
+    restroom: svg('restroom', 12),
+    fire_extinguisher: svg('extinguisher', 12),
+    fire_alarm: svg('fire_alarm', 12),
+    first_aid: svg('medical_cross', 12),
+    electrical_panel: svg('electrical', 12),
+    ventilation: svg('ventilation', 12),
+    water_supply: svg('water', 12),
+    parking: svg('parking', 12),
+    office: svg('office', 12),
+    storage: svg('supply', 12),
   };
 
-  const emoji = typeIcons[feature.type] ?? '📍';
+  const featureIcon = typeIcons[feature.type] ?? svg('pin', 12);
 
   return new DivIcon({
     className: 'floor-feature-marker',
@@ -48,7 +49,7 @@ function createFeatureIcon(feature: FloorPlan['features'][0]): DivIcon {
         align-items: center;
         gap: 3px;
       ">
-        <span>${emoji}</span>
+        <span>${featureIcon}</span>
         <span style="font-size: 9px; color: rgba(234,179,8,0.8); font-family: monospace;">${feature.label}</span>
       </div>
     `,

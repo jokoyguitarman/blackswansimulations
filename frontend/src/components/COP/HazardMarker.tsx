@@ -1,6 +1,7 @@
 import { Marker, Tooltip } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { svg } from './mapIcons';
 
 export interface HazardZone {
   zone_type: string;
@@ -38,21 +39,21 @@ interface HazardMarkerProps {
   onClick: (hazard: HazardData) => void;
 }
 
-const HAZARD_ICONS: Record<string, { emoji: string; color: string }> = {
-  fire: { emoji: '🔥', color: '#dc2626' },
-  chemical_spill: { emoji: '☣️', color: '#a855f7' },
-  structural_collapse: { emoji: '🏚️', color: '#78716c' },
-  debris: { emoji: '🧱', color: '#92400e' },
-  gas_leak: { emoji: '💨', color: '#eab308' },
-  flood: { emoji: '🌊', color: '#0284c7' },
-  biological: { emoji: '☢️', color: '#65a30d' },
-  explosion: { emoji: '💥', color: '#ef4444' },
-  electrical: { emoji: '⚡', color: '#f59e0b' },
-  smoke: { emoji: '🌫️', color: '#6b7280' },
+const HAZARD_ICONS: Record<string, { icon: string; color: string }> = {
+  fire: { icon: svg('fire'), color: '#dc2626' },
+  chemical_spill: { icon: svg('chemical'), color: '#a855f7' },
+  structural_collapse: { icon: svg('collapse'), color: '#78716c' },
+  debris: { icon: svg('debris'), color: '#92400e' },
+  gas_leak: { icon: svg('gas'), color: '#eab308' },
+  flood: { icon: svg('flood'), color: '#0284c7' },
+  biological: { icon: svg('biohazard'), color: '#65a30d' },
+  explosion: { icon: svg('explosion'), color: '#ef4444' },
+  electrical: { icon: svg('electrical'), color: '#f59e0b' },
+  smoke: { icon: svg('smoke'), color: '#6b7280' },
 };
 
-function getHazardVisual(type: string): { emoji: string; color: string } {
-  return HAZARD_ICONS[type] ?? { emoji: '⚠️', color: '#f97316' };
+function getHazardVisual(type: string): { icon: string; color: string } {
+  return HAZARD_ICONS[type] ?? { icon: svg('hazard_generic'), color: '#f97316' };
 }
 
 function statusColor(status: string, baseColor: string): string {
@@ -62,11 +63,11 @@ function statusColor(status: string, baseColor: string): string {
 }
 
 function createHazardIcon(hazard: HazardData): DivIcon {
-  const { emoji, color: baseColor } = getHazardVisual(hazard.hazard_type);
+  const { icon, color: baseColor } = getHazardVisual(hazard.hazard_type);
   const color = statusColor(hazard.status, baseColor);
   const isResolved = hazard.status === 'resolved';
   const size = 30;
-  const displayEmoji = isResolved ? '✅' : emoji;
+  const displayIcon = isResolved ? svg('resolved') : icon;
 
   return new DivIcon({
     className: 'hazard-marker',
@@ -76,10 +77,9 @@ function createHazardIcon(hazard: HazardData): DivIcon {
       border:2px solid #fff;
       box-shadow:0 2px 6px rgba(0,0,0,.3);
       display:flex;align-items:center;justify-content:center;
-      font-size:${Math.floor(size * 0.5)}px;line-height:1;
       cursor:pointer;
       ${isResolved ? 'opacity:0.6;' : ''}
-    "><span style="filter:drop-shadow(0 0 1px rgba(0,0,0,.5))">${displayEmoji}</span></div>`,
+    ">${displayIcon}</div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
     popupAnchor: [0, -(size / 2)],

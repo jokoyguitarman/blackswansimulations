@@ -2,6 +2,7 @@ import { Marker, Popup, Tooltip } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
 import { useState } from 'react';
+import { svg } from './mapIcons';
 
 export interface EntryExitData {
   id: string;
@@ -39,7 +40,7 @@ const CLAIM_OPTIONS = [
 function createEntryExitIcon(location: EntryExitData): DivIcon {
   const isClaimed = !!location.claimed_by_team;
   const bgColor = isClaimed ? '#3b82f6' : '#6b7280';
-  const emoji = isClaimed ? '🚪' : '🚧';
+  const icon = isClaimed ? svg('door') : svg('door_blocked');
   const size = 28;
 
   return new DivIcon({
@@ -50,9 +51,8 @@ function createEntryExitIcon(location: EntryExitData): DivIcon {
       border:2px solid #fff;
       box-shadow:0 2px 6px rgba(0,0,0,.3);
       display:flex;align-items:center;justify-content:center;
-      font-size:${Math.floor(size * 0.5)}px;line-height:1;
       cursor:pointer;
-    "><span style="filter:drop-shadow(0 0 1px rgba(0,0,0,.5))">${emoji}</span></div>`,
+    ">${icon}</div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
     popupAnchor: [0, -(size / 2)],

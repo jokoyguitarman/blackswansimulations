@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { svg } from './mapIcons';
 
 export interface DraggableAssetDef {
   asset_type: string;
@@ -36,37 +37,37 @@ interface AssetPaletteProps {
 }
 
 const ICON_MAP: Record<string, string> = {
-  barrier: '🚧',
-  person: '🧑',
-  tent: '⛺',
-  medical: '⚕️',
-  ambulance: '🚑',
-  hazmat: '☢️',
-  camera: '📷',
-  podium: '🎤',
-  flag: '🚩',
-  command: '🎯',
-  fire_truck: '🚒',
-  helicopter: '🚁',
-  shield: '🛡️',
-  search: '🔍',
-  radio: '📻',
-  water: '💧',
-  area: '⬡',
-  stretcher: '🛏️',
-  splint: '🦴',
-  syringe: '💉',
-  bandage: '🩹',
-  heart: '💓',
-  oxygen: '💨',
-  wrench: '🔧',
-  extinguisher: '🧯',
-  clipboard: '📋',
-  mask: '😷',
+  barrier: svg('barrier', 14),
+  person: svg('person', 14),
+  tent: svg('tent', 14),
+  medical: svg('medical_cross', 14),
+  ambulance: svg('ambulance', 14),
+  hazmat: svg('chemical', 14),
+  camera: svg('camera', 14),
+  podium: svg('broadcast', 14),
+  flag: svg('flag', 14),
+  command: svg('command', 14),
+  fire_truck: svg('fire_truck', 14),
+  helicopter: svg('helicopter', 14),
+  shield: svg('police', 14),
+  search: svg('eye', 14),
+  radio: svg('radio', 14),
+  water: svg('water', 14),
+  area: svg('hexagon', 14),
+  stretcher: svg('stretcher', 14),
+  splint: svg('splint', 14),
+  syringe: svg('syringe', 14),
+  bandage: svg('bandage', 14),
+  heart: svg('heartbeat', 14),
+  oxygen: svg('oxygen_mask', 14),
+  wrench: svg('supply', 14),
+  extinguisher: svg('extinguisher', 14),
+  clipboard: svg('clipboard', 14),
+  mask: svg('mask', 14),
 };
 
 function getAssetEmoji(icon: string): string {
-  return ICON_MAP[icon] ?? '📍';
+  return ICON_MAP[icon] ?? svg('pin', 14);
 }
 
 export const AssetPalette = ({
@@ -215,7 +216,10 @@ export const AssetPalette = ({
                   }
                 >
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm">{getAssetEmoji(asset.icon)}</span>
+                    <span
+                      className="text-sm inline-flex"
+                      dangerouslySetInnerHTML={{ __html: getAssetEmoji(asset.icon) }}
+                    />
                     <span className="truncate">{asset.label}</span>
                   </div>
                   <div className="flex items-center justify-between mt-0.5">
@@ -251,7 +255,10 @@ export const AssetPalette = ({
                 }
               >
                 <div className="flex items-center gap-1.5">
-                  <span className="text-sm">{getAssetEmoji(asset.icon)}</span>
+                  <span
+                    className="text-sm inline-flex"
+                    dangerouslySetInnerHTML={{ __html: getAssetEmoji(asset.icon) }}
+                  />
                   <span className="truncate">{asset.label}</span>
                 </div>
                 {asset.max_count != null && (

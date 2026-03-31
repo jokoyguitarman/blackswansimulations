@@ -1,6 +1,7 @@
 import { Marker, Popup } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { svg } from './mapIcons';
 
 /**
  * Resource Marker Component - Client-side only
@@ -22,12 +23,12 @@ interface ResourceMarkerProps {
 
 const getResourceIcon = (resourceType: string): string => {
   const type = resourceType.toLowerCase();
-  if (type.includes('ambulance') || type.includes('medical')) return '🚑';
-  if (type.includes('police') || type.includes('officer')) return '🚓';
-  if (type.includes('fire') || type.includes('truck')) return '🚒';
-  if (type.includes('military') || type.includes('defence')) return '🪖';
-  if (type.includes('helicopter')) return '🚁';
-  return '📦';
+  if (type.includes('ambulance') || type.includes('medical')) return svg('ambulance');
+  if (type.includes('police') || type.includes('officer')) return svg('police_car');
+  if (type.includes('fire') || type.includes('truck')) return svg('fire_truck');
+  if (type.includes('military') || type.includes('defence')) return svg('military');
+  if (type.includes('helicopter')) return svg('helicopter');
+  return svg('supply');
 };
 
 const createResourceIcon = (resource: Resource): DivIcon => {
@@ -47,7 +48,6 @@ const createResourceIcon = (resource: Resource): DivIcon => {
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 16px;
         cursor: pointer;
       ">
         ${icon}

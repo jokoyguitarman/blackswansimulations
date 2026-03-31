@@ -1,6 +1,7 @@
 import { Marker, Tooltip } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { svg } from './mapIcons';
 
 export interface CrowdData {
   id: string;
@@ -32,10 +33,10 @@ const BEHAVIOR_COLORS: Record<string, string> = {
 };
 
 const CONVERGENT_ORIGIN_ICONS: Record<string, string> = {
-  onlooker: '👀',
-  media: '📷',
-  family: '💔',
-  helper: '🤝',
+  onlooker: svg('eye'),
+  media: svg('camera'),
+  family: svg('heart_broken'),
+  helper: svg('handshake'),
 };
 
 const CONVERGENT_ORIGIN_COLORS: Record<string, string> = {
@@ -56,11 +57,11 @@ function createCrowdIcon(crowd: CrowdData, isDraggable: boolean): DivIcon {
   let emoji: string;
   if (isConvergent) {
     bgColor = isResolved ? '#22c55e' : (CONVERGENT_ORIGIN_COLORS[crowdOrigin] ?? '#a855f7');
-    emoji = CONVERGENT_ORIGIN_ICONS[crowdOrigin] ?? '🚶';
+    emoji = CONVERGENT_ORIGIN_ICONS[crowdOrigin] ?? svg('person');
   } else {
     const color = BEHAVIOR_COLORS[behavior] ?? '#8b5cf6';
     bgColor = isResolved ? '#22c55e' : color;
-    emoji = '👥';
+    emoji = svg('crowd');
   }
 
   const size = Math.min(36, 24 + Math.floor(crowd.headcount / 15));
@@ -74,10 +75,9 @@ function createCrowdIcon(crowd: CrowdData, isDraggable: boolean): DivIcon {
       border:${borderStyle};
       box-shadow:0 2px 6px rgba(0,0,0,.3);
       display:flex;align-items:center;justify-content:center;
-      font-size:${Math.floor(size * 0.45)}px;line-height:1;
       cursor:${isDraggable ? 'grab' : 'pointer'};
       ${isResolved ? 'opacity:0.5;' : ''}
-    "><span style="filter:drop-shadow(0 0 1px rgba(0,0,0,.5))">${emoji}</span></div>`,
+    ">${emoji}</div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
     popupAnchor: [0, -(size / 2)],

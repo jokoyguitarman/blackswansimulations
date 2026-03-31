@@ -1,6 +1,7 @@
 import { Marker, Popup, Polygon, Polyline, Tooltip } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { svg } from './mapIcons';
 
 export interface PlacedAsset {
   id: string;
@@ -48,27 +49,27 @@ function getTeamColor(teamName: string): string {
 }
 
 const ASSET_ICONS: Record<string, string> = {
-  triage_tent: '⛺',
-  ambulance_staging: '🚑',
-  decon_zone: '☢️',
-  barrier: '🚧',
-  marshal_post: '🧑',
-  assembly_point: '🚩',
-  press_cordon: '🚧',
-  briefing_point: '🎤',
-  camera_position: '📷',
-  command_post: '🎯',
-  field_hospital: '⚕️',
-  helicopter_lz: '🚁',
-  water_point: '💧',
-  fire_truck_staging: '🚒',
-  radio_relay: '📻',
-  operational_area: '⬡',
-  hazard_zone: '⚠️',
+  triage_tent: svg('tent'),
+  ambulance_staging: svg('ambulance'),
+  decon_zone: svg('chemical'),
+  barrier: svg('barrier'),
+  marshal_post: svg('person'),
+  assembly_point: svg('flag'),
+  press_cordon: svg('barrier'),
+  briefing_point: svg('broadcast'),
+  camera_position: svg('camera'),
+  command_post: svg('command'),
+  field_hospital: svg('medical_cross'),
+  helicopter_lz: svg('helicopter'),
+  water_point: svg('water'),
+  fire_truck_staging: svg('fire_truck'),
+  radio_relay: svg('radio'),
+  operational_area: svg('hexagon'),
+  hazard_zone: svg('hazard_generic'),
 };
 
 function getAssetIcon(assetType: string): string {
-  return ASSET_ICONS[assetType] ?? '📍';
+  return ASSET_ICONS[assetType] ?? svg('pin');
 }
 
 function getScoreIndicator(score: Record<string, unknown> | null): {
@@ -93,7 +94,7 @@ function getScoreIndicator(score: Record<string, unknown> | null): {
 
 function createPlacedAssetIcon(asset: PlacedAsset, isOwnTeam: boolean): DivIcon {
   const color = getTeamColor(asset.team_name);
-  const emoji = getAssetIcon(asset.asset_type);
+  const iconSvg = getAssetIcon(asset.asset_type);
   const scoreInd = getScoreIndicator(asset.placement_score);
   const opacity = isOwnTeam ? 1 : 0.75;
 
@@ -111,11 +112,10 @@ function createPlacedAssetIcon(asset: PlacedAsset, isOwnTeam: boolean): DivIcon 
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 18px;
         opacity: ${opacity};
         cursor: ${isOwnTeam ? 'grab' : 'default'};
       ">
-        <span>${emoji}</span>
+        ${iconSvg}
         <span style="
           position: absolute;
           top: -4px;

@@ -5,6 +5,7 @@ import type { PlacedAsset } from './PlacedAssetMarker';
 import type { ScenarioLocationPin } from './ScenarioLocationMarker';
 import { api } from '../../lib/api';
 import { VoiceMicButton } from '../VoiceMicButton';
+import { svg } from './mapIcons';
 
 export interface MapElementTarget {
   elementType: 'hazard' | 'casualty' | 'crowd' | 'entry_exit';
@@ -43,37 +44,37 @@ interface MapElementResponsePanelProps {
 }
 
 const ICON_MAP: Record<string, string> = {
-  barrier: '🚧',
-  person: '🧑',
-  tent: '⛺',
-  medical: '⚕️',
-  ambulance: '🚑',
-  hazmat: '☢️',
-  camera: '📷',
-  podium: '🎤',
-  flag: '🚩',
-  command: '🎯',
-  fire_truck: '🚒',
-  helicopter: '🚁',
-  shield: '🛡️',
-  search: '🔍',
-  radio: '📻',
-  water: '💧',
-  area: '⬡',
-  stretcher: '🛏️',
-  splint: '🦴',
-  syringe: '💉',
-  bandage: '🩹',
-  heart: '💓',
-  oxygen: '💨',
-  wrench: '🔧',
-  extinguisher: '🧯',
-  clipboard: '📋',
-  mask: '😷',
+  barrier: svg('barrier', 14),
+  person: svg('person', 14),
+  tent: svg('tent', 14),
+  medical: svg('medical_cross', 14),
+  ambulance: svg('ambulance', 14),
+  hazmat: svg('chemical', 14),
+  camera: svg('camera', 14),
+  podium: svg('broadcast', 14),
+  flag: svg('flag', 14),
+  command: svg('command', 14),
+  fire_truck: svg('fire_truck', 14),
+  helicopter: svg('helicopter', 14),
+  shield: svg('police', 14),
+  search: svg('eye', 14),
+  radio: svg('radio', 14),
+  water: svg('water', 14),
+  area: svg('hexagon', 14),
+  stretcher: svg('stretcher', 14),
+  splint: svg('splint', 14),
+  syringe: svg('syringe', 14),
+  bandage: svg('bandage', 14),
+  heart: svg('heartbeat', 14),
+  oxygen: svg('oxygen_mask', 14),
+  wrench: svg('supply', 14),
+  extinguisher: svg('extinguisher', 14),
+  clipboard: svg('clipboard', 14),
+  mask: svg('mask', 14),
 };
 
 function getEmoji(icon: string): string {
-  return ICON_MAP[icon] ?? '📍';
+  return ICON_MAP[icon] ?? svg('pin', 14);
 }
 
 const ELEMENT_TYPE_LABELS: Record<string, string> = {
@@ -136,12 +137,12 @@ const TRIAGE_OPTIONS: Array<{
 /* ── Destination logic ── */
 
 const DESTINATION_ASSET_TYPES: Record<string, { icon: string; label: string }> = {
-  decon_zone: { icon: '☢️', label: 'Decon Zone' },
-  assembly_point: { icon: '🏕️', label: 'Assembly Point' },
-  triage_tent: { icon: '⛺', label: 'Triage Tent' },
-  field_hospital: { icon: '🏥', label: 'Field Hospital' },
-  holding_area: { icon: '🅿️', label: 'Holding Area' },
-  evacuation_point: { icon: '🚪', label: 'Evacuation Point' },
+  decon_zone: { icon: svg('chemical', 14), label: 'Decon Zone' },
+  assembly_point: { icon: svg('flag', 14), label: 'Assembly Point' },
+  triage_tent: { icon: svg('tent', 14), label: 'Triage Tent' },
+  field_hospital: { icon: svg('hospital', 14), label: 'Field Hospital' },
+  holding_area: { icon: svg('staging', 14), label: 'Holding Area' },
+  evacuation_point: { icon: svg('door', 14), label: 'Evacuation Point' },
 };
 
 interface DestinationOption {
@@ -206,7 +207,7 @@ function getNextDestinations(
     destinations.push({
       id: asset.id,
       label: asset.label || meta?.label || asset.asset_type.replace(/_/g, ' '),
-      icon: meta?.icon ?? '📍',
+      icon: meta?.icon ?? svg('pin', 14),
       type: 'placed_asset',
     });
   }
@@ -225,7 +226,7 @@ function getNextDestinations(
       destinations.push({
         id: loc.id,
         label: loc.label,
-        icon: '🏥',
+        icon: svg('hospital', 14),
         type: 'hospital',
       });
     }
@@ -252,7 +253,7 @@ function getCrowdDestinations(
     destinations.push({
       id: asset.id,
       label: asset.label || meta?.label || asset.asset_type.replace(/_/g, ' '),
-      icon: meta?.icon ?? '📍',
+      icon: meta?.icon ?? svg('pin', 14),
       type: 'placed_asset',
     });
   }
@@ -263,7 +264,7 @@ function getCrowdDestinations(
       destinations.push({
         id: loc.id,
         label: loc.label,
-        icon: '🚪',
+        icon: svg('door', 14),
         type: 'placed_asset',
       });
     }
@@ -585,7 +586,10 @@ export const MapElementResponsePanel = ({
                           : 'border-robotic-yellow/20 bg-robotic-yellow/5 text-robotic-yellow/70 hover:border-robotic-yellow/40 hover:bg-robotic-yellow/10'
                       }`}
                     >
-                      <span className="text-base">{dest.icon}</span>
+                      <span
+                        className="text-base inline-flex"
+                        dangerouslySetInnerHTML={{ __html: dest.icon }}
+                      />
                       <span className="truncate max-w-[140px]">{dest.label}</span>
                       {dest.type === 'hospital' && (
                         <span className="text-[9px] text-robotic-yellow/40 ml-0.5">HOSPITAL</span>
@@ -623,7 +627,10 @@ export const MapElementResponsePanel = ({
                     className="px-2 py-1.5 rounded border border-robotic-yellow/20 bg-robotic-yellow/5 text-xs terminal-text text-robotic-yellow/80 cursor-grab active:cursor-grabbing hover:border-robotic-yellow/40 hover:bg-robotic-yellow/10 transition-colors select-none flex items-center gap-1"
                     title={`Click or drag to deploy ${asset.label}`}
                   >
-                    <span>{getEmoji(asset.icon)}</span>
+                    <span
+                      className="inline-flex"
+                      dangerouslySetInnerHTML={{ __html: getEmoji(asset.icon) }}
+                    />
                     <span className="truncate max-w-[120px]">{asset.label}</span>
                   </div>
                 ))}
@@ -656,7 +663,10 @@ export const MapElementResponsePanel = ({
                     key={d.assetType}
                     className="flex items-center gap-1 px-2 py-1 rounded bg-robotic-yellow/15 border border-robotic-yellow/30 text-xs terminal-text text-robotic-yellow"
                   >
-                    <span>{getEmoji(d.icon)}</span>
+                    <span
+                      className="inline-flex"
+                      dangerouslySetInnerHTML={{ __html: getEmoji(d.icon) }}
+                    />
                     <span className="font-medium">{d.quantity}×</span>
                     <span className="truncate max-w-[100px]">{d.label}</span>
                     <div className="flex items-center gap-0.5 ml-1">

@@ -1,6 +1,7 @@
 import { Marker, Popup } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { svg } from './mapIcons';
 
 /**
  * Scenario location pin (map pin from DB).
@@ -105,19 +106,20 @@ const getSymbol = (pin: ScenarioLocationPin): string => {
     t.includes('epicentre') ||
     t.includes('attack')
   )
-    return '💥';
+    return svg('explosion');
   if (
     cat === 'cordon' ||
     t.includes('cordon') ||
     t.includes('perimeter') ||
     t.includes('exclusion')
   )
-    return '⛔';
-  if (cat === 'triage' || t.includes('triage') || t.includes('casualty')) return '⚕';
+    return svg('cordon');
+  if (cat === 'triage' || t.includes('triage') || t.includes('casualty'))
+    return svg('medical_cross');
   if (t.includes('negotiat') || t.includes('ops') || t.includes('command') || t.includes('icp'))
-    return '🎯';
-  if (cat === 'command') return '🎯';
-  if (cat === 'route' || t === 'route') return '🚦';
+    return svg('command');
+  if (cat === 'command') return svg('command');
+  if (cat === 'route' || t === 'route') return svg('route');
   if (
     cat === 'access' ||
     cat === 'entry_exit' ||
@@ -128,7 +130,7 @@ const getSymbol = (pin: ScenarioLocationPin): string => {
     t.includes('ingress') ||
     t.includes('egress')
   )
-    return '🚪';
+    return svg('door');
   if (
     cat === 'staging' ||
     t.includes('staging') ||
@@ -136,14 +138,14 @@ const getSymbol = (pin: ScenarioLocationPin): string => {
     t.includes('assembly') ||
     t.includes('pool')
   )
-    return '⛺';
-  if (t.includes('media') || t.includes('press')) return '📡';
-  if (t.includes('hospital')) return '🏥';
-  if (t.includes('police')) return '🛡';
-  if (t.includes('fire') || t.includes('scdf')) return '🚒';
-  if (t.includes('cctv')) return '📹';
-  if (t.includes('community')) return '🏛';
-  return '📍';
+    return svg('staging');
+  if (t.includes('media') || t.includes('press')) return svg('broadcast');
+  if (t.includes('hospital')) return svg('hospital');
+  if (t.includes('police')) return svg('police');
+  if (t.includes('fire') || t.includes('scdf')) return svg('fire_station');
+  if (t.includes('cctv')) return svg('camera');
+  if (t.includes('community')) return svg('community');
+  return svg('pin');
 };
 
 const createPinIcon = (pin: ScenarioLocationPin): DivIcon => {
@@ -165,7 +167,7 @@ const createPinIcon = (pin: ScenarioLocationPin): DivIcon => {
         font-size: 16px;
         line-height: 1;
       ">
-        <span style="filter: drop-shadow(0 0 1px rgba(0,0,0,0.5));">${symbol}</span>
+        ${symbol}
       </div>
     `,
     iconSize: [32, 32],

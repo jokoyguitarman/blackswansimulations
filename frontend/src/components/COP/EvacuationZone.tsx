@@ -1,5 +1,6 @@
 import { Circle, Popup } from 'react-leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { svg } from './mapIcons';
 
 /**
  * Evacuation Zone Component - Client-side only
@@ -29,7 +30,10 @@ export const EvacuationZone = ({ center, radius, title }: EvacuationZoneProps) =
         <Popup>
           <div className="p-2 min-w-[200px]">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-xl">⚠️</span>
+              <span
+                className="text-xl inline-flex"
+                dangerouslySetInnerHTML={{ __html: svg('hazard_generic', 20) }}
+              />
               <h3 className="text-sm font-semibold terminal-text">{title}</h3>
             </div>
             <div className="space-y-1 text-xs terminal-text">

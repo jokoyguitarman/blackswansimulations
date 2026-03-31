@@ -1,6 +1,7 @@
 import { Marker, Popup } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
+import { svg } from './mapIcons';
 
 /**
  * Incident Marker Component - Client-side only
@@ -42,15 +43,15 @@ const getSeverityColor = (severity: string): string => {
 const getSeverityIcon = (severity: string): string => {
   switch (severity) {
     case 'critical':
-      return '🚨';
+      return svg('siren');
     case 'high':
-      return '⚠️';
+      return svg('hazard_generic');
     case 'medium':
-      return '📋';
+      return svg('clipboard');
     case 'low':
-      return '📍';
+      return svg('pin');
     default:
-      return '📍';
+      return svg('pin');
   }
 };
 
@@ -77,7 +78,6 @@ const createIncidentIcon = (severity: string, isSelected?: boolean): DivIcon => 
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: ${isSelected ? '22px' : '18px'};
         cursor: pointer;
         transition: all 0.2s;
       ">
