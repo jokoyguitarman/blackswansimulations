@@ -7,6 +7,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../lib/logger.js';
+
+const INJECT_DIVERSITY = process.env.WARROOM_INJECT_DIVERSITY !== 'false';
 import type {
   OsmVicinity,
   OsmOpenSpace,
@@ -304,6 +306,7 @@ async function callOpenAi<T>(
   userPrompt: string,
   openAiApiKey: string,
   maxTokens = 4000,
+  temperature = 0.7,
 ): Promise<T> {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -317,7 +320,7 @@ async function callOpenAi<T>(
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      temperature: 0.7,
+      temperature,
       max_tokens: maxTokens,
       response_format: { type: 'json_object' },
     }),
@@ -3188,9 +3191,20 @@ RULES:
 - Each inject must reference the specific scenario title, venue, and narrative details.
 - Include at least 1-2 genuine black swan events (improbable but possible: impostor responders, secondary threats, infrastructure failures, rogue actors).
 - No operational/logistical injects (no "triage is overwhelmed" or "exit congested") — those emerge from gameplay.
-- requires_response: set to true when teams must react (e.g. political demand, media confrontation, secondary threat). false ONLY for atmospheric pressure (background news, social media chatter).`;
+- requires_response: set to true when teams must react (e.g. political demand, media confrontation, secondary threat). false ONLY for atmospheric pressure (background news, social media chatter).
+${
+  INJECT_DIVERSITY
+    ? `
+VARIETY IS CRITICAL:
+- Do NOT default to the generic "secondary device found / social media misinformation / hospital at capacity" pattern. Those are overused.
+- Draw from a wide range of external event categories: geopolitical fallout, infrastructure cascades (water main break, power outage), environmental shifts, diplomatic incidents, cyber disruptions, transport network failures, public figure interventions, cultural/religious complications, cascading incidents at nearby venues.
+- Use the venue's real geography and the similar incidents list to create SPECIFIC, NOVEL complications unique to THIS location.
+- Each inject title must be concretely different from the others — no two should share the same underlying theme.
+- Surprise the players. Avoid predictable crisis-management tropes.`
+    : ''
+}`;
 
-  const userPrompt = `Write ${universalSlots.length} universal injects for "${narrative?.title || scenario_type}" at ${venue} at times: ${slotDescriptions}.`;
+  const userPrompt = `Write ${universalSlots.length} universal injects for "${narrative?.title || scenario_type}" at ${venue} at times: ${slotDescriptions}.${INJECT_DIVERSITY ? ' Prioritize unusual, location-specific, and surprising events over generic crisis tropes.' : ''}`;
 
   try {
     const parsed = await callOpenAi<{ time_injects?: WarroomScenarioPayload['time_injects'] }>(
@@ -3198,6 +3212,7 @@ RULES:
       userPrompt,
       openAiApiKey,
       5000,
+      INJECT_DIVERSITY ? 0.95 : 0.7,
     );
     const raw = parsed.time_injects || [];
     return raw.map((inj) => ({
@@ -3233,6 +3248,7 @@ async function generateTeamTimeInjects(
   openAiApiKey: string,
   assignedSlots: number[],
   narrative?: { title?: string; description?: string; briefing?: string },
+  existingTitles?: string[],
 ): Promise<WarroomScenarioPayload['time_injects']> {
   if (assignedSlots.length === 0) return [];
 
@@ -3255,7 +3271,17 @@ async function generateTeamTimeInjects(
       ? `\nSIMILAR REAL INCIDENTS:\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
       : '';
 
+  const existingTitlesBlock =
+    INJECT_DIVERSITY && existingTitles?.length
+      ? `\nALREADY GENERATED (do NOT repeat these themes or similar ideas):\n${existingTitles.map((t) => `- ${t}`).join('\n')}`
+      : '';
+
   const slotsWithPhase = assignedSlots.map((t) => `T+${t} [${getPhaseLabelShort(t)}]`).join(', ');
+
+  // When diversity mode is on, skip the inject_templates reference to avoid the AI mimicking them
+  const styleRefBlock = INJECT_DIVERSITY
+    ? ''
+    : `\nInject style reference (tone and specificity):\n${JSON.stringify(injectTemplates.slice(0, 3))}`;
 
   const systemPrompt = `You are an expert crisis management scenario designer writing EXTERNAL WORLD events EXCLUSIVELY for the ${teamName} team. These are events that happen TO this team from the outside world — things they cannot prevent through operational decisions but must react to.
 
@@ -3265,9 +3291,8 @@ All teams in this exercise: ${allTeamNames.join(', ')}
 THIS inject set is ONLY for: ${teamName}
 ${narrativeBlock}
 ${similarCasesBlock}
-
-Inject style reference (tone and specificity):
-${JSON.stringify(injectTemplates.slice(0, 3))}
+${existingTitlesBlock}
+${styleRefBlock}
 
 WHAT THESE INJECTS ARE (external events specific to ${teamName}'s domain):
 - Someone impersonating a ${teamName}-related professional (fake doctor, unauthorized volunteer, rogue official)
@@ -3314,9 +3339,20 @@ RULES:
 - No operational/logistical status updates — only external world events.
 - Include at least 1 black swan event (impostor, rogue actor, unexpected discovery, infrastructure failure).
 - No two injects should address the same challenge.
-- requires_response: true when ${teamName} must act. false ONLY for atmospheric pressure.`;
+- requires_response: true when ${teamName} must act. false ONLY for atmospheric pressure.
+${
+  INJECT_DIVERSITY
+    ? `
+VARIETY IS CRITICAL:
+- Do NOT recycle common tropes like "fake doctor appears" or "family demands access" unless you can make them genuinely novel for THIS venue.
+- Think beyond the obvious: cultural clashes specific to this locale, cascading infrastructure problems, diplomatic complications, cyber-physical attacks on ${teamName}'s equipment, unexpected alliances or sabotage from within.
+- Use the real-world geography and venue specifics to create complications that COULD NOT happen at a generic location.
+- Every inject title must be concretely different from every other inject in this scenario.
+${existingTitlesBlock ? '- The "ALREADY GENERATED" list above shows titles from other teams — avoid overlapping themes.' : ''}`
+    : ''
+}`;
 
-  const userPrompt = `Write ${assignedSlots.length} deep team-specific injects for ${teamName} at: ${slotsWithPhase} in "${narrative?.title || scenario_type}" at ${venue}.`;
+  const userPrompt = `Write ${assignedSlots.length} deep team-specific injects for ${teamName} at: ${slotsWithPhase} in "${narrative?.title || scenario_type}" at ${venue}.${INJECT_DIVERSITY ? ' Be creative and avoid generic crisis tropes.' : ''}`;
 
   try {
     const parsed = await callOpenAi<{ time_injects?: WarroomScenarioPayload['time_injects'] }>(
@@ -3324,6 +3360,7 @@ RULES:
       userPrompt,
       openAiApiKey,
       5000,
+      INJECT_DIVERSITY ? 0.95 : 0.7,
     );
     const raw = parsed.time_injects || [];
     return raw.map((inj) => ({
@@ -3360,6 +3397,7 @@ async function generateChaosInjects(
   openAiApiKey: string,
   chaosCount: number,
   narrative?: { title?: string; description?: string; briefing?: string },
+  existingTitles?: string[],
 ): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
   if (chaosCount <= 0) return [];
 
@@ -3453,9 +3491,18 @@ RULES:
 - eligible_after_minutes: earliest game time this can fire (stagger: some at 5, some at 10-15, some at 20+).
 - state_effect: include a mechanical disruption for at least half the injects. Use realistic modifiers (0.3-0.8 for slowdowns, 1.3-2.0 for time increases). Leave state_effect as {} for purely narrative injects.
 - Be bold and uncomfortable — real crises involve racism, grief, anger, and panic. Do not sanitize.
-- Make events culturally and geographically specific to ${venue}.`;
+- Make events culturally and geographically specific to ${venue}.
+${
+  INJECT_DIVERSITY
+    ? `
+VARIETY IS CRITICAL:
+- Each chaos event must explore a DIFFERENT human dynamic — avoid multiple events about the same type of social friction.
+- Draw from: generational conflicts, religious observance clashes, disability access failures, language barriers, economic exploitation (price gouging, looting), insider sabotage, technology failures (cell network overload, GPS spoofing), animal hazards, cascading panic from adjacent venues, diplomatic immunity disputes.
+${existingTitles?.length ? `- ALREADY GENERATED (avoid similar themes):\n${existingTitles.map((t) => `  - ${t}`).join('\n')}` : ''}`
+    : ''
+}`;
 
-  const userPrompt = `Write ${chaosCount} condition-based chaos/wildcard injects for ${teamName} in "${narrative?.title || scenario_type}" at ${venue}. Each must be a distinct, non-procedural social/human chaos event with game-state conditions that trigger it.`;
+  const userPrompt = `Write ${chaosCount} condition-based chaos/wildcard injects for ${teamName} in "${narrative?.title || scenario_type}" at ${venue}. Each must be a distinct, non-procedural social/human chaos event with game-state conditions that trigger it.${INJECT_DIVERSITY ? ' Be maximally creative — avoid any trope you have used before.' : ''}`;
 
   try {
     const parsed = await callOpenAi<{
@@ -3472,7 +3519,7 @@ RULES:
         eligible_after_minutes?: number;
         state_effect?: Record<string, unknown>;
       }>;
-    }>(systemPrompt, userPrompt, openAiApiKey, 4000);
+    }>(systemPrompt, userPrompt, openAiApiKey, 4000, INJECT_DIVERSITY ? 0.95 : 0.7);
 
     const raw = parsed.condition_injects || [];
     return raw.map((inj) => ({
@@ -3543,42 +3590,92 @@ export async function warroomGenerateScenario(
   const durationMinutes = input.duration_minutes ?? 60;
   const timingManifest = buildTimingManifest(teamNames, durationMinutes);
 
-  // Batch A — time injects + chaos injects, all parallel (no world context needed)
-  onProgress?.('Generating injects (parallel batch A)...');
-  const [universalTimeInjects, perTeamTimeResults, perTeamChaosResults] = await Promise.all([
-    generateUniversalTimeInjects(
+  // Batch A — time injects + chaos injects
+  // When INJECT_DIVERSITY is on, team calls run sequentially so each one
+  // knows what titles were already generated, preventing cross-team repetition.
+  // When off, all calls run in parallel for speed (original behaviour).
+  onProgress?.('Generating injects (batch A)...');
+
+  let universalTimeInjects: WarroomScenarioPayload['time_injects'];
+  let perTeamTimeResults: Array<WarroomScenarioPayload['time_injects']>;
+  let perTeamChaosResults: Array<NonNullable<WarroomScenarioPayload['condition_driven_injects']>>;
+
+  if (INJECT_DIVERSITY) {
+    universalTimeInjects = await generateUniversalTimeInjects(
       input,
       teamNames,
       openAiApiKey,
       timingManifest.universalSlots,
       undefined,
       narrative,
-    ),
-    Promise.all(
-      teamNames.map((t) =>
-        generateTeamTimeInjects(
-          input,
-          t,
-          teamNames,
-          openAiApiKey,
-          timingManifest.teamSlots[t] ?? [],
-          narrative,
+    );
+    const allTitles: string[] = universalTimeInjects.map((i) => i.title);
+
+    perTeamTimeResults = [];
+    for (const t of teamNames) {
+      const result = await generateTeamTimeInjects(
+        input,
+        t,
+        teamNames,
+        openAiApiKey,
+        timingManifest.teamSlots[t] ?? [],
+        narrative,
+        allTitles,
+      );
+      perTeamTimeResults.push(result);
+      allTitles.push(...result.map((i) => i.title));
+    }
+
+    perTeamChaosResults = [];
+    for (const t of teamNames) {
+      const result = await generateChaosInjects(
+        input,
+        t,
+        teamNames,
+        openAiApiKey,
+        Math.max(3, Math.floor(durationMinutes / 15)),
+        narrative,
+        allTitles,
+      );
+      perTeamChaosResults.push(result);
+      allTitles.push(...result.map((i) => i.title));
+    }
+  } else {
+    [universalTimeInjects, perTeamTimeResults, perTeamChaosResults] = await Promise.all([
+      generateUniversalTimeInjects(
+        input,
+        teamNames,
+        openAiApiKey,
+        timingManifest.universalSlots,
+        undefined,
+        narrative,
+      ),
+      Promise.all(
+        teamNames.map((t) =>
+          generateTeamTimeInjects(
+            input,
+            t,
+            teamNames,
+            openAiApiKey,
+            timingManifest.teamSlots[t] ?? [],
+            narrative,
+          ),
         ),
       ),
-    ),
-    Promise.all(
-      teamNames.map((t) =>
-        generateChaosInjects(
-          input,
-          t,
-          teamNames,
-          openAiApiKey,
-          Math.max(3, Math.floor(durationMinutes / 15)),
-          narrative,
+      Promise.all(
+        teamNames.map((t) =>
+          generateChaosInjects(
+            input,
+            t,
+            teamNames,
+            openAiApiKey,
+            Math.max(3, Math.floor(durationMinutes / 15)),
+            narrative,
+          ),
         ),
       ),
-    ),
-  ]);
+    ]);
+  }
 
   // Merge and normalise time injects — guarantees no 5-min gap in 0–60
   const rawTimeInjects: WarroomScenarioPayload['time_injects'] = [
