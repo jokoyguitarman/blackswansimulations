@@ -1304,6 +1304,7 @@ export const api = {
       complexity_tier?: 'minimal' | 'standard' | 'full' | 'rich';
       duration_minutes?: number;
       include_adversary_pursuit?: boolean;
+      inject_profiles?: string[];
       teams?: Array<{
         team_name: string;
         team_description?: string;
@@ -1331,6 +1332,7 @@ export const api = {
         complexity_tier?: 'minimal' | 'standard' | 'full' | 'rich';
         duration_minutes?: number;
         include_adversary_pursuit?: boolean;
+        inject_profiles?: string[];
         teams?: Array<{
           team_name: string;
           team_description?: string;

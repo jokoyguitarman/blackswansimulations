@@ -9,6 +9,500 @@ import * as path from 'path';
 import { logger } from '../lib/logger.js';
 
 const INJECT_DIVERSITY = process.env.WARROOM_INJECT_DIVERSITY !== 'false';
+
+// ---------------------------------------------------------------------------
+// Inject Pressure Types — 35 granular thematic lenses for inject generation
+// ---------------------------------------------------------------------------
+
+export interface InjectPressureType {
+  id: string;
+  group: string;
+  label: string;
+  description: string;
+  emphasis: string;
+}
+
+export const INJECT_PRESSURE_TYPES: InjectPressureType[] = [
+  // ── Political & Authority ──
+  {
+    id: 'political_interference',
+    group: 'Political & Authority',
+    label: 'Political interference',
+    description: 'Politicians inserting themselves into operational decisions',
+    emphasis: `- A government minister arrives and publicly overrides the incident commander's evacuation plan for political optics
+- Parliamentary questions are being raised mid-crisis, demanding the IC divert attention to prepare a briefing
+- The mayor's office issues a contradictory press statement that undermines the operational strategy
+- A political aide insists on re-routing resources to protect a government building instead of the casualty collection point
+- A senator demands a personal security detail be pulled from the perimeter cordon`,
+  },
+  {
+    id: 'command_chain_conflict',
+    group: 'Political & Authority',
+    label: 'Command chain conflict',
+    description: 'Conflicting orders from competing authority levels',
+    emphasis: `- A senior officer who just arrived countermands the acting commander's tactical decisions without situational awareness
+- The national crisis center issues directives that directly contradict the on-scene operational plan
+- Two command posts are issuing conflicting orders to the same ground units
+- A regional commander pulls rank over the local IC via phone, demanding a completely different approach
+- An off-duty chief arrives and begins giving orders that clash with the established chain of command`,
+  },
+  {
+    id: 'jurisdictional_turf_war',
+    group: 'Political & Authority',
+    label: 'Jurisdictional turf war',
+    description: 'Agencies fighting over ownership and control',
+    emphasis: `- Two agencies both claim ownership of the inner cordon — their officers are giving contradictory directions to the same personnel
+- A mutual aid request is denied by a neighboring jurisdiction citing resource shortages, but their units are visibly idle nearby
+- A federal agency deploys assets into the area without notifying local command, causing confusion over who controls what zone
+- The fire service refuses to enter a sector until police confirms it is "weapons cold" — police says that is fire's own assessment to make
+- A military liaison demands operational control of a sector citing national security jurisdiction`,
+  },
+  {
+    id: 'diplomatic_incident',
+    group: 'Political & Authority',
+    label: 'Diplomatic incident',
+    description: 'Foreign nationals, embassy complications, international pressure',
+    emphasis: `- A foreign embassy demands immediate access to their nationals among the casualties, bypassing triage protocols
+- Diplomatic immunity complicates the detention of a key witness who is a consular official
+- An international observer team arrives unannounced claiming UN mandate to monitor the response
+- A foreign government threatens sanctions if their citizens are not prioritized in evacuation
+- International media are framing the incident as a failure of the host nation, creating geopolitical pressure`,
+  },
+
+  // ── Media & Information ──
+  {
+    id: 'hostile_media_ambush',
+    group: 'Media & Information',
+    label: 'Hostile media ambush',
+    description: 'Journalists confronting commanders, breaching cordons',
+    emphasis: `- A journalist confronts the incident commander on live television with footage of delayed ambulance response
+- A camera crew has bypassed the outer cordon and is filming inside the triage area, broadcasting casualties without consent
+- Leaked body-camera footage is being broadcast unedited, showing responder mistakes in real time
+- A news helicopter is hovering low enough to interfere with tactical communications
+- A reporter publishes the IC's personal mobile number, flooding their phone with media calls`,
+  },
+  {
+    id: 'viral_misinformation',
+    group: 'Media & Information',
+    label: 'Viral misinformation',
+    description: 'Deepfakes, conspiracy theories, false reports spreading',
+    emphasis: `- A deepfake video showing a "second explosion" goes viral, triggering mass panic in adjacent neighborhoods
+- False reports of a chemical attack are circulating on social media, causing hospital ERs to be overwhelmed with worried-well
+- An AI-generated fake government statement is circulating claiming the area is contaminated
+- Conspiracy theories blaming a specific community are trending nationally within 30 minutes
+- A fake emergency alert is sent to phones in the area telling people to shelter in place — contradicting the actual evacuation order`,
+  },
+  {
+    id: 'social_media_firestorm',
+    group: 'Media & Information',
+    label: 'Social media firestorm',
+    description: 'Live-streaming, doxxing, crowd-sourced vigilantism',
+    emphasis: `- Bystanders are live-streaming the triage area, and a patient's family sees their injured relative on TikTok before being officially notified
+- A crowd-sourced "investigation" has doxxed the wrong person as the suspect — a mob is forming at their home address
+- A trending hashtag is blaming a specific agency for slow response, and their headquarters is being protested
+- An influencer with millions of followers is broadcasting from inside the cordon, drawing more onlookers
+- Drone footage taken by civilians is revealing tactical positions on social media`,
+  },
+  {
+    id: 'information_blackout',
+    group: 'Media & Information',
+    label: 'Comms failure / blackout',
+    description: 'Cell towers saturated, radio down, coordination collapse',
+    emphasis: `- Cell towers in the area are saturated — responders cannot reach hospitals or dispatch by phone
+- The primary radio repeater has failed; backup frequencies are congested with crosstalk from adjacent jurisdictions
+- An encrypted channel has been compromised — sensitive tactical information may have been intercepted
+- The mobile command post has lost all data connectivity; real-time mapping and resource tracking is down
+- A software update has bricked half the team's handheld radios mid-operation`,
+  },
+
+  // ── Community & Social ──
+  {
+    id: 'ethnic_religious_tension',
+    group: 'Community & Social',
+    label: 'Ethnic or religious tension',
+    description: 'Communal blame, sectarian conflict, racial accusations',
+    emphasis: `- A mob is accusing members of a specific ethnic group of being responsible, surrounding their vehicles and blocking them
+- Sectarian graffiti has appeared on the venue walls during the response, escalating communal tension
+- Community leaders from two rival groups are confronting each other at the assembly point, drawing in bystanders
+- A religious leader is publicly blaming a minority community, and the speech is being broadcast live
+- Physical confrontations are breaking out between ethnic groups near the evacuation route`,
+  },
+  {
+    id: 'vigilante_behavior',
+    group: 'Community & Social',
+    label: 'Vigilante behavior',
+    description: 'Armed citizens, mob justice, self-appointed patrols',
+    emphasis: `- Armed civilians are "patrolling" the perimeter and confronting anyone who looks like the suspect description
+- A crowd has seized a person they believe is an accomplice and is refusing to hand them over to police
+- A neighborhood watch group has set up an unauthorized checkpoint, blocking an evacuation route
+- Vigilantes have surrounded a vehicle matching a suspect description — the occupants are terrified bystanders
+- A group is threatening to storm the restricted zone to "handle the situation themselves"`,
+  },
+  {
+    id: 'cultural_sensitivity',
+    group: 'Community & Social',
+    label: 'Cultural sensitivity clash',
+    description: 'Body handling conflicts, religious customs vs protocols',
+    emphasis: `- A religious community objects to how bodies are being handled, demanding rites be performed before any are moved
+- Prayer time has begun and a group insists on completing prayers despite mandatory evacuation orders
+- Dietary and medical customs are conflicting with triage protocols — a patient's family refuses a blood transfusion
+- A cultural leader demands gender-segregated evacuation routes, which would split the available exits
+- Traditional mourning practices are blocking vehicle access to the casualty collection point`,
+  },
+  {
+    id: 'language_barrier',
+    group: 'Community & Social',
+    label: 'Language barrier crisis',
+    description: 'Miscommunication, wrongful detention, lost in translation',
+    emphasis: `- A non-English-speaking family has been detained as suspects because they couldn't explain why they were running
+- A critical eyewitness can only speak a rare dialect — no interpreter is available and their account is time-sensitive
+- Evacuation instructions are not reaching a large group of foreign workers who speak neither English nor the local language
+- Medical consent cannot be obtained for an unconscious child because the parents don't speak the triage team's language
+- A mistranslated radio message has sent a team to the wrong building`,
+  },
+
+  // ── Human & Emotional ──
+  {
+    id: 'family_intrusion',
+    group: 'Human & Emotional',
+    label: 'Family intrusion',
+    description: 'Distraught families storming restricted areas',
+    emphasis: `- Parents have breached the inner cordon and are searching the rubble for their children, interfering with rescue operations
+- A family is physically blocking an ambulance from leaving, demanding to know if their relative is inside
+- Relatives of a VIP are leveraging political connections to gain access to the restricted treatment area
+- A group of families has occupied the command post entrance demanding information, blocking staff movement
+- A mother has collapsed at the family reunification point and her other children are now unattended in the evacuation zone`,
+  },
+  {
+    id: 'vip_privilege',
+    group: 'Human & Emotional',
+    label: 'VIP demanding privilege',
+    description: 'Rank-pulling, priority demands, entourage disruption',
+    emphasis: `- A politician's aide demands their principal be evacuated first, threatening career consequences for the IC
+- A corporate executive whose company owns the venue is pulling rank, insisting on access to assess property damage during active operations
+- A celebrity's entourage has created a secondary crowd, drawing resources away from the incident
+- A military general in civilian clothes demands to jump the triage queue for a minor injury, citing rank
+- A wealthy donor to the police benevolent fund is calling the commissioner to demand special treatment`,
+  },
+  {
+    id: 'mass_grief_event',
+    group: 'Human & Emotional',
+    label: 'Mass grief event',
+    description: 'Collective emotional breakdown, memorial disruption',
+    emphasis: `- A collective emotional breakdown at the family reunification point is overwhelming the welfare team
+- A spontaneous memorial gathering is blocking a critical access road and growing rapidly
+- Grief-driven aggression is escalating — bereaved family members are physically attacking responders they blame for delay
+- A group of survivors is refusing to leave the scene, sitting down in the evacuation path in shock
+- A children's school group was at the venue — dozens of parents are arriving simultaneously in states of panic`,
+  },
+  {
+    id: 'ethical_dilemma',
+    group: 'Human & Emotional',
+    label: 'Ethical dilemma',
+    description: 'Moral choices in triage, treatment refusal, evidence vs lives',
+    emphasis: `- A patient is refusing life-saving treatment on religious grounds, but their family is begging the team to override the refusal
+- The triage team must choose between treating a critical child and a responder who can return to duty if stabilized
+- Forensic evidence critical to identifying the perpetrator is in a zone where casualties are still trapped — collecting evidence would delay rescue
+- A DNR-carrying patient is in cardiac arrest but their distressed family is demanding full resuscitation
+- Two casualties need the last unit of O-negative blood — one is a child, the other is a pregnant woman`,
+  },
+  {
+    id: 'mental_health_crisis',
+    group: 'Human & Emotional',
+    label: 'Mental health crisis',
+    description: 'Responder breakdown, survivor self-harm, PTSD escalation',
+    emphasis: `- A senior responder has had a psychological breakdown mid-operation and is sitting unresponsive in the command vehicle
+- A survivor is threatening self-harm on a rooftop overlooking the incident zone, diverting tactical resources
+- A PTSD-triggered veteran among the bystanders has escalated a confrontation with police into a standoff
+- Multiple responders are showing signs of acute stress after discovering child casualties, impacting operational capacity
+- A triage nurse has frozen and cannot continue treating patients after recognizing a victim as a personal acquaintance`,
+  },
+
+  // ── Infrastructure & Technical ──
+  {
+    id: 'power_grid_failure',
+    group: 'Infrastructure & Technical',
+    label: 'Power grid failure',
+    description: 'Generators failing, gridlock, elevator entrapments',
+    emphasis: `- The venue's backup generators have failed — the triage area has lost lighting and powered medical equipment
+- Traffic signals in a 2km radius are dead, creating gridlock that is blocking ambulance access routes
+- Elevator entrapments in adjacent buildings are diverting fire crews away from the primary incident
+- The mobile command post is running on battery and will lose all systems within 30 minutes
+- Street lighting failure is making the nighttime perimeter impossible to secure visually`,
+  },
+  {
+    id: 'water_contamination',
+    group: 'Infrastructure & Technical',
+    label: 'Water or utility disruption',
+    description: 'Burst mains, gas leaks, sewage backup',
+    emphasis: `- A burst water main is flooding the primary evacuation route with 30cm of water, making it impassable for stretchers
+- A gas leak has been detected in the adjacent building, forcing a secondary evacuation of the staging area
+- Sewage backup in the designated shelter is creating a biohazard, requiring relocation of 200 evacuees
+- The fire hydrant system has lost pressure — fire suppression in the affected building is no longer possible
+- Water supply to the decontamination station has been cut, halting all patient decon processing`,
+  },
+  {
+    id: 'cyber_attack',
+    group: 'Infrastructure & Technical',
+    label: 'Cyber attack',
+    description: 'GPS spoofing, ransomware, spoofed transmissions',
+    emphasis: `- GPS spoofing is misdirecting ambulances to a location 3km from the actual incident site
+- Ransomware has locked the receiving hospital's patient records system — they cannot check allergies or medical histories
+- Spoofed radio transmissions mimicking the IC's voice are giving false "all clear" orders to perimeter teams
+- The CCTV network has been hacked — all cameras show looped footage from before the incident
+- A DDoS attack has taken down the emergency dispatch system, forcing manual coordination by phone`,
+  },
+  {
+    id: 'transport_collapse',
+    group: 'Infrastructure & Technical',
+    label: 'Transport network collapse',
+    description: 'Bridge closures, rail shutdown, highway blockage',
+    emphasis: `- The only bridge connecting the incident zone to the main hospital has been closed due to structural concerns
+- A rail shutdown has stranded 500 evacuees at a transit station with no bus alternative available
+- A highway pileup triggered by rubberneckers is blocking all western approach routes for emergency vehicles
+- Public transit drivers are refusing to operate routes near the incident zone, stranding evacuees
+- A fuel tanker has overturned on the main access road, requiring a hazmat team and closing the route for hours`,
+  },
+  {
+    id: 'structural_collapse',
+    group: 'Infrastructure & Technical',
+    label: 'Structural collapse risk',
+    description: 'Building integrity failure, progressive collapse threat',
+    emphasis: `- Structural engineers report the damaged building shows signs of progressive collapse — all teams inside must withdraw immediately
+- A parking garage adjacent to the staging area is cracking under the weight of emergency vehicles
+- A construction crane damaged by the blast is swaying over the incident zone, threatening a secondary collapse
+- The floor of the triage area (a convention hall) is showing signs of deflection under the weight of equipment and patients
+- Aftershock tremors (or secondary detonation vibrations) are destabilizing already-damaged structures`,
+  },
+
+  // ── Environmental & Hazards ──
+  {
+    id: 'weather_escalation',
+    group: 'Environmental & Hazards',
+    label: 'Weather escalation',
+    description: 'Wind shift, rain, temperature extremes affecting operations',
+    emphasis: `- A wind shift is blowing smoke and toxic fumes directly toward the triage area, requiring immediate relocation
+- A sudden downpour has flooded the staging area and is causing hypothermia risk for exposed casualties
+- A temperature drop below freezing is threatening hypothermia for casualties awaiting transport — blankets and heating are insufficient
+- Lightning is striking within 1km, forcing suspension of all outdoor helicopter operations
+- Fog has reduced visibility to 20 meters, making perimeter control and navigation nearly impossible`,
+  },
+  {
+    id: 'hazmat_discovery',
+    group: 'Environmental & Hazards',
+    label: 'Secondary hazmat discovery',
+    description: 'Chemical leaks, asbestos, unknown powders',
+    emphasis: `- A chemical storage room near the incident has been breached — unknown substances are leaking into the building
+- Structural damage has exposed asbestos insulation, contaminating the air in the rescue zone
+- An unknown white powder has been discovered in a room adjacent to the blast site, requiring a CBRN team assessment
+- Industrial chemicals from a rooftop HVAC system are dripping into the evacuation stairwell
+- Water used for fire suppression has mixed with hazardous materials, creating a toxic runoff flowing toward the public area`,
+  },
+  {
+    id: 'fire_spread',
+    group: 'Environmental & Hazards',
+    label: 'Fire spread',
+    description: 'Secondary fires, approaching wildfire, fuel storage threat',
+    emphasis: `- Secondary fires from damaged gas lines are spreading to adjacent structures, threatening the evacuation route
+- A wildfire approaching from adjacent bushland is generating smoke that is degrading air quality across the entire site
+- A vehicle fire in the underground parking structure is threatening the building's fuel storage tanks
+- Electrical fires are breaking out on multiple floors due to water damage to wiring
+- The fire has reached a commercial kitchen's gas supply — an explosion risk is imminent in the north wing`,
+  },
+  {
+    id: 'environmental_cascade',
+    group: 'Environmental & Hazards',
+    label: 'Environmental cascade',
+    description: 'Landslides, flooding, toxic runoff chain reactions',
+    emphasis: `- A landslide triggered by the explosion has blocked the only alternate access route to the venue
+- Upstream dam release is sending a flood surge that will reach the low-lying staging area within 45 minutes
+- Toxic runoff from the incident site has entered the municipal water supply intake, triggering a city-wide water advisory
+- The vibrations have disturbed a wasp nest colony in the adjacent parkland — swarms are disrupting the outdoor triage area
+- Soil liquefaction from water main damage is causing ground subsidence under the command post`,
+  },
+
+  // ── Operational & Supply ──
+  {
+    id: 'supply_chain_disruption',
+    group: 'Operational & Supply',
+    label: 'Supply chain disruption',
+    description: 'Ambulance delays, missing supplies, vendor failures',
+    emphasis: `- The ambulance fleet has been delayed by a protest blockade on the main highway, with no ETA for clearance
+- A blood bank shipment was destroyed in a traffic accident en route — the nearest alternative supply is 90 minutes away
+- Critical medication needed for nerve agent exposure treatment is on nationwide backorder
+- The contracted catering company for the evacuation shelter has refused to deliver, citing safety concerns
+- Medical supply pallets delivered to the staging area contain the wrong items — someone sent surgical supplies instead of trauma kits`,
+  },
+  {
+    id: 'hospital_overflow',
+    group: 'Operational & Supply',
+    label: 'Hospital capacity overflow',
+    description: 'Trauma centers on divert, receiving facilities refusing patients',
+    emphasis: `- All Level 1 trauma centers within 30km have declared divert — the nearest accepting facility is 45 minutes away
+- The primary receiving hospital has activated its own mass casualty protocol and is refusing additional patients
+- The pediatric ICU at the children's hospital is at capacity and is turning away critical pediatric casualties
+- A hospital is threatening to refuse patients because responders are not following their admission protocols
+- The burn unit that accepted the first wave of patients has run out of skin grafting supplies and is downgrading to stabilize-only`,
+  },
+  {
+    id: 'personnel_attrition',
+    group: 'Operational & Supply',
+    label: 'Personnel fatigue / attrition',
+    description: 'Exhaustion, relief teams delayed, key specialists lost',
+    emphasis: `- The shift commander has collapsed from exhaustion after 14 hours on scene and must be replaced immediately
+- The relief team is stuck in traffic caused by the transport network failure — ETA unknown
+- The only CBRN specialist on scene has been called away to a second suspected chemical incident across the city
+- Three paramedics have reported feeling symptomatic after treating contaminated patients without adequate PPE
+- The K-9 search team's dogs are exhausted and dehydrated — no replacement teams are available for 4 hours`,
+  },
+  {
+    id: 'equipment_malfunction',
+    group: 'Operational & Supply',
+    label: 'Equipment malfunction',
+    description: 'Critical gear failing, no replacements available',
+    emphasis: `- The decontamination shower unit has malfunctioned — contaminated patients cannot be processed
+- Radio batteries are dying across multiple teams with no replacement stock at the staging area
+- The thermal imaging camera is producing false readings due to heat from nearby fires, misleading the search team
+- The mobile hospital's ventilator has failed mid-patient — the backup unit is incompatible with the patient's intubation
+- The incident command software has crashed and will not restart, losing all resource tracking data`,
+  },
+
+  // ── Trust & Insider ──
+  {
+    id: 'impersonation',
+    group: 'Trust & Insider',
+    label: 'Credential fraud / impersonation',
+    description: 'Fake professionals, stolen uniforms, unauthorized access',
+    emphasis: `- A person wearing stolen medical scrubs has been treating patients in the triage area — their qualifications are unknown
+- An unauthorized individual claiming to be a government inspector has gained access to the command post and has been photographing operational plans
+- A stolen ambulance with fake markings has entered the restricted zone and its occupants are unaccounted for
+- Someone impersonating a structural engineer has told teams to evacuate a building that is actually safe, disrupting operations
+- A fake press badge has been used to access the family reunification area, where the impersonator is extracting personal details from victims`,
+  },
+  {
+    id: 'insider_leak',
+    group: 'Trust & Insider',
+    label: 'Insider intelligence leak',
+    description: 'Operational details reaching media or adversary',
+    emphasis: `- Operational radio frequencies are being monitored by a media organization — sensitive tactical movements are being broadcast live
+- The response plan details appeared on social media 10 minutes before execution, suggesting someone in the command team is leaking
+- A journalist quotes verbatim from a classified briefing that only 6 people attended — there is a mole
+- The adversary appears to have advance knowledge of cordon movements, suggesting an insider communication channel
+- A responder's personal phone was found recording video of the command board and transmitting it to an unknown number`,
+  },
+  {
+    id: 'sabotage',
+    group: 'Trust & Insider',
+    label: 'Equipment sabotage',
+    description: 'Tampered chemicals, wrong coordinates, systems disabled',
+    emphasis: `- Decontamination chemicals have been tampered with — patients processed through decon may not actually be clean
+- Deliberately wrong GPS coordinates were relayed to the incoming relief convoy, sending them to an empty lot
+- The building's fire suppression system was manually disabled from inside before the incident — this was not accidental
+- Someone has physically cut the fiber optic cable feeding the CCTV network in the command post area
+- Fuel in the generator feeding the triage area has been contaminated with water — power loss is imminent`,
+  },
+  {
+    id: 'friendly_fire',
+    group: 'Trust & Insider',
+    label: 'Friendly fire / blue-on-blue',
+    description: 'Mistaken identity incidents, wrong target engaged',
+    emphasis: `- A plainclothes officer has been shot by a tactical team who mistook them for the suspect
+- A private security contractor opened fire on arriving police officers during a moment of confusion
+- The tactical team breached the wrong room, flash-banging a group of trapped civilians instead of the target
+- An undercover operative's cover was not communicated to the cordon team — they were tackled and injured during apprehension
+- Friendly drones from two different agencies collided over the incident zone, debris falling near the triage area`,
+  },
+  {
+    id: 'stampede_crush',
+    group: 'Trust & Insider',
+    label: 'Stampede or crush risk',
+    description: 'Crowd surge, panic movement, counter-flow collisions',
+    emphasis: `- A crowd surge at a bottleneck exit has crushed several people against barriers — new casualties are being created by the evacuation itself
+- A false gunshot rumor has triggered panic movement in the assembly area, with people trampling each other
+- Counter-flow collision between evacuees moving out and incoming responders is creating a dangerous crush in a narrow corridor
+- Concert-goers are climbing fences to escape, injuring themselves and others in the process
+- A locked fire exit has created a fatal compression point — people at the back are pushing while the front cannot move`,
+  },
+  {
+    id: 'evacuation_refusal',
+    group: 'Trust & Insider',
+    label: 'Evacuation refusal',
+    description: 'Residents refusing to leave, barricading, ceremony completion',
+    emphasis: `- Elderly residents in the adjacent apartment block are refusing to leave their homes despite imminent structural collapse risk
+- Business owners are barricading inside their shops to protect inventory, blocking fire access to the building interior
+- A religious congregation insists on completing their ceremony before evacuating, with 300 people in a building rated at risk
+- A group of squatters in the basement of the affected building refuse to evacuate because they fear deportation
+- Hospital patients in the adjacent ward are refusing transfer because they distrust the ambulance teams sent to move them`,
+  },
+];
+
+export const INJECT_PRESSURE_TYPE_IDS = INJECT_PRESSURE_TYPES.map((t) => t.id);
+
+export const INJECT_PRESSURE_TYPES_META = INJECT_PRESSURE_TYPES.map(
+  ({ id, group, label, description }) => ({
+    id,
+    group,
+    label,
+    description,
+  }),
+);
+
+/**
+ * Build a thematic emphasis block from selected inject profile IDs.
+ * Replaces the generic "WHAT THESE INJECTS ARE" / category example blocks
+ * in inject generation prompts with focused thematic content.
+ */
+function buildThematicEmphasisBlock(
+  profileIds: string[],
+  context: 'universal' | 'team' | 'chaos',
+  teamName?: string,
+): string {
+  const selected = profileIds
+    .map((id) => INJECT_PRESSURE_TYPES.find((t) => t.id === id))
+    .filter(Boolean) as InjectPressureType[];
+
+  if (selected.length === 0) return '';
+
+  const contextFraming =
+    context === 'universal'
+      ? 'These are EXTERNAL WORLD events visible to ALL teams — things happening around the crisis that players must react to but cannot prevent.'
+      : context === 'team'
+        ? `These are external events specifically impacting the ${teamName || 'focused'} team — things happening TO this team from the outside world.`
+        : `These are non-procedural, socially volatile CHAOS events targeting the ${teamName || 'focused'} team — the messy human reality that no procedure manual covers.`;
+
+  let weightInstr: string;
+  if (selected.length === 2) {
+    weightInstr = `Approximately 50% of injects should come from the PRIMARY theme and 50% from the SECONDARY theme.`;
+  } else if (selected.length === 3) {
+    weightInstr = `Approximately 40% of injects should come from the first theme, 30% from the second, and 30% from the third.`;
+  } else {
+    weightInstr = `Distribute injects roughly equally across all ${selected.length} themes (~${Math.round(100 / selected.length)}% each).`;
+  }
+
+  const themeBlocks = selected
+    .map((t, i) => {
+      const rank =
+        i === 0 && selected.length <= 3
+          ? 'PRIMARY'
+          : selected.length <= 3
+            ? 'SECONDARY'
+            : `THEME ${i + 1}`;
+      return `${rank}: ${t.label.toUpperCase()}\n${t.emphasis}`;
+    })
+    .join('\n\n');
+
+  return `THEMATIC EMPHASIS — ${selected.map((t) => t.label).join(' + ')}
+${contextFraming}
+
+${weightInstr}
+
+${themeBlocks}
+
+Where possible, the selected themes SHOULD intersect and create compound complications — e.g. a ${selected[0].label.toLowerCase()} event that triggers or worsens a ${selected[selected.length > 1 ? 1 : 0].label.toLowerCase()} situation. These compound events are the most valuable because they test multi-dimensional decision-making.
+
+Each inject must reference the specific scenario title, venue, and narrative details. Be geographically and culturally specific to the venue location.`;
+}
+
 import type {
   OsmVicinity,
   OsmOpenSpace,
@@ -284,6 +778,8 @@ export interface WarroomGenerateInput {
   userTeams?: WarroomUserTeam[];
   /** Pre-computed Phase 1 result; if provided, warroomGenerateScenario skips Phase 1. */
   phase1Preview?: Phase1Result;
+  /** Selected inject pressure profile IDs (2-4) that steer thematic emphasis of generated injects. */
+  inject_profiles?: string[];
 }
 
 export type WarroomAiProgressCallback = (message: string) => void;
@@ -3150,7 +3646,10 @@ ${standardsBlock}
 ${similarCasesBlock}
 ${narrativeBlock}
 
-WHAT THESE INJECTS ARE:
+${
+  input.inject_profiles?.length && input.inject_profiles.length >= 2
+    ? buildThematicEmphasisBlock(input.inject_profiles, 'universal')
+    : `WHAT THESE INJECTS ARE:
 - The initial incident (explosion, attack, disaster) and its immediate aftermath
 - Breaking news reports, social media firestorms, viral misinformation
 - Political pressure: ministers arriving, parliamentary questions, conflicting orders from political vs operational chains
@@ -3158,7 +3657,8 @@ WHAT THESE INJECTS ARE:
 - Weather changes affecting operations (wind shift carrying smoke, rain, temperature drop)
 - Social tensions triggered by the incident (ethnic accusations, protests, vigilante mobs, conspiracy theories)
 - External resource complications (hospital declaring capacity full, ambulance fleet diverted, road closure cutting off access)
-- Media chaos: journalists breaching cordons, deepfake footage, hostile live broadcasts
+- Media chaos: journalists breaching cordons, deepfake footage, hostile live broadcasts`
+}
 
 WHAT THESE INJECTS ARE NOT (these are handled by real-time condition monitoring):
 - Overcrowding in triage or assembly areas
@@ -3167,7 +3667,7 @@ WHAT THESE INJECTS ARE NOT (these are handled by real-time condition monitoring)
 - Exit congestion or evacuation flow problems
 - Patient deterioration or casualty status changes
 
-The game runs for ${input.duration_minutes ?? 60} minutes. Arc the external narrative: initial shock → media/political pressure builds → black swan complications → resolution pressure.
+The game runs for ${input.duration_minutes ?? 60} minutes. Arc the external narrative: initial shock → pressure builds → complications escalate → resolution pressure.
 
 Return ONLY valid JSON:
 {
@@ -3191,17 +3691,16 @@ RULES:
 - Each inject MUST use its exact assigned trigger_time_minutes — no substitutions.
 - inject_scope is always "universal". target_teams is always [].
 - Each inject must reference the specific scenario title, venue, and narrative details.
-- Include at least 1-2 genuine black swan events (improbable but possible: impostor responders, secondary threats, infrastructure failures, rogue actors).
 - No operational/logistical injects (no "triage is overwhelmed" or "exit congested") — those emerge from gameplay.
 - requires_response: set to true when teams must react (e.g. political demand, media confrontation, secondary threat). false ONLY for atmospheric pressure (background news, social media chatter).
+- Each inject title must be concretely different from the others — no two should share the same underlying theme.
 ${
-  INJECT_DIVERSITY
+  !input.inject_profiles?.length && INJECT_DIVERSITY
     ? `
 VARIETY IS CRITICAL:
 - Do NOT default to the generic "secondary device found / social media misinformation / hospital at capacity" pattern. Those are overused.
 - Draw from a wide range of external event categories: geopolitical fallout, infrastructure cascades (water main break, power outage), environmental shifts, diplomatic incidents, cyber disruptions, transport network failures, public figure interventions, cultural/religious complications, cascading incidents at nearby venues.
 - Use the venue's real geography and the similar incidents list to create SPECIFIC, NOVEL complications unique to THIS location.
-- Each inject title must be concretely different from the others — no two should share the same underlying theme.
 - Surprise the players. Avoid predictable crisis-management tropes.`
     : ''
 }`;
@@ -3296,14 +3795,18 @@ ${similarCasesBlock}
 ${existingTitlesBlock}
 ${styleRefBlock}
 
-WHAT THESE INJECTS ARE (external events specific to ${teamName}'s domain):
+${
+  input.inject_profiles?.length && input.inject_profiles.length >= 2
+    ? buildThematicEmphasisBlock(input.inject_profiles, 'team', teamName)
+    : `WHAT THESE INJECTS ARE (external events specific to ${teamName}'s domain):
 - Someone impersonating a ${teamName}-related professional (fake doctor, unauthorized volunteer, rogue official)
 - Inter-agency friction: conflicting orders from higher command, turf disputes with other teams
 - External civilian pressure: families demanding access to ${teamName}'s area, VIPs pulling rank, cultural conflicts
 - Supply chain disruptions: ambulance fleet delayed by traffic, equipment shipment lost, vendor refusing to deliver
 - Media targeting: journalist confronting ${teamName} leader on camera, leaked footage of ${teamName}'s area
 - Black swan complications: unexpected discovery (hazmat, secondary device, structural failure) that directly impacts ${teamName}
-- Political interference specific to ${teamName}'s role
+- Political interference specific to ${teamName}'s role`
+}
 
 WHAT THESE INJECTS ARE NOT (handled by real-time area monitors):
 - "Your triage is overcrowded" — this is detected automatically by area capacity monitoring
@@ -3339,11 +3842,10 @@ RULES:
 - Exactly ${assignedSlots.length} injects using EXACTLY these times: ${slotsWithPhase}.
 - inject_scope always "team_specific". target_teams always ["${teamName}"].
 - No operational/logistical status updates — only external world events.
-- Include at least 1 black swan event (impostor, rogue actor, unexpected discovery, infrastructure failure).
 - No two injects should address the same challenge.
 - requires_response: true when ${teamName} must act. false ONLY for atmospheric pressure.
 ${
-  INJECT_DIVERSITY
+  !input.inject_profiles?.length && INJECT_DIVERSITY
     ? `
 VARIETY IS CRITICAL:
 - Do NOT recycle common tropes like "fake doctor appears" or "family demands access" unless you can make them genuinely novel for THIS venue.
@@ -3430,7 +3932,10 @@ ${narrativeBlock}
 ${similarCasesBlock}
 ${crowdDynamicsBlock}
 
-These events represent the HUMAN CHAOS that overwhelms responders in real crises — the irrational behavior, social tensions, cultural flashpoints, media intrusions, emotional breakdowns, and political interference that no procedure manual covers.
+${
+  input.inject_profiles?.length && input.inject_profiles.length >= 2
+    ? buildThematicEmphasisBlock(input.inject_profiles, 'chaos', teamName)
+    : `These events represent the HUMAN CHAOS that overwhelms responders in real crises — the irrational behavior, social tensions, cultural flashpoints, media intrusions, emotional breakdowns, and political interference that no procedure manual covers.
 
 Generate events from categories like these (tailored to ${teamName}'s domain):
 - SOCIAL TENSION: Ethnic or religious accusations between victims/bystanders, communal blame, hate speech, sectarian conflict
@@ -3440,7 +3945,8 @@ Generate events from categories like these (tailored to ${teamName}'s domain):
 - POLITICAL INTERFERENCE: Politicians arriving for photo opportunities, conflicting orders from political vs operational chains
 - MISINFORMATION: Conspiracy theories going viral in real-time, false second-attack rumors, fake authority figures
 - ETHICAL DILEMMAS: Patient refusing treatment on religious grounds, triage decisions with ethical dimensions
-- CULTURAL SENSITIVITY: Body handling conflicts, prayer time during evacuation, language barriers
+- CULTURAL SENSITIVITY: Body handling conflicts, prayer time during evacuation, language barriers`
+}
 
 AVAILABLE CONDITION KEYS (use these in conditions_to_appear):
 - "casualties_at_assembly_above_20" — people have gathered at assembly areas
@@ -3495,7 +4001,7 @@ RULES:
 - Be bold and uncomfortable — real crises involve racism, grief, anger, and panic. Do not sanitize.
 - Make events culturally and geographically specific to ${venue}.
 ${
-  INJECT_DIVERSITY
+  !input.inject_profiles?.length && INJECT_DIVERSITY
     ? `
 VARIETY IS CRITICAL:
 - Each chaos event must explore a DIFFERENT human dynamic — avoid multiple events about the same type of social friction.

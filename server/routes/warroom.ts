@@ -79,6 +79,7 @@ const generateSchema = z.object({
     complexity_tier: z.enum(['minimal', 'standard', 'full', 'rich']).optional(),
     duration_minutes: z.number().int().min(20).max(240).optional(),
     include_adversary_pursuit: z.boolean().optional(),
+    inject_profiles: z.array(z.string().min(1).max(50)).min(2).max(4).optional(),
     teams: z.array(teamSchema).optional(),
   }),
 });
@@ -193,6 +194,7 @@ router.post(
         complexity_tier,
         duration_minutes,
         include_adversary_pursuit,
+        inject_profiles,
         teams,
       } = req.body;
 
@@ -225,6 +227,7 @@ router.post(
           complexity_tier,
           duration_minutes,
           include_adversary_pursuit,
+          inject_profiles,
           teams,
         },
         env.openAiApiKey,
@@ -267,6 +270,7 @@ router.post(
         complexity_tier,
         duration_minutes,
         include_adversary_pursuit,
+        inject_profiles,
         teams,
       } = req.body;
 
@@ -308,6 +312,7 @@ router.post(
           complexity_tier,
           duration_minutes,
           include_adversary_pursuit,
+          inject_profiles,
           teams,
         },
         env.openAiApiKey,

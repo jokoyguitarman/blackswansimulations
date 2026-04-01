@@ -54,6 +54,7 @@ export interface WarroomGenerateOptions {
   complexity_tier?: 'minimal' | 'standard' | 'full' | 'rich';
   duration_minutes?: number;
   include_adversary_pursuit?: boolean;
+  inject_profiles?: string[];
   teams?: WarroomTeamInput[];
 }
 
@@ -374,6 +375,7 @@ export async function generateAndPersistWarroomScenario(
             }
           : undefined,
       userTeams,
+      inject_profiles: options.inject_profiles,
     },
     openAiApiKey,
     aiProgress,
@@ -448,6 +450,7 @@ export async function generateAndPersistWarroomScenario(
           : undefined,
       userTeams,
       phase1Preview,
+      inject_profiles: options.inject_profiles,
     },
     openAiApiKey,
     aiProgress,

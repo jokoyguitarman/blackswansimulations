@@ -62,6 +62,71 @@ const TERRAINS = [
   { id: 'island', label: 'Island' },
 ];
 
+const INJECT_PRESSURE_TYPES = [
+  { id: 'political_interference', group: 'Political & Authority', label: 'Political interference' },
+  { id: 'command_chain_conflict', group: 'Political & Authority', label: 'Command chain conflict' },
+  {
+    id: 'jurisdictional_turf_war',
+    group: 'Political & Authority',
+    label: 'Jurisdictional turf war',
+  },
+  { id: 'diplomatic_incident', group: 'Political & Authority', label: 'Diplomatic incident' },
+  { id: 'hostile_media_ambush', group: 'Media & Information', label: 'Hostile media ambush' },
+  { id: 'viral_misinformation', group: 'Media & Information', label: 'Viral misinformation' },
+  { id: 'social_media_firestorm', group: 'Media & Information', label: 'Social media firestorm' },
+  { id: 'information_blackout', group: 'Media & Information', label: 'Comms failure / blackout' },
+  {
+    id: 'ethnic_religious_tension',
+    group: 'Community & Social',
+    label: 'Ethnic / religious tension',
+  },
+  { id: 'vigilante_behavior', group: 'Community & Social', label: 'Vigilante behavior' },
+  { id: 'cultural_sensitivity', group: 'Community & Social', label: 'Cultural sensitivity clash' },
+  { id: 'language_barrier', group: 'Community & Social', label: 'Language barrier crisis' },
+  { id: 'family_intrusion', group: 'Human & Emotional', label: 'Family intrusion' },
+  { id: 'vip_privilege', group: 'Human & Emotional', label: 'VIP demanding privilege' },
+  { id: 'mass_grief_event', group: 'Human & Emotional', label: 'Mass grief event' },
+  { id: 'ethical_dilemma', group: 'Human & Emotional', label: 'Ethical dilemma' },
+  { id: 'mental_health_crisis', group: 'Human & Emotional', label: 'Mental health crisis' },
+  { id: 'power_grid_failure', group: 'Infrastructure & Technical', label: 'Power grid failure' },
+  {
+    id: 'water_contamination',
+    group: 'Infrastructure & Technical',
+    label: 'Water / utility disruption',
+  },
+  { id: 'cyber_attack', group: 'Infrastructure & Technical', label: 'Cyber attack' },
+  { id: 'transport_collapse', group: 'Infrastructure & Technical', label: 'Transport collapse' },
+  {
+    id: 'structural_collapse',
+    group: 'Infrastructure & Technical',
+    label: 'Structural collapse risk',
+  },
+  { id: 'weather_escalation', group: 'Environmental & Hazards', label: 'Weather escalation' },
+  { id: 'hazmat_discovery', group: 'Environmental & Hazards', label: 'Secondary hazmat discovery' },
+  { id: 'fire_spread', group: 'Environmental & Hazards', label: 'Fire spread' },
+  { id: 'environmental_cascade', group: 'Environmental & Hazards', label: 'Environmental cascade' },
+  {
+    id: 'supply_chain_disruption',
+    group: 'Operational & Supply',
+    label: 'Supply chain disruption',
+  },
+  { id: 'hospital_overflow', group: 'Operational & Supply', label: 'Hospital capacity overflow' },
+  {
+    id: 'personnel_attrition',
+    group: 'Operational & Supply',
+    label: 'Personnel fatigue / attrition',
+  },
+  { id: 'equipment_malfunction', group: 'Operational & Supply', label: 'Equipment malfunction' },
+  { id: 'impersonation', group: 'Trust & Insider', label: 'Credential fraud / impersonation' },
+  { id: 'insider_leak', group: 'Trust & Insider', label: 'Insider intelligence leak' },
+  { id: 'sabotage', group: 'Trust & Insider', label: 'Equipment sabotage' },
+  { id: 'friendly_fire', group: 'Trust & Insider', label: 'Friendly fire / blue-on-blue' },
+  { id: 'stampede_crush', group: 'Trust & Insider', label: 'Stampede or crush risk' },
+  { id: 'evacuation_refusal', group: 'Trust & Insider', label: 'Evacuation refusal' },
+];
+
+const INJECT_GROUPS = [...new Set(INJECT_PRESSURE_TYPES.map((t) => t.group))];
+
 const GENERATION_PHASES: { id: string; label: string; desc: string }[] = [
   { id: 'parsing', label: 'Parsing', desc: 'Classifying scenario type, setting, terrain' },
   { id: 'geocoding', label: 'Geocoding', desc: 'Resolving location coordinates' },
@@ -84,6 +149,7 @@ export const WarRoom = () => {
   const [complexityTier] = useState<'minimal' | 'standard' | 'full' | 'rich'>('rich');
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [includeAdversaryPursuit, setIncludeAdversaryPursuit] = useState(false);
+  const [injectProfiles, setInjectProfiles] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [useStructured, setUseStructured] = useState(false);
@@ -112,6 +178,7 @@ export const WarRoom = () => {
       duration_minutes: durationMinutes,
       include_adversary_pursuit: includeAdversaryPursuit,
     };
+    if (injectProfiles.length >= 2) opts.inject_profiles = injectProfiles;
     if (useStructured && scenarioType) {
       opts.scenario_type = scenarioType;
       opts.setting = setting || undefined;
@@ -121,6 +188,23 @@ export const WarRoom = () => {
       opts.prompt = prompt.trim();
     }
     return opts;
+  };
+
+  const toggleInjectProfile = (id: string) => {
+    setInjectProfiles((prev) => {
+      if (prev.includes(id)) return prev.filter((p) => p !== id);
+      if (prev.length >= 4) return [...prev.slice(1), id];
+      return [...prev, id];
+    });
+  };
+
+  const surpriseMeProfiles = () => {
+    const shuffled = [...INJECT_PRESSURE_TYPES]
+      .map((t) => ({ ...t, sort: Math.random() }))
+      .sort((a, b) => a.sort - b.sort)
+      .slice(0, 4)
+      .map((t) => t.id);
+    setInjectProfiles(shuffled);
   };
 
   const handleNext = async () => {
@@ -396,6 +480,76 @@ export const WarRoom = () => {
             <p className="text-[10px] terminal-text text-robotic-yellow/40 mt-1 ml-[52px]">
               Generates pursuit decision tree, sighting injects, and witness reports. Auto-enabled
               if your prompt describes a chase or fleeing suspect.
+            </p>
+          </div>
+
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-3">
+              <label className="block text-xs terminal-text text-robotic-yellow/70">
+                [INJECT PROFILES] Select 2–4 challenge pressures
+                {injectProfiles.length > 0 && (
+                  <span className="ml-2 text-robotic-orange">
+                    ({injectProfiles.length}/4 selected)
+                  </span>
+                )}
+              </label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={surpriseMeProfiles}
+                  disabled={loading}
+                  className="px-3 py-1 text-[10px] terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow/70 hover:text-robotic-yellow hover:border-robotic-yellow transition-colors"
+                >
+                  [SURPRISE ME]
+                </button>
+                {injectProfiles.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setInjectProfiles([])}
+                    disabled={loading}
+                    className="px-3 py-1 text-[10px] terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/50 hover:text-robotic-yellow transition-colors"
+                  >
+                    [CLEAR]
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="max-h-[280px] overflow-y-auto border border-robotic-yellow/20 bg-black/30 p-3 space-y-3">
+              {INJECT_GROUPS.map((group) => (
+                <div key={group}>
+                  <p className="text-[10px] terminal-text text-robotic-yellow/50 uppercase tracking-wider mb-1.5">
+                    {group}
+                  </p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {INJECT_PRESSURE_TYPES.filter((t) => t.group === group).map((t) => {
+                      const selected = injectProfiles.includes(t.id);
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => !loading && toggleInjectProfile(t.id)}
+                          className={`px-2 py-1.5 text-[11px] terminal-text text-left border transition-all ${
+                            selected
+                              ? 'border-robotic-orange bg-robotic-orange/15 text-robotic-orange'
+                              : 'border-robotic-yellow/20 text-robotic-yellow/60 hover:border-robotic-yellow/40 hover:text-robotic-yellow/80'
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] terminal-text text-robotic-yellow/40 mt-1.5">
+              Shapes the thematic flavor of injects. Pick 2–4 for a blended challenge, or leave
+              empty for default variety.
+              {injectProfiles.length === 1 && (
+                <span className="text-robotic-orange ml-1">
+                  Select at least 2 profiles or clear selection.
+                </span>
+              )}
             </p>
           </div>
         </div>
