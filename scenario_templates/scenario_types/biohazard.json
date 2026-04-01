@@ -1,0 +1,607 @@
+{
+  "id": "biohazard",
+  "display_name": "Biological attack / hazardous agent release",
+  "category": "terrorism",
+  "required_teams": [
+    {
+      "team_name": "fire_hazmat",
+      "team_description": "BSL containment, biological agent identification, decontamination stations, hot/warm/cold zone management",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "public_health",
+      "team_description": "Epidemiological investigation, contact tracing, quarantine enforcement, hospital surge coordination",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "triage",
+      "team_description": "Mass casualty triage of exposed persons, symptom-based prioritization, decontamination coordination",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "evacuation",
+      "team_description": "Controlled evacuation from contaminated zones, shelter-in-place coordination, crowd flow management",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "police",
+      "team_description": "Perimeter and cordon control, evidence preservation, suspect identification, access control",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "media",
+      "team_description": "Public health advisory communications, counter misinformation, government liaison",
+      "min_participants": 2,
+      "max_participants": 6
+    }
+  ],
+  "environmental_factors": [
+    "agent_type",
+    "dispersal_method",
+    "incubation_period",
+    "wind_direction",
+    "enclosed_vs_open",
+    "population_density",
+    "ventilation_system"
+  ],
+  "adversary_behaviors": [
+    "delayed_symptom_exploitation",
+    "multiple_release_points",
+    "false_claims_of_agent_type",
+    "secondary_release"
+  ],
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "field_update",
+      "template": "Unknown substance released at {venue}. Multiple people collapsing with acute symptoms — respiratory distress, skin irritation, nausea. Source and agent unidentified.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+5",
+      "type": "field_update",
+      "template": "Agent suspected biological. Hospitals reporting surge of symptomatic patients. Dispersal pattern suggests deliberate release. Exposure radius unknown.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+10",
+      "type": "intel_brief",
+      "template": "Lab results indicate biological agent. Exact pathogen identification pending. Exposure window unknown. Contact tracing decision needed urgently.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+15",
+      "type": "media_report",
+      "template": "Social media panic spreading. Misinformation about airborne contagion. Public demanding mass testing. Unverified reports of symptoms in adjacent areas.",
+      "severity": "high"
+    },
+    {
+      "timing": "T+20",
+      "type": "field_update",
+      "template": "Second release point suspected. HAZMAT and public health resources stretched. Quarantine compliance dropping. Hospital capacity nearing limit.",
+      "severity": "critical"
+    }
+  ],
+  "decision_branches": [
+    {
+      "branch_id": "quarantine_vs_evacuate",
+      "keywords": ["quarantine", "evacuate", "isolate", "contain", "lockdown"],
+      "trigger_condition": "when command decides to quarantine the contaminated area or evacuate (risking spread)",
+      "inject_template": "Quarantine risks trapping exposed civilians. Evacuation risks spreading the agent. Which approach?"
+    },
+    {
+      "branch_id": "agent_disclosure",
+      "keywords": ["disclose", "announce agent", "identify", "public", "name the agent"],
+      "trigger_condition": "when decision is made on whether and how to publicly disclose the identified agent",
+      "inject_template": "Agent identified. Disclosing may cause panic but enables self-triage. Withholding risks loss of public trust."
+    },
+    {
+      "branch_id": "mass_prophylaxis",
+      "keywords": ["prophylaxis", "antidote", "antibiotic", "distribute", "medication", "vaccine"],
+      "trigger_condition": "when decision is made to initiate mass prophylaxis or antidote distribution",
+      "inject_template": "Mass prophylaxis authorised. Supply limited. Distribution point selection and priority order needed."
+    },
+    {
+      "branch_id": "media_statement",
+      "keywords": ["statement", "press", "announce", "release"],
+      "trigger_condition": "when media team issues public statement",
+      "inject_template": "Public statement issued. Does it provide clear health guidance without causing panic?"
+    }
+  ],
+  "compatible_settings": [
+    "subway",
+    "airport",
+    "mall",
+    "stadium",
+    "government",
+    "office",
+    "hospital",
+    "industrial"
+  ],
+  "compatible_terrains": ["urban", "coastal", "rural"],
+  "multi_storey": false,
+  "condition_keys": [
+    {
+      "key": "quarantine_not_established",
+      "meaning": "No quarantine or containment decision made by expected time",
+      "team": "public_health"
+    },
+    {
+      "key": "agent_not_identified_by_T15",
+      "meaning": "elapsedMinutes >= 15 and fire_hazmat has not identified the agent",
+      "team": "fire_hazmat"
+    },
+    {
+      "key": "public_advisory_not_issued",
+      "meaning": "No public health advisory decision made",
+      "team": "public_health"
+    },
+    {
+      "key": "media_no_statement_by_T12",
+      "meaning": "elapsedMinutes >= 12 and no statement",
+      "team": "media"
+    }
+  ],
+  "keyword_patterns": [
+    {
+      "category": "Containment (fire_hazmat)",
+      "keywords": ["contain", "isolate", "seal", "zone", "cordon", "decon"],
+      "state_key": "fire_hazmat_state.containment_started"
+    },
+    {
+      "category": "Quarantine (public_health)",
+      "keywords": ["quarantine", "isolate", "restrict", "lockdown", "contain"],
+      "state_key": "public_health_state.quarantine_established"
+    },
+    {
+      "category": "Advisory (public_health)",
+      "keywords": ["advisory", "warning", "alert", "health notice"],
+      "state_key": "public_health_state.advisory_issued"
+    },
+    {
+      "category": "Statement (media)",
+      "keywords": ["statement", "press", "announce", "release"],
+      "state_key": "media_state.first_statement_issued"
+    }
+  ],
+  "team_counter_definitions": {
+    "fire_hazmat": [
+      {
+        "key": "agent_identified",
+        "label": "Agent Identified",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["identified", "agent", "biological", "pathogen", "detected"]
+        }
+      },
+      {
+        "key": "containment_started",
+        "label": "Containment Started",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["contain", "isolate", "seal", "zone"]
+        }
+      },
+      {
+        "key": "hot_zone_established",
+        "label": "Hot Zone Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["hot zone", "exclusion", "hazard zone", "cordon"]
+        }
+      },
+      {
+        "key": "decon_active",
+        "label": "Decontamination Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["decontamination", "decon", "wash"]
+        }
+      },
+      {
+        "key": "samples_collected",
+        "label": "Samples Collected",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["sample", "collect", "swab", "culture", "lab"]
+        }
+      },
+      {
+        "key": "units_deployed",
+        "label": "Hazmat Units Deployed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ],
+    "public_health": [
+      {
+        "key": "quarantine_established",
+        "label": "Quarantine Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["quarantine", "isolate", "restrict", "lockdown"]
+        }
+      },
+      {
+        "key": "contact_tracing_started",
+        "label": "Contact Tracing Started",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["contact", "trace", "tracking", "exposure list"]
+        }
+      },
+      {
+        "key": "advisory_issued",
+        "label": "Public Advisory Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["advisory", "warning", "alert", "health notice"]
+        }
+      },
+      {
+        "key": "prophylaxis_distributed",
+        "label": "Prophylaxis Distributed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": [
+            "prophylaxis",
+            "antidote",
+            "antibiotic",
+            "distribute",
+            "medication",
+            "vaccine"
+          ]
+        }
+      },
+      {
+        "key": "population_exposed",
+        "label": "Est. Population Exposed",
+        "type": "number",
+        "initial_value": 200,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "confirmed_cases",
+        "label": "Confirmed Symptomatic Cases",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ],
+    "triage": [
+      {
+        "key": "total_patients",
+        "label": "Total Patients",
+        "type": "number",
+        "initial_value": 80,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "triage_processed",
+        "label": "Patients Processed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "trainer_only",
+        "config": {
+          "base_rate_per_min": 6,
+          "cap_key": "total_patients",
+          "robustness_affects": true,
+          "robustness_low_mult": 0.5,
+          "robustness_high_mult": 1.25,
+          "impact_sensitive": true,
+          "rate_modifier_key": "treatment_rate_modifier"
+        }
+      },
+      {
+        "key": "treatment_rate_modifier",
+        "label": "Treatment Rate Modifier",
+        "type": "number",
+        "initial_value": 1,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "patients_being_treated",
+        "label": "Patients Being Treated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all",
+        "config": {
+          "source_pool_key": "total_patients",
+          "rate_key": "triage_processed",
+          "split_fractions": {
+            "deaths_on_site": 0.08,
+            "handed_over_to_hospital": 0.5
+          },
+          "split_fractions_low": {
+            "deaths_on_site": 0.18,
+            "handed_over_to_hospital": 0.25
+          },
+          "split_fractions_high": {
+            "deaths_on_site": 0.03,
+            "handed_over_to_hospital": 0.65
+          }
+        }
+      },
+      {
+        "key": "patients_waiting",
+        "label": "Patients Waiting",
+        "type": "number",
+        "initial_value": 80,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "handed_over_to_hospital",
+        "label": "Handed Over to Hospital",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "deaths_on_site",
+        "label": "Deaths on Site",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "patients_decontaminated",
+        "label": "Patients Decontaminated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 8,
+          "robustness_affects": true,
+          "requires_flag": "decontamination_active"
+        }
+      },
+      {
+        "key": "decontamination_active",
+        "label": "Decontamination Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["decontamination", "decon", "wash", "rinse"]
+        }
+      }
+    ],
+    "evacuation": [
+      {
+        "key": "total_evacuees",
+        "label": "Total to Evacuate",
+        "type": "number",
+        "initial_value": 400,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "evacuated_count",
+        "label": "People Evacuated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 25,
+          "cap_key": "total_evacuees",
+          "requires_flag": "evacuation_ordered",
+          "robustness_affects": true,
+          "congestion_halves": true,
+          "impact_sensitive": true,
+          "rate_modifier_key": "evac_rate_modifier",
+          "marshal_boost_key": "marshals_deployed",
+          "marshal_boost_mult": 1.15
+        }
+      },
+      {
+        "key": "evac_rate_modifier",
+        "label": "Evacuation Rate Modifier",
+        "type": "number",
+        "initial_value": 1,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "evacuation_ordered",
+        "label": "Evacuation Ordered",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["evacuate", "evacuation", "clear", "move out"]
+        }
+      },
+      {
+        "key": "shelter_in_place",
+        "label": "Shelter-in-Place Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["shelter", "stay indoors", "shelter in place"]
+        }
+      },
+      {
+        "key": "marshals_deployed",
+        "label": "Marshals / Stewards Deployed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["marshal", "steward", "guide", "warden", "usher", "crowd marshal"]
+        }
+      }
+    ],
+    "police": [
+      {
+        "key": "outer_cordon_set",
+        "label": "Outer Cordon Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["cordon", "perimeter", "outer", "secure"]
+        }
+      },
+      {
+        "key": "suspect_identified",
+        "label": "Suspect Identified",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["suspect", "identified", "description", "cctv"]
+        }
+      },
+      {
+        "key": "evidence_preserved",
+        "label": "Evidence Preservation Started",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["evidence", "preserve", "scene", "forensic"]
+        }
+      }
+    ],
+    "media": [
+      {
+        "key": "public_sentiment",
+        "label": "Public Sentiment",
+        "type": "number",
+        "initial_value": 5,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "media_protocol_score",
+        "label": "Protocol Adherence",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "statements_issued",
+        "label": "Statements Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "misinformation_addressed_count",
+        "label": "Misinformation Addressed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["debunk", "counter", "correct", "misinformation"]
+        }
+      },
+      {
+        "key": "unaddressed_misinformation_count",
+        "label": "Unaddressed Misinformation",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "victim_dignity_respected",
+        "label": "Victim Dignity Respected",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": [
+            "no names",
+            "family first",
+            "notify family",
+            "victim dignity",
+            "do not release names"
+          ]
+        }
+      },
+      {
+        "key": "regular_updates_planned",
+        "label": "Regular Updates Planned",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["30 min", "60 min", "next update", "regular updates", "update every"]
+        }
+      }
+    ]
+  }
+}

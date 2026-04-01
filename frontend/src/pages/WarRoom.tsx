@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
+import { VoiceMicButton } from '../components/VoiceMicButton';
 
 type TeamEntry = {
   team_name: string;
@@ -28,6 +29,7 @@ const SCENARIO_TYPES = [
   { id: 'assassination', label: 'Assassination (public venue)' },
   { id: 'stampede_crush', label: 'Concert stampede / crush' },
   { id: 'active_shooter', label: 'Active shooter (enclosed)' },
+  { id: 'biohazard', label: 'Biological attack / biohazard' },
 ];
 
 const SETTINGS = [
@@ -254,13 +256,24 @@ export const WarRoom = () => {
               <label className="block text-xs terminal-text text-robotic-yellow/70 mb-2">
                 [PROMPT] Describe your scenario (e.g. "Kidnapping at jungle resort in Bali")
               </label>
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Kidnapping at a jungle resort in Bali with ocean and jungle access"
-                className="w-full min-h-[120px] px-4 py-3 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow placeholder-robotic-yellow/30 terminal-text text-sm focus:outline-none focus:border-robotic-yellow"
-                disabled={loading}
-              />
+              <div className="relative">
+                <textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="Kidnapping at a jungle resort in Bali with ocean and jungle access"
+                  className="w-full min-h-[120px] px-4 py-3 pr-14 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow placeholder-robotic-yellow/30 terminal-text text-sm focus:outline-none focus:border-robotic-yellow"
+                  disabled={loading}
+                />
+                <div className="absolute top-2 right-2">
+                  <VoiceMicButton
+                    disabled={loading}
+                    onTranscript={(text) => setPrompt((prev) => (prev ? `${prev} ${text}` : text))}
+                  />
+                </div>
+              </div>
+              <p className="mt-1 text-[10px] terminal-text text-robotic-yellow/40">
+                Click the mic to dictate your scenario instead of typing
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
