@@ -1,4 +1,4 @@
-import { Marker, Popup, Circle, Polyline } from 'react-leaflet';
+import { Marker, Popup, Circle, Polyline, CircleMarker } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
 import { svg } from './mapIcons';
@@ -362,8 +362,95 @@ export const ScenarioLocationMarker = ({
       ? computeDirectionArrow(posArray, directionOfTravel, effectiveRadius || 200)
       : null;
 
+  // Sighting history trail for ghost pins + pursuit corridor
+  const sightingHistory =
+    adversary && Array.isArray(location.conditions?.sighting_history)
+      ? (location.conditions.sighting_history as Array<{
+          lat: number;
+          lng: number;
+          zone_label: string;
+          seen_at_minutes: number;
+          intel_source: string;
+          confidence: string;
+        }>)
+      : [];
+
+  const corridorPositions: LatLngExpression[] =
+    sightingHistory.length > 0
+      ? [...sightingHistory.map((s) => [s.lat, s.lng] as LatLngExpression), position]
+      : [];
+
   return (
     <>
+      {/* Pursuit corridor polyline connecting all past sightings to current position */}
+      {corridorPositions.length >= 2 && (
+        <Polyline
+          positions={corridorPositions}
+          pathOptions={{
+            color: '#f97316',
+            weight: 2,
+            opacity: 0.35,
+            dashArray: '6 8',
+          }}
+        />
+      )}
+
+      {/* Ghost pins at previous sighting locations */}
+      {sightingHistory.map((s, idx) => {
+        const ghostConfStyle = CONFIDENCE_STYLES[s.confidence] || CONFIDENCE_STYLES.low;
+        const ghostIntel = INTEL_SOURCE_LABELS[s.intel_source] || null;
+        return (
+          <CircleMarker
+            key={`ghost-${location.id}-${idx}`}
+            center={[s.lat, s.lng]}
+            radius={6}
+            pathOptions={{
+              color: ghostConfStyle.color,
+              fillColor: ghostConfStyle.color,
+              fillOpacity: 0.25,
+              weight: 1,
+              opacity: 0.4,
+            }}
+          >
+            <Popup>
+              <div className="p-2 min-w-[140px] max-w-[220px]">
+                <div className="text-xs font-bold terminal-text text-robotic-yellow/60">
+                  CLEARED — T+{Math.round(s.seen_at_minutes)}min
+                </div>
+                <div className="text-xs text-robotic-yellow/50 mt-0.5">{s.zone_label}</div>
+                {ghostIntel && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <span
+                      className="inline-flex items-center gap-0.5 px-1 py-0.5 text-[9px] font-bold rounded"
+                      style={{
+                        backgroundColor: ghostIntel.color + '15',
+                        color: ghostIntel.color,
+                        opacity: 0.7,
+                      }}
+                    >
+                      {ghostIntel.icon} {ghostIntel.label}
+                    </span>
+                    <span
+                      className="px-1 py-0.5 text-[9px] font-bold rounded font-mono"
+                      style={{
+                        backgroundColor: ghostConfStyle.color + '15',
+                        color: ghostConfStyle.color,
+                        opacity: 0.7,
+                      }}
+                    >
+                      {ghostConfStyle.label}
+                    </span>
+                  </div>
+                )}
+                <div className="text-[10px] text-robotic-yellow/40 mt-1 italic">
+                  Suspect no longer at this location
+                </div>
+              </div>
+            </Popup>
+          </CircleMarker>
+        );
+      })}
+
       {adversary && effectiveRadius > 0 && (
         <Circle
           center={position}

@@ -127,6 +127,184 @@ const INJECT_PRESSURE_TYPES = [
 
 const INJECT_GROUPS = [...new Set(INJECT_PRESSURE_TYPES.map((t) => t.group))];
 
+const SCENARIO_INJECT_RELEVANCE: Record<string, string[]> = {
+  knife_attack: [
+    'vigilante_behavior',
+    'family_intrusion',
+    'hostile_media_ambush',
+    'viral_misinformation',
+    'mental_health_crisis',
+    'ethical_dilemma',
+    'stampede_crush',
+    'impersonation',
+  ],
+  active_shooter: [
+    'command_chain_conflict',
+    'hostile_media_ambush',
+    'viral_misinformation',
+    'social_media_firestorm',
+    'family_intrusion',
+    'ethical_dilemma',
+    'friendly_fire',
+    'hospital_overflow',
+    'stampede_crush',
+  ],
+  open_field_shooting: [
+    'command_chain_conflict',
+    'hostile_media_ambush',
+    'social_media_firestorm',
+    'family_intrusion',
+    'hospital_overflow',
+    'stampede_crush',
+    'personnel_attrition',
+    'supply_chain_disruption',
+  ],
+  car_bomb: [
+    'structural_collapse',
+    'fire_spread',
+    'hazmat_discovery',
+    'hospital_overflow',
+    'hostile_media_ambush',
+    'political_interference',
+    'command_chain_conflict',
+    'supply_chain_disruption',
+    'personnel_attrition',
+  ],
+  bombing: [
+    'structural_collapse',
+    'fire_spread',
+    'hazmat_discovery',
+    'hospital_overflow',
+    'hostile_media_ambush',
+    'political_interference',
+    'command_chain_conflict',
+    'supply_chain_disruption',
+  ],
+  bombing_mall: [
+    'structural_collapse',
+    'fire_spread',
+    'stampede_crush',
+    'hospital_overflow',
+    'hostile_media_ambush',
+    'family_intrusion',
+    'social_media_firestorm',
+    'evacuation_refusal',
+  ],
+  suicide_bombing: [
+    'ethnic_religious_tension',
+    'political_interference',
+    'hostile_media_ambush',
+    'viral_misinformation',
+    'hospital_overflow',
+    'ethical_dilemma',
+    'cultural_sensitivity',
+  ],
+  vehicle_ramming: [
+    'hostile_media_ambush',
+    'viral_misinformation',
+    'family_intrusion',
+    'hospital_overflow',
+    'stampede_crush',
+    'ethnic_religious_tension',
+    'vigilante_behavior',
+  ],
+  gas_attack: [
+    'hazmat_discovery',
+    'environmental_cascade',
+    'hospital_overflow',
+    'information_blackout',
+    'political_interference',
+    'supply_chain_disruption',
+    'evacuation_refusal',
+    'personnel_attrition',
+  ],
+  arson: [
+    'fire_spread',
+    'structural_collapse',
+    'environmental_cascade',
+    'evacuation_refusal',
+    'hospital_overflow',
+    'hostile_media_ambush',
+    'personnel_attrition',
+  ],
+  poisoning: [
+    'hospital_overflow',
+    'supply_chain_disruption',
+    'viral_misinformation',
+    'social_media_firestorm',
+    'political_interference',
+    'information_blackout',
+    'water_contamination',
+  ],
+  kidnapping: [
+    'political_interference',
+    'diplomatic_incident',
+    'hostile_media_ambush',
+    'family_intrusion',
+    'vip_privilege',
+    'insider_leak',
+    'ethical_dilemma',
+  ],
+  hostage_siege: [
+    'command_chain_conflict',
+    'jurisdictional_turf_war',
+    'hostile_media_ambush',
+    'family_intrusion',
+    'ethical_dilemma',
+    'friendly_fire',
+    'insider_leak',
+    'political_interference',
+  ],
+  hijacking: [
+    'command_chain_conflict',
+    'jurisdictional_turf_war',
+    'diplomatic_incident',
+    'political_interference',
+    'hostile_media_ambush',
+    'family_intrusion',
+    'ethical_dilemma',
+  ],
+  infrastructure_attack: [
+    'power_grid_failure',
+    'water_contamination',
+    'cyber_attack',
+    'environmental_cascade',
+    'political_interference',
+    'information_blackout',
+    'supply_chain_disruption',
+    'transport_collapse',
+  ],
+  stampede_crush: [
+    'stampede_crush',
+    'hospital_overflow',
+    'hostile_media_ambush',
+    'social_media_firestorm',
+    'family_intrusion',
+    'mass_grief_event',
+    'personnel_attrition',
+    'evacuation_refusal',
+  ],
+  biohazard: [
+    'hazmat_discovery',
+    'environmental_cascade',
+    'hospital_overflow',
+    'information_blackout',
+    'viral_misinformation',
+    'evacuation_refusal',
+    'supply_chain_disruption',
+    'personnel_attrition',
+  ],
+  assassination: [
+    'political_interference',
+    'diplomatic_incident',
+    'command_chain_conflict',
+    'hostile_media_ambush',
+    'insider_leak',
+    'vip_privilege',
+    'ethical_dilemma',
+  ],
+};
+
 const GENERATION_PHASES: { id: string; label: string; desc: string }[] = [
   { id: 'parsing', label: 'Parsing', desc: 'Classifying scenario type, setting, terrain' },
   { id: 'geocoding', label: 'Geocoding', desc: 'Resolving location coordinates' },
@@ -158,6 +336,8 @@ export const WarRoom = () => {
   const [step, setStep] = useState<1 | 2>(1);
   const [teams, setTeams] = useState<TeamEntry[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
+  const [resolvedScenarioType, setResolvedScenarioType] = useState<string | null>(null);
+  const [resolvedWeaponClass, setResolvedWeaponClass] = useState<string | null>(null);
 
   if (!isTrainer) {
     return (
@@ -229,6 +409,9 @@ export const WarRoom = () => {
           max_participants: t.max_participants ?? 10,
         })),
       );
+      if (data.scenario_type) setResolvedScenarioType(data.scenario_type);
+      if (data.threat_profile?.weapon_class)
+        setResolvedWeaponClass(data.threat_profile.weapon_class);
       setStep(2);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load suggested teams');
@@ -482,76 +665,6 @@ export const WarRoom = () => {
               if your prompt describes a chase or fleeing suspect.
             </p>
           </div>
-
-          <div className="mt-6">
-            <div className="flex items-center justify-between mb-3">
-              <label className="block text-xs terminal-text text-robotic-yellow/70">
-                [INJECT PROFILES] Select 2–4 challenge pressures
-                {injectProfiles.length > 0 && (
-                  <span className="ml-2 text-robotic-orange">
-                    ({injectProfiles.length}/4 selected)
-                  </span>
-                )}
-              </label>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={surpriseMeProfiles}
-                  disabled={loading}
-                  className="px-3 py-1 text-[10px] terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow/70 hover:text-robotic-yellow hover:border-robotic-yellow transition-colors"
-                >
-                  [SURPRISE ME]
-                </button>
-                {injectProfiles.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setInjectProfiles([])}
-                    disabled={loading}
-                    className="px-3 py-1 text-[10px] terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/50 hover:text-robotic-yellow transition-colors"
-                  >
-                    [CLEAR]
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="max-h-[280px] overflow-y-auto border border-robotic-yellow/20 bg-black/30 p-3 space-y-3">
-              {INJECT_GROUPS.map((group) => (
-                <div key={group}>
-                  <p className="text-[10px] terminal-text text-robotic-yellow/50 uppercase tracking-wider mb-1.5">
-                    {group}
-                  </p>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {INJECT_PRESSURE_TYPES.filter((t) => t.group === group).map((t) => {
-                      const selected = injectProfiles.includes(t.id);
-                      return (
-                        <button
-                          key={t.id}
-                          type="button"
-                          onClick={() => !loading && toggleInjectProfile(t.id)}
-                          className={`px-2 py-1.5 text-[11px] terminal-text text-left border transition-all ${
-                            selected
-                              ? 'border-robotic-orange bg-robotic-orange/15 text-robotic-orange'
-                              : 'border-robotic-yellow/20 text-robotic-yellow/60 hover:border-robotic-yellow/40 hover:text-robotic-yellow/80'
-                          }`}
-                        >
-                          {t.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <p className="text-[10px] terminal-text text-robotic-yellow/40 mt-1.5">
-              Shapes the thematic flavor of injects. Pick 2–4 for a blended challenge, or leave
-              empty for default variety.
-              {injectProfiles.length === 1 && (
-                <span className="text-robotic-orange ml-1">
-                  Select at least 2 profiles or clear selection.
-                </span>
-              )}
-            </p>
-          </div>
         </div>
 
         {step === 2 && (
@@ -634,6 +747,154 @@ export const WarRoom = () => {
             >
               [+ ADD TEAM]
             </button>
+
+            {/* Inject Profiles — now on step 2 with scenario-aware filtering */}
+            <div className="mt-8 pt-6 border-t border-robotic-yellow/20">
+              <div className="flex items-center justify-between mb-3">
+                <label className="block text-xs terminal-text text-robotic-yellow/70">
+                  [INJECT PROFILES] Select 2–4 challenge pressures
+                  {injectProfiles.length > 0 && (
+                    <span className="ml-2 text-robotic-orange">
+                      ({injectProfiles.length}/4 selected)
+                    </span>
+                  )}
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={surpriseMeProfiles}
+                    disabled={loading}
+                    className="px-3 py-1 text-[10px] terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow/70 hover:text-robotic-yellow hover:border-robotic-yellow transition-colors"
+                  >
+                    [SURPRISE ME]
+                  </button>
+                  {injectProfiles.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setInjectProfiles([])}
+                      disabled={loading}
+                      className="px-3 py-1 text-[10px] terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/50 hover:text-robotic-yellow transition-colors"
+                    >
+                      [CLEAR]
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {resolvedScenarioType && (
+                <p className="text-[10px] terminal-text text-robotic-yellow/50 mb-2">
+                  Showing recommendations for{' '}
+                  <span className="text-robotic-orange font-bold uppercase">
+                    {resolvedScenarioType.replace(/_/g, ' ')}
+                  </span>
+                  {resolvedWeaponClass && (
+                    <span className="text-robotic-yellow/40">
+                      {' '}
+                      ({resolvedWeaponClass.replace(/_/g, ' ')})
+                    </span>
+                  )}
+                </p>
+              )}
+
+              {(() => {
+                const recommended = resolvedScenarioType
+                  ? SCENARIO_INJECT_RELEVANCE[resolvedScenarioType] || []
+                  : [];
+                const sortedTypes =
+                  recommended.length > 0
+                    ? [
+                        ...INJECT_PRESSURE_TYPES.filter((t) => recommended.includes(t.id)),
+                        ...INJECT_PRESSURE_TYPES.filter((t) => !recommended.includes(t.id)),
+                      ]
+                    : INJECT_PRESSURE_TYPES;
+
+                const recommendedSet = new Set(recommended);
+                const hasRecommendations = recommendedSet.size > 0;
+
+                const groupsOfSorted = hasRecommendations
+                  ? ['Recommended', ...INJECT_GROUPS]
+                  : INJECT_GROUPS;
+
+                return (
+                  <div className="max-h-[320px] overflow-y-auto border border-robotic-yellow/20 bg-black/30 p-3 space-y-3">
+                    {hasRecommendations && (
+                      <div>
+                        <p className="text-[10px] terminal-text text-robotic-orange/70 uppercase tracking-wider mb-1.5">
+                          Recommended for this scenario
+                        </p>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {sortedTypes
+                            .filter((t) => recommendedSet.has(t.id))
+                            .map((t) => {
+                              const selected = injectProfiles.includes(t.id);
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() => !loading && toggleInjectProfile(t.id)}
+                                  className={`px-2 py-1.5 text-[11px] terminal-text text-left border transition-all relative ${
+                                    selected
+                                      ? 'border-robotic-orange bg-robotic-orange/15 text-robotic-orange'
+                                      : 'border-robotic-orange/30 text-robotic-yellow/70 hover:border-robotic-orange/50 hover:text-robotic-yellow/90 bg-robotic-orange/5'
+                                  }`}
+                                >
+                                  {t.label}
+                                </button>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )}
+                    {groupsOfSorted
+                      .filter((g) => g !== 'Recommended')
+                      .map((group) => (
+                        <div key={group}>
+                          <p className="text-[10px] terminal-text text-robotic-yellow/50 uppercase tracking-wider mb-1.5">
+                            {group}
+                          </p>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {INJECT_PRESSURE_TYPES.filter((t) => t.group === group).map((t) => {
+                              const selected = injectProfiles.includes(t.id);
+                              const isRecommended = recommendedSet.has(t.id);
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() => !loading && toggleInjectProfile(t.id)}
+                                  className={`px-2 py-1.5 text-[11px] terminal-text text-left border transition-all ${
+                                    selected
+                                      ? 'border-robotic-orange bg-robotic-orange/15 text-robotic-orange'
+                                      : isRecommended
+                                        ? 'border-robotic-orange/30 text-robotic-yellow/70 hover:border-robotic-orange/50 bg-robotic-orange/5'
+                                        : 'border-robotic-yellow/20 text-robotic-yellow/60 hover:border-robotic-yellow/40 hover:text-robotic-yellow/80'
+                                  }`}
+                                >
+                                  {t.label}
+                                  {isRecommended && !selected && (
+                                    <span className="ml-1 text-[9px] text-robotic-orange/60">
+                                      *
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                );
+              })()}
+
+              <p className="text-[10px] terminal-text text-robotic-yellow/40 mt-1.5">
+                Shapes the thematic flavor of injects. Pick 2–4 for a blended challenge, or leave
+                empty for default variety.
+                {injectProfiles.length === 1 && (
+                  <span className="text-robotic-orange ml-1">
+                    Select at least 2 profiles or clear selection.
+                  </span>
+                )}
+              </p>
+            </div>
           </div>
         )}
 

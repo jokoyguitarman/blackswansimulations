@@ -244,17 +244,46 @@ async function handleAdversarySighting(
     await evaluateContainment(sessionId, injectId, { lat, lng }, zoneLabel, adversaryId);
   }
 
-  const { data: existingPin } = await supabaseAdmin
+  // Find the specific adversary's pin — filter by adversary_id in JSONB conditions
+  const { data: allAdversaryPins } = await supabaseAdmin
     .from('scenario_locations')
-    .select('id, conditions')
+    .select('id, coordinates, conditions')
     .eq('scenario_id', session.scenario_id)
-    .eq('pin_category', 'last_known_adversary')
-    .limit(1)
-    .maybeSingle();
+    .eq('pin_category', 'last_known_adversary');
+
+  const existingPin =
+    allAdversaryPins?.find((p) => {
+      const conds = p.conditions as Record<string, unknown> | null;
+      return conds?.adversary_id === adversaryId;
+    }) || (allAdversaryPins?.length === 1 ? allAdversaryPins[0] : null);
 
   if (existingPin) {
     const elapsed = await getSessionElapsedMinutes(sessionId);
     const oldConditions = (existingPin.conditions as Record<string, unknown>) || {};
+    const oldCoords = existingPin.coordinates as { lat?: number; lng?: number } | null;
+
+    // Build sighting history trail — append old position before moving the pin
+    const sightingHistory = Array.isArray(oldConditions.sighting_history)
+      ? [...(oldConditions.sighting_history as Array<Record<string, unknown>>)]
+      : [];
+    const oldLat = oldCoords?.lat;
+    const oldLng = oldCoords?.lng;
+    const pinMoved =
+      oldLat != null &&
+      oldLng != null &&
+      (Math.abs(oldLat - lat) > 0.00001 || Math.abs(oldLng! - lng) > 0.00001);
+
+    if (pinMoved && oldLat != null && oldLng != null) {
+      sightingHistory.push({
+        lat: oldLat,
+        lng: oldLng,
+        zone_label: oldConditions.zone_label || 'Unknown',
+        seen_at_minutes: oldConditions.last_seen_at_minutes ?? 0,
+        intel_source: oldConditions.intel_source || 'unknown',
+        confidence: oldConditions.confidence || 'low',
+      });
+    }
+
     const updatedConditions = {
       ...oldConditions,
       adversary_id: adversaryId,
@@ -268,6 +297,7 @@ async function handleAdversarySighting(
       direction_of_travel: directionOfTravel,
       resource_hint: resourceHint,
       tests_containment: testsContainment,
+      sighting_history: sightingHistory,
     };
     await supabaseAdmin
       .from('scenario_locations')
@@ -284,6 +314,7 @@ async function handleAdversarySighting(
         pin_id: existingPin.id,
         adversary_id: adversaryId,
         coordinates: { lat, lng },
+        old_coordinates: pinMoved && oldLat != null ? { lat: oldLat, lng: oldLng } : undefined,
         zone_label: zoneLabel,
         description,
         last_seen_at_minutes: elapsed,
@@ -292,11 +323,39 @@ async function handleAdversarySighting(
         accuracy_radius_m: effectiveRadius,
         direction_of_travel: directionOfTravel,
         tests_containment: testsContainment,
+        sighting_history: sightingHistory,
       },
       timestamp: new Date().toISOString(),
     });
+
+    // Broadcast "location cleared" event when the pin moves to a new location
+    if (pinMoved) {
+      const oldZone = (oldConditions.zone_label as string) || 'previous location';
+      getWebSocketService().broadcastToSession(sessionId, {
+        type: 'adversary_location_cleared',
+        data: {
+          adversary_id: adversaryId,
+          cleared_coordinates: { lat: oldLat, lng: oldLng },
+          cleared_zone_label: oldZone,
+          new_zone_label: zoneLabel,
+          message: `Units at ${oldZone}: area swept — suspect NOT at this location. All resources redirecting to ${zoneLabel}.`,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     logger.info(
-      { sessionId, injectId, adversaryId, lat, lng, zoneLabel, intelSource, effectiveConfidence },
+      {
+        sessionId,
+        injectId,
+        adversaryId,
+        lat,
+        lng,
+        zoneLabel,
+        intelSource,
+        effectiveConfidence,
+        historyLength: sightingHistory.length,
+      },
       'Last-known adversary pin updated',
     );
   } else {

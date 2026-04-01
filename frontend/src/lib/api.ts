@@ -1286,6 +1286,22 @@ export const api = {
           setting?: string;
           terrain?: string;
           location?: string | null;
+          venue_name?: string;
+          landmarks?: string[];
+          threat_profile?: {
+            weapon_type: string;
+            weapon_class: string;
+            threat_scale: string;
+            adversary_count: number;
+            expected_damage: {
+              structural: boolean;
+              fire: boolean;
+              blast: boolean;
+              chemical: boolean;
+              crowd_panic_radius: string;
+            };
+            injury_types: string[];
+          };
         };
       }>(
         await fetch(apiUrl('/api/warroom/suggest-teams'), {

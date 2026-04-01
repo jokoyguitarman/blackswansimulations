@@ -689,6 +689,7 @@ export const MapView = ({
       'casualty.updated',
       'casualty.created',
       'adversary_sighting_update',
+      'adversary_location_cleared',
       'adversary_casualties_spawned',
       'containment_held',
       'containment_breach',
@@ -829,6 +830,14 @@ export const MapView = ({
           accuracy_radius_m?: number;
           direction_of_travel?: string | null;
           tests_containment?: boolean;
+          sighting_history?: Array<{
+            lat: number;
+            lng: number;
+            zone_label: string;
+            seen_at_minutes: number;
+            intel_source: string;
+            confidence: string;
+          }>;
         };
         if (d.pin_id && d.coordinates) {
           setScenarioLocations((prev) =>
@@ -848,12 +857,28 @@ export const MapView = ({
                       accuracy_radius_m: d.accuracy_radius_m,
                       direction_of_travel: d.direction_of_travel,
                       tests_containment: d.tests_containment,
+                      sighting_history: d.sighting_history,
                     },
                   }
                 : loc,
             ),
           );
         }
+      }
+      if (event.type === 'adversary_location_cleared') {
+        const d = event.data as {
+          adversary_id?: string;
+          cleared_zone_label?: string;
+          new_zone_label?: string;
+          message?: string;
+        };
+        setContainmentAlert({
+          type: 'held',
+          message:
+            d.message || `Suspect no longer at ${d.cleared_zone_label || 'previous location'}.`,
+          zone_label: d.cleared_zone_label || 'Unknown',
+        });
+        setTimeout(() => setContainmentAlert(null), 10000);
       }
       if (event.type === 'adversary_casualties_spawned' && sessionId) {
         api.casualties

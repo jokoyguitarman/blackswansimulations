@@ -7,6 +7,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../lib/logger.js';
+import type { ThreatProfile } from './warroomPromptParser.js';
 
 const INJECT_DIVERSITY = process.env.WARROOM_INJECT_DIVERSITY !== 'false';
 
@@ -780,6 +781,203 @@ export interface WarroomGenerateInput {
   phase1Preview?: Phase1Result;
   /** Selected inject pressure profile IDs (2-4) that steer thematic emphasis of generated injects. */
   inject_profiles?: string[];
+  /** Weapon/threat profile extracted from the prompt — drives proportional hazard/casualty generation. */
+  threat_profile?: ThreatProfile;
+}
+
+// ---------------------------------------------------------------------------
+// Threat-class hazard rules — maps weapon_class to allowed hazard types,
+// hazard count range, and injury emphasis for proportional generation.
+// ---------------------------------------------------------------------------
+interface ThreatHazardRule {
+  allowed_hazards: string[];
+  min_hazards: number;
+  max_hazards: number;
+  injury_emphasis: string[];
+  casualty_range: [number, number];
+  crowd_description: string;
+}
+
+export const THREAT_HAZARD_RULES: Record<string, ThreatHazardRule> = {
+  melee_bladed: {
+    allowed_hazards: ['debris', 'blood_trail', 'broken_glass'],
+    min_hazards: 0,
+    max_hazards: 2,
+    injury_emphasis: ['laceration', 'stab_wound', 'hemorrhage', 'severed_tendon', 'psychological'],
+    casualty_range: [3, 8],
+    crowd_description:
+      'Localized panic near the attacker. People immediately nearby scatter; those >50m away may not realize what is happening for minutes.',
+  },
+  melee_blunt: {
+    allowed_hazards: ['debris', 'broken_glass', 'broken_furniture'],
+    min_hazards: 0,
+    max_hazards: 2,
+    injury_emphasis: ['fracture', 'concussion', 'contusion', 'internal_bleeding', 'psychological'],
+    casualty_range: [2, 6],
+    crowd_description:
+      'Localized panic near the attacker. Bystanders may not immediately identify the weapon or threat.',
+  },
+  firearm_handgun: {
+    allowed_hazards: ['broken_glass', 'debris'],
+    min_hazards: 0,
+    max_hazards: 3,
+    injury_emphasis: [
+      'gunshot_wound',
+      'hemorrhage',
+      'penetrating_wound',
+      'fracture',
+      'psychological',
+    ],
+    casualty_range: [4, 12],
+    crowd_description:
+      'Gunshots cause immediate wide panic. People flee in all directions. Stampede risk at chokepoints.',
+  },
+  firearm_rifle: {
+    allowed_hazards: ['broken_glass', 'debris', 'structural_damage'],
+    min_hazards: 1,
+    max_hazards: 4,
+    injury_emphasis: [
+      'gunshot_wound',
+      'hemorrhage',
+      'penetrating_wound',
+      'fracture',
+      'psychological',
+    ],
+    casualty_range: [8, 25],
+    crowd_description:
+      'Loud, sustained gunfire causes mass panic across a wide area. People drop to the ground, stampede toward exits.',
+  },
+  firearm_shotgun: {
+    allowed_hazards: ['broken_glass', 'debris'],
+    min_hazards: 0,
+    max_hazards: 3,
+    injury_emphasis: [
+      'gunshot_wound',
+      'hemorrhage',
+      'penetrating_wound',
+      'shrapnel_wound',
+      'psychological',
+    ],
+    casualty_range: [4, 12],
+    crowd_description:
+      'Loud blasts cause immediate panic. Close-range devastation but limited range means crowds further away may initially freeze.',
+  },
+  explosive: {
+    allowed_hazards: [
+      'fire',
+      'structural_collapse',
+      'debris',
+      'gas_leak',
+      'smoke',
+      'electrical',
+      'explosion',
+      'flood',
+    ],
+    min_hazards: 6,
+    max_hazards: 15,
+    injury_emphasis: [
+      'blast_injury',
+      'burn',
+      'shrapnel_wound',
+      'crush_injury',
+      'amputation',
+      'tympanic_rupture',
+      'smoke_inhalation',
+      'psychological',
+    ],
+    casualty_range: [15, 30],
+    crowd_description:
+      'Massive explosion causes instant mass panic across the entire venue. Secondary explosions feared. Total evacuation.',
+  },
+  chemical: {
+    allowed_hazards: ['chemical_spill', 'smoke', 'contaminated_zone'],
+    min_hazards: 2,
+    max_hazards: 6,
+    injury_emphasis: [
+      'chemical_burn',
+      'respiratory_failure',
+      'nerve_agent_exposure',
+      'skin_contamination',
+      'psychological',
+    ],
+    casualty_range: [10, 30],
+    crowd_description:
+      'Invisible threat causes delayed panic — people start coughing, collapsing. Once recognized, mass stampede away from the source.',
+  },
+  biological: {
+    allowed_hazards: ['contaminated_zone', 'biohazard_area'],
+    min_hazards: 1,
+    max_hazards: 4,
+    injury_emphasis: [
+      'respiratory_failure',
+      'skin_contamination',
+      'organ_failure',
+      'psychological',
+    ],
+    casualty_range: [5, 25],
+    crowd_description:
+      'Delayed recognition. Panic escalates as news spreads. Quarantine fears cause secondary panic.',
+  },
+  vehicle: {
+    allowed_hazards: ['debris', 'structural_damage', 'vehicle_wreckage'],
+    min_hazards: 1,
+    max_hazards: 4,
+    injury_emphasis: [
+      'crush_injury',
+      'fracture',
+      'internal_bleeding',
+      'laceration',
+      'traumatic_brain_injury',
+      'psychological',
+    ],
+    casualty_range: [8, 20],
+    crowd_description:
+      'Sudden impact causes immediate scatter. Screaming, people running from the path of the vehicle. Debris field.',
+  },
+  incendiary: {
+    allowed_hazards: ['fire', 'smoke', 'gas_leak', 'structural_collapse'],
+    min_hazards: 3,
+    max_hazards: 8,
+    injury_emphasis: ['burn', 'smoke_inhalation', 'carbon_monoxide_poisoning', 'psychological'],
+    casualty_range: [5, 15],
+    crowd_description:
+      'Fire visible and spreading. Smoke reduces visibility. Evacuation driven by fire and smoke.',
+  },
+  none: {
+    allowed_hazards: ['debris', 'structural_damage'],
+    min_hazards: 0,
+    max_hazards: 3,
+    injury_emphasis: ['crush_injury', 'fracture', 'asphyxiation', 'trampling', 'psychological'],
+    casualty_range: [5, 20],
+    crowd_description: 'Crowd dynamics cause the danger — stampede, crush, crowd surge.',
+  },
+};
+
+function getThreatHazardRules(weaponClass: string): ThreatHazardRule {
+  return THREAT_HAZARD_RULES[weaponClass] || THREAT_HAZARD_RULES['explosive'];
+}
+
+function buildThreatProfileBlock(threatProfile?: ThreatProfile): string {
+  if (!threatProfile) return '';
+  const rules = getThreatHazardRules(threatProfile.weapon_class);
+  return `
+THREAT PROFILE (CRITICAL — read carefully and obey):
+- Weapon: ${threatProfile.weapon_type} (class: ${threatProfile.weapon_class})
+- Threat scale: ${threatProfile.threat_scale}
+- Adversary count: ${threatProfile.adversary_count}
+- Can cause structural damage: ${threatProfile.expected_damage.structural ? 'YES' : 'NO — do NOT generate structural collapse, building damage, or infrastructure failure'}
+- Can cause fire: ${threatProfile.expected_damage.fire ? 'YES' : 'NO — do NOT generate fire, smoke, or heat-related hazards'}
+- Can cause blast: ${threatProfile.expected_damage.blast ? 'YES' : 'NO — do NOT generate explosion, blast wave, or shrapnel hazards'}
+- Can cause chemical contamination: ${threatProfile.expected_damage.chemical ? 'YES' : 'NO — do NOT generate chemical, biological, or contamination hazards'}
+- Crowd panic radius: ${threatProfile.expected_damage.crowd_panic_radius}
+- Realistic injury types for this weapon: ${threatProfile.injury_types.join(', ')}
+- Crowd behavior: ${rules.crowd_description}
+
+ALLOWED hazard types for this weapon class: ${rules.allowed_hazards.join(', ')}
+Generate ${rules.min_hazards}-${rules.max_hazards} hazards MAXIMUM. Do NOT exceed this range.
+Generate ${rules.casualty_range[0]}-${rules.casualty_range[1]} casualties.
+FORBIDDEN: Do NOT generate any hazard type not in the allowed list above. A ${threatProfile.weapon_type} CANNOT cause ${threatProfile.expected_damage.structural ? '' : 'structural collapse, '}${threatProfile.expected_damage.fire ? '' : 'fire, '}${threatProfile.expected_damage.blast ? '' : 'explosions, '}${threatProfile.expected_damage.chemical ? '' : 'chemical contamination, '}or environmental hazards beyond what this weapon physically produces.
+`;
 }
 
 export type WarroomAiProgressCallback = (message: string) => void;
@@ -2121,6 +2319,24 @@ async function generateScenarioHazards(
       ? `Incident sites:\n${incidentSites.map((s) => `- ${s.label} at (${s.coordinates.lat}, ${s.coordinates.lng})`).join('\n')}`
       : '';
 
+  const threatProfile = input.threat_profile;
+  const rules = threatProfile ? getThreatHazardRules(threatProfile.weapon_class) : null;
+  const threatBlock = buildThreatProfileBlock(threatProfile);
+  const minHazards = rules?.min_hazards ?? 8;
+  const maxHazards = rules?.max_hazards ?? 15;
+  const allowedHazardTypes = rules?.allowed_hazards ?? [
+    'fire',
+    'chemical_spill',
+    'structural_collapse',
+    'debris',
+    'gas_leak',
+    'flood',
+    'biological',
+    'explosion',
+    'electrical',
+    'smoke',
+  ];
+
   const systemPrompt = `You are an expert crisis management scenario designer identifying hazards for a realistic training exercise.
 
 Scenario type: ${scenario_type}
@@ -2129,20 +2345,23 @@ Setting: ${setting}
 ${narrative ? `Narrative: ${narrative.title}\nDescription: ${narrative.description}\nBriefing: ${narrative.briefing || ''}` : ''}
 ${incidentBlock}
 Teams available: ${(teamNames ?? []).join(', ') || 'not specified'}
+${threatBlock}
+${
+  minHazards === 0
+    ? `This incident type may produce NO environmental hazards at all. Only generate hazards if the weapon/scenario can physically cause them. It is acceptable to return an empty hazards array.`
+    : `Research the venue and scenario type to identify realistic hazards that would result from this incident. Consider:
+- What materials are at this venue that this weapon could interact with?
+- What REALISTIC damage would a ${threatProfile?.weapon_type || scenario_type} cause?
+- Only include secondary hazards that can physically result from the primary attack method.`
+}
 
-Research the venue and scenario type to identify ALL realistic hazards that would result from this incident. Consider:
-- What materials are at this venue? (gas lines in restaurants/kitchens, glass facades, chemical storage, fuel in parking areas, flammable materials in shops, electrical systems)
-- What structural damage would this incident type cause? (blast radius, fire spread, collapse zones, shrapnel patterns)
-- What secondary hazards would develop? (gas leaks from ruptured lines, electrical fires, flooding from burst water mains, smoke in enclosed spaces)
-- What infrastructure is compromised? (elevators, stairwells, fire suppression systems, emergency lighting)
-
-Generate 8-15 hazards. Each hazard is a DISTINCT danger at a SPECIFIC location. More hazards create a richer, more interactive environment for teams to coordinate.
+Generate ${minHazards}-${maxHazards} hazards. ${minHazards === 0 ? 'Return 0 if the weapon cannot cause environmental hazards.' : 'Each hazard is a DISTINCT danger at a SPECIFIC location.'}
 
 Return ONLY valid JSON:
 {
   "hazards": [
     {
-      "hazard_type": "fire|chemical_spill|structural_collapse|debris|gas_leak|flood|biological|explosion|electrical|smoke",
+      "hazard_type": "${allowedHazardTypes.join('|')}",
       "location_lat": number,
       "location_lng": number,
       "floor_level": "G",
@@ -2163,10 +2382,10 @@ Return ONLY valid JSON:
 }
 
 RULES:
+- ONLY use hazard_type values from this list: ${allowedHazardTypes.join(', ')}. Do NOT generate types outside this list.
 - Hazards must be near or at the incident sites (within 300m)
-- At least 4 immediate hazards (appears_at_minutes: 0) and 4+ delayed hazards (appear as situation develops at different times)
+${minHazards >= 4 ? `- At least ${Math.ceil(minHazards / 2)} immediate hazards (appears_at_minutes: 0) and the rest as delayed hazards` : minHazards > 0 ? '- Hazards should appear at realistic times' : '- Only generate hazards the weapon can physically cause'}
 - Include venue-specific material detail in properties.fuel_source and venue_material_context
-- Vary hazard types — not all fires; include structural, debris, gas, smoke as appropriate
 - Locations must be realistic coordinates near the incident sites`;
 
   const userPrompt = `Identify all hazards from "${narrative?.title || scenario_type}" at ${venue}. Research what materials and infrastructure exist at this type of venue.`;
@@ -2642,6 +2861,26 @@ async function generateCasualties(
     ? `\nActive hazards:\n${hazards.map((h) => `- ${h.hazard_type} at (${h.location_lat}, ${h.location_lng}): ${h.enriched_description?.slice(0, 150) || (h.properties as Record<string, unknown>).fuel_source || h.hazard_type}`).join('\n')}`
     : '';
 
+  const threatProfile = input.threat_profile;
+  const casualtyRules = threatProfile ? getThreatHazardRules(threatProfile.weapon_class) : null;
+  const threatBlock2 = buildThreatProfileBlock(threatProfile);
+  const minCasualties = casualtyRules?.casualty_range[0] ?? 15;
+  const maxCasualties = casualtyRules?.casualty_range[1] ?? 20;
+  const injuryEmphasis = casualtyRules?.injury_emphasis ?? [
+    'burn',
+    'laceration',
+    'fracture',
+    'blast_injury',
+    'crush_injury',
+    'smoke_inhalation',
+    'concussion',
+    'shrapnel_wound',
+    'psychological',
+    'hemorrhage',
+  ];
+  const isMelee = threatProfile?.weapon_class?.startsWith('melee_');
+  const isExplosive = threatProfile?.weapon_class === 'explosive';
+
   const systemPrompt = `You are an expert in mass casualty incident planning generating INDIVIDUAL casualty pins for a training exercise.
 
 Scenario type: ${scenario_type}
@@ -2651,18 +2890,37 @@ ${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
 ${incidentSites.length > 0 ? `Incident site: ${incidentSites[0].label} at (${incidentSites[0].coordinates.lat}, ${incidentSites[0].coordinates.lng})` : ''}
 ${hazardBlock}
 ${zoneSummaryBlock || ''}
+${threatBlock2}
 
-Generate 15-20 INDIVIDUAL casualty pins representing the most clinically significant casualties that responders will encounter. Focus on variety of injury types and severity.
+Generate ${minCasualties}-${maxCasualties} INDIVIDUAL casualty pins representing the most clinically significant casualties that responders will encounter. Focus on variety of injury types and severity.
 
-ZONE-BASED PLACEMENT — place casualties where they would realistically be found:
-- HOT ZONE (inside the danger area): Trapped casualties under debris, behind fire, in smoke. These are the most severely injured — burns, blast injuries, crush injuries. Many are unconscious or unresponsive. They CANNOT be reached without specialized teams in full PPE. Place 3-5 casualties here.
-- WARM ZONE (buffer/transition area): Casualties who were near the blast but managed to crawl or stagger away. Mix of moderate-to-severe injuries. Some confused, some in shock. Place 5-7 casualties here.
-- COLD ZONE / OUTSIDE: Walking wounded who made it out. Minor injuries — lacerations, minor burns, psychological trauma, concussions. Some collapsed just outside exits. Place 5-8 casualties here.
-- DELAYED DISCOVERY: Some casualties appear later (appears_at_minutes 5-20) as smoke clears or areas become accessible.
+${
+  isMelee
+    ? `MELEE ATTACK PLACEMENT — this is a close-quarters weapon attack:
+- ATTACK ZONE (where the attacker struck): Casualties with direct weapon injuries — ${threatProfile?.injury_types.join(', ')}. These are the most severe. Place 2-4 casualties here.
+- NEARBY (within 30m): People who were bumped, pushed, or fell while fleeing. Minor injuries — bruises, scrapes, sprains, panic attacks. Place 2-3 here.
+- COLD ZONE / OUTSIDE: People who fled successfully. Psychological trauma, minor injuries from falls. Place 1-3 here.
+- NO trapped casualties under debris (a ${threatProfile?.weapon_type} cannot collapse structures).
+- NO casualties behind fire or in smoke (a ${threatProfile?.weapon_type} cannot start fires).
+- Accessibility should be "open" for nearly all casualties — there are no environmental barriers from a melee weapon.`
+    : isExplosive
+      ? `ZONE-BASED PLACEMENT — place casualties where they would realistically be found:
+- HOT ZONE (inside the danger area): Trapped casualties under debris, behind fire, in smoke. Burns, blast injuries, crush injuries. Place 3-5 casualties here.
+- WARM ZONE (buffer/transition area): Moderate-to-severe injuries from blast wave. Place 5-7 casualties here.
+- COLD ZONE / OUTSIDE: Walking wounded. Minor injuries. Place 5-8 casualties here.
+- DELAYED DISCOVERY: Some casualties appear later (appears_at_minutes 5-20) as smoke clears or areas become accessible.`
+      : `ZONE-BASED PLACEMENT — place casualties where they would realistically be found:
+- ATTACK ZONE (danger area): Most severely injured casualties. Place 3-5 here.
+- NEARBY (transition area): Moderate injuries, people who were close. Place 4-6 here.
+- COLD ZONE / OUTSIDE: Walking wounded, psychological trauma. Place 3-5 here.
+- DELAYED DISCOVERY: Some casualties appear later as situation develops.`
+}
 
 IMPORTANT: The "visible_description" must ONLY describe what a responder physically observes — do NOT reveal treatment protocols or equipment needed. Players must figure out the right response.
 
 Generate "treatment_requirements", "transport_prerequisites", and "contraindications" as HIDDEN ground truth fields for the evaluation system.
+
+INJURY TYPES — only use injuries that a ${threatProfile?.weapon_type || scenario_type} can realistically cause: ${injuryEmphasis.join(', ')}
 
 Return ONLY valid JSON:
 {
@@ -2674,7 +2932,7 @@ Return ONLY valid JSON:
       "floor_level": "G",
       "headcount": 1,
       "conditions": {
-        "injuries": [{ "type": "burn|laceration|fracture|blast_injury|crush_injury|smoke_inhalation|concussion|shrapnel_wound|cardiac_arrest|psychological|hemorrhage|amputation|penetrating_wound", "severity": "minor|moderate|severe|critical", "body_part": "string", "visible_signs": "string" }],
+        "injuries": [{ "type": "${injuryEmphasis.join('|')}", "severity": "minor|moderate|severe|critical", "body_part": "string", "visible_signs": "string" }],
         "triage_color": "green|yellow|red|black",
         "mobility": "ambulatory|non_ambulatory|trapped",
         "accessibility": "open|behind_fire|under_debris|in_smoke|blocked_corridor",
@@ -2693,16 +2951,24 @@ Return ONLY valid JSON:
 
 RULES:
 - Each pin is ONE person (headcount: 1)
-- Realistic triage color distribution for a major bombing: ~8% black (deceased), ~18% red (immediate/critical), ~30% yellow (delayed/serious), ~44% green (walking wounded/minor)
+${
+  isMelee
+    ? `- Realistic triage distribution for a melee ${threatProfile?.weapon_type} attack: ~5% black (deceased), ~15% red (severe weapon injuries), ~30% yellow (moderate), ~50% green (minor/psychological)
+- Do NOT generate trapped casualties or casualties behind fire/debris — a ${threatProfile?.weapon_type} cannot cause environmental hazards
+- accessibility should be "open" for all or nearly all casualties`
+    : isExplosive
+      ? `- Realistic triage color distribution for a major explosion: ~8% black (deceased), ~18% red (immediate/critical), ~30% yellow (delayed/serious), ~44% green (walking wounded/minor)
 - At least 3-4 trapped casualties requiring extraction before they can be moved
-- At least 2-3 casualties behind active hazards (accessibility: "behind_fire", "under_debris", "in_smoke")
-- Scatter casualties realistically using zone guidance above — most severe near blast center, severity decreasing outward
+- At least 2-3 casualties behind active hazards (accessibility: "behind_fire", "under_debris", "in_smoke")`
+      : `- Realistic triage distribution based on the attack type
+- Only generate trapped/inaccessible casualties if the weapon can physically cause environmental barriers`
+}
 - treatment_requirements: derive from injuries using real pre-hospital care protocols. Be medically accurate.
 - transport_prerequisites: what MUST be stabilized before moving the patient safely
-- contraindications: dangerous actions for this specific patient (e.g. crush syndrome risks, spinal precautions)
-- Generate 15-20 casualties total.`;
+- contraindications: dangerous actions for this specific patient
+- Generate ${minCasualties}-${maxCasualties} casualties total.`;
 
-  const userPrompt = `Generate 15-20 individual casualty pins for "${narrative?.title || scenario_type}" at ${venue}.`;
+  const userPrompt = `Generate ${minCasualties}-${maxCasualties} individual casualty pins for "${narrative?.title || scenario_type}" at ${venue}.`;
 
   try {
     const parsed = await callOpenAi<{
@@ -2743,6 +3009,12 @@ async function generateCrowdPins(
       ? `\nEntry/exit points:\n${exitPins.map((e) => `- ${e.label} at (${e.coordinates.lat}, ${e.coordinates.lng})`).join('\n')}`
       : '';
 
+  const threatProfile = input.threat_profile;
+  const crowdRules = threatProfile ? getThreatHazardRules(threatProfile.weapon_class) : null;
+  const crowdDesc = crowdRules?.crowd_description || 'Civilians are evacuating in panic.';
+  const panicRadius = threatProfile?.expected_damage.crowd_panic_radius || 'wide';
+  const isMeleeAttack = threatProfile?.weapon_class?.startsWith('melee_');
+
   const systemPrompt = `You are an expert in crowd dynamics and evacuation planning generating civilian crowd pins for a training exercise.
 
 Scenario type: ${scenario_type}
@@ -2751,21 +3023,26 @@ Setting: ${setting}
 ${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
 ${exitBlock}
 ${zoneSummaryBlock || ''}
+${buildThreatProfileBlock(threatProfile)}
 
-Generate 8-15 crowd/evacuee group pins. Each represents a GROUP of civilians at a specific location.
+CROWD BEHAVIOR for this threat type: ${crowdDesc}
+Panic radius: ${panicRadius} — ${panicRadius === 'immediate' ? 'only people very close (<50m) are aware and reacting' : panicRadius === 'local' ? 'people within ~200m are reacting, further away may be unaware' : 'entire venue is affected, mass evacuation'}
 
-ZONE-BASED PLACEMENT — place crowds where they would realistically be:
-- WARM ZONE: Small groups (5-15) of dazed people who staggered out of the danger area. Confused, some injured. These need to be moved further out.
-- COLD ZONE (near exits): Large groups (30-80) bottlenecking at exits. Panicking, some crushing. These are the primary evacuation challenge.
-- COLD ZONE (assembly areas): Groups (20-60) who made it outside. Anxious but calmer. Some contain walking wounded mixed in.
-- OUTSIDE PERIMETER: Groups of bystanders, people from nearby buildings who came to look. Curious, filming, some trying to get back in to find family.
+Generate ${isMeleeAttack ? '4-8' : '8-15'} crowd/evacuee group pins. Each represents a GROUP of civilians at a specific location.
 
-Consider:
-- Where would people naturally congregate after an incident? (near exits, open areas, parking lots)
-- Some groups are fleeing, some are sheltering in place, some are confused/stationary
-- Some groups contain walking wounded mixed in with uninjured
-- Groups near exits may be creating bottlenecks — stampede risk
-- Groups further from the incident may not yet know what happened
+${
+  isMeleeAttack
+    ? `MELEE ATTACK CROWD DYNAMICS:
+- NEAR ATTACK (within 30m): Small groups (3-10) who witnessed the attack and are running away. Terrified, screaming.
+- NEARBY (30-100m): Groups (10-30) who heard commotion but may not know what happened. Confused, some moving toward exits, some frozen.
+- FURTHER OUT (>100m): Groups may be completely unaware of the incident. Normal behavior, possibly curious about commotion.
+- People beyond the immediate attack area do NOT need to be in panic — a ${threatProfile?.weapon_type} creates localized fear, not venue-wide stampede.`
+    : `ZONE-BASED PLACEMENT — place crowds where they would realistically be:
+- WARM ZONE: Small groups (5-15) of dazed people who staggered out of the danger area. Confused, some injured.
+- COLD ZONE (near exits): Large groups (30-80) bottlenecking at exits. Panicking, some crushing.
+- COLD ZONE (assembly areas): Groups (20-60) who made it outside. Anxious but calmer.
+- OUTSIDE PERIMETER: Groups of bystanders, curious onlookers, people filming.`
+}
 
 Return ONLY valid JSON:
 {
@@ -2775,7 +3052,7 @@ Return ONLY valid JSON:
       "location_lat": number,
       "location_lng": number,
       "floor_level": "G",
-      "headcount": number (5-80 per group),
+      "headcount": number (${isMeleeAttack ? '3-30' : '5-80'} per group),
       "conditions": {
         "behavior": "calm|anxious|panicking|sheltering|fleeing",
         "movement_direction": "string|null (e.g. 'toward south exit', 'stationary', 'milling')",
@@ -2791,11 +3068,10 @@ Return ONLY valid JSON:
 }
 
 RULES:
-- Total civilian count across all groups should be 200-500 (proportional to venue size)
-- At least 3 groups should contain mixed_wounded (walking wounded mixed in)
-- At least 2-3 groups should be creating bottlenecks near exits
+- Total civilian count across all groups should be ${isMeleeAttack ? '50-150' : '200-500'} (proportional to venue size and panic radius)
+${isMeleeAttack ? '- Most groups should be calm or anxious — only groups within 30m of the attack should be panicking or fleeing' : '- At least 2-3 groups should be creating bottlenecks near exits'}
 - Some groups appear later as people emerge from different parts of the venue
-- Vary group sizes: some small (5-15 near danger), some large (40-80 at exits)`;
+- Vary group sizes based on proximity to the incident`;
 
   const userPrompt = `Generate crowd/evacuee group pins for "${narrative?.title || scenario_type}" at ${venue}.`;
 
@@ -2856,6 +3132,9 @@ async function generateConvergentCrowds(
 
   const teamsBlock = teamNames?.length ? `\nAvailable teams: ${teamNames.join(', ')}` : '';
 
+  const convergentThreat = input.threat_profile;
+  const isMeleeConvergent = convergentThreat?.weapon_class?.startsWith('melee_');
+
   const systemPrompt = `You are an expert in crowd dynamics and post-incident convergent behavior, generating convergent crowd pins for a crisis training exercise.
 
 Scenario type: ${scenario_type}
@@ -2867,6 +3146,9 @@ ${entryBlock}
 ${incidentBlock}
 ${researchBlock}
 ${teamsBlock}
+${buildThreatProfileBlock(convergentThreat)}
+
+${isMeleeConvergent ? `NOTE: This is a localized melee attack. Convergent crowds will be SMALLER and arrive LATER than for mass-casualty events. Media may arrive but in smaller numbers. Family arrivals are fewer. Generate 2-4 groups.` : ''}
 
 CONVERGENT CROWDS are people who arrive FROM OUTSIDE the incident after word spreads. They are NOT evacuees. They move TOWARD the incident scene. Types include:
 - onlooker: Curious bystanders gathering near the perimeter to watch. They obstruct access and crowd exits.
@@ -4084,14 +4366,14 @@ export interface AdversaryPursuitResult {
       min_hints?: number;
     };
   }>;
-  last_known_pin: {
+  last_known_pins: Array<{
     location_type: string;
     pin_category: 'last_known_adversary';
     label: string;
     coordinates: { lat: number; lng: number };
     visible_to_teams: string[];
     conditions: Record<string, unknown>;
-  };
+  }>;
 }
 
 /**
@@ -4202,6 +4484,10 @@ export async function generateAdversaryPursuitTree(
     ? `\nNARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}`
     : '';
 
+  const adversaryCount = input.threat_profile?.adversary_count ?? 1;
+  const weaponType = input.threat_profile?.weapon_type || 'unknown';
+  const multiAdversary = adversaryCount > 1;
+
   const systemPrompt = `You are an expert crisis simulation designer building an ADVERSARY PURSUIT DECISION TREE for a tabletop exercise. The pursuit is NOT real-time movement — it is a branching narrative of decision points that test the command team's shot-calling ability.
 
 Scenario: ${scenario_type} at ${venue}
@@ -4212,6 +4498,8 @@ Intelligence team: ${intelTeam}
 ${triageTeam ? `Triage team: ${triageTeam}` : ''}
 Game duration: ${durationMinutes} minutes
 Adversary behaviors: ${adversaryBehaviors.join(', ')}
+Weapon: ${weaponType}
+Number of adversaries: ${adversaryCount}
 ${narrativeBlock}
 
 AVAILABLE LOCATIONS (use ONLY these coordinates — do NOT invent new ones):
@@ -4223,6 +4511,17 @@ HOW THE PURSUIT WORKS:
 - At key moments, the pursuit team receives DECISION POINT injects with 2-3 options.
 - Each option leads to different consequences — some branch into new decision points.
 - The pursuit runs ALONGSIDE the emergency response — pursuit decisions can impact other teams (e.g. pulling officers from a cordon).
+${
+  multiAdversary
+    ? `
+MULTIPLE ADVERSARIES (${adversaryCount}):
+- Generate ${adversaryCount} DISTINCT adversary profiles, each with unique adversary_id (adversary_1, adversary_2, etc.), distinct behavior_profiles, distinct initial_zones, and different escape vectors.
+- Each adversary should have their own pursuit injects with their adversary_id in the adversary_sighting.
+- WITNESS CONFUSION: Some eyewitness reports should be ambiguous about WHICH suspect they saw. Some witnesses conflate two suspects into one. Some witnesses attribute Suspect 1's actions to Suspect 2. This forces the command team to maintain separate tracking boards and cross-reference carefully.
+- Each adversary gets their own initial_last_known entry.
+- Pursuit gates apply to ALL adversaries — "suspect_neutralised" means ALL suspects accounted for.`
+    : ''
+}
 
 INTELLIGENCE SOURCES — each sighting inject MUST specify its intel_source and confidence:
 
@@ -4242,7 +4541,7 @@ INTELLIGENCE SOURCES — each sighting inject MUST specify its intel_source and 
 
 WHAT TO GENERATE:
 
-1. ADVERSARY PROFILE: A single adversary with behavior matching the scenario.
+1. ADVERSARY PROFILE${multiAdversary ? 'S' : ''}: ${multiAdversary ? `${adversaryCount} distinct adversaries, each with unique IDs, behavior profiles, and initial zones.` : 'A single adversary with behavior matching the scenario.'}
 
 2. PURSUIT TIME INJECTS (8-12 injects): Delivered at fixed times. EACH sighting inject uses a DIFFERENT intel_source from the table above. You MUST use at least 5 distinct intel_source types across all injects. Mix high/medium/low confidence sources to force players to weigh conflicting intel. Each sighting inject must include an "adversary_sighting" in state_effect with intel_source, confidence, accuracy_radius_m, and optional direction_of_travel.
 
@@ -4269,14 +4568,16 @@ WHAT TO GENERATE:
 
 Return ONLY valid JSON:
 {
-  "adversary_profile": {
-    "adversary_id": "string",
-    "adversary_type": "string",
-    "label": "string (e.g. 'Unidentified Male Gunman')",
-    "behavior_profile": "aggressive_roamer|escape_oriented|barricader|hunter",
-    "weapon_type": "string",
-    "initial_zone": "string (zone label from AVAILABLE LOCATIONS)"
-  },
+  "adversary_profiles": [
+    {
+      "adversary_id": "adversary_1",
+      "adversary_type": "string",
+      "label": "string (e.g. 'Unidentified Male Gunman')",
+      "behavior_profile": "aggressive_roamer|escape_oriented|barricader|hunter",
+      "weapon_type": "string",
+      "initial_zone": "string (zone label from AVAILABLE LOCATIONS)"
+    }${multiAdversary ? ` // ... generate ${adversaryCount} profiles total, each with unique adversary_id, behavior, and initial_zone` : ''}
+  ],
   "pursuit_time_injects": [
     {
       "trigger_time_minutes": number,
@@ -4383,11 +4684,14 @@ Return ONLY valid JSON:
       }
     }
   ],
-  "initial_last_known": {
-    "lat": number (from AVAILABLE LOCATIONS — where adversary was first seen),
-    "lng": number,
-    "zone_label": "string"
-  }
+  "initial_last_known": [
+    {
+      "adversary_id": "adversary_1",
+      "lat": number (from AVAILABLE LOCATIONS — where adversary was first seen),
+      "lng": number,
+      "zone_label": "string"
+    }${multiAdversary ? ` // ... one entry per adversary` : ''}
+  ]
 }
 
 RULES:
@@ -4410,6 +4714,7 @@ RULES:
   const userPrompt = `Generate the adversary pursuit decision tree for "${narrative?.title || scenario_type}" at ${venue}. Adversary behaviors: ${adversaryBehaviors.join(', ')}. Duration: ${durationMinutes} minutes. Make the decisions genuinely difficult with realistic tradeoffs.`;
 
   try {
+    const tokenLimit = multiAdversary ? 8000 + (adversaryCount - 1) * 2000 : 8000;
     const parsed = await callOpenAi<{
       adversary_profile?: {
         adversary_id?: string;
@@ -4419,6 +4724,14 @@ RULES:
         weapon_type?: string;
         initial_zone?: string;
       };
+      adversary_profiles?: Array<{
+        adversary_id?: string;
+        adversary_type?: string;
+        label?: string;
+        behavior_profile?: string;
+        weapon_type?: string;
+        initial_zone?: string;
+      }>;
       pursuit_time_injects?: Array<Record<string, unknown>>;
       pursuit_condition_injects?: Array<Record<string, unknown>>;
       witness_injects?: Array<Record<string, unknown>>;
@@ -4429,25 +4742,28 @@ RULES:
         check_at_minutes?: number;
         condition?: Record<string, unknown>;
       }>;
-      initial_last_known?: { lat?: number; lng?: number; zone_label?: string };
-    }>(systemPrompt, userPrompt, openAiApiKey, 8000, 0.8);
+      initial_last_known?:
+        | { lat?: number; lng?: number; zone_label?: string; adversary_id?: string }
+        | Array<{ lat?: number; lng?: number; zone_label?: string; adversary_id?: string }>;
+    }>(systemPrompt, userPrompt, openAiApiKey, tokenLimit, 0.8);
 
-    const profile = parsed.adversary_profile;
-    if (!profile?.adversary_id) {
-      logger.warn('Adversary pursuit tree: AI returned no adversary_profile');
+    const rawProfiles =
+      parsed.adversary_profiles || (parsed.adversary_profile ? [parsed.adversary_profile] : []);
+    if (rawProfiles.length === 0 || !rawProfiles[0]?.adversary_id) {
+      logger.warn('Adversary pursuit tree: AI returned no adversary profiles');
       return null;
     }
 
-    const adversaryProfile: AdversaryProfile = {
-      adversary_id: profile.adversary_id || 'adversary_1',
+    const adversaryProfiles: AdversaryProfile[] = rawProfiles.map((profile, idx) => ({
+      adversary_id: profile.adversary_id || `adversary_${idx + 1}`,
       adversary_type: profile.adversary_type || scenario_type,
-      label: profile.label || 'Unidentified Suspect',
+      label: profile.label || `Unidentified Suspect ${idx + 1}`,
       behavior_profile: profile.behavior_profile || 'escape_oriented',
-      weapon_type: profile.weapon_type || 'unknown',
-      initial_zone: profile.initial_zone || locations[0]?.label || 'Unknown',
+      weapon_type: profile.weapon_type || weaponType,
+      initial_zone: profile.initial_zone || locations[idx % locations.length]?.label || 'Unknown',
       status: 'active',
       pursuit_phase_gates: ['suspect_localised', 'perimeter_established', 'suspect_neutralised'],
-    };
+    }));
 
     const pursuitTimeInjects = (parsed.pursuit_time_injects || []).map((inj) => ({
       trigger_time_minutes: (inj.trigger_time_minutes as number) ?? 3,
@@ -4528,30 +4844,43 @@ RULES:
       },
     }));
 
-    const initial = parsed.initial_last_known;
-    const lastKnownPin = {
-      location_type: 'last_known_adversary',
-      pin_category: 'last_known_adversary' as const,
-      label: `Last Seen: ${initial?.zone_label || adversaryProfile.initial_zone}`,
-      coordinates: {
-        lat: initial?.lat ?? locations[0]?.coordinates.lat ?? 0,
-        lng: initial?.lng ?? locations[0]?.coordinates.lng ?? 0,
-      },
-      visible_to_teams: [
-        primaryPursuitTeam,
-        ...(intelTeam !== primaryPursuitTeam ? [intelTeam] : []),
-      ],
-      conditions: {
-        adversary_id: adversaryProfile.adversary_id,
-        zone_label: initial?.zone_label || adversaryProfile.initial_zone,
-        last_seen_at_minutes: 0,
-        pin_category: 'last_known_adversary',
-      },
-    };
+    const rawInitials = Array.isArray(parsed.initial_last_known)
+      ? parsed.initial_last_known
+      : parsed.initial_last_known
+        ? [parsed.initial_last_known]
+        : [];
+
+    const lastKnownPins = adversaryProfiles.map((profile, idx) => {
+      const initial =
+        rawInitials.find((i) => i.adversary_id === profile.adversary_id) ||
+        rawInitials[idx] ||
+        rawInitials[0];
+      const suspectLabel = adversaryProfiles.length > 1 ? ` (Suspect ${idx + 1})` : '';
+      return {
+        location_type: 'last_known_adversary',
+        pin_category: 'last_known_adversary' as const,
+        label: `Last Seen: ${initial?.zone_label || profile.initial_zone}${suspectLabel}`,
+        coordinates: {
+          lat: initial?.lat ?? locations[idx % locations.length]?.coordinates.lat ?? 0,
+          lng: initial?.lng ?? locations[idx % locations.length]?.coordinates.lng ?? 0,
+        },
+        visible_to_teams: [
+          primaryPursuitTeam,
+          ...(intelTeam !== primaryPursuitTeam ? [intelTeam] : []),
+        ],
+        conditions: {
+          adversary_id: profile.adversary_id,
+          zone_label: initial?.zone_label || profile.initial_zone,
+          last_seen_at_minutes: 0,
+          pin_category: 'last_known_adversary',
+        },
+      };
+    });
 
     logger.info(
       {
-        adversaryId: adversaryProfile.adversary_id,
+        adversaryCount: adversaryProfiles.length,
+        adversaryIds: adversaryProfiles.map((p) => p.adversary_id),
         timeInjects: allTimeInjects.length,
         condInjects: pursuitCondInjects.length,
         gates: pursuitGates.length,
@@ -4560,13 +4889,13 @@ RULES:
     );
 
     return {
-      adversary_profiles: [adversaryProfile],
+      adversary_profiles: adversaryProfiles,
       pursuit_time_injects: allTimeInjects,
       pursuit_condition_injects: pursuitCondInjects as NonNullable<
         WarroomScenarioPayload['condition_driven_injects']
       >,
       pursuit_gates: pursuitGates,
-      last_known_pin: lastKnownPin,
+      last_known_pins: lastKnownPins,
     };
   } catch (err) {
     logger.warn({ err }, 'Adversary pursuit tree generation failed; continuing without');

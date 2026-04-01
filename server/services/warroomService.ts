@@ -17,6 +17,7 @@ import {
 import {
   parseFreeTextPrompt,
   validateCompatibility,
+  buildDefaultThreatProfile,
   type ParsedWarroomInput,
 } from './warroomPromptParser.js';
 import {
@@ -66,6 +67,7 @@ export interface WarroomSuggestTeamsResult {
   location?: string | null;
   venue_name?: string;
   landmarks?: string[];
+  threat_profile?: import('./warroomPromptParser.js').ThreatProfile;
 }
 
 export type WarroomProgressPhase =
@@ -140,6 +142,7 @@ export async function suggestWarroomTeams(
       setting: options.setting || 'open_field',
       terrain: options.terrain || 'urban',
       location: options.location || null,
+      threat_profile: buildDefaultThreatProfile(options.scenario_type || 'car_bomb'),
     };
   }
 
@@ -167,6 +170,7 @@ export async function suggestWarroomTeams(
     location: parsed.location,
     venue_name: parsed.venue_name,
     landmarks: parsed.landmarks,
+    threat_profile: parsed.threat_profile,
   };
 }
 
@@ -190,6 +194,7 @@ export async function generateAndPersistWarroomScenario(
       setting: options.setting || 'open_field',
       terrain: options.terrain || 'urban',
       location: options.location || null,
+      threat_profile: buildDefaultThreatProfile(options.scenario_type || 'car_bomb'),
     };
   }
 
@@ -215,6 +220,7 @@ export async function generateAndPersistWarroomScenario(
 
   const complexity_tier = options.complexity_tier || 'full';
   const duration_minutes = options.duration_minutes || 60;
+  const threatProfile = parsed.threat_profile;
 
   const venueName = parsed.venue_name || parsed.location || parsed.setting;
   // Run geocoding and similar-cases research in parallel (both can start right after parsing)
@@ -376,6 +382,7 @@ export async function generateAndPersistWarroomScenario(
           : undefined,
       userTeams,
       inject_profiles: options.inject_profiles,
+      threat_profile: threatProfile,
     },
     openAiApiKey,
     aiProgress,
@@ -451,6 +458,7 @@ export async function generateAndPersistWarroomScenario(
       userTeams,
       phase1Preview,
       inject_profiles: options.inject_profiles,
+      threat_profile: threatProfile,
     },
     openAiApiKey,
     aiProgress,
@@ -484,6 +492,7 @@ export async function generateAndPersistWarroomScenario(
         settingSpec,
         terrainSpec,
         complexity_tier: options.complexity_tier || 'full',
+        threat_profile: threatProfile,
       },
       payloadLocations,
       payloadTeamNames,
@@ -508,7 +517,9 @@ export async function generateAndPersistWarroomScenario(
       );
 
       if (!payload.locations) payload.locations = [];
-      payload.locations.push(pursuitResult.last_known_pin as (typeof payload.locations)[0]);
+      payload.locations.push(
+        ...pursuitResult.last_known_pins.map((p) => p as (typeof payload.locations)[0]),
+      );
 
       const payloadAny = payload as unknown as Record<string, unknown>;
       if (!payloadAny.pursuit_gates) {
