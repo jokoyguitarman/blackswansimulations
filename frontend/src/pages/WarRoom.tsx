@@ -125,8 +125,6 @@ const INJECT_PRESSURE_TYPES = [
   { id: 'evacuation_refusal', group: 'Trust & Insider', label: 'Evacuation refusal' },
 ];
 
-const INJECT_GROUPS = [...new Set(INJECT_PRESSURE_TYPES.map((t) => t.group))];
-
 const SCENARIO_INJECT_RELEVANCE: Record<string, string[]> = {
   knife_attack: [
     'vigilante_behavior',
@@ -373,17 +371,21 @@ export const WarRoom = () => {
   const toggleInjectProfile = (id: string) => {
     setInjectProfiles((prev) => {
       if (prev.includes(id)) return prev.filter((p) => p !== id);
-      if (prev.length >= 4) return [...prev.slice(1), id];
       return [...prev, id];
     });
   };
 
+  const recommendedProfileIds = resolvedScenarioType
+    ? SCENARIO_INJECT_RELEVANCE[resolvedScenarioType] || []
+    : [];
+
   const surpriseMeProfiles = () => {
-    const shuffled = [...INJECT_PRESSURE_TYPES]
-      .map((t) => ({ ...t, sort: Math.random() }))
-      .sort((a, b) => a.sort - b.sort)
-      .slice(0, 4)
-      .map((t) => t.id);
+    const pool =
+      recommendedProfileIds.length > 0
+        ? recommendedProfileIds
+        : INJECT_PRESSURE_TYPES.map((t) => t.id);
+    const count = Math.min(pool.length, 2 + Math.floor(Math.random() * 3));
+    const shuffled = [...pool].sort(() => Math.random() - 0.5).slice(0, count);
     setInjectProfiles(shuffled);
   };
 
@@ -412,6 +414,7 @@ export const WarRoom = () => {
       if (data.scenario_type) setResolvedScenarioType(data.scenario_type);
       if (data.threat_profile?.weapon_class)
         setResolvedWeaponClass(data.threat_profile.weapon_class);
+      setInjectProfiles([]);
       setStep(2);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load suggested teams');
@@ -752,10 +755,11 @@ export const WarRoom = () => {
             <div className="mt-8 pt-6 border-t border-robotic-yellow/20">
               <div className="flex items-center justify-between mb-3">
                 <label className="block text-xs terminal-text text-robotic-yellow/70">
-                  [INJECT PROFILES] Select 2–4 challenge pressures
+                  [INJECT PROFILES] Select at least 2 challenge pressures
                   {injectProfiles.length > 0 && (
                     <span className="ml-2 text-robotic-orange">
-                      ({injectProfiles.length}/4 selected)
+                      ({injectProfiles.length}/
+                      {recommendedProfileIds.length || INJECT_PRESSURE_TYPES.length} selected)
                     </span>
                   )}
                 </label>
@@ -797,97 +801,39 @@ export const WarRoom = () => {
               )}
 
               {(() => {
-                const recommended = resolvedScenarioType
-                  ? SCENARIO_INJECT_RELEVANCE[resolvedScenarioType] || []
-                  : [];
-                const sortedTypes =
-                  recommended.length > 0
-                    ? [
-                        ...INJECT_PRESSURE_TYPES.filter((t) => recommended.includes(t.id)),
-                        ...INJECT_PRESSURE_TYPES.filter((t) => !recommended.includes(t.id)),
-                      ]
+                const availableTypes =
+                  recommendedProfileIds.length > 0
+                    ? INJECT_PRESSURE_TYPES.filter((t) => recommendedProfileIds.includes(t.id))
                     : INJECT_PRESSURE_TYPES;
 
-                const recommendedSet = new Set(recommended);
-                const hasRecommendations = recommendedSet.size > 0;
-
-                const groupsOfSorted = hasRecommendations
-                  ? ['Recommended', ...INJECT_GROUPS]
-                  : INJECT_GROUPS;
-
                 return (
-                  <div className="max-h-[320px] overflow-y-auto border border-robotic-yellow/20 bg-black/30 p-3 space-y-3">
-                    {hasRecommendations && (
-                      <div>
-                        <p className="text-[10px] terminal-text text-robotic-orange/70 uppercase tracking-wider mb-1.5">
-                          Recommended for this scenario
-                        </p>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          {sortedTypes
-                            .filter((t) => recommendedSet.has(t.id))
-                            .map((t) => {
-                              const selected = injectProfiles.includes(t.id);
-                              return (
-                                <button
-                                  key={t.id}
-                                  type="button"
-                                  onClick={() => !loading && toggleInjectProfile(t.id)}
-                                  className={`px-2 py-1.5 text-[11px] terminal-text text-left border transition-all relative ${
-                                    selected
-                                      ? 'border-robotic-orange bg-robotic-orange/15 text-robotic-orange'
-                                      : 'border-robotic-orange/30 text-robotic-yellow/70 hover:border-robotic-orange/50 hover:text-robotic-yellow/90 bg-robotic-orange/5'
-                                  }`}
-                                >
-                                  {t.label}
-                                </button>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    )}
-                    {groupsOfSorted
-                      .filter((g) => g !== 'Recommended')
-                      .map((group) => (
-                        <div key={group}>
-                          <p className="text-[10px] terminal-text text-robotic-yellow/50 uppercase tracking-wider mb-1.5">
-                            {group}
-                          </p>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            {INJECT_PRESSURE_TYPES.filter((t) => t.group === group).map((t) => {
-                              const selected = injectProfiles.includes(t.id);
-                              const isRecommended = recommendedSet.has(t.id);
-                              return (
-                                <button
-                                  key={t.id}
-                                  type="button"
-                                  onClick={() => !loading && toggleInjectProfile(t.id)}
-                                  className={`px-2 py-1.5 text-[11px] terminal-text text-left border transition-all ${
-                                    selected
-                                      ? 'border-robotic-orange bg-robotic-orange/15 text-robotic-orange'
-                                      : isRecommended
-                                        ? 'border-robotic-orange/30 text-robotic-yellow/70 hover:border-robotic-orange/50 bg-robotic-orange/5'
-                                        : 'border-robotic-yellow/20 text-robotic-yellow/60 hover:border-robotic-yellow/40 hover:text-robotic-yellow/80'
-                                  }`}
-                                >
-                                  {t.label}
-                                  {isRecommended && !selected && (
-                                    <span className="ml-1 text-[9px] text-robotic-orange/60">
-                                      *
-                                    </span>
-                                  )}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
+                  <div className="max-h-[320px] overflow-y-auto border border-robotic-yellow/20 bg-black/30 p-3">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {availableTypes.map((t) => {
+                        const selected = injectProfiles.includes(t.id);
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => !loading && toggleInjectProfile(t.id)}
+                            className={`px-2 py-1.5 text-[11px] terminal-text text-left border transition-all ${
+                              selected
+                                ? 'border-robotic-orange bg-robotic-orange/15 text-robotic-orange'
+                                : 'border-robotic-orange/30 text-robotic-yellow/70 hover:border-robotic-orange/50 hover:text-robotic-yellow/90 bg-robotic-orange/5'
+                            }`}
+                          >
+                            {t.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })()}
 
               <p className="text-[10px] terminal-text text-robotic-yellow/40 mt-1.5">
-                Shapes the thematic flavor of injects. Pick 2–4 for a blended challenge, or leave
-                empty for default variety.
+                Shapes the thematic flavor of injects. Pick at least 2 for a blended challenge, or
+                leave empty for default variety.
                 {injectProfiles.length === 1 && (
                   <span className="text-robotic-orange ml-1">
                     Select at least 2 profiles or clear selection.

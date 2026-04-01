@@ -5,6 +5,7 @@ import { api } from '../../lib/api';
 import { ScenarioLocationMarker, type ScenarioLocationPin } from '../COP/ScenarioLocationMarker';
 import { FloorSelector, type FloorPlan } from '../COP/FloorSelector';
 import { FloorPlanOverlay } from '../COP/FloorPlanOverlay';
+import { svg } from '../COP/mapIcons';
 
 interface StandardsFinding {
   domain: string;
@@ -1004,15 +1005,36 @@ const PIN_LEGEND: Array<{ color: string; label: string }> = [
   { color: '#06b6d4', label: 'Entry/Exit' },
 ];
 
-const HAZARD_ICONS: Record<string, string> = {
-  fire: '🔥',
-  structural_collapse: '🏚️',
-  gas_leak: '💨',
-  chemical: '☣️',
-  smoke: '🌫️',
-  debris: '🧱',
-  electrical: '⚡',
-  flooding: '🌊',
+const HAZARD_SVG_KEYS: Record<string, string> = {
+  fire: 'fire',
+  structural_collapse: 'collapse',
+  gas_leak: 'gas',
+  chemical: 'chemical',
+  chemical_spill: 'chemical',
+  smoke: 'smoke',
+  debris: 'debris',
+  electrical: 'electrical',
+  flooding: 'flood',
+  flood: 'flood',
+  explosion: 'explosion',
+  biological: 'biohazard',
+  biohazard: 'biohazard',
+};
+
+const HAZARD_COLORS: Record<string, string> = {
+  fire: '#f97316',
+  structural_collapse: '#a8a29e',
+  gas_leak: '#eab308',
+  chemical: '#84cc16',
+  chemical_spill: '#84cc16',
+  smoke: '#9ca3af',
+  debris: '#78716c',
+  electrical: '#f59e0b',
+  flooding: '#0284c7',
+  flood: '#0284c7',
+  explosion: '#ef4444',
+  biological: '#65a30d',
+  biohazard: '#65a30d',
 };
 
 const TRIAGE_COLORS: Record<string, string> = {
@@ -1022,10 +1044,10 @@ const TRIAGE_COLORS: Record<string, string> = {
   black: '#1f2937',
 };
 
-const createDivIcon = (color: string, label: string, size = 28): DivIcon =>
+const createSvgDivIcon = (color: string, svgHtml: string, size = 28): DivIcon =>
   new DivIcon({
     className: 'custom-pin-icon',
-    html: `<div style="background:${color};width:${size}px;height:${size}px;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-size:${Math.floor(size * 0.5)}px;line-height:1;cursor:grab"><span style="filter:drop-shadow(0 0 1px rgba(0,0,0,.5))">${label}</span></div>`,
+    html: `<div style="background:${color};width:${size}px;height:${size}px;border-radius:50%;border:2px solid rgba(255,255,255,0.6);box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;line-height:1;cursor:grab">${svgHtml}</div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   });
@@ -1412,7 +1434,11 @@ const MapPinsTab = ({
               <Marker
                 key={`haz-${h.id}`}
                 position={[h.location_lat, h.location_lng]}
-                icon={createDivIcon('#ef4444', HAZARD_ICONS[h.hazard_type] ?? '⚠️', 30)}
+                icon={createSvgDivIcon(
+                  HAZARD_COLORS[h.hazard_type] ?? '#ef4444',
+                  svg(HAZARD_SVG_KEYS[h.hazard_type] ?? 'hazard_generic', 16),
+                  30,
+                )}
                 draggable
                 eventHandlers={{
                   dragend: (e) => {
@@ -1421,9 +1447,7 @@ const MapPinsTab = ({
                   },
                 }}
               >
-                <Tooltip direction="top">
-                  {HAZARD_ICONS[h.hazard_type] ?? '⚠️'} {h.hazard_type.replace(/_/g, ' ')}
-                </Tooltip>
+                <Tooltip direction="top">{h.hazard_type.replace(/_/g, ' ')}</Tooltip>
               </Marker>
             ))}
           {patients
@@ -1431,17 +1455,17 @@ const MapPinsTab = ({
             .map((c) => {
               const triageColor =
                 TRIAGE_COLORS[(c.conditions.triage_color as string) ?? 'yellow'] ?? '#eab308';
-              const mobilityIcon =
+              const mobilitySvgKey =
                 c.conditions.mobility === 'trapped'
-                  ? '🪤'
+                  ? 'person_trapped'
                   : c.conditions.mobility === 'non_ambulatory'
-                    ? '🚑'
-                    : '🚶';
+                    ? 'stretcher'
+                    : 'person';
               return (
                 <Marker
                   key={`cas-${c.id}`}
                   position={[c.location_lat, c.location_lng]}
-                  icon={createDivIcon(triageColor, mobilityIcon, 24)}
+                  icon={createSvgDivIcon(triageColor, svg(mobilitySvgKey, 14), 24)}
                   draggable
                   eventHandlers={{
                     dragend: (e) => {
@@ -1462,9 +1486,9 @@ const MapPinsTab = ({
               <Marker
                 key={`crowd-${c.id}`}
                 position={[c.location_lat, c.location_lng]}
-                icon={createDivIcon(
+                icon={createSvgDivIcon(
                   '#8b5cf6',
-                  '👥',
+                  svg('crowd', 16),
                   Math.min(36, 24 + Math.floor(c.headcount / 15)),
                 )}
                 draggable
@@ -1476,7 +1500,7 @@ const MapPinsTab = ({
                 }}
               >
                 <Tooltip direction="top">
-                  👥 {c.headcount} people — {(c.conditions.behavior as string) ?? 'unknown'}
+                  {c.headcount} people — {(c.conditions.behavior as string) ?? 'unknown'}
                 </Tooltip>
               </Marker>
             ))}
@@ -1608,8 +1632,13 @@ const MapPinsTab = ({
                 <div key={h.id} className="military-border">
                   <div className="p-4 flex gap-4">
                     <div className="shrink-0 w-28">
-                      <div className="text-xs terminal-text text-red-400/80 uppercase">
-                        {HAZARD_ICONS[h.hazard_type] ?? '⚠️'} {h.hazard_type.replace(/_/g, ' ')}
+                      <div className="text-xs terminal-text text-red-400/80 uppercase flex items-center gap-1.5">
+                        <span
+                          dangerouslySetInnerHTML={{
+                            __html: svg(HAZARD_SVG_KEYS[h.hazard_type] ?? 'hazard_generic', 14),
+                          }}
+                        />
+                        {h.hazard_type.replace(/_/g, ' ')}
                       </div>
                       <div className="text-xs terminal-text text-robotic-yellow/30 mt-0.5">
                         {h.location_lat.toFixed(4)}, {h.location_lng.toFixed(4)}

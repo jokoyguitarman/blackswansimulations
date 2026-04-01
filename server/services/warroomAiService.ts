@@ -9,7 +9,7 @@ import * as path from 'path';
 import { logger } from '../lib/logger.js';
 import type { ThreatProfile } from './warroomPromptParser.js';
 
-const INJECT_DIVERSITY = process.env.WARROOM_INJECT_DIVERSITY !== 'false';
+const INJECT_DIVERSITY = true;
 
 // ---------------------------------------------------------------------------
 // Inject Pressure Types — 35 granular thematic lenses for inject generation
@@ -1359,6 +1359,124 @@ function normalizeInjectTiming(
   }
 
   return result.sort((a, b) => a.trigger_time_minutes - b.trigger_time_minutes);
+}
+
+/**
+ * Post-generation theme dedup: removes injects whose title shares too many
+ * significant words with an earlier inject (Dice coefficient >= 0.5).
+ * Preserves chronological order — the first occurrence always wins.
+ */
+function deduplicateInjectsByTheme(
+  injects: WarroomScenarioPayload['time_injects'],
+): WarroomScenarioPayload['time_injects'] {
+  const STOP = new Set([
+    'the',
+    'and',
+    'for',
+    'with',
+    'from',
+    'that',
+    'this',
+    'near',
+    'over',
+    'area',
+    'team',
+    'unit',
+    'report',
+    'update',
+    'alert',
+    'initial',
+  ]);
+
+  function significantWords(title: string): Set<string> {
+    return new Set(
+      title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .split(/\s+/)
+        .filter((w) => w.length > 3 && !STOP.has(w)),
+    );
+  }
+
+  function diceCoefficient(a: Set<string>, b: Set<string>): number {
+    if (a.size === 0 || b.size === 0) return 0;
+    let overlap = 0;
+    for (const w of a) if (b.has(w)) overlap++;
+    return (2 * overlap) / (a.size + b.size);
+  }
+
+  const kept: Array<Set<string>> = [];
+  return injects.filter((inj) => {
+    const words = significantWords(inj.title);
+    if (words.size === 0) {
+      kept.push(words);
+      return true;
+    }
+    for (const prev of kept) {
+      if (diceCoefficient(words, prev) >= 0.5) return false;
+    }
+    kept.push(words);
+    return true;
+  });
+}
+
+/**
+ * Same theme dedup for condition-driven (chaos) injects. Also checks against
+ * the titles of already-accepted time injects to avoid theme overlap with those.
+ */
+function deduplicateConditionInjectsByTheme(
+  injects: NonNullable<WarroomScenarioPayload['condition_driven_injects']>,
+  timeInjectTitles: string[],
+): NonNullable<WarroomScenarioPayload['condition_driven_injects']> {
+  const STOP = new Set([
+    'the',
+    'and',
+    'for',
+    'with',
+    'from',
+    'that',
+    'this',
+    'near',
+    'over',
+    'area',
+    'team',
+    'unit',
+    'report',
+    'update',
+    'alert',
+    'initial',
+  ]);
+
+  function significantWords(title: string): Set<string> {
+    return new Set(
+      title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .split(/\s+/)
+        .filter((w) => w.length > 3 && !STOP.has(w)),
+    );
+  }
+
+  function diceCoefficient(a: Set<string>, b: Set<string>): number {
+    if (a.size === 0 || b.size === 0) return 0;
+    let overlap = 0;
+    for (const w of a) if (b.has(w)) overlap++;
+    return (2 * overlap) / (a.size + b.size);
+  }
+
+  const kept: Array<Set<string>> = timeInjectTitles.map(significantWords);
+  return injects.filter((inj) => {
+    const words = significantWords(inj.title);
+    if (words.size === 0) {
+      kept.push(words);
+      return true;
+    }
+    for (const prev of kept) {
+      if (diceCoefficient(words, prev) >= 0.5) return false;
+    }
+    kept.push(words);
+    return true;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -3975,9 +4093,17 @@ RULES:
 - Each inject must reference the specific scenario title, venue, and narrative details.
 - No operational/logistical injects (no "triage is overwhelmed" or "exit congested") — those emerge from gameplay.
 - requires_response: set to true when teams must react (e.g. political demand, media confrontation, secondary threat). false ONLY for atmospheric pressure (background news, social media chatter).
-- Each inject title must be concretely different from the others — no two should share the same underlying theme.
+- Each inject title must be concretely different from the others — no two should share the same underlying theme, character archetype, or scenario element.
+
+CRITICAL — T+0 INJECT:
+- The FIRST inject (trigger_time_minutes: 0) MUST be the INITIAL INCIDENT REPORT — the very first alarm/notification of the disaster itself (e.g. "Multiple stab wounds reported at…", "Explosion at…", "Biohazard spill reported at…").
+- This T+0 inject sets the stage for everything else. It should describe WHAT happened, WHERE, and initial severity. It must NOT be a secondary complication, impersonator, or side-event.
+
+THEME UNIQUENESS:
+- Each inject must address a COMPLETELY DIFFERENT scenario element. No two injects may share the same character archetype (impersonator, veteran, family member), the same crisis trope (false rumor, cordon breach, secondary device), or the same social dynamic (media frenzy, political pressure).
+- If two injects could be summarised with the same 3-word phrase (e.g. "fake medical worker", "parents demand access"), they are duplicates — remove one.
 ${
-  !input.inject_profiles?.length && INJECT_DIVERSITY
+  !input.inject_profiles?.length
     ? `
 VARIETY IS CRITICAL:
 - Do NOT default to the generic "secondary device found / social media misinformation / hospital at capacity" pattern. Those are overused.
@@ -4054,10 +4180,9 @@ async function generateTeamTimeInjects(
       ? `\nSIMILAR REAL INCIDENTS:\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
       : '';
 
-  const existingTitlesBlock =
-    INJECT_DIVERSITY && existingTitles?.length
-      ? `\nALREADY GENERATED (do NOT repeat these themes or similar ideas):\n${existingTitles.map((t) => `- ${t}`).join('\n')}`
-      : '';
+  const existingTitlesBlock = existingTitles?.length
+    ? `\nALREADY GENERATED — BANNED THEMES (do NOT repeat these themes, character types, scenario elements, or similar ideas. Each entry shows "Title: brief content"):\n${existingTitles.map((t) => `- ${t}`).join('\n')}`
+    : '';
 
   const slotsWithPhase = assignedSlots.map((t) => `T+${t} [${getPhaseLabelShort(t)}]`).join(', ');
 
@@ -4124,17 +4249,17 @@ RULES:
 - Exactly ${assignedSlots.length} injects using EXACTLY these times: ${slotsWithPhase}.
 - inject_scope always "team_specific". target_teams always ["${teamName}"].
 - No operational/logistical status updates — only external world events.
-- No two injects should address the same challenge.
+- No two injects should address the same challenge, character archetype, or scenario element.
 - requires_response: true when ${teamName} must act. false ONLY for atmospheric pressure.
+${existingTitlesBlock ? `- STRICTLY FORBIDDEN: The "ALREADY GENERATED" list above shows themes from universal injects and other teams. You MUST NOT create injects that overlap with ANY theme, character type (impersonator, veteran, family member, VIP), crisis trope (false rumor, cordon breach, stampede), or social dynamic from that list. Violating this rule makes the scenario unusable.` : ''}
 ${
-  !input.inject_profiles?.length && INJECT_DIVERSITY
+  !input.inject_profiles?.length
     ? `
 VARIETY IS CRITICAL:
 - Do NOT recycle common tropes like "fake doctor appears" or "family demands access" unless you can make them genuinely novel for THIS venue.
 - Think beyond the obvious: cultural clashes specific to this locale, cascading infrastructure problems, diplomatic complications, cyber-physical attacks on ${teamName}'s equipment, unexpected alliances or sabotage from within.
 - Use the real-world geography and venue specifics to create complications that COULD NOT happen at a generic location.
-- Every inject title must be concretely different from every other inject in this scenario.
-${existingTitlesBlock ? '- The "ALREADY GENERATED" list above shows titles from other teams — avoid overlapping themes.' : ''}`
+- Every inject title must be concretely different from every other inject in this scenario.`
     : ''
 }`;
 
@@ -4282,13 +4407,13 @@ RULES:
 - state_effect: include a mechanical disruption for at least half the injects. Use realistic modifiers (0.3-0.8 for slowdowns, 1.3-2.0 for time increases). Leave state_effect as {} for purely narrative injects.
 - Be bold and uncomfortable — real crises involve racism, grief, anger, and panic. Do not sanitize.
 - Make events culturally and geographically specific to ${venue}.
+${existingTitles?.length ? `\nSTRICTLY FORBIDDEN THEMES (these have already been generated — do NOT create chaos injects that overlap with ANY of these themes, character types, or scenario elements):\n${existingTitles.map((t) => `- ${t}`).join('\n')}` : ''}
 ${
-  !input.inject_profiles?.length && INJECT_DIVERSITY
+  !input.inject_profiles?.length
     ? `
 VARIETY IS CRITICAL:
 - Each chaos event must explore a DIFFERENT human dynamic — avoid multiple events about the same type of social friction.
-- Draw from: generational conflicts, religious observance clashes, disability access failures, language barriers, economic exploitation (price gouging, looting), insider sabotage, technology failures (cell network overload, GPS spoofing), animal hazards, cascading panic from adjacent venues, diplomatic immunity disputes.
-${existingTitles?.length ? `- ALREADY GENERATED (avoid similar themes):\n${existingTitles.map((t) => `  - ${t}`).join('\n')}` : ''}`
+- Draw from: generational conflicts, religious observance clashes, disability access failures, language barriers, economic exploitation (price gouging, looting), insider sabotage, technology failures (cell network overload, GPS spoofing), animal hazards, cascading panic from adjacent venues, diplomatic immunity disputes.`
     : ''
 }`;
 
@@ -4948,101 +5073,89 @@ export async function warroomGenerateScenario(
   const timingManifest = buildTimingManifest(teamNames, durationMinutes);
 
   // Batch A — time injects + chaos injects
-  // When INJECT_DIVERSITY is on, team calls run sequentially so each one
-  // knows what titles were already generated, preventing cross-team repetition.
-  // When off, all calls run in parallel for speed (original behaviour).
+  // All calls run sequentially so each generator receives the full list of
+  // already-generated themes, preventing cross-team and cross-type duplication.
   onProgress?.('Generating injects (batch A)...');
 
-  let universalTimeInjects: WarroomScenarioPayload['time_injects'];
-  let perTeamTimeResults: Array<WarroomScenarioPayload['time_injects']>;
-  let perTeamChaosResults: Array<NonNullable<WarroomScenarioPayload['condition_driven_injects']>>;
+  // --- Deterministic T+0 inject (initial incident report) ---
+  const venue = input.venue_name || input.location || input.setting;
+  const t0Inject: WarroomScenarioPayload['time_injects'][number] = {
+    trigger_time_minutes: 0,
+    type: 'field_update',
+    title: `INITIAL REPORT: ${narrative.title || input.scenario_type}`,
+    content:
+      narrative.description ||
+      (narrative.briefing || '').slice(0, 300) ||
+      `A ${input.scenario_type} has been reported at ${venue}. All teams respond immediately.`,
+    severity: 'critical',
+    inject_scope: 'universal',
+    target_teams: [],
+    requires_response: true,
+    requires_coordination: false,
+  };
 
-  if (INJECT_DIVERSITY) {
-    universalTimeInjects = await generateUniversalTimeInjects(
+  // Remove T+0 from AI-assigned universal slots so the AI doesn't duplicate it
+  const aiUniversalSlots = timingManifest.universalSlots.filter((t) => t > 0);
+
+  const universalTimeInjects = await generateUniversalTimeInjects(
+    input,
+    teamNames,
+    openAiApiKey,
+    aiUniversalSlots,
+    undefined,
+    narrative,
+  );
+
+  // Accumulate theme summaries (title + content snippet) for richer dedup
+  const allThemes: string[] = [
+    `${t0Inject.title}: ${(t0Inject.content || '').slice(0, 80)}`,
+    ...universalTimeInjects.map((i) => `${i.title}: ${(i.content || '').slice(0, 80)}`),
+  ];
+
+  const perTeamTimeResults: Array<WarroomScenarioPayload['time_injects']> = [];
+  for (const t of teamNames) {
+    const result = await generateTeamTimeInjects(
       input,
+      t,
       teamNames,
       openAiApiKey,
-      timingManifest.universalSlots,
-      undefined,
+      timingManifest.teamSlots[t] ?? [],
       narrative,
+      allThemes,
     );
-    const allTitles: string[] = universalTimeInjects.map((i) => i.title);
-
-    perTeamTimeResults = [];
-    for (const t of teamNames) {
-      const result = await generateTeamTimeInjects(
-        input,
-        t,
-        teamNames,
-        openAiApiKey,
-        timingManifest.teamSlots[t] ?? [],
-        narrative,
-        allTitles,
-      );
-      perTeamTimeResults.push(result);
-      allTitles.push(...result.map((i) => i.title));
-    }
-
-    perTeamChaosResults = [];
-    for (const t of teamNames) {
-      const result = await generateChaosInjects(
-        input,
-        t,
-        teamNames,
-        openAiApiKey,
-        Math.max(3, Math.floor(durationMinutes / 15)),
-        narrative,
-        allTitles,
-      );
-      perTeamChaosResults.push(result);
-      allTitles.push(...result.map((i) => i.title));
-    }
-  } else {
-    [universalTimeInjects, perTeamTimeResults, perTeamChaosResults] = await Promise.all([
-      generateUniversalTimeInjects(
-        input,
-        teamNames,
-        openAiApiKey,
-        timingManifest.universalSlots,
-        undefined,
-        narrative,
-      ),
-      Promise.all(
-        teamNames.map((t) =>
-          generateTeamTimeInjects(
-            input,
-            t,
-            teamNames,
-            openAiApiKey,
-            timingManifest.teamSlots[t] ?? [],
-            narrative,
-          ),
-        ),
-      ),
-      Promise.all(
-        teamNames.map((t) =>
-          generateChaosInjects(
-            input,
-            t,
-            teamNames,
-            openAiApiKey,
-            Math.max(3, Math.floor(durationMinutes / 15)),
-            narrative,
-          ),
-        ),
-      ),
-    ]);
+    perTeamTimeResults.push(result);
+    allThemes.push(...result.map((i) => `${i.title}: ${(i.content || '').slice(0, 80)}`));
   }
 
-  // Merge and normalise time injects — guarantees no 5-min gap in 0–60
+  const perTeamChaosResults: Array<
+    NonNullable<WarroomScenarioPayload['condition_driven_injects']>
+  > = [];
+  for (const t of teamNames) {
+    const result = await generateChaosInjects(
+      input,
+      t,
+      teamNames,
+      openAiApiKey,
+      Math.max(3, Math.floor(durationMinutes / 15)),
+      narrative,
+      allThemes,
+    );
+    perTeamChaosResults.push(result);
+    allThemes.push(...result.map((i) => `${i.title}: ${(i.content || '').slice(0, 80)}`));
+  }
+
+  // Merge all time injects: deterministic T+0 first, then AI-generated
   const rawTimeInjects: WarroomScenarioPayload['time_injects'] = [
+    t0Inject,
     ...universalTimeInjects,
     ...perTeamTimeResults.flat(),
   ];
-  const time_injects = normalizeInjectTiming(rawTimeInjects, durationMinutes);
+
+  // Post-generation dedup: remove injects whose title theme overlaps a previous inject
+  const dedupedTimeInjects = deduplicateInjectsByTheme(rawTimeInjects);
+  const time_injects = normalizeInjectTiming(dedupedTimeInjects, durationMinutes);
 
   // Phase 4a-1 (scenario-fixed pins) + POI enrichment run in PARALLEL
-  const venue = input.venue_name || input.location || input.setting;
   const [scenarioFixedPins, poiPins] = await Promise.all([
     generateScenarioFixedPins(input, teamNames, openAiApiKey, onProgress, narrative),
     osm_vicinity
@@ -5300,7 +5413,10 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
 
   const hasInsiderKnowledge = Object.keys(insiderKnowledge).length > 0;
 
-  const allConditionInjects = perTeamChaosResults.flat();
+  const allConditionInjects = deduplicateConditionInjectsByTheme(
+    perTeamChaosResults.flat(),
+    time_injects.map((i) => i.title),
+  );
   const condition_driven_injects = allConditionInjects.length > 0 ? allConditionInjects : undefined;
 
   const finalTimeInjects = convergentAlertInjects?.length
