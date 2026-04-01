@@ -79,7 +79,7 @@ const generateSchema = z.object({
     complexity_tier: z.enum(['minimal', 'standard', 'full', 'rich']).optional(),
     duration_minutes: z.number().int().min(20).max(240).optional(),
     include_adversary_pursuit: z.boolean().optional(),
-    inject_profiles: z.array(z.string().min(1).max(50)).min(2).max(4).optional(),
+    inject_profiles: z.array(z.string().min(1).max(50)).min(2).max(35).optional(),
     teams: z.array(teamSchema).optional(),
   }),
 });
