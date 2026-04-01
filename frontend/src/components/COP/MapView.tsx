@@ -190,6 +190,8 @@ interface MapViewProps {
   bypassExitGate?: boolean;
   /** Scenario type for context-aware team response actions. */
   scenarioType?: string;
+  /** Session start time (ISO string) for computing elapsed time in markers. */
+  sessionStartTime?: string;
 }
 
 /**
@@ -475,6 +477,7 @@ export const MapView = ({
   onCrowdMoved,
   bypassExitGate = false,
   scenarioType,
+  sessionStartTime,
 }: MapViewProps) => {
   const mapDisabledByEnv = import.meta.env.VITE_DISABLE_MAP === 'true';
   const isMapDisabled = disabled || mapDisabledByEnv;
@@ -600,7 +603,9 @@ export const MapView = ({
               return {
                 id: loc.id,
                 location_type: loc.location_type,
-                pin_category: conds.pin_category as string | undefined,
+                pin_category:
+                  ((loc as Record<string, unknown>).pin_category as string | undefined) ??
+                  (conds.pin_category as string | undefined),
                 narrative_description: conds.narrative_description as string | undefined,
                 label: loc.label,
                 coordinates: loc.coordinates ?? {},
@@ -678,6 +683,8 @@ export const MapView = ({
       'casualty.moved',
       'casualty.updated',
       'casualty.created',
+      'adversary_sighting_update',
+      'adversary_casualties_spawned',
     ],
     onEvent: (event: WebSocketEvent) => {
       if (event.type === 'state.updated') {
@@ -802,6 +809,46 @@ export const MapView = ({
             })
             .catch(() => {});
         }
+      }
+      if (event.type === 'adversary_sighting_update') {
+        const d = event.data as {
+          pin_id?: string;
+          coordinates?: { lat: number; lng: number };
+          zone_label?: string;
+          description?: string;
+          last_seen_at_minutes?: number;
+        };
+        if (d.pin_id && d.coordinates) {
+          setScenarioLocations((prev) =>
+            prev.map((loc) =>
+              loc.id === d.pin_id
+                ? {
+                    ...loc,
+                    coordinates: d.coordinates!,
+                    label: `Last Seen: ${d.zone_label || 'Unknown'}`,
+                    conditions: {
+                      ...(loc.conditions ?? {}),
+                      zone_label: d.zone_label,
+                      last_seen_at_minutes: d.last_seen_at_minutes,
+                      last_seen_description: d.description,
+                    },
+                  }
+                : loc,
+            ),
+          );
+        }
+      }
+      if (event.type === 'adversary_casualties_spawned' && sessionId) {
+        api.casualties
+          .list(sessionId)
+          .then((res) => {
+            if (Array.isArray(res.data)) {
+              setCasualties(
+                (res.data as CasualtyData[]).filter((c) => c.casualty_type === 'patient'),
+              );
+            }
+          })
+          .catch(() => {});
       }
     },
     enabled: !!sessionId && !isMapDisabled,
@@ -1345,6 +1392,11 @@ export const MapView = ({
               key={loc.id}
               location={loc}
               position={[loc.coordinates.lat!, loc.coordinates.lng!] as LatLngExpression}
+              sessionElapsedMinutes={
+                sessionStartTime
+                  ? Math.max(0, (Date.now() - new Date(sessionStartTime).getTime()) / 60000)
+                  : undefined
+              }
             />
           ))}
 

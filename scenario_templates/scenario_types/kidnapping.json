@@ -46,7 +46,14 @@
     "weather_visibility",
     "perimeter_security"
   ],
-  "adversary_behaviors": ["movement_between_locations", "ransom_timing", "threat_escalation"],
+  "has_adversary": true,
+  "adversary_behaviors": [
+    "movement_between_locations",
+    "ransom_timing",
+    "threat_escalation",
+    "vehicle_escape",
+    "hostage_as_shield"
+  ],
   "inject_templates": [
     {
       "timing": "T+0",

@@ -52,6 +52,9 @@ const paths: Record<string, string> = {
   broadcast: `<circle cx="8" cy="11" r="2" fill="#6b7280" stroke="#9ca3af" stroke-width="0.6"/><path d="M3.5 5a6 6 0 019 0" fill="none" stroke="#22c55e" stroke-width="1.8" stroke-linecap="round"/><path d="M5.5 7.5a3 3 0 015 0" fill="none" stroke="#4ade80" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="9" x2="8" y2="6" stroke="#9ca3af" stroke-width="1.2"/>`,
   community: `<rect x="4" y="4" width="8" height="8" rx="0.5" fill="#d1d5db" stroke="white" stroke-width="0.8"/><path d="M4 4l4-2.5 4 2.5" fill="#9ca3af" stroke="white" stroke-width="0.8"/><rect x="6.5" y="8" width="3" height="4" fill="#92400e" rx="0.3"/><rect x="5" y="5.5" width="2" height="2" fill="#bfdbfe" rx="0.2"/><rect x="9" y="5.5" width="2" height="2" fill="#bfdbfe" rx="0.2"/>`,
 
+  // ── Adversary / Pursuit ──
+  suspect_silhouette: `<circle cx="8" cy="4" r="2.8" fill="#1f2937" stroke="#ef4444" stroke-width="0.8"/><path d="M4 14v-4a4 4 0 018 0v4" fill="#1f2937" stroke="#ef4444" stroke-width="0.8"/><text x="8" y="12.5" font-size="6" font-weight="bold" fill="#ef4444" text-anchor="middle" font-family="monospace">?</text>`,
+
   // ── Personnel (team-specific) ──
   marshal: `<circle cx="8" cy="3.5" r="2.2" fill="white"/><path d="M5 14v-4.5a3 3 0 016 0V14" fill="none" stroke="white" stroke-width="1.8"/><rect x="5.5" y="7.5" width="5" height="3" rx="0.5" fill="#f97316" opacity="0.85"/>`,
   triage_officer: `<circle cx="8" cy="3.5" r="2.2" fill="white"/><path d="M5 14v-4.5a3 3 0 016 0V14" fill="none" stroke="white" stroke-width="1.8"/><rect x="6" y="8" width="4" height="2.5" rx="0.5" fill="white" opacity="0.9"/><rect x="7.3" y="8.2" width="1.4" height="2.2" rx="0.2" fill="#ef4444"/><rect x="6.5" y="8.8" width="3" height="1" rx="0.2" fill="#ef4444"/>`,

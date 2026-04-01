@@ -49,6 +49,7 @@ const generateSchema = z.object({
         'assassination',
         'stampede_crush',
         'active_shooter',
+        'biohazard',
       ])
       .optional(),
     setting: z
@@ -77,6 +78,7 @@ const generateSchema = z.object({
     location: z.string().max(500).optional(),
     complexity_tier: z.enum(['minimal', 'standard', 'full', 'rich']).optional(),
     duration_minutes: z.number().int().min(20).max(240).optional(),
+    include_adversary_pursuit: z.boolean().optional(),
     teams: z.array(teamSchema).optional(),
   }),
 });
@@ -103,6 +105,7 @@ const suggestTeamsSchema = z.object({
         'assassination',
         'stampede_crush',
         'active_shooter',
+        'biohazard',
       ])
       .optional(),
     setting: z
@@ -189,6 +192,7 @@ router.post(
         location,
         complexity_tier,
         duration_minutes,
+        include_adversary_pursuit,
         teams,
       } = req.body;
 
@@ -220,6 +224,7 @@ router.post(
           location,
           complexity_tier,
           duration_minutes,
+          include_adversary_pursuit,
           teams,
         },
         env.openAiApiKey,
@@ -261,6 +266,7 @@ router.post(
         location,
         complexity_tier,
         duration_minutes,
+        include_adversary_pursuit,
         teams,
       } = req.body;
 
@@ -301,6 +307,7 @@ router.post(
           location,
           complexity_tier,
           duration_minutes,
+          include_adversary_pursuit,
           teams,
         },
         env.openAiApiKey,

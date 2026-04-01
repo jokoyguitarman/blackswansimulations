@@ -41,11 +41,13 @@
     "fuel_status",
     "hostage_conditions"
   ],
+  "has_adversary": true,
   "adversary_behaviors": [
     "demand_escalation",
     "route_diversion",
     "hostage_threat",
-    "media_exploitation"
+    "media_exploitation",
+    "barricade"
   ],
   "inject_templates": [
     {

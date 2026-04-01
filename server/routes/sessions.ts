@@ -803,7 +803,9 @@ router.get(
         return res.status(500).json({ error: 'Failed to fetch session' });
       }
 
-      if (user.role !== 'trainer' && user.role !== 'admin') {
+      const isTrainer = user.role === 'trainer' || user.role === 'admin';
+      let userTeamNames: string[] = [];
+      if (!isTrainer) {
         const { data: participant } = await supabaseAdmin
           .from('session_participants')
           .select('*')
@@ -813,6 +815,12 @@ router.get(
         if (!participant) {
           return res.status(403).json({ error: 'Access denied' });
         }
+        const { data: teamRows } = await supabaseAdmin
+          .from('session_teams')
+          .select('team_name')
+          .eq('session_id', sessionId)
+          .eq('user_id', user.id);
+        userTeamNames = (teamRows ?? []).map((r) => (r as { team_name: string }).team_name);
       }
 
       const scenarioId = (session as { scenario_id?: string }).scenario_id;
@@ -824,7 +832,7 @@ router.get(
         supabaseAdmin
           .from('scenario_locations')
           .select(
-            'id, scenario_id, location_type, label, coordinates, conditions, display_order, claimable_by',
+            'id, scenario_id, location_type, label, coordinates, conditions, display_order, claimable_by, pin_category, visible_to_teams',
           )
           .eq('scenario_id', scenarioId)
           .order('display_order', { ascending: true }),
@@ -887,6 +895,16 @@ router.get(
         return merged;
       });
 
+      // Filter by visible_to_teams: if a pin has visible_to_teams set and the user is not a trainer,
+      // exclude it unless one of the user's teams is in the array.
+      const visFiltered = isTrainer
+        ? locRows
+        : locRows.filter((row) => {
+            const vis = row.visible_to_teams as string[] | null;
+            if (!vis || vis.length === 0) return true;
+            return userTeamNames.some((t) => vis.includes(t));
+          });
+
       // Pins for establishments (hospital, police, fire, cctv, community) only show when THIS user has asked the Insider about that category (per-player view).
       const { data: qaRows } = await supabaseAdmin
         .from('session_insider_qa')
@@ -899,15 +917,15 @@ router.get(
         new Set((qaRows ?? []).map((r) => (r as { category: string }).category)),
       );
 
-      const entryExitRows = locRows.filter((r) => {
+      const entryExitRows = visFiltered.filter((r) => {
         const conds = r.conditions as Record<string, unknown> | null;
-        return conds?.pin_category === 'entry_exit';
+        return conds?.pin_category === 'entry_exit' || r.pin_category === 'entry_exit';
       });
       const exitClaimTotal = entryExitRows.length;
       const exitClaimCount = entryExitRows.filter((r) => !!r.claimed_by_team).length;
 
       res.json({
-        data: locRows,
+        data: visFiltered,
         map_revealed_categories: mapRevealedCategories,
         exit_claim_progress: { claimed: exitClaimCount, total: exitClaimTotal },
         all_exits_claimed: exitClaimTotal > 0 && exitClaimCount >= exitClaimTotal,

@@ -48,7 +48,14 @@
     "open_air_debris",
     "weather_exposure"
   ],
-  "adversary_behaviors": ["ied_placement", "possible_second_device", "fleeing_suspect"],
+  "has_adversary": true,
+  "adversary_behaviors": [
+    "ied_placement",
+    "possible_second_device",
+    "fleeing_suspect",
+    "fleeing_on_foot",
+    "vehicle_escape"
+  ],
   "inject_templates": [
     {
       "timing": "T+0",

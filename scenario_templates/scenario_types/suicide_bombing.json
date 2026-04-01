@@ -48,7 +48,13 @@
     "structural_damage",
     "panic_stampede_risk"
   ],
-  "adversary_behaviors": ["crowd_targeting", "secondary_attacker", "accomplice_surveillance"],
+  "has_adversary": true,
+  "adversary_behaviors": [
+    "crowd_targeting",
+    "secondary_attacker",
+    "accomplice_surveillance",
+    "accomplice_fleeing"
+  ],
   "inject_templates": [
     {
       "timing": "T+0",

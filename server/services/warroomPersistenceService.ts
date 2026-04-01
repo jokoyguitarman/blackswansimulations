@@ -162,6 +162,8 @@ export async function persistWarroomScenario(
           location_type: loc.location_type,
           label: loc.label,
           coordinates: loc.coordinates,
+          pin_category: loc.pin_category ?? null,
+          visible_to_teams: loc.visible_to_teams ?? null,
           conditions: {
             ...(loc.conditions ?? {}),
             ...(loc.pin_category ? { pin_category: loc.pin_category } : {}),
@@ -353,6 +355,29 @@ export async function persistWarroomScenario(
           generation_source: 'war_room',
         });
         if (injError) throw new Error(`scenario_injects (condition-driven): ${injError.message}`);
+      }
+    }
+
+    const pursuitGates = (payload as unknown as Record<string, unknown>).pursuit_gates as
+      | Array<{
+          gate_id: string;
+          gate_order: number;
+          check_at_minutes: number;
+          condition: Record<string, unknown>;
+        }>
+      | undefined;
+    if (pursuitGates && pursuitGates.length > 0) {
+      const { error: gateError } = await supabaseAdmin.from('scenario_gates').insert(
+        pursuitGates.map((g) => ({
+          scenario_id: scenarioId,
+          gate_id: g.gate_id,
+          gate_order: g.gate_order,
+          check_at_minutes: g.check_at_minutes,
+          condition: g.condition,
+        })),
+      );
+      if (gateError) {
+        logger.warn({ error: gateError }, 'scenario_gates (pursuit) insert failed (non-blocking)');
       }
     }
 

@@ -1925,6 +1925,7 @@ export const SessionView = () => {
                   isVisible={showMapModule}
                   fillHeight
                   locationsRefreshTrigger={locationsRefreshTrigger}
+                  sessionStartTime={session?.start_time ?? undefined}
                   currentState={mergeInjectEffects(
                     (session?.current_state as Record<string, unknown>) ?? {},
                     session?.inject_state_effects,
@@ -2208,6 +2209,7 @@ export const SessionView = () => {
                     showAllPins
                     bypassExitGate
                     locationsRefreshTrigger={locationsRefreshTrigger}
+                    sessionStartTime={session?.start_time ?? undefined}
                     currentState={mergeInjectEffects(
                       (session?.current_state as Record<string, unknown>) ?? {},
                       session?.inject_state_effects,

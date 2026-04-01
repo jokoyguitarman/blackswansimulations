@@ -35,7 +35,14 @@
     "secondary_weapon_risk",
     "crowd_panic_direction"
   ],
-  "adversary_behaviors": ["high_speed_approach", "secondary_weapon_exit", "multiple_pass_attempts"],
+  "has_adversary": true,
+  "adversary_behaviors": [
+    "high_speed_approach",
+    "secondary_weapon_exit",
+    "multiple_pass_attempts",
+    "fleeing_on_foot",
+    "vehicle_abandonment"
+  ],
   "inject_templates": [
     {
       "timing": "T+0",

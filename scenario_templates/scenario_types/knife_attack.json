@@ -40,7 +40,13 @@
     "platform_edges",
     "escalator_safety"
   ],
-  "adversary_behaviors": ["close_quarters", "blend_in_crowd", "multiple_entry_exit_points"],
+  "has_adversary": true,
+  "adversary_behaviors": [
+    "close_quarters",
+    "blend_in_crowd",
+    "multiple_entry_exit_points",
+    "fleeing_on_foot"
+  ],
   "inject_templates": [
     {
       "timing": "T+0",

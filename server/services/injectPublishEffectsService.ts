@@ -174,5 +174,184 @@ export async function applyInjectPublishEffects(
     } catch (stateErr) {
       logger.error({ err: stateErr, sessionId, injectId }, 'Failed to apply inject state effects');
     }
+
+    // Adversary sighting: update the last_known_adversary pin on the map
+    const sighting = stateEffect.adversary_sighting as Record<string, unknown> | undefined;
+    if (sighting && typeof sighting.lat === 'number' && typeof sighting.lng === 'number') {
+      try {
+        await handleAdversarySighting(sessionId, injectId, sighting);
+      } catch (sightErr) {
+        logger.error({ err: sightErr, sessionId, injectId }, 'Failed to handle adversary sighting');
+      }
+    }
+
+    // Adversary casualties: spawn new casualty pins
+    const advCasualties = stateEffect.adversary_casualties as Record<string, unknown> | undefined;
+    if (advCasualties && typeof advCasualties.count === 'number' && advCasualties.count > 0) {
+      try {
+        await spawnAdversaryCasualties(sessionId, injectId, advCasualties);
+      } catch (casErr) {
+        logger.error({ err: casErr, sessionId, injectId }, 'Failed to spawn adversary casualties');
+      }
+    }
   }
+}
+
+/**
+ * Update the last_known_adversary scenario location pin with new coordinates
+ * from an adversary sighting inject.
+ */
+async function handleAdversarySighting(
+  sessionId: string,
+  injectId: string,
+  sighting: Record<string, unknown>,
+): Promise<void> {
+  const { data: session } = await supabaseAdmin
+    .from('sessions')
+    .select('scenario_id')
+    .eq('id', sessionId)
+    .single();
+  if (!session?.scenario_id) return;
+
+  const adversaryId = (sighting.adversary_id as string) || 'adversary_1';
+  const lat = sighting.lat as number;
+  const lng = sighting.lng as number;
+  const zoneLabel = (sighting.zone_label as string) || 'Unknown';
+  const description = (sighting.description as string) || '';
+
+  const { data: existingPin } = await supabaseAdmin
+    .from('scenario_locations')
+    .select('id, conditions')
+    .eq('scenario_id', session.scenario_id)
+    .eq('pin_category', 'last_known_adversary')
+    .limit(1)
+    .maybeSingle();
+
+  if (existingPin) {
+    const elapsed = await getSessionElapsedMinutes(sessionId);
+    const oldConditions = (existingPin.conditions as Record<string, unknown>) || {};
+    const updatedConditions = {
+      ...oldConditions,
+      adversary_id: adversaryId,
+      zone_label: zoneLabel,
+      last_seen_at_minutes: elapsed,
+      last_seen_description: description,
+      pin_category: 'last_known_adversary',
+    };
+    await supabaseAdmin
+      .from('scenario_locations')
+      .update({
+        coordinates: { lat, lng },
+        label: `Last Seen: ${zoneLabel}`,
+        conditions: updatedConditions,
+      })
+      .eq('id', existingPin.id);
+
+    getWebSocketService().broadcastToSession(sessionId, {
+      type: 'adversary_sighting_update',
+      data: {
+        pin_id: existingPin.id,
+        adversary_id: adversaryId,
+        coordinates: { lat, lng },
+        zone_label: zoneLabel,
+        description,
+        last_seen_at_minutes: elapsed,
+      },
+      timestamp: new Date().toISOString(),
+    });
+    logger.info(
+      { sessionId, injectId, adversaryId, lat, lng, zoneLabel },
+      'Last-known adversary pin updated',
+    );
+  } else {
+    logger.warn({ sessionId, adversaryId }, 'No last_known_adversary pin found to update');
+  }
+}
+
+async function getSessionElapsedMinutes(sessionId: string): Promise<number> {
+  const { data } = await supabaseAdmin
+    .from('sessions')
+    .select('started_at')
+    .eq('id', sessionId)
+    .single();
+  if (!data?.started_at) return 0;
+  const startedAt = new Date(data.started_at as string);
+  return Math.max(0, (Date.now() - startedAt.getTime()) / 60000);
+}
+
+/**
+ * Spawn new casualty pins when an adversary-caused casualty inject fires.
+ */
+async function spawnAdversaryCasualties(
+  sessionId: string,
+  injectId: string,
+  casualtyDef: Record<string, unknown>,
+): Promise<void> {
+  const { data: session } = await supabaseAdmin
+    .from('sessions')
+    .select('scenario_id')
+    .eq('id', sessionId)
+    .single();
+  if (!session?.scenario_id) return;
+
+  const count = (casualtyDef.count as number) || 1;
+  const coords = casualtyDef.coordinates as { lat: number; lng: number } | undefined;
+  const zoneLabel = (casualtyDef.zone_label as string) || 'Unknown';
+  const severityDist = (casualtyDef.severity_distribution as Record<string, number>) || {};
+
+  if (!coords || typeof coords.lat !== 'number' || typeof coords.lng !== 'number') {
+    logger.warn({ sessionId, injectId }, 'adversary_casualties missing coordinates');
+    return;
+  }
+
+  const METER_TO_DEG = 1 / 111_320;
+  const newCasualties = [];
+  for (let i = 0; i < count; i++) {
+    let severity = 'yellow';
+    if (severityDist.red && i < severityDist.red) severity = 'red';
+    else if (severityDist.yellow && i < (severityDist.red || 0) + severityDist.yellow)
+      severity = 'yellow';
+    else severity = 'green';
+
+    const angle = Math.random() * 2 * Math.PI;
+    const dist = 5 + Math.random() * 15;
+    const lat = coords.lat + Math.cos(angle) * dist * METER_TO_DEG;
+    const lng =
+      coords.lng +
+      Math.sin(angle) * dist * METER_TO_DEG * (1 / Math.cos((coords.lat * Math.PI) / 180));
+
+    newCasualties.push({
+      scenario_id: session.scenario_id,
+      casualty_type: 'patient',
+      location_lat: lat,
+      location_lng: lng,
+      floor_level: 'G',
+      headcount: 1,
+      conditions: {
+        triage_category: severity,
+        mechanism_of_injury: 'adversary_attack',
+        zone_label: zoneLabel,
+        spawned_by_inject: injectId,
+      },
+      status: 'undiscovered',
+      appears_at_minutes: 0,
+    });
+  }
+
+  const { error } = await supabaseAdmin.from('scenario_casualties').insert(newCasualties);
+  if (error) {
+    logger.error({ error, sessionId, injectId }, 'Failed to insert adversary casualties');
+    return;
+  }
+
+  getWebSocketService().broadcastToSession(sessionId, {
+    type: 'adversary_casualties_spawned',
+    data: {
+      count,
+      zone_label: zoneLabel,
+      coordinates: coords,
+    },
+    timestamp: new Date().toISOString(),
+  });
+  logger.info({ sessionId, injectId, count, zoneLabel }, 'Adversary casualties spawned');
 }

@@ -35,7 +35,13 @@
     }
   ],
   "environmental_factors": ["enclosed_space", "ventilation", "station_vs_tunnel", "decon_site"],
-  "adversary_behaviors": ["package_placement", "perpetrator_may_have_left"],
+  "has_adversary": true,
+  "adversary_behaviors": [
+    "package_placement",
+    "perpetrator_may_have_left",
+    "fleeing_on_foot",
+    "blend_in_crowd"
+  ],
   "inject_templates": [
     {
       "timing": "T+0",

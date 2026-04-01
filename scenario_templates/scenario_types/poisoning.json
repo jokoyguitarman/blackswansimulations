@@ -41,6 +41,7 @@
     "symptom_onset_delay",
     "alternative_supply_availability"
   ],
+  "has_adversary": true,
   "adversary_behaviors": [
     "delayed_effect_exploitation",
     "multiple_contamination_points",

@@ -49,6 +49,7 @@
     "weather_conditions",
     "lighting_conditions"
   ],
+  "has_adversary": false,
   "adversary_behaviors": [],
   "inject_templates": [
     {

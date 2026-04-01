@@ -52,7 +52,13 @@
     "stairwell_capacity",
     "escalator_elevator_safety"
   ],
-  "adversary_behaviors": ["propaganda_operative", "suicide_attacker_at_crowd_density"],
+  "has_adversary": true,
+  "adversary_behaviors": [
+    "propaganda_operative",
+    "suicide_attacker_at_crowd_density",
+    "fleeing_through_mall",
+    "blend_in_crowd"
+  ],
   "inject_templates": [
     {
       "timing": "T+0",

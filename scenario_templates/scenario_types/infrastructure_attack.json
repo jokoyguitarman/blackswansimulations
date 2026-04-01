@@ -42,7 +42,13 @@
     "community_proximity",
     "wind_direction"
   ],
-  "adversary_behaviors": ["sabotage", "insider_threat", "coordinated_multi_point_attack"],
+  "has_adversary": true,
+  "adversary_behaviors": [
+    "sabotage",
+    "insider_threat",
+    "coordinated_multi_point_attack",
+    "fleeing_after_sabotage"
+  ],
   "inject_templates": [
     {
       "timing": "T+0",

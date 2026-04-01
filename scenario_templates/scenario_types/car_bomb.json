@@ -46,7 +46,14 @@
     "vehicle_access",
     "secondary_fire_risk"
   ],
-  "adversary_behaviors": ["vehicle_approach", "pedestrian_approach", "possible_second_attacker"],
+  "has_adversary": true,
+  "adversary_behaviors": [
+    "vehicle_approach",
+    "pedestrian_approach",
+    "possible_second_attacker",
+    "fleeing_on_foot",
+    "remote_detonation_operator"
+  ],
   "inject_templates": [
     {
       "timing": "T+0",

@@ -49,11 +49,13 @@
     "population_density",
     "ventilation_system"
   ],
+  "has_adversary": true,
   "adversary_behaviors": [
     "delayed_symptom_exploitation",
     "multiple_release_points",
     "false_claims_of_agent_type",
-    "secondary_release"
+    "secondary_release",
+    "fleeing_after_release"
   ],
   "inject_templates": [
     {

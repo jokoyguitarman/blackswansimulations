@@ -29,7 +29,13 @@
     }
   ],
   "environmental_factors": ["crowd_density", "limited_cover", "water_boundary", "exit_capacity"],
-  "adversary_behaviors": ["active_shooter_moving", "visibility_changes", "cover_and_concealment"],
+  "has_adversary": true,
+  "adversary_behaviors": [
+    "active_shooter_moving",
+    "visibility_changes",
+    "cover_and_concealment",
+    "fleeing_on_foot"
+  ],
   "inject_templates": [
     {
       "timing": "T+0",

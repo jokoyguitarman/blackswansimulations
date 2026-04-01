@@ -41,11 +41,13 @@
     "siege_duration",
     "supplies_status"
   ],
+  "has_adversary": true,
   "adversary_behaviors": [
     "demand_escalation",
     "hostage_execution_threat",
     "media_exploitation",
-    "fortification"
+    "fortification",
+    "barricade"
   ],
   "inject_templates": [
     {

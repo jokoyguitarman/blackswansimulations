@@ -111,6 +111,7 @@ export interface WarroomScenarioPayload {
     coordinates: { lat: number; lng: number };
     conditions?: Record<string, unknown>;
     display_order: number;
+    visible_to_teams?: string[];
   }>;
   floor_plans?: Array<{
     floor_level: string;
@@ -3546,6 +3547,472 @@ ${existingTitles?.length ? `- ALREADY GENERATED (avoid similar themes):\n${exist
 // ---------------------------------------------------------------------------
 // Phase 3 — (removed: generic decision-based injects replaced by condition-driven injects)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Phase 5 — Adversary Pursuit Decision Tree  (1 call · 6 000 tokens)
+// ---------------------------------------------------------------------------
+
+export interface AdversaryProfile {
+  adversary_id: string;
+  adversary_type: string;
+  label: string;
+  behavior_profile: string;
+  weapon_type: string;
+  initial_zone: string;
+  status: 'active' | 'barricaded' | 'fleeing' | 'neutralized' | 'escaped';
+  pursuit_phase_gates: string[];
+}
+
+export interface AdversaryPursuitResult {
+  adversary_profiles: AdversaryProfile[];
+  pursuit_time_injects: WarroomScenarioPayload['time_injects'];
+  pursuit_condition_injects: NonNullable<WarroomScenarioPayload['condition_driven_injects']>;
+  pursuit_gates: Array<{
+    gate_id: string;
+    gate_order: number;
+    check_at_minutes: number;
+    condition: {
+      team?: string;
+      decision_types?: string[];
+      content_hints: string[];
+      min_hints?: number;
+    };
+  }>;
+  last_known_pin: {
+    location_type: string;
+    pin_category: 'last_known_adversary';
+    label: string;
+    coordinates: { lat: number; lng: number };
+    visible_to_teams: string[];
+    conditions: Record<string, unknown>;
+  };
+}
+
+/**
+ * Detect whether the user's free-text prompt or the generated narrative describes
+ * an adversary who can be pursued (fleeing suspect, active shooter, chase, etc.).
+ * Returns true if pursuit-related language is found.
+ */
+function detectPursuitIntentFromText(...texts: (string | undefined | null)[]): boolean {
+  const PURSUIT_PATTERNS = [
+    /flee|fleeing|fled|escape|escap/i,
+    /chas(e|ed|ing)/i,
+    /suspect.*(run|flee|escape|at.large|on.the.loose)/i,
+    /gunman.*(moving|roam|active)/i,
+    /pursu(e|it|ing)/i,
+    /on.the.run/i,
+    /manhunt/i,
+    /track(ing)?.*(suspect|perpetrator|attacker|gunman)/i,
+    /adversary.*(movement|moving|active|flee)/i,
+    /hunt(ing)?.*(suspect|perpetrator|attacker)/i,
+    /accomplice.*(flee|escape|run)/i,
+    /secondary.*(attacker|suspect)/i,
+    /wanted.*(individual|person|suspect)/i,
+  ];
+  const combined = texts.filter(Boolean).join(' ');
+  if (!combined) return false;
+  return PURSUIT_PATTERNS.some((p) => p.test(combined));
+}
+
+/**
+ * Generate an adversary pursuit decision tree.
+ *
+ * Three-way resolution for whether to generate:
+ *  1. User's free-text prompt mentions adversary/chase/fleeing → YES (auto-override)
+ *  2. Trainer toggled "include_adversary_pursuit" ON → YES
+ *  3. Otherwise → NO (even if template has_adversary is true)
+ *
+ * All adversary waypoints use coordinates from the already-generated locations array.
+ */
+export async function generateAdversaryPursuitTree(
+  input: WarroomGenerateInput,
+  locations: Array<{
+    location_type: string;
+    pin_category?: string;
+    label: string;
+    coordinates: { lat: number; lng: number };
+  }>,
+  teamNames: string[],
+  openAiApiKey: string,
+  narrative?: { title?: string; description?: string; briefing?: string },
+  onProgress?: WarroomAiProgressCallback,
+  trainerToggle?: boolean,
+): Promise<AdversaryPursuitResult | null> {
+  const promptDetected = detectPursuitIntentFromText(
+    input.original_prompt,
+    narrative?.title,
+    narrative?.description,
+    narrative?.briefing,
+  );
+
+  const shouldGenerate = promptDetected || trainerToggle === true;
+  if (!shouldGenerate) {
+    logger.info('Adversary pursuit: skipped (toggle off, no pursuit language detected)');
+    return null;
+  }
+
+  if (promptDetected && !trainerToggle) {
+    logger.info('Adversary pursuit: auto-enabled from prompt/narrative language (toggle was off)');
+  }
+
+  const adversaryBehaviors = (input.typeSpec.adversary_behaviors as string[]) || [];
+  if (adversaryBehaviors.length === 0 && !promptDetected) return null;
+
+  onProgress?.('Generating adversary pursuit decision tree...');
+
+  const { scenario_type, setting, terrain, venue_name, location } = input;
+  const venue = venue_name || location || setting;
+  const durationMinutes = input.duration_minutes ?? 60;
+
+  const pursuitTeams = teamNames.filter((t) => {
+    const lower = t.toLowerCase();
+    return (
+      lower.includes('police') ||
+      lower.includes('armed') ||
+      lower.includes('swat') ||
+      lower.includes('soc') ||
+      lower.includes('tactical') ||
+      lower.includes('intelligence') ||
+      lower.includes('intel') ||
+      lower.includes('security') ||
+      lower.includes('close_protection') ||
+      lower.includes('investigation')
+    );
+  });
+  const primaryPursuitTeam =
+    pursuitTeams[0] || teamNames.find((t) => /police/i.test(t)) || teamNames[0];
+  const intelTeam = teamNames.find((t) => /intel/i.test(t)) || primaryPursuitTeam;
+  const triageTeam = teamNames.find((t) => /triage|medical|ems/i.test(t));
+
+  const locationList = locations
+    .filter((l) => l.pin_category !== 'route')
+    .map(
+      (l) =>
+        `- ${l.label} (${l.location_type}${l.pin_category ? ', ' + l.pin_category : ''}) at [${l.coordinates.lat}, ${l.coordinates.lng}]`,
+    )
+    .join('\n');
+
+  const narrativeBlock = narrative
+    ? `\nNARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}`
+    : '';
+
+  const systemPrompt = `You are an expert crisis simulation designer building an ADVERSARY PURSUIT DECISION TREE for a tabletop exercise. The pursuit is NOT real-time movement — it is a branching narrative of decision points that test the command team's shot-calling ability.
+
+Scenario: ${scenario_type} at ${venue}
+Setting: ${setting} | Terrain: ${terrain}
+Teams: ${teamNames.join(', ')}
+Primary pursuit team: ${primaryPursuitTeam}
+Intelligence team: ${intelTeam}
+${triageTeam ? `Triage team: ${triageTeam}` : ''}
+Game duration: ${durationMinutes} minutes
+Adversary behaviors: ${adversaryBehaviors.join(', ')}
+${narrativeBlock}
+
+AVAILABLE LOCATIONS (use ONLY these coordinates — do NOT invent new ones):
+${locationList}
+
+HOW THE PURSUIT WORKS:
+- The adversary is NOT a moving pin. Players never see the adversary's real-time position.
+- Instead, players receive SIGHTING REPORTS as injects, and a "last known position" marker updates on the map.
+- At key moments, the pursuit team receives DECISION POINT injects with 2-3 options.
+- Each option leads to different consequences — some branch into new decision points.
+- The pursuit runs ALONGSIDE the emergency response — pursuit decisions can impact other teams (e.g. pulling officers from a cordon).
+
+WHAT TO GENERATE:
+
+1. ADVERSARY PROFILE: A single adversary with behavior matching the scenario.
+
+2. PURSUIT TIME INJECTS (5-8 injects): Sightings, witness reports, CCTV findings, and decision points delivered at fixed times. Each sighting inject must include an "adversary_sighting" in state_effect to update the last-known marker.
+
+3. PURSUIT CONDITION INJECTS (3-5 injects): Branches that fire based on which decisions the pursuit team made. Use trigger_condition with keywords matching the prior decision.
+
+4. WITNESS INJECTS (1-3 injects): Reports from injured civilians that go to the triage team ONLY. These contain pursuit-relevant intel that the triage team must relay to the police team via a decision.
+
+5. PURSUIT GATES (3 gates):
+   - "suspect_localised" (check at ~${Math.round(durationMinutes * 0.25)} min)
+   - "perimeter_established" (check at ~${Math.round(durationMinutes * 0.5)} min)
+   - "suspect_neutralised" (check at ~${Math.round(durationMinutes * 0.8)} min)
+
+6. CASUALTY-SPAWNING INJECTS: 1-2 time-based injects that spawn additional casualties if the adversary is still active. Include conditions_to_cancel: ["gate_met:suspect_neutralised"].
+
+Return ONLY valid JSON:
+{
+  "adversary_profile": {
+    "adversary_id": "string",
+    "adversary_type": "string",
+    "label": "string (e.g. 'Unidentified Male Gunman')",
+    "behavior_profile": "aggressive_roamer|escape_oriented|barricader|hunter",
+    "weapon_type": "string",
+    "initial_zone": "string (zone label from AVAILABLE LOCATIONS)"
+  },
+  "pursuit_time_injects": [
+    {
+      "trigger_time_minutes": number,
+      "type": "intel_brief|field_update|citizen_call",
+      "title": "string",
+      "content": "string (2-4 sentences with specific scenario details)",
+      "severity": "critical|high|medium",
+      "inject_scope": "team_specific",
+      "target_teams": ["${primaryPursuitTeam}"],
+      "requires_response": true,
+      "state_effect": {
+        "adversary_sighting": {
+          "adversary_id": "string",
+          "lat": number (from AVAILABLE LOCATIONS),
+          "lng": number (from AVAILABLE LOCATIONS),
+          "zone_label": "string",
+          "description": "string"
+        }
+      }
+    }
+  ],
+  "pursuit_condition_injects": [
+    {
+      "type": "intel_brief|field_update",
+      "title": "string",
+      "content": "string",
+      "severity": "critical|high|medium",
+      "inject_scope": "team_specific",
+      "target_teams": ["${primaryPursuitTeam}"],
+      "requires_response": true,
+      "trigger_condition": {
+        "type": "decision_based",
+        "match_criteria": { "keywords": ["keyword1", "keyword2"] },
+        "match_mode": "any"
+      },
+      "state_effect": {
+        "adversary_sighting": { "adversary_id": "string", "lat": number, "lng": number, "zone_label": "string", "description": "string" }
+      }
+    }
+  ],
+  "witness_injects": [
+    {
+      "trigger_time_minutes": number,
+      "type": "citizen_call",
+      "title": "string",
+      "content": "string (witness account from injured person — contains pursuit intel)",
+      "severity": "medium|high",
+      "inject_scope": "team_specific",
+      "target_teams": ["${triageTeam || primaryPursuitTeam}"],
+      "requires_response": false
+    }
+  ],
+  "casualty_spawning_injects": [
+    {
+      "trigger_time_minutes": number,
+      "type": "field_update",
+      "title": "string",
+      "content": "string",
+      "severity": "critical",
+      "inject_scope": "universal",
+      "target_teams": [],
+      "requires_response": true,
+      "conditions_to_cancel": ["gate_met:suspect_neutralised"],
+      "state_effect": {
+        "adversary_casualties": {
+          "count": number,
+          "zone_label": "string (from AVAILABLE LOCATIONS)",
+          "coordinates": { "lat": number, "lng": number },
+          "casualty_type": "patient",
+          "severity_distribution": { "red": number, "yellow": number, "green": number }
+        }
+      }
+    }
+  ],
+  "pursuit_gates": [
+    {
+      "gate_id": "suspect_localised|perimeter_established|suspect_neutralised",
+      "gate_order": number,
+      "check_at_minutes": number,
+      "condition": {
+        "team": "${primaryPursuitTeam}",
+        "content_hints": ["keyword1", "keyword2"],
+        "min_hints": 1
+      }
+    }
+  ],
+  "initial_last_known": {
+    "lat": number (from AVAILABLE LOCATIONS — where adversary was first seen),
+    "lng": number,
+    "zone_label": "string"
+  }
+}
+
+RULES:
+- All coordinates MUST come from the AVAILABLE LOCATIONS list. Do NOT invent coordinates.
+- Pursuit injects must create genuine decision tension — each option should have real tradeoffs.
+- At least 2 pursuit decisions must impact OTHER teams (e.g. pulling resources, weakening cordons).
+- Witness injects go to the triage team. They contain intel that is ONLY useful if relayed.
+- Casualty-spawning injects simulate the adversary continuing to cause harm while not neutralised.
+- The pursuit arc should follow: initial sighting → localisation decisions → containment → intercept/resolution.
+- Gate content_hints should match likely decision keywords (e.g. "CCTV", "cordon", "sweep", "breach", "apprehend").`;
+
+  const userPrompt = `Generate the adversary pursuit decision tree for "${narrative?.title || scenario_type}" at ${venue}. Adversary behaviors: ${adversaryBehaviors.join(', ')}. Duration: ${durationMinutes} minutes. Make the decisions genuinely difficult with realistic tradeoffs.`;
+
+  try {
+    const parsed = await callOpenAi<{
+      adversary_profile?: {
+        adversary_id?: string;
+        adversary_type?: string;
+        label?: string;
+        behavior_profile?: string;
+        weapon_type?: string;
+        initial_zone?: string;
+      };
+      pursuit_time_injects?: Array<Record<string, unknown>>;
+      pursuit_condition_injects?: Array<Record<string, unknown>>;
+      witness_injects?: Array<Record<string, unknown>>;
+      casualty_spawning_injects?: Array<Record<string, unknown>>;
+      pursuit_gates?: Array<{
+        gate_id?: string;
+        gate_order?: number;
+        check_at_minutes?: number;
+        condition?: Record<string, unknown>;
+      }>;
+      initial_last_known?: { lat?: number; lng?: number; zone_label?: string };
+    }>(systemPrompt, userPrompt, openAiApiKey, 6000, 0.8);
+
+    const profile = parsed.adversary_profile;
+    if (!profile?.adversary_id) {
+      logger.warn('Adversary pursuit tree: AI returned no adversary_profile');
+      return null;
+    }
+
+    const adversaryProfile: AdversaryProfile = {
+      adversary_id: profile.adversary_id || 'adversary_1',
+      adversary_type: profile.adversary_type || scenario_type,
+      label: profile.label || 'Unidentified Suspect',
+      behavior_profile: profile.behavior_profile || 'escape_oriented',
+      weapon_type: profile.weapon_type || 'unknown',
+      initial_zone: profile.initial_zone || locations[0]?.label || 'Unknown',
+      status: 'active',
+      pursuit_phase_gates: ['suspect_localised', 'perimeter_established', 'suspect_neutralised'],
+    };
+
+    const pursuitTimeInjects = (parsed.pursuit_time_injects || []).map((inj) => ({
+      trigger_time_minutes: (inj.trigger_time_minutes as number) ?? 3,
+      type: normalizeInjectType((inj.type as string) || 'intel_brief'),
+      title: (inj.title as string) || 'Pursuit update',
+      content: (inj.content as string) || '',
+      severity: (inj.severity as string) || 'high',
+      inject_scope: 'team_specific' as const,
+      target_teams: (inj.target_teams as string[]) || [primaryPursuitTeam],
+      requires_response: (inj.requires_response as boolean) ?? true,
+      requires_coordination: false,
+      state_effect: inj.state_effect as Record<string, unknown> | undefined,
+    }));
+
+    const witnessInjects = (parsed.witness_injects || []).map((inj) => ({
+      trigger_time_minutes: (inj.trigger_time_minutes as number) ?? 5,
+      type: normalizeInjectType((inj.type as string) || 'citizen_call'),
+      title: (inj.title as string) || 'Witness report',
+      content: (inj.content as string) || '',
+      severity: (inj.severity as string) || 'medium',
+      inject_scope: 'team_specific' as const,
+      target_teams: (inj.target_teams as string[]) || [triageTeam || primaryPursuitTeam],
+      requires_response: false,
+      requires_coordination: false,
+    }));
+
+    const casualtyInjects = (parsed.casualty_spawning_injects || []).map((inj) => ({
+      trigger_time_minutes: (inj.trigger_time_minutes as number) ?? 10,
+      type: normalizeInjectType((inj.type as string) || 'field_update'),
+      title: (inj.title as string) || 'Additional casualties reported',
+      content: (inj.content as string) || '',
+      severity: (inj.severity as string) || 'critical',
+      inject_scope: 'universal' as const,
+      target_teams: [] as string[],
+      requires_response: true,
+      requires_coordination: false,
+      conditions_to_cancel: (inj.conditions_to_cancel as string[]) || [
+        'gate_met:suspect_neutralised',
+      ],
+      state_effect: inj.state_effect as Record<string, unknown> | undefined,
+    }));
+
+    const allTimeInjects = [...pursuitTimeInjects, ...witnessInjects, ...casualtyInjects];
+
+    const pursuitCondInjects = (parsed.pursuit_condition_injects || []).map((inj) => ({
+      type: normalizeInjectType((inj.type as string) || 'intel_brief'),
+      title: (inj.title as string) || 'Pursuit branch',
+      content: (inj.content as string) || '',
+      severity: (inj.severity as string) || 'high',
+      inject_scope: 'team_specific' as const,
+      target_teams: (inj.target_teams as string[]) || [primaryPursuitTeam],
+      requires_response: (inj.requires_response as boolean) ?? true,
+      conditions_to_appear: { threshold: 1, conditions: [] } as {
+        threshold?: number;
+        conditions?: string[];
+      },
+      conditions_to_cancel: (inj.conditions_to_cancel as string[]) ?? undefined,
+      eligible_after_minutes: (inj.eligible_after_minutes as number) ?? undefined,
+      trigger_condition: JSON.stringify(
+        inj.trigger_condition || {
+          type: 'decision_based',
+          match_criteria: { keywords: [] },
+          match_mode: 'any',
+        },
+      ),
+      state_effect: inj.state_effect as Record<string, unknown> | undefined,
+    }));
+
+    const pursuitGates = (parsed.pursuit_gates || []).map((g, i) => ({
+      gate_id: g.gate_id || `pursuit_gate_${i}`,
+      gate_order: g.gate_order ?? i + 1,
+      check_at_minutes: g.check_at_minutes ?? Math.round(durationMinutes * (0.25 + i * 0.25)),
+      condition: {
+        team: (g.condition?.team as string) || primaryPursuitTeam,
+        decision_types: (g.condition?.decision_types as string[]) || undefined,
+        content_hints: (g.condition?.content_hints as string[]) || [],
+        min_hints: (g.condition?.min_hints as number) || 1,
+      },
+    }));
+
+    const initial = parsed.initial_last_known;
+    const lastKnownPin = {
+      location_type: 'last_known_adversary',
+      pin_category: 'last_known_adversary' as const,
+      label: `Last Seen: ${initial?.zone_label || adversaryProfile.initial_zone}`,
+      coordinates: {
+        lat: initial?.lat ?? locations[0]?.coordinates.lat ?? 0,
+        lng: initial?.lng ?? locations[0]?.coordinates.lng ?? 0,
+      },
+      visible_to_teams: [
+        primaryPursuitTeam,
+        ...(intelTeam !== primaryPursuitTeam ? [intelTeam] : []),
+      ],
+      conditions: {
+        adversary_id: adversaryProfile.adversary_id,
+        zone_label: initial?.zone_label || adversaryProfile.initial_zone,
+        last_seen_at_minutes: 0,
+        pin_category: 'last_known_adversary',
+      },
+    };
+
+    logger.info(
+      {
+        adversaryId: adversaryProfile.adversary_id,
+        timeInjects: allTimeInjects.length,
+        condInjects: pursuitCondInjects.length,
+        gates: pursuitGates.length,
+      },
+      'Adversary pursuit tree generated',
+    );
+
+    return {
+      adversary_profiles: [adversaryProfile],
+      pursuit_time_injects: allTimeInjects,
+      pursuit_condition_injects: pursuitCondInjects as NonNullable<
+        WarroomScenarioPayload['condition_driven_injects']
+      >,
+      pursuit_gates: pursuitGates,
+      last_known_pin: lastKnownPin,
+    };
+  } catch (err) {
+    logger.warn({ err }, 'Adversary pursuit tree generation failed; continuing without');
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Env inject sub-generators removed — replaced by AI runtime evaluation

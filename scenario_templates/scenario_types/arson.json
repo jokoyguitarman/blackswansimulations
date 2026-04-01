@@ -42,7 +42,13 @@
     "accelerant_presence",
     "occupancy_level"
   ],
-  "adversary_behaviors": ["multiple_ignition_points", "exit_blocking", "accelerant_use"],
+  "has_adversary": true,
+  "adversary_behaviors": [
+    "multiple_ignition_points",
+    "exit_blocking",
+    "accelerant_use",
+    "fleeing_on_foot"
+  ],
   "inject_templates": [
     {
       "timing": "T+0",

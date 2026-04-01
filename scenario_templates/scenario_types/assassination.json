@@ -48,12 +48,14 @@
     "backstage_access",
     "vip_holding_area"
   ],
+  "has_adversary": true,
   "adversary_behaviors": [
     "sniper_from_vantage",
     "stage_rush",
     "blending_in_crowd",
     "accomplice_distraction",
-    "secondary_device"
+    "secondary_device",
+    "fleeing_after_attack"
   ],
   "inject_templates": [
     {

@@ -41,11 +41,13 @@
     "room_clearance_progress",
     "civilian_density_per_floor"
   ],
+  "has_adversary": true,
   "adversary_behaviors": [
     "room_to_room_movement",
     "barricade",
     "hostage_taking",
-    "possible_accomplice"
+    "possible_accomplice",
+    "fleeing_after_engagement"
   ],
   "inject_templates": [
     {

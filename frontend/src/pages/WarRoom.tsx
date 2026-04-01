@@ -83,6 +83,7 @@ export const WarRoom = () => {
   const [location, setLocation] = useState('');
   const [complexityTier] = useState<'minimal' | 'standard' | 'full' | 'rich'>('rich');
   const [durationMinutes, setDurationMinutes] = useState(60);
+  const [includeAdversaryPursuit, setIncludeAdversaryPursuit] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [useStructured, setUseStructured] = useState(false);
@@ -109,6 +110,7 @@ export const WarRoom = () => {
     const opts: Parameters<typeof api.warroom.generateStream>[0] = {
       complexity_tier: complexityTier,
       duration_minutes: durationMinutes,
+      include_adversary_pursuit: includeAdversaryPursuit,
     };
     if (useStructured && scenarioType) {
       opts.scenario_type = scenarioType;
@@ -367,6 +369,34 @@ export const WarRoom = () => {
                 ),
               )}
             </select>
+          </div>
+
+          <div className="mt-6">
+            <label className="flex items-center gap-3 cursor-pointer group">
+              <div
+                className={`relative w-10 h-5 rounded-full transition-colors ${
+                  includeAdversaryPursuit
+                    ? 'bg-robotic-orange/60 border-robotic-orange'
+                    : 'bg-black/50 border-robotic-yellow/50'
+                } border`}
+                onClick={() => !loading && setIncludeAdversaryPursuit(!includeAdversaryPursuit)}
+              >
+                <div
+                  className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${
+                    includeAdversaryPursuit
+                      ? 'left-5 bg-robotic-orange'
+                      : 'left-0.5 bg-robotic-yellow/50'
+                  }`}
+                />
+              </div>
+              <span className="text-xs terminal-text text-robotic-yellow/70 group-hover:text-robotic-yellow transition-colors">
+                [ADVERSARY PURSUIT] Scenario involves a fleeing suspect or active adversary
+              </span>
+            </label>
+            <p className="text-[10px] terminal-text text-robotic-yellow/40 mt-1 ml-[52px]">
+              Generates pursuit decision tree, sighting injects, and witness reports. Auto-enabled
+              if your prompt describes a chase or fleeing suspect.
+            </p>
           </div>
         </div>
 

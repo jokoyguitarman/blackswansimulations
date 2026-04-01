@@ -19,7 +19,11 @@ import {
   validateCompatibility,
   type ParsedWarroomInput,
 } from './warroomPromptParser.js';
-import { warroomGenerateScenario, type WarroomScenarioPayload } from './warroomAiService.js';
+import {
+  warroomGenerateScenario,
+  generateAdversaryPursuitTree,
+  type WarroomScenarioPayload,
+} from './warroomAiService.js';
 import { persistWarroomScenario } from './warroomPersistenceService.js';
 import {
   researchArea,
@@ -49,6 +53,7 @@ export interface WarroomGenerateOptions {
   location?: string;
   complexity_tier?: 'minimal' | 'standard' | 'full' | 'rich';
   duration_minutes?: number;
+  include_adversary_pursuit?: boolean;
   teams?: WarroomTeamInput[];
 }
 
@@ -447,6 +452,82 @@ export async function generateAndPersistWarroomScenario(
     openAiApiKey,
     aiProgress,
   );
+
+  // Adversary pursuit decision tree (only for scenarios with has_adversary: true)
+  try {
+    const payloadLocations = (payload.locations || []).map((l) => ({
+      location_type: l.location_type,
+      pin_category: l.pin_category,
+      label: l.label,
+      coordinates: l.coordinates,
+    }));
+    const payloadTeamNames = payload.teams.map((t) => t.team_name);
+    const pursuitNarrative = {
+      title: payload.scenario.title,
+      description: payload.scenario.description,
+      briefing: payload.scenario.briefing,
+    };
+
+    const pursuitResult = await generateAdversaryPursuitTree(
+      {
+        scenario_type: parsed.scenario_type,
+        setting: parsed.setting,
+        terrain: parsed.terrain,
+        location: parsed.location ?? null,
+        venue_name: parsed.venue_name,
+        original_prompt: options.prompt,
+        duration_minutes: options.duration_minutes || 60,
+        typeSpec,
+        settingSpec,
+        terrainSpec,
+        complexity_tier: options.complexity_tier || 'full',
+      },
+      payloadLocations,
+      payloadTeamNames,
+      openAiApiKey,
+      pursuitNarrative,
+      (msg: string) => onProgress?.('ai', msg),
+      options.include_adversary_pursuit,
+    );
+
+    if (pursuitResult) {
+      if (!payload.insider_knowledge) payload.insider_knowledge = {};
+      (payload.insider_knowledge as Record<string, unknown>).adversary_profiles =
+        pursuitResult.adversary_profiles;
+
+      payload.time_injects = [...payload.time_injects, ...pursuitResult.pursuit_time_injects].sort(
+        (a, b) => a.trigger_time_minutes - b.trigger_time_minutes,
+      );
+
+      if (!payload.condition_driven_injects) payload.condition_driven_injects = [];
+      (payload.condition_driven_injects as Array<Record<string, unknown>>).push(
+        ...(pursuitResult.pursuit_condition_injects as Array<Record<string, unknown>>),
+      );
+
+      if (!payload.locations) payload.locations = [];
+      payload.locations.push(pursuitResult.last_known_pin as (typeof payload.locations)[0]);
+
+      const payloadAny = payload as unknown as Record<string, unknown>;
+      if (!payloadAny.pursuit_gates) {
+        payloadAny.pursuit_gates = pursuitResult.pursuit_gates;
+      }
+
+      logger.info(
+        {
+          adversaryCount: pursuitResult.adversary_profiles.length,
+          pursuitInjects: pursuitResult.pursuit_time_injects.length,
+          pursuitCondInjects: pursuitResult.pursuit_condition_injects.length,
+          pursuitGates: pursuitResult.pursuit_gates.length,
+        },
+        'Adversary pursuit tree merged into scenario payload',
+      );
+    }
+  } catch (pursuitErr) {
+    logger.warn(
+      { err: pursuitErr },
+      'Adversary pursuit tree generation failed; continuing without',
+    );
+  }
 
   // Persist site_requirements into insider_knowledge for runtime use
   if (standardsFindings.length > 0) {
