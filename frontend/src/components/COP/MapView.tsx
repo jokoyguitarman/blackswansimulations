@@ -501,6 +501,11 @@ export const MapView = ({
   const [activeFloor, setActiveFloor] = useState('G');
   const [isContainerReady, setIsContainerReady] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containmentAlert, setContainmentAlert] = useState<{
+    type: 'held' | 'breach';
+    message: string;
+    zone_label: string;
+  } | null>(null);
 
   const openHazardPanel = useCallback((h: HazardData) => {
     const details: Array<{ label: string; value: string }> = [];
@@ -685,6 +690,8 @@ export const MapView = ({
       'casualty.created',
       'adversary_sighting_update',
       'adversary_casualties_spawned',
+      'containment_held',
+      'containment_breach',
     ],
     onEvent: (event: WebSocketEvent) => {
       if (event.type === 'state.updated') {
@@ -817,6 +824,11 @@ export const MapView = ({
           zone_label?: string;
           description?: string;
           last_seen_at_minutes?: number;
+          intel_source?: string;
+          confidence?: string;
+          accuracy_radius_m?: number;
+          direction_of_travel?: string | null;
+          tests_containment?: boolean;
         };
         if (d.pin_id && d.coordinates) {
           setScenarioLocations((prev) =>
@@ -831,6 +843,11 @@ export const MapView = ({
                       zone_label: d.zone_label,
                       last_seen_at_minutes: d.last_seen_at_minutes,
                       last_seen_description: d.description,
+                      intel_source: d.intel_source,
+                      confidence: d.confidence,
+                      accuracy_radius_m: d.accuracy_radius_m,
+                      direction_of_travel: d.direction_of_travel,
+                      tests_containment: d.tests_containment,
                     },
                   }
                 : loc,
@@ -849,6 +866,17 @@ export const MapView = ({
             }
           })
           .catch(() => {});
+      }
+      if (event.type === 'containment_held' || event.type === 'containment_breach') {
+        const d = event.data as { result?: string; message?: string; zone_label?: string };
+        setContainmentAlert({
+          type: event.type === 'containment_held' ? 'held' : 'breach',
+          message:
+            d.message ||
+            (event.type === 'containment_held' ? 'Perimeter holding.' : 'Containment breached!'),
+          zone_label: d.zone_label || 'Unknown',
+        });
+        setTimeout(() => setContainmentAlert(null), 12000);
       }
     },
     enabled: !!sessionId && !isMapDisabled,
@@ -1594,6 +1622,21 @@ export const MapView = ({
             />
           ))}
         </MapContainer>
+      )}
+
+      {containmentAlert && (
+        <div
+          className={`absolute top-3 left-1/2 -translate-x-1/2 z-[1500] px-4 py-2.5 rounded-lg border backdrop-blur-sm shadow-xl font-mono text-xs max-w-[90%] text-center animate-pulse ${
+            containmentAlert.type === 'held'
+              ? 'bg-green-900/80 border-green-500/60 text-green-200'
+              : 'bg-red-900/80 border-red-500/60 text-red-200'
+          }`}
+        >
+          <div className="font-bold text-sm mb-0.5">
+            {containmentAlert.type === 'held' ? '🛡 PERIMETER HOLDING' : '🚨 CONTAINMENT BREACH'}
+          </div>
+          <div>{containmentAlert.message}</div>
+        </div>
       )}
 
       {/* Zone classification dialog — appears after drawing a hazard_zone polygon */}

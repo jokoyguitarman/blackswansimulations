@@ -1,4 +1,4 @@
-import { Marker, Popup, Circle } from 'react-leaflet';
+import { Marker, Popup, Circle, Polyline } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
 import { svg } from './mapIcons';
@@ -250,6 +250,66 @@ const createPinIcon = (pin: ScenarioLocationPin, stalenessMinutes?: number): Div
   });
 };
 
+const INTEL_SOURCE_LABELS: Record<string, { label: string; icon: string; color: string }> = {
+  cctv: { label: 'CCTV', icon: '📹', color: '#a855f7' },
+  anpr: { label: 'ANPR', icon: '🚗', color: '#3b82f6' },
+  helicopter_thermal: { label: 'HELO THERMAL', icon: '🚁', color: '#22c55e' },
+  k9_tracking: { label: 'K9 TRACK', icon: '🐕', color: '#f59e0b' },
+  cell_tower: { label: 'CELL TOWER', icon: '📡', color: '#6366f1' },
+  eyewitness: { label: 'EYEWITNESS', icon: '👁', color: '#ef4444' },
+  forensic: { label: 'FORENSIC', icon: '🔬', color: '#14b8a6' },
+  financial: { label: 'FINANCIAL', icon: '💳', color: '#f97316' },
+  social_media: { label: 'SOCIAL MEDIA', icon: '📱', color: '#ec4899' },
+  hospital_alert: { label: 'HOSPITAL', icon: '🏥', color: '#10b981' },
+  informant: { label: 'INFORMANT', icon: '🕵', color: '#8b5cf6' },
+};
+
+const CONFIDENCE_STYLES: Record<
+  string,
+  { color: string; fillOpacity: number; weight: number; dash: string; label: string }
+> = {
+  high: { color: '#22c55e', fillOpacity: 0.06, weight: 2, dash: '', label: 'HIGH' },
+  medium: { color: '#f59e0b', fillOpacity: 0.08, weight: 1.5, dash: '8 4', label: 'MEDIUM' },
+  low: { color: '#ef4444', fillOpacity: 0.1, weight: 1, dash: '4 4', label: 'LOW' },
+};
+
+function computeDirectionArrow(
+  center: [number, number],
+  direction: string,
+  radiusM: number,
+): [number, number][] | null {
+  const dirMap: Record<string, number> = {
+    north: 0,
+    northeast: 45,
+    east: 90,
+    southeast: 135,
+    south: 180,
+    southwest: 225,
+    west: 270,
+    northwest: 315,
+  };
+  const lower = direction.toLowerCase();
+  let angleDeg: number | null = null;
+  for (const [key, val] of Object.entries(dirMap)) {
+    if (lower.includes(key)) {
+      angleDeg = val;
+      break;
+    }
+  }
+  if (angleDeg === null) return null;
+
+  const angleRad = (angleDeg * Math.PI) / 180;
+  const mToDeg = 1 / 111_320;
+  const len = Math.max(radiusM * 1.5, 200) * mToDeg;
+  const cosLat = Math.cos((center[0] * Math.PI) / 180);
+
+  const tip: [number, number] = [
+    center[0] + Math.cos(angleRad) * len,
+    center[1] + (Math.sin(angleRad) * len) / cosLat,
+  ];
+  return [center, tip];
+}
+
 export const ScenarioLocationMarker = ({
   location,
   position,
@@ -268,24 +328,64 @@ export const ScenarioLocationMarker = ({
     location.narrative_description ??
     (location.conditions?.narrative_description as string | undefined);
 
-  const uncertaintyRadius =
-    adversary && stalenessMinutes != null && stalenessMinutes > 0
-      ? Math.min(stalenessMinutes * 80, 2000)
-      : 0;
+  const intelSource = (location.conditions?.intel_source as string) || null;
+  const confidence = (location.conditions?.confidence as string) || null;
+  const accuracyRadiusM = (location.conditions?.accuracy_radius_m as number) || 0;
+  const directionOfTravel = (location.conditions?.direction_of_travel as string) || null;
+  const testsContainment = (location.conditions?.tests_containment as boolean) || false;
+
+  const confidenceStyle = confidence
+    ? CONFIDENCE_STYLES[confidence] || CONFIDENCE_STYLES.low
+    : null;
+  const intelMeta = intelSource ? INTEL_SOURCE_LABELS[intelSource] || null : null;
+
+  const effectiveRadius = adversary
+    ? accuracyRadiusM > 0
+      ? accuracyRadiusM +
+        (stalenessMinutes != null && stalenessMinutes > 0
+          ? Math.min(stalenessMinutes * 40, 800)
+          : 0)
+      : stalenessMinutes != null && stalenessMinutes > 0
+        ? Math.min(stalenessMinutes * 80, 2000)
+        : 0
+    : 0;
+
+  const posArray: [number, number] = Array.isArray(position)
+    ? (position as [number, number])
+    : [
+        (position as { lat: number; lng: number }).lat,
+        (position as { lat: number; lng: number }).lng,
+      ];
+
+  const directionArrow =
+    adversary && directionOfTravel
+      ? computeDirectionArrow(posArray, directionOfTravel, effectiveRadius || 200)
+      : null;
 
   return (
     <>
-      {adversary && uncertaintyRadius > 0 && (
+      {adversary && effectiveRadius > 0 && (
         <Circle
           center={position}
-          radius={uncertaintyRadius}
+          radius={effectiveRadius}
           pathOptions={{
-            color: '#ef4444',
-            fillColor: '#ef4444',
-            fillOpacity: 0.08,
-            weight: 1,
-            dashArray: '6 4',
+            color: confidenceStyle?.color || '#ef4444',
+            fillColor: confidenceStyle?.color || '#ef4444',
+            fillOpacity: confidenceStyle?.fillOpacity ?? 0.08,
+            weight: confidenceStyle?.weight ?? 1,
+            dashArray: confidenceStyle?.dash || '6 4',
             className: 'adversary-uncertainty-radius',
+          }}
+        />
+      )}
+      {directionArrow && (
+        <Polyline
+          positions={directionArrow}
+          pathOptions={{
+            color: confidenceStyle?.color || '#f59e0b',
+            weight: 3,
+            opacity: 0.7,
+            dashArray: '10 6',
           }}
         />
       )}
@@ -305,17 +405,58 @@ export const ScenarioLocationMarker = ({
         }
       >
         <Popup>
-          <div className="p-2 min-w-[150px] max-w-[220px]">
+          <div className="p-2 min-w-[180px] max-w-[260px]">
             <div className="text-sm font-medium terminal-text text-robotic-yellow">
               {location.label}
             </div>
             <div className="text-xs text-robotic-yellow/60 mt-0.5 capitalize">
               {adversary ? 'Last Known Position' : location.location_type.replace(/_/g, ' ')}
             </div>
+
+            {adversary && intelMeta && (
+              <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold rounded"
+                  style={{
+                    backgroundColor: intelMeta.color + '22',
+                    color: intelMeta.color,
+                    border: `1px solid ${intelMeta.color}44`,
+                  }}
+                >
+                  {intelMeta.icon} {intelMeta.label}
+                </span>
+                {confidenceStyle && (
+                  <span
+                    className="px-1.5 py-0.5 text-[10px] font-bold rounded font-mono"
+                    style={{
+                      backgroundColor: confidenceStyle.color + '22',
+                      color: confidenceStyle.color,
+                      border: `1px solid ${confidenceStyle.color}44`,
+                    }}
+                  >
+                    {confidenceStyle.label}
+                  </span>
+                )}
+                <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-amber-900/30 text-amber-400 border border-amber-500/30">
+                  SINGLE SOURCE
+                </span>
+              </div>
+            )}
+
             {adversary && stalenessMinutes != null && stalenessMinutes > 0 && (
               <div className="text-xs text-red-400 mt-1 font-mono">
                 Last seen {Math.round(stalenessMinutes)} min ago
-                {uncertaintyRadius > 0 && ` · ~${Math.round(uncertaintyRadius)}m radius`}
+                {effectiveRadius > 0 && ` · ~${Math.round(effectiveRadius)}m radius`}
+              </div>
+            )}
+            {adversary && directionOfTravel && (
+              <div className="text-xs text-amber-400 mt-0.5 font-mono">
+                Direction: {directionOfTravel}
+              </div>
+            )}
+            {adversary && testsContainment && (
+              <div className="text-xs text-purple-400 mt-0.5 font-mono font-bold">
+                ⚡ TESTING PERIMETER
               </div>
             )}
             {adversary && typeof location.conditions?.last_seen_description === 'string' && (

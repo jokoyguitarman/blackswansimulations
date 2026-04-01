@@ -4219,27 +4219,53 @@ ${locationList}
 
 HOW THE PURSUIT WORKS:
 - The adversary is NOT a moving pin. Players never see the adversary's real-time position.
-- Instead, players receive SIGHTING REPORTS as injects, and a "last known position" marker updates on the map.
+- Instead, players receive SIGHTING REPORTS as injects from MULTIPLE INTELLIGENCE SOURCES, and a "last known position" marker updates on the map with a confidence-based accuracy radius.
 - At key moments, the pursuit team receives DECISION POINT injects with 2-3 options.
 - Each option leads to different consequences — some branch into new decision points.
 - The pursuit runs ALONGSIDE the emergency response — pursuit decisions can impact other teams (e.g. pulling officers from a cordon).
+
+INTELLIGENCE SOURCES — each sighting inject MUST specify its intel_source and confidence:
+
+| intel_source           | confidence | accuracy_radius_m | Description |
+|------------------------|------------|-------------------|-------------|
+| cctv                   | high       | 50                | Security/traffic camera footage with timestamp and direction |
+| anpr                   | high       | 100               | Automatic Number Plate Recognition hit on a flagged vehicle |
+| helicopter_thermal     | high       | 30                | Helicopter with FLIR/thermal camera — live tracking from the air |
+| k9_tracking            | medium     | 150               | K9 unit following scent trail — indicates direction not exact position |
+| cell_tower             | medium     | 300               | Cell tower triangulation of suspect's phone — large area circle |
+| eyewitness             | low        | 500               | Civilian eyewitness report — unreliable, may describe wrong person |
+| forensic               | medium     | 200               | Scene forensics (DNA, fingerprints, shell casings) pointing to identity or origin |
+| financial              | low        | 400               | Credit card or ATM usage at a merchant location |
+| social_media           | low        | 600               | Social media post or associate check-in geotagged near a location |
+| hospital_alert         | medium     | 100               | Hospital/clinic reports patient matching suspect description |
+| informant              | medium     | 250               | Intelligence from informant or undercover operative |
 
 WHAT TO GENERATE:
 
 1. ADVERSARY PROFILE: A single adversary with behavior matching the scenario.
 
-2. PURSUIT TIME INJECTS (5-8 injects): Sightings, witness reports, CCTV findings, and decision points delivered at fixed times. Each sighting inject must include an "adversary_sighting" in state_effect to update the last-known marker.
+2. PURSUIT TIME INJECTS (8-12 injects): Delivered at fixed times. EACH sighting inject uses a DIFFERENT intel_source from the table above. You MUST use at least 5 distinct intel_source types across all injects. Mix high/medium/low confidence sources to force players to weigh conflicting intel. Each sighting inject must include an "adversary_sighting" in state_effect with intel_source, confidence, accuracy_radius_m, and optional direction_of_travel.
 
-3. PURSUIT CONDITION INJECTS (3-5 injects): Branches that fire based on which decisions the pursuit team made. Use trigger_condition with keywords matching the prior decision.
+3. FALSE LEAD INJECTS (2-3 injects within pursuit_time_injects): Mark these with "is_false_lead": true in the adversary_sighting. These are reports that turn out to be WRONG — similar-looking individual, lookalike on CCTV, cloned vehicle plate on ANPR, wrong heat signature on helicopter thermal, or a civilian matching the description at a hospital. FALSE LEADS CAN COME FROM ANY CONFIDENCE LEVEL — in fact, at least one MUST be high-confidence (e.g. clear CCTV footage of the wrong person) because those are the most tactically dangerous: commanders will commit heavy resources based on precise-but-wrong intel. The content should be plausible and the location should draw resources AWAY from the actual pursuit corridor. The map pin will still update (players don't know it's false until a later inject reveals it). Include a follow-up inject later that debunks the false lead (e.g. "CCTV review confirms individual at Junction 5 was a civilian — not the suspect. All units redirected.").
 
-4. WITNESS INJECTS (1-3 injects): Reports from injured civilians that go to the triage team ONLY. These contain pursuit-relevant intel that the triage team must relay to the police team via a decision.
+4. PURSUIT CONDITION INJECTS (3-5 injects): Branches that fire based on which decisions the pursuit team made. Use trigger_condition with keywords matching the prior decision.
 
-5. PURSUIT GATES (3 gates):
+5. RESOURCE-GATED INJECTS (2-3 injects within pursuit_time_injects): These are higher-quality intel that should narratively explain WHY better intel is available. For example:
+   - A CCTV inject should mention "Ops room reviewing camera network" — this hints that deploying a CCTV operator asset improves intel quality.
+   - A K9 inject should reference the K9 tracking from the last known position.
+   - A helicopter inject should mention "Air-1 on station with thermal camera."
+   Mark these with "resource_hint": "cctv_operator|k9_unit|helicopter" in the adversary_sighting to indicate which player-placed asset would enhance this intel.
+
+6. WITNESS INJECTS (1-3 injects): Reports from injured civilians that go to the triage team ONLY. These contain pursuit-relevant intel that the triage team must relay to the police team via a decision.
+
+7. CONTAINMENT TEST INJECTS (1-2 injects within pursuit_time_injects): These describe the suspect approaching or testing a perimeter/cordon area. The content should say something like "Suspect seen approaching the intersection of X and Y" — a location where players SHOULD have placed a cordon. Mark with "tests_containment": true in the adversary_sighting. If players have cordons there, the system will auto-generate a "suspect turned back" follow-up. If not, the suspect breaks through.
+
+8. PURSUIT GATES (3 gates):
    - "suspect_localised" (check at ~${Math.round(durationMinutes * 0.25)} min)
    - "perimeter_established" (check at ~${Math.round(durationMinutes * 0.5)} min)
    - "suspect_neutralised" (check at ~${Math.round(durationMinutes * 0.8)} min)
 
-6. CASUALTY-SPAWNING INJECTS: 1-2 time-based injects that spawn additional casualties if the adversary is still active. Include conditions_to_cancel: ["gate_met:suspect_neutralised"].
+9. CASUALTY-SPAWNING INJECTS: 1-2 time-based injects that spawn additional casualties if the adversary is still active. Include conditions_to_cancel: ["gate_met:suspect_neutralised"].
 
 Return ONLY valid JSON:
 {
@@ -4256,7 +4282,7 @@ Return ONLY valid JSON:
       "trigger_time_minutes": number,
       "type": "intel_brief|field_update|citizen_call",
       "title": "string",
-      "content": "string (2-4 sentences with specific scenario details)",
+      "content": "string (2-4 sentences — always specify the intel source naturally in the narrative, e.g. 'CCTV at Junction 3 captured...' or 'Eyewitness reports a male matching...')",
       "severity": "critical|high|medium",
       "inject_scope": "team_specific",
       "target_teams": ["${primaryPursuitTeam}"],
@@ -4267,7 +4293,14 @@ Return ONLY valid JSON:
           "lat": number (from AVAILABLE LOCATIONS),
           "lng": number (from AVAILABLE LOCATIONS),
           "zone_label": "string",
-          "description": "string"
+          "description": "string",
+          "intel_source": "cctv|anpr|helicopter_thermal|k9_tracking|cell_tower|eyewitness|forensic|financial|social_media|hospital_alert|informant",
+          "confidence": "high|medium|low",
+          "accuracy_radius_m": number (from the table above),
+          "direction_of_travel": "string or null (e.g. 'northeast toward Block 7', null if unknown)",
+          "is_false_lead": false,
+          "resource_hint": "string or null (e.g. 'cctv_operator', 'k9_unit', 'helicopter')",
+          "tests_containment": false
         }
       }
     }
@@ -4287,7 +4320,20 @@ Return ONLY valid JSON:
         "match_mode": "any"
       },
       "state_effect": {
-        "adversary_sighting": { "adversary_id": "string", "lat": number, "lng": number, "zone_label": "string", "description": "string" }
+        "adversary_sighting": {
+          "adversary_id": "string",
+          "lat": number,
+          "lng": number,
+          "zone_label": "string",
+          "description": "string",
+          "intel_source": "string",
+          "confidence": "high|medium|low",
+          "accuracy_radius_m": number,
+          "direction_of_travel": "string or null",
+          "is_false_lead": false,
+          "resource_hint": null,
+          "tests_containment": false
+        }
       }
     }
   ],
@@ -4351,7 +4397,15 @@ RULES:
 - Witness injects go to the triage team. They contain intel that is ONLY useful if relayed.
 - Casualty-spawning injects simulate the adversary continuing to cause harm while not neutralised.
 - The pursuit arc should follow: initial sighting → localisation decisions → containment → intercept/resolution.
-- Gate content_hints should match likely decision keywords (e.g. "CCTV", "cordon", "sweep", "breach", "apprehend").`;
+- Gate content_hints should match likely decision keywords (e.g. "CCTV", "cordon", "sweep", "breach", "apprehend").
+- Use at LEAST 5 different intel_source types across all pursuit_time_injects and pursuit_condition_injects.
+- CRITICAL: "high confidence" means the SOURCE is reliable and the LOCATION is precise — it does NOT mean the identification is correct. A CCTV can clearly capture a lookalike. An ANPR can flag a cloned plate. A helicopter thermal can lock onto the wrong person. High-confidence false leads are the MOST dangerous because commanders commit heavy resources to them. At least ONE false lead MUST come from a high-confidence source (cctv, anpr, or helicopter_thermal) to test whether players blindly trust precise intel without cross-referencing.
+- Resource-gated injects should naturally reference the resource in the narrative (e.g. "K9 handler reports strong scent trail heading east").
+- Containment test injects should target locations where a competent team would logically place cordons.
+- Direction of travel should be included on CCTV, K9, and helicopter sources. Omit for cell_tower, financial, social_media.
+- The overall intel flow should create a realistic "fog of war" — early reports are low confidence, later reports improve as resources are deployed.
+- ANTI-PATTERN RULE: Do NOT create a predictable relationship between confidence level and correctness. Correct intel MUST appear across ALL confidence tiers — some low-confidence eyewitness reports should be accurate, some high-confidence CCTV should be wrong. The player must NEVER be able to deduce correctness from source type or confidence level alone. They must cross-reference MULTIPLE independent reports to triangulate the truth. Vary the pattern — never make "latest high-confidence report = always correct."
+- RANDOMISATION RULE: Across the 8-12 pursuit injects, the TRUE pursuit corridor should be supported by a MIX of high, medium, AND low confidence sources. Similarly, false leads should come from a MIX of confidence levels. A correct low-confidence eyewitness report followed by a wrong high-confidence CCTV report is a realistic and valuable training scenario. The goal is to teach players that NO single source is gospel — only corroboration across independent sources builds a reliable picture.`;
 
   const userPrompt = `Generate the adversary pursuit decision tree for "${narrative?.title || scenario_type}" at ${venue}. Adversary behaviors: ${adversaryBehaviors.join(', ')}. Duration: ${durationMinutes} minutes. Make the decisions genuinely difficult with realistic tradeoffs.`;
 
@@ -4376,7 +4430,7 @@ RULES:
         condition?: Record<string, unknown>;
       }>;
       initial_last_known?: { lat?: number; lng?: number; zone_label?: string };
-    }>(systemPrompt, userPrompt, openAiApiKey, 6000, 0.8);
+    }>(systemPrompt, userPrompt, openAiApiKey, 8000, 0.8);
 
     const profile = parsed.adversary_profile;
     if (!profile?.adversary_id) {

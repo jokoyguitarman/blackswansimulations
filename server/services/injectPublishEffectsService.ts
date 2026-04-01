@@ -218,6 +218,31 @@ async function handleAdversarySighting(
   const lng = sighting.lng as number;
   const zoneLabel = (sighting.zone_label as string) || 'Unknown';
   const description = (sighting.description as string) || '';
+  const intelSource = (sighting.intel_source as string) || 'eyewitness';
+  const confidence = (sighting.confidence as string) || 'low';
+  const accuracyRadiusM = (sighting.accuracy_radius_m as number) || 500;
+  const directionOfTravel = (sighting.direction_of_travel as string) || null;
+  const resourceHint = (sighting.resource_hint as string) || null;
+  const testsContainment = (sighting.tests_containment as boolean) || false;
+
+  let effectiveConfidence = confidence;
+  let effectiveRadius = accuracyRadiusM;
+
+  if (resourceHint) {
+    const boost = await checkResourceGatedIntelBoost(sessionId, resourceHint);
+    if (boost) {
+      effectiveConfidence = boost.upgradedConfidence;
+      effectiveRadius = boost.upgradedRadius;
+      logger.info(
+        { sessionId, resourceHint, from: confidence, to: effectiveConfidence },
+        'Intel confidence boosted by deployed resource',
+      );
+    }
+  }
+
+  if (testsContainment) {
+    await evaluateContainment(sessionId, injectId, { lat, lng }, zoneLabel, adversaryId);
+  }
 
   const { data: existingPin } = await supabaseAdmin
     .from('scenario_locations')
@@ -237,6 +262,12 @@ async function handleAdversarySighting(
       last_seen_at_minutes: elapsed,
       last_seen_description: description,
       pin_category: 'last_known_adversary',
+      intel_source: intelSource,
+      confidence: effectiveConfidence,
+      accuracy_radius_m: effectiveRadius,
+      direction_of_travel: directionOfTravel,
+      resource_hint: resourceHint,
+      tests_containment: testsContainment,
     };
     await supabaseAdmin
       .from('scenario_locations')
@@ -256,15 +287,158 @@ async function handleAdversarySighting(
         zone_label: zoneLabel,
         description,
         last_seen_at_minutes: elapsed,
+        intel_source: intelSource,
+        confidence: effectiveConfidence,
+        accuracy_radius_m: effectiveRadius,
+        direction_of_travel: directionOfTravel,
+        tests_containment: testsContainment,
       },
       timestamp: new Date().toISOString(),
     });
     logger.info(
-      { sessionId, injectId, adversaryId, lat, lng, zoneLabel },
+      { sessionId, injectId, adversaryId, lat, lng, zoneLabel, intelSource, effectiveConfidence },
       'Last-known adversary pin updated',
     );
   } else {
     logger.warn({ sessionId, adversaryId }, 'No last_known_adversary pin found to update');
+  }
+}
+
+const RESOURCE_ASSET_MAP: Record<string, string[]> = {
+  cctv_operator: ['cctv_monitor', 'cctv_operator', 'surveillance'],
+  k9_unit: ['k9_unit', 'k9'],
+  helicopter: ['helicopter', 'air_support', 'helo'],
+};
+
+async function checkResourceGatedIntelBoost(
+  sessionId: string,
+  resourceHint: string,
+): Promise<{ upgradedConfidence: string; upgradedRadius: number } | null> {
+  const assetTypes = RESOURCE_ASSET_MAP[resourceHint];
+  if (!assetTypes?.length) return null;
+
+  const { data: placements } = await supabaseAdmin
+    .from('placed_assets')
+    .select('asset_type')
+    .eq('session_id', sessionId)
+    .eq('status', 'active')
+    .in('asset_type', assetTypes);
+
+  if (placements && placements.length > 0) {
+    return { upgradedConfidence: 'high', upgradedRadius: 50 };
+  }
+  return null;
+}
+
+const CONTAINMENT_CORDON_TYPES = [
+  'police_cordon',
+  'barrier',
+  'blast_cordon',
+  'ops_cordon',
+  'fire_cordon',
+  'safe_perimeter',
+  'press_cordon',
+  'crush_barrier',
+  'crowd_barrier',
+  'crowd_barrier_line',
+  'platform_barrier',
+  'mall_lockdown_gate',
+];
+
+async function evaluateContainment(
+  sessionId: string,
+  injectId: string,
+  suspectCoords: { lat: number; lng: number },
+  zoneLabel: string,
+  adversaryId: string,
+): Promise<void> {
+  const { data: cordons } = await supabaseAdmin
+    .from('placed_assets')
+    .select('id, asset_type, label, geometry, team_name')
+    .eq('session_id', sessionId)
+    .eq('status', 'active')
+    .in('asset_type', CONTAINMENT_CORDON_TYPES);
+
+  if (!cordons?.length) {
+    getWebSocketService().broadcastToSession(sessionId, {
+      type: 'containment_breach',
+      data: {
+        adversary_id: adversaryId,
+        zone_label: zoneLabel,
+        coordinates: suspectCoords,
+        result: 'no_cordons',
+        message: `Suspect passed through ${zoneLabel} — no cordons detected in the area. Containment failed.`,
+      },
+      timestamp: new Date().toISOString(),
+    });
+    logger.info({ sessionId, injectId, zoneLabel }, 'Containment test: no cordons found');
+    return;
+  }
+
+  const PROXIMITY_THRESHOLD_DEG = 300 / 111_320;
+  let nearbyCordon = false;
+
+  for (const cordon of cordons) {
+    const geom = cordon.geometry as Record<string, unknown>;
+    if (!geom) continue;
+
+    let checkPoints: Array<{ lat: number; lng: number }> = [];
+
+    if (geom.type === 'LineString') {
+      const coords = geom.coordinates as [number, number][];
+      if (coords?.length) {
+        checkPoints = coords.map((c) => ({ lat: c[1], lng: c[0] }));
+      }
+    } else if (geom.type === 'Point') {
+      const coords = geom.coordinates as [number, number];
+      if (coords?.length === 2) {
+        checkPoints = [{ lat: coords[1], lng: coords[0] }];
+      }
+    } else if (geom.type === 'Polygon') {
+      const coords = (geom.coordinates as [number, number][][])?.[0];
+      if (coords?.length) {
+        checkPoints = coords.map((c) => ({ lat: c[1], lng: c[0] }));
+      }
+    }
+
+    for (const pt of checkPoints) {
+      const dLat = pt.lat - suspectCoords.lat;
+      const dLng = pt.lng - suspectCoords.lng;
+      const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+      if (dist <= PROXIMITY_THRESHOLD_DEG) {
+        nearbyCordon = true;
+        break;
+      }
+    }
+    if (nearbyCordon) break;
+  }
+
+  if (nearbyCordon) {
+    getWebSocketService().broadcastToSession(sessionId, {
+      type: 'containment_held',
+      data: {
+        adversary_id: adversaryId,
+        zone_label: zoneLabel,
+        coordinates: suspectCoords,
+        result: 'contained',
+        message: `Suspect approached cordon near ${zoneLabel} — turned back. Perimeter holding. Last seen retreating.`,
+      },
+      timestamp: new Date().toISOString(),
+    });
+    logger.info({ sessionId, injectId, zoneLabel }, 'Containment test: cordon held');
+  } else {
+    getWebSocketService().broadcastToSession(sessionId, {
+      type: 'containment_breach',
+      data: {
+        adversary_id: adversaryId,
+        zone_label: zoneLabel,
+        coordinates: suspectCoords,
+        result: 'breach',
+        message: `Suspect breached containment at ${zoneLabel} — no cordon covering this sector. Suspect now outside perimeter.`,
+      },
+      timestamp: new Date().toISOString(),
+    });
+    logger.info({ sessionId, injectId, zoneLabel }, 'Containment test: breach — no cordon nearby');
   }
 }
 
