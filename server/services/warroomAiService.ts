@@ -20,7 +20,7 @@ export interface InjectPressureType {
   group: string;
   label: string;
   description: string;
-  emphasis: string;
+  examples: string[];
 }
 
 export const INJECT_PRESSURE_TYPES: InjectPressureType[] = [
@@ -30,44 +30,94 @@ export const INJECT_PRESSURE_TYPES: InjectPressureType[] = [
     group: 'Political & Authority',
     label: 'Political interference',
     description: 'Politicians inserting themselves into operational decisions',
-    emphasis: `- A government minister arrives and publicly overrides the incident commander's evacuation plan for political optics
-- Parliamentary questions are being raised mid-crisis, demanding the IC divert attention to prepare a briefing
-- The mayor's office issues a contradictory press statement that undermines the operational strategy
-- A political aide insists on re-routing resources to protect a government building instead of the casualty collection point
-- A senator demands a personal security detail be pulled from the perimeter cordon`,
+    examples: [
+      "A government minister arrives and publicly overrides the incident commander's evacuation plan for political optics",
+      'Parliamentary questions are being raised mid-crisis, demanding the IC divert attention to prepare a briefing',
+      "The mayor's office issues a contradictory press statement that undermines the operational strategy",
+      'A political aide insists on re-routing resources to protect a government building instead of the casualty collection point',
+      'A senator demands a personal security detail be pulled from the perimeter cordon',
+      'A deputy minister demands the incident be downgraded to avoid embarrassing a visiting foreign delegation',
+      'The governor\'s office orders a premature "all clear" press conference while operations are still active',
+      'A councillor broadcasts the staging area location on social media to show they are "on scene"',
+      'A political party sends volunteers in branded vests to the scene, confusing the public about who is in charge',
+      'An election candidate holds a press conference at the cordon blaming the incumbent for inadequate preparedness',
+      "The president's advance team demands a security zone for a potential visit, consuming tactical resources",
+      'A legislator inserts themselves into casualty notification, contacting families before official channels',
+      "A ministry official demands real-time operational updates every 10 minutes, monopolizing the IC's attention",
+      'Political staff leak the draft after-action timeline to shape a narrative before the response is complete',
+      'A cabinet minister demands that a private hospital be used for VIP casualties instead of the nearest trauma center',
+      "The ruling party's communications office rewrites the official incident statement without consulting the IC",
+    ],
   },
   {
     id: 'command_chain_conflict',
     group: 'Political & Authority',
     label: 'Command chain conflict',
     description: 'Conflicting orders from competing authority levels',
-    emphasis: `- A senior officer who just arrived countermands the acting commander's tactical decisions without situational awareness
-- The national crisis center issues directives that directly contradict the on-scene operational plan
-- Two command posts are issuing conflicting orders to the same ground units
-- A regional commander pulls rank over the local IC via phone, demanding a completely different approach
-- An off-duty chief arrives and begins giving orders that clash with the established chain of command`,
+    examples: [
+      "A senior officer who just arrived countermands the acting commander's tactical decisions without situational awareness",
+      'The national crisis center issues directives that directly contradict the on-scene operational plan',
+      'Two command posts are issuing conflicting orders to the same ground units',
+      'A regional commander pulls rank over the local IC via phone, demanding a completely different approach',
+      'An off-duty chief arrives and begins giving orders that clash with the established chain of command',
+      "A newly promoted supervisor overrides an experienced team leader's decision on cordon placement",
+      'The strategic commander and tactical commander disagree on whether to negotiate or breach, paralyzing the response',
+      'A headquarters directive mandates a resource allocation that the IC knows will create a gap in coverage',
+      'Two colonels from different branches both claim to be the designated military liaison, issuing competing orders',
+      'The deputy IC issues a hold order while the IC simultaneously issues an advance order to the same team',
+      'A senior fire officer changes the hazard zone classification without consulting the unified command',
+      'The night shift commander refuses to hand over to the day shift commander, citing incomplete handover conditions',
+      'An admiral observing the exercise intervenes with live tactical guidance that confuses participants',
+      'A district commander demands a written risk assessment before authorizing an urgent rescue, delaying action by 20 minutes',
+      'The emergency operations center orders a shelter-in-place while the field commander has already begun evacuation',
+    ],
   },
   {
     id: 'jurisdictional_turf_war',
     group: 'Political & Authority',
     label: 'Jurisdictional turf war',
     description: 'Agencies fighting over ownership and control',
-    emphasis: `- Two agencies both claim ownership of the inner cordon — their officers are giving contradictory directions to the same personnel
-- A mutual aid request is denied by a neighboring jurisdiction citing resource shortages, but their units are visibly idle nearby
-- A federal agency deploys assets into the area without notifying local command, causing confusion over who controls what zone
-- The fire service refuses to enter a sector until police confirms it is "weapons cold" — police says that is fire's own assessment to make
-- A military liaison demands operational control of a sector citing national security jurisdiction`,
+    examples: [
+      'Two agencies both claim ownership of the inner cordon — their officers are giving contradictory directions to the same personnel',
+      'A mutual aid request is denied by a neighboring jurisdiction citing resource shortages, but their units are visibly idle nearby',
+      'A federal agency deploys assets into the area without notifying local command, causing confusion over who controls what zone',
+      'The fire service refuses to enter a sector until police confirms it is "weapons cold" — police says that is fire\'s own assessment to make',
+      'A military liaison demands operational control of a sector citing national security jurisdiction',
+      'The coast guard and harbor police dispute who has authority over waterway access near the incident',
+      'A customs agency blocks a critical supply shipment at the border, insisting on inspection despite the emergency declaration',
+      'The national intelligence service confiscates evidence from the scene without informing the lead investigator',
+      'Two ambulance services from adjacent districts refuse to cross a boundary line, leaving a gap in medical coverage',
+      'The environmental protection agency halts rescue operations in a contaminated area pending its own independent assessment',
+      'Airport authority police refuse to allow city police vehicles onto the tarmac, blocking a critical evacuation corridor',
+      'A state emergency management agency overrides the local emergency declaration, changing resource allocation protocols',
+      'The railway operator denies platform access to emergency responders, citing their own safety procedures',
+      'A private security firm contracted by the venue owner clashes with police over who controls internal access points',
+      'Counter-terrorism police seal a perimeter that blocks paramedic access, each agency insisting the other must yield',
+      'The public health department quarantines an area the fire service needs for staging, neither will compromise',
+    ],
   },
   {
     id: 'diplomatic_incident',
     group: 'Political & Authority',
     label: 'Diplomatic incident',
     description: 'Foreign nationals, embassy complications, international pressure',
-    emphasis: `- A foreign embassy demands immediate access to their nationals among the casualties, bypassing triage protocols
-- Diplomatic immunity complicates the detention of a key witness who is a consular official
-- An international observer team arrives unannounced claiming UN mandate to monitor the response
-- A foreign government threatens sanctions if their citizens are not prioritized in evacuation
-- International media are framing the incident as a failure of the host nation, creating geopolitical pressure`,
+    examples: [
+      'A foreign embassy demands immediate access to their nationals among the casualties, bypassing triage protocols',
+      'Diplomatic immunity complicates the detention of a key witness who is a consular official',
+      'An international observer team arrives unannounced claiming UN mandate to monitor the response',
+      'A foreign government threatens sanctions if their citizens are not prioritized in evacuation',
+      'International media are framing the incident as a failure of the host nation, creating geopolitical pressure',
+      'A tourist group from a politically sensitive country is among the casualties — their government demands a direct hotline',
+      'A foreign intelligence officer embedded among the crowd refuses to identify themselves, complicating the headcount',
+      "An allied nation offers military medical assets, but accepting would imply the host nation's capacity is inadequate",
+      'A foreign journalist is detained in the restricted zone, and their embassy is threatening trade retaliation',
+      "A visiting dignitary's motorcade is caught inside the cordon, and their security detail is refusing to cooperate with local police",
+      'A refugee community is among the displaced — their undocumented status is delaying processing at evacuation shelters',
+      'A foreign military vessel nearby offers helicopter evacuation, creating a sovereignty complication',
+      'An exchange student among the casualties triggers an urgent consular notification that overwhelms the liaison team',
+      "A bilateral treaty requires notification of a partner nation's embassy within 30 minutes, but all lines are saturated",
+      'A foreign head of state issues a public statement criticizing the response before official channels have been used',
+    ],
   },
 
   // ── Media & Information ──
@@ -76,44 +126,94 @@ export const INJECT_PRESSURE_TYPES: InjectPressureType[] = [
     group: 'Media & Information',
     label: 'Hostile media ambush',
     description: 'Journalists confronting commanders, breaching cordons',
-    emphasis: `- A journalist confronts the incident commander on live television with footage of delayed ambulance response
-- A camera crew has bypassed the outer cordon and is filming inside the triage area, broadcasting casualties without consent
-- Leaked body-camera footage is being broadcast unedited, showing responder mistakes in real time
-- A news helicopter is hovering low enough to interfere with tactical communications
-- A reporter publishes the IC's personal mobile number, flooding their phone with media calls`,
+    examples: [
+      'A journalist confronts the incident commander on live television with footage of delayed ambulance response',
+      'A camera crew has bypassed the outer cordon and is filming inside the triage area, broadcasting casualties without consent',
+      'Leaked body-camera footage is being broadcast unedited, showing responder mistakes in real time',
+      'A news helicopter is hovering low enough to interfere with tactical communications',
+      "A reporter publishes the IC's personal mobile number, flooding their phone with media calls",
+      'A documentary crew embedded with one team is broadcasting sensitive tactical movements to a live audience',
+      'A freelance photographer has climbed onto a rooftop within the hot zone to get exclusive shots, requiring a risky extraction',
+      'A reporter broadcasts the location of undercover officers monitoring a suspect vehicle',
+      'A media organization files a freedom-of-information request mid-crisis for the command log',
+      'A journalist disguised as a paramedic gains access to the casualty clearing station and publishes patient identities',
+      'A tabloid sends a drone into the restricted airspace, nearly colliding with a police helicopter',
+      "A press conference turns hostile when journalists question the IC's qualifications and demand a replacement",
+      'A paparazzi swarm around a celebrity casualty, physically pushing medical staff aside',
+      'A foreign news network broadcasts a graphic close-up of a child casualty before family notification',
+      'Media vehicles are blocking the ambulance staging area and refuse to move, claiming press freedom',
+      'A reporter airs unverified claims of a second device, causing mass secondary evacuation panic',
+    ],
   },
   {
     id: 'viral_misinformation',
     group: 'Media & Information',
     label: 'Viral misinformation',
     description: 'Deepfakes, conspiracy theories, false reports spreading',
-    emphasis: `- A deepfake video showing a "second explosion" goes viral, triggering mass panic in adjacent neighborhoods
-- False reports of a chemical attack are circulating on social media, causing hospital ERs to be overwhelmed with worried-well
-- An AI-generated fake government statement is circulating claiming the area is contaminated
-- Conspiracy theories blaming a specific community are trending nationally within 30 minutes
-- A fake emergency alert is sent to phones in the area telling people to shelter in place — contradicting the actual evacuation order`,
+    examples: [
+      'A deepfake video showing a "second explosion" goes viral, triggering mass panic in adjacent neighborhoods',
+      'False reports of a chemical attack are circulating on social media, causing hospital ERs to be overwhelmed with worried-well',
+      'An AI-generated fake government statement is circulating claiming the area is contaminated',
+      'Conspiracy theories blaming a specific community are trending nationally within 30 minutes',
+      'A fake emergency alert is sent to phones in the area telling people to shelter in place — contradicting the actual evacuation order',
+      'An old photo from a different incident is being shared as live footage, misleading the public about the severity',
+      'A manipulated audio clip purporting to be the IC ordering a retreat has been posted, causing confusion among off-duty responders',
+      'A fabricated casualty count 10x the actual number is being cited by major outlets before verification',
+      'A viral post claims local water is poisoned, triggering panic buying of bottled water and clogging roads',
+      'Bot accounts are amplifying a false narrative that the government caused the incident, drowning out official communications',
+      'A cloned official social media account is posting fake safety instructions that direct people toward the danger zone',
+      'A purported leaked memo claiming the IC was warned weeks ago is circulating, though no such memo exists',
+      'An AI-generated voice message imitating the school principal tells parents the school shelter is compromised',
+      'Foreign state media broadcasts a fabricated interview with a "survivor" who describes events inconsistent with the actual incident',
+      'A hoax bomb threat at a hospital receiving casualties forces a secondary evacuation mid-treatment',
+    ],
   },
   {
     id: 'social_media_firestorm',
     group: 'Media & Information',
     label: 'Social media firestorm',
     description: 'Live-streaming, doxxing, crowd-sourced vigilantism',
-    emphasis: `- Bystanders are live-streaming the triage area, and a patient's family sees their injured relative on TikTok before being officially notified
-- A crowd-sourced "investigation" has doxxed the wrong person as the suspect — a mob is forming at their home address
-- A trending hashtag is blaming a specific agency for slow response, and their headquarters is being protested
-- An influencer with millions of followers is broadcasting from inside the cordon, drawing more onlookers
-- Drone footage taken by civilians is revealing tactical positions on social media`,
+    examples: [
+      "Bystanders are live-streaming the triage area, and a patient's family sees their injured relative on TikTok before being officially notified",
+      'A crowd-sourced "investigation" has doxxed the wrong person as the suspect — a mob is forming at their home address',
+      'A trending hashtag is blaming a specific agency for slow response, and their headquarters is being protested',
+      'An influencer with millions of followers is broadcasting from inside the cordon, drawing more onlookers',
+      'Drone footage taken by civilians is revealing tactical positions on social media',
+      'A bystander\'s video captures an off-duty responder arguing with a colleague — the clip goes viral, framed as "responders fighting instead of helping"',
+      "Online sleuths have identified the wrong vehicle as the suspect's, and people are surrounding it in a shopping mall parking lot",
+      'A GoFundMe for a fake victim raises $200K in an hour, diverting attention and donations from legitimate relief',
+      'A private Facebook group of parents is organizing a march to the incident site, threatening to overwhelm the perimeter',
+      "A meme mocking the IC's appearance during the press conference goes viral, undermining public trust in the response",
+      'Multiple live streams of the evacuation are geotagging exact locations, compromising tactical planning',
+      "A victim's family member posts a raw emotional video criticizing response time that is shared 100,000 times in 30 minutes",
+      'Crowd-sourced radio scanner apps are broadcasting encrypted police communications to the public',
+      'A popular podcast host with a large audience begins speculating on air about second suspects, triggering public fear',
+      'A hacker collective releases personal data of all deployed officers in solidarity with protest movements, creating safety concerns',
+    ],
   },
   {
     id: 'information_blackout',
     group: 'Media & Information',
     label: 'Comms failure / blackout',
     description: 'Cell towers saturated, radio down, coordination collapse',
-    emphasis: `- Cell towers in the area are saturated — responders cannot reach hospitals or dispatch by phone
-- The primary radio repeater has failed; backup frequencies are congested with crosstalk from adjacent jurisdictions
-- An encrypted channel has been compromised — sensitive tactical information may have been intercepted
-- The mobile command post has lost all data connectivity; real-time mapping and resource tracking is down
-- A software update has bricked half the team's handheld radios mid-operation`,
+    examples: [
+      'Cell towers in the area are saturated — responders cannot reach hospitals or dispatch by phone',
+      'The primary radio repeater has failed; backup frequencies are congested with crosstalk from adjacent jurisdictions',
+      'An encrypted channel has been compromised — sensitive tactical information may have been intercepted',
+      'The mobile command post has lost all data connectivity; real-time mapping and resource tracking is down',
+      "A software update has bricked half the team's handheld radios mid-operation",
+      'The fiber optic trunk line serving the area has been physically severed, taking out landlines and internet for the command post',
+      'Satellite phone uplinks are failing due to atmospheric conditions, leaving no backup communication method',
+      'A power surge destroyed the base station repeater — all trunked radio users are on simplex with limited range',
+      'Two agencies are inadvertently operating on the same frequency, causing garbled transmissions and missed messages',
+      'The CAD (computer-aided dispatch) system has crashed, and dispatchers are reverting to paper cards for the first time in decades',
+      'A critical software token has expired, locking all users out of the interagency coordination platform',
+      'WhatsApp groups being used as backup comms have been flagged and temporarily suspended due to unusual traffic volume',
+      "The incident commander's radio has failed, and the backup radio battery is dead — they are physically running between positions",
+      'A jammer is suspected near the scene; all wireless signals within 500m are degraded',
+      'The emergency paging system used to recall off-duty staff has failed, delaying reinforcement by over an hour',
+      'The backup generator at the comms tower ran out of fuel — the tower is now offline and cannot be refueled due to road closures',
+    ],
   },
 
   // ── Community & Social ──
@@ -122,44 +222,93 @@ export const INJECT_PRESSURE_TYPES: InjectPressureType[] = [
     group: 'Community & Social',
     label: 'Ethnic or religious tension',
     description: 'Communal blame, sectarian conflict, racial accusations',
-    emphasis: `- A mob is accusing members of a specific ethnic group of being responsible, surrounding their vehicles and blocking them
-- Sectarian graffiti has appeared on the venue walls during the response, escalating communal tension
-- Community leaders from two rival groups are confronting each other at the assembly point, drawing in bystanders
-- A religious leader is publicly blaming a minority community, and the speech is being broadcast live
-- Physical confrontations are breaking out between ethnic groups near the evacuation route`,
+    examples: [
+      'A mob is accusing members of a specific ethnic group of being responsible, surrounding their vehicles and blocking them',
+      'Sectarian graffiti has appeared on the venue walls during the response, escalating communal tension',
+      'Community leaders from two rival groups are confronting each other at the assembly point, drawing in bystanders',
+      'A religious leader is publicly blaming a minority community, and the speech is being broadcast live',
+      'Physical confrontations are breaking out between ethnic groups near the evacuation route',
+      'A neighborhood with a history of communal violence is seeing retaliatory property damage in response to the incident',
+      'A prominent imam and a pastor are in a public argument about blame, drawing a crowd that is blocking the access road',
+      'Taxi drivers of a particular ethnicity are refusing to transport evacuees from the opposing community',
+      'An extremist group distributes leaflets at the evacuation center blaming the minority population',
+      'A vigil organized by one community is confronted by counter-protesters, requiring police to divert from the incident',
+      'Residents are reporting hate crimes in adjacent neighborhoods as tensions spill over from the incident zone',
+      "Social media posts targeting a community's place of worship have been reported, requiring protective police deployment",
+      'Community elders are demanding a meeting with the IC before cooperating with evacuation, delaying operations',
+      'A fight breaks out at the family reunification center between families of different ethnic backgrounds over queue priority',
+      'A racial profiling accusation against checkpoint officers goes viral, complicating public cooperation with the cordon',
+    ],
   },
   {
     id: 'vigilante_behavior',
     group: 'Community & Social',
     label: 'Vigilante behavior',
     description: 'Armed citizens, mob justice, self-appointed patrols',
-    emphasis: `- Armed civilians are "patrolling" the perimeter and confronting anyone who looks like the suspect description
-- A crowd has seized a person they believe is an accomplice and is refusing to hand them over to police
-- A neighborhood watch group has set up an unauthorized checkpoint, blocking an evacuation route
-- Vigilantes have surrounded a vehicle matching a suspect description — the occupants are terrified bystanders
-- A group is threatening to storm the restricted zone to "handle the situation themselves"`,
+    examples: [
+      'Armed civilians are "patrolling" the perimeter and confronting anyone who looks like the suspect description',
+      'A crowd has seized a person they believe is an accomplice and is refusing to hand them over to police',
+      'A neighborhood watch group has set up an unauthorized checkpoint, blocking an evacuation route',
+      'Vigilantes have surrounded a vehicle matching a suspect description — the occupants are terrified bystanders',
+      'A group is threatening to storm the restricted zone to "handle the situation themselves"',
+      'A martial arts school has deployed its members to "protect" the community center, turning away emergency responders',
+      "Shop owners along the main street have armed themselves with improvised weapons, threatening anyone they don't recognize",
+      'A retired military group is conducting their own "search operation" in the area, confusing witnesses and contaminating leads',
+      'An anonymous online group posts the home addresses of people they claim are accomplices, inciting in-person harassment',
+      "Taxi drivers form a blockade around the suspect's reported neighborhood, trapping innocent residents inside",
+      'A father of a victim has obtained a weapon and is heading to the last reported suspect location',
+      'A private security company has deployed armed guards around a business cluster without police coordination',
+      'A citizen with a licensed firearm confronts a plainclothes detective at a checkpoint, mistaking them for a threat',
+      "A crowd has set a suspect's abandoned vehicle on fire, destroying potential forensic evidence",
+      'Volunteers from a local gym have created a human chain around the perimeter, refusing to let anyone they deem suspicious pass',
+      'An ex-police officer who was dismissed for misconduct has inserted themselves into the cordon operation, giving false orders',
+    ],
   },
   {
     id: 'cultural_sensitivity',
     group: 'Community & Social',
     label: 'Cultural sensitivity clash',
     description: 'Body handling conflicts, religious customs vs protocols',
-    emphasis: `- A religious community objects to how bodies are being handled, demanding rites be performed before any are moved
-- Prayer time has begun and a group insists on completing prayers despite mandatory evacuation orders
-- Dietary and medical customs are conflicting with triage protocols — a patient's family refuses a blood transfusion
-- A cultural leader demands gender-segregated evacuation routes, which would split the available exits
-- Traditional mourning practices are blocking vehicle access to the casualty collection point`,
+    examples: [
+      'A religious community objects to how bodies are being handled, demanding rites be performed before any are moved',
+      'Prayer time has begun and a group insists on completing prayers despite mandatory evacuation orders',
+      "Dietary and medical customs are conflicting with triage protocols — a patient's family refuses a blood transfusion",
+      'A cultural leader demands gender-segregated evacuation routes, which would split the available exits',
+      'Traditional mourning practices are blocking vehicle access to the casualty collection point',
+      "A Sikh family insists their injured relative's turban not be removed during medical treatment, creating a clinical dilemma",
+      'An indigenous elder demands permission to perform a cleansing ceremony before anyone enters the site',
+      'Kosher food requirements at the evacuation shelter cannot be met, and a group is refusing to eat or cooperate',
+      'A Hindu family refuses to allow their deceased relative into a body bag, demanding immediate cremation arrangements',
+      'Female casualties from a conservative community refuse treatment from male paramedics, but no female medics are available',
+      'A Buddhist monk is meditating in the evacuation path and followers are forming a protective circle around them',
+      'Ramadan fasting is affecting the stamina of several volunteers and evacuees, but they refuse water or food',
+      'A community demands that their dead be returned within 24 hours per religious requirement, conflicting with forensic timelines',
+      'A traditional healer is offering alternative treatments to casualties, creating confusion about their medical status',
+      'The evacuation shelter is co-located with a venue serving alcohol, which a religious group finds deeply offensive — they refuse entry',
+    ],
   },
   {
     id: 'language_barrier',
     group: 'Community & Social',
     label: 'Language barrier crisis',
     description: 'Miscommunication, wrongful detention, lost in translation',
-    emphasis: `- A non-English-speaking family has been detained as suspects because they couldn't explain why they were running
-- A critical eyewitness can only speak a rare dialect — no interpreter is available and their account is time-sensitive
-- Evacuation instructions are not reaching a large group of foreign workers who speak neither English nor the local language
-- Medical consent cannot be obtained for an unconscious child because the parents don't speak the triage team's language
-- A mistranslated radio message has sent a team to the wrong building`,
+    examples: [
+      "A non-English-speaking family has been detained as suspects because they couldn't explain why they were running",
+      'A critical eyewitness can only speak a rare dialect — no interpreter is available and their account is time-sensitive',
+      'Evacuation instructions are not reaching a large group of foreign workers who speak neither English nor the local language',
+      "Medical consent cannot be obtained for an unconscious child because the parents don't speak the triage team's language",
+      'A mistranslated radio message has sent a team to the wrong building',
+      'A deaf evacuee is unable to understand verbal commands and is being forcibly restrained by officers who misinterpret resistance',
+      'Sign language interpreters are unavailable, leaving 15 hearing-impaired evacuees unable to receive safety briefings',
+      'A tourist group speaking Mandarin has been misdirected into the hot zone because no one could read the signs in their language',
+      'An Arabic-speaking witness is providing critical intelligence but the translator is making significant errors under pressure',
+      'Written evacuation signage is only in the national language, leaving migrant workers unable to find exit routes',
+      'A Somali-speaking mother is separated from her child and cannot describe the child to reunification staff',
+      'A phone translation app is producing dangerously wrong medical terms, leading to an incorrect triage classification',
+      'A Vietnamese fishing crew docked nearby cannot understand why they are being ordered to leave and are becoming agitated',
+      'A Roma community in the area distrusts authorities and will only communicate through a specific community elder who has not been located',
+      'An international conference was in session — 200 attendees speak 30+ languages and no coordinated translation capacity exists',
+    ],
   },
 
   // ── Human & Emotional ──
@@ -168,55 +317,117 @@ export const INJECT_PRESSURE_TYPES: InjectPressureType[] = [
     group: 'Human & Emotional',
     label: 'Family intrusion',
     description: 'Distraught families storming restricted areas',
-    emphasis: `- Parents have breached the inner cordon and are searching the rubble for their children, interfering with rescue operations
-- A family is physically blocking an ambulance from leaving, demanding to know if their relative is inside
-- Relatives of a VIP are leveraging political connections to gain access to the restricted treatment area
-- A group of families has occupied the command post entrance demanding information, blocking staff movement
-- A mother has collapsed at the family reunification point and her other children are now unattended in the evacuation zone`,
+    examples: [
+      'Parents have breached the inner cordon and are searching the rubble for their children, interfering with rescue operations',
+      'A family is physically blocking an ambulance from leaving, demanding to know if their relative is inside',
+      'Relatives of a VIP are leveraging political connections to gain access to the restricted treatment area',
+      'A group of families has occupied the command post entrance demanding information, blocking staff movement',
+      'A mother has collapsed at the family reunification point and her other children are now unattended in the evacuation zone',
+      'A father is scaling a fence into the hot zone to reach his trapped daughter — officers must decide whether to use force',
+      'An elderly couple has wandered past the cordon searching for their grandchild and cannot be located',
+      'A family has brought a solicitor who is threatening legal action if they are not given access to the treatment area',
+      'Three separate families are arguing at the reunification desk, each claiming the same unidentified child is theirs',
+      'A large extended family has arrived in 12 vehicles, overwhelming the designated parking area and blocking emergency access',
+      "A relative is refusing to leave a deceased family member's side, physically clinging to the body as forensics team waits",
+      'A teenager has escaped from the family holding area and run back toward the incident site looking for their sibling',
+      'Families are pooling money to hire a private helicopter to fly over the scene, creating an airspace conflict',
+      "A parent who is also an off-duty nurse is demanding to treat their own child, overriding the triage doctor's decisions",
+      'A family has contacted a private ambulance service to extract their relative, bypassing the medical chain',
+      "Siblings of a missing person are posting the triage area's exact location online, inviting more families to arrive",
+    ],
   },
   {
     id: 'vip_privilege',
     group: 'Human & Emotional',
     label: 'VIP demanding privilege',
     description: 'Rank-pulling, priority demands, entourage disruption',
-    emphasis: `- A politician's aide demands their principal be evacuated first, threatening career consequences for the IC
-- A corporate executive whose company owns the venue is pulling rank, insisting on access to assess property damage during active operations
-- A celebrity's entourage has created a secondary crowd, drawing resources away from the incident
-- A military general in civilian clothes demands to jump the triage queue for a minor injury, citing rank
-- A wealthy donor to the police benevolent fund is calling the commissioner to demand special treatment`,
+    examples: [
+      "A politician's aide demands their principal be evacuated first, threatening career consequences for the IC",
+      'A corporate executive whose company owns the venue is pulling rank, insisting on access to assess property damage during active operations',
+      "A celebrity's entourage has created a secondary crowd, drawing resources away from the incident",
+      'A military general in civilian clothes demands to jump the triage queue for a minor injury, citing rank',
+      'A wealthy donor to the police benevolent fund is calling the commissioner to demand special treatment',
+      'A tech billionaire offers to fly in private medical resources but demands control over where they are deployed',
+      'A retired supreme court justice refuses to evacuate via the standard route, insisting on a private escort',
+      "A professional athlete's agent is demanding a private ambulance, threatening to sue if the athlete waits in triage",
+      'The owner of a major media group implies favorable coverage in exchange for priority access to the scene',
+      "An ambassador's spouse demands a helicopter extraction, citing diplomatic privilege for a non-emergency injury",
+      "A CEO insists their company's private fire suppression team be allowed to operate independently inside the cordon",
+      'A socialite is live-streaming their evacuation experience, attracting a crowd that impedes the exit corridor',
+      'A retired general who sits on the emergency management board phones the IC demanding a personal briefing every 15 minutes',
+      'A wealthy industrialist offers a large donation contingent on their warehouse being prioritized for protection over residential areas',
+      'A minor royal demands a personal police escort through the restricted zone to retrieve personal belongings from a vehicle',
+    ],
   },
   {
     id: 'mass_grief_event',
     group: 'Human & Emotional',
     label: 'Mass grief event',
     description: 'Collective emotional breakdown, memorial disruption',
-    emphasis: `- A collective emotional breakdown at the family reunification point is overwhelming the welfare team
-- A spontaneous memorial gathering is blocking a critical access road and growing rapidly
-- Grief-driven aggression is escalating — bereaved family members are physically attacking responders they blame for delay
-- A group of survivors is refusing to leave the scene, sitting down in the evacuation path in shock
-- A children's school group was at the venue — dozens of parents are arriving simultaneously in states of panic`,
+    examples: [
+      'A collective emotional breakdown at the family reunification point is overwhelming the welfare team',
+      'A spontaneous memorial gathering is blocking a critical access road and growing rapidly',
+      'Grief-driven aggression is escalating — bereaved family members are physically attacking responders they blame for delay',
+      'A group of survivors is refusing to leave the scene, sitting down in the evacuation path in shock',
+      "A children's school group was at the venue — dozens of parents are arriving simultaneously in states of panic",
+      'A candlelight vigil has ignited decorations on the memorial, creating a small fire near the perimeter',
+      'Hundreds of people are gathering outside the hospital demanding to see patient lists, blocking the emergency entrance',
+      'A community choir has begun singing hymns at the cordon, drawing a massive crowd that is blocking the access road',
+      'A grief counselor has themselves become overwhelmed and is now in need of treatment, leaving the team short-staffed',
+      'A school bus of children who witnessed the incident has arrived at the staging area — none have been collected by parents',
+      'A suicide note referencing the incident is found on social media, requiring immediate welfare check deployment',
+      'Memorial flowers and teddy bears are accumulating so rapidly at the scene entrance that they are physically blocking the gate',
+      'A flashmob organized online to "honor the victims" arrives at the staging area with 500 participants',
+      'Several survivors are experiencing acute dissociative episodes, walking silently back toward the danger zone',
+      'A pregnant woman goes into premature labor at the family reunification center, triggered by the stress of the event',
+    ],
   },
   {
     id: 'ethical_dilemma',
     group: 'Human & Emotional',
     label: 'Ethical dilemma',
     description: 'Moral choices in triage, treatment refusal, evidence vs lives',
-    emphasis: `- A patient is refusing life-saving treatment on religious grounds, but their family is begging the team to override the refusal
-- The triage team must choose between treating a critical child and a responder who can return to duty if stabilized
-- Forensic evidence critical to identifying the perpetrator is in a zone where casualties are still trapped — collecting evidence would delay rescue
-- A DNR-carrying patient is in cardiac arrest but their distressed family is demanding full resuscitation
-- Two casualties need the last unit of O-negative blood — one is a child, the other is a pregnant woman`,
+    examples: [
+      'A patient is refusing life-saving treatment on religious grounds, but their family is begging the team to override the refusal',
+      'The triage team must choose between treating a critical child and a responder who can return to duty if stabilized',
+      'Forensic evidence critical to identifying the perpetrator is in a zone where casualties are still trapped — collecting evidence would delay rescue',
+      'A DNR-carrying patient is in cardiac arrest but their distressed family is demanding full resuscitation',
+      'Two casualties need the last unit of O-negative blood — one is a child, the other is a pregnant woman',
+      'A suspected accomplice is critically injured — medics must decide whether to prioritize treatment or allow police to interrogate first',
+      "An organ donor card is found on a dying patient whose organs could save three others, but the family hasn't been consulted",
+      'A triage decision downgrades a young mother to expectant (likely fatal) category — her husband witnesses and protests',
+      "Treating a contaminated casualty without full PPE could save their life but risks the medic's health",
+      'Releasing unverified casualty names could help families but may cause harm if identities are wrong',
+      'A service animal is trapped alongside its owner — rescuing the animal would delay extraction of a second human casualty',
+      'An undocumented immigrant is dying but refuses hospital transport for fear of deportation upon identification',
+      'A child is trapped with a deceased parent — rescuers must decide whether to remove the body in front of the child or delay extraction',
+      'A journalist offers footage of the suspect in exchange for exclusive triage area access — the footage could save lives',
+      'An experimental drug could stabilize a critical patient but has not been approved — the medical director must decide immediately',
+      'Water supplies are running low; the team must choose between hydrating exhausted responders or heat-stressed evacuees',
+    ],
   },
   {
     id: 'mental_health_crisis',
     group: 'Human & Emotional',
     label: 'Mental health crisis',
     description: 'Responder breakdown, survivor self-harm, PTSD escalation',
-    emphasis: `- A senior responder has had a psychological breakdown mid-operation and is sitting unresponsive in the command vehicle
-- A survivor is threatening self-harm on a rooftop overlooking the incident zone, diverting tactical resources
-- A PTSD-triggered veteran among the bystanders has escalated a confrontation with police into a standoff
-- Multiple responders are showing signs of acute stress after discovering child casualties, impacting operational capacity
-- A triage nurse has frozen and cannot continue treating patients after recognizing a victim as a personal acquaintance`,
+    examples: [
+      'A senior responder has had a psychological breakdown mid-operation and is sitting unresponsive in the command vehicle',
+      'A survivor is threatening self-harm on a rooftop overlooking the incident zone, diverting tactical resources',
+      'A PTSD-triggered veteran among the bystanders has escalated a confrontation with police into a standoff',
+      'Multiple responders are showing signs of acute stress after discovering child casualties, impacting operational capacity',
+      'A triage nurse has frozen and cannot continue treating patients after recognizing a victim as a personal acquaintance',
+      'An evacuee who lost their medication during the incident is having a severe psychiatric episode at the shelter',
+      'A firefighter refuses to enter a structure, revealing they have undiagnosed claustrophobia triggered by the conditions',
+      'A cordon officer is found crying behind a vehicle and admits they are having suicidal thoughts',
+      'A survivor with pre-existing PTSD has barricaded themselves in a bathroom and is screaming, terrifying other evacuees',
+      'A child witness has gone completely nonverbal and catatonic — standard pediatric protocols are not working',
+      'A paramedic is self-medicating with alcohol found at the venue to cope with the stress, and is now impaired',
+      'A volunteer who witnessed the initial attack is compulsively returning to the scene, unable to stop reliving the moment',
+      'The peer support officer is overwhelmed by demand — 8 responders have requested immediate psychological support simultaneously',
+      'A crisis negotiator called to talk down a suicidal survivor discovers they know the person personally',
+      'A group of survivors is displaying mass psychogenic illness, all reporting symptoms with no physical cause',
+    ],
   },
 
   // ── Infrastructure & Technical ──
@@ -225,55 +436,116 @@ export const INJECT_PRESSURE_TYPES: InjectPressureType[] = [
     group: 'Infrastructure & Technical',
     label: 'Power grid failure',
     description: 'Generators failing, gridlock, elevator entrapments',
-    emphasis: `- The venue's backup generators have failed — the triage area has lost lighting and powered medical equipment
-- Traffic signals in a 2km radius are dead, creating gridlock that is blocking ambulance access routes
-- Elevator entrapments in adjacent buildings are diverting fire crews away from the primary incident
-- The mobile command post is running on battery and will lose all systems within 30 minutes
-- Street lighting failure is making the nighttime perimeter impossible to secure visually`,
+    examples: [
+      "The venue's backup generators have failed — the triage area has lost lighting and powered medical equipment",
+      'Traffic signals in a 2km radius are dead, creating gridlock that is blocking ambulance access routes',
+      'Elevator entrapments in adjacent buildings are diverting fire crews away from the primary incident',
+      'The mobile command post is running on battery and will lose all systems within 30 minutes',
+      'Street lighting failure is making the nighttime perimeter impossible to secure visually',
+      "The hospital's intensive care unit has switched to emergency power, which cannot sustain all ventilators — triage of ICU patients begins",
+      'A transformer explosion near the staging area injures two responders and knocks out remaining power',
+      'Refrigerated mortuary facilities have lost power, creating a biological hazard from unpreserved remains',
+      'The electric vehicle ambulances cannot be recharged — they will be inoperable within 2 hours',
+      'Security cameras and automated door locks across the venue have failed, creating uncontrolled access points',
+      'The sewage pumping station has lost power, and raw sewage is backing up into the underground car park being used as a shelter',
+      'Emergency lighting in the stairwells has expired, making vertical evacuation of a high-rise building impossible in darkness',
+      'A substation fire threatens to cascade into a wider blackout affecting three hospitals in the region',
+      'The water treatment plant is on backup power with 4 hours of fuel — if it fails, the city loses safe water supply',
+      'Solar panels damaged in the incident are creating an electrocution hazard, blocking access to an area with trapped casualties',
+    ],
   },
   {
     id: 'water_contamination',
     group: 'Infrastructure & Technical',
     label: 'Water or utility disruption',
     description: 'Burst mains, gas leaks, sewage backup',
-    emphasis: `- A burst water main is flooding the primary evacuation route with 30cm of water, making it impassable for stretchers
-- A gas leak has been detected in the adjacent building, forcing a secondary evacuation of the staging area
-- Sewage backup in the designated shelter is creating a biohazard, requiring relocation of 200 evacuees
-- The fire hydrant system has lost pressure — fire suppression in the affected building is no longer possible
-- Water supply to the decontamination station has been cut, halting all patient decon processing`,
+    examples: [
+      'A burst water main is flooding the primary evacuation route with 30cm of water, making it impassable for stretchers',
+      'A gas leak has been detected in the adjacent building, forcing a secondary evacuation of the staging area',
+      'Sewage backup in the designated shelter is creating a biohazard, requiring relocation of 200 evacuees',
+      'The fire hydrant system has lost pressure — fire suppression in the affected building is no longer possible',
+      'Water supply to the decontamination station has been cut, halting all patient decon processing',
+      'A broken steam pipe is venting scalding water into the pedestrian underpass being used as a triage corridor',
+      'Gas utility workers insist on isolating the gas supply to the entire block, which would cut heating to the evacuation shelter in freezing conditions',
+      'The water main break has created a sinkhole that has swallowed a parked ambulance',
+      'Contaminated water from the incident site has entered the storm drain system and is flowing toward a public waterway',
+      'A sewer main collapse has undermined the road surface near the command post — vehicles are at risk of falling through',
+      "The building's sprinkler system has activated on undamaged floors, soaking evidence and creating slip hazards",
+      'A natural gas pocket exposed by structural damage is accumulating in a basement where casualties are sheltering',
+      'The fire suppression foam system has activated unexpectedly, filling corridors with dense foam and disorienting evacuees',
+      'A chilled water pipe burst in the server room is destroying communications equipment critical to the operation',
+      'Underground utility mapping is inaccurate — a digging operation to free a trapped person has struck a live water line',
+    ],
   },
   {
     id: 'cyber_attack',
     group: 'Infrastructure & Technical',
     label: 'Cyber attack',
     description: 'GPS spoofing, ransomware, spoofed transmissions',
-    emphasis: `- GPS spoofing is misdirecting ambulances to a location 3km from the actual incident site
-- Ransomware has locked the receiving hospital's patient records system — they cannot check allergies or medical histories
-- Spoofed radio transmissions mimicking the IC's voice are giving false "all clear" orders to perimeter teams
-- The CCTV network has been hacked — all cameras show looped footage from before the incident
-- A DDoS attack has taken down the emergency dispatch system, forcing manual coordination by phone`,
+    examples: [
+      'GPS spoofing is misdirecting ambulances to a location 3km from the actual incident site',
+      "Ransomware has locked the receiving hospital's patient records system — they cannot check allergies or medical histories",
+      'Spoofed radio transmissions mimicking the IC\'s voice are giving false "all clear" orders to perimeter teams',
+      'The CCTV network has been hacked — all cameras show looped footage from before the incident',
+      'A DDoS attack has taken down the emergency dispatch system, forcing manual coordination by phone',
+      'Traffic management systems have been compromised — green lights on all approaches are creating dangerous intersections',
+      'The public alert system has been hijacked and is sending false evacuation orders to the wrong areas',
+      'Phishing emails impersonating the emergency management agency are being sent to responders asking for credentials',
+      'The building access control system has been locked by ransomware — all fire doors are sealed shut with people inside',
+      'Drone command frequencies are being jammed, grounding all aerial surveillance assets',
+      'A social engineering attack has tricked a dispatcher into revealing the tactical operations center location',
+      "The hospital's medication dispensing system is offline — pharmacists must manually verify all drug interactions",
+      'Smart building sensors have been spoofed to report normal air quality in a contaminated zone',
+      'An insider has planted a USB device in the command post that is exfiltrating data in real time',
+      'The online patient tracking system shows false casualty locations, sending family members to the wrong hospitals',
+      'Navigation apps have been fed false road closure data, routing thousands of civilian vehicles through the response corridor',
+    ],
   },
   {
     id: 'transport_collapse',
     group: 'Infrastructure & Technical',
     label: 'Transport network collapse',
     description: 'Bridge closures, rail shutdown, highway blockage',
-    emphasis: `- The only bridge connecting the incident zone to the main hospital has been closed due to structural concerns
-- A rail shutdown has stranded 500 evacuees at a transit station with no bus alternative available
-- A highway pileup triggered by rubberneckers is blocking all western approach routes for emergency vehicles
-- Public transit drivers are refusing to operate routes near the incident zone, stranding evacuees
-- A fuel tanker has overturned on the main access road, requiring a hazmat team and closing the route for hours`,
+    examples: [
+      'The only bridge connecting the incident zone to the main hospital has been closed due to structural concerns',
+      'A rail shutdown has stranded 500 evacuees at a transit station with no bus alternative available',
+      'A highway pileup triggered by rubberneckers is blocking all western approach routes for emergency vehicles',
+      'Public transit drivers are refusing to operate routes near the incident zone, stranding evacuees',
+      'A fuel tanker has overturned on the main access road, requiring a hazmat team and closing the route for hours',
+      "The airport has suspended departures, stranding thousands of passengers who are now converging on the city's hotels and shelters",
+      'A tunnel closure due to safety checks has eliminated the primary underground route, adding 40 minutes to ambulance journeys',
+      'Ride-share services have imposed surge pricing of 10x, making it impossible for evacuees without cars to leave the area',
+      'A freight train derailment is blocking three level crossings that are critical emergency access routes',
+      'The ferry terminal has suspended service due to falling debris risk, cutting off an island community from the mainland',
+      'Automated bollards around the pedestrian zone have malfunctioned in the raised position, blocking ambulance access',
+      'A protest march organized in response to the incident is blocking a 6-lane highway leading to the staging area',
+      'The parking structure closest to the incident has been condemned, trapping 300 vehicles belonging to evacuees inside',
+      'A helicopter landing zone was set up on a highway, but police cannot keep civilian vehicles off the closed section',
+      'Shipping containers have fallen from a port gantry onto the arterial road, creating an impassable blockage',
+    ],
   },
   {
     id: 'structural_collapse',
     group: 'Infrastructure & Technical',
     label: 'Structural collapse risk',
     description: 'Building integrity failure, progressive collapse threat',
-    emphasis: `- Structural engineers report the damaged building shows signs of progressive collapse — all teams inside must withdraw immediately
-- A parking garage adjacent to the staging area is cracking under the weight of emergency vehicles
-- A construction crane damaged by the blast is swaying over the incident zone, threatening a secondary collapse
-- The floor of the triage area (a convention hall) is showing signs of deflection under the weight of equipment and patients
-- Aftershock tremors (or secondary detonation vibrations) are destabilizing already-damaged structures`,
+    examples: [
+      'Structural engineers report the damaged building shows signs of progressive collapse — all teams inside must withdraw immediately',
+      'A parking garage adjacent to the staging area is cracking under the weight of emergency vehicles',
+      'A construction crane damaged by the blast is swaying over the incident zone, threatening a secondary collapse',
+      'The floor of the triage area (a convention hall) is showing signs of deflection under the weight of equipment and patients',
+      'Aftershock tremors (or secondary detonation vibrations) are destabilizing already-damaged structures',
+      'A glass curtain wall on an adjacent tower is shattering intermittently, raining shards on the staging area below',
+      'The roof of the evacuation shelter is sagging after accumulating water from firefighting operations',
+      'A retaining wall separating the incident site from a lower road is showing lateral displacement',
+      'A pedestrian overpass above the access route is rated as unsafe — but it is the only route for stretcher teams',
+      'Underground voids detected by sonar suggest the area beneath the command post is at risk of subsidence',
+      'A heritage building with unreinforced masonry walls is leaning 3 degrees off vertical, threatening the evacuation corridor',
+      'The expansion joints in a multi-story car park are widening — structural failure could pancake all floors',
+      'A scaffolding structure on a nearby construction site has partially collapsed and is hanging over the street',
+      'Vibrations from heavy rescue vehicles are accelerating crack propagation in the damaged building facade',
+      'The basement level of the affected building is flooding, weakening the foundations and accelerating structural degradation',
+    ],
   },
 
   // ── Environmental & Hazards ──
@@ -282,44 +554,93 @@ export const INJECT_PRESSURE_TYPES: InjectPressureType[] = [
     group: 'Environmental & Hazards',
     label: 'Weather escalation',
     description: 'Wind shift, rain, temperature extremes affecting operations',
-    emphasis: `- A wind shift is blowing smoke and toxic fumes directly toward the triage area, requiring immediate relocation
-- A sudden downpour has flooded the staging area and is causing hypothermia risk for exposed casualties
-- A temperature drop below freezing is threatening hypothermia for casualties awaiting transport — blankets and heating are insufficient
-- Lightning is striking within 1km, forcing suspension of all outdoor helicopter operations
-- Fog has reduced visibility to 20 meters, making perimeter control and navigation nearly impossible`,
+    examples: [
+      'A wind shift is blowing smoke and toxic fumes directly toward the triage area, requiring immediate relocation',
+      'A sudden downpour has flooded the staging area and is causing hypothermia risk for exposed casualties',
+      'A temperature drop below freezing is threatening hypothermia for casualties awaiting transport — blankets and heating are insufficient',
+      'Lightning is striking within 1km, forcing suspension of all outdoor helicopter operations',
+      'Fog has reduced visibility to 20 meters, making perimeter control and navigation nearly impossible',
+      'Extreme heat (42°C) is causing heat exhaustion in responders wearing full PPE, requiring mandatory rotation every 20 minutes',
+      'A dust storm is reducing visibility and contaminating open wounds in the outdoor triage area',
+      'High winds are grounding drone surveillance and making it impossible to secure tarpaulins over the casualty collection point',
+      'A hailstorm is injuring people in open areas and damaging vehicle windshields, creating additional casualties',
+      'Heavy snowfall has made road surfaces impassable for standard ambulances — only 4WD vehicles can move',
+      'A tornado warning has been issued for the area — all outdoor operations must be suspended and teams sheltered',
+      'UV index is extreme and fair-skinned evacuees in the holding area are developing sunburn after 90 minutes of exposure',
+      'Rising humidity is causing fogging of all optical equipment including night-vision and thermal cameras',
+      'Tidal surge is forecast to reach the low-lying staging area within 2 hours, requiring preemptive relocation',
+      'A microburst has toppled temporary structures at the staging area, injuring three responders',
+    ],
   },
   {
     id: 'hazmat_discovery',
     group: 'Environmental & Hazards',
     label: 'Secondary hazmat discovery',
     description: 'Chemical leaks, asbestos, unknown powders',
-    emphasis: `- A chemical storage room near the incident has been breached — unknown substances are leaking into the building
-- Structural damage has exposed asbestos insulation, contaminating the air in the rescue zone
-- An unknown white powder has been discovered in a room adjacent to the blast site, requiring a CBRN team assessment
-- Industrial chemicals from a rooftop HVAC system are dripping into the evacuation stairwell
-- Water used for fire suppression has mixed with hazardous materials, creating a toxic runoff flowing toward the public area`,
+    examples: [
+      'A chemical storage room near the incident has been breached — unknown substances are leaking into the building',
+      'Structural damage has exposed asbestos insulation, contaminating the air in the rescue zone',
+      'An unknown white powder has been discovered in a room adjacent to the blast site, requiring a CBRN team assessment',
+      'Industrial chemicals from a rooftop HVAC system are dripping into the evacuation stairwell',
+      'Water used for fire suppression has mixed with hazardous materials, creating a toxic runoff flowing toward the public area',
+      'A laboratory in the building contained radioactive calibration sources — two are unaccounted for in the debris',
+      'Mercury from smashed thermometers in a medical supply room has pooled on the floor of the evacuation route',
+      'A pesticide storage shed in the adjacent property has ruptured, releasing organophosphate vapors',
+      'Lead paint dust from demolished historic walls is creating an inhalation hazard in the rescue zone',
+      'A dry-cleaning business in the affected building contained perchloroethylene — the solvent is evaporating into the air',
+      'Battery acid from a destroyed UPS room is leaking through the floor onto rescue workers below',
+      'A university research lab in the building contained cultures of non-pathogenic bacteria — but containment cannot be confirmed',
+      'Formaldehyde from a damaged medical supply area is causing eye and respiratory irritation among rescuers',
+      'Pool chemicals from a leisure center have mixed due to structural damage, generating chlorine gas',
+      'An art studio contained solvents and fixatives that are now aerosolized in the damaged section of the building',
+      'A pharmacy in the affected area has been breached — controlled substances are scattered and must be secured',
+    ],
   },
   {
     id: 'fire_spread',
     group: 'Environmental & Hazards',
     label: 'Fire spread',
     description: 'Secondary fires, approaching wildfire, fuel storage threat',
-    emphasis: `- Secondary fires from damaged gas lines are spreading to adjacent structures, threatening the evacuation route
-- A wildfire approaching from adjacent bushland is generating smoke that is degrading air quality across the entire site
-- A vehicle fire in the underground parking structure is threatening the building's fuel storage tanks
-- Electrical fires are breaking out on multiple floors due to water damage to wiring
-- The fire has reached a commercial kitchen's gas supply — an explosion risk is imminent in the north wing`,
+    examples: [
+      'Secondary fires from damaged gas lines are spreading to adjacent structures, threatening the evacuation route',
+      'A wildfire approaching from adjacent bushland is generating smoke that is degrading air quality across the entire site',
+      "A vehicle fire in the underground parking structure is threatening the building's fuel storage tanks",
+      'Electrical fires are breaking out on multiple floors due to water damage to wiring',
+      "The fire has reached a commercial kitchen's gas supply — an explosion risk is imminent in the north wing",
+      'A tire storage facility adjacent to the scene has ignited, producing dense toxic black smoke that is blanketing the area',
+      'Embers from the primary fire have ignited the roof of the evacuation shelter 200m downwind',
+      'A lithium battery storage room in the building is in thermal runaway — water cannot be used to extinguish it',
+      'Vegetation between the incident site and a residential neighborhood has caught fire, forcing a secondary evacuation',
+      'An underground cable fire is producing smoke that is venting through manholes along the main evacuation route',
+      'Paint and lacquer supplies in a hardware store are fueling an intensifying fire that threatens to jump the firebreak',
+      "The building's cladding material is highly flammable — fire is racing up the exterior faster than internal floors can be evacuated",
+      "A fuel truck parked at the venue's loading dock is within the fire spread zone — if its tank breaches, a BLEVE is possible",
+      'Grease trap fires in the food court are generating flashover conditions, cutting off a secondary exit',
+      'A rooftop solar installation is preventing firefighters from venting the roof, trapping superheated gases inside',
+    ],
   },
   {
     id: 'environmental_cascade',
     group: 'Environmental & Hazards',
     label: 'Environmental cascade',
     description: 'Landslides, flooding, toxic runoff chain reactions',
-    emphasis: `- A landslide triggered by the explosion has blocked the only alternate access route to the venue
-- Upstream dam release is sending a flood surge that will reach the low-lying staging area within 45 minutes
-- Toxic runoff from the incident site has entered the municipal water supply intake, triggering a city-wide water advisory
-- The vibrations have disturbed a wasp nest colony in the adjacent parkland — swarms are disrupting the outdoor triage area
-- Soil liquefaction from water main damage is causing ground subsidence under the command post`,
+    examples: [
+      'A landslide triggered by the explosion has blocked the only alternate access route to the venue',
+      'Upstream dam release is sending a flood surge that will reach the low-lying staging area within 45 minutes',
+      'Toxic runoff from the incident site has entered the municipal water supply intake, triggering a city-wide water advisory',
+      'The vibrations have disturbed a wasp nest colony in the adjacent parkland — swarms are disrupting the outdoor triage area',
+      'Soil liquefaction from water main damage is causing ground subsidence under the command post',
+      'A coastal storm surge coincides with the incident, flooding basement areas where casualties are sheltering',
+      'Smoke from the fire has triggered a respiratory health emergency in a nearby asthma-prone neighborhood',
+      'An avalanche warning has been issued for the mountain above the incident site, threatening the only access road',
+      'Contaminated surface water has killed fish in a nearby stream, drawing environmental protesters to the perimeter',
+      'A sinkhole has opened in the parking area, swallowing two response vehicles and their equipment',
+      'High winds are spreading debris and contaminated dust over a 3km area, expanding the evacuation zone significantly',
+      'A bridge weakened by flooding upstream is now the only remaining access route — load restrictions are in effect',
+      'Falling tree limbs from heat-stressed trees are creating hazards in the staging area and along access routes',
+      'An animal enclosure at a nearby facility has been breached — escaped animals are in the response area',
+      'Rising groundwater from recent rainfall is flooding the basement command center from below',
+    ],
   },
 
   // ── Operational & Supply ──
@@ -328,44 +649,94 @@ export const INJECT_PRESSURE_TYPES: InjectPressureType[] = [
     group: 'Operational & Supply',
     label: 'Supply chain disruption',
     description: 'Ambulance delays, missing supplies, vendor failures',
-    emphasis: `- The ambulance fleet has been delayed by a protest blockade on the main highway, with no ETA for clearance
-- A blood bank shipment was destroyed in a traffic accident en route — the nearest alternative supply is 90 minutes away
-- Critical medication needed for nerve agent exposure treatment is on nationwide backorder
-- The contracted catering company for the evacuation shelter has refused to deliver, citing safety concerns
-- Medical supply pallets delivered to the staging area contain the wrong items — someone sent surgical supplies instead of trauma kits`,
+    examples: [
+      'The ambulance fleet has been delayed by a protest blockade on the main highway, with no ETA for clearance',
+      'A blood bank shipment was destroyed in a traffic accident en route — the nearest alternative supply is 90 minutes away',
+      'Critical medication needed for nerve agent exposure treatment is on nationwide backorder',
+      'The contracted catering company for the evacuation shelter has refused to deliver, citing safety concerns',
+      'Medical supply pallets delivered to the staging area contain the wrong items — someone sent surgical supplies instead of trauma kits',
+      'The oxygen cylinder resupply truck has broken down — current supplies at the triage point will be exhausted in 45 minutes',
+      'Body bags have run out and the mortuary service provider is not answering calls',
+      'The portable toilet provider for the evacuation center cannot deliver for 6 hours — sanitation is becoming critical',
+      'IV fluid stocks at the casualty clearing station are running low and the next delivery is diverted to another incident',
+      'A fuel shortage means response vehicles are beginning to run dry — no fuel bowser is available',
+      'PPE stockpiles have been depleted faster than anticipated due to a contamination false alarm requiring full suit-up',
+      'The mobile medical unit was dispatched to the wrong address and is now stuck in traffic trying to redirect',
+      'Water tankers meant for the decontamination line were commandeered by the fire service for fire suppression',
+      'Stretchers are exhausted — casualties are being transported on doors and improvised carries',
+      'The helicopter rescue service reports a maintenance issue — their aircraft is grounded indefinitely',
+      'Donated supplies from the public are arriving unsorted at the staging area, blocking organized logistics',
+    ],
   },
   {
     id: 'hospital_overflow',
     group: 'Operational & Supply',
     label: 'Hospital capacity overflow',
     description: 'Trauma centers on divert, receiving facilities refusing patients',
-    emphasis: `- All Level 1 trauma centers within 30km have declared divert — the nearest accepting facility is 45 minutes away
-- The primary receiving hospital has activated its own mass casualty protocol and is refusing additional patients
-- The pediatric ICU at the children's hospital is at capacity and is turning away critical pediatric casualties
-- A hospital is threatening to refuse patients because responders are not following their admission protocols
-- The burn unit that accepted the first wave of patients has run out of skin grafting supplies and is downgrading to stabilize-only`,
+    examples: [
+      'All Level 1 trauma centers within 30km have declared divert — the nearest accepting facility is 45 minutes away',
+      'The primary receiving hospital has activated its own mass casualty protocol and is refusing additional patients',
+      "The pediatric ICU at the children's hospital is at capacity and is turning away critical pediatric casualties",
+      'A hospital is threatening to refuse patients because responders are not following their admission protocols',
+      'The burn unit that accepted the first wave of patients has run out of skin grafting supplies and is downgrading to stabilize-only',
+      'Emergency departments are being overwhelmed by worried-well patients, reducing capacity for actual casualties',
+      'A hospital has declared an internal emergency — a power failure has forced them to ventilate patients manually',
+      'Psychiatric beds across the region are full, leaving acutely distressed survivors with no inpatient care option',
+      'The hospital blood bank has depleted all O-negative stock and is issuing urgent appeals that are clogging radio channels',
+      'Operating theaters are backed up with a 4-hour surgical wait — critical patients are deteriorating in holding',
+      'A hospital nearby is undergoing renovation — half its wards are physically inaccessible, halving its effective capacity',
+      'The regional trauma network coordinator reports that all helicopter-capable landing pads at nearby hospitals are occupied',
+      'A maternity ward in the receiving hospital must be partially evacuated to make space, displacing vulnerable patients',
+      "The hospital's triage area is overflowing into the parking lot, creating exposure and security concerns",
+      'Medical staff at the nearest hospital are staging a work-to-rule action over safety concerns, slowing patient processing',
+    ],
   },
   {
     id: 'personnel_attrition',
     group: 'Operational & Supply',
     label: 'Personnel fatigue / attrition',
     description: 'Exhaustion, relief teams delayed, key specialists lost',
-    emphasis: `- The shift commander has collapsed from exhaustion after 14 hours on scene and must be replaced immediately
-- The relief team is stuck in traffic caused by the transport network failure — ETA unknown
-- The only CBRN specialist on scene has been called away to a second suspected chemical incident across the city
-- Three paramedics have reported feeling symptomatic after treating contaminated patients without adequate PPE
-- The K-9 search team's dogs are exhausted and dehydrated — no replacement teams are available for 4 hours`,
+    examples: [
+      'The shift commander has collapsed from exhaustion after 14 hours on scene and must be replaced immediately',
+      'The relief team is stuck in traffic caused by the transport network failure — ETA unknown',
+      'The only CBRN specialist on scene has been called away to a second suspected chemical incident across the city',
+      'Three paramedics have reported feeling symptomatic after treating contaminated patients without adequate PPE',
+      "The K-9 search team's dogs are exhausted and dehydrated — no replacement teams are available for 4 hours",
+      'The bomb disposal officer has exceeded their maximum consecutive duty hours and regulations require a mandatory stand-down',
+      'A team leader has been quietly self-treating a worsening injury rather than reporting it — they have now collapsed',
+      'Half the night shift called in sick with food poisoning from a catered meal at the station',
+      'The coroner has reached their legal maximum caseload and cannot certify any more deaths until a second coroner arrives',
+      'A key bilingual officer who was handling all interpreter duties has gone off shift with no replacement',
+      'The helicopter pilot has reached their maximum flight hours and must ground the aircraft with no relief pilot available',
+      'Volunteer fatigue is setting in — 60% of the volunteer contingent has left without formal release',
+      'The only pediatric trauma surgeon in the region is already in surgery with the first casualties — no one else is qualified',
+      'An entire fire crew has been stood down after exposure to an unknown substance, pending medical clearance',
+      'The logistics officer has been awake for 22 hours and is making increasingly erratic resource allocation decisions',
+    ],
   },
   {
     id: 'equipment_malfunction',
     group: 'Operational & Supply',
     label: 'Equipment malfunction',
     description: 'Critical gear failing, no replacements available',
-    emphasis: `- The decontamination shower unit has malfunctioned — contaminated patients cannot be processed
-- Radio batteries are dying across multiple teams with no replacement stock at the staging area
-- The thermal imaging camera is producing false readings due to heat from nearby fires, misleading the search team
-- The mobile hospital's ventilator has failed mid-patient — the backup unit is incompatible with the patient's intubation
-- The incident command software has crashed and will not restart, losing all resource tracking data`,
+    examples: [
+      'The decontamination shower unit has malfunctioned — contaminated patients cannot be processed',
+      'Radio batteries are dying across multiple teams with no replacement stock at the staging area',
+      'The thermal imaging camera is producing false readings due to heat from nearby fires, misleading the search team',
+      "The mobile hospital's ventilator has failed mid-patient — the backup unit is incompatible with the patient's intubation",
+      'The incident command software has crashed and will not restart, losing all resource tracking data',
+      "The jaws of life have seized during an extraction — the trapped casualty's condition is deteriorating",
+      'An air monitoring device is giving inconsistent readings, creating uncertainty about whether the area is safe to enter',
+      'The portable X-ray machine has malfunctioned — blast injury patients cannot be assessed for internal shrapnel',
+      'The public address system has failed — evacuation announcements cannot reach the upper floors',
+      "A ladder truck's hydraulic system has failed while extended, stranding two firefighters at height",
+      'The satellite communications terminal has a hardware failure — the only link to national command is down',
+      "Hazmat suit integrity has been compromised on two team members' suits — they must withdraw from the contaminated zone",
+      'The fire suppression foam proportioner is mixing incorrectly, making the foam ineffective against the chemical fire',
+      'The automated external defibrillators in the staging area have expired certification — liability concerns halt their use',
+      'The crime scene 3D scanner has malfunctioned, meaning forensic evidence capture must be done manually with photographs',
+      'A generator powering the field lighting has overheated and shut down, plunging the nighttime scene into darkness',
+    ],
   },
 
   // ── Trust & Insider ──
@@ -374,66 +745,140 @@ export const INJECT_PRESSURE_TYPES: InjectPressureType[] = [
     group: 'Trust & Insider',
     label: 'Credential fraud / impersonation',
     description: 'Fake professionals, stolen uniforms, unauthorized access',
-    emphasis: `- A person wearing stolen medical scrubs has been treating patients in the triage area — their qualifications are unknown
-- An unauthorized individual claiming to be a government inspector has gained access to the command post and has been photographing operational plans
-- A stolen ambulance with fake markings has entered the restricted zone and its occupants are unaccounted for
-- Someone impersonating a structural engineer has told teams to evacuate a building that is actually safe, disrupting operations
-- A fake press badge has been used to access the family reunification area, where the impersonator is extracting personal details from victims`,
+    examples: [
+      'A person wearing stolen medical scrubs has been treating patients in the triage area — their qualifications are unknown',
+      'An unauthorized individual claiming to be a government inspector has gained access to the command post and has been photographing operational plans',
+      'A stolen ambulance with fake markings has entered the restricted zone and its occupants are unaccounted for',
+      'Someone impersonating a structural engineer has told teams to evacuate a building that is actually safe, disrupting operations',
+      'A fake press badge has been used to access the family reunification area, where the impersonator is extracting personal details from victims',
+      'A person in a high-visibility vest claiming to be from the utility company has been given access to the basement — no work order exists',
+      'An individual with a forged police ID is issuing orders at the outer cordon, redirecting resources',
+      'A tow truck with false municipal markings is removing vehicles from the scene — potentially removing evidence',
+      'A man in a hazmat suit has entered the decontamination area claiming to be CBRN support — no agency has dispatched him',
+      'A woman claiming to be a crisis counselor is collecting personal data from distressed survivors at the evacuation center',
+      'A vehicle with cloned diplomatic plates has breached the inner cordon',
+      'An impersonator claiming to be a fire marshal has shut down the backup generator, citing "safety violations"',
+      "A person pretending to be a deceased victim's relative is attempting to claim their personal belongings from the evidence area",
+      'A social worker impersonator is attempting to take custody of unaccompanied children at the evacuation center',
+      'Someone in a delivery uniform has dropped off a suspicious package at the command post, claiming it is "supplies"',
+    ],
   },
   {
     id: 'insider_leak',
     group: 'Trust & Insider',
     label: 'Insider intelligence leak',
     description: 'Operational details reaching media or adversary',
-    emphasis: `- Operational radio frequencies are being monitored by a media organization — sensitive tactical movements are being broadcast live
-- The response plan details appeared on social media 10 minutes before execution, suggesting someone in the command team is leaking
-- A journalist quotes verbatim from a classified briefing that only 6 people attended — there is a mole
-- The adversary appears to have advance knowledge of cordon movements, suggesting an insider communication channel
-- A responder's personal phone was found recording video of the command board and transmitting it to an unknown number`,
+    examples: [
+      'Operational radio frequencies are being monitored by a media organization — sensitive tactical movements are being broadcast live',
+      'The response plan details appeared on social media 10 minutes before execution, suggesting someone in the command team is leaking',
+      'A journalist quotes verbatim from a classified briefing that only 6 people attended — there is a mole',
+      'The adversary appears to have advance knowledge of cordon movements, suggesting an insider communication channel',
+      "A responder's personal phone was found recording video of the command board and transmitting it to an unknown number",
+      'Internal casualty figures not yet released to the public are being quoted by a foreign news outlet',
+      "The suspect's legal team files a motion that references details only available from the command post whiteboard",
+      "A tactical team's approach route was posted on a messaging app 5 minutes before execution — the entry was compromised",
+      'Photographs of the sensitive evidence board are circulating on a private Telegram group used by journalists',
+      'The secure radio channel allocated to close protection has been compromised — principals are now exposed',
+      'A whistleblower website publishes the incident command structure chart, including personal names and phone numbers',
+      'The adversary detonates a secondary device at the exact location where a command briefing said the EOD team would assemble',
+      'Internal communications show that someone forwarded the evacuation route map to an external email address',
+      'A recently terminated employee still has active credentials and has been accessing the operations system remotely',
+      'A document marked "SECRET" is photographed on a café table near the command post and shared online',
+    ],
   },
   {
     id: 'sabotage',
     group: 'Trust & Insider',
     label: 'Equipment sabotage',
     description: 'Tampered chemicals, wrong coordinates, systems disabled',
-    emphasis: `- Decontamination chemicals have been tampered with — patients processed through decon may not actually be clean
-- Deliberately wrong GPS coordinates were relayed to the incoming relief convoy, sending them to an empty lot
-- The building's fire suppression system was manually disabled from inside before the incident — this was not accidental
-- Someone has physically cut the fiber optic cable feeding the CCTV network in the command post area
-- Fuel in the generator feeding the triage area has been contaminated with water — power loss is imminent`,
+    examples: [
+      'Decontamination chemicals have been tampered with — patients processed through decon may not actually be clean',
+      'Deliberately wrong GPS coordinates were relayed to the incoming relief convoy, sending them to an empty lot',
+      "The building's fire suppression system was manually disabled from inside before the incident — this was not accidental",
+      'Someone has physically cut the fiber optic cable feeding the CCTV network in the command post area',
+      'Fuel in the generator feeding the triage area has been contaminated with water — power loss is imminent',
+      'Tyre puncture strips have been placed on the main ambulance approach route — three vehicles are now disabled',
+      'Road signs directing to the evacuation center have been deliberately turned to point the wrong way',
+      'The fire alarm in the command post has been manually triggered, forcing an unnecessary evacuation during a critical phase',
+      'Medical supplies at the staging area have been opened and mixed with incorrect labels',
+      'Bollards controlling vehicle access to the pedestrian area have been welded shut in the down position',
+      'A lock has been superglued on the emergency equipment cache, making it inaccessible without forced entry',
+      'The backup power transfer switch at the hospital has been jammed in the off position',
+      'Water in the portable tank for the decon shower has been contaminated with a skin irritant',
+      "Critical gate keys to the venue's service entrances have gone missing from the key box — all locks must be cut",
+      "Someone has reversed the polarity labels on the building's electrical switchboard, creating electrocution risk for responders",
+    ],
   },
   {
     id: 'friendly_fire',
     group: 'Trust & Insider',
     label: 'Friendly fire / blue-on-blue',
     description: 'Mistaken identity incidents, wrong target engaged',
-    emphasis: `- A plainclothes officer has been shot by a tactical team who mistook them for the suspect
-- A private security contractor opened fire on arriving police officers during a moment of confusion
-- The tactical team breached the wrong room, flash-banging a group of trapped civilians instead of the target
-- An undercover operative's cover was not communicated to the cordon team — they were tackled and injured during apprehension
-- Friendly drones from two different agencies collided over the incident zone, debris falling near the triage area`,
+    examples: [
+      'A plainclothes officer has been shot by a tactical team who mistook them for the suspect',
+      'A private security contractor opened fire on arriving police officers during a moment of confusion',
+      'The tactical team breached the wrong room, flash-banging a group of trapped civilians instead of the target',
+      "An undercover operative's cover was not communicated to the cordon team — they were tackled and injured during apprehension",
+      'Friendly drones from two different agencies collided over the incident zone, debris falling near the triage area',
+      "A police dog handler's animal has bitten an allied officer during a chaotic foot pursuit in the dark",
+      'Non-lethal crowd dispersal munitions were deployed toward a group that included embedded undercover officers',
+      'A fire crew directed a high-pressure hose at a tactical team, mistaking their black uniforms for a hostile group',
+      'A sniper team nearly engaged a reporter holding a telephoto camera that was mistaken for a weapon at distance',
+      'Two tactical teams from different agencies converged on the same building from different sides and nearly fired on each other',
+      'A volunteer in a donated military surplus jacket was tackled by soldiers who mistook him for an escaped suspect',
+      'A medic vehicle that failed to identify itself was rammed by a pursuit vehicle at a checkpoint',
+      "A cordon officer tasered a running paramedic who didn't hear the order to stop due to ambient noise",
+      'Smoke grenades deployed by one team obscured the line of sight for another team conducting a simultaneous operation',
+      'A mutual aid team from a neighboring jurisdiction arrived in unmarked vehicles and was initially treated as hostile by the on-scene force',
+    ],
   },
   {
     id: 'stampede_crush',
     group: 'Trust & Insider',
     label: 'Stampede or crush risk',
     description: 'Crowd surge, panic movement, counter-flow collisions',
-    emphasis: `- A crowd surge at a bottleneck exit has crushed several people against barriers — new casualties are being created by the evacuation itself
-- A false gunshot rumor has triggered panic movement in the assembly area, with people trampling each other
-- Counter-flow collision between evacuees moving out and incoming responders is creating a dangerous crush in a narrow corridor
-- Concert-goers are climbing fences to escape, injuring themselves and others in the process
-- A locked fire exit has created a fatal compression point — people at the back are pushing while the front cannot move`,
+    examples: [
+      'A crowd surge at a bottleneck exit has crushed several people against barriers — new casualties are being created by the evacuation itself',
+      'Counter-flow collision between evacuees moving out and incoming responders is creating a dangerous crush in a narrow corridor',
+      'A locked fire exit has created a fatal compression point — people at the back are pushing while the front cannot move',
+      'Evacuees are climbing fences to escape, injuring themselves and others in the process',
+      'An escalator has failed under the weight of evacuees, creating a pileup and crush at the bottom',
+      'A crowd fleeing one exit is colliding with people fleeing from a different direction at a junction, creating a deadly pinch point',
+      'A temporary barrier set up for crowd control has collapsed, causing a domino effect as people fall on top of each other',
+      'Panicked crowds are surging toward a narrow bridge, and the structure is swaying under the dynamic load',
+      'A turnstile system at a venue entrance is trapping people who cannot pass through fast enough, creating a compression',
+      'People are being pushed down a stairwell faster than the lower levels can clear, creating a catastrophic pile-up',
+      'A false report of danger at Evacuation Point A has caused everyone to rush to Point B, which cannot handle the volume',
+      'Children separated from parents are moving against the crowd flow, creating eddies and collision points',
+      'A revolving door has jammed with people trying to push through simultaneously, trapping a child',
+      'Wet ground from firefighting water has caused multiple slip-and-fall incidents in the stampede path, creating obstacles',
+      'The PA system announcement triggered a simultaneous rush toward all exits, exceeding the design flow rate of every corridor',
+      'A crowd crush has developed at a security checkpoint where bags are being screened before evacuation is permitted',
+    ],
   },
   {
     id: 'evacuation_refusal',
     group: 'Trust & Insider',
     label: 'Evacuation refusal',
     description: 'Residents refusing to leave, barricading, ceremony completion',
-    emphasis: `- Elderly residents in the adjacent apartment block are refusing to leave their homes despite imminent structural collapse risk
-- Business owners are barricading inside their shops to protect inventory, blocking fire access to the building interior
-- A religious congregation insists on completing their ceremony before evacuating, with 300 people in a building rated at risk
-- A group of squatters in the basement of the affected building refuse to evacuate because they fear deportation
-- Hospital patients in the adjacent ward are refusing transfer because they distrust the ambulance teams sent to move them`,
+    examples: [
+      'Elderly residents in the adjacent apartment block are refusing to leave their homes despite imminent structural collapse risk',
+      'Business owners are barricading inside their shops to protect inventory, blocking fire access to the building interior',
+      'A religious congregation insists on completing their ceremony before evacuating, with 300 people in a building rated at risk',
+      'A group of squatters in the basement of the affected building refuse to evacuate because they fear deportation',
+      'Hospital patients in the adjacent ward are refusing transfer because they distrust the ambulance teams sent to move them',
+      "A hoarder's apartment is so full that the occupant physically cannot reach the door, and they refuse to let responders break in",
+      'A wheelchair user insists on waiting for an accessible vehicle, refusing to be carried down stairs by responders',
+      'A nightclub owner refuses to close, arguing that their patrons are safer inside than in the street',
+      'Residents of a care home are too confused by the evacuation to cooperate, and several keep returning to their rooms',
+      'A farmer refuses to evacuate because their livestock cannot be moved and they will not abandon their animals',
+      'A laboratory researcher refuses to leave until they have secured experiments containing biologically sensitive material',
+      'A chef insists on staying to turn off industrial ovens, claiming an explosion risk if they are abandoned',
+      'A group of homeless people sheltering in an underpass refuse to leave their belongings despite rising floodwater',
+      "A school teacher barricades 30 children in a classroom, refusing to open the door because they do not trust the responders' identity",
+      'A pregnant woman in early labor refuses to evacuate by ambulance, insisting she will only go with a specific midwife who is off duty',
+      "A film crew refuses to stop shooting, claiming their production insurance requires them to complete the day's schedule",
+    ],
   },
 ];
 
@@ -488,7 +933,9 @@ function buildThematicEmphasisBlock(
           : selected.length <= 3
             ? 'SECONDARY'
             : `THEME ${i + 1}`;
-      return `${rank}: ${t.label.toUpperCase()}\n${t.emphasis}`;
+      const sampled = t.examples.sort(() => Math.random() - 0.5).slice(0, 5);
+      const emphasisBlock = sampled.map((e) => `- ${e}`).join('\n');
+      return `${rank}: ${t.label.toUpperCase()}\n${emphasisBlock}`;
     })
     .join('\n\n');
 
@@ -957,14 +1404,141 @@ function getThreatHazardRules(weaponClass: string): ThreatHazardRule {
   return THREAT_HAZARD_RULES[weaponClass] || THREAT_HAZARD_RULES['explosive'];
 }
 
-function buildThreatProfileBlock(threatProfile?: ThreatProfile): string {
+let _cachedWeaponAssessment: {
+  key: string;
+  lethality: number;
+  adversaryMultiplier: number;
+  minCasualties: number;
+  maxCasualties: number;
+} | null = null;
+
+/**
+ * Ask AI to assess weapon lethality and realistic casualty range.
+ * Uses research context (similar real-world incidents) to ground the estimate
+ * in actual historical data rather than static multipliers.
+ * Results are cached per-generation so repeated calls don't duplicate work.
+ */
+async function assessWeaponLethality(
+  weaponType: string,
+  weaponClass: string,
+  adversaryCount: number,
+  baseCasualtyRange: [number, number],
+  openAiApiKey: string,
+  researchCases?: SimilarCase[],
+): Promise<{
+  lethality: number;
+  adversaryMultiplier: number;
+  minCasualties: number;
+  maxCasualties: number;
+}> {
+  const cacheKey = `${weaponType}|${weaponClass}|${adversaryCount}|${baseCasualtyRange.join(',')}`;
+  if (_cachedWeaponAssessment?.key === cacheKey) return _cachedWeaponAssessment;
+
+  const fallbackLethality = 1.0;
+  const fallbackAdvMult = adversaryCount <= 1 ? 1.0 : Math.min(3.5, 1 + (adversaryCount - 1) * 0.8);
+  const fallback = {
+    key: cacheKey,
+    lethality: fallbackLethality,
+    adversaryMultiplier: fallbackAdvMult,
+    minCasualties: Math.round(baseCasualtyRange[0] * fallbackLethality * fallbackAdvMult),
+    maxCasualties: Math.round(baseCasualtyRange[1] * fallbackLethality * fallbackAdvMult),
+  };
+
+  const researchBlock = researchCases?.length
+    ? `\n\nREAL-WORLD REFERENCE INCIDENTS — use these to calibrate your estimates:\n${researchCases
+        .map((c) => {
+          const parts = [`- ${c.name}: ${c.summary}`];
+          if (c.casualties_killed != null) parts.push(`  Killed: ${c.casualties_killed}`);
+          if (c.casualties_injured != null) parts.push(`  Injured: ${c.casualties_injured}`);
+          if (c.num_attackers != null) parts.push(`  Attackers: ${c.num_attackers}`);
+          if (c.weapon_description) parts.push(`  Weapon: ${c.weapon_description}`);
+          if (c.weapon_forensics) parts.push(`  Forensics: ${c.weapon_forensics}`);
+          if (c.damage_radius_m != null) parts.push(`  Damage radius: ${c.damage_radius_m}m`);
+          if (c.injury_breakdown) parts.push(`  Injury breakdown: ${c.injury_breakdown}`);
+          if (c.response_time_minutes != null)
+            parts.push(`  Response time: ${c.response_time_minutes} min`);
+          if (c.containment_time_minutes != null)
+            parts.push(`  Containment: ${c.containment_time_minutes} min`);
+          if (c.environment) parts.push(`  Environment: ${c.environment}`);
+          return parts.join('\n');
+        })
+        .join('\n')}`
+    : '';
+
+  try {
+    const result = await callOpenAi<{
+      lethality_multiplier: number;
+      adversary_multiplier: number;
+      realistic_min_casualties: number;
+      realistic_max_casualties: number;
+    }>(
+      `You are an expert in weapon lethality assessment for crisis simulation exercises.
+
+Given a weapon description, weapon class, number of attackers, the base casualty range for this weapon class, and (when available) real-world reference incidents with comparable weapons and circumstances, determine:
+
+1. **lethality_multiplier** (0.5-3.0): How lethal is this specific weapon compared to a baseline weapon of its class?
+   Reason about the weapon's reach, cutting/striking power, rate of harm, and any real-world incident data provided.
+
+2. **adversary_multiplier** (1.0-4.0): How much do multiple attackers multiply the casualty count?
+   Consider whether attackers are coordinated, covering different areas, or acting independently.
+   1 attacker = 1.0; multiple attackers with melee weapons cover more ground (~1.5-2.0 for 2); diminishing returns above 3.
+
+3. **realistic_min_casualties** and **realistic_max_casualties**: The final realistic casualty range.
+   Start with base_range * lethality_multiplier * adversary_multiplier, then sanity-check against the real-world reference incidents provided.
+   If the reference incidents show actual casualty counts for comparable scenarios, weight those heavily — they are ground truth.
+   Consider the venue, response time, weapon type, attacker count, and environmental factors.
+
+Return ONLY valid JSON: { "lethality_multiplier": number, "adversary_multiplier": number, "realistic_min_casualties": number, "realistic_max_casualties": number }`,
+      `Weapon: "${weaponType}" (class: ${weaponClass})
+Attackers: ${adversaryCount}
+Base casualty range for this weapon class: ${baseCasualtyRange[0]}-${baseCasualtyRange[1]}${researchBlock}`,
+      openAiApiKey,
+      200,
+      0,
+    );
+
+    const assessed = {
+      key: cacheKey,
+      lethality: Math.max(0.5, Math.min(3.0, result.lethality_multiplier || fallbackLethality)),
+      adversaryMultiplier: Math.max(
+        1.0,
+        Math.min(4.0, result.adversary_multiplier || fallbackAdvMult),
+      ),
+      minCasualties: Math.max(1, result.realistic_min_casualties || fallback.minCasualties),
+      maxCasualties: Math.max(2, result.realistic_max_casualties || fallback.maxCasualties),
+    };
+    if (assessed.minCasualties > assessed.maxCasualties) {
+      assessed.maxCasualties = assessed.minCasualties + 5;
+    }
+    _cachedWeaponAssessment = assessed;
+    return assessed;
+  } catch {
+    _cachedWeaponAssessment = fallback;
+    return fallback;
+  }
+}
+
+async function buildThreatProfileBlock(
+  threatProfile: ThreatProfile | undefined,
+  openAiApiKey: string,
+  researchCases?: SimilarCase[],
+): Promise<string> {
   if (!threatProfile) return '';
   const rules = getThreatHazardRules(threatProfile.weapon_class);
+  const assessed = await assessWeaponLethality(
+    threatProfile.weapon_type,
+    threatProfile.weapon_class,
+    threatProfile.adversary_count,
+    rules.casualty_range,
+    openAiApiKey,
+    researchCases,
+  );
   return `
 THREAT PROFILE (CRITICAL — read carefully and obey):
 - Weapon: ${threatProfile.weapon_type} (class: ${threatProfile.weapon_class})
 - Threat scale: ${threatProfile.threat_scale}
 - Adversary count: ${threatProfile.adversary_count}
+- AI-assessed weapon lethality: ${assessed.lethality.toFixed(1)}x (adversary multiplier: ${assessed.adversaryMultiplier.toFixed(1)}x)
 - Can cause structural damage: ${threatProfile.expected_damage.structural ? 'YES' : 'NO — do NOT generate structural collapse, building damage, or infrastructure failure'}
 - Can cause fire: ${threatProfile.expected_damage.fire ? 'YES' : 'NO — do NOT generate fire, smoke, or heat-related hazards'}
 - Can cause blast: ${threatProfile.expected_damage.blast ? 'YES' : 'NO — do NOT generate explosion, blast wave, or shrapnel hazards'}
@@ -975,7 +1549,7 @@ THREAT PROFILE (CRITICAL — read carefully and obey):
 
 ALLOWED hazard types for this weapon class: ${rules.allowed_hazards.join(', ')}
 Generate ${rules.min_hazards}-${rules.max_hazards} hazards MAXIMUM. Do NOT exceed this range.
-Generate ${rules.casualty_range[0]}-${rules.casualty_range[1]} casualties.
+Generate ${assessed.minCasualties}-${assessed.maxCasualties} casualties (scaled for ${threatProfile.adversary_count} attacker(s) with ${threatProfile.weapon_type}).
 FORBIDDEN: Do NOT generate any hazard type not in the allowed list above. A ${threatProfile.weapon_type} CANNOT cause ${threatProfile.expected_damage.structural ? '' : 'structural collapse, '}${threatProfile.expected_damage.fire ? '' : 'fire, '}${threatProfile.expected_damage.blast ? '' : 'explosions, '}${threatProfile.expected_damage.chemical ? '' : 'chemical contamination, '}or environmental hazards beyond what this weapon physically produces.
 `;
 }
@@ -995,6 +1569,48 @@ const VALID_INJECT_TYPES = [
 function normalizeInjectType(type: string): string {
   const t = type?.toLowerCase().replace(/\s+/g, '_') || 'field_update';
   return VALID_INJECT_TYPES.includes(t) ? t : 'field_update';
+}
+
+/**
+ * Classify teams as operational (move pins, handle patients, chase adversaries)
+ * or non_operational (media, communications — no map interaction).
+ * Non-operational teams receive more pre-scripted injects since they don't get
+ * reactive pressure from gameplay mechanics.
+ */
+async function classifyTeamTypes(
+  teams: Array<{ team_name: string; team_description?: string }>,
+  scenarioType: string,
+  openAiApiKey: string,
+): Promise<Record<string, 'operational' | 'non_operational'>> {
+  const fallback: Record<string, 'operational' | 'non_operational'> = {};
+  for (const t of teams) fallback[t.team_name] = 'operational';
+  if (teams.length === 0) return fallback;
+
+  const teamList = teams
+    .map((t) => `- ${t.team_name}${t.team_description ? `: ${t.team_description}` : ''}`)
+    .join('\n');
+  try {
+    const result = await callOpenAi<Record<string, string>>(
+      `You classify crisis exercise teams into two categories:
+- "operational": teams that physically interact with the incident — moving patients, managing map pins, setting up cordons, chasing suspects, running triage, performing evacuation, firefighting, HAZMAT operations, security patrols.
+- "non_operational": teams that handle information, communications, media relations, public affairs, press briefings, stakeholder liaison — they do NOT move pins or patients on the map.
+
+Return ONLY valid JSON: { "team_name": "operational" | "non_operational" } for each team.`,
+      `Scenario type: ${scenarioType}\nTeams:\n${teamList}`,
+      openAiApiKey,
+      200,
+      0,
+    );
+    for (const t of teams) {
+      const val = result[t.team_name];
+      if (val === 'operational' || val === 'non_operational') {
+        fallback[t.team_name] = val;
+      }
+    }
+  } catch {
+    // fallback: treat all teams as operational
+  }
+  return fallback;
 }
 
 async function callOpenAi<T>(
@@ -1265,54 +1881,57 @@ function getPhaseLabelShort(minute: number): string {
 
 /**
  * Pre-assign time slots to universal injects and each team before any AI call fires.
- * Universal always claims anchor points [0, 20, 40, duration-5].
- * Remaining slots are distributed round-robin with per-team jitter so times feel natural.
- * Each team is guaranteed at least one slot.
+ * Operational teams get 2-4 time slots; non-operational teams (media etc.) get 7.
+ * Universal gets 3-5 slots (excluding T+0 which is deterministic).
  */
 function buildTimingManifest(
   teamNames: string[],
   durationMinutes = 60,
+  teamTypes?: Record<string, 'operational' | 'non_operational'>,
 ): {
   universalSlots: number[];
   teamSlots: Record<string, number[]>;
   chaosSlots: Record<string, number[]>;
+  teamChaosCount: Record<string, number>;
 } {
-  const SLOT_STEP = 5;
-  const allSlots = Array.from(
-    { length: Math.floor(durationMinutes / SLOT_STEP) },
-    (_, i) => i * SLOT_STEP,
-  );
-  // Universal slots spread proportionally across the duration
-  const universalSlots = Array.from(
-    { length: Math.max(4, Math.floor(durationMinutes / 10) + 1) },
-    (_, i) => Math.min(i * 10, durationMinutes - 5),
-  ).filter((v, i, a) => a.indexOf(v) === i);
-  const baseTeamSlots = allSlots.filter((s) => !universalSlots.includes(s));
-
-  // Every team gets ALL available time slots with per-team jitter so they
-  // don't all fire at the exact same second.
-  const JITTER = [0, 2, -1, 3, 1, -2, 2, -1, 1, 0];
-  const CHAOS_JITTER = [1, -2, 3, 0, -1, 2, -1, 3, 0, 1];
-  const teamSlots: Record<string, number[]> = {};
-  const chaosSlots: Record<string, number[]> = {};
-
-  for (let i = 0; i < teamNames.length; i++) {
-    const jitter = JITTER[i % JITTER.length];
-    const slots: number[] = baseTeamSlots.map((s) => {
-      const raw = s + jitter;
-      return Math.max(1, Math.min(durationMinutes - 1, raw));
-    });
-    teamSlots[teamNames[i]] = slots;
-
-    const cJitter = CHAOS_JITTER[i % CHAOS_JITTER.length];
-    const cSlots: number[] = baseTeamSlots.map((s) => {
-      const raw = s + cJitter;
-      return Math.max(1, Math.min(durationMinutes - 1, raw));
-    });
-    chaosSlots[teamNames[i]] = cSlots;
+  // Universal: 3-5 slots spread across the timeline (excluding T+0)
+  const universalCount = 3 + Math.min(2, Math.floor(durationMinutes / 30));
+  const universalSlots: number[] = [];
+  for (let i = 0; i < universalCount; i++) {
+    const t = Math.round(((i + 1) / (universalCount + 1)) * durationMinutes);
+    universalSlots.push(Math.max(5, Math.min(durationMinutes - 5, t)));
   }
 
-  return { universalSlots, teamSlots, chaosSlots };
+  const JITTER = [0, 2, -1, 3, 1, -2, 2, -1, 1, 0];
+  const teamSlots: Record<string, number[]> = {};
+  const chaosSlots: Record<string, number[]> = {};
+  const teamChaosCount: Record<string, number> = {};
+
+  for (let i = 0; i < teamNames.length; i++) {
+    const name = teamNames[i];
+    const isNonOp = teamTypes?.[name] === 'non_operational';
+    const timeCount = isNonOp ? 7 : Math.min(4, Math.max(2, Math.floor(durationMinutes / 20)));
+    const chaosCount = isNonOp ? 5 : Math.min(3, Math.max(2, Math.floor(durationMinutes / 25)));
+
+    const jitter = JITTER[i % JITTER.length];
+    const slots: number[] = [];
+    for (let j = 0; j < timeCount; j++) {
+      const base = Math.round(((j + 1) / (timeCount + 1)) * durationMinutes);
+      const raw = base + jitter;
+      slots.push(Math.max(3, Math.min(durationMinutes - 2, raw)));
+    }
+    teamSlots[name] = slots;
+
+    const cSlots: number[] = [];
+    for (let j = 0; j < chaosCount; j++) {
+      const base = Math.round(((j + 1) / (chaosCount + 1)) * durationMinutes);
+      cSlots.push(Math.max(3, Math.min(durationMinutes - 2, base)));
+    }
+    chaosSlots[name] = cSlots;
+    teamChaosCount[name] = chaosCount;
+  }
+
+  return { universalSlots, teamSlots, chaosSlots, teamChaosCount };
 }
 
 /**
@@ -1362,121 +1981,79 @@ function normalizeInjectTiming(
 }
 
 /**
- * Post-generation theme dedup: removes injects whose title shares too many
- * significant words with an earlier inject (Dice coefficient >= 0.5).
- * Preserves chronological order — the first occurrence always wins.
+ * AI-based semantic deduplication for time injects.
+ * Walks through injects sequentially — for each inject, asks gpt-4o-mini
+ * whether it is thematically similar to any of the preceding injects.
+ * If similar, it is dropped. The T+0 inject (index 0) is always kept.
  */
-function deduplicateInjectsByTheme(
+async function deduplicateInjectsByTheme(
   injects: WarroomScenarioPayload['time_injects'],
-): WarroomScenarioPayload['time_injects'] {
-  const STOP = new Set([
-    'the',
-    'and',
-    'for',
-    'with',
-    'from',
-    'that',
-    'this',
-    'near',
-    'over',
-    'area',
-    'team',
-    'unit',
-    'report',
-    'update',
-    'alert',
-    'initial',
-  ]);
+  openAiApiKey: string,
+): Promise<WarroomScenarioPayload['time_injects']> {
+  if (injects.length <= 2) return injects;
 
-  function significantWords(title: string): Set<string> {
-    return new Set(
-      title
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, '')
-        .split(/\s+/)
-        .filter((w) => w.length > 3 && !STOP.has(w)),
-    );
-  }
+  const kept: WarroomScenarioPayload['time_injects'] = [injects[0]];
 
-  function diceCoefficient(a: Set<string>, b: Set<string>): number {
-    if (a.size === 0 || b.size === 0) return 0;
-    let overlap = 0;
-    for (const w of a) if (b.has(w)) overlap++;
-    return (2 * overlap) / (a.size + b.size);
-  }
-
-  const kept: Array<Set<string>> = [];
-  return injects.filter((inj) => {
-    const words = significantWords(inj.title);
-    if (words.size === 0) {
-      kept.push(words);
-      return true;
+  for (let i = 1; i < injects.length; i++) {
+    const candidate = injects[i];
+    const existing = kept
+      .map((k, idx) => `[${idx}] ${k.title}: ${(k.content || '').slice(0, 100)}`)
+      .join('\n');
+    try {
+      const result = await callOpenAi<{ duplicate: boolean }>(
+        `You are a deduplication judge for crisis exercise injects. Given a CANDIDATE inject and a list of EXISTING injects, determine if the candidate is thematically similar to ANY existing inject.
+Two injects are "similar" if they share the same underlying theme, character archetype, social dynamic, or crisis trope — even if the wording differs.
+Examples of similar pairs: "parents demand access" & "family confrontation at cordon", "fake credentials" & "impersonator tries to enter", "secondary device found" & "bomb threat at nearby location".
+Return JSON: { "duplicate": true } if similar to any existing, or { "duplicate": false } if unique.`,
+        `EXISTING INJECTS:\n${existing}\n\nCANDIDATE:\n${candidate.title}: ${(candidate.content || '').slice(0, 150)}`,
+        openAiApiKey,
+        50,
+        0,
+      );
+      if (!result.duplicate) kept.push(candidate);
+    } catch {
+      kept.push(candidate);
     }
-    for (const prev of kept) {
-      if (diceCoefficient(words, prev) >= 0.5) return false;
-    }
-    kept.push(words);
-    return true;
-  });
+  }
+  return kept;
 }
 
 /**
- * Same theme dedup for condition-driven (chaos) injects. Also checks against
- * the titles of already-accepted time injects to avoid theme overlap with those.
+ * AI-based semantic dedup for condition-driven (chaos) injects.
+ * Also checks against already-accepted time inject titles to prevent cross-type overlap.
  */
-function deduplicateConditionInjectsByTheme(
+async function deduplicateConditionInjectsByTheme(
   injects: NonNullable<WarroomScenarioPayload['condition_driven_injects']>,
   timeInjectTitles: string[],
-): NonNullable<WarroomScenarioPayload['condition_driven_injects']> {
-  const STOP = new Set([
-    'the',
-    'and',
-    'for',
-    'with',
-    'from',
-    'that',
-    'this',
-    'near',
-    'over',
-    'area',
-    'team',
-    'unit',
-    'report',
-    'update',
-    'alert',
-    'initial',
-  ]);
+  openAiApiKey: string,
+): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
+  if (injects.length === 0) return injects;
 
-  function significantWords(title: string): Set<string> {
-    return new Set(
-      title
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, '')
-        .split(/\s+/)
-        .filter((w) => w.length > 3 && !STOP.has(w)),
-    );
-  }
+  const existingContext = timeInjectTitles.map((t, i) => `[time-${i}] ${t}`).join('\n');
+  const kept: NonNullable<WarroomScenarioPayload['condition_driven_injects']> = [];
 
-  function diceCoefficient(a: Set<string>, b: Set<string>): number {
-    if (a.size === 0 || b.size === 0) return 0;
-    let overlap = 0;
-    for (const w of a) if (b.has(w)) overlap++;
-    return (2 * overlap) / (a.size + b.size);
-  }
-
-  const kept: Array<Set<string>> = timeInjectTitles.map(significantWords);
-  return injects.filter((inj) => {
-    const words = significantWords(inj.title);
-    if (words.size === 0) {
-      kept.push(words);
-      return true;
+  for (let i = 0; i < injects.length; i++) {
+    const candidate = injects[i];
+    const allExisting = [
+      existingContext,
+      ...kept.map((k, idx) => `[cond-${idx}] ${k.title}: ${(k.content || '').slice(0, 100)}`),
+    ].join('\n');
+    try {
+      const result = await callOpenAi<{ duplicate: boolean }>(
+        `You are a deduplication judge for crisis exercise injects. Given a CANDIDATE inject and a list of EXISTING injects (both time-based and condition-driven), determine if the candidate is thematically similar to ANY existing inject.
+Two injects are "similar" if they share the same underlying theme, character archetype, social dynamic, or crisis trope — even if the wording differs.
+Return JSON: { "duplicate": true } if similar to any existing, or { "duplicate": false } if unique.`,
+        `EXISTING INJECTS:\n${allExisting}\n\nCANDIDATE:\n${candidate.title}: ${(candidate.content || '').slice(0, 150)}`,
+        openAiApiKey,
+        50,
+        0,
+      );
+      if (!result.duplicate) kept.push(candidate);
+    } catch {
+      kept.push(candidate);
     }
-    for (const prev of kept) {
-      if (diceCoefficient(words, prev) >= 0.5) return false;
-    }
-    kept.push(words);
-    return true;
-  });
+  }
+  return kept;
 }
 
 // ---------------------------------------------------------------------------
@@ -2421,8 +2998,13 @@ async function generateScenarioHazards(
 
   onProgress?.('Identifying hazards (step 1)...');
 
-  const { scenario_type, setting, venue_name, location } = input;
+  const { scenario_type, setting, venue_name, location, researchContext } = input;
   const venue = venue_name || location || setting;
+
+  const similarCasesBlock =
+    researchContext?.similar_cases && researchContext.similar_cases.length > 0
+      ? `\nSIMILAR REAL INCIDENTS (for hazard reference):\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
+      : '';
 
   const incidentSites =
     locations?.filter(
@@ -2439,7 +3021,11 @@ async function generateScenarioHazards(
 
   const threatProfile = input.threat_profile;
   const rules = threatProfile ? getThreatHazardRules(threatProfile.weapon_class) : null;
-  const threatBlock = buildThreatProfileBlock(threatProfile);
+  const threatBlock = await buildThreatProfileBlock(
+    threatProfile,
+    openAiApiKey,
+    researchContext?.similar_cases,
+  );
   const minHazards = rules?.min_hazards ?? 8;
   const maxHazards = rules?.max_hazards ?? 15;
   const allowedHazardTypes = rules?.allowed_hazards ?? [
@@ -2463,7 +3049,7 @@ Setting: ${setting}
 ${narrative ? `Narrative: ${narrative.title}\nDescription: ${narrative.description}\nBriefing: ${narrative.briefing || ''}` : ''}
 ${incidentBlock}
 Teams available: ${(teamNames ?? []).join(', ') || 'not specified'}
-${threatBlock}
+${threatBlock}${similarCasesBlock}
 ${
   minHazards === 0
     ? `This incident type may produce NO environmental hazards at all. Only generate hazards if the weapon/scenario can physically cause them. It is acceptable to return an empty hazards array.`
@@ -2964,8 +3550,13 @@ async function generateCasualties(
 
   onProgress?.('Generating casualty pins...');
 
-  const { scenario_type, setting, venue_name, location } = input;
+  const { scenario_type, setting, venue_name, location, researchContext } = input;
   const venue = venue_name || location || setting;
+
+  const similarCasesBlock =
+    researchContext?.similar_cases && researchContext.similar_cases.length > 0
+      ? `\nSIMILAR REAL INCIDENTS (calibrate injury types and placement against these):\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
+      : '';
 
   const incidentSites =
     locations?.filter(
@@ -2981,9 +3572,25 @@ async function generateCasualties(
 
   const threatProfile = input.threat_profile;
   const casualtyRules = threatProfile ? getThreatHazardRules(threatProfile.weapon_class) : null;
-  const threatBlock2 = buildThreatProfileBlock(threatProfile);
-  const minCasualties = casualtyRules?.casualty_range[0] ?? 15;
-  const maxCasualties = casualtyRules?.casualty_range[1] ?? 20;
+  const threatBlock2 = await buildThreatProfileBlock(
+    threatProfile,
+    openAiApiKey,
+    researchContext?.similar_cases,
+  );
+  const baseCasRange: [number, number] = [
+    casualtyRules?.casualty_range[0] ?? 15,
+    casualtyRules?.casualty_range[1] ?? 20,
+  ];
+  const weaponAssessment = await assessWeaponLethality(
+    threatProfile?.weapon_type ?? '',
+    threatProfile?.weapon_class ?? '',
+    threatProfile?.adversary_count ?? 1,
+    baseCasRange,
+    openAiApiKey,
+    researchContext?.similar_cases,
+  );
+  const minCasualties = weaponAssessment.minCasualties;
+  const maxCasualties = weaponAssessment.maxCasualties;
   const injuryEmphasis = casualtyRules?.injury_emphasis ?? [
     'burn',
     'laceration',
@@ -3008,7 +3615,7 @@ ${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
 ${incidentSites.length > 0 ? `Incident site: ${incidentSites[0].label} at (${incidentSites[0].coordinates.lat}, ${incidentSites[0].coordinates.lng})` : ''}
 ${hazardBlock}
 ${zoneSummaryBlock || ''}
-${threatBlock2}
+${threatBlock2}${similarCasesBlock}
 
 Generate ${minCasualties}-${maxCasualties} INDIVIDUAL casualty pins representing the most clinically significant casualties that responders will encounter. Focus on variety of injury types and severity.
 
@@ -3116,8 +3723,13 @@ async function generateCrowdPins(
 
   onProgress?.('Generating crowd/evacuee pins...');
 
-  const { scenario_type, setting, venue_name, location } = input;
+  const { scenario_type, setting, venue_name, location, researchContext } = input;
   const venue = venue_name || location || setting;
+
+  const similarCasesBlock =
+    researchContext?.similar_cases && researchContext.similar_cases.length > 0
+      ? `\nSIMILAR REAL INCIDENTS (for crowd behavior reference):\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
+      : '';
 
   const exitPins =
     locations?.filter((l) => l.pin_category === 'entry_exit' || l.pin_category === 'access') ?? [];
@@ -3141,7 +3753,7 @@ Setting: ${setting}
 ${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
 ${exitBlock}
 ${zoneSummaryBlock || ''}
-${buildThreatProfileBlock(threatProfile)}
+${await buildThreatProfileBlock(threatProfile, openAiApiKey, researchContext?.similar_cases)}${similarCasesBlock}
 
 CROWD BEHAVIOR for this threat type: ${crowdDesc}
 Panic radius: ${panicRadius} — ${panicRadius === 'immediate' ? 'only people very close (<50m) are aware and reacting' : panicRadius === 'local' ? 'people within ~200m are reacting, further away may be unaware' : 'entire venue is affected, mass evacuation'}
@@ -3264,7 +3876,7 @@ ${entryBlock}
 ${incidentBlock}
 ${researchBlock}
 ${teamsBlock}
-${buildThreatProfileBlock(convergentThreat)}
+${await buildThreatProfileBlock(convergentThreat, openAiApiKey, researchContext?.similar_cases)}
 
 ${isMeleeConvergent ? `NOTE: This is a localized melee attack. Convergent crowds will be SMALLER and arrive LATER than for mass-casualty events. Media may arrive but in smaller numbers. Family arrivals are fewer. Generate 2-4 groups.` : ''}
 
@@ -4095,9 +4707,7 @@ RULES:
 - requires_response: set to true when teams must react (e.g. political demand, media confrontation, secondary threat). false ONLY for atmospheric pressure (background news, social media chatter).
 - Each inject title must be concretely different from the others — no two should share the same underlying theme, character archetype, or scenario element.
 
-CRITICAL — T+0 INJECT:
-- The FIRST inject (trigger_time_minutes: 0) MUST be the INITIAL INCIDENT REPORT — the very first alarm/notification of the disaster itself (e.g. "Multiple stab wounds reported at…", "Explosion at…", "Biohazard spill reported at…").
-- This T+0 inject sets the stage for everything else. It should describe WHAT happened, WHERE, and initial severity. It must NOT be a secondary complication, impersonator, or side-event.
+DO NOT generate a T+0 inject. The initial incident report at T+0 is handled separately and must not be duplicated here. Your first inject should be at the earliest assigned time slot.
 
 THEME UNIQUENESS:
 - Each inject must address a COMPLETELY DIFFERENT scenario element. No two injects may share the same character archetype (impersonator, veteran, family member), the same crisis trope (false rumor, cordon breach, secondary device), or the same social dynamic (media frenzy, political pressure).
@@ -4123,10 +4733,12 @@ VARIETY IS CRITICAL:
       5000,
       INJECT_DIVERSITY ? 0.95 : 0.7,
     );
-    const raw = parsed.time_injects || [];
+    const raw = (parsed.time_injects || []).filter(
+      (inj) => inj.trigger_time_minutes !== 0 && inj.trigger_time_minutes != null,
+    );
     return raw.map((inj) => ({
       ...inj,
-      trigger_time_minutes: inj.trigger_time_minutes ?? 0,
+      trigger_time_minutes: inj.trigger_time_minutes ?? 5,
       type: normalizeInjectType(inj.type || 'field_update'),
       title: inj.title || 'Situation update',
       content: inj.content || '',
@@ -5068,9 +5680,14 @@ export async function warroomGenerateScenario(
     briefing: phase1.scenario.briefing,
   };
 
-  // Pre-assign timing slots before any AI call fires
+  // Classify teams as operational vs non-operational for differentiated inject counts
   const durationMinutes = input.duration_minutes ?? 60;
-  const timingManifest = buildTimingManifest(teamNames, durationMinutes);
+  const teamTypes = await classifyTeamTypes(
+    teamNames.map((n) => ({ team_name: n })),
+    input.scenario_type,
+    openAiApiKey,
+  );
+  const timingManifest = buildTimingManifest(teamNames, durationMinutes, teamTypes);
 
   // Batch A — time injects + chaos injects
   // All calls run sequentially so each generator receives the full list of
@@ -5094,14 +5711,12 @@ export async function warroomGenerateScenario(
     requires_coordination: false,
   };
 
-  // Remove T+0 from AI-assigned universal slots so the AI doesn't duplicate it
-  const aiUniversalSlots = timingManifest.universalSlots.filter((t) => t > 0);
-
+  // Universal slots already exclude T+0 (handled by deterministic t0Inject)
   const universalTimeInjects = await generateUniversalTimeInjects(
     input,
     teamNames,
     openAiApiKey,
-    aiUniversalSlots,
+    timingManifest.universalSlots,
     undefined,
     narrative,
   );
@@ -5136,7 +5751,7 @@ export async function warroomGenerateScenario(
       t,
       teamNames,
       openAiApiKey,
-      Math.max(3, Math.floor(durationMinutes / 15)),
+      timingManifest.teamChaosCount[t] ?? 2,
       narrative,
       allThemes,
     );
@@ -5151,8 +5766,9 @@ export async function warroomGenerateScenario(
     ...perTeamTimeResults.flat(),
   ];
 
-  // Post-generation dedup: remove injects whose title theme overlaps a previous inject
-  const dedupedTimeInjects = deduplicateInjectsByTheme(rawTimeInjects);
+  // AI-based semantic dedup: remove injects whose theme overlaps a previous inject
+  onProgress?.('Deduplicating injects...');
+  const dedupedTimeInjects = await deduplicateInjectsByTheme(rawTimeInjects, openAiApiKey);
   const time_injects = normalizeInjectTiming(dedupedTimeInjects, durationMinutes);
 
   // Phase 4a-1 (scenario-fixed pins) + POI enrichment run in PARALLEL
@@ -5413,9 +6029,10 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
 
   const hasInsiderKnowledge = Object.keys(insiderKnowledge).length > 0;
 
-  const allConditionInjects = deduplicateConditionInjectsByTheme(
+  const allConditionInjects = await deduplicateConditionInjectsByTheme(
     perTeamChaosResults.flat(),
     time_injects.map((i) => i.title),
+    openAiApiKey,
   );
   const condition_driven_injects = allConditionInjects.length > 0 ? allConditionInjects : undefined;
 

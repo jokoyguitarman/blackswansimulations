@@ -66,7 +66,48 @@ export async function researchArea(
   venueName?: string,
 ): Promise<string> {
   const venue = venueName || location;
-  const prompt = `Research the area around ${venue} in ${location}: geography, access routes, landmarks, local emergency agencies (hospitals, police, fire), and constraints. Return a concise 200-word summary.`;
+  const prompt = `You are a crisis management planning officer preparing an operational area brief for an emergency exercise at ${venue} in ${location}.
+
+Produce a detailed area intelligence report covering ALL of the following sections. Be specific — use real names, real distances, real addresses where possible.
+
+## ACCESS ROUTES
+- Primary vehicle access roads (name, direction, lanes, one-way restrictions)
+- Secondary / alternative routes
+- Pedestrian-only zones or restricted vehicle areas
+- Underground connections (MRT/subway, basement links between buildings)
+- Known traffic bottleneck points during peak hours
+
+## EMERGENCY FACILITIES (within 10km radius)
+- Hospitals: name, distance, type (public/private), trauma level or emergency capability, estimated drive time
+- Police stations: name, distance, division/jurisdiction
+- Fire stations: name, distance
+- Ambulance staging areas or known rally points
+
+## VENUE / AREA LAYOUT
+- Physical description: building type, floors, open spaces, parking structures
+- Entry and exit points (pedestrian and vehicle)
+- Adjacent buildings and what they are (commercial, residential, government)
+- Crowd capacity estimates for the area
+- CCTV coverage (if known — transit stations, government buildings typically have it)
+
+## INFRASTRUCTURE & UTILITIES
+- Major utility corridors (power substations, gas mains, water supply)
+- Telecommunications infrastructure (cell towers, known dead zones)
+- Drainage or flood-prone areas
+
+## ENVIRONMENTAL & CULTURAL CONTEXT
+- Is this a tourist zone, diplomatic quarter, heritage area, residential neighborhood?
+- Language/demographic considerations for public communication
+- Time-of-day crowd patterns (when is it busiest vs. quietest)
+- Any recurring events (markets, festivals, religious gatherings) that affect crowd density
+
+## OPERATIONAL CONSTRAINTS
+- Vehicle weight/height restrictions
+- Heritage or protected building restrictions on forced entry
+- Nearby sensitive facilities (embassies, schools, religious sites) requiring special coordination
+- Helicopter landing zone availability
+
+Write 2000-5000 words. Be thorough — this will be used to ground a realistic crisis simulation. Use only factual, real-world information.`;
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -78,7 +119,7 @@ export async function researchArea(
       body: JSON.stringify({
         model: SEARCH_MODEL,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 500,
+        max_tokens: 6000,
       }),
     });
 
@@ -1018,29 +1059,66 @@ export async function researchCrowdDynamics(
 
 Research how crowds behave during and after a ${scenarioType}${locationHint} at a venue like ${venue}.
 
-Cover THREE areas:
+Cover the following areas IN DEPTH:
 
-1. SELF-EVACUATION PATTERNS: How do people inside the venue react in the first 0-10 minutes? Consider panic flight vs freeze response, shell-shocked individuals, orderly vs disorderly movement, bottleneck formation, stampede risk, and how crowd density affects flow.
+## 1. SELF-EVACUATION PATTERNS (first 0-15 minutes)
+- Initial freeze / startle response duration and what triggers movement
+- Panic flight vs orderly self-directed evacuation — what tips the balance
+- Bottleneck formation at exits: which exits get overloaded and why
+- Stampede / crush risk factors (crowd density thresholds, narrow corridors, locked doors)
+- Role of venue staff and security in guiding initial flow
+- Shell-shocked / immobile individuals — typical percentage and where they cluster
+- Counter-flow: people moving TOWARD the incident (to find family, record video, help)
+- Effect of alarms, PA announcements, and social cues on evacuation speed
+- Differences by time of day (peak vs off-peak density)
+- Injuries sustained during evacuation itself (trampling, falls, crush)
 
-2. CONVERGENT CROWD TYPES: After word of the incident spreads, who arrives from OUTSIDE and when? For each type, provide the typical arrival window in minutes after the incident, their behavior, and estimated group size. Types include: onlookers/rubberneckers, media crews, family members searching for loved ones, self-appointed helpers/volunteers, political figures, and religious/community leaders.
+## 2. CONVERGENT CROWD TYPES (post-incident arrivals)
+For EACH of the following groups, provide:
+- Typical arrival window (minutes after incident)
+- Estimated group size range
+- Specific behaviors and demands on arrival
+- How they interact with responders and cordons
+- Historical examples where relevant
 
-3. MOVEMENT NOTES: Which entry/exit points do convergent crowds typically gravitate toward? How does their presence interfere with response operations? What happens when convergent crowds meet evacuees?
+Groups:
+a) Onlookers / rubberneckers
+b) Media crews (local, national, international — staggered arrival)
+c) Family members searching for loved ones
+d) Self-appointed helpers / Good Samaritans / off-duty medical staff
+e) Political figures, elected officials, government representatives
+f) Religious and community leaders
+g) Protest groups or activist organizations (if relevant to scenario type)
+h) Criminal opportunists (looting, pickpocketing in chaos)
+
+## 3. MOVEMENT & FLOW DYNAMICS
+- Which entry/exit points do convergent crowds gravitate toward and why
+- How convergent crowd presence interferes with ambulance staging, casualty extraction, cordon integrity
+- Collision points between evacuees flowing OUT and convergent crowds flowing IN
+- Secondary crowd surges triggered by rumors, aftershocks, or perceived secondary threats
+- Crowd density thresholds that force cordon expansion or route changes
+
+## 4. COMMUNICATION & INFORMATION CASCADES
+- How news of the incident spreads (social media timeline, word of mouth, news alerts)
+- Misinformation patterns: what false rumors typically emerge and when
+- Effect of live-streamed footage on convergent crowd size
+- Language and cultural factors affecting public communication effectiveness
 
 Return ONLY valid JSON:
 {
-  "self_evacuation_patterns": "2-4 sentence description of initial crowd behavior inside the venue",
+  "self_evacuation_patterns": "Detailed multi-paragraph description covering all aspects listed in section 1",
   "convergent_crowd_types": [
     {
-      "type": "onlooker|media|family|helper|political|religious",
+      "type": "onlooker|media|family|helper|political|religious|protest|criminal",
       "typical_arrival_minutes": 10,
-      "behavior": "1-2 sentence description of what this group does when they arrive",
+      "behavior": "Detailed description of group behavior, demands, and historical patterns",
       "size_range": "10-30"
     }
   ],
-  "movement_notes": "2-3 sentences about how convergent crowds use entry points and interfere with operations"
+  "movement_notes": "Detailed description covering sections 3 and 4: flow dynamics, collision points, information cascades, and misinformation patterns"
 }
 
-Base your response on documented after-action reports and crowd psychology research. Use ONLY real behavioral patterns from real incidents.`;
+Base your response on documented after-action reports and crowd psychology research. Use ONLY real behavioral patterns from real incidents. Be thorough — this drives realistic crowd simulation in a crisis training exercise.`;
 
   try {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -1049,7 +1127,7 @@ Base your response on documented after-action reports and crowd psychology resea
       body: JSON.stringify({
         model: SEARCH_MODEL,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 1500,
+        max_tokens: 3500,
       }),
     });
 
