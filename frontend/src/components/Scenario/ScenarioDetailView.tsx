@@ -168,8 +168,34 @@ const tabs = [
   'Env Truths',
   'Routes',
   'Standards',
+  'Research',
 ] as const;
 type Tab = (typeof tabs)[number];
+
+interface ResearchCase {
+  id: string;
+  name: string;
+  summary: string;
+  timeline: string | null;
+  adversary_behavior: string | null;
+  other_actors: string | null;
+  environment: string | null;
+  outcome: string | null;
+  casualties_killed: number | null;
+  casualties_injured: number | null;
+  num_attackers: number | null;
+  weapon_description: string | null;
+  weapon_forensics: string | null;
+  damage_radius_m: number | null;
+  hazards_triggered: string[] | null;
+  secondary_effects: string[] | null;
+  injury_breakdown: string | null;
+  crowd_response: string | null;
+  response_time_minutes: number | null;
+  containment_time_minutes: number | null;
+  environment_factors: string[] | null;
+  relevance_score: number | null;
+}
 
 export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
   const [scenario, setScenario] = useState<ScenarioFull | null>(null);
@@ -180,6 +206,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
   const [casualtyPins, setCasualtyPins] = useState<CasualtyPin[]>([]);
   const [equipmentItems, setEquipmentItems] = useState<EquipmentItem[]>([]);
   const [floorPlans, setFloorPlans] = useState<FloorPlan[]>([]);
+  const [researchCases, setResearchCases] = useState<ResearchCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('Overview');
   const [expandedInject, setExpandedInject] = useState<string | null>(null);
@@ -228,7 +255,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
   useEffect(() => {
     const load = async () => {
       try {
-        const [scenRes, injectRes, teamRes, locRes, hazRes, casRes, eqRes, fpRes] =
+        const [scenRes, injectRes, teamRes, locRes, hazRes, casRes, eqRes, fpRes, researchRes] =
           await Promise.all([
             api.scenarios.get(scenarioId),
             api.scenarios.getInjects(scenarioId),
@@ -238,6 +265,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
             api.scenarios.getScenarioCasualties(scenarioId).catch(() => ({ data: [] })),
             api.scenarios.getScenarioEquipment(scenarioId).catch(() => ({ data: [] })),
             api.scenarios.getScenarioFloorPlans(scenarioId).catch(() => ({ data: [] })),
+            api.scenarios.getScenarioResearch(scenarioId).catch(() => ({ data: [] })),
           ]);
         setScenario(scenRes.data as ScenarioFull);
         setInjects((injectRes.data ?? []) as Inject[]);
@@ -247,6 +275,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
         setCasualtyPins((casRes.data ?? []) as CasualtyPin[]);
         setEquipmentItems((eqRes.data ?? []) as EquipmentItem[]);
         setFloorPlans((fpRes.data ?? []) as FloorPlan[]);
+        setResearchCases((researchRes.data ?? []) as ResearchCase[]);
       } catch (err) {
         console.error('Failed to load scenario detail', err);
       } finally {
@@ -979,6 +1008,215 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                 <div className="text-xs terminal-text text-robotic-yellow/60 mt-2 animate-pulse">
                   [SAVING...]
                 </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'Research' && (
+            <div className="space-y-4">
+              {researchCases.length === 0 ? (
+                <p className="text-sm terminal-text text-robotic-yellow/50">
+                  [NO RESEARCH DATA] — Research cases are gathered during scenario generation.
+                </p>
+              ) : (
+                researchCases.map((rc) => (
+                  <div
+                    key={rc.id}
+                    className="military-border p-4 border-robotic-yellow/30 bg-black/20 space-y-3"
+                  >
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="text-sm terminal-text text-robotic-yellow font-bold uppercase">
+                        {rc.name}
+                      </h3>
+                      {rc.relevance_score != null && (
+                        <span
+                          className={`shrink-0 px-2 py-0.5 text-[10px] terminal-text uppercase border ${
+                            rc.relevance_score >= 8
+                              ? 'text-green-400 border-green-400/50 bg-green-400/10'
+                              : rc.relevance_score >= 5
+                                ? 'text-robotic-orange border-robotic-orange/50 bg-robotic-orange/10'
+                                : 'text-robotic-yellow/60 border-robotic-yellow/30 bg-robotic-yellow/5'
+                          }`}
+                        >
+                          {rc.relevance_score}/10 match
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Summary */}
+                    <p className="text-xs terminal-text text-robotic-yellow/80 leading-relaxed">
+                      {rc.summary}
+                    </p>
+
+                    {/* Stats chips */}
+                    <div className="flex flex-wrap gap-2">
+                      {rc.casualties_killed != null && (
+                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-red-900/40 border border-red-500/30 text-red-300">
+                          {rc.casualties_killed} KILLED
+                        </span>
+                      )}
+                      {rc.casualties_injured != null && (
+                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-orange-900/40 border border-orange-500/30 text-orange-300">
+                          {rc.casualties_injured} INJURED
+                        </span>
+                      )}
+                      {rc.num_attackers != null && (
+                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-purple-900/40 border border-purple-500/30 text-purple-300">
+                          {rc.num_attackers} ATTACKER{rc.num_attackers !== 1 ? 'S' : ''}
+                        </span>
+                      )}
+                      {rc.response_time_minutes != null && rc.response_time_minutes > 0 && (
+                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-blue-900/40 border border-blue-500/30 text-blue-300">
+                          RESPONSE: {rc.response_time_minutes} MIN
+                        </span>
+                      )}
+                      {rc.containment_time_minutes != null && rc.containment_time_minutes > 0 && (
+                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-cyan-900/40 border border-cyan-500/30 text-cyan-300">
+                          CONTAINED: {rc.containment_time_minutes} MIN
+                        </span>
+                      )}
+                      {rc.damage_radius_m != null && rc.damage_radius_m > 0 && (
+                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-yellow-900/40 border border-yellow-500/30 text-yellow-300">
+                          RADIUS: {rc.damage_radius_m}M
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Weapon section */}
+                    {(rc.weapon_description || rc.weapon_forensics) && (
+                      <div className="border-l-2 border-robotic-orange/40 pl-3">
+                        <div className="text-[10px] terminal-text text-robotic-orange/70 uppercase mb-1">
+                          WEAPON PROFILE
+                        </div>
+                        {rc.weapon_description && (
+                          <p className="text-xs terminal-text text-robotic-yellow/70">
+                            {rc.weapon_description}
+                          </p>
+                        )}
+                        {rc.weapon_forensics && (
+                          <p className="text-xs terminal-text text-robotic-yellow/60 mt-1">
+                            Forensics: {rc.weapon_forensics}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Injury breakdown */}
+                    {rc.injury_breakdown && (
+                      <div className="border-l-2 border-red-500/40 pl-3">
+                        <div className="text-[10px] terminal-text text-red-400/70 uppercase mb-1">
+                          INJURY BREAKDOWN
+                        </div>
+                        <p className="text-xs terminal-text text-robotic-yellow/70">
+                          {rc.injury_breakdown}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Hazards triggered */}
+                    {rc.hazards_triggered && rc.hazards_triggered.length > 0 && (
+                      <div className="border-l-2 border-yellow-500/40 pl-3">
+                        <div className="text-[10px] terminal-text text-yellow-400/70 uppercase mb-1">
+                          HAZARDS TRIGGERED
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {rc.hazards_triggered.map((h, i) => (
+                            <span
+                              key={i}
+                              className="px-2 py-0.5 text-[10px] terminal-text bg-yellow-900/30 border border-yellow-500/20 text-yellow-300"
+                            >
+                              {h.replace(/_/g, ' ')}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Crowd response */}
+                    {rc.crowd_response && (
+                      <div className="border-l-2 border-purple-500/40 pl-3">
+                        <div className="text-[10px] terminal-text text-purple-400/70 uppercase mb-1">
+                          CROWD BEHAVIOR
+                        </div>
+                        <p className="text-xs terminal-text text-robotic-yellow/70">
+                          {rc.crowd_response}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Secondary effects */}
+                    {rc.secondary_effects && rc.secondary_effects.length > 0 && (
+                      <div className="border-l-2 border-cyan-500/40 pl-3">
+                        <div className="text-[10px] terminal-text text-cyan-400/70 uppercase mb-1">
+                          SECONDARY EFFECTS
+                        </div>
+                        <ul className="space-y-0.5">
+                          {rc.secondary_effects.map((e, i) => (
+                            <li key={i} className="text-xs terminal-text text-robotic-yellow/70">
+                              ▸ {e.replace(/_/g, ' ')}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Timeline */}
+                    {rc.timeline && (
+                      <div className="border-l-2 border-robotic-yellow/30 pl-3">
+                        <div className="text-[10px] terminal-text text-robotic-yellow/50 uppercase mb-1">
+                          TIMELINE
+                        </div>
+                        <p className="text-xs terminal-text text-robotic-yellow/60 leading-relaxed">
+                          {rc.timeline}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Adversary behavior */}
+                    {rc.adversary_behavior && (
+                      <div className="border-l-2 border-red-600/30 pl-3">
+                        <div className="text-[10px] terminal-text text-red-400/50 uppercase mb-1">
+                          ADVERSARY BEHAVIOR
+                        </div>
+                        <p className="text-xs terminal-text text-robotic-yellow/60 leading-relaxed">
+                          {rc.adversary_behavior}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Environment factors */}
+                    {rc.environment_factors && rc.environment_factors.length > 0 && (
+                      <div className="border-l-2 border-green-500/30 pl-3">
+                        <div className="text-[10px] terminal-text text-green-400/50 uppercase mb-1">
+                          ENVIRONMENT FACTORS
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {rc.environment_factors.map((f, i) => (
+                            <span
+                              key={i}
+                              className="px-2 py-0.5 text-[10px] terminal-text bg-green-900/20 border border-green-500/20 text-green-300/80"
+                            >
+                              {f.replace(/_/g, ' ')}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Outcome */}
+                    {rc.outcome && (
+                      <div className="border-l-2 border-robotic-yellow/20 pl-3">
+                        <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase mb-1">
+                          OUTCOME
+                        </div>
+                        <p className="text-xs terminal-text text-robotic-yellow/60 leading-relaxed">
+                          {rc.outcome}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ))
               )}
             </div>
           )}

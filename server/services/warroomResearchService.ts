@@ -8,6 +8,7 @@
  */
 
 import { logger } from '../lib/logger.js';
+import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 
 const SEARCH_MODEL = 'gpt-4o-search-preview';
 
@@ -19,6 +20,22 @@ export interface SimilarCase {
   other_actors: string;
   environment: string;
   outcome: string;
+  casualties_killed?: number;
+  casualties_injured?: number;
+  num_attackers?: number;
+  weapon_description?: string;
+  relevance_score?: number;
+  weapon_forensics?: string;
+  damage_radius_m?: number;
+  hazards_triggered?: string[];
+  secondary_effects?: string[];
+  injury_breakdown?: string;
+  crowd_response?: string;
+  response_time_minutes?: number;
+  containment_time_minutes?: number;
+  environment_factors?: string[];
+  /** Set when loaded from the database cache */
+  db_id?: string;
 }
 
 export interface SiteRequirement {
@@ -257,7 +274,8 @@ export async function researchStandards(
 
 /**
  * Research 2–4 real-world incidents similar to the given scenario type and venue.
- * Runs right after parsing, concurrent with geocoding, before any AI generation.
+ * Database-first: checks the local research_cases cache before hitting the internet.
+ * Persists any new internet results to the cache for future reuse.
  * Returns [] on any failure so generation always proceeds.
  */
 export async function researchSimilarCases(
@@ -266,39 +284,158 @@ export async function researchSimilarCases(
   location?: string,
   venueName?: string,
   setting?: string,
+  originalPrompt?: string,
+  threatProfile?: {
+    weapon_type?: string;
+    weapon_class?: string;
+    adversary_count?: number;
+    threat_scale?: string;
+  },
+): Promise<SimilarCase[]> {
+  const settingTags = extractSettingTags(
+    `${originalPrompt || ''} ${location || ''} ${venueName || ''} ${setting || ''}`,
+    scenarioType,
+  );
+  const weaponClass = threatProfile?.weapon_class;
+
+  // Step 1: Check the database cache
+  const cached = await findCachedResearchCases(scenarioType, weaponClass, settingTags);
+  if (cached.length >= 2) {
+    logger.info(
+      { scenarioType, cached: cached.length },
+      'Using cached research cases from database',
+    );
+    return cached;
+  }
+
+  // Step 2: Not enough cached results — fetch from internet
+  const internetResults = await fetchSimilarCasesFromInternet(
+    openAiApiKey,
+    scenarioType,
+    location,
+    venueName,
+    setting,
+    originalPrompt,
+    threatProfile,
+  );
+
+  // Step 3: Merge cached + new, dedup by normalized name
+  const seenNames = new Set(cached.map((c) => normalizeCaseName(c.name)));
+  const newFromInternet = internetResults.filter((c) => {
+    const n = normalizeCaseName(c.name);
+    if (seenNames.has(n)) return false;
+    seenNames.add(n);
+    return true;
+  });
+  const merged = [...cached, ...newFromInternet].slice(0, 4);
+
+  // Step 4: Persist new internet results to the database (non-blocking)
+  if (newFromInternet.length > 0) {
+    persistResearchCases(newFromInternet, scenarioType, weaponClass, settingTags).catch((err) =>
+      logger.warn({ err }, 'Background persist of research cases failed'),
+    );
+  }
+
+  logger.info(
+    {
+      scenarioType,
+      location,
+      cached: cached.length,
+      internet: newFromInternet.length,
+      total: merged.length,
+    },
+    'Similar cases research complete',
+  );
+  return merged;
+}
+
+/**
+ * Fetch similar cases from the internet via OpenAI search model.
+ * This is the original internet-only research path, now extracted as an internal helper.
+ */
+async function fetchSimilarCasesFromInternet(
+  openAiApiKey: string,
+  scenarioType: string,
+  location?: string,
+  venueName?: string,
+  setting?: string,
+  originalPrompt?: string,
+  threatProfile?: {
+    weapon_type?: string;
+    weapon_class?: string;
+    adversary_count?: number;
+    threat_scale?: string;
+  },
 ): Promise<SimilarCase[]> {
   const venueContext = venueName || location || setting || scenarioType;
   const locationHint = location ? ` in or near ${location}` : '';
   const settingHint = setting ? ` (setting: ${setting})` : '';
 
-  const prompt = `You are an expert in crisis management and emergency response history.
+  const scenarioDescription = originalPrompt
+    ? `"${originalPrompt}" (classified as: ${scenarioType})`
+    : scenarioType;
 
-Find 2–4 real-world incidents that are similar to: ${scenarioType}${locationHint}${settingHint}.
+  const threatHint = threatProfile
+    ? `\nThreat details: ${threatProfile.adversary_count ?? 1} attacker(s) with ${threatProfile.weapon_type || threatProfile.weapon_class || 'unknown weapon'}, threat scale: ${threatProfile.threat_scale || 'unknown'}`
+    : '';
 
-For each incident, extract a structured summary focused on HOW the event unfolded — the dynamics between the threat, responders, environment, and other actors. This will be used to make a crisis simulation scenario more realistic.
+  const prompt = `You are an expert in crisis management, emergency response history, and forensic incident analysis.
+
+Find 2–4 real-world incidents that are similar to: ${scenarioDescription}${locationHint}${settingHint}.${threatHint}
+
+Match on these factors in priority order: (1) weapon type and attack method, (2) number of attackers, (3) venue/crowd density similarity, (4) geographic/cultural similarity.
+
+For each incident, extract a DETAILED structured summary covering both the narrative AND the forensic/tactical details. This data will be used to calibrate a crisis simulation for realism — casualty counts, hazard types, crowd behavior, and response timelines must be grounded in real documented data.
 
 Return ONLY valid JSON:
 {
   "cases": [
     {
-      "name": "incident name, location, year (e.g. 'Nairobi Westgate Mall Attack, 2013')",
+      "name": "incident name, location, year (e.g. 'Kunming Station Attack, 2014')",
       "summary": "2–3 sentence overview of what happened",
       "timeline": "How the event evolved: key phases, escalation points, turning points (2–4 sentences)",
       "adversary_behavior": "What the threat actor(s) did: tactics, adaptations, objectives (2–3 sentences)",
       "other_actors": "How the public, media, bystanders, or other third parties behaved and influenced events (1–2 sentences)",
       "environment": "How location, infrastructure, crowd density, or environmental factors shaped the response (1–2 sentences)",
-      "outcome": "How it resolved, key lessons for responders (1–2 sentences)"
+      "outcome": "How it resolved, key lessons for responders (1–2 sentences)",
+      "casualties_killed": 0,
+      "casualties_injured": 0,
+      "num_attackers": 1,
+      "weapon_description": "brief description of weapons used",
+      "weapon_forensics": "detailed weapon specification: type, dimensions, caliber, composition, or IED components if applicable",
+      "damage_radius_m": 0,
+      "hazards_triggered": ["list of environmental hazards that resulted: fire, structural_collapse, debris, glass, chemical_spill, etc."],
+      "secondary_effects": ["chain reactions: stampede, traffic_gridlock, secondary_evacuation, hospital_surge, etc."],
+      "injury_breakdown": "percentage breakdown of injury types documented (e.g. '40% lacerations, 30% stab wounds, 20% crush, 10% psychological')",
+      "crowd_response": "how the crowd actually behaved at different distances from the incident",
+      "response_time_minutes": 0,
+      "containment_time_minutes": 0,
+      "environment_factors": ["physical factors: narrow_corridors, open_field, underground, high_crowd_density, limited_exits, etc."],
+      "relevance_score": 8
     }
   ]
 }
+
+FIELD GUIDANCE:
+- weapon_forensics: Be specific — "8 attackers each carried 30cm single-edge knives" not just "knives". For bombs: composition, yield estimate, delivery method.
+- damage_radius_m: Physical area affected. For melee: the area the attacker(s) traversed. For explosives: documented blast/damage radius. For vehicles: length of the attack path.
+- hazards_triggered: Only hazards that ACTUALLY occurred in the documented incident. Empty array if none.
+- secondary_effects: Cascading consequences beyond the primary attack. Empty array if none documented.
+- injury_breakdown: Use approximate documented percentages. If unknown, describe the dominant injury types qualitatively.
+- crowd_response: Describe behavior at different distances (near attack, mid-range, far). How did panic spread? Where did bottlenecks form?
+- response_time_minutes: Minutes from first emergency call to first responder on scene. 0 if unknown.
+- containment_time_minutes: Minutes from first response to situation neutralized/contained. 0 if unknown.
+- environment_factors: Physical characteristics of the venue that shaped the incident dynamics.
 
 RULES:
 - Use ONLY real, documented incidents — no fictional or hypothetical cases.
 - If no closely similar real incidents can be found, return an empty cases array: { "cases": [] }
 - Focus on incidents where the response dynamics (coordination, timing, actor behavior) are most instructive.
 - Prioritise incidents from the past 30 years with documented after-action reviews.
+- casualties_killed and casualties_injured should be approximate documented numbers.
+- relevance_score: 1-10 rating of how closely this incident matches the prompted scenario (10 = near-identical, 1 = loosely related).
 
-Scenario context: ${scenarioType} at ${venueContext}`;
+Scenario context: ${scenarioDescription} at ${venueContext}`;
 
   try {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -307,14 +444,14 @@ Scenario context: ${scenarioType} at ${venueContext}`;
       body: JSON.stringify({
         model: SEARCH_MODEL,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 2000,
+        max_tokens: 3000,
       }),
     });
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       const msg = (err as { error?: { message?: string } }).error?.message || res.statusText;
-      logger.warn({ status: res.status, msg }, 'Similar cases research failed');
+      logger.warn({ status: res.status, msg }, 'Similar cases internet research failed');
       return [];
     }
 
@@ -328,18 +465,15 @@ Scenario context: ${scenarioType} at ${venueContext}`;
     const parsed = JSON.parse(jsonMatch[0]) as { cases?: unknown[] };
     const cases = parsed.cases ?? [];
 
-    const valid = cases.filter(
+    return cases.filter(
       (c): c is SimilarCase =>
         typeof c === 'object' &&
         c !== null &&
         typeof (c as SimilarCase).name === 'string' &&
         typeof (c as SimilarCase).summary === 'string',
     );
-
-    logger.info({ scenarioType, location, found: valid.length }, 'Similar cases research complete');
-    return valid;
   } catch (err) {
-    logger.warn({ err, scenarioType }, 'Similar cases research error');
+    logger.warn({ err, scenarioType }, 'Similar cases internet research error');
     return [];
   }
 }
@@ -350,17 +484,318 @@ Scenario context: ${scenarioType} at ${venueContext}`;
 export function similarCasesToPromptBlock(cases: SimilarCase[]): string {
   if (cases.length === 0) return '';
   return cases
-    .map(
-      (c) =>
-        `[${c.name}]\n` +
-        `  Overview: ${c.summary}\n` +
-        `  Timeline: ${c.timeline}\n` +
-        `  Adversary: ${c.adversary_behavior}\n` +
-        `  Other actors: ${c.other_actors}\n` +
-        `  Environment: ${c.environment}\n` +
-        `  Outcome: ${c.outcome}`,
-    )
+    .map((c) => {
+      const lines: string[] = [];
+      lines.push(`[${c.name}]${c.relevance_score ? ` (relevance: ${c.relevance_score}/10)` : ''}`);
+      lines.push(`  Overview: ${c.summary}`);
+
+      const statsParts: string[] = [];
+      if (c.casualties_killed != null || c.casualties_injured != null)
+        statsParts.push(
+          `${c.casualties_killed ?? '?'} killed, ${c.casualties_injured ?? '?'} injured`,
+        );
+      if (c.num_attackers) statsParts.push(`${c.num_attackers} attacker(s)`);
+      if (c.weapon_description) statsParts.push(c.weapon_description);
+      if (statsParts.length) lines.push(`  Casualties: ${statsParts.join(' | ')}`);
+
+      if (c.weapon_forensics) lines.push(`  Weapon forensics: ${c.weapon_forensics}`);
+      if (c.damage_radius_m) lines.push(`  Damage radius: ${c.damage_radius_m}m`);
+      if (c.injury_breakdown) lines.push(`  Injury breakdown: ${c.injury_breakdown}`);
+      if (c.hazards_triggered?.length)
+        lines.push(`  Hazards triggered: ${c.hazards_triggered.join(', ')}`);
+      if (c.secondary_effects?.length)
+        lines.push(`  Secondary effects: ${c.secondary_effects.join(', ')}`);
+      if (c.crowd_response) lines.push(`  Crowd response: ${c.crowd_response}`);
+      if (c.response_time_minutes) lines.push(`  Response time: ${c.response_time_minutes} min`);
+      if (c.containment_time_minutes)
+        lines.push(`  Containment time: ${c.containment_time_minutes} min`);
+      if (c.environment_factors?.length)
+        lines.push(`  Environment factors: ${c.environment_factors.join(', ')}`);
+
+      lines.push(`  Timeline: ${c.timeline}`);
+      lines.push(`  Adversary: ${c.adversary_behavior}`);
+      lines.push(`  Other actors: ${c.other_actors}`);
+      lines.push(`  Environment: ${c.environment}`);
+      lines.push(`  Outcome: ${c.outcome}`);
+      return lines.join('\n');
+    })
     .join('\n\n');
+}
+
+// ---------------------------------------------------------------------------
+// Setting-tag extraction (keyword-based, no AI call)
+// ---------------------------------------------------------------------------
+
+const SETTING_KEYWORDS: Record<string, string[]> = {
+  outdoor: [
+    'outdoor',
+    'open air',
+    'park',
+    'field',
+    'garden',
+    'beach',
+    'street',
+    'road',
+    'highway',
+    'plaza',
+    'square',
+  ],
+  indoor: [
+    'indoor',
+    'building',
+    'mall',
+    'office',
+    'warehouse',
+    'factory',
+    'hall',
+    'auditorium',
+    'theater',
+    'theatre',
+    'cinema',
+    'gym',
+  ],
+  underground: ['underground', 'subway', 'metro', 'basement', 'tunnel', 'bunker', 'parking garage'],
+  high_rise: [
+    'tower',
+    'skyscraper',
+    'high-rise',
+    'highrise',
+    'multi-storey',
+    'multistory',
+    'floors',
+  ],
+  transport_hub: [
+    'airport',
+    'station',
+    'terminal',
+    'port',
+    'harbor',
+    'harbour',
+    'bus stop',
+    'train',
+    'railway',
+  ],
+  market: ['market', 'bazaar', 'fair', 'flea market', 'hawker', 'food court', 'chinatown', 'souk'],
+  school: ['school', 'university', 'campus', 'college', 'classroom', 'kindergarten', 'nursery'],
+  hospital: ['hospital', 'clinic', 'medical center', 'emergency room', 'ward'],
+  religious: ['mosque', 'church', 'temple', 'synagogue', 'cathedral', 'shrine', 'chapel'],
+  stadium: ['stadium', 'arena', 'concert', 'festival', 'venue', 'amphitheatre', 'amphitheater'],
+  residential: [
+    'apartment',
+    'house',
+    'residential',
+    'neighbourhood',
+    'neighborhood',
+    'suburb',
+    'village',
+    'housing',
+  ],
+  commercial: ['shop', 'store', 'retail', 'supermarket', 'restaurant', 'hotel', 'resort', 'cafe'],
+  industrial: [
+    'factory',
+    'plant',
+    'refinery',
+    'industrial',
+    'construction site',
+    'warehouse',
+    'depot',
+  ],
+  waterfront: ['waterfront', 'riverside', 'harbour', 'pier', 'dock', 'marina', 'bridge'],
+  crowded: [
+    'crowded',
+    'busy',
+    'packed',
+    'rush hour',
+    'peak',
+    'festival',
+    'parade',
+    'celebration',
+    'gathering',
+    'crowd',
+  ],
+  nighttime: ['night', 'nighttime', 'dark', 'evening', 'midnight', 'late night'],
+  rural: ['rural', 'countryside', 'farm', 'remote', 'isolated', 'outback'],
+  government: [
+    'government',
+    'parliament',
+    'embassy',
+    'consulate',
+    'ministry',
+    'city hall',
+    'court',
+  ],
+  military: ['military', 'barracks', 'base', 'camp', 'checkpoint', 'border'],
+};
+
+export function extractSettingTags(prompt: string, scenarioType: string): string[] {
+  const text = `${prompt} ${scenarioType}`.toLowerCase();
+  const tags: string[] = [];
+  for (const [tag, keywords] of Object.entries(SETTING_KEYWORDS)) {
+    if (keywords.some((kw) => text.includes(kw))) {
+      tags.push(tag);
+    }
+  }
+  return tags;
+}
+
+// ---------------------------------------------------------------------------
+// Database cache: find, persist, and link research cases
+// ---------------------------------------------------------------------------
+
+export async function findCachedResearchCases(
+  scenarioType: string,
+  weaponClass?: string,
+  settingTags?: string[],
+): Promise<(SimilarCase & { db_id: string })[]> {
+  try {
+    const query = supabaseAdmin
+      .from('research_cases')
+      .select('*')
+      .overlaps('scenario_types', [scenarioType]);
+
+    const { data, error } = await query.limit(10);
+    if (error || !data) {
+      logger.warn({ error }, 'findCachedResearchCases query failed');
+      return [];
+    }
+
+    type Row = Record<string, unknown>;
+    const scored = (data as Row[]).map((row) => {
+      let score = 1;
+      const rowWeaponClasses = (row.weapon_classes as string[]) || [];
+      const rowSettingTags = (row.setting_tags as string[]) || [];
+      if (weaponClass && rowWeaponClasses.includes(weaponClass)) score += 3;
+      if (settingTags?.length) {
+        const overlap = settingTags.filter((t) => rowSettingTags.includes(t)).length;
+        score += overlap;
+      }
+      return { row, score };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+
+    return scored.slice(0, 4).map(({ row }) => rowToSimilarCase(row));
+  } catch (err) {
+    logger.warn({ err }, 'findCachedResearchCases error');
+    return [];
+  }
+}
+
+function rowToSimilarCase(row: Record<string, unknown>): SimilarCase & { db_id: string } {
+  return {
+    db_id: row.id as string,
+    name: row.name as string,
+    summary: row.summary as string,
+    timeline: (row.timeline as string) || '',
+    adversary_behavior: (row.adversary_behavior as string) || '',
+    other_actors: (row.other_actors as string) || '',
+    environment: (row.environment as string) || '',
+    outcome: (row.outcome as string) || '',
+    casualties_killed: row.casualties_killed as number | undefined,
+    casualties_injured: row.casualties_injured as number | undefined,
+    num_attackers: row.num_attackers as number | undefined,
+    weapon_description: row.weapon_description as string | undefined,
+    relevance_score: row.relevance_score as number | undefined,
+    weapon_forensics: row.weapon_forensics as string | undefined,
+    damage_radius_m: row.damage_radius_m as number | undefined,
+    hazards_triggered: row.hazards_triggered as string[] | undefined,
+    secondary_effects: row.secondary_effects as string[] | undefined,
+    injury_breakdown: row.injury_breakdown as string | undefined,
+    crowd_response: row.crowd_response as string | undefined,
+    response_time_minutes: row.response_time_minutes as number | undefined,
+    containment_time_minutes: row.containment_time_minutes as number | undefined,
+    environment_factors: row.environment_factors as string[] | undefined,
+  };
+}
+
+function normalizeCaseName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export async function persistResearchCases(
+  cases: SimilarCase[],
+  scenarioType: string,
+  weaponClass?: string,
+  settingTags?: string[],
+): Promise<{ id: string; case_: SimilarCase }[]> {
+  const results: { id: string; case_: SimilarCase }[] = [];
+
+  for (const c of cases) {
+    if (c.db_id) {
+      results.push({ id: c.db_id, case_: c });
+      continue;
+    }
+    const normalizedName = normalizeCaseName(c.name);
+    try {
+      const row = {
+        normalized_name: normalizedName,
+        name: c.name,
+        summary: c.summary,
+        timeline: c.timeline || null,
+        adversary_behavior: c.adversary_behavior || null,
+        other_actors: c.other_actors || null,
+        environment: c.environment || null,
+        outcome: c.outcome || null,
+        casualties_killed: c.casualties_killed ?? null,
+        casualties_injured: c.casualties_injured ?? null,
+        num_attackers: c.num_attackers ?? null,
+        weapon_description: c.weapon_description ?? null,
+        weapon_forensics: c.weapon_forensics ?? null,
+        damage_radius_m: c.damage_radius_m ?? null,
+        hazards_triggered: c.hazards_triggered ?? [],
+        secondary_effects: c.secondary_effects ?? [],
+        injury_breakdown: c.injury_breakdown ?? null,
+        crowd_response: c.crowd_response ?? null,
+        response_time_minutes: c.response_time_minutes ?? null,
+        containment_time_minutes: c.containment_time_minutes ?? null,
+        environment_factors: c.environment_factors ?? [],
+        scenario_types: [scenarioType],
+        weapon_classes: weaponClass ? [weaponClass] : [],
+        setting_tags: settingTags ?? [],
+      };
+
+      const { data, error } = await supabaseAdmin
+        .from('research_cases')
+        .upsert(row, { onConflict: 'normalized_name' })
+        .select('id')
+        .single();
+
+      if (error || !data) {
+        logger.warn({ error, name: c.name }, 'Failed to persist research case');
+        continue;
+      }
+      results.push({ id: (data as { id: string }).id, case_: c });
+    } catch (err) {
+      logger.warn({ err, name: c.name }, 'persistResearchCase error');
+    }
+  }
+  return results;
+}
+
+export async function linkResearchToScenario(
+  scenarioId: string,
+  caseIds: { id: string; relevanceScore?: number }[],
+): Promise<void> {
+  if (caseIds.length === 0) return;
+  try {
+    const rows = caseIds.map((c) => ({
+      scenario_id: scenarioId,
+      research_case_id: c.id,
+      relevance_score: c.relevanceScore ?? null,
+    }));
+    const { error } = await supabaseAdmin
+      .from('scenario_research_usage')
+      .upsert(rows, { onConflict: 'scenario_id,research_case_id' });
+    if (error) {
+      logger.warn({ error, scenarioId }, 'linkResearchToScenario failed');
+    }
+  } catch (err) {
+    logger.warn({ err, scenarioId }, 'linkResearchToScenario error');
+  }
 }
 
 /**

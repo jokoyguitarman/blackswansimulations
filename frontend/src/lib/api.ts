@@ -272,6 +272,35 @@ export const api = {
         }>;
       }>(await fetch(apiUrl(`/api/scenarios/${id}/floor-plans`), { headers }));
     },
+    getScenarioResearch: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          name: string;
+          summary: string;
+          timeline: string | null;
+          adversary_behavior: string | null;
+          other_actors: string | null;
+          environment: string | null;
+          outcome: string | null;
+          casualties_killed: number | null;
+          casualties_injured: number | null;
+          num_attackers: number | null;
+          weapon_description: string | null;
+          weapon_forensics: string | null;
+          damage_radius_m: number | null;
+          hazards_triggered: string[] | null;
+          secondary_effects: string[] | null;
+          injury_breakdown: string | null;
+          crowd_response: string | null;
+          response_time_minutes: number | null;
+          containment_time_minutes: number | null;
+          environment_factors: string[] | null;
+          relevance_score: number | null;
+        }>;
+      }>(await fetch(apiUrl(`/api/scenarios/${id}/research`), { headers }));
+    },
     updatePinPositions: async (
       id: string,
       payload: {

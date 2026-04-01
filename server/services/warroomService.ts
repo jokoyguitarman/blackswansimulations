@@ -31,6 +31,9 @@ import {
   researchStandardsPerTeam,
   researchSimilarCases,
   researchCrowdDynamics,
+  persistResearchCases,
+  linkResearchToScenario,
+  extractSettingTags,
   type StandardsFinding,
   type SimilarCase,
   type CrowdDynamicsResearch,
@@ -258,6 +261,15 @@ export async function generateAndPersistWarroomScenario(
       parsed.location ?? undefined,
       venueName,
       parsed.setting,
+      options.prompt || undefined,
+      parsed.threat_profile
+        ? {
+            weapon_type: parsed.threat_profile.weapon_type,
+            weapon_class: parsed.threat_profile.weapon_class,
+            adversary_count: parsed.threat_profile.adversary_count,
+            threat_scale: parsed.threat_profile.threat_scale,
+          }
+        : undefined,
     ).catch(() => [] as SimilarCase[]),
     researchCrowdDynamics(
       openAiApiKey,
@@ -563,6 +575,28 @@ export async function generateAndPersistWarroomScenario(
     center_lng: geocodeResult?.lng,
     vicinity_radius_meters: geocodeResult ? 10000 : undefined,
   });
+
+  // Persist research cases and link them to the scenario (non-blocking)
+  if (similarCases.length > 0) {
+    const settingTags = extractSettingTags(
+      `${options.prompt || ''} ${parsed.location || ''} ${parsed.venue_name || ''} ${parsed.setting || ''}`,
+      parsed.scenario_type,
+    );
+    persistResearchCases(
+      similarCases,
+      parsed.scenario_type,
+      parsed.threat_profile?.weapon_class,
+      settingTags,
+    )
+      .then((persisted) => {
+        const caseLinks = persisted.map((p) => ({
+          id: p.id,
+          relevanceScore: p.case_.relevance_score,
+        }));
+        return linkResearchToScenario(scenarioId, caseLinks);
+      })
+      .catch((err) => logger.warn({ err, scenarioId }, 'Research linking failed (non-blocking)'));
+  }
 
   return { scenarioId, payload };
 }

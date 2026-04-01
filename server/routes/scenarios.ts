@@ -384,6 +384,30 @@ router.get('/:id/floor-plans', requireAuth, async (req: AuthenticatedRequest, re
   }
 });
 
+// Get research cases linked to a scenario
+router.get('/:id/research', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { data, error } = await supabaseAdmin
+      .from('scenario_research_usage')
+      .select('relevance_score, research_cases(*)')
+      .eq('scenario_id', id)
+      .order('relevance_score', { ascending: false });
+    if (error) {
+      logger.error({ error, scenarioId: id }, 'Failed to fetch scenario research');
+      return res.status(500).json({ error: 'Failed to fetch research' });
+    }
+    const cases = (data ?? []).map((row: Record<string, unknown>) => ({
+      ...(row.research_cases as Record<string, unknown>),
+      relevance_score: row.relevance_score,
+    }));
+    res.json({ data: cases });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /scenarios/:id/research');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Batch-update pin coordinates (trainer/admin — war room repositioning)
 router.patch('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
