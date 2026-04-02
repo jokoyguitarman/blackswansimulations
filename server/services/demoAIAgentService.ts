@@ -214,7 +214,7 @@ export class DemoAIAgentService {
     try {
       const { data: scenario } = await supabaseAdmin
         .from('scenarios')
-        .select('id, title, description, scenario_type, center_lat, center_lng')
+        .select('id, title, description, scenario_type, center_lat, center_lng, insider_knowledge')
         .eq('id', scenarioId)
         .single();
 
@@ -225,20 +225,13 @@ export class DemoAIAgentService {
         .select('team_name, team_description')
         .eq('scenario_id', scenarioId);
 
-      const { data: insiderKnowledge } = await supabaseAdmin
-        .from('insider_knowledge')
-        .select('sector_standards, team_doctrines')
-        .eq('scenario_id', scenarioId)
-        .maybeSingle();
-
-      const sectorStandards =
-        ((insiderKnowledge as Record<string, unknown> | null)?.sector_standards as string) || '';
-
+      const ik = (scenario as Record<string, unknown>).insider_knowledge as Record<
+        string,
+        unknown
+      > | null;
+      const sectorStandards = (ik?.sector_standards as string) || '';
       const teamDoctrines: Record<string, unknown> =
-        ((insiderKnowledge as Record<string, unknown> | null)?.team_doctrines as Record<
-          string,
-          unknown
-        >) || {};
+        (ik?.team_doctrines as Record<string, unknown>) || {};
 
       const { data: locations } = await supabaseAdmin
         .from('scenario_locations')

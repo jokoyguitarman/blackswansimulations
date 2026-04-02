@@ -123,9 +123,9 @@ interface ScenarioContext {
   teams: Array<{ team_name: string; description: string }>;
   injects: Array<{
     title: string;
-    inject_text: string;
-    scheduled_offset_minutes: number | null;
-    target_team: string | null;
+    content: string;
+    trigger_time_minutes: number | null;
+    target_teams: string[] | null;
   }>;
   locations: Array<{ name: string; type: string; description: string }>;
   sectorStandards: string;
@@ -137,7 +137,7 @@ async function loadFullScenarioContext(scenarioId: string): Promise<ScenarioCont
   try {
     const { data: scenario } = await supabaseAdmin
       .from('scenarios')
-      .select('id, title, description, scenario_type, center_lat, center_lng')
+      .select('id, title, description, scenario_type, center_lat, center_lng, insider_knowledge')
       .eq('id', scenarioId)
       .single();
 
@@ -150,10 +150,10 @@ async function loadFullScenarioContext(scenarioId: string): Promise<ScenarioCont
 
     const { data: injects } = await supabaseAdmin
       .from('scenario_injects')
-      .select('title, inject_text, scheduled_offset_minutes, target_team')
+      .select('title, content, trigger_time_minutes, target_teams')
       .eq('scenario_id', scenarioId)
-      .not('scheduled_offset_minutes', 'is', null)
-      .order('scheduled_offset_minutes', { ascending: true })
+      .not('trigger_time_minutes', 'is', null)
+      .order('trigger_time_minutes', { ascending: true })
       .limit(30);
 
     const { data: locations } = await supabaseAdmin
@@ -162,16 +162,13 @@ async function loadFullScenarioContext(scenarioId: string): Promise<ScenarioCont
       .eq('scenario_id', scenarioId)
       .limit(15);
 
-    const { data: insiderKnowledge } = await supabaseAdmin
-      .from('insider_knowledge')
-      .select('sector_standards, team_doctrines')
-      .eq('scenario_id', scenarioId)
-      .maybeSingle();
-
-    const ik = insiderKnowledge as Record<string, unknown> | null;
+    const ik = (scenario as Record<string, unknown>).insider_knowledge as Record<
+      string,
+      unknown
+    > | null;
 
     const maxInjectOffset = (injects ?? []).reduce((max, i) => {
-      const offset = (i as Record<string, unknown>).scheduled_offset_minutes as number | null;
+      const offset = (i as Record<string, unknown>).trigger_time_minutes as number | null;
       return offset != null && offset > max ? offset : max;
     }, 0);
     const estimatedDuration = Math.max(maxInjectOffset + 3, 10);
@@ -188,9 +185,9 @@ async function loadFullScenarioContext(scenarioId: string): Promise<ScenarioCont
       })),
       injects: ((injects ?? []) as Array<Record<string, unknown>>).map((i) => ({
         title: (i.title as string) || '',
-        inject_text: (i.inject_text as string) || '',
-        scheduled_offset_minutes: i.scheduled_offset_minutes as number | null,
-        target_team: (i.target_team as string) || null,
+        content: (i.content as string) || '',
+        trigger_time_minutes: i.trigger_time_minutes as number | null,
+        target_teams: (i.target_teams as string[]) || null,
       })),
       locations: ((locations ?? []) as Array<Record<string, unknown>>).map((l) => ({
         name: (l.name as string) || '',
@@ -288,9 +285,9 @@ function buildGeneratorUserPrompt(
     parts.push('');
     parts.push('## Pre-Scheduled Injects (teams must react to these)');
     for (const inj of ctx.injects) {
-      const target = inj.target_team ? ` [${inj.target_team}]` : '';
+      const target = inj.target_teams ? ` [${inj.target_teams.join(', ')}]` : '';
       parts.push(
-        `- @${inj.scheduled_offset_minutes ?? '?'}min${target}: ${inj.title} — ${inj.inject_text.slice(0, 200)}`,
+        `- @${inj.trigger_time_minutes ?? '?'}min${target}: ${inj.title} — ${inj.content.slice(0, 200)}`,
       );
     }
   }
