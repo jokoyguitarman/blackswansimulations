@@ -15,6 +15,7 @@ import { DemoActionDispatcher, resolveBotUserId } from './demoActionDispatcher.j
 interface AgentPersona {
   botUserId: string;
   teamName: string;
+  fullName: string;
   roleName: string;
   agencyName: string;
   teamDescription: string;
@@ -33,19 +34,20 @@ interface SessionAgents {
   scenarioId: string;
   scenarioSummary: string;
   sectorStandards: string;
+  incidentCenter: { lat: number; lng: number } | null;
+  startedAt: number;
   agents: Map<string, AgentState>;
   channelId: string | null;
   eventHandler: InternalEventHandler;
   channelHandlers: Map<string, InternalEventHandler>;
+  proactiveTimer: ReturnType<typeof setInterval> | null;
   scriptAware: boolean;
   scriptNextEventTs: number;
   stopped: boolean;
 }
 
-type AgentActionType = 'decision' | 'placement' | 'chat' | 'none';
-
-interface AgentActionResponse {
-  action: AgentActionType;
+interface SingleAction {
+  action: 'decision' | 'placement' | 'chat' | 'none';
   decision?: { title: string; description: string; decision_type?: string };
   placement?: {
     asset_type: string;
@@ -54,6 +56,10 @@ interface AgentActionResponse {
     properties?: Record<string, unknown>;
   };
   chat?: { content: string };
+}
+
+interface AgentMultiResponse {
+  actions: SingleAction[];
   reasoning?: string;
 }
 
@@ -61,11 +67,14 @@ interface AgentActionResponse {
 // Constants
 // ---------------------------------------------------------------------------
 
-const AGENT_THROTTLE_MS = 12_000;
+const AGENT_THROTTLE_MS = 20_000;
 const AGENT_RESPONSE_JITTER_MS = 4_000;
 const HYBRID_DEFER_WINDOW_MS = 8_000;
-const MAX_RECENT_ACTIONS = 12;
+const MAX_RECENT_ACTIONS = 15;
 const AI_MODEL = 'gpt-4o-mini';
+const PROACTIVE_INTERVAL_MS = 45_000;
+const PROACTIVE_ACT_PROBABILITY = 0.4;
+const KICKSTART_STAGGER_MS = 5_000;
 
 // ---------------------------------------------------------------------------
 // Service
@@ -106,10 +115,13 @@ export class DemoAIAgentService {
       scenarioId,
       scenarioSummary: context.scenarioSummary,
       sectorStandards: context.sectorStandards,
+      incidentCenter: context.incidentCenter,
+      startedAt: Date.now(),
       agents: new Map(),
       channelId,
       eventHandler: () => {},
       channelHandlers: new Map(),
+      proactiveTimer: null,
       scriptAware: options?.scriptAware ?? false,
       scriptNextEventTs: 0,
       stopped: false,
@@ -117,11 +129,14 @@ export class DemoAIAgentService {
 
     for (const team of context.teams) {
       const botUserId = resolveBotUserId(team.team_name);
+      const profile = await this.loadBotProfile(botUserId);
+
       const persona: AgentPersona = {
         botUserId,
         teamName: team.team_name,
-        roleName: team.team_name,
-        agencyName: team.team_name,
+        fullName: profile?.full_name || team.team_name,
+        roleName: profile?.role || team.team_name,
+        agencyName: profile?.agency_name || team.team_name,
         teamDescription: team.description || '',
         doctrines: team.doctrines || '',
       };
@@ -134,6 +149,7 @@ export class DemoAIAgentService {
       });
     }
 
+    // Wire up WebSocket event listeners
     const handler: InternalEventHandler = (event) => {
       if (session.stopped) return;
       this.handleSessionEvent(session, event).catch((err) => {
@@ -144,7 +160,6 @@ export class DemoAIAgentService {
       });
     };
     session.eventHandler = handler;
-
     getWebSocketService().onSessionEvent(sessionId, handler);
 
     if (channelId) {
@@ -164,6 +179,18 @@ export class DemoAIAgentService {
     this.sessions.set(sessionId, session);
 
     logger.info({ sessionId, scenarioId, agentCount: session.agents.size }, 'AI agents started');
+
+    // Kickstart: stagger initial actions so each agent makes opening moves
+    this.runKickstart(session);
+
+    // Proactive timer: agents periodically re-evaluate the situation
+    session.proactiveTimer = setInterval(() => {
+      if (session.stopped) return;
+      this.proactiveTick(session).catch((err) => {
+        logger.error({ error: err, sessionId }, 'AI agent proactive tick error');
+      });
+    }, PROACTIVE_INTERVAL_MS);
+
     return true;
   }
 
@@ -181,14 +208,15 @@ export class DemoAIAgentService {
       getWebSocketService().offChannelEvent(chId, handler);
     }
 
+    if (session.proactiveTimer) {
+      clearInterval(session.proactiveTimer);
+      session.proactiveTimer = null;
+    }
+
     this.sessions.delete(sessionId);
     logger.info({ sessionId }, 'AI agents stopped');
   }
 
-  /**
-   * Inform the agent service that a scripted event is about to fire.
-   * Used in hybrid mode so agents defer.
-   */
   notifyUpcomingScriptEvent(sessionId: string, firesAtMs: number): void {
     const session = this.sessions.get(sessionId);
     if (session) session.scriptNextEventTs = firesAtMs;
@@ -199,12 +227,74 @@ export class DemoAIAgentService {
   }
 
   // ---------------------------------------------------------------------------
+  // Kickstart & Proactive loop
+  // ---------------------------------------------------------------------------
+
+  private runKickstart(session: SessionAgents): void {
+    const agentEntries = Array.from(session.agents.entries());
+    const kickstartEvent: WebSocketEvent = {
+      type: 'session.started',
+      data: {
+        message:
+          'Exercise has begun. Perform your initial situation assessment and opening actions.',
+      },
+      timestamp: new Date().toISOString(),
+    };
+
+    for (let i = 0; i < agentEntries.length; i++) {
+      const [, agentState] = agentEntries[i];
+      const delay = (i + 1) * KICKSTART_STAGGER_MS + Math.random() * 3000;
+
+      setTimeout(() => {
+        if (session.stopped) return;
+        this.generateAndExecuteActions(session, agentState, kickstartEvent).catch((err) => {
+          logger.error(
+            { error: err, botUserId: agentState.persona.botUserId },
+            'AI agent kickstart failed',
+          );
+        });
+      }, delay);
+    }
+  }
+
+  private async proactiveTick(session: SessionAgents): Promise<void> {
+    if (session.stopped) return;
+
+    const elapsed = this.getElapsedMinutes(session);
+    const proactiveEvent: WebSocketEvent = {
+      type: 'proactive.tick',
+      data: {
+        message: `${Math.floor(elapsed)} minutes into the exercise. Assess the current situation and take your next actions.`,
+        elapsed_minutes: Math.floor(elapsed),
+      },
+      timestamp: new Date().toISOString(),
+    };
+
+    for (const [, agentState] of session.agents) {
+      if (!this.canAct(agentState, session)) continue;
+      if (Math.random() > PROACTIVE_ACT_PROBABILITY) continue;
+
+      const jitter = Math.random() * AGENT_RESPONSE_JITTER_MS;
+      setTimeout(() => {
+        if (session.stopped) return;
+        this.generateAndExecuteActions(session, agentState, proactiveEvent).catch((err) => {
+          logger.error(
+            { error: err, botUserId: agentState.persona.botUserId },
+            'AI agent proactive action failed',
+          );
+        });
+      }, jitter);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Scenario context loader
   // ---------------------------------------------------------------------------
 
   private async loadScenarioContext(scenarioId: string): Promise<{
     scenarioSummary: string;
     sectorStandards: string;
+    incidentCenter: { lat: number; lng: number } | null;
     teams: Array<{
       team_name: string;
       description: string;
@@ -235,18 +325,29 @@ export class DemoAIAgentService {
 
       const { data: locations } = await supabaseAdmin
         .from('scenario_locations')
-        .select('label, location_type, conditions')
+        .select('label, location_type, coordinates')
         .eq('scenario_id', scenarioId)
-        .limit(10);
+        .limit(15);
+
+      const incidentCenter =
+        scenario.center_lat != null && scenario.center_lng != null
+          ? { lat: scenario.center_lat as number, lng: scenario.center_lng as number }
+          : null;
 
       const locationSummary = (locations ?? [])
-        .map((l: Record<string, unknown>) => `- ${l.label} (${l.location_type})`)
+        .map((l: Record<string, unknown>) => {
+          const coords = l.coordinates as { lat?: number; lng?: number } | null;
+          const coordStr =
+            coords?.lat != null && coords?.lng != null ? ` at [${coords.lat}, ${coords.lng}]` : '';
+          return `- ${l.label} (${l.location_type})${coordStr}`;
+        })
         .join('\n');
 
       const scenarioSummary = [
         `Title: ${scenario.title}`,
         `Type: ${scenario.category || 'general'}`,
         scenario.description ? `Description: ${scenario.description}` : '',
+        incidentCenter ? `Incident Center: [${incidentCenter.lat}, ${incidentCenter.lng}]` : '',
         locationSummary ? `Key Locations:\n${locationSummary}` : '',
       ]
         .filter(Boolean)
@@ -266,9 +367,24 @@ export class DemoAIAgentService {
         };
       });
 
-      return { scenarioSummary, sectorStandards, teams: teamList };
+      return { scenarioSummary, sectorStandards, incidentCenter, teams: teamList };
     } catch (err) {
       logger.error({ error: err, scenarioId }, 'AI agents: failed to load scenario context');
+      return null;
+    }
+  }
+
+  private async loadBotProfile(
+    botUserId: string,
+  ): Promise<{ full_name: string; role: string; agency_name: string } | null> {
+    try {
+      const { data } = await supabaseAdmin
+        .from('user_profiles')
+        .select('full_name, role, agency_name')
+        .eq('id', botUserId)
+        .single();
+      return data as { full_name: string; role: string; agency_name: string } | null;
+    } catch {
       return null;
     }
   }
@@ -296,7 +412,7 @@ export class DemoAIAgentService {
       const jitter = Math.random() * AGENT_RESPONSE_JITTER_MS + 2000;
       setTimeout(() => {
         if (session.stopped) return;
-        this.generateAndExecuteAction(session, agentState, event).catch((err) => {
+        this.generateAndExecuteActions(session, agentState, event).catch((err) => {
           logger.error({ error: err, botUserId, eventType: event.type }, 'AI agent action failed');
         });
       }, jitter);
@@ -314,13 +430,12 @@ export class DemoAIAgentService {
     for (const [botUserId, agentState] of session.agents) {
       if (senderId === botUserId) continue;
       if (!this.canAct(agentState, session)) continue;
-
       if (Math.random() > 0.35) continue;
 
       const jitter = Math.random() * AGENT_RESPONSE_JITTER_MS + 3000;
       setTimeout(() => {
         if (session.stopped) return;
-        this.generateAndExecuteAction(session, agentState, event).catch((err) => {
+        this.generateAndExecuteActions(session, agentState, event).catch((err) => {
           logger.error({ error: err, botUserId }, 'AI agent chat response failed');
         });
       }, jitter);
@@ -328,10 +443,10 @@ export class DemoAIAgentService {
   }
 
   // ---------------------------------------------------------------------------
-  // Core AI response generation
+  // Core AI response generation (multi-action)
   // ---------------------------------------------------------------------------
 
-  private async generateAndExecuteAction(
+  private async generateAndExecuteActions(
     session: SessionAgents,
     agent: AgentState,
     triggerEvent: WebSocketEvent,
@@ -344,34 +459,68 @@ export class DemoAIAgentService {
 
     try {
       const systemPrompt = this.buildSystemPrompt(session, agent);
-      const userPrompt = this.buildUserPrompt(agent, triggerEvent);
+      const userPrompt = await this.buildUserPrompt(session, agent, triggerEvent);
 
-      const aiResponse = await this.callOpenAI(systemPrompt, userPrompt);
-      if (!aiResponse || aiResponse.action === 'none') {
+      const response = await this.callOpenAI(systemPrompt, userPrompt);
+      if (!response) {
         agent.pendingCooldown = false;
         return;
       }
 
-      await this.executeAgentAction(session, agent, aiResponse);
+      const actions = response.actions.filter((a) => a.action !== 'none');
+      if (actions.length === 0) {
+        agent.pendingCooldown = false;
+        return;
+      }
 
-      agent.recentActions.push(
-        `[${new Date().toISOString()}] ${aiResponse.action}: ${aiResponse.reasoning || ''}`.slice(
-          0,
-          200,
-        ),
-      );
-      if (agent.recentActions.length > MAX_RECENT_ACTIONS) {
+      for (const action of actions.slice(0, 4)) {
+        if (session.stopped) break;
+        await this.executeSingleAction(session, agent, action);
+
+        const label =
+          action.action === 'decision'
+            ? `decision: ${action.decision?.title || ''}`
+            : action.action === 'placement'
+              ? `placement: ${action.placement?.asset_type} "${action.placement?.label}"`
+              : action.action === 'chat'
+                ? `chat: ${action.chat?.content?.slice(0, 80) || ''}`
+                : action.action;
+
+        agent.recentActions.push(`[${new Date().toISOString()}] ${label}`.slice(0, 200));
+
+        if (actions.indexOf(action) < actions.length - 1) {
+          await new Promise((r) => setTimeout(r, 1500 + Math.random() * 2000));
+        }
+      }
+
+      if (response.reasoning) {
+        logger.debug(
+          { botUserId: agent.persona.botUserId, reasoning: response.reasoning },
+          'AI agent reasoning',
+        );
+      }
+
+      while (agent.recentActions.length > MAX_RECENT_ACTIONS) {
         agent.recentActions.shift();
       }
+    } catch (err) {
+      logger.error(
+        { error: err, botUserId: agent.persona.botUserId },
+        'AI agent generateAndExecuteActions error',
+      );
     } finally {
       agent.pendingCooldown = false;
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Prompt builders
+  // ---------------------------------------------------------------------------
+
   private buildSystemPrompt(session: SessionAgents, agent: AgentState): string {
     const { persona } = agent;
     const parts: string[] = [
-      `You are an AI agent playing the role of "${persona.roleName}" from "${persona.agencyName}" (team: ${persona.teamName}) in a live multi-agency crisis management exercise.`,
+      `You are ${persona.fullName}, ${persona.agencyName}, assigned to team "${persona.teamName}" in a live multi-agency crisis management exercise on the Black Swan Simulations platform.`,
       '',
       '## Scenario',
       session.scenarioSummary,
@@ -389,58 +538,128 @@ export class DemoAIAgentService {
       parts.push('', '## Your Team Doctrines', persona.doctrines);
     }
 
+    // Game mechanics explanation
     parts.push(
       '',
-      '## Instructions',
-      '- Respond ONLY with a JSON object matching the schema below.',
-      '- Choose "none" if no action is warranted right now.',
-      '- Decisions should be realistic, specific, and reference real tactical procedures.',
-      '- Placements must use GeoJSON (Point, LineString, or Polygon). Use small offsets from [0,0] — the system translates coordinates.',
-      '- Chat messages should be short, professional radio-style comms.',
-      '- Do NOT repeat actions you have already taken. Be creative and escalate appropriately.',
-      '- Think about timing: early in the incident focus on containment and assessment; later focus on resolution and recovery.',
+      '## How This Exercise Works',
       '',
-      '## Response Schema',
+      'You interact through THREE action types. Return MULTIPLE actions per turn (2-4 is ideal).',
+      '',
+      '### 1. DECISIONS (Most Important!)',
+      'Decisions are the PRIMARY game mechanic. Every significant action must be recorded as a decision. They appear in the War Room decisions panel, are evaluated against objectives, and drive the exercise forward.',
+      '- title: Concise action title (e.g. "Establish Inner Cordon - 200m radius from blast site")',
+      '- description: Detailed explanation — what, why, resources needed, expected outcome. Reference specific locations, procedures, and standards. Vague decisions score poorly.',
+      '- decision_type: containment | tactical_deployment | resource_request | communication | medical_response | evacuation | investigation | public_information | negotiation | hazmat_response',
+      '',
+      'Good: title="Deploy Forward Triage at Assembly North", description="Establishing START triage 150m from blast in upwind direction. Two paramedic teams assigned. P1 routed to SGH via Penang Rd. Requesting 4 additional ambulances."',
+      'Bad: title="Set up triage", description="We should do triage somewhere"',
+      '',
+      '### 2. PLACEMENTS (Support Decisions with Map Actions)',
+      'Drop tactical assets on the map to visualize your decisions. Always pair with a related decision.',
+      '- asset_type: command_post | inner_cordon | outer_cordon | staging_area | triage_point | evacuation_route | sniper_position | tactical_unit | press_cordon | decontamination_zone | helicopter_lz | roadblock | observation_post | casualty_collection | forward_command | water_point | rest_area',
+      '- label: Human-readable label',
+      '- geometry: GeoJSON — Point for assets, LineString for cordons/routes, Polygon for zones',
+    );
+
+    if (session.incidentCenter) {
+      const { lat, lng } = session.incidentCenter;
+      parts.push(
+        '',
+        `Incident center is at [${lat}, ${lng}]. Use REAL coordinates near this point:`,
+        `- Inner cordon: ±0.001–0.002 offset (~100-200m)`,
+        `- Outer cordon: ±0.003–0.005 offset (~300-500m)`,
+        `- Staging/triage: ±0.002–0.004 offset, on accessible side`,
+        `- Command post: ±0.003–0.005 offset, clear sightline`,
+        `Example Point: [${lng + 0.002}, ${lat - 0.001}]`,
+        `Example LineString: [[${lng - 0.002}, ${lat + 0.002}], [${lng + 0.002}, ${lat + 0.002}], [${lng + 0.002}, ${lat - 0.002}]]`,
+      );
+    }
+
+    parts.push(
+      '',
+      '### 3. CHAT (Radio Communications)',
+      'Short professional radio-style messages to coordinate with other teams. Use call signs and tactical language.',
+      'Example: "All stations, Police Actual. Inner cordon set 200m from epicenter. Orchard Rd and Penang Rd blocked. Request EMS staging at Assembly North. Over."',
+      '',
+      '## Response Format',
+      'Return a JSON object with an array of 2-4 actions:',
       '```json',
       '{',
-      '  "action": "decision" | "placement" | "chat" | "none",',
-      '  "reasoning": "brief explanation of why this action",',
-      '  "decision": { "title": "...", "description": "...", "decision_type": "..." },',
-      '  "placement": { "asset_type": "...", "label": "...", "geometry": { "type": "Point|LineString|Polygon", "coordinates": [...] } },',
-      '  "chat": { "content": "..." }',
+      '  "actions": [',
+      '    { "action": "decision", "decision": { "title": "...", "description": "...", "decision_type": "..." } },',
+      '    { "action": "placement", "placement": { "asset_type": "...", "label": "...", "geometry": { "type": "Point", "coordinates": [lng, lat] } } },',
+      '    { "action": "chat", "chat": { "content": "..." } }',
+      '  ],',
+      '  "reasoning": "Brief tactical thinking"',
       '}',
       '```',
       '',
-      'Valid asset_types: command_post, inner_cordon, outer_cordon, staging_area, triage_point, evacuation_route, sniper_position, tactical_unit, press_cordon, decontamination_zone, helicopter_lz, roadblock, observation_post, casualty_collection, forward_command, water_point, rest_area',
-      'Valid decision_types: containment, tactical_deployment, resource_request, communication, medical_response, evacuation, investigation, public_information, negotiation, hazmat_response',
+      '## Tactical Behavior by Phase',
+      '- Minutes 0-3: Situation assessment, initial containment, establish command post, request SITREP',
+      '- Minutes 3-8: Deploy cordons, establish triage, coordinate with agencies, first resource requests',
+      '- Minutes 8-15: Tactical response, specialist deployments, evacuation, media management',
+      '- Minutes 15+: Sustained operations, resource rotation, investigation, recovery planning',
+      '',
+      '## Rules',
+      '- Prioritize DECISIONS — they are how performance is measured',
+      '- Pair placements with decisions that explain them',
+      '- Reference specific locations, routes, and standards',
+      "- Acknowledge other teams' actions in chat",
+      '- Do NOT repeat actions already taken',
+      '- Escalate appropriately as new injects arrive',
     );
 
     return parts.join('\n');
   }
 
-  private buildUserPrompt(agent: AgentState, event: WebSocketEvent): string {
+  private async buildUserPrompt(
+    session: SessionAgents,
+    agent: AgentState,
+    event: WebSocketEvent,
+  ): Promise<string> {
     const parts: string[] = [];
 
-    parts.push(`A new event just occurred in the exercise at ${event.timestamp}:`);
-    parts.push(`Event type: ${event.type}`);
-    parts.push(`Event data: ${JSON.stringify(event.data, null, 2).slice(0, 2000)}`);
+    const elapsed = this.getElapsedMinutes(session);
+    parts.push(`## Current Situation — ${Math.floor(elapsed)} minutes into exercise`);
+    parts.push('');
+
+    // What triggered this turn
+    if (event.type === 'session.started' || event.type === 'proactive.tick') {
+      parts.push(`Trigger: ${event.data.message || 'Periodic situation reassessment'}`);
+    } else {
+      parts.push(`New event: ${event.type}`);
+      parts.push(JSON.stringify(event.data, null, 2).slice(0, 1500));
+    }
+
+    // Recent session activity from other teams
+    const recentActivity = await this.loadRecentSessionActivity(session.sessionId);
+    if (recentActivity.length > 0) {
+      parts.push('', '## Recent actions by all teams:');
+      for (const act of recentActivity.slice(0, 10)) {
+        parts.push(`- ${act}`);
+      }
+    }
 
     if (agent.recentActions.length > 0) {
-      parts.push('', 'Your recent actions (do not repeat):');
-      for (const action of agent.recentActions.slice(-6)) {
+      parts.push('', '## Your previous actions (do not repeat):');
+      for (const action of agent.recentActions.slice(-8)) {
         parts.push(`- ${action}`);
       }
     }
 
-    parts.push('', 'What is your next action? Respond with JSON only.');
+    parts.push('', 'What are your next actions? Return 2-4 actions as JSON. Prioritize decisions.');
 
     return parts.join('\n');
   }
 
+  // ---------------------------------------------------------------------------
+  // OpenAI call
+  // ---------------------------------------------------------------------------
+
   private async callOpenAI(
     systemPrompt: string,
     userPrompt: string,
-  ): Promise<AgentActionResponse | null> {
+  ): Promise<AgentMultiResponse | null> {
     try {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -455,7 +674,7 @@ export class DemoAIAgentService {
             { role: 'user', content: userPrompt },
           ],
           temperature: 0.7,
-          max_tokens: 600,
+          max_tokens: 1200,
           response_format: { type: 'json_object' },
         }),
       });
@@ -472,7 +691,20 @@ export class DemoAIAgentService {
       const content = json.choices?.[0]?.message?.content;
       if (!content) return null;
 
-      return JSON.parse(content) as AgentActionResponse;
+      const parsed = JSON.parse(content) as Record<string, unknown>;
+
+      // Support both { actions: [...] } and legacy single-action { action: "..." }
+      if (Array.isArray(parsed.actions)) {
+        return parsed as unknown as AgentMultiResponse;
+      }
+      if (typeof parsed.action === 'string') {
+        return {
+          actions: [parsed as unknown as SingleAction],
+          reasoning: parsed.reasoning as string | undefined,
+        };
+      }
+
+      return null;
     } catch (err) {
       logger.error({ error: err }, 'AI agent: OpenAI call exception');
       return null;
@@ -483,10 +715,10 @@ export class DemoAIAgentService {
   // Action execution
   // ---------------------------------------------------------------------------
 
-  private async executeAgentAction(
+  private async executeSingleAction(
     session: SessionAgents,
     agent: AgentState,
-    action: AgentActionResponse,
+    action: SingleAction,
   ): Promise<void> {
     const { sessionId, channelId } = session;
     const { botUserId, teamName } = agent.persona;
@@ -504,11 +736,12 @@ export class DemoAIAgentService {
 
       case 'placement': {
         if (!action.placement) break;
+        const geometry = this.translateGeometry(action.placement.geometry, session.incidentCenter);
         await this.dispatcher.createPlacement(sessionId, botUserId, {
           team_name: teamName,
           asset_type: action.placement.asset_type,
           label: action.placement.label || action.placement.asset_type.replace(/_/g, ' '),
-          geometry: action.placement.geometry,
+          geometry,
           properties: action.placement.properties,
         });
         break;
@@ -539,6 +772,10 @@ export class DemoAIAgentService {
     return true;
   }
 
+  private getElapsedMinutes(session: SessionAgents): number {
+    return (Date.now() - session.startedAt) / 60_000;
+  }
+
   private extractOriginatorId(event: WebSocketEvent): string | null {
     const data = event.data;
 
@@ -552,6 +789,98 @@ export class DemoAIAgentService {
     if (message?.sender_id) return message.sender_id as string;
 
     return null;
+  }
+
+  /**
+   * If the AI returns coordinates that are near [0,0] (i.e. offsets),
+   * translate them relative to the incident center.
+   */
+  private translateGeometry(
+    geometry: { type: string; coordinates: unknown },
+    center: { lat: number; lng: number } | null,
+  ): { type: string; coordinates: unknown } {
+    if (!center) return geometry;
+
+    const isNearOrigin = (coord: number[]): boolean =>
+      Math.abs(coord[0]) < 1 && Math.abs(coord[1]) < 1;
+
+    const translate = (coord: number[]): number[] => [coord[0] + center.lng, coord[1] + center.lat];
+
+    try {
+      if (geometry.type === 'Point') {
+        const coords = geometry.coordinates as number[];
+        if (Array.isArray(coords) && coords.length >= 2 && isNearOrigin(coords)) {
+          return { type: 'Point', coordinates: translate(coords) };
+        }
+      } else if (geometry.type === 'LineString') {
+        const coords = geometry.coordinates as number[][];
+        if (Array.isArray(coords) && coords.length > 0 && isNearOrigin(coords[0])) {
+          return { type: 'LineString', coordinates: coords.map(translate) };
+        }
+      } else if (geometry.type === 'Polygon') {
+        const rings = geometry.coordinates as number[][][];
+        if (
+          Array.isArray(rings) &&
+          rings.length > 0 &&
+          Array.isArray(rings[0]) &&
+          rings[0].length > 0 &&
+          isNearOrigin(rings[0][0])
+        ) {
+          return {
+            type: 'Polygon',
+            coordinates: rings.map((ring) => ring.map(translate)),
+          };
+        }
+      }
+    } catch {
+      // geometry is already absolute or malformed — return as-is
+    }
+
+    return geometry;
+  }
+
+  /**
+   * Load recent decisions and placements to give agents awareness of what
+   * other teams have done.
+   */
+  private async loadRecentSessionActivity(sessionId: string): Promise<string[]> {
+    const lines: string[] = [];
+
+    try {
+      const { data: decisions } = await supabaseAdmin
+        .from('decisions')
+        .select(
+          'title, type, status, created_at, creator:user_profiles!decisions_proposed_by_fkey(full_name)',
+        )
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: false })
+        .limit(8);
+
+      for (const d of (decisions ?? []) as Array<Record<string, unknown>>) {
+        const creator = d.creator as Record<string, unknown> | null;
+        const name = (creator?.full_name as string) || 'Unknown';
+        lines.push(`${name} — ${d.status}: "${d.title}"`);
+      }
+
+      const { data: placements } = await supabaseAdmin
+        .from('placed_assets')
+        .select(
+          'asset_type, label, created_at, placed_by_profile:user_profiles!placed_assets_placed_by_fkey(full_name)',
+        )
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: false })
+        .limit(6);
+
+      for (const p of (placements ?? []) as Array<Record<string, unknown>>) {
+        const profile = p.placed_by_profile as Record<string, unknown> | null;
+        const name = (profile?.full_name as string) || 'Unknown';
+        lines.push(`${name} placed ${p.asset_type}: "${p.label}"`);
+      }
+    } catch (err) {
+      logger.debug({ error: err, sessionId }, 'AI agent: failed to load recent activity');
+    }
+
+    return lines;
   }
 }
 
