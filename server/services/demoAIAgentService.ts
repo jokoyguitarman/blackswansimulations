@@ -235,12 +235,12 @@ export class DemoAIAgentService {
 
       const { data: locations } = await supabaseAdmin
         .from('scenario_locations')
-        .select('name, type, description')
+        .select('label, location_type, conditions')
         .eq('scenario_id', scenarioId)
         .limit(10);
 
       const locationSummary = (locations ?? [])
-        .map((l: Record<string, unknown>) => `- ${l.name} (${l.type}): ${l.description || ''}`)
+        .map((l: Record<string, unknown>) => `- ${l.label} (${l.location_type})`)
         .join('\n');
 
       const scenarioSummary = [

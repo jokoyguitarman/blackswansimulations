@@ -127,7 +127,7 @@ interface ScenarioContext {
     trigger_time_minutes: number | null;
     target_teams: string[] | null;
   }>;
-  locations: Array<{ name: string; type: string; description: string }>;
+  locations: Array<{ label: string; location_type: string }>;
   sectorStandards: string;
   teamDoctrines: Record<string, unknown>;
   estimatedDuration: number;
@@ -158,7 +158,7 @@ async function loadFullScenarioContext(scenarioId: string): Promise<ScenarioCont
 
     const { data: locations } = await supabaseAdmin
       .from('scenario_locations')
-      .select('name, type, description')
+      .select('label, location_type, conditions')
       .eq('scenario_id', scenarioId)
       .limit(15);
 
@@ -190,9 +190,8 @@ async function loadFullScenarioContext(scenarioId: string): Promise<ScenarioCont
         target_teams: (i.target_teams as string[]) || null,
       })),
       locations: ((locations ?? []) as Array<Record<string, unknown>>).map((l) => ({
-        name: (l.name as string) || '',
-        type: (l.type as string) || '',
-        description: (l.description as string) || '',
+        label: (l.label as string) || '',
+        location_type: (l.location_type as string) || '',
       })),
       sectorStandards: (ik?.sector_standards as string) || '',
       teamDoctrines: (ik?.team_doctrines as Record<string, unknown>) || {},
@@ -277,7 +276,7 @@ function buildGeneratorUserPrompt(
     parts.push('');
     parts.push('## Key Locations');
     for (const loc of ctx.locations) {
-      parts.push(`- ${loc.name} (${loc.type}): ${loc.description}`);
+      parts.push(`- ${loc.label} (${loc.location_type})`);
     }
   }
 
