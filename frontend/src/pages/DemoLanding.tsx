@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+function apiUrl(path: string): string {
+  return API_BASE ? `${API_BASE}${path}` : path;
+}
+
 interface ScenarioSummary {
   id: string;
   title: string;
@@ -57,7 +62,7 @@ export function DemoLanding() {
   }, []);
 
   const fetchScripts = () => {
-    fetch('/api/demo/scripts', {
+    fetch(apiUrl('/api/demo/scripts'), {
       headers: { Authorization: `Bearer ${getAuthToken()}` },
     })
       .then((r) => r.json())
@@ -75,7 +80,7 @@ export function DemoLanding() {
     setError(null);
 
     try {
-      const res = await fetch('/api/demo/start', {
+      const res = await fetch(apiUrl('/api/demo/start'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -114,7 +119,7 @@ export function DemoLanding() {
     setSuccessMsg(null);
 
     try {
-      const res = await fetch('/api/demo/generate-script', {
+      const res = await fetch(apiUrl('/api/demo/generate-script'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
