@@ -9,8 +9,6 @@ import * as path from 'path';
 import { logger } from '../lib/logger.js';
 import type { ThreatProfile } from './warroomPromptParser.js';
 
-const INJECT_DIVERSITY = true;
-
 // ---------------------------------------------------------------------------
 // Inject Pressure Types — 35 granular thematic lenses for inject generation
 // ---------------------------------------------------------------------------
@@ -933,11 +931,9 @@ function buildThematicEmphasisBlock(
           : selected.length <= 3
             ? 'SECONDARY'
             : `THEME ${i + 1}`;
-      const sampled = t.examples.sort(() => Math.random() - 0.5).slice(0, 5);
-      const emphasisBlock = sampled.map((e) => `- ${e}`).join('\n');
-      return `${rank}: ${t.label.toUpperCase()}\n${emphasisBlock}`;
+      return `${rank}: ${t.label.toUpperCase()} — ${t.description}`;
     })
-    .join('\n\n');
+    .join('\n');
 
   return `THEMATIC EMPHASIS — ${selected.map((t) => t.label).join(' + ')}
 ${contextFraming}
@@ -946,9 +942,61 @@ ${weightInstr}
 
 ${themeBlocks}
 
+Invent specific complications that fit these themes using the venue research, similar incidents, and local geography provided below. Do NOT default to generic crisis management props — every complication must be grounded in something specific to THIS venue and locale.
+
 Where possible, the selected themes SHOULD intersect and create compound complications — e.g. a ${selected[0].label.toLowerCase()} event that triggers or worsens a ${selected[selected.length > 1 ? 1 : 0].label.toLowerCase()} situation. These compound events are the most valuable because they test multi-dimensional decision-making.
 
 Each inject must reference the specific scenario title, venue, and narrative details. Be geographically and culturally specific to the venue location.`;
+}
+
+/**
+ * Tiered research context block for inject generation prompts.
+ * Tier 1: similar cases exist → use them as creative fuel.
+ * Tier 2: no cases but area_summary exists → use venue research.
+ * Tier 3: neither → instruct AI to reason from venue/scenario specifics.
+ */
+function buildResearchContextBlock(
+  researchContext: WarroomResearchContext | undefined,
+  venue: string,
+): string {
+  const parts: string[] = [];
+
+  const hasCases = researchContext?.similar_cases && researchContext.similar_cases.length > 0;
+  const hasArea = !!researchContext?.area_summary;
+  const hasCrowd = !!researchContext?.crowd_dynamics;
+
+  if (hasCases) {
+    parts.push(
+      `REAL-WORLD PRECEDENTS — study these incidents for inspiration on what complications, intelligence sources, and unexpected developments actually occurred. Adapt them creatively to THIS venue — do not simply copy the same props or assets:\n${similarCasesToPromptBlock(researchContext!.similar_cases!)}`,
+    );
+  }
+
+  if (hasArea) {
+    const areaTruncated = researchContext!.area_summary!.slice(0, 4000);
+    if (hasCases) {
+      parts.push(
+        `VENUE & AREA RESEARCH (use to ground injects in local reality):\n${areaTruncated}`,
+      );
+    } else {
+      parts.push(
+        `NO SIMILAR INCIDENTS FOUND — use the area research below as your creative fuel. Consider: what infrastructure exists at this venue? What communities live nearby? What transport links, utilities, or cultural dynamics could create complications?\n\nAREA RESEARCH:\n${areaTruncated}`,
+      );
+    }
+  }
+
+  if (hasCrowd) {
+    parts.push(
+      `CROWD DYNAMICS RESEARCH:\n${crowdDynamicsToPromptBlock(researchContext!.crowd_dynamics!)}`,
+    );
+  }
+
+  if (!hasCases && !hasArea) {
+    parts.push(
+      `Reason from the scenario type, venue name ("${venue}"), setting, and terrain. What would ACTUALLY happen at this specific location? Think about local resources, cultural context, and environmental factors unique to this place. Do not fall back on generic crisis management textbook scenarios.`,
+    );
+  }
+
+  return parts.length > 0 ? '\n' + parts.join('\n\n') : '';
 }
 
 import type {
@@ -1980,32 +2028,53 @@ function normalizeInjectTiming(
   return result.sort((a, b) => a.trigger_time_minutes - b.trigger_time_minutes);
 }
 
+const DEDUP_SYSTEM_PROMPT = `You are a deduplication judge for crisis exercise injects.
+
+Given a CANDIDATE inject and a list of EXISTING injects, determine if the candidate is thematically similar to ANY existing inject TARGETING THE SAME AUDIENCE.
+
+Rules:
+- Two injects are "similar" if they share the same underlying theme, character archetype, social dynamic, or crisis trope — even if the wording differs.
+- Examples of similar pairs: "parents demand access" & "family confrontation at cordon", "fake credentials" & "impersonator tries to enter", "secondary device found" & "bomb threat at nearby location".
+- Universal injects (scope=universal) are seen by ALL teams, so a universal inject and a team-specific inject with the same theme ARE duplicates.
+- Two team-specific injects targeting DIFFERENT teams are NOT duplicates — different teams can face similar themes independently.
+
+Return JSON: { "duplicate": true } if the candidate duplicates an existing inject for the same audience, or { "duplicate": false } if it is unique.`;
+
+function formatInjectForDedup(inj: {
+  title: string;
+  content?: string;
+  inject_scope?: string;
+  target_teams?: string[];
+}): string {
+  const scope =
+    inj.inject_scope === 'universal'
+      ? '[universal]'
+      : `[→ ${(inj.target_teams || []).join(', ') || 'unknown'}]`;
+  return `${scope} ${inj.title}: ${(inj.content || '').slice(0, 120)}`;
+}
+
 /**
- * AI-based semantic deduplication for time injects.
- * Walks through injects sequentially — for each inject, asks gpt-4o-mini
- * whether it is thematically similar to any of the preceding injects.
- * If similar, it is dropped. The T+0 inject (index 0) is always kept.
+ * Dedup a single stream of injects against a shared context (universals).
+ * Walks sequentially within the stream; each candidate checks against
+ * the universal context + previously accepted injects in this stream.
  */
-async function deduplicateInjectsByTheme(
-  injects: WarroomScenarioPayload['time_injects'],
-  openAiApiKey: string,
-): Promise<WarroomScenarioPayload['time_injects']> {
-  if (injects.length <= 2) return injects;
+async function dedupStream<
+  T extends { title: string; content?: string; inject_scope?: string; target_teams?: string[] },
+>(injects: T[], universalContext: string, openAiApiKey: string): Promise<T[]> {
+  if (injects.length === 0) return injects;
 
-  const kept: WarroomScenarioPayload['time_injects'] = [injects[0]];
-
-  for (let i = 1; i < injects.length; i++) {
-    const candidate = injects[i];
-    const existing = kept
-      .map((k, idx) => `[${idx}] ${k.title}: ${(k.content || '').slice(0, 100)}`)
+  const kept: T[] = [];
+  for (const candidate of injects) {
+    const existing = [
+      universalContext,
+      ...kept.map((k, idx) => `[${idx}] ${formatInjectForDedup(k)}`),
+    ]
+      .filter(Boolean)
       .join('\n');
     try {
       const result = await callOpenAi<{ duplicate: boolean }>(
-        `You are a deduplication judge for crisis exercise injects. Given a CANDIDATE inject and a list of EXISTING injects, determine if the candidate is thematically similar to ANY existing inject.
-Two injects are "similar" if they share the same underlying theme, character archetype, social dynamic, or crisis trope — even if the wording differs.
-Examples of similar pairs: "parents demand access" & "family confrontation at cordon", "fake credentials" & "impersonator tries to enter", "secondary device found" & "bomb threat at nearby location".
-Return JSON: { "duplicate": true } if similar to any existing, or { "duplicate": false } if unique.`,
-        `EXISTING INJECTS:\n${existing}\n\nCANDIDATE:\n${candidate.title}: ${(candidate.content || '').slice(0, 150)}`,
+        DEDUP_SYSTEM_PROMPT,
+        `EXISTING INJECTS:\n${existing}\n\nCANDIDATE:\n${formatInjectForDedup(candidate)}`,
         openAiApiKey,
         50,
         0,
@@ -2019,41 +2088,106 @@ Return JSON: { "duplicate": true } if similar to any existing, or { "duplicate":
 }
 
 /**
- * AI-based semantic dedup for condition-driven (chaos) injects.
- * Also checks against already-accepted time inject titles to prevent cross-type overlap.
+ * Parallel per-team deduplication for time injects.
+ * 1. Dedup universals among themselves (small sequential pass).
+ * 2. Group team-specific injects by target team.
+ * 3. Run each team's dedup in parallel — each stream only sees universals + its own team.
+ * 4. Merge results: T+0 + universals + all team streams.
+ */
+async function deduplicateInjectsByTheme(
+  injects: WarroomScenarioPayload['time_injects'],
+  openAiApiKey: string,
+): Promise<WarroomScenarioPayload['time_injects']> {
+  if (injects.length <= 2) return injects;
+
+  // Separate T+0, universals, and per-team injects
+  const t0 = injects.filter((i) => (i.trigger_time_minutes ?? 0) === 0);
+  const universals = injects.filter(
+    (i) => (i.trigger_time_minutes ?? 0) > 0 && i.inject_scope === 'universal',
+  );
+  const teamInjects = injects.filter(
+    (i) => (i.trigger_time_minutes ?? 0) > 0 && i.inject_scope !== 'universal',
+  );
+
+  // Dedup universals among themselves (+ T+0 as context)
+  const t0Context = t0.map((k) => formatInjectForDedup(k)).join('\n');
+  const dedupedUniversals = await dedupStream(universals, t0Context, openAiApiKey);
+
+  // Build universal context string for team streams
+  const universalContext = [
+    ...t0.map((k) => formatInjectForDedup(k)),
+    ...dedupedUniversals.map((k) => formatInjectForDedup(k)),
+  ].join('\n');
+
+  // Group team injects by target team
+  const byTeam = new Map<string, WarroomScenarioPayload['time_injects']>();
+  for (const inj of teamInjects) {
+    const team = (inj.target_teams || [])[0] || '__unknown__';
+    const arr = byTeam.get(team) || [];
+    arr.push(inj);
+    byTeam.set(team, arr);
+  }
+
+  // Dedup each team's injects in parallel — each only sees universals + own team
+  const teamResults = await Promise.all(
+    Array.from(byTeam.entries()).map(([, teamInjs]) =>
+      dedupStream(teamInjs, universalContext, openAiApiKey),
+    ),
+  );
+
+  return [...t0, ...dedupedUniversals, ...teamResults.flat()];
+}
+
+/**
+ * Parallel per-team dedup for condition-driven (chaos) injects.
+ * Each team's condition injects are deduped against:
+ * - Universal time injects (shared context)
+ * - That team's own accepted time injects
+ * - Previously accepted condition injects for that team
+ * All team streams run in parallel.
  */
 async function deduplicateConditionInjectsByTheme(
   injects: NonNullable<WarroomScenarioPayload['condition_driven_injects']>,
-  timeInjectTitles: string[],
+  acceptedTimeInjects: WarroomScenarioPayload['time_injects'],
   openAiApiKey: string,
 ): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
   if (injects.length === 0) return injects;
 
-  const existingContext = timeInjectTitles.map((t, i) => `[time-${i}] ${t}`).join('\n');
-  const kept: NonNullable<WarroomScenarioPayload['condition_driven_injects']> = [];
+  // Build per-team context from accepted time injects
+  const universalTimeContext = acceptedTimeInjects
+    .filter((i) => i.inject_scope === 'universal')
+    .map((i, idx) => `[time-univ-${idx}] ${formatInjectForDedup(i)}`)
+    .join('\n');
 
-  for (let i = 0; i < injects.length; i++) {
-    const candidate = injects[i];
-    const allExisting = [
-      existingContext,
-      ...kept.map((k, idx) => `[cond-${idx}] ${k.title}: ${(k.content || '').slice(0, 100)}`),
-    ].join('\n');
-    try {
-      const result = await callOpenAi<{ duplicate: boolean }>(
-        `You are a deduplication judge for crisis exercise injects. Given a CANDIDATE inject and a list of EXISTING injects (both time-based and condition-driven), determine if the candidate is thematically similar to ANY existing inject.
-Two injects are "similar" if they share the same underlying theme, character archetype, social dynamic, or crisis trope — even if the wording differs.
-Return JSON: { "duplicate": true } if similar to any existing, or { "duplicate": false } if unique.`,
-        `EXISTING INJECTS:\n${allExisting}\n\nCANDIDATE:\n${candidate.title}: ${(candidate.content || '').slice(0, 150)}`,
-        openAiApiKey,
-        50,
-        0,
-      );
-      if (!result.duplicate) kept.push(candidate);
-    } catch {
-      kept.push(candidate);
-    }
+  const teamTimeMap = new Map<string, string[]>();
+  for (const inj of acceptedTimeInjects) {
+    if (inj.inject_scope === 'universal') continue;
+    const team = (inj.target_teams || [])[0] || '__unknown__';
+    const arr = teamTimeMap.get(team) || [];
+    arr.push(`[time-${arr.length}] ${formatInjectForDedup(inj)}`);
+    teamTimeMap.set(team, arr);
   }
-  return kept;
+
+  // Group condition injects by target team
+  const byTeam = new Map<string, NonNullable<WarroomScenarioPayload['condition_driven_injects']>>();
+  for (const inj of injects) {
+    const team = (inj.target_teams || [])[0] || '__unknown__';
+    const arr = byTeam.get(team) || [];
+    arr.push(inj);
+    byTeam.set(team, arr);
+  }
+
+  // Dedup each team's conditions in parallel
+  const teamResults = await Promise.all(
+    Array.from(byTeam.entries()).map(([team, condInjs]) => {
+      const teamContext = [universalTimeContext, ...(teamTimeMap.get(team) || [])]
+        .filter(Boolean)
+        .join('\n');
+      return dedupStream(condInjs, teamContext, openAiApiKey);
+    }),
+  );
+
+  return teamResults.flat();
 }
 
 // ---------------------------------------------------------------------------
@@ -3533,8 +3667,22 @@ RULES:
 }
 
 // ---------------------------------------------------------------------------
-// Phase 4b2c — Casualty Identification + Enrichment
+// Phase 4b2c — Casualty Generation (two-phase: profiles then placement)
 // ---------------------------------------------------------------------------
+
+interface VictimProfile {
+  id: number;
+  injuries: Array<{ type: string; severity: string; body_part: string; visible_signs: string }>;
+  triage_color: string;
+  mobility: string;
+  consciousness: string;
+  breathing: string;
+  visible_description: string;
+  treatment_requirements: Array<{ intervention: string; priority: string; reason: string }>;
+  transport_prerequisites: string[];
+  contraindications: string[];
+  appears_at_minutes: number;
+}
 
 async function generateCasualties(
   input: WarroomGenerateInput,
@@ -3548,35 +3696,16 @@ async function generateCasualties(
   const include = input.complexity_tier === 'full' || input.complexity_tier === 'rich';
   if (!include) return undefined;
 
-  onProgress?.('Generating casualty pins...');
-
   const { scenario_type, setting, venue_name, location, researchContext } = input;
   const venue = venue_name || location || setting;
 
   const similarCasesBlock =
     researchContext?.similar_cases && researchContext.similar_cases.length > 0
-      ? `\nSIMILAR REAL INCIDENTS (calibrate injury types and placement against these):\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
+      ? `\nSIMILAR REAL INCIDENTS (calibrate injury types and severity against these):\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
       : '';
-
-  const incidentSites =
-    locations?.filter(
-      (l) =>
-        l.pin_category === 'incident_site' ||
-        l.location_type?.toLowerCase().includes('blast') ||
-        l.location_type?.toLowerCase().includes('epicentre'),
-    ) ?? [];
-
-  const hazardBlock = hazards?.length
-    ? `\nActive hazards:\n${hazards.map((h) => `- ${h.hazard_type} at (${h.location_lat}, ${h.location_lng}): ${h.enriched_description?.slice(0, 150) || (h.properties as Record<string, unknown>).fuel_source || h.hazard_type}`).join('\n')}`
-    : '';
 
   const threatProfile = input.threat_profile;
   const casualtyRules = threatProfile ? getThreatHazardRules(threatProfile.weapon_class) : null;
-  const threatBlock2 = await buildThreatProfileBlock(
-    threatProfile,
-    openAiApiKey,
-    researchContext?.similar_cases,
-  );
   const baseCasRange: [number, number] = [
     casualtyRules?.casualty_range[0] ?? 15,
     casualtyRules?.casualty_range[1] ?? 20,
@@ -3605,104 +3734,309 @@ async function generateCasualties(
   ];
   const isMelee = threatProfile?.weapon_class?.startsWith('melee_');
   const isExplosive = threatProfile?.weapon_class === 'explosive';
+  const weaponDesc = threatProfile?.weapon_type || scenario_type;
 
-  const systemPrompt = `You are an expert in mass casualty incident planning generating INDIVIDUAL casualty pins for a training exercise.
+  // --- PHASE 1: Generate victim profiles (no location data) ---
+  onProgress?.('Creating victim profiles...');
+  const profiles = await generateVictimProfiles(
+    scenario_type,
+    venue,
+    weaponDesc,
+    injuryEmphasis,
+    minCasualties,
+    maxCasualties,
+    isMelee,
+    isExplosive,
+    threatProfile,
+    similarCasesBlock,
+    narrative,
+    openAiApiKey,
+  );
+  if (!profiles?.length) return undefined;
 
-Scenario type: ${scenario_type}
-Venue: ${venue}
-Setting: ${setting}
-${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
-${incidentSites.length > 0 ? `Incident site: ${incidentSites[0].label} at (${incidentSites[0].coordinates.lat}, ${incidentSites[0].coordinates.lng})` : ''}
-${hazardBlock}
-${zoneSummaryBlock || ''}
-${threatBlock2}${similarCasesBlock}
-
-Generate ${minCasualties}-${maxCasualties} INDIVIDUAL casualty pins representing the most clinically significant casualties that responders will encounter. Focus on variety of injury types and severity.
-
-${
-  isMelee
-    ? `MELEE ATTACK PLACEMENT — this is a close-quarters weapon attack:
-- ATTACK ZONE (where the attacker struck): Casualties with direct weapon injuries — ${threatProfile?.injury_types.join(', ')}. These are the most severe. Place 2-4 casualties here.
-- NEARBY (within 30m): People who were bumped, pushed, or fell while fleeing. Minor injuries — bruises, scrapes, sprains, panic attacks. Place 2-3 here.
-- COLD ZONE / OUTSIDE: People who fled successfully. Psychological trauma, minor injuries from falls. Place 1-3 here.
-- NO trapped casualties under debris (a ${threatProfile?.weapon_type} cannot collapse structures).
-- NO casualties behind fire or in smoke (a ${threatProfile?.weapon_type} cannot start fires).
-- Accessibility should be "open" for nearly all casualties — there are no environmental barriers from a melee weapon.`
-    : isExplosive
-      ? `ZONE-BASED PLACEMENT — place casualties where they would realistically be found:
-- HOT ZONE (inside the danger area): Trapped casualties under debris, behind fire, in smoke. Burns, blast injuries, crush injuries. Place 3-5 casualties here.
-- WARM ZONE (buffer/transition area): Moderate-to-severe injuries from blast wave. Place 5-7 casualties here.
-- COLD ZONE / OUTSIDE: Walking wounded. Minor injuries. Place 5-8 casualties here.
-- DELAYED DISCOVERY: Some casualties appear later (appears_at_minutes 5-20) as smoke clears or areas become accessible.`
-      : `ZONE-BASED PLACEMENT — place casualties where they would realistically be found:
-- ATTACK ZONE (danger area): Most severely injured casualties. Place 3-5 here.
-- NEARBY (transition area): Moderate injuries, people who were close. Place 4-6 here.
-- COLD ZONE / OUTSIDE: Walking wounded, psychological trauma. Place 3-5 here.
-- DELAYED DISCOVERY: Some casualties appear later as situation develops.`
+  // --- PHASE 2: Place victims on the map ---
+  onProgress?.(`Placing ${profiles.length} casualties on map...`);
+  const placed = await placeVictimsOnMap(
+    profiles,
+    scenario_type,
+    venue,
+    setting,
+    isMelee,
+    isExplosive,
+    weaponDesc,
+    threatProfile,
+    locations,
+    hazards,
+    zoneSummaryBlock,
+    narrative,
+    openAiApiKey,
+  );
+  return placed?.length ? placed : undefined;
 }
 
-IMPORTANT: The "visible_description" must ONLY describe what a responder physically observes — do NOT reveal treatment protocols or equipment needed. Players must figure out the right response.
+/**
+ * Phase 1: Generate medically accurate victim profiles without any spatial data.
+ * The AI focuses purely on creating the right number of victims with realistic
+ * injury distributions for the weapon type.
+ */
+async function generateVictimProfiles(
+  scenarioType: string,
+  venue: string,
+  weaponDesc: string,
+  injuryEmphasis: string[],
+  minCasualties: number,
+  maxCasualties: number,
+  isMelee: boolean | undefined,
+  isExplosive: boolean | undefined,
+  threatProfile: ThreatProfile | undefined,
+  similarCasesBlock: string,
+  narrative: { title?: string; description?: string; briefing?: string } | undefined,
+  openAiApiKey: string,
+): Promise<VictimProfile[] | null> {
+  const triageGuidance = isMelee
+    ? `Triage distribution for a melee ${weaponDesc} attack with ${threatProfile?.adversary_count ?? 1} attacker(s):
+- ~5% black (deceased — fatal stab/slash wounds)
+- ~15% red (severe weapon injuries — deep lacerations, arterial bleeds, organ damage)
+- ~30% yellow (moderate — significant cuts, fractures from falls, non-life-threatening)
+- ~50% green (minor injuries, bruises from stampede/falls, psychological trauma)
+Do NOT generate trapped casualties or casualties behind fire/debris — a ${weaponDesc} cannot cause environmental hazards.`
+    : isExplosive
+      ? `Triage distribution for a major explosion:
+- ~8% black (deceased)
+- ~18% red (immediate/critical — blast injuries, burns, crush injuries)
+- ~30% yellow (delayed/serious — shrapnel, moderate burns, fractures)
+- ~44% green (walking wounded, minor lacerations, psychological)
+Include some trapped casualties and casualties behind environmental barriers.`
+      : `Triage distribution appropriate for a ${scenarioType}. Generate a realistic mix of severity levels.`;
 
-Generate "treatment_requirements", "transport_prerequisites", and "contraindications" as HIDDEN ground truth fields for the evaluation system.
+  const systemPrompt = `You are a pre-hospital emergency medicine expert creating victim profiles for a crisis training exercise.
 
-INJURY TYPES — only use injuries that a ${threatProfile?.weapon_type || scenario_type} can realistically cause: ${injuryEmphasis.join(', ')}
+Scenario: ${scenarioType} at ${venue}
+${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
+Weapon: ${weaponDesc} (${threatProfile?.weapon_class || 'unknown'})
+Attackers: ${threatProfile?.adversary_count ?? 1}
+${similarCasesBlock}
+
+You MUST generate EXACTLY ${minCasualties} to ${maxCasualties} individual victim profiles. Each victim is ONE person.
+
+${triageGuidance}
+
+INJURY TYPES — only use injuries a ${weaponDesc} can realistically cause: ${injuryEmphasis.join(', ')}
+
+For EACH victim, provide:
+- injuries: array of specific injuries with type, severity (minor|moderate|severe|critical), body_part, and visible_signs (what a responder physically observes)
+- triage_color: green|yellow|red|black
+- mobility: ambulatory|non_ambulatory|trapped
+- consciousness: alert|confused|unconscious|unresponsive
+- breathing: normal|labored|absent
+- visible_description: 1-2 sentences of ONLY what a responder SEES approaching this person — do NOT reveal diagnoses or treatment
+- treatment_requirements: real pre-hospital interventions with priority and clinical rationale
+- transport_prerequisites: what MUST be stabilized before safe transport
+- contraindications: dangerous actions for this specific patient
+- appears_at_minutes: 0 for immediately visible, 5-20 for delayed discovery
 
 Return ONLY valid JSON:
 {
-  "casualties": [
+  "victims": [
     {
-      "casualty_type": "patient",
-      "location_lat": number,
-      "location_lng": number,
-      "floor_level": "G",
-      "headcount": 1,
-      "conditions": {
-        "injuries": [{ "type": "${injuryEmphasis.join('|')}", "severity": "minor|moderate|severe|critical", "body_part": "string", "visible_signs": "string" }],
-        "triage_color": "green|yellow|red|black",
-        "mobility": "ambulatory|non_ambulatory|trapped",
-        "accessibility": "open|behind_fire|under_debris|in_smoke|blocked_corridor",
-        "consciousness": "alert|confused|unconscious|unresponsive",
-        "breathing": "normal|labored|absent",
-        "visible_description": "1-2 sentence description of what a responder sees approaching this person",
-        "treatment_requirements": [{ "intervention": "string", "priority": "critical|high|medium", "reason": "short clinical rationale" }],
-        "transport_prerequisites": ["string"],
-        "contraindications": ["string"]
-      },
-      "status": "undiscovered",
+      "id": 1,
+      "injuries": [{ "type": "string", "severity": "minor|moderate|severe|critical", "body_part": "string", "visible_signs": "string" }],
+      "triage_color": "green|yellow|red|black",
+      "mobility": "ambulatory|non_ambulatory|trapped",
+      "consciousness": "alert|confused|unconscious|unresponsive",
+      "breathing": "normal|labored|absent",
+      "visible_description": "string",
+      "treatment_requirements": [{ "intervention": "string", "priority": "critical|high|medium", "reason": "string" }],
+      "transport_prerequisites": ["string"],
+      "contraindications": ["string"],
       "appears_at_minutes": 0
     }
   ]
 }
 
-RULES:
-- Each pin is ONE person (headcount: 1)
-${
-  isMelee
-    ? `- Realistic triage distribution for a melee ${threatProfile?.weapon_type} attack: ~5% black (deceased), ~15% red (severe weapon injuries), ~30% yellow (moderate), ~50% green (minor/psychological)
-- Do NOT generate trapped casualties or casualties behind fire/debris — a ${threatProfile?.weapon_type} cannot cause environmental hazards
-- accessibility should be "open" for all or nearly all casualties`
-    : isExplosive
-      ? `- Realistic triage color distribution for a major explosion: ~8% black (deceased), ~18% red (immediate/critical), ~30% yellow (delayed/serious), ~44% green (walking wounded/minor)
-- At least 3-4 trapped casualties requiring extraction before they can be moved
-- At least 2-3 casualties behind active hazards (accessibility: "behind_fire", "under_debris", "in_smoke")`
-      : `- Realistic triage distribution based on the attack type
-- Only generate trapped/inaccessible casualties if the weapon can physically cause environmental barriers`
-}
-- treatment_requirements: derive from injuries using real pre-hospital care protocols. Be medically accurate.
-- transport_prerequisites: what MUST be stabilized before moving the patient safely
-- contraindications: dangerous actions for this specific patient
-- Generate ${minCasualties}-${maxCasualties} casualties total.`;
+CRITICAL: You MUST return ${minCasualties}-${maxCasualties} victims. Do NOT return fewer.`;
 
-  const userPrompt = `Generate ${minCasualties}-${maxCasualties} individual casualty pins for "${narrative?.title || scenario_type}" at ${venue}.`;
+  const userPrompt = `Generate ${minCasualties}-${maxCasualties} victim profiles for a ${scenarioType} involving ${weaponDesc} with ${threatProfile?.adversary_count ?? 1} attacker(s) at ${venue}.`;
+
+  try {
+    const parsed = await callOpenAi<{ victims?: VictimProfile[] }>(
+      systemPrompt,
+      userPrompt,
+      openAiApiKey,
+      6000,
+    );
+    return parsed.victims?.length ? parsed.victims : null;
+  } catch (err) {
+    logger.warn({ err }, 'Victim profile generation failed');
+    return null;
+  }
+}
+
+/**
+ * Phase 2: Take pre-generated victim profiles and assign map coordinates,
+ * floor levels, and accessibility based on venue layout, incident sites,
+ * hazard positions, and zone geometry.
+ */
+async function placeVictimsOnMap(
+  profiles: VictimProfile[],
+  scenarioType: string,
+  venue: string,
+  setting: string,
+  isMelee: boolean | undefined,
+  isExplosive: boolean | undefined,
+  weaponDesc: string,
+  threatProfile: ThreatProfile | undefined,
+  locations?: WarroomScenarioPayload['locations'],
+  hazards?: WarroomScenarioPayload['hazards'],
+  zoneSummaryBlock?: string,
+  narrative?: { title?: string; description?: string; briefing?: string },
+  openAiApiKey?: string,
+): Promise<WarroomScenarioPayload['casualties']> {
+  if (!openAiApiKey) return undefined;
+
+  const incidentSites =
+    locations?.filter(
+      (l) =>
+        l.pin_category === 'incident_site' ||
+        l.location_type?.toLowerCase().includes('blast') ||
+        l.location_type?.toLowerCase().includes('epicentre'),
+    ) ?? [];
+
+  const hazardBlock = hazards?.length
+    ? `\nActive hazards:\n${hazards.map((h) => `- ${h.hazard_type} at (${h.location_lat}, ${h.location_lng}): ${h.enriched_description?.slice(0, 150) || (h.properties as Record<string, unknown>).fuel_source || h.hazard_type}`).join('\n')}`
+    : '';
+
+  const exitPins = locations?.filter((l) => l.pin_category === 'entry_exit') ?? [];
+  const exitBlock =
+    exitPins.length > 0
+      ? `\nEntry/exit points:\n${exitPins.map((e) => `- ${e.label} at (${e.coordinates.lat}, ${e.coordinates.lng})`).join('\n')}`
+      : '';
+
+  const profileSummary = profiles
+    .map(
+      (p) =>
+        `Victim #${p.id}: triage=${p.triage_color}, mobility=${p.mobility}, injuries=[${p.injuries.map((i) => `${i.severity} ${i.type} to ${i.body_part}`).join('; ')}], appears_at=${p.appears_at_minutes}min`,
+    )
+    .join('\n');
+
+  const placementGuidance = isMelee
+    ? `MELEE ATTACK PLACEMENT LOGIC:
+- RED/BLACK triage victims (severe weapon injuries): Place within 10-30m of the incident site — these are the people the attacker directly struck. They couldn't move far.
+- YELLOW victims (moderate injuries): Place 20-60m from incident — knocked over, cut by secondary contact, fell while fleeing. Some crawled or stumbled away.
+- GREEN victims (minor/psychological): Place 50-150m+ from incident — escaped but with minor injuries from stampede, falls, or psychological shock. Found near exits, corridors, stairwells.
+- Accessibility should be "open" for all or nearly all — a ${weaponDesc} does not create environmental barriers.
+- Spread victims across realistic paths of flight from the incident site toward exits.`
+    : isExplosive
+      ? `EXPLOSION PLACEMENT LOGIC:
+- BLACK/RED victims: Place within the blast radius near the incident site. Some may be trapped under debris or behind fire.
+- YELLOW victims: Place in the warm/transition zone around the blast area. Shrapnel and blast wave injuries.
+- GREEN victims: Place further out — near exits, in corridors, outside the building.
+- Include accessibility values: "behind_fire", "under_debris", "in_smoke" for victims near the blast center.
+- Delayed-discovery victims should be in areas obscured by smoke or debris.`
+      : `PLACEMENT LOGIC:
+- Most severely injured victims closest to the incident site.
+- Moderately injured further away.
+- Walking wounded and psychological cases near exits and perimeter.
+- Match accessibility to the realistic environmental conditions caused by a ${weaponDesc}.`;
+
+  const systemPrompt = `You are a crisis exercise spatial planner. You have ${profiles.length} pre-generated victim profiles. Your job is to assign each victim a realistic map location.
+
+Scenario: ${scenarioType} at ${venue}
+Setting: ${setting}
+${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
+${incidentSites.length > 0 ? `Incident site: ${incidentSites[0].label} at (${incidentSites[0].coordinates.lat}, ${incidentSites[0].coordinates.lng})` : ''}
+${exitBlock}
+${hazardBlock}
+${zoneSummaryBlock || ''}
+
+${placementGuidance}
+
+VICTIM PROFILES TO PLACE:
+${profileSummary}
+
+For EACH victim, assign:
+- location_lat, location_lng: realistic coordinates near the venue, based on their triage severity and the placement logic above
+- floor_level: "G" for ground, "B1"/"B2" for basement, "1"/"2" for upper floors
+- accessibility: "open" | "behind_fire" | "under_debris" | "in_smoke" | "blocked_corridor"
+
+Return ONLY valid JSON:
+{
+  "placements": [
+    { "id": 1, "location_lat": number, "location_lng": number, "floor_level": "G", "accessibility": "open" }
+  ]
+}
+
+RULES:
+- Return EXACTLY ${profiles.length} placements, one per victim ID.
+- Coordinates must be within realistic distance of the venue/incident site.
+- Do NOT change victim count — place ALL ${profiles.length} victims.`;
+
+  const userPrompt = `Place all ${profiles.length} victims on the map for "${narrative?.title || scenarioType}" at ${venue}.`;
 
   try {
     const parsed = await callOpenAi<{
-      casualties?: WarroomScenarioPayload['casualties'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 8000);
-    return parsed.casualties?.length ? parsed.casualties : undefined;
+      placements?: Array<{
+        id: number;
+        location_lat: number;
+        location_lng: number;
+        floor_level: string;
+        accessibility: string;
+      }>;
+    }>(systemPrompt, userPrompt, openAiApiKey, 4000);
+
+    if (!parsed.placements?.length) return undefined;
+
+    const placementMap = new Map(parsed.placements.map((p) => [p.id, p]));
+
+    const merged: NonNullable<WarroomScenarioPayload['casualties']> = profiles.map((profile) => {
+      const placement = placementMap.get(profile.id);
+      return {
+        casualty_type: 'patient' as const,
+        location_lat: placement?.location_lat ?? incidentSites[0]?.coordinates.lat ?? 0,
+        location_lng: placement?.location_lng ?? incidentSites[0]?.coordinates.lng ?? 0,
+        floor_level: placement?.floor_level ?? 'G',
+        headcount: 1,
+        conditions: {
+          injuries: profile.injuries,
+          triage_color: profile.triage_color,
+          mobility: profile.mobility,
+          accessibility: placement?.accessibility ?? 'open',
+          consciousness: profile.consciousness,
+          breathing: profile.breathing,
+          visible_description: profile.visible_description,
+          treatment_requirements: profile.treatment_requirements,
+          transport_prerequisites: profile.transport_prerequisites,
+          contraindications: profile.contraindications,
+        },
+        status: 'undiscovered' as const,
+        appears_at_minutes: profile.appears_at_minutes ?? 0,
+      };
+    });
+
+    return merged;
   } catch (err) {
-    logger.warn({ err }, 'Casualty generation failed; continuing without');
-    return undefined;
+    logger.warn({ err }, 'Victim placement failed; returning profiles without placement');
+    return profiles.map((profile) => ({
+      casualty_type: 'patient' as const,
+      location_lat: incidentSites[0]?.coordinates.lat ?? 0,
+      location_lng: incidentSites[0]?.coordinates.lng ?? 0,
+      floor_level: 'G',
+      headcount: 1,
+      conditions: {
+        injuries: profile.injuries,
+        triage_color: profile.triage_color,
+        mobility: profile.mobility,
+        accessibility: 'open',
+        consciousness: profile.consciousness,
+        breathing: profile.breathing,
+        visible_description: profile.visible_description,
+        treatment_requirements: profile.treatment_requirements,
+        transport_prerequisites: profile.transport_prerequisites,
+        contraindications: profile.contraindications,
+      },
+      status: 'undiscovered' as const,
+      appears_at_minutes: profile.appears_at_minutes ?? 0,
+    }));
   }
 }
 
@@ -4636,10 +4970,7 @@ async function generateUniversalTimeInjects(
       : researchContext?.standards_summary
         ? `\nStandards: ${researchContext.standards_summary}`
         : '';
-  const similarCasesBlock =
-    researchContext?.similar_cases && researchContext.similar_cases.length > 0
-      ? `\nSIMILAR REAL INCIDENTS:\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
-      : '';
+  const researchBlock = buildResearchContextBlock(researchContext, venue);
   const narrativeBlock = narrative
     ? `\nNARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}`
     : '';
@@ -4655,21 +4986,20 @@ Setting: ${setting} | Terrain: ${terrain}
 Teams: ${teamNames.join(', ')}
 ${osmBlock}
 ${standardsBlock}
-${similarCasesBlock}
+${researchBlock}
 ${narrativeBlock}
 
 ${
   input.inject_profiles?.length && input.inject_profiles.length >= 2
     ? buildThematicEmphasisBlock(input.inject_profiles, 'universal')
-    : `WHAT THESE INJECTS ARE:
-- The initial incident (explosion, attack, disaster) and its immediate aftermath
-- Breaking news reports, social media firestorms, viral misinformation
-- Political pressure: ministers arriving, parliamentary questions, conflicting orders from political vs operational chains
-- Black swan events: improbable but possible complications (impostor doctor, secondary device threat, hostile drone, chemical contamination discovery, infrastructure collapse upstream)
-- Weather changes affecting operations (wind shift carrying smoke, rain, temperature drop)
-- Social tensions triggered by the incident (ethnic accusations, protests, vigilante mobs, conspiracy theories)
-- External resource complications (hospital declaring capacity full, ambulance fleet diverted, road closure cutting off access)
-- Media chaos: journalists breaching cordons, deepfake footage, hostile live broadcasts`
+    : `WHAT TO GENERATE — reason from the venue research and similar incidents above:
+- What external political or diplomatic pressures would this specific location attract?
+- What infrastructure (power, water, transport, comms) is vulnerable at THIS venue and could cascade?
+- What media dynamics are realistic for this locale — local press culture, social media penetration, language diversity?
+- What community and cultural tensions exist in this area that the incident could inflame?
+- What environmental or weather complications are plausible for this geography and season?
+- What black swan complications arose in the similar real incidents listed above?
+Do NOT default to generic tropes. Every inject must be grounded in something specific to this venue, locale, or the research context provided.`
 }
 
 WHAT THESE INJECTS ARE NOT (these are handled by real-time condition monitoring):
@@ -4716,14 +5046,13 @@ ${
   !input.inject_profiles?.length
     ? `
 VARIETY IS CRITICAL:
-- Do NOT default to the generic "secondary device found / social media misinformation / hospital at capacity" pattern. Those are overused.
-- Draw from a wide range of external event categories: geopolitical fallout, infrastructure cascades (water main break, power outage), environmental shifts, diplomatic incidents, cyber disruptions, transport network failures, public figure interventions, cultural/religious complications, cascading incidents at nearby venues.
-- Use the venue's real geography and the similar incidents list to create SPECIFIC, NOVEL complications unique to THIS location.
+- Do NOT default to generic patterns. Every inject must be grounded in the venue research, similar incidents, or local geography provided above.
+- Use THIS venue's real infrastructure, community, and cultural context to create complications that could not happen at a generic location.
 - Surprise the players. Avoid predictable crisis-management tropes.`
     : ''
 }`;
 
-  const userPrompt = `Write ${universalSlots.length} universal injects for "${narrative?.title || scenario_type}" at ${venue} at times: ${slotDescriptions}.${INJECT_DIVERSITY ? ' Prioritize unusual, location-specific, and surprising events over generic crisis tropes.' : ''}`;
+  const userPrompt = `Write ${universalSlots.length} universal injects for "${narrative?.title || scenario_type}" at ${venue} at times: ${slotDescriptions}. Prioritize unusual, location-specific, and surprising events over generic crisis tropes.`;
 
   try {
     const parsed = await callOpenAi<{ time_injects?: WarroomScenarioPayload['time_injects'] }>(
@@ -4731,7 +5060,7 @@ VARIETY IS CRITICAL:
       userPrompt,
       openAiApiKey,
       5000,
-      INJECT_DIVERSITY ? 0.95 : 0.7,
+      0.95,
     );
     const raw = (parsed.time_injects || []).filter(
       (inj) => inj.trigger_time_minutes !== 0 && inj.trigger_time_minutes != null,
@@ -4773,35 +5102,19 @@ async function generateTeamTimeInjects(
 ): Promise<WarroomScenarioPayload['time_injects']> {
   if (assignedSlots.length === 0) return [];
 
-  const { scenario_type, setting, terrain, venue_name, location, typeSpec, researchContext } =
-    input;
+  const { scenario_type, setting, terrain, venue_name, location, researchContext } = input;
   const venue = venue_name || location || setting;
-  const injectTemplates =
-    (typeSpec.inject_templates as Array<{
-      timing: string;
-      type: string;
-      template: string;
-      severity: string;
-    }>) || [];
 
   const narrativeBlock = narrative
     ? `\nNARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}\n${(narrative.briefing || '').slice(0, 300)}`
     : '';
-  const similarCasesBlock =
-    researchContext?.similar_cases && researchContext.similar_cases.length > 0
-      ? `\nSIMILAR REAL INCIDENTS:\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
-      : '';
+  const researchBlock = buildResearchContextBlock(researchContext, venue);
 
   const existingTitlesBlock = existingTitles?.length
     ? `\nALREADY GENERATED — BANNED THEMES (do NOT repeat these themes, character types, scenario elements, or similar ideas. Each entry shows "Title: brief content"):\n${existingTitles.map((t) => `- ${t}`).join('\n')}`
     : '';
 
   const slotsWithPhase = assignedSlots.map((t) => `T+${t} [${getPhaseLabelShort(t)}]`).join(', ');
-
-  // When diversity mode is on, skip the inject_templates reference to avoid the AI mimicking them
-  const styleRefBlock = INJECT_DIVERSITY
-    ? ''
-    : `\nInject style reference (tone and specificity):\n${JSON.stringify(injectTemplates.slice(0, 3))}`;
 
   const systemPrompt = `You are an expert crisis management scenario designer writing EXTERNAL WORLD events EXCLUSIVELY for the ${teamName} team. These are events that happen TO this team from the outside world — things they cannot prevent through operational decisions but must react to.
 
@@ -4810,21 +5123,18 @@ Setting: ${setting} | Terrain: ${terrain}
 All teams in this exercise: ${allTeamNames.join(', ')}
 THIS inject set is ONLY for: ${teamName}
 ${narrativeBlock}
-${similarCasesBlock}
+${researchBlock}
 ${existingTitlesBlock}
-${styleRefBlock}
 
 ${
   input.inject_profiles?.length && input.inject_profiles.length >= 2
     ? buildThematicEmphasisBlock(input.inject_profiles, 'team', teamName)
-    : `WHAT THESE INJECTS ARE (external events specific to ${teamName}'s domain):
-- Someone impersonating a ${teamName}-related professional (fake doctor, unauthorized volunteer, rogue official)
-- Inter-agency friction: conflicting orders from higher command, turf disputes with other teams
-- External civilian pressure: families demanding access to ${teamName}'s area, VIPs pulling rank, cultural conflicts
-- Supply chain disruptions: ambulance fleet delayed by traffic, equipment shipment lost, vendor refusing to deliver
-- Media targeting: journalist confronting ${teamName} leader on camera, leaked footage of ${teamName}'s area
-- Black swan complications: unexpected discovery (hazmat, secondary device, structural failure) that directly impacts ${teamName}
-- Political interference specific to ${teamName}'s role`
+    : `WHAT TO GENERATE — external events specific to ${teamName}'s domain:
+- What real-world complications did similar incidents cause for teams like ${teamName}?
+- What local infrastructure, cultural norms, or geography would create unique problems for ${teamName} at THIS venue?
+- What inter-agency dynamics are realistic for this jurisdiction?
+- What civilian behaviors specific to this community would pressure ${teamName}?
+Do NOT default to generic crisis management props (fake doctors, family breaching cordons) unless the research context specifically supports it for THIS venue.`
 }
 
 WHAT THESE INJECTS ARE NOT (handled by real-time area monitors):
@@ -4868,14 +5178,13 @@ ${
   !input.inject_profiles?.length
     ? `
 VARIETY IS CRITICAL:
-- Do NOT recycle common tropes like "fake doctor appears" or "family demands access" unless you can make them genuinely novel for THIS venue.
-- Think beyond the obvious: cultural clashes specific to this locale, cascading infrastructure problems, diplomatic complications, cyber-physical attacks on ${teamName}'s equipment, unexpected alliances or sabotage from within.
-- Use the real-world geography and venue specifics to create complications that COULD NOT happen at a generic location.
+- Do NOT recycle generic tropes — every inject must be grounded in the venue research, similar incidents, or local context provided above.
+- Use THIS venue's real infrastructure, community dynamics, and geography to create complications unique to this locale.
 - Every inject title must be concretely different from every other inject in this scenario.`
     : ''
 }`;
 
-  const userPrompt = `Write ${assignedSlots.length} deep team-specific injects for ${teamName} at: ${slotsWithPhase} in "${narrative?.title || scenario_type}" at ${venue}.${INJECT_DIVERSITY ? ' Be creative and avoid generic crisis tropes.' : ''}`;
+  const userPrompt = `Write ${assignedSlots.length} deep team-specific injects for ${teamName} at: ${slotsWithPhase} in "${narrative?.title || scenario_type}" at ${venue}. Be creative and avoid generic crisis tropes.`;
 
   try {
     const parsed = await callOpenAi<{ time_injects?: WarroomScenarioPayload['time_injects'] }>(
@@ -4883,7 +5192,7 @@ VARIETY IS CRITICAL:
       userPrompt,
       openAiApiKey,
       5000,
-      INJECT_DIVERSITY ? 0.95 : 0.7,
+      0.95,
     );
     const raw = parsed.time_injects || [];
     return raw.map((inj) => ({
@@ -4931,13 +5240,7 @@ async function generateChaosInjects(
   const narrativeBlock = narrative
     ? `\nNARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}`
     : '';
-  const similarCasesBlock =
-    researchContext?.similar_cases && researchContext.similar_cases.length > 0
-      ? `\nSIMILAR REAL INCIDENTS (use for inspiration on realistic chaos events):\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
-      : '';
-  const crowdDynamicsBlock = researchContext?.crowd_dynamics
-    ? `\nCROWD DYNAMICS RESEARCH:\n${crowdDynamicsToPromptBlock(researchContext.crowd_dynamics)}`
-    : '';
+  const researchBlock = buildResearchContextBlock(researchContext, venue);
 
   const systemPrompt = `You are a crisis simulation chaos designer. Your job is to generate unpredictable, socially volatile, emotionally charged wildcard events for the ${teamName} team. These are NOT operational or procedural events — they are the messy human reality of a crisis.
 
@@ -4948,23 +5251,17 @@ All teams: ${allTeamNames.join(', ')}
 Focus team: ${teamName}
 Game duration: ${durationMinutes} minutes
 ${narrativeBlock}
-${similarCasesBlock}
-${crowdDynamicsBlock}
+${researchBlock}
 
 ${
   input.inject_profiles?.length && input.inject_profiles.length >= 2
     ? buildThematicEmphasisBlock(input.inject_profiles, 'chaos', teamName)
-    : `These events represent the HUMAN CHAOS that overwhelms responders in real crises — the irrational behavior, social tensions, cultural flashpoints, media intrusions, emotional breakdowns, and political interference that no procedure manual covers.
-
-Generate events from categories like these (tailored to ${teamName}'s domain):
-- SOCIAL TENSION: Ethnic or religious accusations between victims/bystanders, communal blame, hate speech, sectarian conflict
-- CROWD PSYCHOLOGY: Mob mentality, stampede risk, mass hysteria, people refusing to cooperate, vigilante behavior
-- MEDIA INTRUSION: Bystanders livestreaming casualties, journalists sneaking past cordons, deepfake footage going viral
-- FAMILY & GRIEF: Distraught families storming restricted areas, parents searching for children, VIPs demanding special treatment
-- POLITICAL INTERFERENCE: Politicians arriving for photo opportunities, conflicting orders from political vs operational chains
-- MISINFORMATION: Conspiracy theories going viral in real-time, false second-attack rumors, fake authority figures
-- ETHICAL DILEMMAS: Patient refusing treatment on religious grounds, triage decisions with ethical dimensions
-- CULTURAL SENSITIVITY: Body handling conflicts, prayer time during evacuation, language barriers`
+    : `WHAT TO GENERATE — unpredictable human chaos events for ${teamName}:
+- What irrational crowd behaviors did the similar incidents document?
+- What cultural, religious, or community dynamics at THIS location could erupt under crisis pressure?
+- What social media and misinformation patterns are realistic for this population and locale?
+- What ethical dilemmas or cultural sensitivity clashes are specific to this community?
+Use the crowd dynamics research and area research above to ground every event in local reality. Do NOT default to generic chaos tropes — every event must be specific to this venue and community.`
 }
 
 AVAILABLE CONDITION KEYS (use these in conditions_to_appear):
@@ -5025,11 +5322,12 @@ ${
     ? `
 VARIETY IS CRITICAL:
 - Each chaos event must explore a DIFFERENT human dynamic — avoid multiple events about the same type of social friction.
-- Draw from: generational conflicts, religious observance clashes, disability access failures, language barriers, economic exploitation (price gouging, looting), insider sabotage, technology failures (cell network overload, GPS spoofing), animal hazards, cascading panic from adjacent venues, diplomatic immunity disputes.`
+- Use the venue research and similar incidents to find complications unique to THIS locale — do not recycle generic tropes.
+- Every chaos event must be grounded in the real cultural, geographic, or social context of the venue.`
     : ''
 }`;
 
-  const userPrompt = `Write ${chaosCount} condition-based chaos/wildcard injects for ${teamName} in "${narrative?.title || scenario_type}" at ${venue}. Each must be a distinct, non-procedural social/human chaos event with game-state conditions that trigger it.${INJECT_DIVERSITY ? ' Be maximally creative — avoid any trope you have used before.' : ''}`;
+  const userPrompt = `Write ${chaosCount} condition-based chaos/wildcard injects for ${teamName} in "${narrative?.title || scenario_type}" at ${venue}. Each must be a distinct, non-procedural social/human chaos event with game-state conditions that trigger it. Be maximally creative — ground events in the venue research and local context provided.`;
 
   try {
     const parsed = await callOpenAi<{
@@ -5046,7 +5344,7 @@ VARIETY IS CRITICAL:
         eligible_after_minutes?: number;
         state_effect?: Record<string, unknown>;
       }>;
-    }>(systemPrompt, userPrompt, openAiApiKey, 4000, INJECT_DIVERSITY ? 0.95 : 0.7);
+    }>(systemPrompt, userPrompt, openAiApiKey, 4000, 0.95);
 
     const raw = parsed.condition_injects || [];
     return raw.map((inj) => ({
@@ -5260,37 +5558,32 @@ MULTIPLE ADVERSARIES (${adversaryCount}):
     : ''
 }
 
-INTELLIGENCE SOURCES — each sighting inject MUST specify its intel_source and confidence:
+INTELLIGENCE SOURCES — choose sources that REALISTICALLY EXIST at this venue and locale.
+Consider what surveillance, communication, and tracking infrastructure is available:
+- Urban areas may have CCTV networks, ANPR, cell tower density, traffic cameras
+- Rural areas may rely on eyewitnesses, forestry/wildlife cameras, aerial observation, ranger patrols
+- Venues may have private security cameras, access control logs, parking systems, turnstile data
+- Law enforcement capabilities depend on the jurisdiction — not every locale has helicopter units, K9 teams, or advanced surveillance
 
-| intel_source           | confidence | accuracy_radius_m | Description |
-|------------------------|------------|-------------------|-------------|
-| cctv                   | high       | 50                | Security/traffic camera footage with timestamp and direction |
-| anpr                   | high       | 100               | Automatic Number Plate Recognition hit on a flagged vehicle |
-| helicopter_thermal     | high       | 30                | Helicopter with FLIR/thermal camera — live tracking from the air |
-| k9_tracking            | medium     | 150               | K9 unit following scent trail — indicates direction not exact position |
-| cell_tower             | medium     | 300               | Cell tower triangulation of suspect's phone — large area circle |
-| eyewitness             | low        | 500               | Civilian eyewitness report — unreliable, may describe wrong person |
-| forensic               | medium     | 200               | Scene forensics (DNA, fingerprints, shell casings) pointing to identity or origin |
-| financial              | low        | 400               | Credit card or ATM usage at a merchant location |
-| social_media           | low        | 600               | Social media post or associate check-in geotagged near a location |
-| hospital_alert         | medium     | 100               | Hospital/clinic reports patient matching suspect description |
-| informant              | medium     | 250               | Intelligence from informant or undercover operative |
+Each sighting inject MUST specify:
+- intel_source: a descriptive string of the actual source (e.g. "shopping_centre_cctv", "toll_booth_anpr", "park_ranger_eyewitness", "police_helicopter_thermal", "metro_transit_camera", "atm_camera", "doorbell_camera")
+- confidence: "high" | "medium" | "low" based on source reliability and precision
+- accuracy_radius_m: realistic radius based on the source type (camera footage: 30-100m, phone triangulation: 200-500m, eyewitness: 300-800m, K9 scent trail: 100-200m)
+
+Use at least 4 distinct source types. Mix confidence levels to force players to weigh conflicting intel.
 
 WHAT TO GENERATE:
 
 1. ADVERSARY PROFILE${multiAdversary ? 'S' : ''}: ${multiAdversary ? `${adversaryCount} distinct adversaries, each with unique IDs, behavior profiles, and initial zones.` : 'A single adversary with behavior matching the scenario.'}
 
-2. PURSUIT TIME INJECTS (8-12 injects): Delivered at fixed times. EACH sighting inject uses a DIFFERENT intel_source from the table above. You MUST use at least 5 distinct intel_source types across all injects. Mix high/medium/low confidence sources to force players to weigh conflicting intel. Each sighting inject must include an "adversary_sighting" in state_effect with intel_source, confidence, accuracy_radius_m, and optional direction_of_travel.
+2. PURSUIT TIME INJECTS (8-12 injects): Delivered at fixed times. EACH sighting inject uses a DIFFERENT intel_source. You MUST use at least 4 distinct intel_source types across all injects, chosen from sources that would realistically exist at this venue. Mix high/medium/low confidence sources to force players to weigh conflicting intel. Each sighting inject must include an "adversary_sighting" in state_effect with intel_source, confidence, accuracy_radius_m, and optional direction_of_travel.
 
-3. FALSE LEAD INJECTS (2-3 injects within pursuit_time_injects): Mark these with "is_false_lead": true in the adversary_sighting. These are reports that turn out to be WRONG — similar-looking individual, lookalike on CCTV, cloned vehicle plate on ANPR, wrong heat signature on helicopter thermal, or a civilian matching the description at a hospital. FALSE LEADS CAN COME FROM ANY CONFIDENCE LEVEL — in fact, at least one MUST be high-confidence (e.g. clear CCTV footage of the wrong person) because those are the most tactically dangerous: commanders will commit heavy resources based on precise-but-wrong intel. The content should be plausible and the location should draw resources AWAY from the actual pursuit corridor. The map pin will still update (players don't know it's false until a later inject reveals it). Include a follow-up inject later that debunks the false lead (e.g. "CCTV review confirms individual at Junction 5 was a civilian — not the suspect. All units redirected.").
+3. FALSE LEAD INJECTS (2-3 injects within pursuit_time_injects): Mark these with "is_false_lead": true in the adversary_sighting. These are reports that turn out to be WRONG — similar-looking individual, a lookalike captured on camera, a cloned or misread number plate, or a civilian matching the description at a hospital. FALSE LEADS CAN COME FROM ANY CONFIDENCE LEVEL — in fact, at least one MUST be high-confidence (e.g. clear camera footage of the wrong person) because those are the most tactically dangerous: commanders will commit heavy resources based on precise-but-wrong intel. The content should be plausible and the location should draw resources AWAY from the actual pursuit corridor. The map pin will still update (players don't know it's false until a later inject reveals it). Include a follow-up inject later that debunks the false lead.
 
 4. PURSUIT CONDITION INJECTS (3-5 injects): Branches that fire based on which decisions the pursuit team made. Use trigger_condition with keywords matching the prior decision.
 
-5. RESOURCE-GATED INJECTS (2-3 injects within pursuit_time_injects): These are higher-quality intel that should narratively explain WHY better intel is available. For example:
-   - A CCTV inject should mention "Ops room reviewing camera network" — this hints that deploying a CCTV operator asset improves intel quality.
-   - A K9 inject should reference the K9 tracking from the last known position.
-   - A helicopter inject should mention "Air-1 on station with thermal camera."
-   Mark these with "resource_hint": "cctv_operator|k9_unit|helicopter" in the adversary_sighting to indicate which player-placed asset would enhance this intel.
+5. RESOURCE-GATED INJECTS (2-3 injects within pursuit_time_injects): These are higher-quality intel that should narratively explain WHY better intel is available — e.g. an operator reviewing the camera network, a specialist tracking team deployed, or an aerial asset on station. The content should hint that deploying a specific player asset improves intel quality.
+   Mark these with "resource_hint" in the adversary_sighting — use a descriptive string matching the resource type (e.g. "cctv_operator", "tracking_team", "aerial_unit", "forensic_team").
 
 6. WITNESS INJECTS (1-3 injects): Reports from injured civilians that go to the triage team ONLY. These contain pursuit-relevant intel that the triage team must relay to the police team via a decision.
 
@@ -5332,12 +5625,12 @@ Return ONLY valid JSON:
           "lng": number (from AVAILABLE LOCATIONS),
           "zone_label": "string",
           "description": "string",
-          "intel_source": "cctv|anpr|helicopter_thermal|k9_tracking|cell_tower|eyewitness|forensic|financial|social_media|hospital_alert|informant",
+          "intel_source": "string (descriptive source that realistically exists at this venue)",
           "confidence": "high|medium|low",
-          "accuracy_radius_m": number (from the table above),
+          "accuracy_radius_m": number (realistic for the source type),
           "direction_of_travel": "string or null (e.g. 'northeast toward Block 7', null if unknown)",
           "is_false_lead": false,
-          "resource_hint": "string or null (e.g. 'cctv_operator', 'k9_unit', 'helicopter')",
+          "resource_hint": "string or null (descriptive resource type, e.g. 'cctv_operator', 'tracking_team', 'aerial_unit')",
           "tests_containment": false
         }
       }
@@ -5438,12 +5731,12 @@ RULES:
 - Witness injects go to the triage team. They contain intel that is ONLY useful if relayed.
 - Casualty-spawning injects simulate the adversary continuing to cause harm while not neutralised.
 - The pursuit arc should follow: initial sighting → localisation decisions → containment → intercept/resolution.
-- Gate content_hints should match likely decision keywords (e.g. "CCTV", "cordon", "sweep", "breach", "apprehend").
-- Use at LEAST 5 different intel_source types across all pursuit_time_injects and pursuit_condition_injects.
-- CRITICAL: "high confidence" means the SOURCE is reliable and the LOCATION is precise — it does NOT mean the identification is correct. A CCTV can clearly capture a lookalike. An ANPR can flag a cloned plate. A helicopter thermal can lock onto the wrong person. High-confidence false leads are the MOST dangerous because commanders commit heavy resources to them. At least ONE false lead MUST come from a high-confidence source (cctv, anpr, or helicopter_thermal) to test whether players blindly trust precise intel without cross-referencing.
-- Resource-gated injects should naturally reference the resource in the narrative (e.g. "K9 handler reports strong scent trail heading east").
+- Gate content_hints should match likely decision keywords (e.g. "camera", "cordon", "sweep", "breach", "apprehend").
+- Use at LEAST 4 different intel_source types across all pursuit_time_injects and pursuit_condition_injects. Choose sources that realistically exist at this venue.
+- CRITICAL: "high confidence" means the SOURCE is reliable and the LOCATION is precise — it does NOT mean the identification is correct. A camera can clearly capture a lookalike. A number plate reader can flag a cloned plate. An aerial thermal can lock onto the wrong person. High-confidence false leads are the MOST dangerous because commanders commit heavy resources to them. At least ONE false lead MUST come from a high-confidence source to test whether players blindly trust precise intel without cross-referencing.
+- Resource-gated injects should naturally reference the resource in the narrative (e.g. "Tracking team reports trail heading east" or "Camera operator identifies movement on screen 7").
 - Containment test injects should target locations where a competent team would logically place cordons.
-- Direction of travel should be included on CCTV, K9, and helicopter sources. Omit for cell_tower, financial, social_media.
+- Direction of travel should be included on visual surveillance and tracking sources. Omit for phone triangulation, financial, and social media sources.
 - The overall intel flow should create a realistic "fog of war" — early reports are low confidence, later reports improve as resources are deployed.
 - ANTI-PATTERN RULE: Do NOT create a predictable relationship between confidence level and correctness. Correct intel MUST appear across ALL confidence tiers — some low-confidence eyewitness reports should be accurate, some high-confidence CCTV should be wrong. The player must NEVER be able to deduce correctness from source type or confidence level alone. They must cross-reference MULTIPLE independent reports to triangulate the truth. Vary the pattern — never make "latest high-confidence report = always correct."
 - RANDOMISATION RULE: Across the 8-12 pursuit injects, the TRUE pursuit corridor should be supported by a MIX of high, medium, AND low confidence sources. Similarly, false leads should come from a MIX of confidence levels. A correct low-confidence eyewitness report followed by a wrong high-confidence CCTV report is a realistic and valuable training scenario. The goal is to teach players that NO single source is gospel — only corroboration across independent sources builds a reliable picture.`;
@@ -6031,7 +6324,7 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
 
   const allConditionInjects = await deduplicateConditionInjectsByTheme(
     perTeamChaosResults.flat(),
-    time_injects.map((i) => i.title),
+    time_injects,
     openAiApiKey,
   );
   const condition_driven_injects = allConditionInjects.length > 0 ? allConditionInjects : undefined;
