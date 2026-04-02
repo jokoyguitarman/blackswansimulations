@@ -47,8 +47,8 @@ interface SessionAgents {
 }
 
 interface SingleAction {
-  action: 'decision' | 'placement' | 'chat' | 'none';
-  decision?: { title: string; description: string; decision_type?: string };
+  action: 'decision' | 'placement' | 'chat' | 'claim' | 'none';
+  decision?: { title: string; description: string };
   placement?: {
     asset_type: string;
     label: string;
@@ -56,6 +56,11 @@ interface SingleAction {
     properties?: Record<string, unknown>;
   };
   chat?: { content: string };
+  claim?: {
+    location_label: string;
+    claimed_as: string;
+    exclusivity?: string;
+  };
 }
 
 interface AgentMultiResponse {
@@ -64,17 +69,21 @@ interface AgentMultiResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Constants
+// Constants — tuned for realistic human-like pacing
 // ---------------------------------------------------------------------------
 
-const AGENT_THROTTLE_MS = 20_000;
-const AGENT_RESPONSE_JITTER_MS = 4_000;
+const AGENT_THROTTLE_MS = 90_000;
+const AGENT_JITTER_BASE_MS = 8_000;
+const AGENT_JITTER_RANGE_MS = 7_000;
+const INTER_ACTION_BASE_MS = 4_000;
+const INTER_ACTION_RANGE_MS = 4_000;
 const HYBRID_DEFER_WINDOW_MS = 8_000;
 const MAX_RECENT_ACTIONS = 15;
 const AI_MODEL = 'gpt-4o-mini';
-const PROACTIVE_INTERVAL_MS = 45_000;
-const PROACTIVE_ACT_PROBABILITY = 0.4;
-const KICKSTART_STAGGER_MS = 5_000;
+const PROACTIVE_INTERVAL_MS = 75_000;
+const PROACTIVE_ACT_PROBABILITY = 0.3;
+const KICKSTART_STAGGER_MS = 15_000;
+const KICKSTART_INITIAL_DELAY_MS = 10_000;
 
 // ---------------------------------------------------------------------------
 // Service
@@ -84,16 +93,10 @@ export class DemoAIAgentService {
   private sessions = new Map<string, SessionAgents>();
   private dispatcher = new DemoActionDispatcher();
 
-  /**
-   * Spin up AI agents for every team in a session.
-   * Call this after the session and bot participants are created.
-   */
   async start(
     sessionId: string,
     scenarioId: string,
-    options?: {
-      scriptAware?: boolean;
-    },
+    options?: { scriptAware?: boolean },
   ): Promise<boolean> {
     if (this.sessions.has(sessionId)) {
       logger.warn({ sessionId }, 'AI agents already running for session');
@@ -131,32 +134,26 @@ export class DemoAIAgentService {
       const botUserId = resolveBotUserId(team.team_name);
       const profile = await this.loadBotProfile(botUserId);
 
-      const persona: AgentPersona = {
-        botUserId,
-        teamName: team.team_name,
-        fullName: profile?.full_name || team.team_name,
-        roleName: profile?.role || team.team_name,
-        agencyName: profile?.agency_name || team.team_name,
-        teamDescription: team.description || '',
-        doctrines: team.doctrines || '',
-      };
-
       session.agents.set(botUserId, {
-        persona,
+        persona: {
+          botUserId,
+          teamName: team.team_name,
+          fullName: profile?.full_name || team.team_name,
+          roleName: profile?.role || team.team_name,
+          agencyName: profile?.agency_name || team.team_name,
+          teamDescription: team.description || '',
+          doctrines: team.doctrines || '',
+        },
         recentActions: [],
         lastActionTs: 0,
         pendingCooldown: false,
       });
     }
 
-    // Wire up WebSocket event listeners
     const handler: InternalEventHandler = (event) => {
       if (session.stopped) return;
       this.handleSessionEvent(session, event).catch((err) => {
-        logger.error(
-          { error: err, sessionId, eventType: event.type },
-          'AI agent event handling error',
-        );
+        logger.error({ error: err, sessionId, eventType: event.type }, 'AI agent event error');
       });
     };
     session.eventHandler = handler;
@@ -166,10 +163,7 @@ export class DemoAIAgentService {
       const chHandler: InternalEventHandler = (event) => {
         if (session.stopped) return;
         this.handleChannelEvent(session, event).catch((err) => {
-          logger.error(
-            { error: err, sessionId, eventType: event.type },
-            'AI agent channel event error',
-          );
+          logger.error({ error: err, sessionId, eventType: event.type }, 'AI agent channel error');
         });
       };
       session.channelHandlers.set(channelId, chHandler);
@@ -177,13 +171,10 @@ export class DemoAIAgentService {
     }
 
     this.sessions.set(sessionId, session);
-
     logger.info({ sessionId, scenarioId, agentCount: session.agents.size }, 'AI agents started');
 
-    // Kickstart: stagger initial actions so each agent makes opening moves
     this.runKickstart(session);
 
-    // Proactive timer: agents periodically re-evaluate the situation
     session.proactiveTimer = setInterval(() => {
       if (session.stopped) return;
       this.proactiveTick(session).catch((err) => {
@@ -194,25 +185,18 @@ export class DemoAIAgentService {
     return true;
   }
 
-  /**
-   * Stop all AI agents for a session and detach listeners.
-   */
   stop(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
-
     session.stopped = true;
     getWebSocketService().offSessionEvent(sessionId, session.eventHandler);
-
     for (const [chId, handler] of session.channelHandlers) {
       getWebSocketService().offChannelEvent(chId, handler);
     }
-
     if (session.proactiveTimer) {
       clearInterval(session.proactiveTimer);
       session.proactiveTimer = null;
     }
-
     this.sessions.delete(sessionId);
     logger.info({ sessionId }, 'AI agents stopped');
   }
@@ -236,17 +220,18 @@ export class DemoAIAgentService {
       type: 'session.started',
       data: {
         message:
-          'Exercise has begun. Perform your initial situation assessment and opening actions.',
+          'Exercise has begun. Check the exits/entries on the map and CLAIM the ones relevant to your team. Then make your initial situation assessment.',
       },
       timestamp: new Date().toISOString(),
     };
 
     for (let i = 0; i < agentEntries.length; i++) {
       const [, agentState] = agentEntries[i];
-      const delay = (i + 1) * KICKSTART_STAGGER_MS + Math.random() * 3000;
+      const delay = KICKSTART_INITIAL_DELAY_MS + i * KICKSTART_STAGGER_MS + Math.random() * 5000;
 
       setTimeout(() => {
         if (session.stopped) return;
+        agentState.lastActionTs = 0;
         this.generateAndExecuteActions(session, agentState, kickstartEvent).catch((err) => {
           logger.error(
             { error: err, botUserId: agentState.persona.botUserId },
@@ -259,12 +244,12 @@ export class DemoAIAgentService {
 
   private async proactiveTick(session: SessionAgents): Promise<void> {
     if (session.stopped) return;
-
     const elapsed = this.getElapsedMinutes(session);
+
     const proactiveEvent: WebSocketEvent = {
       type: 'proactive.tick',
       data: {
-        message: `${Math.floor(elapsed)} minutes into the exercise. Assess the current situation and take your next actions.`,
+        message: `${Math.floor(elapsed)} minutes into the exercise. Assess the current situation and take your next action.`,
         elapsed_minutes: Math.floor(elapsed),
       },
       timestamp: new Date().toISOString(),
@@ -274,7 +259,7 @@ export class DemoAIAgentService {
       if (!this.canAct(agentState, session)) continue;
       if (Math.random() > PROACTIVE_ACT_PROBABILITY) continue;
 
-      const jitter = Math.random() * AGENT_RESPONSE_JITTER_MS;
+      const jitter = AGENT_JITTER_BASE_MS + Math.random() * AGENT_JITTER_RANGE_MS;
       setTimeout(() => {
         if (session.stopped) return;
         this.generateAndExecuteActions(session, agentState, proactiveEvent).catch((err) => {
@@ -295,11 +280,7 @@ export class DemoAIAgentService {
     scenarioSummary: string;
     sectorStandards: string;
     incidentCenter: { lat: number; lng: number } | null;
-    teams: Array<{
-      team_name: string;
-      description: string;
-      doctrines: string;
-    }>;
+    teams: Array<{ team_name: string; description: string; doctrines: string }>;
   } | null> {
     try {
       const { data: scenario } = await supabaseAdmin
@@ -400,7 +381,6 @@ export class DemoAIAgentService {
       'state.updated',
       'placement.created',
     ];
-
     if (!triggerTypes.includes(event.type)) return;
 
     const originatorId = this.extractOriginatorId(event);
@@ -409,7 +389,7 @@ export class DemoAIAgentService {
       if (originatorId === botUserId) continue;
       if (!this.canAct(agentState, session)) continue;
 
-      const jitter = Math.random() * AGENT_RESPONSE_JITTER_MS + 2000;
+      const jitter = AGENT_JITTER_BASE_MS + Math.random() * AGENT_JITTER_RANGE_MS;
       setTimeout(() => {
         if (session.stopped) return;
         this.generateAndExecuteActions(session, agentState, event).catch((err) => {
@@ -421,7 +401,6 @@ export class DemoAIAgentService {
 
   private async handleChannelEvent(session: SessionAgents, event: WebSocketEvent): Promise<void> {
     if (event.type !== 'message.sent') return;
-
     const msg = event.data.message as Record<string, unknown> | undefined;
     const senderId =
       (msg?.sender_id as string) || ((msg?.sender as Record<string, unknown>)?.id as string);
@@ -430,9 +409,9 @@ export class DemoAIAgentService {
     for (const [botUserId, agentState] of session.agents) {
       if (senderId === botUserId) continue;
       if (!this.canAct(agentState, session)) continue;
-      if (Math.random() > 0.35) continue;
+      if (Math.random() > 0.2) continue;
 
-      const jitter = Math.random() * AGENT_RESPONSE_JITTER_MS + 3000;
+      const jitter = AGENT_JITTER_BASE_MS + Math.random() * AGENT_JITTER_RANGE_MS;
       setTimeout(() => {
         if (session.stopped) return;
         this.generateAndExecuteActions(session, agentState, event).catch((err) => {
@@ -443,7 +422,7 @@ export class DemoAIAgentService {
   }
 
   // ---------------------------------------------------------------------------
-  // Core AI response generation (multi-action)
+  // Core AI response generation (consolidated turns)
   // ---------------------------------------------------------------------------
 
   private async generateAndExecuteActions(
@@ -473,7 +452,7 @@ export class DemoAIAgentService {
         return;
       }
 
-      for (const action of actions.slice(0, 4)) {
+      for (const action of actions.slice(0, 3)) {
         if (session.stopped) break;
         await this.executeSingleAction(session, agent, action);
 
@@ -482,14 +461,18 @@ export class DemoAIAgentService {
             ? `decision: ${action.decision?.title || ''}`
             : action.action === 'placement'
               ? `placement: ${action.placement?.asset_type} "${action.placement?.label}"`
-              : action.action === 'chat'
-                ? `chat: ${action.chat?.content?.slice(0, 80) || ''}`
-                : action.action;
+              : action.action === 'claim'
+                ? `claim: ${action.claim?.location_label} as ${action.claim?.claimed_as}`
+                : action.action === 'chat'
+                  ? `chat: ${action.chat?.content?.slice(0, 80) || ''}`
+                  : action.action;
 
         agent.recentActions.push(`[${new Date().toISOString()}] ${label}`.slice(0, 200));
 
         if (actions.indexOf(action) < actions.length - 1) {
-          await new Promise((r) => setTimeout(r, 1500 + Math.random() * 2000));
+          await new Promise((r) =>
+            setTimeout(r, INTER_ACTION_BASE_MS + Math.random() * INTER_ACTION_RANGE_MS),
+          );
         }
       }
 
@@ -520,7 +503,7 @@ export class DemoAIAgentService {
   private buildSystemPrompt(session: SessionAgents, agent: AgentState): string {
     const { persona } = agent;
     const parts: string[] = [
-      `You are ${persona.fullName}, ${persona.agencyName}, assigned to team "${persona.teamName}" in a live multi-agency crisis management exercise on the Black Swan Simulations platform.`,
+      `You are ${persona.fullName}, ${persona.agencyName}, assigned to team "${persona.teamName}" in a live multi-agency crisis management exercise.`,
       '',
       '## Scenario',
       session.scenarioSummary,
@@ -529,84 +512,73 @@ export class DemoAIAgentService {
     if (persona.teamDescription) {
       parts.push('', '## Your Team Brief', persona.teamDescription);
     }
-
     if (session.sectorStandards) {
       parts.push('', '## Sector Standards & Regulations', session.sectorStandards);
     }
-
     if (persona.doctrines) {
       parts.push('', '## Your Team Doctrines', persona.doctrines);
     }
 
-    // Game mechanics explanation
     parts.push(
       '',
       '## How This Exercise Works',
       '',
-      'You interact through THREE action types. Return MULTIPLE actions per turn (2-4 is ideal).',
+      'Each turn you return EXACTLY 3 actions in this order:',
+      '1. ONE consolidated DECISION (bundles everything you want to do this cycle)',
+      '2. ONE PLACEMENT or ONE CLAIM (the most important map action from your decision)',
+      '3. ONE short CHAT message (radio summary of what you just did)',
       '',
-      '### 1. DECISIONS (Most Important — EVERY turn MUST include at least one decision!)',
-      'Decisions are the PRIMARY game mechanic. They appear in the War Room decisions panel, are scored against objectives, and are the ONLY actions that count toward performance. If you only do placements and chat without decisions, your team gets ZERO credit.',
-      '- title: Concise action title (e.g. "Establish Inner Cordon - 200m radius from blast site")',
-      '- description: 2-3 sentences explaining what, why, resources, expected outcome. Reference specific locations and procedures.',
+      '### DECISIONS (the only thing that counts)',
+      'Decisions appear in the War Room panel and are scored. Placements/chat without a decision score ZERO.',
+      '- title: Concise but specific (e.g. "Initial Containment: Inner Cordon + Triage Deployment")',
+      '- description: 2-4 sentences bundling ALL tactical moves for this cycle. Reference locations, headcounts, procedures.',
       '',
-      'Good: title="Deploy Forward Triage at Assembly North", description="Establishing START triage 150m from blast in upwind direction. Two paramedic teams assigned. P1 casualties routed to SGH via Penang Rd. Requesting 4 additional ambulances from SCDF."',
-      'Bad: title="Set up triage", description="We should do triage somewhere"',
-      '',
-      '### 2. PLACEMENTS (Support Decisions with Map Actions)',
-      'Drop tactical assets on the map to visualize your decisions. ONLY place an asset if you also submitted a related decision in the same turn.',
-      '- asset_type: command_post | inner_cordon | outer_cordon | staging_area | triage_point | evacuation_route | sniper_position | tactical_unit | press_cordon | decontamination_zone | helicopter_lz | roadblock | observation_post | casualty_collection | forward_command | water_point | rest_area',
-      '- label: Human-readable label',
-      '- geometry: GeoJSON — Point for assets, LineString for cordons/routes, Polygon for zones',
+      '### PLACEMENTS (visualize ONE key map action per decision)',
+      'asset_type: command_post | inner_cordon | outer_cordon | staging_area | triage_point | evacuation_route | tactical_unit | press_cordon | decontamination_zone | helicopter_lz | roadblock | observation_post | casualty_collection | forward_command',
+      '- geometry: GeoJSON Point [lng,lat], LineString [[lng,lat],...], or Polygon [[[lng,lat],...]]',
     );
 
     if (session.incidentCenter) {
       const { lat, lng } = session.incidentCenter;
-      parts.push(
-        '',
-        `Incident center is at [${lat}, ${lng}]. Use REAL coordinates near this point:`,
-        `- Inner cordon: ±0.001–0.002 offset (~100-200m)`,
-        `- Outer cordon: ±0.003–0.005 offset (~300-500m)`,
-        `- Staging/triage: ±0.002–0.004 offset, on accessible side`,
-        `- Command post: ±0.003–0.005 offset, clear sightline`,
-        `Example Point: [${lng + 0.002}, ${lat - 0.001}]`,
-        `Example LineString: [[${lng - 0.002}, ${lat + 0.002}], [${lng + 0.002}, ${lat + 0.002}], [${lng + 0.002}, ${lat - 0.002}]]`,
-      );
+      parts.push(`- Incident center: [${lat}, ${lng}]. Use real coords with offsets ±0.001–0.005.`);
     }
 
     parts.push(
       '',
-      '### 3. CHAT (Radio Communications)',
-      'Short professional radio-style messages to coordinate with other teams. Use call signs and tactical language.',
-      'Example: "All stations, Police Actual. Inner cordon set 200m from epicenter. Orchard Rd and Penang Rd blocked. Request EMS staging at Assembly North. Over."',
+      '### CLAIMS (for exits and entry points)',
+      'In the first minutes, CLAIM exits/entries relevant to your team before others take them.',
+      '- location_label: exact label of the exit from the "Claimable Exits" list',
+      '- claimed_as: how your team will use it (e.g. "evacuation_exit", "triage_staging", "casualty_entry", "media_access")',
+      '- exclusivity: "exclusive" (only your team) or "shared"',
+      '',
+      '### CHAT (1-2 sentences max)',
+      'Professional radio comms. Reference YOUR decision. Acknowledge what other teams did.',
       '',
       '## Response Format',
-      'Return a JSON object with an array of 2-4 actions. The FIRST action MUST be a decision:',
       '```json',
       '{',
       '  "actions": [',
       '    { "action": "decision", "decision": { "title": "...", "description": "..." } },',
-      '    { "action": "placement", "placement": { "asset_type": "...", "label": "...", "geometry": { "type": "Point", "coordinates": [lng, lat] } } },',
+      '    { "action": "placement", "placement": { ... } }  OR  { "action": "claim", "claim": { "location_label": "...", "claimed_as": "...", "exclusivity": "exclusive|shared" } },',
       '    { "action": "chat", "chat": { "content": "..." } }',
       '  ],',
       '  "reasoning": "Brief tactical thinking"',
       '}',
       '```',
       '',
-      '## Tactical Behavior by Phase',
-      '- Minutes 0-3: Situation assessment, initial containment, establish command post, request SITREP',
-      '- Minutes 3-8: Deploy cordons, establish triage, coordinate with agencies, first resource requests',
-      '- Minutes 8-15: Tactical response, specialist deployments, evacuation, media management',
-      '- Minutes 15+: Sustained operations, resource rotation, investigation, recovery planning',
+      '## Tactical Phases',
+      '- Minutes 0-3: CLAIM exits relevant to your team. Initial situation assessment. First containment decision.',
+      '- Minutes 3-8: Deploy cordons/triage, address casualties on the ground, resource requests.',
+      '- Minutes 8-15: Specialist deployments, evacuations, media management, hazard response.',
+      '- Minutes 15+: Sustained ops, resource rotation, investigation, recovery.',
       '',
       '## CRITICAL Rules',
-      '- EVERY turn MUST include at least one "decision" action. Placements and chat WITHOUT a decision are WORTHLESS.',
-      '- NEVER place an inner_cordon or outer_cordon more than once. If cordons already exist, do NOT place another.',
-      '- READ the "Recent actions by all teams" carefully. Do NOT duplicate what another team already did.',
-      '- Each decision must be UNIQUE — different title, different tactical purpose.',
-      '- Chat messages: SHORT (1-2 sentences), reference specific actions, acknowledge what OTHER teams did.',
-      '- Vary your actions: after cordons are set, move to resource requests, evacuations, specialist deployments, investigations.',
-      "- Focus on YOUR team's specialty. Police does cordons/security, Triage does medical, Evacuation does routes, Fire does rescue, Media does public info.",
+      '- Every turn MUST have exactly 1 decision + 1 placement/claim + 1 chat.',
+      '- Bundle ALL your tactical moves into ONE decision with a rich description.',
+      '- NEVER place an inner_cordon or outer_cordon if one already exists.',
+      '- READ "Recent actions" and "Ground situation" carefully. Address SPECIFIC casualties and hazards by name/location.',
+      '- Focus on YOUR team specialty. Do not duplicate what other teams already did.',
+      '- Each decision must be UNIQUE — never repeat a previous decision.',
     );
 
     return parts.join('\n');
@@ -618,24 +590,45 @@ export class DemoAIAgentService {
     event: WebSocketEvent,
   ): Promise<string> {
     const parts: string[] = [];
-
     const elapsed = this.getElapsedMinutes(session);
     parts.push(`## Current Situation — ${Math.floor(elapsed)} minutes into exercise`);
     parts.push('');
 
-    // What triggered this turn
     if (event.type === 'session.started' || event.type === 'proactive.tick') {
       parts.push(`Trigger: ${event.data.message || 'Periodic situation reassessment'}`);
     } else {
       parts.push(`New event: ${event.type}`);
-      parts.push(JSON.stringify(event.data, null, 2).slice(0, 1500));
+      parts.push(JSON.stringify(event.data, null, 2).slice(0, 1200));
     }
 
-    // Recent session activity from other teams
+    // Ground situation: casualties, hazards, claimable exits
+    const ground = await this.loadGroundSituation(session.sessionId, session.scenarioId);
+
+    if (ground.claimableExits.length > 0) {
+      parts.push('', '## Claimable Exits & Entries (claim before others take them!):');
+      for (const exit of ground.claimableExits) {
+        parts.push(`- "${exit.label}" (${exit.location_type}) — ${exit.claimStatus}`);
+      }
+    }
+
+    if (ground.casualties.length > 0) {
+      parts.push('', '## Casualties on the ground:');
+      for (const c of ground.casualties) {
+        parts.push(`- ${c}`);
+      }
+    }
+
+    if (ground.hazards.length > 0) {
+      parts.push('', '## Active hazards:');
+      for (const h of ground.hazards) {
+        parts.push(`- ${h}`);
+      }
+    }
+
     const recentActivity = await this.loadRecentSessionActivity(session.sessionId);
     if (recentActivity.length > 0) {
       parts.push('', '## Recent actions by all teams:');
-      for (const act of recentActivity.slice(0, 10)) {
+      for (const act of recentActivity.slice(0, 12)) {
         parts.push(`- ${act}`);
       }
     }
@@ -647,7 +640,10 @@ export class DemoAIAgentService {
       }
     }
 
-    parts.push('', 'What are your next actions? Return 2-4 actions as JSON. Prioritize decisions.');
+    parts.push(
+      '',
+      'Return exactly 3 actions: 1 decision + 1 placement/claim + 1 chat. Bundle your tactical moves into the decision.',
+    );
 
     return parts.join('\n');
   }
@@ -674,7 +670,7 @@ export class DemoAIAgentService {
             { role: 'user', content: userPrompt },
           ],
           temperature: 0.7,
-          max_tokens: 1200,
+          max_tokens: 900,
           response_format: { type: 'json_object' },
         }),
       });
@@ -693,7 +689,6 @@ export class DemoAIAgentService {
 
       const parsed = JSON.parse(content) as Record<string, unknown>;
 
-      // Support both { actions: [...] } and legacy single-action { action: "..." }
       if (Array.isArray(parsed.actions)) {
         return parsed as unknown as AgentMultiResponse;
       }
@@ -703,7 +698,6 @@ export class DemoAIAgentService {
           reasoning: parsed.reasoning as string | undefined,
         };
       }
-
       return null;
     } catch (err) {
       logger.error({ error: err }, 'AI agent: OpenAI call exception');
@@ -746,6 +740,24 @@ export class DemoAIAgentService {
         break;
       }
 
+      case 'claim': {
+        if (!action.claim?.location_label) break;
+        const locationId = await this.resolveLocationId(
+          session.scenarioId,
+          action.claim.location_label,
+        );
+        if (locationId) {
+          await this.dispatcher.claimLocation(
+            sessionId,
+            locationId,
+            teamName,
+            action.claim.claimed_as || 'operational_use',
+            action.claim.exclusivity,
+          );
+        }
+        break;
+      }
+
       case 'chat': {
         if (!action.chat?.content || !channelId) break;
         await this.dispatcher.sendChatMessage(channelId, sessionId, botUserId, action.chat.content);
@@ -760,14 +772,11 @@ export class DemoAIAgentService {
 
   private canAct(agent: AgentState, session: SessionAgents): boolean {
     if (agent.pendingCooldown) return false;
-
     const now = Date.now();
     if (now - agent.lastActionTs < AGENT_THROTTLE_MS) return false;
-
     if (session.scriptAware && session.scriptNextEventTs > 0) {
       if (session.scriptNextEventTs - now < HYBRID_DEFER_WINDOW_MS) return false;
     }
-
     return true;
   }
 
@@ -777,23 +786,15 @@ export class DemoAIAgentService {
 
   private extractOriginatorId(event: WebSocketEvent): string | null {
     const data = event.data;
-
     const decision = data.decision as Record<string, unknown> | undefined;
     if (decision?.proposed_by) return decision.proposed_by as string;
-
     const placement = data.placement as Record<string, unknown> | undefined;
     if (placement?.placed_by) return placement.placed_by as string;
-
     const message = data.message as Record<string, unknown> | undefined;
     if (message?.sender_id) return message.sender_id as string;
-
     return null;
   }
 
-  /**
-   * If the AI returns coordinates that are near [0,0] (i.e. offsets),
-   * translate them relative to the incident center.
-   */
   private translateGeometry(
     geometry: { type: string; coordinates: unknown },
     center: { lat: number; lng: number } | null,
@@ -802,7 +803,6 @@ export class DemoAIAgentService {
 
     const isNearOrigin = (coord: number[]): boolean =>
       Math.abs(coord[0]) < 1 && Math.abs(coord[1]) < 1;
-
     const translate = (coord: number[]): number[] => [coord[0] + center.lng, coord[1] + center.lat];
 
     try {
@@ -821,30 +821,139 @@ export class DemoAIAgentService {
         if (
           Array.isArray(rings) &&
           rings.length > 0 &&
-          Array.isArray(rings[0]) &&
           rings[0].length > 0 &&
           isNearOrigin(rings[0][0])
         ) {
-          return {
-            type: 'Polygon',
-            coordinates: rings.map((ring) => ring.map(translate)),
-          };
+          return { type: 'Polygon', coordinates: rings.map((ring) => ring.map(translate)) };
         }
       }
     } catch {
-      // geometry is already absolute or malformed — return as-is
+      // geometry already absolute or malformed
     }
-
     return geometry;
   }
 
-  /**
-   * Load recent decisions and placements to give agents awareness of what
-   * other teams have done.
-   */
+  private async resolveLocationId(scenarioId: string, label: string): Promise<string | null> {
+    try {
+      const { data } = await supabaseAdmin
+        .from('scenario_locations')
+        .select('id, label')
+        .eq('scenario_id', scenarioId)
+        .ilike('label', `%${label}%`)
+        .limit(1)
+        .single();
+      return (data as Record<string, unknown>)?.id as string | null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Ground situation loader (casualties, hazards, claimable exits)
+  // ---------------------------------------------------------------------------
+
+  private async loadGroundSituation(
+    sessionId: string,
+    scenarioId: string,
+  ): Promise<{
+    casualties: string[];
+    hazards: string[];
+    claimableExits: Array<{
+      label: string;
+      location_type: string;
+      claimStatus: string;
+    }>;
+  }> {
+    const result = {
+      casualties: [] as string[],
+      hazards: [] as string[],
+      claimableExits: [] as Array<{ label: string; location_type: string; claimStatus: string }>,
+    };
+
+    try {
+      // Casualties
+      const { data: casualties } = await supabaseAdmin
+        .from('scenario_casualties')
+        .select('casualty_type, headcount, status, location_lat, location_lng, conditions')
+        .eq('session_id', sessionId)
+        .in('status', [
+          'undiscovered',
+          'identified',
+          'being_evacuated',
+          'at_assembly',
+          'endorsed_to_triage',
+          'in_treatment',
+        ])
+        .limit(12);
+
+      for (const c of (casualties ?? []) as Array<Record<string, unknown>>) {
+        const conds = c.conditions as Record<string, unknown> | null;
+        const condSummary = conds?.description || conds?.injury_type || '';
+        result.casualties.push(
+          `${c.casualty_type} (${c.headcount} people) at [${c.location_lat}, ${c.location_lng}] — status: ${c.status}${condSummary ? `, ${condSummary}` : ''}`,
+        );
+      }
+
+      // Hazards
+      const { data: hazards } = await supabaseAdmin
+        .from('scenario_hazards')
+        .select('hazard_type, status, location_lat, location_lng, properties')
+        .eq('session_id', sessionId)
+        .in('status', ['active', 'escalating'])
+        .limit(8);
+
+      for (const h of (hazards ?? []) as Array<Record<string, unknown>>) {
+        const props = h.properties as Record<string, unknown> | null;
+        const propSummary = props?.description || props?.size || '';
+        result.hazards.push(
+          `${h.hazard_type} at [${h.location_lat}, ${h.location_lng}] — ${h.status}${propSummary ? `, ${propSummary}` : ''}`,
+        );
+      }
+
+      // Claimable exits
+      const { data: exits } = await supabaseAdmin
+        .from('scenario_locations')
+        .select('id, label, location_type')
+        .eq('scenario_id', scenarioId)
+        .in('location_type', ['exit', 'entry', 'exit_entry', 'entry_exit'])
+        .limit(15);
+
+      if (exits && exits.length > 0) {
+        const exitIds = (exits as Array<Record<string, unknown>>).map((e) => e.id as string);
+        const { data: claims } = await supabaseAdmin
+          .from('session_location_claims')
+          .select('location_id, claimed_by_team, claimed_as')
+          .eq('session_id', sessionId)
+          .in('location_id', exitIds);
+
+        const claimMap = new Map<string, { team: string; as: string }>();
+        for (const cl of (claims ?? []) as Array<Record<string, unknown>>) {
+          claimMap.set(cl.location_id as string, {
+            team: cl.claimed_by_team as string,
+            as: cl.claimed_as as string,
+          });
+        }
+
+        for (const exit of exits as Array<Record<string, unknown>>) {
+          const claim = claimMap.get(exit.id as string);
+          result.claimableExits.push({
+            label: exit.label as string,
+            location_type: exit.location_type as string,
+            claimStatus: claim
+              ? `CLAIMED by ${claim.team} as ${claim.as}`
+              : 'UNCLAIMED — available',
+          });
+        }
+      }
+    } catch (err) {
+      logger.debug({ error: err, sessionId }, 'AI agent: failed to load ground situation');
+    }
+
+    return result;
+  }
+
   private async loadRecentSessionActivity(sessionId: string): Promise<string[]> {
     const lines: string[] = [];
-
     try {
       const { data: decisions } = await supabaseAdmin
         .from('decisions')
@@ -868,7 +977,7 @@ export class DemoAIAgentService {
         )
         .eq('session_id', sessionId)
         .order('created_at', { ascending: false })
-        .limit(6);
+        .limit(5);
 
       for (const p of (placements ?? []) as Array<Record<string, unknown>>) {
         const profile = p.placed_by_profile as Record<string, unknown> | null;
@@ -882,17 +991,16 @@ export class DemoAIAgentService {
         .eq('session_id', sessionId)
         .neq('type', 'system')
         .order('created_at', { ascending: false })
-        .limit(6);
+        .limit(5);
 
       for (const m of (messages ?? []) as Array<Record<string, unknown>>) {
         const sender = m.sender as Record<string, unknown> | null;
         const name = (sender?.full_name as string) || 'Unknown';
-        lines.push(`${name} said: "${(m.content as string)?.slice(0, 120)}"`);
+        lines.push(`${name} said: "${(m.content as string)?.slice(0, 100)}"`);
       }
     } catch (err) {
       logger.debug({ error: err, sessionId }, 'AI agent: failed to load recent activity');
     }
-
     return lines;
   }
 }

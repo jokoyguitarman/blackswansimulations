@@ -461,6 +461,72 @@ export class DemoActionDispatcher {
   }
 
   /**
+   * Claim a scenario location (exit/entry) for a team.
+   */
+  async claimLocation(
+    sessionId: string,
+    locationId: string,
+    teamName: string,
+    claimedAs: string,
+    claimExclusivity?: string,
+  ): Promise<boolean> {
+    try {
+      const { data: existing } = await supabaseAdmin
+        .from('session_location_claims')
+        .select('id')
+        .eq('session_id', sessionId)
+        .eq('location_id', locationId)
+        .maybeSingle();
+
+      if (existing) {
+        logger.debug({ sessionId, locationId }, 'Demo: location already claimed, skipping');
+        return false;
+      }
+
+      const claimRow: Record<string, unknown> = {
+        session_id: sessionId,
+        location_id: locationId,
+        claimed_by_team: teamName,
+        claimed_as: claimedAs,
+      };
+      if (claimExclusivity === 'exclusive' || claimExclusivity === 'shared') {
+        claimRow.claim_exclusivity = claimExclusivity;
+      }
+
+      const { error } = await supabaseAdmin.from('session_location_claims').insert(claimRow);
+      if (error) {
+        logger.warn({ error, sessionId, locationId }, 'Demo: failed to claim location');
+        return false;
+      }
+
+      const { data: loc } = await supabaseAdmin
+        .from('scenario_locations')
+        .select('*')
+        .eq('id', locationId)
+        .single();
+
+      if (loc) {
+        try {
+          getWebSocketService().locationClaimed(sessionId, {
+            ...loc,
+            claimed_by_team: teamName,
+            claimed_as: claimedAs,
+            claim_exclusivity: claimExclusivity ?? null,
+          });
+        } catch {
+          /* ok */
+        }
+      }
+
+      logger.info({ sessionId, locationId, teamName, claimedAs }, 'Demo: location claimed');
+      return true;
+    } catch (err) {
+      logger.error({ error: err, sessionId, locationId }, 'Demo: claimLocation error');
+      return false;
+    }
+  }
+
+  /**
    * Find the main (inter_agency or public) channel for a session that a team can post in.
    */
   async getSessionChannelId(sessionId: string): Promise<string | null> {
