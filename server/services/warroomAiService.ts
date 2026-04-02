@@ -1299,7 +1299,7 @@ export const THREAT_HAZARD_RULES: Record<string, ThreatHazardRule> = {
     min_hazards: 0,
     max_hazards: 2,
     injury_emphasis: ['laceration', 'stab_wound', 'hemorrhage', 'severed_tendon', 'psychological'],
-    casualty_range: [3, 8],
+    casualty_range: [15, 25],
     crowd_description:
       'Localized panic near the attacker. People immediately nearby scatter; those >50m away may not realize what is happening for minutes.',
   },
@@ -1308,7 +1308,7 @@ export const THREAT_HAZARD_RULES: Record<string, ThreatHazardRule> = {
     min_hazards: 0,
     max_hazards: 2,
     injury_emphasis: ['fracture', 'concussion', 'contusion', 'internal_bleeding', 'psychological'],
-    casualty_range: [2, 6],
+    casualty_range: [10, 20],
     crowd_description:
       'Localized panic near the attacker. Bystanders may not immediately identify the weapon or threat.',
   },
@@ -1323,7 +1323,7 @@ export const THREAT_HAZARD_RULES: Record<string, ThreatHazardRule> = {
       'fracture',
       'psychological',
     ],
-    casualty_range: [4, 12],
+    casualty_range: [15, 25],
     crowd_description:
       'Gunshots cause immediate wide panic. People flee in all directions. Stampede risk at chokepoints.',
   },
@@ -1338,7 +1338,7 @@ export const THREAT_HAZARD_RULES: Record<string, ThreatHazardRule> = {
       'fracture',
       'psychological',
     ],
-    casualty_range: [8, 25],
+    casualty_range: [20, 40],
     crowd_description:
       'Loud, sustained gunfire causes mass panic across a wide area. People drop to the ground, stampede toward exits.',
   },
@@ -1353,7 +1353,7 @@ export const THREAT_HAZARD_RULES: Record<string, ThreatHazardRule> = {
       'shrapnel_wound',
       'psychological',
     ],
-    casualty_range: [4, 12],
+    casualty_range: [15, 25],
     crowd_description:
       'Loud blasts cause immediate panic. Close-range devastation but limited range means crowds further away may initially freeze.',
   },
@@ -1380,7 +1380,7 @@ export const THREAT_HAZARD_RULES: Record<string, ThreatHazardRule> = {
       'smoke_inhalation',
       'psychological',
     ],
-    casualty_range: [15, 30],
+    casualty_range: [25, 50],
     crowd_description:
       'Massive explosion causes instant mass panic across the entire venue. Secondary explosions feared. Total evacuation.',
   },
@@ -1395,7 +1395,7 @@ export const THREAT_HAZARD_RULES: Record<string, ThreatHazardRule> = {
       'skin_contamination',
       'psychological',
     ],
-    casualty_range: [10, 30],
+    casualty_range: [20, 40],
     crowd_description:
       'Invisible threat causes delayed panic — people start coughing, collapsing. Once recognized, mass stampede away from the source.',
   },
@@ -1409,7 +1409,7 @@ export const THREAT_HAZARD_RULES: Record<string, ThreatHazardRule> = {
       'organ_failure',
       'psychological',
     ],
-    casualty_range: [5, 25],
+    casualty_range: [15, 30],
     crowd_description:
       'Delayed recognition. Panic escalates as news spreads. Quarantine fears cause secondary panic.',
   },
@@ -1425,7 +1425,7 @@ export const THREAT_HAZARD_RULES: Record<string, ThreatHazardRule> = {
       'traumatic_brain_injury',
       'psychological',
     ],
-    casualty_range: [8, 20],
+    casualty_range: [20, 35],
     crowd_description:
       'Sudden impact causes immediate scatter. Screaming, people running from the path of the vehicle. Debris field.',
   },
@@ -1434,7 +1434,7 @@ export const THREAT_HAZARD_RULES: Record<string, ThreatHazardRule> = {
     min_hazards: 3,
     max_hazards: 8,
     injury_emphasis: ['burn', 'smoke_inhalation', 'carbon_monoxide_poisoning', 'psychological'],
-    casualty_range: [5, 15],
+    casualty_range: [15, 30],
     crowd_description:
       'Fire visible and spreading. Smoke reduces visibility. Evacuation driven by fire and smoke.',
   },
@@ -1443,7 +1443,7 @@ export const THREAT_HAZARD_RULES: Record<string, ThreatHazardRule> = {
     min_hazards: 0,
     max_hazards: 3,
     injury_emphasis: ['crush_injury', 'fracture', 'asphyxiation', 'trampling', 'psychological'],
-    casualty_range: [5, 20],
+    casualty_range: [15, 30],
     crowd_description: 'Crowd dynamics cause the danger — stampede, crush, crowd surge.',
   },
 };
@@ -1573,11 +1573,16 @@ async function buildThreatProfileBlock(
 ): Promise<string> {
   if (!threatProfile) return '';
   const rules = getThreatHazardRules(threatProfile.weapon_class);
+  const advScale = Math.min(threatProfile.adversary_count, 4);
+  const scaledRange: [number, number] = [
+    Math.round(rules.casualty_range[0] * advScale),
+    Math.round(rules.casualty_range[1] * advScale),
+  ];
   const assessed = await assessWeaponLethality(
     threatProfile.weapon_type,
     threatProfile.weapon_class,
     threatProfile.adversary_count,
-    rules.casualty_range,
+    scaledRange,
     openAiApiKey,
     researchCases,
   );
@@ -3706,14 +3711,16 @@ async function generateCasualties(
 
   const threatProfile = input.threat_profile;
   const casualtyRules = threatProfile ? getThreatHazardRules(threatProfile.weapon_class) : null;
+  const advCount = threatProfile?.adversary_count ?? 1;
+  const advScale = Math.min(advCount, 4);
   const baseCasRange: [number, number] = [
-    casualtyRules?.casualty_range[0] ?? 15,
-    casualtyRules?.casualty_range[1] ?? 20,
+    Math.round((casualtyRules?.casualty_range[0] ?? 15) * advScale),
+    Math.round((casualtyRules?.casualty_range[1] ?? 20) * advScale),
   ];
   const weaponAssessment = await assessWeaponLethality(
     threatProfile?.weapon_type ?? '',
     threatProfile?.weapon_class ?? '',
-    threatProfile?.adversary_count ?? 1,
+    advCount,
     baseCasRange,
     openAiApiKey,
     researchContext?.similar_cases,

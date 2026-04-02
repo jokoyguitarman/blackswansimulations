@@ -77,12 +77,29 @@ interface Inject {
   state_effect: unknown;
 }
 
+interface CounterDef {
+  key: string;
+  label: string;
+  type: 'number' | 'boolean' | 'enum';
+  initial_value?: number | boolean | string;
+  behavior?: string;
+  visible_to?: string;
+  config?: {
+    keywords?: string[];
+    categories?: string[];
+    base_rate_per_min?: number;
+    values?: string[];
+    [k: string]: unknown;
+  };
+}
+
 interface Team {
   id: string;
   team_name: string;
   team_description: string;
   min_participants: number;
   max_participants: number;
+  counter_definitions?: CounterDef[];
 }
 
 interface LocationPin {
@@ -465,7 +482,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
               {teams.length === 0 ? (
                 <p className="text-sm terminal-text text-robotic-yellow/50">[NO TEAMS DEFINED]</p>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-4">
                   {teams.map((team) => (
                     <div key={team.id} className="military-border p-4">
                       <div className="text-sm terminal-text text-robotic-yellow font-medium uppercase mb-1">
@@ -474,9 +491,55 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                       <p className="text-xs terminal-text text-robotic-yellow/70 mb-2">
                         {team.team_description}
                       </p>
-                      <div className="text-xs terminal-text text-robotic-yellow/50">
+                      <div className="text-xs terminal-text text-robotic-yellow/50 mb-3">
                         {team.min_participants}–{team.max_participants} participants
                       </div>
+                      {team.counter_definitions && team.counter_definitions.length > 0 && (
+                        <div className="border-t border-robotic-yellow/15 pt-3 mt-2">
+                          <div className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2 tracking-wider">
+                            Counters ({team.counter_definitions.length})
+                          </div>
+                          <div className="space-y-2">
+                            {team.counter_definitions.map((cd) => (
+                              <div
+                                key={cd.key}
+                                className="bg-black/30 border border-robotic-yellow/10 rounded px-3 py-2"
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs terminal-text text-robotic-yellow/90 font-medium">
+                                    {cd.label}
+                                  </span>
+                                  <span className="text-[10px] terminal-text text-robotic-yellow/40 uppercase">
+                                    {cd.type}
+                                    {cd.behavior ? ` · ${cd.behavior.replace(/_/g, ' ')}` : ''}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] terminal-text text-robotic-yellow/40 font-mono">
+                                  key: {cd.key}
+                                  {cd.initial_value !== undefined &&
+                                    ` · initial: ${String(cd.initial_value)}`}
+                                  {cd.visible_to === 'trainer_only' && ' · trainer only'}
+                                </div>
+                                {cd.config?.keywords && cd.config.keywords.length > 0 && (
+                                  <div className="text-[10px] terminal-text text-robotic-yellow/35 mt-1">
+                                    triggers: {cd.config.keywords.join(', ')}
+                                  </div>
+                                )}
+                                {cd.config?.base_rate_per_min != null && (
+                                  <div className="text-[10px] terminal-text text-robotic-yellow/35 mt-1">
+                                    rate: {cd.config.base_rate_per_min}/min
+                                  </div>
+                                )}
+                                {cd.config?.values && cd.config.values.length > 0 && (
+                                  <div className="text-[10px] terminal-text text-robotic-yellow/35 mt-1">
+                                    values: {cd.config.values.join(' | ')}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
