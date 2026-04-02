@@ -1,10 +1,21 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
+import { supabase } from '../lib/supabase';
 
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 function apiUrl(path: string): string {
   return API_BASE ? `${API_BASE}${path}` : path;
+}
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  return {
+    'Content-Type': 'application/json',
+    Authorization: session ? `Bearer ${session.access_token}` : '',
+  };
 }
 
 interface ScenarioSummary {
@@ -24,15 +35,6 @@ interface DemoScriptSummary {
 
 type ViewMode = 'cinematic' | 'god' | 'spotlight';
 type DemoMode = 'scripted' | 'ai' | 'hybrid';
-
-function getAuthToken(): string {
-  return (
-    localStorage.getItem('supabase.auth.token') ??
-    (JSON.parse(localStorage.getItem('sb-auth-token') ?? '{}') as { access_token?: string })
-      ?.access_token ??
-    ''
-  );
-}
 
 export function DemoLanding() {
   const navigate = useNavigate();
@@ -61,17 +63,17 @@ export function DemoLanding() {
     fetchScripts();
   }, []);
 
-  const fetchScripts = () => {
-    fetch(apiUrl('/api/demo/scripts'), {
-      headers: { Authorization: `Bearer ${getAuthToken()}` },
-    })
-      .then((r) => r.json())
-      .then((r) => {
-        const list = (r.data ?? []) as DemoScriptSummary[];
-        setScripts(list);
-        if (list.length > 0 && !selectedScript) setSelectedScript(list[0].id);
-      })
-      .catch(() => {});
+  const fetchScripts = async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const r = await fetch(apiUrl('/api/demo/scripts'), { headers });
+      const json = await r.json();
+      const list = (json.data ?? []) as DemoScriptSummary[];
+      setScripts(list);
+      if (list.length > 0 && !selectedScript) setSelectedScript(list[0].id);
+    } catch {
+      /* ignore */
+    }
   };
 
   const handleLaunch = async () => {
@@ -80,12 +82,10 @@ export function DemoLanding() {
     setError(null);
 
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch(apiUrl('/api/demo/start'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${getAuthToken()}`,
-        },
+        headers,
         body: JSON.stringify({
           scenarioId: selectedScenario,
           scriptId: demoMode !== 'ai' ? selectedScript || undefined : undefined,
@@ -119,12 +119,10 @@ export function DemoLanding() {
     setSuccessMsg(null);
 
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch(apiUrl('/api/demo/generate-script'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${getAuthToken()}`,
-        },
+        headers,
         body: JSON.stringify({
           scenarioId: selectedScenario,
           durationMinutes: 14,
