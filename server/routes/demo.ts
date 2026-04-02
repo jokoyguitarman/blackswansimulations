@@ -28,6 +28,7 @@ const startDemoSchema = z.object({
     scriptId: z.string().optional(),
     speedMultiplier: z.number().min(0.25).max(20).default(1),
     mode: z.enum(['scripted', 'ai', 'hybrid']).default('scripted'),
+    difficulty: z.enum(['novice', 'intermediate', 'advanced']).default('intermediate'),
   }),
 });
 
@@ -60,7 +61,7 @@ router.post(
         return res.status(403).json({ error: 'Only trainers/admins can start demos' });
       }
 
-      const { scenarioId, scriptId, speedMultiplier, mode } = req.body;
+      const { scenarioId, scriptId, speedMultiplier, mode, difficulty } = req.body;
 
       // 1. Load scenario
       const { data: scenario, error: scenarioErr } = await supabaseAdmin
@@ -212,6 +213,7 @@ router.post(
         const agents = getDemoAIAgentService();
         aiAgentsStarted = await agents.start(sessionId, scenarioId, {
           scriptAware: mode === 'hybrid',
+          difficulty: difficulty || 'intermediate',
         });
       }
 

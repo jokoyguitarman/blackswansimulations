@@ -54,6 +54,12 @@ export const Dashboard = () => {
                     >
                       [WAR_ROOM]
                     </a>
+                    <a
+                      href="/demo"
+                      className="px-3 py-1 text-xs terminal-text uppercase border border-robotic-red text-robotic-red hover:bg-robotic-red/10 transition-all"
+                    >
+                      [DEMO]
+                    </a>
                   </>
                 )}
                 <a

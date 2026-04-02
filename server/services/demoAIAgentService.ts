@@ -12,6 +12,8 @@ import { DemoActionDispatcher, resolveBotUserId } from './demoActionDispatcher.j
 // Types
 // ---------------------------------------------------------------------------
 
+export type AIDifficultyLevel = 'novice' | 'intermediate' | 'advanced';
+
 interface AgentPersona {
   botUserId: string;
   teamName: string;
@@ -47,6 +49,7 @@ interface SessionAgents {
   stopped: boolean;
   cycleDecisionCount: number;
   lastInjectTs: number;
+  difficulty: AIDifficultyLevel;
 }
 
 interface SingleAction {
@@ -110,7 +113,7 @@ export class DemoAIAgentService {
   async start(
     sessionId: string,
     scenarioId: string,
-    options?: { scriptAware?: boolean },
+    options?: { scriptAware?: boolean; difficulty?: AIDifficultyLevel },
   ): Promise<boolean> {
     if (this.sessions.has(sessionId)) {
       logger.warn({ sessionId }, 'AI agents already running for session');
@@ -126,6 +129,7 @@ export class DemoAIAgentService {
     if (!context) return false;
 
     const channelId = await this.dispatcher.getSessionChannelId(sessionId);
+    const difficulty = options?.difficulty ?? 'intermediate';
 
     const session: SessionAgents = {
       sessionId,
@@ -144,6 +148,7 @@ export class DemoAIAgentService {
       stopped: false,
       cycleDecisionCount: 0,
       lastInjectTs: 0,
+      difficulty,
     };
 
     for (const team of context.teams) {
@@ -599,13 +604,32 @@ export class DemoAIAgentService {
       '- description: 2-4 sentences bundling ALL tactical moves for this cycle. Reference locations, headcounts, procedures.',
       '',
       '### PLACEMENTS (visualize ONE key map action per decision)',
-      'asset_type: command_post | inner_cordon | outer_cordon | staging_area | triage_point | evacuation_route | tactical_unit | press_cordon | decontamination_zone | helicopter_lz | roadblock | observation_post | casualty_collection | forward_command',
-      '- geometry: GeoJSON Point [lng,lat], LineString [[lng,lat],...], or Polygon [[[lng,lat],...]]',
+      'Each placement MUST use the correct geometry type for its asset:',
+      '',
+      'POINT assets (single location): command_post, triage_point, tactical_unit, helicopter_lz, roadblock, observation_post, casualty_collection, forward_command, medic, fire_truck, ambulance, decontamination_zone',
+      '  → geometry: { "type": "Point", "coordinates": [lng, lat] }',
+      '',
+      'POLYGON assets (enclosed area perimeter): inner_cordon, outer_cordon, staging_area, press_cordon, hot_zone, warm_zone, cold_zone, assembly_area',
+      '  → geometry: { "type": "Polygon", "coordinates": [[[lng1,lat1], [lng2,lat2], [lng3,lat3], [lng4,lat4], [lng1,lat1]]] }',
+      '  → MUST be a closed ring (first and last coordinate identical), minimum 4 corners',
+      '',
+      'LINESTRING assets (route/path): evacuation_route, patrol_route, supply_route',
+      '  → geometry: { "type": "LineString", "coordinates": [[lng1,lat1], [lng2,lat2], [lng3,lat3]] }',
+      '  → Minimum 2 waypoints, ideally 3-5 for realistic curves',
     );
 
     if (session.incidentCenter) {
       const { lat, lng } = session.incidentCenter;
-      parts.push(`- Incident center: [${lat}, ${lng}]. Use real coords with offsets ±0.001–0.005.`);
+      parts.push(
+        '',
+        `- Incident center: [${lat}, ${lng}]. All coordinates MUST be real map coordinates near this center.`,
+        `- For POINTS: use the center ± small offsets (0.0005 to 0.003).`,
+        `- For POLYGONS: create a ring around the target area. Example inner cordon around incident center:`,
+        `  { "type": "Polygon", "coordinates": [[[${(lng - 0.002).toFixed(4)},${(lat - 0.002).toFixed(4)}], [${(lng + 0.002).toFixed(4)},${(lat - 0.002).toFixed(4)}], [${(lng + 0.002).toFixed(4)},${(lat + 0.002).toFixed(4)}], [${(lng - 0.002).toFixed(4)},${(lat + 0.002).toFixed(4)}], [${(lng - 0.002).toFixed(4)},${(lat - 0.002).toFixed(4)}]]] }`,
+        `- For outer cordon, use a LARGER polygon (± 0.004 to 0.006 from center).`,
+        `- For LINESTRINGS: connect known locations. Example evacuation route:`,
+        `  { "type": "LineString", "coordinates": [[${(lng - 0.001).toFixed(4)},${(lat + 0.001).toFixed(4)}], [${(lng + 0.002).toFixed(4)},${(lat + 0.003).toFixed(4)}]] }`,
+      );
     }
 
     parts.push(
@@ -658,6 +682,47 @@ export class DemoAIAgentService {
       '- If the situation is stable and nothing new requires action, return { "actions": [{ "action": "none" }] }.',
       '- You are NOT expected to act every time. Real professionals wait, observe, and only act when there is something meaningful to address.',
     );
+
+    // Difficulty-specific behavioral tuning
+    parts.push('', '## Your Skill Level');
+    switch (session.difficulty) {
+      case 'novice':
+        parts.push(
+          'You are a NOVICE responder. You make realistic beginner mistakes:',
+          '- Your decisions are often VAGUE — missing specific locations, headcounts, or procedures.',
+          '- You sometimes forget to place a physical pin on the map when establishing infrastructure.',
+          '- You occasionally overstep your team jurisdiction (e.g. triage team trying to do police work).',
+          '- You rarely use proper professional terminology or reference standard operating procedures.',
+          '- You may ignore active hazards or not check environmental conditions before deploying.',
+          '- Your polygons for cordons are often too small or poorly positioned.',
+          '- About 40% of your decisions should have some kind of quality issue.',
+        );
+        break;
+      case 'advanced':
+        parts.push(
+          'You are an ADVANCED expert responder with deep operational knowledge:',
+          '- Your decisions are always OPERATIONALLY SPECIFIC: exact locations, personnel counts, equipment lists, procedure names.',
+          '- You ALWAYS place the correct map asset when establishing infrastructure (triage_point when setting up triage, inner_cordon polygon when establishing perimeter, etc.).',
+          '- You reference the sector standards and doctrines by name in your decisions.',
+          '- You check environmental conditions and hazard status before making decisions.',
+          '- You draw appropriately-sized cordons (inner tighter, outer wider) using Polygon geometry.',
+          '- You coordinate with other teams, acknowledge their actions, and avoid jurisdiction overlap.',
+          '- You triage casualties methodically using proper triage protocols (START/SALT).',
+          '- You respond to ALL environmental truths: available insider knowledge, hazard properties, casualty conditions.',
+          '- Your polygons and linestrings are realistic in shape and size.',
+          '- Virtually all your decisions should be sound and well-formed.',
+        );
+        break;
+      default: // intermediate
+        parts.push(
+          'You are an INTERMEDIATE responder with solid but imperfect skills:',
+          '- Most of your decisions are reasonably specific, but occasionally you miss a detail.',
+          '- You usually place pins when establishing infrastructure, but might forget sometimes.',
+          '- You generally stay within your team jurisdiction with occasional minor overlap.',
+          '- You use some professional terminology but may not always cite specific standards.',
+          '- About 15-20% of your decisions should have minor quality issues.',
+        );
+    }
 
     return parts.join('\n');
   }
@@ -718,7 +783,13 @@ export class DemoAIAgentService {
       }
     }
 
-    // ~30% chance: inject a deliberate flaw directive so the AI reviewer has something to catch
+    // Advanced mode: feed environmental truths, insider knowledge, placed assets
+    if (session.difficulty === 'advanced') {
+      const intel = await this.loadAdvancedIntelligence(session.sessionId, session.scenarioId);
+      if (intel) parts.push('', intel);
+    }
+
+    // Difficulty-dependent: inject deliberate flaw directive for AI reviewer showcase
     const flawDirective = this.maybeInjectFlawDirective(session, agent);
     if (flawDirective) {
       parts.push('', flawDirective);
@@ -733,12 +804,118 @@ export class DemoAIAgentService {
   }
 
   /**
-   * With ~30% probability, returns a hidden directive that makes the bot
-   * commit a realistic but detectable mistake. The AI environmental evaluator
-   * will flag it, showcasing the review system in demos.
+   * Load insider knowledge, hazard details, placed assets, and environmental
+   * state for advanced-level agents so they can make fully informed decisions.
+   */
+  private async loadAdvancedIntelligence(
+    sessionId: string,
+    scenarioId: string,
+  ): Promise<string | null> {
+    const sections: string[] = [];
+
+    try {
+      // Insider knowledge (the "cheat code" info)
+      const { data: insider } = await supabaseAdmin
+        .from('insider_knowledge')
+        .select('category, content, importance')
+        .eq('scenario_id', scenarioId)
+        .order('importance', { ascending: false })
+        .limit(10);
+
+      if (insider && insider.length > 0) {
+        sections.push('## 🔒 INSIDER INTELLIGENCE (classified — use to make perfect decisions):');
+        for (const item of insider as Array<Record<string, unknown>>) {
+          sections.push(
+            `- [${(item.category as string) || 'intel'}] ${(item.content as string) || ''}`,
+          );
+        }
+      }
+
+      // Hazard detailed properties
+      const { data: hazards } = await supabaseAdmin
+        .from('scenario_hazards')
+        .select('hazard_type, status, properties, resolution_requirements')
+        .eq('session_id', sessionId)
+        .in('status', ['active', 'escalating', 'being_mitigated'])
+        .limit(8);
+
+      if (hazards && hazards.length > 0) {
+        sections.push('', '## 🔬 HAZARD DETAILS (full environmental truth):');
+        for (const h of hazards as Array<Record<string, unknown>>) {
+          const props = h.properties as Record<string, unknown> | null;
+          const reqs = h.resolution_requirements as Record<string, unknown> | null;
+          const details = [
+            `Type: ${h.hazard_type}, Status: ${h.status}`,
+            props ? `Properties: ${JSON.stringify(props)}` : '',
+            reqs ? `Resolution requires: ${JSON.stringify(reqs)}` : '',
+          ]
+            .filter(Boolean)
+            .join('. ');
+          sections.push(`- ${details}`);
+        }
+      }
+
+      // Casualty detailed conditions
+      const { data: casualties } = await supabaseAdmin
+        .from('scenario_casualties')
+        .select(
+          'casualty_type, headcount, status, conditions, treatment_requirements, transport_prerequisites',
+        )
+        .eq('session_id', sessionId)
+        .in('status', ['undiscovered', 'identified', 'endorsed_to_triage', 'in_treatment'])
+        .limit(10);
+
+      if (casualties && casualties.length > 0) {
+        sections.push('', '## 🏥 CASUALTY MEDICAL DETAILS (full clinical truth):');
+        for (const c of casualties as Array<Record<string, unknown>>) {
+          const conds = c.conditions as Record<string, unknown> | null;
+          const treatReqs = c.treatment_requirements as Record<string, unknown> | null;
+          const transReqs = c.transport_prerequisites as Record<string, unknown> | null;
+          const details = [
+            `${c.casualty_type} (${c.headcount}), status: ${c.status}`,
+            conds ? `Conditions: ${JSON.stringify(conds)}` : '',
+            treatReqs ? `Treatment required: ${JSON.stringify(treatReqs)}` : '',
+            transReqs ? `Transport prerequisites: ${JSON.stringify(transReqs)}` : '',
+          ]
+            .filter(Boolean)
+            .join('. ');
+          sections.push(`- ${details}`);
+        }
+      }
+
+      // Currently placed assets (so agent knows what infrastructure exists)
+      const { data: placed } = await supabaseAdmin
+        .from('placed_assets')
+        .select('asset_type, label, team_name, geometry')
+        .eq('session_id', sessionId)
+        .eq('status', 'active')
+        .limit(20);
+
+      if (placed && placed.length > 0) {
+        sections.push('', '## 🗺️ DEPLOYED INFRASTRUCTURE (what is on the map right now):');
+        for (const p of placed as Array<Record<string, unknown>>) {
+          const geom = p.geometry as { type?: string } | null;
+          sections.push(
+            `- ${p.asset_type} "${p.label}" by ${p.team_name} (${geom?.type || 'unknown'})`,
+          );
+        }
+      }
+    } catch (err) {
+      logger.warn({ error: err, sessionId }, 'AI agent: failed to load advanced intelligence');
+    }
+
+    return sections.length > 0 ? sections.join('\n') : null;
+  }
+
+  /**
+   * With difficulty-dependent probability, returns a hidden directive that makes
+   * the bot commit a realistic but detectable mistake. The AI environmental
+   * evaluator will flag it, showcasing the review system in demos.
    */
   private maybeInjectFlawDirective(session: SessionAgents, agent: AgentState): string | null {
-    if (Math.random() > 0.3) return null;
+    const flawProbability =
+      session.difficulty === 'novice' ? 0.45 : session.difficulty === 'advanced' ? 0.05 : 0.25;
+    if (Math.random() > flawProbability) return null;
 
     const elapsed = this.getElapsedMinutes(session);
     const team = agent.persona.teamName.toLowerCase();

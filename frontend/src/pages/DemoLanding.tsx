@@ -26,12 +26,14 @@ interface ScenarioSummary {
 }
 
 type ViewMode = 'cinematic' | 'god' | 'spotlight';
+type AIDifficulty = 'novice' | 'intermediate' | 'advanced';
 
 export function DemoLanding() {
   const navigate = useNavigate();
   const [scenarios, setScenarios] = useState<ScenarioSummary[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string>('');
   const [viewMode, setViewMode] = useState<ViewMode>('cinematic');
+  const [difficulty, setDifficulty] = useState<AIDifficulty>('intermediate');
   const [speed, setSpeed] = useState(1);
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +63,7 @@ export function DemoLanding() {
           scenarioId: selectedScenario,
           speedMultiplier: speed,
           mode: 'ai',
+          difficulty,
         }),
       });
 
@@ -151,6 +154,50 @@ export function DemoLanding() {
           </div>
         </div>
 
+        {/* AI Difficulty */}
+        <div className="mb-6">
+          <label className="block text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
+            AI Skill Level
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {(
+              [
+                {
+                  level: 'novice' as AIDifficulty,
+                  label: 'Novice',
+                  sub: 'Makes frequent mistakes. Vague decisions, poor map usage. Great for showcasing AI reviewer.',
+                  color: 'text-green-400',
+                },
+                {
+                  level: 'intermediate' as AIDifficulty,
+                  label: 'Intermediate',
+                  sub: 'Solid but imperfect. Occasional errors. Balanced realism for demos.',
+                  color: 'text-yellow-400',
+                },
+                {
+                  level: 'advanced' as AIDifficulty,
+                  label: 'Advanced',
+                  sub: 'Expert play. Full intel access, precise map ops, standard-compliant decisions.',
+                  color: 'text-red-400',
+                },
+              ] as const
+            ).map(({ level, label, sub, color }) => (
+              <button
+                key={level}
+                onClick={() => setDifficulty(level)}
+                className={`p-3 border text-left transition-colors ${
+                  difficulty === level
+                    ? 'border-robotic-yellow bg-robotic-yellow/10'
+                    : 'border-robotic-yellow/20 hover:border-robotic-yellow/40'
+                }`}
+              >
+                <div className={`text-sm terminal-text font-bold ${color}`}>{label}</div>
+                <div className="text-[10px] terminal-text text-robotic-yellow/50 mt-1">{sub}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Speed */}
         <div className="mb-8">
           <label className="block text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
@@ -192,10 +239,10 @@ export function DemoLanding() {
 
         <div className="flex items-center justify-between">
           <button
-            onClick={() => navigate('/sessions')}
+            onClick={() => navigate('/dashboard')}
             className="px-4 py-2 text-xs terminal-text uppercase border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
           >
-            Back
+            ← Dashboard
           </button>
           <button
             onClick={handleLaunch}
