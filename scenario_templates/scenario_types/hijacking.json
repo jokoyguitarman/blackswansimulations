@@ -174,6 +174,17 @@
         "initial_value": 0,
         "behavior": "state_effect",
         "visible_to": "all"
+      },
+      {
+        "key": "route_blocked",
+        "label": "Route Blocked",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["route", "block", "divert", "intercept", "roadblock"]
+        }
       }
     ],
     "negotiation": [
@@ -209,6 +220,17 @@
         "config": {
           "keywords": ["session", "negotiation", "round", "talk"]
         }
+      },
+      {
+        "key": "deadline_extended",
+        "label": "Deadline Extended",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["deadline", "extend", "more time", "delay"]
+        }
       }
     ],
     "intelligence": [
@@ -232,6 +254,28 @@
         "visible_to": "trainer_only",
         "config": {
           "keywords": ["inside", "intel", "surveillance", "camera", "feed"]
+        }
+      },
+      {
+        "key": "vehicle_tracked",
+        "label": "Vehicle Tracked",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["tracked", "radar", "GPS", "location", "transponder"]
+        }
+      },
+      {
+        "key": "passenger_manifest_obtained",
+        "label": "Passenger Manifest Obtained",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["manifest", "passenger list", "names", "roster", "headcount"]
         }
       }
     ],
@@ -272,6 +316,17 @@
         "visible_to": "trainer_only",
         "config": {
           "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "misinformation_addressed_count",
+        "label": "Misinformation Addressed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["debunk", "counter", "correct", "misinformation", "rumour"]
         }
       },
       {
@@ -346,6 +401,54 @@
         "visible_to": "trainer_only"
       },
       {
+        "key": "patients_being_treated",
+        "label": "Patients Being Treated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all",
+        "config": {
+          "source_pool_key": "total_patients",
+          "rate_key": "triage_processed",
+          "split_fractions": {
+            "deaths_on_site": 0.1,
+            "handed_over_to_hospital": 0.45
+          },
+          "split_fractions_low": {
+            "deaths_on_site": 0.2,
+            "handed_over_to_hospital": 0.25
+          },
+          "split_fractions_high": {
+            "deaths_on_site": 0.05,
+            "handed_over_to_hospital": 0.6
+          }
+        }
+      },
+      {
+        "key": "patients_waiting",
+        "label": "Patients Waiting",
+        "type": "number",
+        "initial_value": 160,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "handed_over_to_hospital",
+        "label": "Handed Over to Hospital",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "deaths_on_site",
+        "label": "Deaths on Site",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
         "key": "medical_standby",
         "label": "Medical Standby Active",
         "type": "boolean",
@@ -361,7 +464,7 @@
         "label": "Casualties",
         "type": "number",
         "initial_value": 0,
-        "behavior": "state_effect",
+        "behavior": "derived",
         "visible_to": "all"
       }
     ]

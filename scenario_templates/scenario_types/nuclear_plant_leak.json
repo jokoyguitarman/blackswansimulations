@@ -1,0 +1,797 @@
+{
+  "id": "nuclear_plant_leak",
+  "display_name": "Nuclear plant leak / radiation release",
+  "category": "industrial_disaster",
+  "required_teams": [
+    {
+      "team_name": "radiation_safety",
+      "team_description": "Radiation monitoring, dosimetry, zone classification (hot/warm/cold by mSv/hr), source term assessment, environmental sampling, plume tracking",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "plant_operations",
+      "team_description": "Reactor SCRAM verification, coolant system management, containment integrity assessment, backup power coordination, controlled venting decisions",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "fire_hazmat",
+      "team_description": "Radiological decontamination stations, HAZMAT containment, water runoff management, PPE management, hot zone entry",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "evacuation",
+      "team_description": "Multi-ring evacuation (2km/10km/30km progressive), shelter-in-place coordination, KI (potassium iodide) distribution, livestock and agriculture advisories",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "triage",
+      "team_description": "Contamination screening, acute radiation syndrome (ARS) triage, internal contamination assessment, dose estimation, radiation-specific treatment protocols",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "police",
+      "team_description": "Exclusion zone enforcement, traffic management for mass evacuation routes, access control to restricted areas, anti-looting patrols in evacuated zones",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "media",
+      "team_description": "INES level declaration communications, public advisory (shelter/evacuate/iodine), counter-misinformation, regulatory liaison (IAEA, national nuclear authority)",
+      "min_participants": 2,
+      "max_participants": 6
+    }
+  ],
+  "environmental_factors": [
+    "reactor_type",
+    "containment_integrity",
+    "release_type",
+    "wind_direction",
+    "plume_trajectory",
+    "rainfall_risk",
+    "groundwater_proximity",
+    "population_density_rings",
+    "time_since_scram",
+    "backup_power_status"
+  ],
+  "has_adversary": false,
+  "adversary_behaviors": [],
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "field_update",
+      "template": "Radiation alarm triggered at {venue}. Automatic SCRAM initiated. Elevated readings detected inside containment building. Cause unknown — loss of coolant suspected.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+5",
+      "type": "field_update",
+      "template": "Containment pressure rising above design limits. Potential atmospheric release imminent. Wind modelling shows plume trajectory toward populated area to the south-east.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+10",
+      "type": "intel_brief",
+      "template": "Confirmed release — noble gases and iodine-131 detected outside perimeter fence. Dose rate at plant boundary: 50 µSv/hr and rising. Source term assessment urgently needed.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+20",
+      "type": "field_update",
+      "template": "Plume modelling shows residential areas within 10 km in release path. KI distribution and evacuation radius decision urgent. Schools in fallout zone requesting guidance.",
+      "severity": "critical"
+    },
+    {
+      "timing": "T+30",
+      "type": "intel_brief",
+      "template": "Rain forecast within 2 hours — washout would concentrate contamination on ground and in water supply. Agricultural zone downwind. Water supply restriction and food chain interdiction decisions needed.",
+      "severity": "high"
+    }
+  ],
+  "decision_branches": [
+    {
+      "branch_id": "evacuation_radius",
+      "keywords": ["evacuate", "radius", "2km", "10km", "30km", "zone", "ring"],
+      "trigger_condition": "when command decides on evacuation radius — 2km precautionary, 10km protective, or 30km extended",
+      "inject_template": "Evacuation radius decision needed. 2 km precautionary? 10 km protective? 30 km extended? Each ring multiplies evacuee count and resource demand exponentially."
+    },
+    {
+      "branch_id": "iodine_distribution",
+      "keywords": ["iodine", "KI", "potassium iodide", "tablets", "thyroid", "prophylaxis"],
+      "trigger_condition": "when decision is made on KI distribution — pre-distribute or wait for confirmed thyroid dose pathway",
+      "inject_template": "KI distribution decision. Pre-distribute to all within 30 km (logistically massive) or wait for confirmed thyroid dose pathway (risk delayed protection)?"
+    },
+    {
+      "branch_id": "ines_declaration",
+      "keywords": ["INES", "level", "declare", "classification", "scale", "international"],
+      "trigger_condition": "when decision is made to declare INES level (4/5/6/7)",
+      "inject_template": "INES level classification needed. Level 4 (local consequences) or higher? Declaration triggers international response protocols and shapes global media narrative."
+    },
+    {
+      "branch_id": "shelter_vs_evacuate",
+      "keywords": ["shelter", "stay indoors", "shelter in place", "wind shift", "plume"],
+      "trigger_condition": "when wind shift makes shelter-in-place potentially safer than evacuation through the plume",
+      "inject_template": "Wind shift detected. Evacuees on Route 7 may drive directly through the plume. Shelter-in-place may now be safer for some zones. Reverse the evacuation order?"
+    },
+    {
+      "branch_id": "water_supply_restriction",
+      "keywords": ["water", "supply", "restrict", "reservoir", "contamination", "drinking"],
+      "trigger_condition": "when decision is made to restrict surface water sources",
+      "inject_template": "Surface water sources in the plume path may be contaminated. Restrict supply and switch to reserves? Population affected: estimated 80,000."
+    },
+    {
+      "branch_id": "food_chain_interdiction",
+      "keywords": [
+        "food",
+        "dairy",
+        "produce",
+        "agriculture",
+        "ban",
+        "interdiction",
+        "livestock",
+        "milk"
+      ],
+      "trigger_condition": "when decision is made to ban dairy and produce from affected agricultural zones",
+      "inject_template": "Iodine-131 concentrates in dairy via pasture-cow-milk pathway. Ban dairy and fresh produce from the fallout zone? Farmers demanding clarity."
+    }
+  ],
+  "compatible_settings": ["power_plant", "industrial", "government"],
+  "compatible_terrains": ["rural", "coastal", "urban", "desert"],
+  "multi_storey": false,
+  "condition_keys": [
+    {
+      "key": "source_term_not_assessed",
+      "meaning": "No source term characterisation completed by expected time",
+      "team": "radiation_safety"
+    },
+    {
+      "key": "reactor_scram_not_verified",
+      "meaning": "Reactor SCRAM not verified or coolant status unknown",
+      "team": "plant_operations"
+    },
+    {
+      "key": "containment_venting_not_decided",
+      "meaning": "Containment pressure critical but no venting decision made",
+      "team": "plant_operations"
+    },
+    {
+      "key": "evacuation_no_decision",
+      "meaning": "No evacuation or shelter-in-place decision made",
+      "team": "evacuation"
+    },
+    {
+      "key": "ki_not_distributed_by_T20",
+      "meaning": "elapsedMinutes >= 20 and KI distribution not ordered despite confirmed iodine release",
+      "team": "evacuation"
+    },
+    {
+      "key": "decon_not_established",
+      "meaning": "No decontamination stations established",
+      "team": "fire_hazmat"
+    },
+    {
+      "key": "media_no_statement_by_T12",
+      "meaning": "elapsedMinutes >= 12 and no public statement issued",
+      "team": "media"
+    },
+    {
+      "key": "ines_not_declared_by_T25",
+      "meaning": "elapsedMinutes >= 25 and INES level not declared",
+      "team": "media"
+    }
+  ],
+  "keyword_patterns": [
+    {
+      "category": "Source Term (radiation_safety)",
+      "keywords": ["source term", "characterize", "isotope", "spectrum", "activity"],
+      "state_key": "radiation_safety_state.source_term_assessed"
+    },
+    {
+      "category": "SCRAM (plant_operations)",
+      "keywords": ["SCRAM", "shutdown", "trip", "control rods", "reactor shutdown"],
+      "state_key": "plant_operations_state.reactor_scrammed"
+    },
+    {
+      "category": "Venting (plant_operations)",
+      "keywords": ["vent", "pressure relief", "release", "containment vent"],
+      "state_key": "plant_operations_state.venting_authorized"
+    },
+    {
+      "category": "Evacuation (evacuation)",
+      "keywords": ["evacuate", "evacuation", "clear", "move out", "bus"],
+      "state_key": "evacuation_state.evacuation_ordered"
+    },
+    {
+      "category": "KI Distribution (evacuation)",
+      "keywords": ["iodine", "KI", "potassium iodide", "tablets"],
+      "state_key": "evacuation_state.ki_distribution_ordered"
+    },
+    {
+      "category": "Decontamination (fire_hazmat)",
+      "keywords": ["decontamination", "decon", "wash", "screening"],
+      "state_key": "fire_hazmat_state.decon_stations_operational"
+    },
+    {
+      "category": "INES Declaration (media)",
+      "keywords": ["INES", "level", "declare", "classification", "nuclear scale"],
+      "state_key": "media_state.ines_level_declared"
+    },
+    {
+      "category": "Statement (media)",
+      "keywords": ["statement", "press", "announce", "release", "advisory"],
+      "state_key": "media_state.first_statement_issued"
+    },
+    {
+      "category": "Exclusion Zone (police)",
+      "keywords": ["exclusion", "cordon", "perimeter", "restrict", "zone"],
+      "state_key": "police_state.exclusion_zone_enforced"
+    }
+  ],
+  "team_counter_definitions": {
+    "radiation_safety": [
+      {
+        "key": "ambient_dose_rate_usv",
+        "label": "Ambient Dose Rate (µSv/hr)",
+        "type": "number",
+        "initial_value": 5,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "exclusion_zone_radius_km",
+        "label": "Exclusion Zone Radius (km)",
+        "type": "number",
+        "initial_value": 2,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "source_term_assessed",
+        "label": "Source Term Assessed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["source term", "characterize", "isotope", "spectrum", "radionuclide"]
+        }
+      },
+      {
+        "key": "environmental_samples_collected",
+        "label": "Environmental Samples Collected",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["sample", "soil", "water", "air", "swab", "dosimeter"]
+        }
+      },
+      {
+        "key": "monitoring_teams_deployed",
+        "label": "Monitoring Teams Deployed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "plume_model_updated",
+        "label": "Plume Model Updated",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["plume", "model", "trajectory", "dispersion", "forecast"]
+        }
+      }
+    ],
+    "plant_operations": [
+      {
+        "key": "reactor_scrammed",
+        "label": "Reactor SCRAM Verified",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["SCRAM", "shutdown", "trip", "control rods", "reactor shutdown"]
+        }
+      },
+      {
+        "key": "coolant_flow_status",
+        "label": "Coolant Flow Status",
+        "type": "enum",
+        "initial_value": "unknown",
+        "behavior": "state_effect",
+        "visible_to": "all",
+        "config": {
+          "values": ["unknown", "normal", "degraded", "lost"]
+        }
+      },
+      {
+        "key": "containment_integrity",
+        "label": "Containment Integrity",
+        "type": "enum",
+        "initial_value": "unknown",
+        "behavior": "state_effect",
+        "visible_to": "all",
+        "config": {
+          "values": ["unknown", "intact", "degraded", "breached"]
+        }
+      },
+      {
+        "key": "emergency_power_active",
+        "label": "Emergency Power Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["diesel", "generator", "backup power", "UPS", "emergency power"]
+        }
+      },
+      {
+        "key": "venting_authorized",
+        "label": "Containment Venting Authorized",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["vent", "release", "pressure relief", "containment vent"]
+        }
+      },
+      {
+        "key": "spent_fuel_pool_status",
+        "label": "Spent Fuel Pool Status",
+        "type": "enum",
+        "initial_value": "unknown",
+        "behavior": "state_effect",
+        "visible_to": "all",
+        "config": {
+          "values": ["unknown", "normal", "heating", "critical"]
+        }
+      }
+    ],
+    "fire_hazmat": [
+      {
+        "key": "decon_stations_operational",
+        "label": "Decon Stations Operational",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "hot_zone_established",
+        "label": "Hot Zone Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["hot zone", "exclusion", "hazard zone", "radiation zone"]
+        }
+      },
+      {
+        "key": "personnel_decontaminated",
+        "label": "Personnel Decontaminated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 6,
+          "robustness_affects": true,
+          "requires_flag": "decon_stations_operational"
+        }
+      },
+      {
+        "key": "water_runoff_contained",
+        "label": "Contaminated Runoff Contained",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["runoff", "bund", "containment", "drainage", "water management"]
+        }
+      },
+      {
+        "key": "units_deployed",
+        "label": "HAZMAT Units Deployed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ],
+    "evacuation": [
+      {
+        "key": "total_evacuees",
+        "label": "Total to Evacuate",
+        "type": "number",
+        "initial_value": 15000,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "evacuated_count",
+        "label": "People Evacuated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 80,
+          "cap_key": "total_evacuees",
+          "requires_flag": "evacuation_ordered",
+          "robustness_affects": true,
+          "congestion_halves": true,
+          "impact_sensitive": true,
+          "rate_modifier_key": "evac_rate_modifier",
+          "marshal_boost_key": "marshals_deployed",
+          "marshal_boost_mult": 1.15
+        }
+      },
+      {
+        "key": "evac_rate_modifier",
+        "label": "Evacuation Rate Modifier",
+        "type": "number",
+        "initial_value": 1,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "evacuation_ordered",
+        "label": "Evacuation Ordered",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["evacuate", "evacuation", "clear", "move out", "bus"]
+        }
+      },
+      {
+        "key": "shelter_in_place_ordered",
+        "label": "Shelter-in-Place Ordered",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["shelter", "stay indoors", "shelter in place", "seal windows"]
+        }
+      },
+      {
+        "key": "ki_distribution_ordered",
+        "label": "KI Distribution Ordered",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["iodine", "KI", "potassium iodide", "tablets", "thyroid"]
+        }
+      },
+      {
+        "key": "ki_tablets_distributed",
+        "label": "KI Tablets Distributed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 50,
+          "cap_key": "total_evacuees",
+          "requires_flag": "ki_distribution_ordered",
+          "robustness_affects": true
+        }
+      },
+      {
+        "key": "marshals_deployed",
+        "label": "Marshals / Traffic Wardens Deployed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["marshal", "warden", "guide", "traffic", "usher"]
+        }
+      }
+    ],
+    "triage": [
+      {
+        "key": "total_patients",
+        "label": "Total Patients",
+        "type": "number",
+        "initial_value": 200,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "contamination_screened",
+        "label": "Contamination Screened",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 10,
+          "cap_key": "total_patients",
+          "robustness_affects": true,
+          "requires_flag": "screening_active"
+        }
+      },
+      {
+        "key": "screening_active",
+        "label": "Screening Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["screen", "monitor", "geiger", "survey", "contamination check"]
+        }
+      },
+      {
+        "key": "triage_processed",
+        "label": "Patients Triaged",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "trainer_only",
+        "config": {
+          "base_rate_per_min": 5,
+          "cap_key": "total_patients",
+          "robustness_affects": true,
+          "robustness_low_mult": 0.4,
+          "robustness_high_mult": 1.2,
+          "impact_sensitive": true,
+          "rate_modifier_key": "treatment_rate_modifier"
+        }
+      },
+      {
+        "key": "treatment_rate_modifier",
+        "label": "Treatment Rate Modifier",
+        "type": "number",
+        "initial_value": 1,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "patients_being_treated",
+        "label": "Patients Being Treated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all",
+        "config": {
+          "source_pool_key": "total_patients",
+          "rate_key": "triage_processed",
+          "split_fractions": {
+            "deaths_on_site": 0.05,
+            "handed_over_to_hospital": 0.55
+          },
+          "split_fractions_low": {
+            "deaths_on_site": 0.15,
+            "handed_over_to_hospital": 0.25
+          },
+          "split_fractions_high": {
+            "deaths_on_site": 0.02,
+            "handed_over_to_hospital": 0.7
+          }
+        }
+      },
+      {
+        "key": "patients_waiting",
+        "label": "Patients Waiting",
+        "type": "number",
+        "initial_value": 200,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "handed_over_to_hospital",
+        "label": "Handed Over to Hospital",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "deaths_on_site",
+        "label": "Deaths on Site",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "ars_cases_identified",
+        "label": "ARS Cases Identified",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "internal_contamination_assessed",
+        "label": "Internal Contamination Assessed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["internal", "bioassay", "whole body", "thyroid scan", "ingestion"]
+        }
+      }
+    ],
+    "police": [
+      {
+        "key": "exclusion_zone_enforced",
+        "label": "Exclusion Zone Enforced",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["exclusion", "cordon", "perimeter", "restrict", "zone", "enforce"]
+        }
+      },
+      {
+        "key": "traffic_management_active",
+        "label": "Traffic Management Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["traffic", "divert", "route", "roadblock", "contraflow", "junction"]
+        }
+      },
+      {
+        "key": "access_control_points",
+        "label": "Access Control Points",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "anti_looting_patrols",
+        "label": "Anti-Looting Patrols Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["looting", "patrol", "security", "vacant", "abandoned"]
+        }
+      }
+    ],
+    "media": [
+      {
+        "key": "public_sentiment",
+        "label": "Public Sentiment",
+        "type": "number",
+        "initial_value": 4,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "media_protocol_score",
+        "label": "Protocol Adherence",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "statements_issued",
+        "label": "Statements Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release", "advisory"]
+        }
+      },
+      {
+        "key": "misinformation_addressed_count",
+        "label": "Misinformation Addressed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["debunk", "counter", "correct", "misinformation"]
+        }
+      },
+      {
+        "key": "unaddressed_misinformation_count",
+        "label": "Unaddressed Misinformation",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release", "advisory"]
+        }
+      },
+      {
+        "key": "ines_level_declared",
+        "label": "INES Level Declared",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": [
+            "INES",
+            "level",
+            "declare",
+            "classification",
+            "nuclear scale",
+            "international"
+          ]
+        }
+      },
+      {
+        "key": "evacuation_advisory_issued",
+        "label": "Evacuation Advisory Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["evacuation advisory", "public warning", "leave area", "shelter advisory"]
+        }
+      },
+      {
+        "key": "victim_dignity_respected",
+        "label": "Victim Dignity Respected",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": [
+            "no names",
+            "family first",
+            "notify family",
+            "victim dignity",
+            "do not release names"
+          ]
+        }
+      },
+      {
+        "key": "regular_updates_planned",
+        "label": "Regular Updates Planned",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["30 min", "60 min", "next update", "regular updates", "update every"]
+        }
+      }
+    ]
+  }
+}

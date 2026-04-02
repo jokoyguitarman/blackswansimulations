@@ -308,6 +308,39 @@
         "initial_value": 0,
         "behavior": "state_effect",
         "visible_to": "all"
+      },
+      {
+        "key": "vehicle_secured",
+        "label": "Vehicle Secured",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["vehicle", "secured", "immobilised", "disabled", "safe"]
+        }
+      },
+      {
+        "key": "secondary_device_sweep",
+        "label": "Secondary Device Sweep",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["sweep", "secondary", "device", "bomb", "search"]
+        }
+      },
+      {
+        "key": "evidence_preserved",
+        "label": "Evidence Preserved",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["evidence", "preserve", "forensic", "scene", "cordoned"]
+        }
       }
     ],
     "media": [

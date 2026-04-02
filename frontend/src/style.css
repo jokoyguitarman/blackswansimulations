@@ -407,3 +407,55 @@ button:focus-visible {
   pointer-events: none !important;
 }
 
+/* ── Demo placement animations ──────────────────────────────────── */
+
+@keyframes asset-drop {
+  0%   { transform: scale(0) translateY(-20px); opacity: 0; }
+  50%  { transform: scale(1.2) translateY(0); opacity: 1; }
+  70%  { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+
+@keyframes asset-ring-pulse {
+  0%   { box-shadow: 0 0 0 0 var(--team-color, #a855f7); }
+  70%  { box-shadow: 0 0 0 12px rgba(168, 85, 247, 0); }
+  100% { box-shadow: 0 0 0 14px rgba(168, 85, 247, 0); }
+}
+
+.placed-asset-marker.is-new > div {
+  animation: asset-drop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+             asset-ring-pulse 1.5s ease-out 0.6s;
+}
+
+/* Polyline / Polygon stroke drawing animation */
+.demo-draw-line {
+  stroke-dasharray: var(--line-length, 2000);
+  stroke-dashoffset: var(--line-length, 2000);
+  animation: draw-line 1.8s ease-out forwards;
+}
+
+@keyframes draw-line {
+  to { stroke-dashoffset: 0; }
+}
+
+/* Polygon fill fade-in (applied after stroke draws) */
+.demo-fill-reveal {
+  fill-opacity: 0 !important;
+  animation: fill-reveal 0.6s ease-in 1.8s forwards;
+}
+
+@keyframes fill-reveal {
+  to { fill-opacity: var(--target-opacity, 0.2); }
+}
+
+/* Cinematic overlay animations */
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideInDown {
+  from { transform: translateY(-40px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+

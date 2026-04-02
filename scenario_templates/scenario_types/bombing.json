@@ -525,6 +525,17 @@
         "config": { "keywords": ["debris", "clearance", "rubble", "search and rescue"] }
       },
       {
+        "key": "structural_assessment_done",
+        "label": "Structural Assessment Done",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["structural", "assessment", "integrity", "collapse"]
+        }
+      },
+      {
         "key": "units_deployed",
         "label": "Units Deployed",
         "type": "number",
@@ -559,6 +570,28 @@
         "initial_value": 0,
         "behavior": "state_effect",
         "visible_to": "all"
+      },
+      {
+        "key": "blast_radius_established",
+        "label": "Blast Radius Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["blast", "radius", "exclusion", "danger zone"]
+        }
+      },
+      {
+        "key": "evidence_preserved",
+        "label": "Evidence Preserved",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["evidence", "preserve", "forensic", "scene", "cordoned"]
+        }
       }
     ],
     "bomb_squad": [

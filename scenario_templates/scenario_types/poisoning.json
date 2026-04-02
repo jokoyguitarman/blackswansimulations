@@ -208,11 +208,51 @@
         }
       },
       {
-        "key": "deaths_on_site",
-        "label": "Deaths",
+        "key": "patients_being_treated",
+        "label": "Patients Being Treated",
         "type": "number",
         "initial_value": 0,
-        "behavior": "state_effect",
+        "behavior": "derived",
+        "visible_to": "all",
+        "config": {
+          "source_pool_key": "total_patients",
+          "rate_key": "triage_processed",
+          "split_fractions": {
+            "deaths_on_site": 0.08,
+            "handed_over_to_hospital": 0.5
+          },
+          "split_fractions_low": {
+            "deaths_on_site": 0.2,
+            "handed_over_to_hospital": 0.25
+          },
+          "split_fractions_high": {
+            "deaths_on_site": 0.03,
+            "handed_over_to_hospital": 0.65
+          }
+        }
+      },
+      {
+        "key": "patients_waiting",
+        "label": "Patients Waiting",
+        "type": "number",
+        "initial_value": 160,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "handed_over_to_hospital",
+        "label": "Handed Over to Hospital",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "deaths_on_site",
+        "label": "Deaths on Site",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
         "visible_to": "all"
       }
     ],
@@ -248,6 +288,28 @@
         "visible_to": "all",
         "config": {
           "keywords": ["sample", "collect", "test", "lab"]
+        }
+      },
+      {
+        "key": "water_supply_isolated",
+        "label": "Water Supply Isolated",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["isolate", "valve", "shutdown", "cut supply"]
+        }
+      },
+      {
+        "key": "agent_identified",
+        "label": "Agent Identified",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["identified", "agent", "toxin", "contaminant", "detected"]
         }
       }
     ],
@@ -312,6 +374,17 @@
         "visible_to": "trainer_only",
         "config": {
           "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "misinformation_addressed_count",
+        "label": "Misinformation Addressed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["debunk", "counter", "correct", "misinformation", "rumour"]
         }
       },
       {
@@ -381,6 +454,17 @@
         "initial_value": 5000,
         "behavior": "static",
         "visible_to": "all"
+      },
+      {
+        "key": "hospital_surge_activated",
+        "label": "Hospital Surge Activated",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["hospital", "surge", "capacity", "alert", "standby"]
+        }
       }
     ]
   }

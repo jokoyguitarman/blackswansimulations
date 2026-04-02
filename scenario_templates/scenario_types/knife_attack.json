@@ -98,6 +98,60 @@
     "worship"
   ],
   "compatible_terrains": ["urban"],
+  "condition_keys": [
+    {
+      "key": "police_no_perimeter_decision",
+      "meaning": "No decision matches perimeter/cordon keywords",
+      "team": "police"
+    },
+    {
+      "key": "triage_no_prioritisation_decision",
+      "meaning": "No decision matches prioritisation keywords",
+      "team": "triage"
+    },
+    {
+      "key": "media_no_statement_by_T12",
+      "meaning": "elapsedMinutes >= 12 and no statement",
+      "team": "media"
+    },
+    {
+      "key": "transit_service_not_halted",
+      "meaning": "transit_security_state.service_halted !== true",
+      "team": "transit_security"
+    },
+    {
+      "key": "attacker_not_contained",
+      "meaning": "transit_security_state.attacker_contained !== true && police_state.attacker_neutralised !== true",
+      "team": "police"
+    }
+  ],
+  "keyword_patterns": [
+    {
+      "category": "Perimeter (police)",
+      "keywords": ["perimeter", "cordon", "secure", "contain", "outer cordon"],
+      "state_key": "police_state.outer_cordon_set"
+    },
+    {
+      "category": "Flow control (evac)",
+      "keywords": ["flow", "bottleneck", "stagger", "choke point", "egress"],
+      "state_key": "evacuation_state.flow_control_decided"
+    },
+    {
+      "category": "Attacker containment (transit)",
+      "keywords": ["contained", "neutralised", "apprehended", "subdued", "detained"],
+      "state_key": "transit_security_state.attacker_contained"
+    },
+    {
+      "category": "Statement (media)",
+      "keywords": ["statement", "press", "announce", "release"],
+      "state_key": "media_state.first_statement_issued"
+    },
+    {
+      "category": "Service halt (transit)",
+      "keywords": ["halt", "stop", "suspend", "service", "trains"],
+      "state_key": "transit_security_state.service_halted"
+    }
+  ],
   "team_counter_definitions": {
     "evacuation": [
       {
@@ -417,6 +471,74 @@
         "visible_to": "trainer_only",
         "config": {
           "keywords": ["witness", "statement", "interview", "account"]
+        }
+      },
+      {
+        "key": "weapon_recovered",
+        "label": "Weapon Recovered",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["weapon", "knife", "blade", "recovered", "seized"]
+        }
+      },
+      {
+        "key": "blood_trail_secured",
+        "label": "Blood Trail Secured",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["blood", "trail", "secured", "biohazard", "forensic"]
+        }
+      }
+    ],
+    "transit_security": [
+      {
+        "key": "service_halted",
+        "label": "Service Halted",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["halt", "stop", "suspend", "service"]
+        }
+      },
+      {
+        "key": "attacker_contained",
+        "label": "Attacker Contained",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["contained", "neutralised", "apprehended", "subdued"]
+        }
+      },
+      {
+        "key": "area_secured",
+        "label": "Area Secured",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["secure", "lockdown", "cleared"]
+        }
+      },
+      {
+        "key": "cctv_footage_reviewed",
+        "label": "CCTV Footage Reviewed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["cctv", "footage", "camera", "review", "playback"]
         }
       }
     ]

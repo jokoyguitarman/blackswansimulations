@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { ChatInterface } from '../components/Chat/ChatInterface';
 import { DecisionWorkflow } from '../components/Decisions/DecisionWorkflow';
@@ -560,6 +560,9 @@ import { type WebSocketEvent } from '../lib/websocketClient';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { useAuth } from '../contexts/AuthContext';
 import { BackgroundMusic } from '../components/Session/BackgroundMusic';
+import { CinematicOverlay } from '../components/Demo/CinematicOverlay';
+import { ActivityTicker } from '../components/Demo/ActivityTicker';
+import { TeamSpotlightOverlay } from '../components/Demo/TeamSpotlightOverlay';
 
 interface Session {
   id: string;
@@ -685,6 +688,9 @@ function mergeInjectEffects(
 export const SessionView = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isSpectator = searchParams.get('spectator') === 'true';
+  const spectatorMode = searchParams.get('mode') || 'cinematic';
   const { isTrainer } = useRoleVisibility();
   const { user } = useAuth();
   // Notifications are now handled automatically by the backend notification system
@@ -1378,6 +1384,114 @@ export const SessionView = () => {
               onSessionUpdate={loadSession}
             />
           )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Spectator Mode ──────────────────────────────────────────────────────
+  if (isSpectator && id && session) {
+    const isGodView = spectatorMode === 'god';
+
+    return (
+      <div className="h-screen w-screen overflow-hidden bg-robotic-gray-400 relative flex">
+        {/* Map area */}
+        <div className={`relative ${isGodView ? 'flex-1' : 'absolute inset-0'}`}>
+          <MapView
+            sessionId={id}
+            incidents={[]}
+            resources={[]}
+            isVisible={true}
+            fillHeight
+            showAllPins
+            bypassExitGate
+            locationsRefreshTrigger={locationsRefreshTrigger}
+            sessionStartTime={session?.start_time ?? undefined}
+            currentState={mergeInjectEffects(
+              (session?.current_state as Record<string, unknown>) ?? {},
+              session?.inject_state_effects,
+            )}
+            initialCenter={
+              session?.scenarios?.center_lat != null && session?.scenarios?.center_lng != null
+                ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [number, number])
+                : [1.3521, 103.8198]
+            }
+            initialZoom={16}
+            teamName="Spectator"
+            draggableAssets={[]}
+            scenarioType={
+              ((session?.current_state as Record<string, unknown>)?.scenario_type as string) ??
+              undefined
+            }
+          />
+        </div>
+
+        {/* God View: Activity ticker sidebar */}
+        {isGodView && (
+          <div className="w-80 h-full shrink-0">
+            <ActivityTicker sessionId={id} />
+          </div>
+        )}
+
+        {/* Cinematic overlay (action cards, inject banners) */}
+        {spectatorMode === 'cinematic' && <CinematicOverlay sessionId={id} />}
+
+        {/* Team Spotlight overlay */}
+        {spectatorMode === 'spotlight' && <TeamSpotlightOverlay sessionId={id} />}
+
+        {/* Top-left: DEMO badge + scenario name */}
+        <div className="absolute top-4 left-4 z-[1000] flex items-center gap-3">
+          <span className="px-3 py-1 text-xs font-bold uppercase tracking-widest bg-robotic-red text-white rounded">
+            DEMO
+          </span>
+          <span className="px-3 py-1.5 text-sm terminal-text bg-robotic-gray-300/90 border border-robotic-yellow/50 rounded backdrop-blur-sm">
+            {session.scenarios?.title || 'Simulation'}
+          </span>
+        </div>
+
+        {/* Top-right: Elapsed time */}
+        {elapsedTime && (
+          <div className="absolute top-4 right-4 z-[1000] px-4 py-2 bg-robotic-gray-300/90 border border-robotic-yellow/50 rounded backdrop-blur-sm">
+            <span className="text-xs terminal-text text-robotic-yellow/70 uppercase mr-2">
+              ELAPSED
+            </span>
+            <span className="text-lg terminal-text text-robotic-yellow font-mono font-bold">
+              {String(elapsedTime.hours).padStart(2, '0')}:
+              {String(elapsedTime.minutes).padStart(2, '0')}:
+              {String(elapsedTime.seconds).padStart(2, '0')}
+            </span>
+          </div>
+        )}
+
+        {/* Bottom-left: Mode switcher */}
+        <div className="absolute bottom-4 left-4 z-[1000] flex items-center gap-1">
+          {(['cinematic', 'god', 'spotlight'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('mode', m);
+                window.history.replaceState({}, '', url.toString());
+              }}
+              className={`px-3 py-1.5 text-xs terminal-text uppercase border rounded backdrop-blur-sm ${
+                spectatorMode === m
+                  ? 'bg-robotic-yellow/20 border-robotic-yellow text-robotic-yellow'
+                  : 'bg-robotic-gray-300/70 border-robotic-yellow/30 text-robotic-yellow/50 hover:text-robotic-yellow/80'
+              }`}
+            >
+              {m === 'cinematic' ? 'CINE' : m === 'god' ? 'GOD' : 'TEAM'}
+            </button>
+          ))}
+        </div>
+
+        {/* Bottom-right: Exit spectator */}
+        <div className="absolute bottom-4 right-4 z-[1000]">
+          <button
+            onClick={() => navigate(`/sessions/${id}`)}
+            className="px-3 py-1.5 text-xs terminal-text uppercase border border-robotic-orange/50 text-robotic-orange/70 hover:text-robotic-orange rounded bg-robotic-gray-300/70 backdrop-blur-sm"
+          >
+            EXIT DEMO
+          </button>
         </div>
       </div>
     );

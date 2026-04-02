@@ -181,6 +181,17 @@
         "initial_value": 0,
         "behavior": "state_effect",
         "visible_to": "all"
+      },
+      {
+        "key": "pursuit_teams_deployed",
+        "label": "Pursuit Teams Deployed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["pursuit", "search team", "tracking", "deploy"]
+        }
       }
     ],
     "negotiation": [
@@ -256,6 +267,28 @@
         "config": {
           "values": ["low", "medium", "high", "critical"]
         }
+      },
+      {
+        "key": "location_narrowed",
+        "label": "Location Narrowed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["location", "narrowed", "traced", "signal", "triangulated", "GPS"]
+        }
+      },
+      {
+        "key": "proof_of_life_received",
+        "label": "Proof of Life Received",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["proof of life", "alive", "video", "photo", "evidence"]
+        }
       }
     ],
     "resort_security": [
@@ -279,6 +312,17 @@
         "visible_to": "all",
         "config": {
           "keywords": ["evacuate", "guests", "staff", "non-target"]
+        }
+      },
+      {
+        "key": "guest_manifest_checked",
+        "label": "Guest Manifest Checked",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["manifest", "guest", "register", "check-in", "booking"]
         }
       }
     ],
@@ -322,6 +366,64 @@
         "visible_to": "all",
         "config": {
           "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "misinformation_addressed_count",
+        "label": "Misinformation Addressed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["debunk", "counter", "correct", "misinformation", "rumour"]
+        }
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "unaddressed_misinformation_count",
+        "label": "Unaddressed Misinformation",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "victim_dignity_respected",
+        "label": "Victim Dignity Respected",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": [
+            "no names",
+            "family first",
+            "notify family",
+            "victim dignity",
+            "do not release names"
+          ]
+        }
+      },
+      {
+        "key": "regular_updates_planned",
+        "label": "Regular Updates Planned",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["30 min", "60 min", "next update", "regular updates", "update every"]
         }
       }
     ],

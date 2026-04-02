@@ -1,10 +1,14 @@
 import type { Server as SocketServer } from 'socket.io';
+import { EventEmitter } from 'events';
 import { logger } from '../lib/logger.js';
 
 /**
  * WebSocket Service - Server-side only
  * Separation of concerns: All WebSocket event broadcasting logic
- * This service is called by route handlers to broadcast events
+ * This service is called by route handlers to broadcast events.
+ *
+ * Includes an internal EventEmitter so server-side services (e.g. AI agents)
+ * can subscribe to session events without maintaining a socket client.
  */
 
 export interface WebSocketEvent {
@@ -13,12 +17,44 @@ export interface WebSocketEvent {
   timestamp: string;
 }
 
+export type InternalEventHandler = (event: WebSocketEvent) => void;
+
 export class WebSocketService {
   private io: SocketServer;
+  private internalBus = new EventEmitter();
 
   constructor(io: SocketServer) {
     this.io = io;
+    this.internalBus.setMaxListeners(200);
   }
+
+  // --------------- Internal event bus ---------------
+
+  onSessionEvent(sessionId: string, handler: InternalEventHandler): void {
+    this.internalBus.on(`session:${sessionId}`, handler);
+  }
+
+  offSessionEvent(sessionId: string, handler: InternalEventHandler): void {
+    this.internalBus.off(`session:${sessionId}`, handler);
+  }
+
+  removeAllSessionListeners(sessionId: string): void {
+    this.internalBus.removeAllListeners(`session:${sessionId}`);
+  }
+
+  onChannelEvent(channelId: string, handler: InternalEventHandler): void {
+    this.internalBus.on(`channel:${channelId}`, handler);
+  }
+
+  offChannelEvent(channelId: string, handler: InternalEventHandler): void {
+    this.internalBus.off(`channel:${channelId}`, handler);
+  }
+
+  removeAllChannelListeners(channelId: string): void {
+    this.internalBus.removeAllListeners(`channel:${channelId}`);
+  }
+
+  // --------------- Socket.IO broadcasts ---------------
 
   /**
    * Broadcast event to all clients in a session room
@@ -26,6 +62,7 @@ export class WebSocketService {
   broadcastToSession(sessionId: string, event: WebSocketEvent): void {
     try {
       this.io.to(`session:${sessionId}`).emit('event', event);
+      this.internalBus.emit(`session:${sessionId}`, event);
       logger.debug({ sessionId, eventType: event.type }, 'Event broadcasted to session');
     } catch (err) {
       logger.error(
@@ -41,6 +78,7 @@ export class WebSocketService {
   broadcastToChannel(channelId: string, event: WebSocketEvent): void {
     try {
       this.io.to(`channel:${channelId}`).emit('event', event);
+      this.internalBus.emit(`channel:${channelId}`, event);
       logger.debug({ channelId, eventType: event.type }, 'Event broadcasted to channel');
     } catch (err) {
       logger.error(

@@ -1438,6 +1438,30 @@ export const THREAT_HAZARD_RULES: Record<string, ThreatHazardRule> = {
     crowd_description:
       'Fire visible and spreading. Smoke reduces visibility. Evacuation driven by fire and smoke.',
   },
+  radiological: {
+    allowed_hazards: [
+      'radiation_zone',
+      'contaminated_water',
+      'airborne_plume',
+      'contaminated_debris',
+      'fallout_area',
+    ],
+    min_hazards: 4,
+    max_hazards: 10,
+    injury_emphasis: [
+      'acute_radiation_syndrome',
+      'beta_burn',
+      'radiation_dermatitis',
+      'thyroid_exposure',
+      'internal_contamination',
+      'contaminated_wound',
+      'psychological',
+      'nausea_vomiting',
+    ],
+    casualty_range: [20, 60],
+    crowd_description:
+      'Massive panic extending 30+ km. Traffic gridlock on evacuation routes. Residents self-evacuating in all directions. Rumors of meltdown spreading faster than official information.',
+  },
   none: {
     allowed_hazards: ['debris', 'structural_damage'],
     min_hazards: 0,

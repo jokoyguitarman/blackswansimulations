@@ -373,6 +373,28 @@
         "initial_value": 0,
         "behavior": "state_effect",
         "visible_to": "all"
+      },
+      {
+        "key": "blast_radius_established",
+        "label": "Blast Radius Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["blast", "radius", "exclusion", "danger zone"]
+        }
+      },
+      {
+        "key": "forensic_identification_started",
+        "label": "Forensic Identification Started",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["forensic", "identification", "DNA", "remains"]
+        }
       }
     ],
     "media": [

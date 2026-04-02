@@ -143,6 +143,17 @@
         "config": {
           "keywords": ["marshal", "steward", "guide", "warden", "usher", "crowd marshal"]
         }
+      },
+      {
+        "key": "safe_corridors_established",
+        "label": "Safe Corridors Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["safe corridor", "safe route", "covered route", "protected path"]
+        }
       }
     ],
     "triage": [
@@ -358,6 +369,28 @@
         "visible_to": "all",
         "config": {
           "keywords": ["tactical", "armed response", "ready", "sniper"]
+        }
+      },
+      {
+        "key": "shooter_position_identified",
+        "label": "Shooter Position Identified",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["position", "location", "vantage", "origin", "direction"]
+        }
+      },
+      {
+        "key": "secondary_threat_cleared",
+        "label": "Secondary Threat Cleared",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["secondary", "all-clear", "no further threat", "all clear"]
         }
       }
     ]

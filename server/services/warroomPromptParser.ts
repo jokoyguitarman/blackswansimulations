@@ -52,6 +52,7 @@ const SCENARIO_TYPES = [
   'arson',
   'vehicle_ramming',
   'hostage_siege',
+  'nuclear_plant_leak',
 ];
 const SETTINGS = [
   'beach',
@@ -319,6 +320,7 @@ const VALID_WEAPON_CLASSES = [
   'explosive',
   'chemical',
   'biological',
+  'radiological',
   'vehicle',
   'incendiary',
   'none',
@@ -604,6 +606,26 @@ const SCENARIO_DEFAULT_PROFILES: Record<string, Omit<ThreatProfile, 'adversary_c
       crowd_panic_radius: 'immediate',
     },
     injury_types: ['gunshot_wound', 'hemorrhage', 'psychological'],
+  },
+  nuclear_plant_leak: {
+    weapon_type: 'radiation_release',
+    weapon_class: 'radiological',
+    threat_scale: 'catastrophic',
+    expected_damage: {
+      structural: false,
+      fire: false,
+      blast: false,
+      chemical: true,
+      crowd_panic_radius: 'wide',
+    },
+    injury_types: [
+      'acute_radiation_syndrome',
+      'beta_burn',
+      'thyroid_exposure',
+      'internal_contamination',
+      'radiation_dermatitis',
+      'psychological',
+    ],
   },
 };
 

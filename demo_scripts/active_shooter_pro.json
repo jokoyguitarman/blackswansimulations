@@ -1,0 +1,524 @@
+{
+  "name": "Active Shooter – Mall Complex (Pro Playthrough)",
+  "scenarioType": "active_shooter",
+  "durationMinutes": 14,
+  "coordinateOffsets": true,
+  "events": [
+    {
+      "offsetMinutes": 0.3,
+      "team": "police",
+      "type": "chat",
+      "payload": {
+        "content": "All units, this is Gold Command. Active shooter confirmed at the mall complex. Initiating DIAMOND protocol. All teams report readiness status.",
+        "message_type": "alert"
+      }
+    },
+    {
+      "offsetMinutes": 0.5,
+      "team": "police",
+      "type": "placement",
+      "payload": {
+        "asset_type": "command_post",
+        "label": "Gold Command Post",
+        "geometry": { "type": "Point", "coordinates": [0.003, -0.002] }
+      }
+    },
+    {
+      "offsetMinutes": 0.6,
+      "team": "police",
+      "type": "placement",
+      "payload": {
+        "asset_type": "police_cordon",
+        "label": "Outer Cordon – North",
+        "geometry": {
+          "type": "LineString",
+          "coordinates": [
+            [-0.003, 0.0025],
+            [-0.001, 0.003],
+            [0.001, 0.003],
+            [0.003, 0.0025]
+          ]
+        }
+      }
+    },
+    {
+      "offsetMinutes": 0.8,
+      "team": "police",
+      "type": "placement",
+      "payload": {
+        "asset_type": "police_cordon",
+        "label": "Outer Cordon – South",
+        "geometry": {
+          "type": "LineString",
+          "coordinates": [
+            [-0.003, -0.0025],
+            [-0.001, -0.003],
+            [0.001, -0.003],
+            [0.003, -0.0025]
+          ]
+        }
+      }
+    },
+    {
+      "offsetMinutes": 0.9,
+      "team": "police",
+      "type": "decision",
+      "payload": {
+        "title": "Establish dual-ring cordon and initiate building lockdown",
+        "description": "Outer cordon at 200m radius from mall perimeter. Inner cordon at building entrances. All civilian movement halted within outer ring. Request K9 and ARV units to staging area east. Sniper teams to elevated positions north parking structure.",
+        "decision_type": "coordination_order"
+      }
+    },
+    {
+      "offsetMinutes": 1.0,
+      "team": "police",
+      "type": "chat",
+      "payload": {
+        "content": "Outer cordon established north and south. K9 unit charlie en route to staging. Sniper team bravo, move to rooftop of parking structure level 4 – confirm overwatch on main entrance."
+      }
+    },
+    {
+      "offsetMinutes": 1.2,
+      "team": "triage",
+      "type": "placement",
+      "payload": {
+        "asset_type": "operational_area",
+        "label": "Triage Zone – South Lot",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [0.002, -0.004],
+              [0.004, -0.004],
+              [0.004, -0.0055],
+              [0.002, -0.0055],
+              [0.002, -0.004]
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "offsetMinutes": 1.3,
+      "team": "triage",
+      "type": "placement",
+      "payload": {
+        "asset_type": "triage_tent",
+        "label": "T1 Priority – Red",
+        "geometry": { "type": "Point", "coordinates": [0.0025, -0.0045] }
+      }
+    },
+    {
+      "offsetMinutes": 1.4,
+      "team": "triage",
+      "type": "placement",
+      "payload": {
+        "asset_type": "ambulance_staging",
+        "label": "Ambulance Staging – Access Rd",
+        "geometry": { "type": "Point", "coordinates": [0.005, -0.005] }
+      }
+    },
+    {
+      "offsetMinutes": 1.5,
+      "team": "triage",
+      "type": "decision",
+      "payload": {
+        "title": "Activate mass casualty incident protocol – establish forward triage",
+        "description": "Deploying START triage at south parking lot, upwind of the structure. T1 red tent operational for immediate surgical intervention. Two ALS ambulances staged on access road with clear egress to N1 highway. Requesting four additional BLS units from district. Field hospital tent deploying for T2 casualties.",
+        "decision_type": "resource_allocation"
+      }
+    },
+    {
+      "offsetMinutes": 1.7,
+      "team": "triage",
+      "type": "chat",
+      "payload": {
+        "content": "Triage is operational south lot. T1 red tent up, ambulance staging on access road. Dr. Okafor on site coordinating. Ready to receive casualties on police clearance of extraction corridor."
+      }
+    },
+    {
+      "offsetMinutes": 2.0,
+      "team": "evacuation",
+      "type": "placement",
+      "payload": {
+        "asset_type": "assembly_point",
+        "label": "Assembly Point A – West Gate",
+        "geometry": { "type": "Point", "coordinates": [-0.005, 0.0] }
+      }
+    },
+    {
+      "offsetMinutes": 2.1,
+      "team": "evacuation",
+      "type": "placement",
+      "payload": {
+        "asset_type": "assembly_point",
+        "label": "Assembly Point B – East Gate",
+        "geometry": { "type": "Point", "coordinates": [0.005, 0.001] }
+      }
+    },
+    {
+      "offsetMinutes": 2.2,
+      "team": "evacuation",
+      "type": "placement",
+      "payload": {
+        "asset_type": "marshal_post",
+        "label": "Evacuation Marshal – West",
+        "geometry": { "type": "Point", "coordinates": [-0.004, -0.001] }
+      }
+    },
+    {
+      "offsetMinutes": 2.3,
+      "team": "evacuation",
+      "type": "decision",
+      "payload": {
+        "title": "Initiate phased evacuation – west wing first, shelter-in-place east",
+        "description": "West wing evacuation via emergency exits to Assembly Point A. East wing remains in shelter-in-place until police confirm suspect location is isolated from east corridors. Marshals deployed at each exit. PA announcement cycling in English and Afrikaans.",
+        "decision_type": "coordination_order"
+      }
+    },
+    {
+      "offsetMinutes": 2.5,
+      "team": "police",
+      "type": "placement",
+      "payload": {
+        "asset_type": "sniper_position",
+        "label": "Sniper Bravo – Parking L4",
+        "geometry": { "type": "Point", "coordinates": [0.001, 0.004] }
+      }
+    },
+    {
+      "offsetMinutes": 2.7,
+      "team": "police",
+      "type": "placement",
+      "payload": {
+        "asset_type": "tactical_unit",
+        "label": "SWAT Alpha – Main Entrance",
+        "geometry": { "type": "Point", "coordinates": [0.0, 0.002] }
+      }
+    },
+    {
+      "offsetMinutes": 2.8,
+      "team": "police",
+      "type": "placement",
+      "payload": {
+        "asset_type": "k9_unit",
+        "label": "K9 Charlie – East Staging",
+        "geometry": { "type": "Point", "coordinates": [0.004, 0.001] }
+      }
+    },
+    {
+      "offsetMinutes": 3.0,
+      "team": "police",
+      "type": "decision",
+      "payload": {
+        "title": "Deploy SWAT for deliberate entry via main entrance",
+        "description": "SWAT Alpha to stage at main entrance, prepare for deliberate entry on my command. Sniper Bravo confirms overwatch on food court windows from L4 rooftop. K9 Charlie holding at secondary cordon for post-clearance sweep. All units switch to tactical channel TANGO-3.",
+        "decision_type": "coordination_order"
+      }
+    },
+    {
+      "offsetMinutes": 3.2,
+      "team": "media",
+      "type": "placement",
+      "payload": {
+        "asset_type": "press_cordon",
+        "label": "Media Holding Line",
+        "geometry": {
+          "type": "LineString",
+          "coordinates": [
+            [-0.005, -0.004],
+            [-0.003, -0.005],
+            [0.0, -0.006]
+          ]
+        }
+      }
+    },
+    {
+      "offsetMinutes": 3.3,
+      "team": "media",
+      "type": "placement",
+      "payload": {
+        "asset_type": "briefing_point",
+        "label": "Media Briefing Area",
+        "geometry": { "type": "Point", "coordinates": [-0.004, -0.005] }
+      }
+    },
+    {
+      "offsetMinutes": 3.5,
+      "team": "media",
+      "type": "decision",
+      "payload": {
+        "title": "Issue initial public holding statement",
+        "description": "Statement: 'Emergency services are responding to a security incident at the mall complex. The area has been cordoned. Members of the public should avoid the area. Further updates will be provided at regular intervals.' Scheduled media briefing at T+30 minutes. Social media monitoring initiated.",
+        "decision_type": "public_statement"
+      }
+    },
+    {
+      "offsetMinutes": 3.7,
+      "team": "media",
+      "type": "chat",
+      "payload": {
+        "content": "Press cordon established south-west. Initial holding statement released. First on-camera briefing scheduled for T+30. Monitoring social media – several eyewitness videos circulating. Requesting police confirm what details are releasable."
+      }
+    },
+    {
+      "offsetMinutes": 4.0,
+      "team": "intelligence",
+      "type": "placement",
+      "payload": {
+        "asset_type": "observation_post",
+        "label": "OP-1 North Overwatch",
+        "geometry": { "type": "Point", "coordinates": [-0.002, 0.004] }
+      }
+    },
+    {
+      "offsetMinutes": 4.2,
+      "team": "intelligence",
+      "type": "placement",
+      "payload": {
+        "asset_type": "surveillance_drone",
+        "label": "UAV-1 Thermal",
+        "geometry": { "type": "Point", "coordinates": [0.0, 0.001] }
+      }
+    },
+    {
+      "offsetMinutes": 4.5,
+      "team": "intelligence",
+      "type": "decision",
+      "payload": {
+        "title": "Deploy ISR assets and establish suspect tracking",
+        "description": "UAV-1 airborne with thermal imaging over the mall rooftop. OP-1 manned at north overwatch position with binos and radio relay. Cross-referencing CCTV feed from mall security control room – suspect last seen food court second floor, moving east. Running suspect description through facial recognition database.",
+        "decision_type": "coordination_order"
+      }
+    },
+    {
+      "offsetMinutes": 4.7,
+      "team": "intelligence",
+      "type": "chat",
+      "payload": {
+        "content": "Intel update: UAV thermal shows one heat signature isolated on second floor east wing, consistent with suspect. CCTV confirms single male, dark clothing, long rifle. No secondary shooters identified. Mall security confirms all east wing stores are in lockdown."
+      }
+    },
+    {
+      "offsetMinutes": 5.0,
+      "team": "police",
+      "type": "chat",
+      "payload": {
+        "content": "Copy intel. Suspect located second floor east wing. SWAT Alpha adjusting entry plan – will breach via east fire escape stairwell. Sniper Bravo, shift overwatch to east-facing windows. K9 Charlie prepare for building entry behind SWAT."
+      }
+    },
+    {
+      "offsetMinutes": 5.5,
+      "team": "police",
+      "type": "placement",
+      "payload": {
+        "asset_type": "tactical_unit",
+        "label": "SWAT Alpha – East Fire Escape",
+        "geometry": { "type": "Point", "coordinates": [0.002, 0.001] }
+      }
+    },
+    {
+      "offsetMinutes": 5.7,
+      "team": "police",
+      "type": "placement",
+      "payload": {
+        "asset_type": "armed_response_vehicle",
+        "label": "ARV – East Approach",
+        "geometry": { "type": "Point", "coordinates": [0.004, 0.002] }
+      }
+    },
+    {
+      "offsetMinutes": 6.0,
+      "team": "police",
+      "type": "decision",
+      "payload": {
+        "title": "Authorize tactical entry – east stairwell breach",
+        "description": "SWAT Alpha authorized for deliberate entry via east fire escape. Flashbang deployment on breach. ARV positioned east approach for extraction support. All non-tactical units maintain cordon. Casualty extraction corridor confirmed with triage team via south emergency exit.",
+        "decision_type": "coordination_order"
+      }
+    },
+    {
+      "offsetMinutes": 6.5,
+      "team": "triage",
+      "type": "placement",
+      "payload": {
+        "asset_type": "field_hospital",
+        "label": "Field Hospital – T2 Yellow",
+        "geometry": { "type": "Point", "coordinates": [0.003, -0.005] }
+      }
+    },
+    {
+      "offsetMinutes": 6.7,
+      "team": "triage",
+      "type": "placement",
+      "payload": {
+        "asset_type": "triage_officer",
+        "label": "Triage Officer – Extraction Point",
+        "geometry": { "type": "Point", "coordinates": [0.001, -0.002] }
+      }
+    },
+    {
+      "offsetMinutes": 7.0,
+      "team": "triage",
+      "type": "decision",
+      "payload": {
+        "title": "Activate casualty extraction corridor and hospital pre-alert",
+        "description": "Extraction corridor established from south emergency exit to triage zone. Two stretcher teams standing by. Pre-alert sent to Milpark Hospital (trauma centre) and Charlotte Maxeke (burns unit). Current casualty estimate: 8 T1, 15 T2, 20+ T3. Requesting additional blood products from SANBS.",
+        "decision_type": "resource_allocation"
+      }
+    },
+    {
+      "offsetMinutes": 7.5,
+      "team": "fire",
+      "type": "placement",
+      "payload": {
+        "asset_type": "firefighter_post",
+        "label": "Fire Team – East Wing Standby",
+        "geometry": { "type": "Point", "coordinates": [0.003, 0.0] }
+      }
+    },
+    {
+      "offsetMinutes": 7.7,
+      "team": "fire",
+      "type": "placement",
+      "payload": {
+        "asset_type": "fire_truck_staging",
+        "label": "Pump Ladder – North Access",
+        "geometry": { "type": "Point", "coordinates": [0.0, 0.005] }
+      }
+    },
+    {
+      "offsetMinutes": 8.0,
+      "team": "fire",
+      "type": "decision",
+      "payload": {
+        "title": "Pre-position fire suppression for post-breach safety",
+        "description": "Fire team staged east wing for immediate response if suspect deploys incendiaries. Pump ladder positioned north access road. Hazmat screening kit on standby – reports of chemical smell from food court ventilation. Requesting air quality monitoring before casualty extraction from east wing.",
+        "decision_type": "resource_allocation"
+      }
+    },
+    {
+      "offsetMinutes": 8.5,
+      "team": "police",
+      "type": "chat",
+      "payload": {
+        "content": "SWAT Alpha in position east fire escape. Ready to breach on command. Sniper Bravo has eyes on suspect through east window – suspect is barricaded behind food court counter. Request final confirmation from Gold Command.",
+        "message_type": "alert"
+      }
+    },
+    {
+      "offsetMinutes": 9.0,
+      "team": "police",
+      "type": "decision",
+      "payload": {
+        "title": "Execute breach – SWAT Alpha GO",
+        "description": "Green light. SWAT Alpha execute breach east fire escape stairwell. Flashbang first, dynamic entry. Sniper Bravo maintain overwatch – shoot only on imminent threat to life. K9 Charlie enter behind SWAT for secondary sweep. All units hold positions – no movement on cordon.",
+        "decision_type": "coordination_order"
+      }
+    },
+    {
+      "offsetMinutes": 9.5,
+      "team": "police",
+      "type": "chat",
+      "payload": {
+        "content": "BREACH EXECUTED. Flashbang deployed. SWAT Alpha making entry. Shots fired – return fire from suspect. Suspect down. Scene not yet secure – K9 sweeping east wing for secondary threats.",
+        "message_type": "alert"
+      }
+    },
+    {
+      "offsetMinutes": 10.0,
+      "team": "police",
+      "type": "placement",
+      "payload": {
+        "asset_type": "arrest_team",
+        "label": "Arrest Team – Suspect Location",
+        "geometry": { "type": "Point", "coordinates": [0.001, 0.0005] }
+      }
+    },
+    {
+      "offsetMinutes": 10.2,
+      "team": "intelligence",
+      "type": "chat",
+      "payload": {
+        "content": "UAV thermal confirms no additional heat signatures on second floor beyond SWAT team and downed suspect. CCTV sweep of all floors shows no secondary threats. Recommend proceed with casualty extraction."
+      }
+    },
+    {
+      "offsetMinutes": 10.5,
+      "team": "police",
+      "type": "decision",
+      "payload": {
+        "title": "Declare scene conditionally secure – authorize casualty extraction",
+        "description": "Scene conditionally secure. Suspect neutralized, K9 completing sweep. Authorize casualty extraction via south emergency exit. Maintain outer cordon – no civilian re-entry until forensic team clears the scene. Request forensic unit and bomb technician for secondary device sweep.",
+        "decision_type": "coordination_order"
+      }
+    },
+    {
+      "offsetMinutes": 11.0,
+      "team": "triage",
+      "type": "chat",
+      "payload": {
+        "content": "Extraction in progress. First T1 casualties arriving at triage. Two critical – GSW to chest and abdomen. Loading first ambulance for Milpark. T2 flow beginning. Field hospital absorbing walking wounded."
+      }
+    },
+    {
+      "offsetMinutes": 11.5,
+      "team": "evacuation",
+      "type": "decision",
+      "payload": {
+        "title": "Begin controlled east wing evacuation",
+        "description": "With scene conditionally secure, initiating evacuation of east wing sheltered occupants. Marshals directing flow through east emergency exits to Assembly Point B. Reunification desk establishing at Assembly Point A for family enquiries. Welfare team deploying for psychological first aid.",
+        "decision_type": "coordination_order"
+      }
+    },
+    {
+      "offsetMinutes": 12.0,
+      "team": "media",
+      "type": "decision",
+      "payload": {
+        "title": "Issue updated public statement – situation contained",
+        "description": "Updated statement: 'The security incident at the mall complex has been contained by SAPS tactical units. Multiple casualties are being treated by emergency medical services. The suspect has been neutralized. The area remains cordoned for forensic investigation. A full media briefing will be held within the hour.'",
+        "decision_type": "public_statement"
+      }
+    },
+    {
+      "offsetMinutes": 12.5,
+      "team": "police",
+      "type": "placement",
+      "payload": {
+        "asset_type": "operational_area",
+        "label": "Forensic Exclusion Zone",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [-0.001, -0.001],
+              [0.002, -0.001],
+              [0.002, 0.002],
+              [-0.001, 0.002],
+              [-0.001, -0.001]
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "offsetMinutes": 13.0,
+      "team": "police",
+      "type": "decision",
+      "payload": {
+        "title": "Transition to post-incident phase – forensic handover",
+        "description": "Handing scene to forensic investigation unit. Maintaining outer cordon with reduced manning. SWAT and K9 units standing down. Requesting debrief of all tactical team members within 2 hours. Evidence preservation officer appointed. Body-worn camera footage to be secured immediately.",
+        "decision_type": "coordination_order"
+      }
+    },
+    {
+      "offsetMinutes": 13.5,
+      "team": "triage",
+      "type": "chat",
+      "payload": {
+        "content": "Casualty update: 3 T1 transported to Milpark, 2 T1 to Charlotte Maxeke. 12 T2 treated on site, 4 transported. 25 T3 treated and released from field hospital. 2 confirmed fatalities – bodies remain in forensic exclusion zone. All ambulances returning to normal service."
+      }
+    }
+  ]
+}

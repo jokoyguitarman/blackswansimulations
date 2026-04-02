@@ -573,6 +573,17 @@
         "initial_value": "unknown",
         "behavior": "state_effect",
         "visible_to": "all"
+      },
+      {
+        "key": "blast_radius_established",
+        "label": "Blast Radius Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["blast", "radius", "exclusion", "danger zone"]
+        }
       }
     ],
     "mall_security": [
@@ -618,6 +629,17 @@
         "visible_to": "all",
         "config": {
           "keywords": ["sweep", "floor", "clear", "patron", "all clear"]
+        }
+      },
+      {
+        "key": "stores_evacuated",
+        "label": "Stores Evacuated",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["store", "shop", "evacuate", "clear", "empty"]
         }
       }
     ],

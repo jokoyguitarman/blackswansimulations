@@ -334,6 +334,30 @@
         }
       },
       {
+        "key": "patients_waiting",
+        "label": "Patients Waiting",
+        "type": "number",
+        "initial_value": 30,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "handed_over_to_hospital",
+        "label": "Handed Over to Hospital",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "deaths_on_site",
+        "label": "Deaths on Site",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
         "key": "warm_zone_entry",
         "label": "Warm-Zone Medical Entry",
         "type": "boolean",
@@ -385,6 +409,17 @@
         }
       },
       {
+        "key": "misinformation_addressed_count",
+        "label": "Misinformation Addressed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["debunk", "counter", "correct", "misinformation", "rumour"]
+        }
+      },
+      {
         "key": "unaddressed_misinformation_count",
         "label": "Unaddressed Misinformation",
         "type": "number",
@@ -418,6 +453,17 @@
         "visible_to": "trainer_only",
         "config": {
           "keywords": ["embassy", "diplomat", "foreign office", "consulate", "government liaison"]
+        }
+      },
+      {
+        "key": "regular_updates_planned",
+        "label": "Regular Updates Planned",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["30 min", "60 min", "next update", "regular updates", "update every"]
         }
       }
     ],

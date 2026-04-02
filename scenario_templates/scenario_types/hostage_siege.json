@@ -180,6 +180,17 @@
         "initial_value": 0,
         "behavior": "state_effect",
         "visible_to": "all"
+      },
+      {
+        "key": "entry_plan_prepared",
+        "label": "Entry Plan Prepared",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["entry plan", "breach plan", "assault plan", "tactical plan"]
+        }
       }
     ],
     "negotiation": [
@@ -223,6 +234,28 @@
         "initial_value": 0,
         "behavior": "state_effect",
         "visible_to": "all"
+      },
+      {
+        "key": "deadline_extended",
+        "label": "Deadline Extended",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["deadline", "extend", "more time", "delay", "postpone"]
+        }
+      },
+      {
+        "key": "psychological_profile_built",
+        "label": "Psychological Profile Built",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["profile", "psychological", "motivation", "background", "mental state"]
+        }
       }
     ],
     "intelligence": [
@@ -257,6 +290,17 @@
         "visible_to": "trainer_only",
         "config": {
           "keywords": ["camera", "surveillance", "inside", "feed", "listening"]
+        }
+      },
+      {
+        "key": "building_layout_obtained",
+        "label": "Building Layout Obtained",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["layout", "blueprint", "floor plan", "schematic", "building plan"]
         }
       }
     ],
@@ -295,6 +339,54 @@
         "visible_to": "trainer_only"
       },
       {
+        "key": "patients_being_treated",
+        "label": "Patients Being Treated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all",
+        "config": {
+          "source_pool_key": "total_patients",
+          "rate_key": "triage_processed",
+          "split_fractions": {
+            "deaths_on_site": 0.1,
+            "handed_over_to_hospital": 0.45
+          },
+          "split_fractions_low": {
+            "deaths_on_site": 0.2,
+            "handed_over_to_hospital": 0.25
+          },
+          "split_fractions_high": {
+            "deaths_on_site": 0.05,
+            "handed_over_to_hospital": 0.6
+          }
+        }
+      },
+      {
+        "key": "patients_waiting",
+        "label": "Patients Waiting",
+        "type": "number",
+        "initial_value": 160,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "handed_over_to_hospital",
+        "label": "Handed Over to Hospital",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "deaths_on_site",
+        "label": "Deaths on Site",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
         "key": "medical_standby",
         "label": "Medical Standby",
         "type": "boolean",
@@ -310,7 +402,7 @@
         "label": "Casualties",
         "type": "number",
         "initial_value": 0,
-        "behavior": "state_effect",
+        "behavior": "derived",
         "visible_to": "all"
       }
     ],
@@ -351,6 +443,17 @@
         "visible_to": "trainer_only",
         "config": {
           "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "misinformation_addressed_count",
+        "label": "Misinformation Addressed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["debunk", "counter", "correct", "misinformation", "rumour"]
         }
       },
       {

@@ -189,6 +189,28 @@
         "initial_value": 0,
         "behavior": "state_effect",
         "visible_to": "all"
+      },
+      {
+        "key": "search_and_rescue_active",
+        "label": "Search and Rescue Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["search", "rescue", "trapped", "missing", "floor sweep"]
+        }
+      },
+      {
+        "key": "accelerant_evidence_secured",
+        "label": "Accelerant Evidence Secured",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["accelerant", "evidence", "pour pattern", "sample"]
+        }
       }
     ],
     "evacuation": [
@@ -343,6 +365,28 @@
         "initial_value": false,
         "behavior": "state_effect",
         "visible_to": "trainer_only"
+      },
+      {
+        "key": "arson_investigation_started",
+        "label": "Arson Investigation Started",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["arson", "investigate", "deliberate", "criminal"]
+        }
+      },
+      {
+        "key": "witness_statements_collected",
+        "label": "Witness Statements Collected",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["witness", "statement", "interview", "account"]
+        }
       }
     ],
     "media": [
@@ -382,6 +426,17 @@
         "visible_to": "trainer_only",
         "config": {
           "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "misinformation_addressed_count",
+        "label": "Misinformation Addressed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["debunk", "counter", "correct", "misinformation", "rumour"]
         }
       },
       {

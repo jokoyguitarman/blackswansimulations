@@ -518,6 +518,17 @@
         }
       },
       {
+        "key": "structural_assessment_done",
+        "label": "Structural Assessment Done",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["structural", "assessment", "integrity", "collapse"]
+        }
+      },
+      {
         "key": "units_deployed",
         "label": "Units Deployed",
         "type": "number",
@@ -556,6 +567,28 @@
         "initial_value": 0,
         "behavior": "state_effect",
         "visible_to": "all"
+      },
+      {
+        "key": "secondary_device_sweep",
+        "label": "Secondary Device Sweep",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["sweep", "secondary", "device", "bomb", "search"]
+        }
+      },
+      {
+        "key": "blast_radius_established",
+        "label": "Blast Radius Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["blast", "radius", "exclusion", "danger zone"]
+        }
       }
     ],
     "bomb_squad": [

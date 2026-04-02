@@ -492,6 +492,7 @@ export const MapView = ({
   } | null>(null);
   const [placedAssets, setPlacedAssets] = useState<PlacedAsset[]>([]);
   const optimisticIdsRef = useRef<Map<string, string>>(new Map());
+  const newPlacementIdsRef = useRef<Set<string>>(new Set());
   const [hazards, setHazards] = useState<HazardData[]>([]);
   const [respondToElement, setRespondToElement] = useState<MapElementTarget | null>(null);
   const [casualties, setCasualties] = useState<CasualtyData[]>([]);
@@ -719,6 +720,9 @@ export const MapView = ({
         if (placement) {
           const confirmedRealIds = new Set(optimisticIdsRef.current.values());
           if (confirmedRealIds.has(placement.id)) return;
+
+          newPlacementIdsRef.current.add(placement.id);
+          setTimeout(() => newPlacementIdsRef.current.delete(placement.id), 3000);
 
           setPlacedAssets((prev) => {
             if (prev.some((p) => p.id === placement.id)) return prev;
@@ -1488,6 +1492,7 @@ export const MapView = ({
                 isOwnTeam={!!teamName && asset.team_name === teamName}
                 isDraggable={!!teamName && asset.team_name === teamName && !!isRecordingActions}
                 drawingActive={!!drawingAsset}
+                isNew={newPlacementIdsRef.current.has(asset.id)}
                 onRemove={
                   teamName && asset.team_name === teamName ? handleRemovePlacement : undefined
                 }

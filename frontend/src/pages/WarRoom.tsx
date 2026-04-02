@@ -30,6 +30,7 @@ const SCENARIO_TYPES = [
   { id: 'stampede_crush', label: 'Concert stampede / crush' },
   { id: 'active_shooter', label: 'Active shooter (enclosed)' },
   { id: 'biohazard', label: 'Biological attack / biohazard' },
+  { id: 'nuclear_plant_leak', label: 'Nuclear plant leak / radiation release' },
 ];
 
 const SETTINGS = [
@@ -49,6 +50,7 @@ const SETTINGS = [
   { id: 'school', label: 'School / University' },
   { id: 'hospital', label: 'Hospital' },
   { id: 'embassy', label: 'Embassy / Diplomatic' },
+  { id: 'power_plant', label: 'Power Plant / Industrial Facility' },
 ];
 
 const TERRAINS = [

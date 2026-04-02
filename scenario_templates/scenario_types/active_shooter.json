@@ -177,6 +177,17 @@
         "initial_value": 0,
         "behavior": "state_effect",
         "visible_to": "all"
+      },
+      {
+        "key": "secondary_threat_cleared",
+        "label": "Secondary Threat Cleared",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["secondary", "all-clear", "building clear", "no further threat", "all clear"]
+        }
       }
     ],
     "evacuation": [
@@ -302,6 +313,41 @@
         }
       },
       {
+        "key": "patients_waiting",
+        "label": "Patients Waiting",
+        "type": "number",
+        "initial_value": 160,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "handed_over_to_hospital",
+        "label": "Handed Over to Hospital",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "deaths_on_site",
+        "label": "Deaths on Site",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "supply_request_made",
+        "label": "Supply Request Made",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["supply", "request", "tourniquet", "stretcher", "shortage"]
+        }
+      },
+      {
         "key": "warm_zone_entry",
         "label": "Warm-Zone Medical Entry",
         "type": "boolean",
@@ -350,6 +396,17 @@
         "visible_to": "trainer_only",
         "config": {
           "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "misinformation_addressed_count",
+        "label": "Misinformation Addressed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["debunk", "counter", "correct", "misinformation", "rumour"]
         }
       },
       {
@@ -443,6 +500,17 @@
         "visible_to": "all",
         "config": {
           "keywords": ["access", "entry", "exit", "door", "control", "restrict"]
+        }
+      },
+      {
+        "key": "emergency_exits_verified",
+        "label": "Emergency Exits Verified",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["exit", "verify", "check", "emergency exit", "fire exit"]
         }
       }
     ]

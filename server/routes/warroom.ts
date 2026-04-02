@@ -50,6 +50,7 @@ const generateSchema = z.object({
         'stampede_crush',
         'active_shooter',
         'biohazard',
+        'nuclear_plant_leak',
       ])
       .optional(),
     setting: z
@@ -70,6 +71,7 @@ const generateSchema = z.object({
         'school',
         'hospital',
         'embassy',
+        'power_plant',
       ])
       .optional(),
     terrain: z
@@ -107,6 +109,7 @@ const suggestTeamsSchema = z.object({
         'stampede_crush',
         'active_shooter',
         'biohazard',
+        'nuclear_plant_leak',
       ])
       .optional(),
     setting: z
@@ -127,6 +130,7 @@ const suggestTeamsSchema = z.object({
         'school',
         'hospital',
         'embassy',
+        'power_plant',
       ])
       .optional(),
     terrain: z

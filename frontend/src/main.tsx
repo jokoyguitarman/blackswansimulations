@@ -11,6 +11,7 @@ import { WarRoom } from './pages/WarRoom';
 import { Sessions } from './pages/Sessions';
 import { SessionView } from './pages/SessionView';
 import { JoinSessionPage } from './pages/JoinSessionPage';
+import { DemoLanding } from './pages/DemoLanding';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SupabaseConfigError } from './components/SupabaseConfigError';
 import './style.css';
@@ -85,6 +86,14 @@ const App = () => {
               element={
                 <ProtectedRoute>
                   <SessionView />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/demo"
+              element={
+                <ProtectedRoute>
+                  <DemoLanding />
                 </ProtectedRoute>
               }
             />

@@ -26,6 +26,8 @@ interface PlacedAssetMarkerProps {
   isDraggable?: boolean;
   /** When true, disables interactivity so map click events pass through (for polygon drawing). */
   drawingActive?: boolean;
+  /** When true, applies entrance animations (drop-in for points, draw for lines/polygons). */
+  isNew?: boolean;
   onRemove?: (id: string) => void;
   onRelocate?: (id: string) => void;
   onDragEnd?: (id: string, newLat: number, newLng: number) => void;
@@ -95,14 +97,18 @@ function getScoreIndicator(score: Record<string, unknown> | null): {
   return { symbol: '✓', color: '#22c55e' };
 }
 
-function createPlacedAssetIcon(asset: PlacedAsset, isOwnTeam: boolean): DivIcon {
+function createPlacedAssetIcon(
+  asset: PlacedAsset,
+  isOwnTeam: boolean,
+  isNew: boolean = false,
+): DivIcon {
   const color = getTeamColor(asset.team_name);
   const iconSvg = getAssetIcon(asset.asset_type);
   const scoreInd = getScoreIndicator(asset.placement_score);
   const opacity = isOwnTeam ? 1 : 0.75;
 
   return new DivIcon({
-    className: 'placed-asset-marker',
+    className: `placed-asset-marker${isNew ? ' is-new' : ''}`,
     html: `
       <div style="
         position: relative;
@@ -148,6 +154,7 @@ export const PlacedAssetMarker = ({
   isOwnTeam,
   isDraggable = false,
   drawingActive = false,
+  isNew = false,
   onRemove,
   onRelocate,
   onDragEnd,
@@ -217,6 +224,7 @@ export const PlacedAssetMarker = ({
           fillOpacity: isOwnTeam ? 0.2 : 0.1,
           weight: 2,
           dashArray: isOwnTeam ? undefined : '6, 4',
+          className: isNew ? 'demo-draw-line demo-fill-reveal' : undefined,
         }}
       >
         {!drawingActive && (
@@ -283,6 +291,7 @@ export const PlacedAssetMarker = ({
           weight: 4,
           opacity: isOwnTeam ? 0.9 : 0.65,
           dashArray: isOwnTeam ? undefined : '8, 4',
+          className: isNew ? 'demo-draw-line' : undefined,
         }}
       >
         {!drawingActive && (
@@ -320,7 +329,7 @@ export const PlacedAssetMarker = ({
   const coords = geom.coordinates as [number, number];
   if (!coords?.length) return null;
   const position: LatLngExpression = [coords[1], coords[0]];
-  const icon = createPlacedAssetIcon(asset, isOwnTeam);
+  const icon = createPlacedAssetIcon(asset, isOwnTeam, isNew);
   const capacity = asset.properties?.capacity as number | undefined;
   const capacityUnit = asset.properties?.capacity_unit as string | undefined;
 
