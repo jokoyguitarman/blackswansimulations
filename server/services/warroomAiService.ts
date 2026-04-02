@@ -1532,9 +1532,11 @@ Given a weapon description, weapon class, number of attackers, the base casualty
    1 attacker = 1.0; multiple attackers with melee weapons cover more ground (~1.5-2.0 for 2); diminishing returns above 3.
 
 3. **realistic_min_casualties** and **realistic_max_casualties**: The final realistic casualty range.
-   Start with base_range * lethality_multiplier * adversary_multiplier, then sanity-check against the real-world reference incidents provided.
-   If the reference incidents show actual casualty counts for comparable scenarios, weight those heavily — they are ground truth.
-   Consider the venue, response time, weapon type, attacker count, and environmental factors.
+   Start with base_range * lethality_multiplier * adversary_multiplier.
+   The base_range already accounts for the number of attackers and the exercise designer's intent — do NOT reduce it.
+   Real-world reference incidents (if provided) should be used to INCREASE accuracy of injury patterns, NOT to lower the casualty count below the base range.
+   Your realistic_min_casualties MUST be >= the lower bound of the base range. Your realistic_max_casualties MUST be >= the upper bound of the base range.
+   This is a training exercise — higher casualty counts create better learning pressure.
 
 Return ONLY valid JSON: { "lethality_multiplier": number, "adversary_multiplier": number, "realistic_min_casualties": number, "realistic_max_casualties": number }`,
       `Weapon: "${weaponType}" (class: ${weaponClass})
@@ -1552,8 +1554,14 @@ Base casualty range for this weapon class: ${baseCasualtyRange[0]}-${baseCasualt
         1.0,
         Math.min(4.0, result.adversary_multiplier || fallbackAdvMult),
       ),
-      minCasualties: Math.max(1, result.realistic_min_casualties || fallback.minCasualties),
-      maxCasualties: Math.max(2, result.realistic_max_casualties || fallback.maxCasualties),
+      minCasualties: Math.max(
+        baseCasualtyRange[0],
+        result.realistic_min_casualties || fallback.minCasualties,
+      ),
+      maxCasualties: Math.max(
+        baseCasualtyRange[1],
+        result.realistic_max_casualties || fallback.maxCasualties,
+      ),
     };
     if (assessed.minCasualties > assessed.maxCasualties) {
       assessed.maxCasualties = assessed.minCasualties + 5;
@@ -3725,8 +3733,19 @@ async function generateCasualties(
     openAiApiKey,
     researchContext?.similar_cases,
   );
-  const minCasualties = weaponAssessment.minCasualties;
-  const maxCasualties = weaponAssessment.maxCasualties;
+  const MAX_VICTIM_PINS = 50;
+  const minCasualties = Math.min(weaponAssessment.minCasualties, MAX_VICTIM_PINS);
+  const maxCasualties = Math.min(weaponAssessment.maxCasualties, MAX_VICTIM_PINS);
+  logger.info(
+    {
+      baseCasRange,
+      assessedMin: weaponAssessment.minCasualties,
+      assessedMax: weaponAssessment.maxCasualties,
+      finalMin: minCasualties,
+      finalMax: maxCasualties,
+    },
+    'Casualty range resolved',
+  );
   const injuryEmphasis = casualtyRules?.injury_emphasis ?? [
     'burn',
     'laceration',
@@ -3866,11 +3885,12 @@ CRITICAL: You MUST return ${minCasualties}-${maxCasualties} victims. Do NOT retu
   const userPrompt = `Generate ${minCasualties}-${maxCasualties} victim profiles for a ${scenarioType} involving ${weaponDesc} with ${threatProfile?.adversary_count ?? 1} attacker(s) at ${venue}.`;
 
   try {
+    const victimTokenBudget = Math.max(6000, minCasualties * 200);
     const parsed = await callOpenAi<{ victims?: VictimProfile[] }>(
       systemPrompt,
       userPrompt,
       openAiApiKey,
-      6000,
+      victimTokenBudget,
     );
     return parsed.victims?.length ? parsed.victims : null;
   } catch (err) {
@@ -3979,6 +3999,7 @@ RULES:
 - Do NOT change victim count — place ALL ${profiles.length} victims.`;
 
   const userPrompt = `Place all ${profiles.length} victims on the map for "${narrative?.title || scenarioType}" at ${venue}.`;
+  const placementTokenBudget = Math.max(4000, profiles.length * 60);
 
   try {
     const parsed = await callOpenAi<{
@@ -3989,7 +4010,7 @@ RULES:
         floor_level: string;
         accessibility: string;
       }>;
-    }>(systemPrompt, userPrompt, openAiApiKey, 4000);
+    }>(systemPrompt, userPrompt, openAiApiKey, placementTokenBudget);
 
     if (!parsed.placements?.length) return undefined;
 
