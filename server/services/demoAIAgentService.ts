@@ -27,6 +27,7 @@ interface AgentState {
   recentActions: string[];
   lastActionTs: number;
   pendingCooldown: boolean;
+  actedThisCycle: boolean;
 }
 
 interface SessionAgents {
@@ -44,6 +45,8 @@ interface SessionAgents {
   scriptAware: boolean;
   scriptNextEventTs: number;
   stopped: boolean;
+  cycleDecisionCount: number;
+  lastInjectTs: number;
 }
 
 interface SingleAction {
@@ -72,18 +75,20 @@ interface AgentMultiResponse {
 // Constants — tuned for realistic human-like pacing
 // ---------------------------------------------------------------------------
 
-const AGENT_THROTTLE_MS = 90_000;
-const AGENT_JITTER_BASE_MS = 8_000;
-const AGENT_JITTER_RANGE_MS = 7_000;
-const INTER_ACTION_BASE_MS = 4_000;
-const INTER_ACTION_RANGE_MS = 4_000;
-const HYBRID_DEFER_WINDOW_MS = 8_000;
+const AGENT_THROTTLE_MS = 180_000; // 3 min cooldown per agent after acting
+const AGENT_JITTER_BASE_MS = 12_000;
+const AGENT_JITTER_RANGE_MS = 18_000;
+const INTER_ACTION_BASE_MS = 5_000;
+const INTER_ACTION_RANGE_MS = 5_000;
+const HYBRID_DEFER_WINDOW_MS = 10_000;
 const MAX_RECENT_ACTIONS = 15;
 const AI_MODEL = 'gpt-4o-mini';
-const PROACTIVE_INTERVAL_MS = 75_000;
-const PROACTIVE_ACT_PROBABILITY = 0.3;
-const KICKSTART_STAGGER_MS = 15_000;
-const KICKSTART_INITIAL_DELAY_MS = 10_000;
+const PROACTIVE_INTERVAL_MS = 180_000; // 3 min between proactive ticks
+const PROACTIVE_ACT_PROBABILITY = 0.15; // only 15% chance per agent per tick
+const KICKSTART_STAGGER_MS = 25_000; // 25s between kickstart agents
+const KICKSTART_INITIAL_DELAY_MS = 15_000;
+const MAX_DECISIONS_PER_INJECT_CYCLE = 3; // max decisions across ALL agents before waiting for next inject
+const INJECT_CYCLE_RESET_MS = 120_000; // auto-reset cycle budget after 2 min even without new inject
 
 // ---------------------------------------------------------------------------
 // Service
@@ -128,6 +133,8 @@ export class DemoAIAgentService {
       scriptAware: options?.scriptAware ?? false,
       scriptNextEventTs: 0,
       stopped: false,
+      cycleDecisionCount: 0,
+      lastInjectTs: 0,
     };
 
     for (const team of context.teams) {
@@ -147,6 +154,7 @@ export class DemoAIAgentService {
         recentActions: [],
         lastActionTs: 0,
         pendingCooldown: false,
+        actedThisCycle: false,
       });
     }
 
@@ -162,9 +170,7 @@ export class DemoAIAgentService {
     if (channelId) {
       const chHandler: InternalEventHandler = (event) => {
         if (session.stopped) return;
-        this.handleChannelEvent(session, event).catch((err) => {
-          logger.error({ error: err, sessionId, eventType: event.type }, 'AI agent channel error');
-        });
+        this.handleChannelEvent(session, event);
       };
       session.channelHandlers.set(channelId, chHandler);
       getWebSocketService().onChannelEvent(channelId, chHandler);
@@ -225,12 +231,23 @@ export class DemoAIAgentService {
       timestamp: new Date().toISOString(),
     };
 
+    // Kickstart is a fresh cycle
+    session.cycleDecisionCount = 0;
+    session.lastInjectTs = Date.now();
+
     for (let i = 0; i < agentEntries.length; i++) {
       const [, agentState] = agentEntries[i];
-      const delay = KICKSTART_INITIAL_DELAY_MS + i * KICKSTART_STAGGER_MS + Math.random() * 5000;
+      const delay = KICKSTART_INITIAL_DELAY_MS + i * KICKSTART_STAGGER_MS + Math.random() * 8000;
 
       setTimeout(() => {
         if (session.stopped) return;
+        if (session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE) {
+          logger.info(
+            { botUserId: agentState.persona.botUserId },
+            'AI agent: kickstart skipped, cycle budget used',
+          );
+          return;
+        }
         agentState.lastActionTs = 0;
         this.generateAndExecuteActions(session, agentState, kickstartEvent).catch((err) => {
           logger.error(
@@ -244,32 +261,52 @@ export class DemoAIAgentService {
 
   private async proactiveTick(session: SessionAgents): Promise<void> {
     if (session.stopped) return;
+
+    // Auto-reset cycle budget if enough time passed since last inject
+    const now = Date.now();
+    if (session.lastInjectTs > 0 && now - session.lastInjectTs > INJECT_CYCLE_RESET_MS) {
+      session.cycleDecisionCount = 0;
+      for (const [, a] of session.agents) {
+        a.actedThisCycle = false;
+      }
+      session.lastInjectTs = now;
+    }
+
+    // If cycle budget already used up, skip entirely
+    if (session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE) return;
+
     const elapsed = this.getElapsedMinutes(session);
 
     const proactiveEvent: WebSocketEvent = {
       type: 'proactive.tick',
       data: {
-        message: `${Math.floor(elapsed)} minutes into the exercise. Assess the current situation and take your next action.`,
+        message: `${Math.floor(elapsed)} minutes into the exercise. Assess the current situation and take your next action if appropriate.`,
         elapsed_minutes: Math.floor(elapsed),
       },
       timestamp: new Date().toISOString(),
     };
 
-    for (const [, agentState] of session.agents) {
-      if (!this.canAct(agentState, session)) continue;
-      if (Math.random() > PROACTIVE_ACT_PROBABILITY) continue;
+    // Pick at most ONE agent to act per proactive tick
+    const eligible = Array.from(session.agents.values()).filter(
+      (a) => this.canAct(a, session) && !a.actedThisCycle,
+    );
+    if (eligible.length === 0) return;
 
-      const jitter = AGENT_JITTER_BASE_MS + Math.random() * AGENT_JITTER_RANGE_MS;
-      setTimeout(() => {
-        if (session.stopped) return;
-        this.generateAndExecuteActions(session, agentState, proactiveEvent).catch((err) => {
-          logger.error(
-            { error: err, botUserId: agentState.persona.botUserId },
-            'AI agent proactive action failed',
-          );
-        });
-      }, jitter);
-    }
+    // Only act with PROACTIVE_ACT_PROBABILITY chance
+    if (Math.random() > PROACTIVE_ACT_PROBABILITY) return;
+
+    const agent = eligible[Math.floor(Math.random() * eligible.length)];
+    const jitter = AGENT_JITTER_BASE_MS + Math.random() * AGENT_JITTER_RANGE_MS;
+    setTimeout(() => {
+      if (session.stopped) return;
+      if (session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE) return;
+      this.generateAndExecuteActions(session, agent, proactiveEvent).catch((err) => {
+        logger.error(
+          { error: err, botUserId: agent.persona.botUserId },
+          'AI agent proactive action failed',
+        );
+      });
+    }, jitter);
   }
 
   // ---------------------------------------------------------------------------
@@ -375,50 +412,47 @@ export class DemoAIAgentService {
   // ---------------------------------------------------------------------------
 
   private async handleSessionEvent(session: SessionAgents, event: WebSocketEvent): Promise<void> {
-    const triggerTypes = [
-      'inject.published',
-      'decision.executed',
-      'state.updated',
-      'placement.created',
-    ];
-    if (!triggerTypes.includes(event.type)) return;
+    // Only react to inject.published — do NOT react to other bots' decisions/placements
+    // to avoid the exponential feedback loop where each bot triggers all others.
+    if (event.type !== 'inject.published') return;
 
-    const originatorId = this.extractOriginatorId(event);
+    // New inject cycle: reset budget so agents can act again
+    session.cycleDecisionCount = 0;
+    session.lastInjectTs = Date.now();
+    for (const [, agent] of session.agents) {
+      agent.actedThisCycle = false;
+    }
 
-    for (const [botUserId, agentState] of session.agents) {
-      if (originatorId === botUserId) continue;
+    logger.info(
+      { sessionId: session.sessionId, eventType: event.type },
+      'AI agents: new inject cycle started',
+    );
+
+    // Stagger agent responses to the inject
+    const agentEntries = Array.from(session.agents.entries());
+    for (let i = 0; i < agentEntries.length; i++) {
+      const [, agentState] = agentEntries[i];
       if (!this.canAct(agentState, session)) continue;
 
-      const jitter = AGENT_JITTER_BASE_MS + Math.random() * AGENT_JITTER_RANGE_MS;
+      const delay =
+        AGENT_JITTER_BASE_MS + i * KICKSTART_STAGGER_MS + Math.random() * AGENT_JITTER_RANGE_MS;
       setTimeout(() => {
         if (session.stopped) return;
+        if (session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE) return;
+        if (agentState.actedThisCycle) return;
         this.generateAndExecuteActions(session, agentState, event).catch((err) => {
-          logger.error({ error: err, botUserId, eventType: event.type }, 'AI agent action failed');
+          logger.error(
+            { error: err, botUserId: agentState.persona.botUserId, eventType: event.type },
+            'AI agent action failed',
+          );
         });
-      }, jitter);
+      }, delay);
     }
   }
 
-  private async handleChannelEvent(session: SessionAgents, event: WebSocketEvent): Promise<void> {
-    if (event.type !== 'message.sent') return;
-    const msg = event.data.message as Record<string, unknown> | undefined;
-    const senderId =
-      (msg?.sender_id as string) || ((msg?.sender as Record<string, unknown>)?.id as string);
-    if (!senderId) return;
-
-    for (const [botUserId, agentState] of session.agents) {
-      if (senderId === botUserId) continue;
-      if (!this.canAct(agentState, session)) continue;
-      if (Math.random() > 0.2) continue;
-
-      const jitter = AGENT_JITTER_BASE_MS + Math.random() * AGENT_JITTER_RANGE_MS;
-      setTimeout(() => {
-        if (session.stopped) return;
-        this.generateAndExecuteActions(session, agentState, event).catch((err) => {
-          logger.error({ error: err, botUserId }, 'AI agent chat response failed');
-        });
-      }, jitter);
-    }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private handleChannelEvent(_session: SessionAgents, _event: WebSocketEvent): void {
+    // no-op: chat responses disabled to prevent feedback loops
   }
 
   // ---------------------------------------------------------------------------
@@ -432,6 +466,8 @@ export class DemoAIAgentService {
   ): Promise<void> {
     if (session.stopped) return;
     if (!this.canAct(agent, session)) return;
+    if (agent.actedThisCycle && session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE)
+      return;
 
     agent.lastActionTs = Date.now();
     agent.pendingCooldown = true;
@@ -452,9 +488,25 @@ export class DemoAIAgentService {
         return;
       }
 
+      // Limit to at most 3 actions (1 decision + 1 placement/claim + 1 chat)
       for (const action of actions.slice(0, 3)) {
         if (session.stopped) break;
+        if (
+          action.action === 'decision' &&
+          session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE
+        ) {
+          logger.info(
+            { botUserId: agent.persona.botUserId },
+            'AI agent: cycle decision budget exhausted, skipping decision',
+          );
+          continue;
+        }
+
         await this.executeSingleAction(session, agent, action);
+
+        if (action.action === 'decision') {
+          session.cycleDecisionCount++;
+        }
 
         const label =
           action.action === 'decision'
@@ -475,6 +527,8 @@ export class DemoAIAgentService {
           );
         }
       }
+
+      agent.actedThisCycle = true;
 
       if (response.reasoning) {
         logger.debug(
@@ -579,6 +633,8 @@ export class DemoAIAgentService {
       '- READ "Recent actions" and "Ground situation" carefully. Address SPECIFIC casualties and hazards by name/location.',
       '- Focus on YOUR team specialty. Do not duplicate what other teams already did.',
       '- Each decision must be UNIQUE — never repeat a previous decision.',
+      '- If the situation is stable and nothing new requires action, return { "actions": [{ "action": "none" }] }.',
+      '- You are NOT expected to act every time. Real professionals wait, observe, and only act when there is something meaningful to address.',
     );
 
     return parts.join('\n');
@@ -772,6 +828,8 @@ export class DemoAIAgentService {
 
   private canAct(agent: AgentState, session: SessionAgents): boolean {
     if (agent.pendingCooldown) return false;
+    if (agent.actedThisCycle && session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE)
+      return false;
     const now = Date.now();
     if (now - agent.lastActionTs < AGENT_THROTTLE_MS) return false;
     if (session.scriptAware && session.scriptNextEventTs > 0) {

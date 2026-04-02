@@ -102,6 +102,31 @@ export function resolveBotRole(teamName: string): string {
 }
 
 export class DemoActionDispatcher {
+  // Sequential queue for background evaluation to prevent OpenAI rate-limit flooding
+  private evalQueue: Array<() => Promise<void>> = [];
+  private evalRunning = false;
+
+  private enqueueEvaluation(task: () => Promise<void>): void {
+    this.evalQueue.push(task);
+    if (!this.evalRunning) this.drainEvalQueue();
+  }
+
+  private async drainEvalQueue(): Promise<void> {
+    if (this.evalRunning) return;
+    this.evalRunning = true;
+    while (this.evalQueue.length > 0) {
+      const task = this.evalQueue.shift()!;
+      try {
+        await task();
+      } catch (err) {
+        logger.error({ error: err }, 'Demo: queued evaluation task failed');
+      }
+      // Small breathing room between evaluations to avoid API bursts
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    this.evalRunning = false;
+  }
+
   /**
    * Insert a decision row, mark it executed, broadcast, and fire background processing.
    */
@@ -181,13 +206,10 @@ export class DemoActionDispatcher {
         botUserId,
       ).catch(() => {});
 
-      // Fire background processing (AI classification, triggers, heat meter, etc.)
-      this.processDecisionBackground(decision.id, executed, botUserId).catch((err) => {
-        logger.error(
-          { error: err, decisionId: decision.id },
-          'Demo: background decision processing failed',
-        );
-      });
+      // Queue background processing sequentially to avoid OpenAI rate-limit flooding
+      this.enqueueEvaluation(() =>
+        this.processDecisionBackground(decision.id, executed, botUserId),
+      );
 
       logger.info({ decisionId: decision.id, botUserId }, 'Demo: decision proposed + executed');
       return decision.id;
