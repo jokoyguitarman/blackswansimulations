@@ -688,7 +688,7 @@ function mergeInjectEffects(
 export const SessionView = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isSpectator = searchParams.get('spectator') === 'true';
   const spectatorMode = searchParams.get('mode') || 'cinematic';
   const { isTrainer } = useRoleVisibility();
@@ -1396,7 +1396,7 @@ export const SessionView = () => {
     return (
       <div className="h-screen w-screen overflow-hidden bg-robotic-gray-400 relative flex">
         {/* Map area */}
-        <div className={`relative ${isGodView ? 'flex-1' : 'absolute inset-0'}`}>
+        <div className={isGodView ? 'relative flex-1' : 'absolute inset-0'}>
           <MapView
             sessionId={id}
             incidents={[]}
@@ -1469,9 +1469,13 @@ export const SessionView = () => {
             <button
               key={m}
               onClick={() => {
-                const url = new URL(window.location.href);
-                url.searchParams.set('mode', m);
-                window.history.replaceState({}, '', url.toString());
+                setSearchParams(
+                  (prev) => {
+                    prev.set('mode', m);
+                    return prev;
+                  },
+                  { replace: true },
+                );
               }}
               className={`px-3 py-1.5 text-xs terminal-text uppercase border rounded backdrop-blur-sm ${
                 spectatorMode === m
