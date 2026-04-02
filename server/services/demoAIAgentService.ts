@@ -652,14 +652,46 @@ export class DemoAIAgentService {
       '- exclusivity: "exclusive" (only your team) or "shared"',
       '',
       '### PIN RESPONSE (interact with a specific casualty or hazard on the map)',
-      'Use pin_response INSTEAD of a regular decision when you want to directly triage a casualty or mitigate a hazard.',
-      '- target_id: the exact ID from the casualties/hazards list (e.g. "abc-123...")',
+      '⚠️ MANDATORY: You MUST use pin_response (not a regular decision) when interacting with any casualty or hazard.',
+      'A regular text decision about a casualty or hazard has NO physical effect on the map. ONLY pin_response actually updates the pin.',
+      'If the Ground Situation lists casualties or hazards in your jurisdiction, your FIRST priority is to use pin_response on them.',
+      '',
+      '- target_id: COPY the exact UUID from the casualties/hazards list below (the part inside [id:...]). This must be exact.',
       '- target_type: "casualty" or "hazard"',
       '- target_label: human-readable name (e.g. "Burn victims near Gate B")',
-      '- actions: array of action labels you are taking (e.g. ["Initiate Triage", "Administer First Aid"])',
+      '- actions: array of action labels you are taking (e.g. ["Initiate Triage", "Administer First Aid", "Apply Tourniquet"])',
       '- resources: array of resources deployed (e.g. [{ "type": "medic", "label": "Paramedic Team", "quantity": 2 }])',
-      '- triage_color: for casualties only — "green", "yellow", "red", or "black"',
+      '- triage_color: for casualties only — assign based on severity: "green" (minor/walking), "yellow" (delayed/moderate), "red" (immediate/critical), or "black" (deceased)',
       '- description: brief description of what you are doing',
+      '',
+      'Example pin_response for a casualty:',
+      '{ "action": "pin_response", "pin_response": { "target_id": "a1b2c3d4-...", "target_type": "casualty", "target_label": "Burn victims near Gate B", "actions": ["Initiate Triage", "Administer IV Fluids"], "resources": [{ "type": "medic", "label": "Paramedic Team Alpha", "quantity": 2 }], "triage_color": "red", "description": "Triaging critical burn victim, establishing IV access" } }',
+      '',
+      'Example pin_response for a hazard:',
+      '{ "action": "pin_response", "pin_response": { "target_id": "e5f6g7h8-...", "target_type": "hazard", "target_label": "Chemical spill at Loading Bay", "actions": ["Deploy Containment Boom", "Establish Decon Corridor"], "resources": [{ "type": "hazmat_unit", "label": "HAZMAT Team Bravo", "quantity": 1 }], "description": "Containing chemical spill and setting up decontamination" } }',
+      '',
+      '## STATUS CHAIN RULES (must follow strictly)',
+      'Every casualty and hazard follows a strict lifecycle. You can ONLY take actions valid for their current status.',
+      '',
+      '### Patient lifecycle:',
+      '  undiscovered → identified → being_evacuated → at_assembly → endorsed_to_triage → in_treatment → endorsed_to_transport → transported',
+      '  - You can TRIAGE (pin_response) patients that are: identified, at_assembly, endorsed_to_triage',
+      '  - You can EXTRACT/EVACUATE patients that are: identified, undiscovered',
+      '  - You can TRANSPORT patients ONLY if they are: in_treatment or endorsed_to_transport (they MUST be treated first!)',
+      '  - You CANNOT transport a patient who has not been treated yet.',
+      '  - You CANNOT skip steps (e.g. cannot go from "identified" straight to "transported").',
+      '',
+      '### Crowd lifecycle:',
+      '  undiscovered → identified → being_evacuated → at_exit → at_assembly → resolved',
+      '  - You can EVACUATE (direct_to) crowds that are: identified, undiscovered',
+      '  - A crowd MUST have an explicit evacuation order with a named exit/destination before it moves.',
+      '  - Crowds do NOT automatically evacuate just because an exit is claimed.',
+      '',
+      '### Hazard lifecycle:',
+      '  active → escalating → contained → resolved',
+      '  - You can CONTAIN hazards that are: active, escalating',
+      '  - A hazard can only be RESOLVED after it has been CONTAINED first.',
+      '  - Do NOT attempt to resolve a hazard that is still active/escalating — contain it first.',
       '',
       '### CHAT (1-2 sentences max)',
       'Professional radio comms. Reference YOUR decision. Acknowledge what other teams did.',
@@ -678,13 +710,14 @@ export class DemoAIAgentService {
       '',
       '## Tactical Phases',
       '- Minutes 0-3: CLAIM exits relevant to your team. Initial situation assessment. First containment decision.',
-      '- Minutes 3-8: Deploy cordons/triage. Use PIN_RESPONSE to triage casualties one by one and address hazards.',
-      '- Minutes 8-15: Continue pin responses for remaining casualties. Specialist deployments, evacuations, hazard mitigation.',
-      '- Minutes 15+: Sustained ops, resource rotation, investigation, recovery.',
+      '- Minutes 3-8: Deploy cordons/triage areas. Use PIN_RESPONSE to triage casualties one by one. Begin hazard containment.',
+      '- Minutes 8-15: Continue triaging remaining casualties. Extract patients to triage areas. Specialist deployments. Begin evacuations only AFTER exits are claimed and cordons placed.',
+      '- Minutes 15+: Treat patients at triage. Only transport AFTER treatment. Sustained ops, resource rotation. Resolve contained hazards.',
       '',
       '## CRITICAL Rules',
       '- Every turn MUST have exactly 1 decision (or 1 pin_response) + 1 placement/claim + 1 chat.',
-      '- Use pin_response when there are untagged casualties or active hazards you can address. Otherwise use a regular decision.',
+      '- ALWAYS prefer pin_response over decision when there are casualties or hazards in your jurisdiction. A text decision CANNOT triage a patient or contain a hazard — only pin_response can.',
+      '- Only use a regular decision when there are NO actionable casualties/hazards for your team, or for general operational actions (establishing cordons, requesting resources, coordinating).',
       '- Bundle ALL your tactical moves into ONE decision with a rich description.',
       '- NEVER place an inner_cordon or outer_cordon if one already exists.',
       '- READ "Recent actions" and "Ground situation" carefully. Address SPECIFIC casualties and hazards by name/location.',
@@ -693,6 +726,8 @@ export class DemoAIAgentService {
       '- Each decision must be UNIQUE — never repeat or closely resemble a previous decision by ANY team.',
       '- If the situation is stable and nothing new requires action, return { "actions": [{ "action": "none" }] }.',
       '- You are NOT expected to act every time. Real professionals wait, observe, and only act when there is something meaningful to address.',
+      '- RESPECT THE STATUS CHAIN: check each casualty/hazard status before acting. Do NOT order transport for untreated patients, do NOT evacuate crowds that have not been given a direct movement order, do NOT resolve hazards that are not contained.',
+      '- When writing decisions, be EXPLICIT about what you are doing. Say "transport burn victim at Gate B to Singapore General Hospital" NOT just "manage casualties". Vague decisions without named targets or destinations have NO effect on the map.',
     );
 
     // Difficulty-specific behavioral tuning
@@ -848,7 +883,7 @@ export class DemoAIAgentService {
         .from('scenario_hazards')
         .select('hazard_type, status, properties, resolution_requirements')
         .eq('session_id', sessionId)
-        .in('status', ['active', 'escalating', 'being_mitigated'])
+        .in('status', ['active', 'escalating', 'contained'])
         .limit(8);
 
       if (hazards && hazards.length > 0) {
@@ -1055,6 +1090,24 @@ export class DemoAIAgentService {
     switch (action.action) {
       case 'decision': {
         if (!action.decision) break;
+
+        // Fallback: if the decision text mentions a casualty/hazard UUID,
+        // auto-convert to a pin_response so the pin actually gets updated
+        const converted = await this.tryConvertDecisionToPinResponse(
+          session,
+          agent,
+          action.decision.title,
+          action.decision.description,
+        );
+        if (converted) {
+          logger.info(
+            { botUserId, targetId: converted.target_id, targetType: converted.target_type },
+            'AI agent: auto-converted decision to pin_response (decision text referenced a pin)',
+          );
+          await this.dispatcher.respondToPin(sessionId, botUserId, teamName, converted);
+          break;
+        }
+
         await this.dispatcher.proposeAndExecuteDecision(sessionId, botUserId, {
           title: action.decision.title,
           description: action.decision.description,
@@ -1094,8 +1147,18 @@ export class DemoAIAgentService {
       }
 
       case 'pin_response': {
-        if (!action.pin_response?.target_id) break;
+        if (!action.pin_response?.target_id) {
+          logger.warn(
+            { botUserId, pinResponse: action.pin_response },
+            'AI agent: pin_response missing target_id, skipping',
+          );
+          break;
+        }
         const pr = action.pin_response;
+        logger.info(
+          { botUserId, targetId: pr.target_id, targetType: pr.target_type, label: pr.target_label },
+          'AI agent: executing pin_response',
+        );
         await this.dispatcher.respondToPin(sessionId, botUserId, teamName, {
           target_id: pr.target_id,
           target_type: pr.target_type,
@@ -1183,6 +1246,164 @@ export class DemoAIAgentService {
       // geometry already absolute or malformed
     }
     return geometry;
+  }
+
+  /**
+   * When the LLM outputs a decision instead of a pin_response but the text
+   * clearly references a specific casualty/hazard UUID, auto-convert it so
+   * the pin actually gets updated on the map and the spectator panel fires.
+   */
+  private async tryConvertDecisionToPinResponse(
+    session: SessionAgents,
+    agent: AgentState,
+    title: string,
+    description: string,
+  ): Promise<{
+    target_id: string;
+    target_type: 'casualty' | 'hazard';
+    target_label: string;
+    actions: string[];
+    resources: Array<{ type: string; label: string; quantity: number }>;
+    triage_color?: 'green' | 'yellow' | 'red' | 'black';
+    description: string;
+  } | null> {
+    const fullText = `${title} ${description}`.toLowerCase();
+
+    // Look for UUID patterns that match known casualties or hazards
+    const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+    const foundIds = fullText.match(uuidPattern);
+    if (foundIds?.length) {
+      // Check casualties first
+      const { data: casualty } = await supabaseAdmin
+        .from('scenario_casualties')
+        .select('id, casualty_type, conditions, status')
+        .eq('session_id', session.sessionId)
+        .in('id', foundIds)
+        .limit(1)
+        .maybeSingle();
+
+      if (casualty) {
+        const conds = (casualty.conditions as Record<string, unknown>) ?? {};
+        const vis = (conds.visible_description as string) || (conds.injury_type as string) || '';
+        const triageColor = this.inferTriageColor(fullText, conds);
+        return {
+          target_id: casualty.id as string,
+          target_type: 'casualty',
+          target_label: vis || `${casualty.casualty_type} (${casualty.status})`,
+          actions: this.inferActionsFromText(fullText, 'casualty'),
+          resources: [{ type: 'responder', label: `${agent.persona.teamName} Team`, quantity: 1 }],
+          triage_color: triageColor,
+          description: description.slice(0, 300),
+        };
+      }
+
+      // Check hazards
+      const { data: hazard } = await supabaseAdmin
+        .from('scenario_hazards')
+        .select('id, hazard_type, status')
+        .eq('session_id', session.sessionId)
+        .in('id', foundIds)
+        .limit(1)
+        .maybeSingle();
+
+      if (hazard) {
+        return {
+          target_id: hazard.id as string,
+          target_type: 'hazard',
+          target_label: `${hazard.hazard_type} (${hazard.status})`,
+          actions: this.inferActionsFromText(fullText, 'hazard'),
+          resources: [{ type: 'responder', label: `${agent.persona.teamName} Team`, quantity: 1 }],
+          description: description.slice(0, 300),
+        };
+      }
+    }
+
+    // Also detect keyword-based references to casualties/hazards without UUIDs
+    const casualtyKeywords =
+      /triage|treat|first aid|tourniquet|administer|assess (patient|casualt|victim|injur)/i;
+    const hazardKeywords =
+      /contain (fire|spill|leak|chemical)|suppress fire|extinguish|deploy foam|hazmat/i;
+
+    if (casualtyKeywords.test(fullText) || hazardKeywords.test(fullText)) {
+      const isCasualty = casualtyKeywords.test(fullText);
+      const table = isCasualty ? 'scenario_casualties' : 'scenario_hazards';
+      const statusFilter = isCasualty
+        ? ['undiscovered', 'identified', 'endorsed_to_triage', 'at_assembly']
+        : ['active', 'escalating'];
+
+      const { data: targets } = await supabaseAdmin
+        .from(table)
+        .select('id, status, ' + (isCasualty ? 'casualty_type, conditions' : 'hazard_type'))
+        .eq('session_id', session.sessionId)
+        .in('status', statusFilter)
+        .limit(1);
+
+      if (targets?.length) {
+        const target = targets[0] as unknown as Record<string, unknown>;
+        if (isCasualty) {
+          const conds = (target.conditions as Record<string, unknown>) ?? {};
+          const vis = (conds.visible_description as string) || '';
+          return {
+            target_id: target.id as string,
+            target_type: 'casualty',
+            target_label: vis || `${target.casualty_type} (${target.status})`,
+            actions: this.inferActionsFromText(fullText, 'casualty'),
+            resources: [
+              { type: 'responder', label: `${agent.persona.teamName} Team`, quantity: 1 },
+            ],
+            triage_color: this.inferTriageColor(fullText, conds),
+            description: description.slice(0, 300),
+          };
+        } else {
+          return {
+            target_id: target.id as string,
+            target_type: 'hazard',
+            target_label: `${target.hazard_type} (${target.status})`,
+            actions: this.inferActionsFromText(fullText, 'hazard'),
+            resources: [
+              { type: 'responder', label: `${agent.persona.teamName} Team`, quantity: 1 },
+            ],
+            description: description.slice(0, 300),
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private inferTriageColor(
+    text: string,
+    conditions: Record<string, unknown>,
+  ): 'green' | 'yellow' | 'red' | 'black' {
+    const existing = conditions.triage_color as string | undefined;
+    if (existing && ['green', 'yellow', 'red', 'black'].includes(existing))
+      return existing as 'green' | 'yellow' | 'red' | 'black';
+    if (/critical|immediate|severe|life.?threaten/i.test(text)) return 'red';
+    if (/delayed|moderate|stable but/i.test(text)) return 'yellow';
+    if (/deceased|dead|no pulse|black tag/i.test(text)) return 'black';
+    return 'green';
+  }
+
+  private inferActionsFromText(text: string, targetType: 'casualty' | 'hazard'): string[] {
+    const actions: string[] = [];
+    if (targetType === 'casualty') {
+      if (/triage/i.test(text)) actions.push('Initiate Triage');
+      if (/first aid|treat/i.test(text)) actions.push('Administer First Aid');
+      if (/tourniquet|bleed/i.test(text)) actions.push('Apply Tourniquet');
+      if (/iv|fluid/i.test(text)) actions.push('Establish IV Access');
+      if (/assess/i.test(text)) actions.push('Assess Injuries');
+      if (/stabiliz/i.test(text)) actions.push('Stabilize Patient');
+      if (actions.length === 0) actions.push('Assess and Triage');
+    } else {
+      if (/contain/i.test(text)) actions.push('Deploy Containment');
+      if (/suppress|extinguish/i.test(text)) actions.push('Fire Suppression');
+      if (/foam|chemical/i.test(text)) actions.push('Deploy Foam/Agent');
+      if (/decon/i.test(text)) actions.push('Establish Decon Corridor');
+      if (/ventilat/i.test(text)) actions.push('Ventilation');
+      if (actions.length === 0) actions.push('Assess and Contain');
+    }
+    return actions;
   }
 
   private async resolveLocationId(scenarioId: string, label: string): Promise<string | null> {

@@ -139,7 +139,7 @@ export async function processExitFlow(sessionId: string): Promise<void> {
     .eq('scenario_id', session.scenario_id)
     .eq('session_id', sessionId)
     .eq('casualty_type', 'crowd')
-    .in('status', ['being_evacuated', 'identified', 'at_exit']);
+    .in('status', ['being_evacuated', 'at_exit']);
 
   if (!crowdPins?.length) return;
 

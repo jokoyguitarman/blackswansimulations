@@ -163,17 +163,31 @@ async function extractCasualtyEffects(
         messages: [
           {
             role: 'system',
-            content: `You analyze crisis management decisions to detect if they involve physical movement of people (crowds, patients, casualties). Return a JSON object with a single key "casualty_effects" containing an array.
+            content: `You analyze crisis management decisions to detect EXPLICIT physical movement orders for people (crowds, patients, casualties). Return a JSON object with a single key "casualty_effects" containing an array.
 
 Each effect object has:
 - target_type: "crowd" or "patient"
-- target_description: brief description of who is being moved (e.g. "crowd near Building C", "trapped patient")
-- action: one of "direct_to" (guide crowd), "extract" (rescue/carry patient), "treat" (begin treatment), "transport" (ambulance transport)
-- destination_description: the FINAL destination (e.g. "holding area", "triage area", "assembly point", "hospital"). Omit for "treat".
-- via_exit: if the decision specifies routing THROUGH a particular exit or doorway (e.g. "Exit A", "Main Gate", "South Door"), include the exit name here. Omit if no specific exit is mentioned.
+- target_description: MUST reference a specific person/group by location, injury, or visible description (e.g. "crowd near Building C", "burn victim at Gate B", "trapped patient in collapsed section"). Generic descriptions like "injured person" or "casualties" without location specificity → return empty array instead.
+- action: one of "direct_to" (guide crowd to a destination), "extract" (physically rescue/carry patient out), "treat" (begin on-site medical treatment), "transport" (ambulance transport to a named medical facility)
+- destination_description: the EXPLICIT named destination from the decision text (e.g. "Assembly Point Alpha", "triage tent at Exit D", "Singapore General Hospital"). Omit for "treat". If no specific destination is named → do NOT guess or infer one.
+- via_exit: only if the decision EXPLICITLY names routing through a particular exit/doorway (e.g. "through Exit A"). Omit if not stated.
 
-If the decision does NOT involve moving people, return {"casualty_effects": []}.
-Only include effects where the decision clearly implies physical movement or relocation of people.`,
+STRICT RULES — follow these exactly:
+1. "transport" REQUIRES explicit transport language: "transport to", "transfer to hospital", "send to [facility]", "ambulance to". The destination MUST be a named medical facility.
+2. "extract" REQUIRES explicit rescue language: "extract", "rescue", "carry out", "pull out", "evacuate [specific person/patient]".
+3. "direct_to" REQUIRES explicit crowd movement orders: "evacuate crowd through [exit]", "direct civilians to [assembly point]", "move crowd toward [destination]".
+4. "treat" REQUIRES explicit treatment language: "triage", "treat", "administer first aid", "begin medical care for".
+
+DO NOT infer movement from:
+- Setting up infrastructure ("establish triage point" ≠ moving patients)
+- Deploying resources ("deploy fire truck" ≠ moving casualties)  
+- General area management ("secure perimeter", "set up cordon" ≠ evacuating anyone)
+- Mentioning casualties without a movement order ("assess injuries", "check on victims" ≠ transport)
+- Claiming or managing exits ("claim Exit A for evacuation" ≠ actually moving a crowd)
+- Requesting backup or reinforcements
+- Any decision about fire suppression, hazard containment, or structural assessment
+
+When in doubt, return {"casualty_effects": []}. It is better to miss an effect than to fabricate one.`,
           },
           {
             role: 'user',
@@ -229,14 +243,26 @@ async function resolveAndApply(
     exitWaypoint = resolveExitLocation(effect.via_exit, locations);
   }
 
+  // Status chain prerequisites — each action can only proceed from valid prior statuses
+  const DIRECT_TO_ALLOWED = ['identified', 'undiscovered'];
+  const EXTRACT_ALLOWED = ['identified', 'undiscovered'];
+  const TRANSPORT_ALLOWED = ['in_treatment', 'endorsed_to_transport'];
+  const TREAT_ALLOWED = ['awaiting_triage', 'endorsed_to_triage', 'identified', 'at_assembly'];
+
   switch (effect.action) {
     case 'direct_to': {
       if (!exitWaypoint && !destination) return;
+      if (!DIRECT_TO_ALLOWED.includes(targetCasualty.status)) {
+        logger.info(
+          { casualtyId: targetCasualty.id, status: targetCasualty.status, action: 'direct_to' },
+          'Status chain rejected: casualty already past initial movement phase',
+        );
+        return;
+      }
       const speed =
         targetCasualty.casualty_type === 'crowd' ? CROWD_WALK_MPM : AMBULATORY_PATIENT_MPM;
 
       if (exitWaypoint) {
-        // Two-step: walk to exit first, store final destination in conditions
         const updatedConds = { ...(targetCasualty.conditions ?? {}) };
         if (destination) {
           updatedConds.final_destination = {
@@ -256,25 +282,29 @@ async function resolveAndApply(
           destination_label: exitWaypoint.label,
           movement_speed_mpm: speed,
           destination_reached_status: 'at_exit',
-          status:
-            targetCasualty.status === 'identified' ? 'being_evacuated' : targetCasualty.status,
+          status: 'being_evacuated',
         });
       } else {
-        // Direct: walk straight to final destination
         await setCasualtyMovement(sessionId, targetCasualty, {
           destination_lat: destination!.lat,
           destination_lng: destination!.lng,
           destination_label: destination!.label,
           movement_speed_mpm: speed,
           destination_reached_status: 'being_evacuated',
-          status:
-            targetCasualty.status === 'identified' ? 'being_evacuated' : targetCasualty.status,
+          status: 'being_evacuated',
         });
       }
       break;
     }
     case 'extract': {
       if (!destination) return;
+      if (!EXTRACT_ALLOWED.includes(targetCasualty.status)) {
+        logger.info(
+          { casualtyId: targetCasualty.id, status: targetCasualty.status, action: 'extract' },
+          'Status chain rejected: patient already past extraction phase',
+        );
+        return;
+      }
       const conds = targetCasualty.conditions ?? {};
       const mobility = conds.mobility as string | undefined;
       const speed =
@@ -287,12 +317,19 @@ async function resolveAndApply(
         destination_label: destination.label,
         movement_speed_mpm: speed,
         destination_reached_status: 'awaiting_triage',
-        status: targetCasualty.status === 'identified' ? 'being_evacuated' : targetCasualty.status,
+        status: 'being_evacuated',
       });
       break;
     }
     case 'transport': {
       if (!destination) return;
+      if (!TRANSPORT_ALLOWED.includes(targetCasualty.status)) {
+        logger.info(
+          { casualtyId: targetCasualty.id, status: targetCasualty.status, action: 'transport' },
+          'Status chain rejected: patient must be in_treatment before transport',
+        );
+        return;
+      }
       await setCasualtyMovement(sessionId, targetCasualty, {
         destination_lat: destination.lat,
         destination_lng: destination.lng,
@@ -304,35 +341,36 @@ async function resolveAndApply(
       break;
     }
     case 'treat': {
-      if (
-        ['awaiting_triage', 'endorsed_to_triage', 'identified', 'being_evacuated'].includes(
-          targetCasualty.status,
-        )
-      ) {
-        const treatConds = { ...(targetCasualty.conditions ?? {}) };
-        const triageColor = (treatConds.triage_color as string) ?? 'green';
-        if (triageColor === 'red') {
-          treatConds.critical_clock_started_at = new Date().toISOString();
-        }
+      if (!TREAT_ALLOWED.includes(targetCasualty.status)) {
+        logger.info(
+          { casualtyId: targetCasualty.id, status: targetCasualty.status, action: 'treat' },
+          'Status chain rejected: patient not in a treatable status',
+        );
+        return;
+      }
+      const treatConds = { ...(targetCasualty.conditions ?? {}) };
+      const triageColor = (treatConds.triage_color as string) ?? 'green';
+      if (triageColor === 'red') {
+        treatConds.critical_clock_started_at = new Date().toISOString();
+      }
 
-        await supabaseAdmin
-          .from('scenario_casualties')
-          .update({
-            status: 'in_treatment',
-            conditions: treatConds,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', targetCasualty.id);
+      await supabaseAdmin
+        .from('scenario_casualties')
+        .update({
+          status: 'in_treatment',
+          conditions: treatConds,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', targetCasualty.id);
 
-        try {
-          getWebSocketService().broadcastToSession(sessionId, {
-            type: 'casualty.updated',
-            data: { casualty_id: targetCasualty.id, status: 'in_treatment' },
-            timestamp: new Date().toISOString(),
-          });
-        } catch {
-          /* ws not initialized */
-        }
+      try {
+        getWebSocketService().broadcastToSession(sessionId, {
+          type: 'casualty.updated',
+          data: { casualty_id: targetCasualty.id, status: 'in_treatment' },
+          timestamp: new Date().toISOString(),
+        });
+      } catch {
+        /* ws not initialized */
       }
       break;
     }
@@ -352,15 +390,30 @@ function resolveTarget(effect: CasualtyEffect, casualties: CasualtyRow[]): Casua
   // Try matching by visible_description or conditions
   const descMatch = candidates.find((c) => {
     const vis = ((c.conditions ?? {}).visible_description as string) ?? '';
+    if (!vis) return false;
     return vis.toLowerCase().includes(desc) || desc.includes(vis.toLowerCase());
   });
   if (descMatch) return descMatch;
 
-  // Fallback: largest headcount for crowds, first match for patients
-  if (effect.target_type === 'crowd') {
-    return candidates.sort((a, b) => b.headcount - a.headcount)[0];
+  // Try matching by location hint in the description (e.g. "Gate B", "Building C")
+  const locWords = desc.match(
+    /(?:gate|exit|building|block|level|floor|section|area|zone|wing)\s*\w+/gi,
+  );
+  if (locWords?.length) {
+    const locMatch = candidates.find((c) => {
+      const vis = ((c.conditions ?? {}).visible_description as string)?.toLowerCase() ?? '';
+      const loc = ((c.conditions ?? {}).location_hint as string)?.toLowerCase() ?? '';
+      return locWords.some((w) => vis.includes(w.toLowerCase()) || loc.includes(w.toLowerCase()));
+    });
+    if (locMatch) return locMatch;
   }
-  return candidates[0];
+
+  // No specific match found — require explicit targeting, do not guess
+  logger.info(
+    { targetDescription: effect.target_description, candidateCount: candidates.length },
+    'resolveTarget: no specific match found, rejecting to prevent phantom movement',
+  );
+  return null;
 }
 
 const ZONE_CLASSIFICATION_ALIASES: Record<string, string[]> = {
@@ -638,31 +691,8 @@ async function resolveZoneStepFallback(
     cLng,
   );
 
-  // For transport with no destination, try to find nearest hospital/facility
+  // Transport requires an explicitly named facility — no auto-resolve
   if (action === 'transport') {
-    const { data: facilities } = await supabaseAdmin
-      .from('scenario_locations')
-      .select('label, coordinates')
-      .eq('scenario_id', scenarioId)
-      .or('label.ilike.%hospital%,label.ilike.%medical%,label.ilike.%clinic%')
-      .limit(5);
-    if (facilities?.length) {
-      let nearest = facilities[0];
-      let nearestDist = Infinity;
-      for (const f of facilities) {
-        const coords = f.coordinates as { lat?: number; lng?: number } | null;
-        if (!coords?.lat || !coords?.lng) continue;
-        const d = haversineM(casualty.location_lat, casualty.location_lng, coords.lat, coords.lng);
-        if (d < nearestDist) {
-          nearestDist = d;
-          nearest = f;
-        }
-      }
-      const coords = nearest.coordinates as { lat?: number; lng?: number } | null;
-      if (coords?.lat && coords?.lng) {
-        return { lat: coords.lat, lng: coords.lng, label: nearest.label as string };
-      }
-    }
     return null;
   }
 

@@ -1090,11 +1090,11 @@ export class DemoActionDispatcher {
 
         await supabaseAdmin.from('scenario_casualties').update(updates).eq('id', payload.target_id);
       } else {
-        // Hazard: mark as being_mitigated or contained
+        // Hazard: mark as contained (valid DB status)
         await supabaseAdmin
           .from('scenario_hazards')
           .update({
-            status: 'being_mitigated',
+            status: 'contained',
             updated_at: new Date().toISOString(),
           })
           .eq('id', payload.target_id)
