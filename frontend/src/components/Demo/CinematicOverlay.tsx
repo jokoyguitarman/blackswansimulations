@@ -59,8 +59,8 @@ export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) 
 
   const addCard = useCallback((card: ActionCard) => {
     setCards((prev) => {
-      const next = [card, ...prev].slice(0, MAX_CARDS);
-      return next;
+      if (prev.some((c) => c.id === card.id)) return prev;
+      return [card, ...prev].slice(0, MAX_CARDS);
     });
     setTimeout(() => {
       setCards((prev) => prev.filter((c) => c.id !== card.id));

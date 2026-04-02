@@ -442,26 +442,37 @@ export class DemoAIAgentService {
       'AI agents: new inject cycle started',
     );
 
-    // Stagger agent responses to the inject
+    // Sequential agent responses: each agent waits for the previous to finish
+    // so it can see what was already done and avoid duplicating actions.
     const agentEntries = Array.from(session.agents.entries());
-    for (let i = 0; i < agentEntries.length; i++) {
-      const [, agentState] = agentEntries[i];
-      if (!this.canAct(agentState, session)) continue;
-
-      const delay =
-        AGENT_JITTER_BASE_MS + i * KICKSTART_STAGGER_MS + Math.random() * AGENT_JITTER_RANGE_MS;
-      setTimeout(() => {
+    const runSequentially = async () => {
+      for (let i = 0; i < agentEntries.length; i++) {
         if (session.stopped) return;
         if (session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE) return;
-        if (agentState.actedThisCycle) return;
-        this.generateAndExecuteActions(session, agentState, event).catch((err) => {
+        const [, agentState] = agentEntries[i];
+        if (!this.canAct(agentState, session)) continue;
+        if (agentState.actedThisCycle) continue;
+
+        // Human-like delay before this agent responds
+        const delay = AGENT_JITTER_BASE_MS + Math.random() * AGENT_JITTER_RANGE_MS;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+
+        if (session.stopped) return;
+        if (session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE) return;
+
+        try {
+          await this.generateAndExecuteActions(session, agentState, event);
+        } catch (err) {
           logger.error(
             { error: err, botUserId: agentState.persona.botUserId, eventType: event.type },
             'AI agent action failed',
           );
-        });
-      }, delay);
-    }
+        }
+      }
+    };
+    runSequentially().catch((err) => {
+      logger.error({ error: err, sessionId: session.sessionId }, 'Sequential agent run failed');
+    });
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -677,8 +688,9 @@ export class DemoAIAgentService {
       '- Bundle ALL your tactical moves into ONE decision with a rich description.',
       '- NEVER place an inner_cordon or outer_cordon if one already exists.',
       '- READ "Recent actions" and "Ground situation" carefully. Address SPECIFIC casualties and hazards by name/location.',
-      '- Focus on YOUR team specialty. Do not duplicate what other teams already did.',
-      '- Each decision must be UNIQUE — never repeat a previous decision.',
+      "- Focus EXCLUSIVELY on YOUR team specialty. Fire/HAZMAT handles fires. Triage/Medical handles casualties. Police handles security. Evacuation handles crowd movement. NEVER make decisions about another team's domain.",
+      '- READ "Recent actions by all teams" CAREFULLY. If another team already addressed a fire, casualty, or hazard — DO NOT address the same one. Find something DIFFERENT to do.',
+      '- Each decision must be UNIQUE — never repeat or closely resemble a previous decision by ANY team.',
       '- If the situation is stable and nothing new requires action, return { "actions": [{ "action": "none" }] }.',
       '- You are NOT expected to act every time. Real professionals wait, observe, and only act when there is something meaningful to address.',
     );
