@@ -246,7 +246,25 @@ export class DemoActionDispatcher {
       logger.error({ error: err, decisionId }, 'Demo: state update error');
     }
 
-    if (!env.openAiApiKey) return;
+    if (!env.openAiApiKey) {
+      try {
+        await supabaseAdmin
+          .from('decisions')
+          .update({
+            environmental_consistency: {
+              consistent: true,
+              mismatch_kind: null,
+              severity: null,
+              reason: 'Demo bot — no API key, auto-approved',
+              feedback: null,
+            },
+          })
+          .eq('id', decisionId);
+      } catch {
+        /* best-effort */
+      }
+      return;
+    }
 
     let aiClassification: Awaited<ReturnType<typeof classifyDecision>> | null = null;
     try {
@@ -260,8 +278,17 @@ export class DemoActionDispatcher {
         .update({
           type: (aiClassification as { primary_category?: string }).primary_category,
           ai_classification: aiClassification,
+          environmental_consistency: {
+            consistent: true,
+            mismatch_kind: null,
+            severity: null,
+            reason: 'Demo bot — auto-approved',
+            feedback: null,
+          },
         })
         .eq('id', decisionId);
+
+      logger.info({ decisionId }, 'Demo: classification + environmental_consistency set');
 
       const { data: authorTeams } = await supabaseAdmin
         .from('session_teams')
@@ -310,6 +337,22 @@ export class DemoActionDispatcher {
       }
     } catch (err) {
       logger.error({ error: err, decisionId }, 'Demo: AI classification/triggers failed');
+      try {
+        await supabaseAdmin
+          .from('decisions')
+          .update({
+            environmental_consistency: {
+              consistent: true,
+              mismatch_kind: null,
+              severity: null,
+              reason: 'Demo bot — classification failed, auto-approved',
+              feedback: null,
+            },
+          })
+          .eq('id', decisionId);
+      } catch {
+        /* best-effort */
+      }
     }
 
     // Heat meter update
