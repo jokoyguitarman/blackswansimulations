@@ -50,7 +50,7 @@ interface SessionAgents {
 }
 
 interface SingleAction {
-  action: 'decision' | 'placement' | 'chat' | 'claim' | 'none';
+  action: 'decision' | 'placement' | 'chat' | 'claim' | 'pin_response' | 'none';
   decision?: { title: string; description: string };
   placement?: {
     asset_type: string;
@@ -63,6 +63,15 @@ interface SingleAction {
     location_label: string;
     claimed_as: string;
     exclusivity?: string;
+  };
+  pin_response?: {
+    target_id: string;
+    target_type: 'casualty' | 'hazard';
+    target_label: string;
+    actions: string[];
+    resources: Array<{ type: string; label: string; quantity: number }>;
+    triage_color?: 'green' | 'yellow' | 'red' | 'black';
+    description: string;
   };
 }
 
@@ -492,19 +501,19 @@ export class DemoAIAgentService {
       for (const action of actions.slice(0, 3)) {
         if (session.stopped) break;
         if (
-          action.action === 'decision' &&
+          (action.action === 'decision' || action.action === 'pin_response') &&
           session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE
         ) {
           logger.info(
             { botUserId: agent.persona.botUserId },
-            'AI agent: cycle decision budget exhausted, skipping decision',
+            'AI agent: cycle decision budget exhausted, skipping decision/pin_response',
           );
           continue;
         }
 
         await this.executeSingleAction(session, agent, action);
 
-        if (action.action === 'decision') {
+        if (action.action === 'decision' || action.action === 'pin_response') {
           session.cycleDecisionCount++;
         }
 
@@ -515,9 +524,11 @@ export class DemoAIAgentService {
               ? `placement: ${action.placement?.asset_type} "${action.placement?.label}"`
               : action.action === 'claim'
                 ? `claim: ${action.claim?.location_label} as ${action.claim?.claimed_as}`
-                : action.action === 'chat'
-                  ? `chat: ${action.chat?.content?.slice(0, 80) || ''}`
-                  : action.action;
+                : action.action === 'pin_response'
+                  ? `pin_response: ${action.pin_response?.target_type} "${action.pin_response?.target_label}" triage=${action.pin_response?.triage_color || 'none'}`
+                  : action.action === 'chat'
+                    ? `chat: ${action.chat?.content?.slice(0, 80) || ''}`
+                    : action.action;
 
         agent.recentActions.push(`[${new Date().toISOString()}] ${label}`.slice(0, 200));
 
@@ -605,6 +616,16 @@ export class DemoAIAgentService {
       '- claimed_as: how your team will use it (e.g. "evacuation_exit", "triage_staging", "casualty_entry", "media_access")',
       '- exclusivity: "exclusive" (only your team) or "shared"',
       '',
+      '### PIN RESPONSE (interact with a specific casualty or hazard on the map)',
+      'Use pin_response INSTEAD of a regular decision when you want to directly triage a casualty or mitigate a hazard.',
+      '- target_id: the exact ID from the casualties/hazards list (e.g. "abc-123...")',
+      '- target_type: "casualty" or "hazard"',
+      '- target_label: human-readable name (e.g. "Burn victims near Gate B")',
+      '- actions: array of action labels you are taking (e.g. ["Initiate Triage", "Administer First Aid"])',
+      '- resources: array of resources deployed (e.g. [{ "type": "medic", "label": "Paramedic Team", "quantity": 2 }])',
+      '- triage_color: for casualties only — "green", "yellow", "red", or "black"',
+      '- description: brief description of what you are doing',
+      '',
       '### CHAT (1-2 sentences max)',
       'Professional radio comms. Reference YOUR decision. Acknowledge what other teams did.',
       '',
@@ -613,7 +634,7 @@ export class DemoAIAgentService {
       '{',
       '  "actions": [',
       '    { "action": "decision", "decision": { "title": "...", "description": "..." } },',
-      '    { "action": "placement", "placement": { ... } }  OR  { "action": "claim", "claim": { "location_label": "...", "claimed_as": "...", "exclusivity": "exclusive|shared" } },',
+      '    { "action": "placement", "placement": { ... } }  OR  { "action": "claim", "claim": { ... } }  OR  { "action": "pin_response", "pin_response": { "target_id": "...", "target_type": "casualty", "target_label": "...", "actions": [...], "resources": [...], "triage_color": "red", "description": "..." } },',
       '    { "action": "chat", "chat": { "content": "..." } }',
       '  ],',
       '  "reasoning": "Brief tactical thinking"',
@@ -622,12 +643,13 @@ export class DemoAIAgentService {
       '',
       '## Tactical Phases',
       '- Minutes 0-3: CLAIM exits relevant to your team. Initial situation assessment. First containment decision.',
-      '- Minutes 3-8: Deploy cordons/triage, address casualties on the ground, resource requests.',
-      '- Minutes 8-15: Specialist deployments, evacuations, media management, hazard response.',
+      '- Minutes 3-8: Deploy cordons/triage. Use PIN_RESPONSE to triage casualties one by one and address hazards.',
+      '- Minutes 8-15: Continue pin responses for remaining casualties. Specialist deployments, evacuations, hazard mitigation.',
       '- Minutes 15+: Sustained ops, resource rotation, investigation, recovery.',
       '',
       '## CRITICAL Rules',
-      '- Every turn MUST have exactly 1 decision + 1 placement/claim + 1 chat.',
+      '- Every turn MUST have exactly 1 decision (or 1 pin_response) + 1 placement/claim + 1 chat.',
+      '- Use pin_response when there are untagged casualties or active hazards you can address. Otherwise use a regular decision.',
       '- Bundle ALL your tactical moves into ONE decision with a rich description.',
       '- NEVER place an inner_cordon or outer_cordon if one already exists.',
       '- READ "Recent actions" and "Ground situation" carefully. Address SPECIFIC casualties and hazards by name/location.',
@@ -882,6 +904,21 @@ export class DemoAIAgentService {
         break;
       }
 
+      case 'pin_response': {
+        if (!action.pin_response?.target_id) break;
+        const pr = action.pin_response;
+        await this.dispatcher.respondToPin(sessionId, botUserId, teamName, {
+          target_id: pr.target_id,
+          target_type: pr.target_type,
+          target_label: pr.target_label || 'Unknown target',
+          actions: pr.actions || [],
+          resources: pr.resources || [],
+          triage_color: pr.triage_color,
+          description: pr.description || '',
+        });
+        break;
+      }
+
       case 'chat': {
         if (!action.chat?.content || !channelId) break;
         await this.dispatcher.sendChatMessage(channelId, sessionId, botUserId, action.chat.content);
@@ -997,10 +1034,12 @@ export class DemoAIAgentService {
     };
 
     try {
-      // Casualties
+      // Casualties (include ID so agents can target specific ones with pin_response)
       const { data: casualties } = await supabaseAdmin
         .from('scenario_casualties')
-        .select('casualty_type, headcount, status, location_lat, location_lng, conditions')
+        .select(
+          'id, casualty_type, headcount, status, location_lat, location_lng, conditions, player_triage_color, assigned_team',
+        )
         .eq('session_id', sessionId)
         .in('status', [
           'undiscovered',
@@ -1015,15 +1054,17 @@ export class DemoAIAgentService {
       for (const c of (casualties ?? []) as Array<Record<string, unknown>>) {
         const conds = c.conditions as Record<string, unknown> | null;
         const condSummary = conds?.description || conds?.injury_type || '';
+        const triageTag = c.player_triage_color ? `, triage: ${c.player_triage_color}` : '';
+        const assigned = c.assigned_team ? `, assigned: ${c.assigned_team}` : '';
         result.casualties.push(
-          `${c.casualty_type} (${c.headcount} people) at [${c.location_lat}, ${c.location_lng}] — status: ${c.status}${condSummary ? `, ${condSummary}` : ''}`,
+          `[id:${c.id}] ${c.casualty_type} (${c.headcount} people) at [${c.location_lat}, ${c.location_lng}] — status: ${c.status}${triageTag}${assigned}${condSummary ? `, ${condSummary}` : ''}`,
         );
       }
 
-      // Hazards
+      // Hazards (include ID)
       const { data: hazards } = await supabaseAdmin
         .from('scenario_hazards')
-        .select('hazard_type, status, location_lat, location_lng, properties')
+        .select('id, hazard_type, status, location_lat, location_lng, properties')
         .eq('session_id', sessionId)
         .in('status', ['active', 'escalating'])
         .limit(8);
@@ -1032,7 +1073,7 @@ export class DemoAIAgentService {
         const props = h.properties as Record<string, unknown> | null;
         const propSummary = props?.description || props?.size || '';
         result.hazards.push(
-          `${h.hazard_type} at [${h.location_lat}, ${h.location_lng}] — ${h.status}${propSummary ? `, ${propSummary}` : ''}`,
+          `[id:${h.id}] ${h.hazard_type} at [${h.location_lat}, ${h.location_lng}] — ${h.status}${propSummary ? `, ${propSummary}` : ''}`,
         );
       }
 

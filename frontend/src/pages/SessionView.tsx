@@ -563,6 +563,7 @@ import { BackgroundMusic } from '../components/Session/BackgroundMusic';
 import { CinematicOverlay } from '../components/Demo/CinematicOverlay';
 import { ActivityTicker } from '../components/Demo/ActivityTicker';
 import { TeamSpotlightOverlay } from '../components/Demo/TeamSpotlightOverlay';
+import { DemoPinResponseReplay } from '../components/Demo/DemoPinResponseReplay';
 
 interface Session {
   id: string;
@@ -1438,6 +1439,9 @@ export const SessionView = () => {
 
         {/* Team Spotlight overlay */}
         {spectatorMode === 'spotlight' && <TeamSpotlightOverlay sessionId={id} />}
+
+        {/* Pin Response Replay (shows when bots interact with casualties/hazards) */}
+        <DemoPinResponseReplay sessionId={id} />
 
         {/* Top-left: DEMO badge + scenario name */}
         <div className="absolute top-4 left-4 z-[1000] flex items-center gap-3">

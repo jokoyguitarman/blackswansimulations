@@ -627,6 +627,129 @@ export class DemoActionDispatcher {
   }
 
   /**
+   * Respond to a map pin (casualty or hazard). Creates a decision, updates
+   * the pin status, optionally triage-tags a casualty, and broadcasts a
+   * `demo.pin_response` event so spectator UIs can animate the panel.
+   */
+  async respondToPin(
+    sessionId: string,
+    botUserId: string,
+    teamName: string,
+    payload: {
+      target_id: string;
+      target_type: 'casualty' | 'hazard';
+      target_label: string;
+      actions: string[];
+      resources: Array<{ type: string; label: string; quantity: number }>;
+      triage_color?: 'green' | 'yellow' | 'red' | 'black';
+      description: string;
+    },
+  ): Promise<string | null> {
+    try {
+      const typeLabel = payload.target_type === 'casualty' ? 'Casualty' : 'Hazard';
+      const parts: string[] = [];
+      if (payload.actions.length > 0) parts.push(`Actions: ${payload.actions.join(', ')}`);
+      if (payload.resources.length > 0) {
+        parts.push(
+          `Resources: ${payload.resources.map((r) => `${r.quantity}x ${r.label}`).join(', ')}`,
+        );
+      }
+      if (payload.triage_color) parts.push(`Triage tag: ${payload.triage_color.toUpperCase()}`);
+      if (payload.description) parts.push(payload.description);
+
+      const title = `Response to ${payload.target_label} by ${teamName}`;
+      const description = `[${typeLabel} Response: ${payload.target_label}] ${parts.join('. ')}`;
+
+      const decisionId = await this.proposeAndExecuteDecision(sessionId, botUserId, {
+        title,
+        description,
+      });
+
+      // Update casualty/hazard status in DB
+      if (payload.target_type === 'casualty') {
+        const updates: Record<string, unknown> = {
+          updated_at: new Date().toISOString(),
+          assigned_team: teamName,
+        };
+
+        if (payload.triage_color) {
+          updates.player_triage_color = payload.triage_color;
+          updates.assessed_by = teamName;
+        }
+
+        // Progress the status
+        const { data: current } = await supabaseAdmin
+          .from('scenario_casualties')
+          .select('status')
+          .eq('id', payload.target_id)
+          .single();
+
+        if (current) {
+          const statusProgression: Record<string, string> = {
+            undiscovered: 'identified',
+            identified: 'endorsed_to_triage',
+            endorsed_to_triage: 'in_treatment',
+          };
+          const currentStatus = current.status as string;
+          if (statusProgression[currentStatus]) {
+            updates.status = statusProgression[currentStatus];
+          }
+        }
+
+        await supabaseAdmin.from('scenario_casualties').update(updates).eq('id', payload.target_id);
+      } else {
+        // Hazard: mark as being_mitigated or contained
+        await supabaseAdmin
+          .from('scenario_hazards')
+          .update({
+            status: 'being_mitigated',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', payload.target_id)
+          .in('status', ['active', 'escalating']);
+      }
+
+      // Broadcast demo.pin_response so spectator UI can animate the panel
+      try {
+        getWebSocketService().broadcastToSession(sessionId, {
+          type: 'demo.pin_response',
+          data: {
+            bot_user_id: botUserId,
+            team_name: teamName,
+            decision_id: decisionId,
+            target_id: payload.target_id,
+            target_type: payload.target_type,
+            target_label: payload.target_label,
+            actions: payload.actions,
+            resources: payload.resources,
+            triage_color: payload.triage_color || null,
+            description: payload.description,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch {
+        /* broadcast is best-effort */
+      }
+
+      logger.info(
+        {
+          sessionId,
+          targetType: payload.target_type,
+          targetId: payload.target_id,
+          teamName,
+          triageColor: payload.triage_color,
+        },
+        'Demo: pin response executed',
+      );
+
+      return decisionId;
+    } catch (err) {
+      logger.error({ error: err, sessionId }, 'Demo: respondToPin error');
+      return null;
+    }
+  }
+
+  /**
    * Find the main (inter_agency or public) channel for a session that a team can post in.
    */
   async getSessionChannelId(sessionId: string): Promise<string | null> {
