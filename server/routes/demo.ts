@@ -11,11 +11,7 @@ import { loadAndApplyEnvironmentalState } from '../services/environmentalStateSe
 import { cloneScenarioPinsForSession } from '../services/sessionPinCloningService.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { snapshotFinalStateOnCompletion } from '../services/scenarioStateService.js';
-import {
-  DEMO_BOT_IDS,
-  resolveBotUserId,
-  resolveBotRole,
-} from '../services/demoActionDispatcher.js';
+import { resolveBotUserId, resolveBotRole } from '../services/demoActionDispatcher.js';
 import { getDemoPlaybackService, listDemoScripts } from '../services/demoScriptPlaybackService.js';
 import { getDemoAIAgentService } from '../services/demoAIAgentService.js';
 import { generateDemoScript } from '../services/demoScriptGeneratorService.js';
@@ -89,8 +85,8 @@ router.post(
         return res.status(400).json({ error: 'Scenario has no teams defined' });
       }
 
-      // 3. Create session (owned by demo trainer bot)
-      const trainerId = DEMO_BOT_IDS.trainer;
+      // 3. Create session (owned by the real user who launched the demo)
+      const trainerId = user.id;
       const { data: session, error: sessionErr } = await supabaseAdmin
         .from('sessions')
         .insert({
