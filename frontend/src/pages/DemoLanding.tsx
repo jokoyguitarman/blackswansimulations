@@ -25,30 +25,16 @@ interface ScenarioSummary {
   scenario_type?: string;
 }
 
-interface DemoScriptSummary {
-  id: string;
-  name: string;
-  scenarioType: string;
-  durationMinutes: number;
-  eventCount: number;
-}
-
 type ViewMode = 'cinematic' | 'god' | 'spotlight';
-type DemoMode = 'scripted' | 'ai' | 'hybrid';
 
 export function DemoLanding() {
   const navigate = useNavigate();
   const [scenarios, setScenarios] = useState<ScenarioSummary[]>([]);
-  const [scripts, setScripts] = useState<DemoScriptSummary[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string>('');
-  const [selectedScript, setSelectedScript] = useState<string>('');
   const [viewMode, setViewMode] = useState<ViewMode>('cinematic');
-  const [demoMode, setDemoMode] = useState<DemoMode>('scripted');
   const [speed, setSpeed] = useState(1);
   const [launching, setLaunching] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
     api.scenarios
@@ -59,22 +45,7 @@ export function DemoLanding() {
         if (list.length > 0) setSelectedScenario(list[0].id);
       })
       .catch(() => {});
-
-    fetchScripts();
   }, []);
-
-  const fetchScripts = async () => {
-    try {
-      const headers = await getAuthHeaders();
-      const r = await fetch(apiUrl('/api/demo/scripts'), { headers });
-      const json = await r.json();
-      const list = (json.data ?? []) as DemoScriptSummary[];
-      setScripts(list);
-      if (list.length > 0 && !selectedScript) setSelectedScript(list[0].id);
-    } catch {
-      /* ignore */
-    }
-  };
 
   const handleLaunch = async () => {
     if (!selectedScenario) return;
@@ -88,9 +59,8 @@ export function DemoLanding() {
         headers,
         body: JSON.stringify({
           scenarioId: selectedScenario,
-          scriptId: demoMode !== 'ai' ? selectedScript || undefined : undefined,
           speedMultiplier: speed,
-          mode: demoMode,
+          mode: 'ai',
         }),
       });
 
@@ -112,45 +82,6 @@ export function DemoLanding() {
     }
   };
 
-  const handleGenerateScript = async () => {
-    if (!selectedScenario) return;
-    setGenerating(true);
-    setError(null);
-    setSuccessMsg(null);
-
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(apiUrl('/api/demo/generate-script'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          scenarioId: selectedScenario,
-          durationMinutes: 14,
-          eventDensity: 'normal',
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error ?? 'Failed to generate script');
-        return;
-      }
-
-      const result = data.data;
-      setSuccessMsg(
-        `Generated "${result.name}" — ${result.eventCount} events, ~${result.durationMinutes} min`,
-      );
-
-      fetchScripts();
-      if (result.scriptId) setSelectedScript(result.scriptId);
-    } catch {
-      setError('Network error during generation');
-    } finally {
-      setGenerating(false);
-    }
-  };
-
   const modeDescriptions: Record<ViewMode, { label: string; sub: string }> = {
     cinematic: {
       label: 'Cinematic',
@@ -162,26 +93,6 @@ export function DemoLanding() {
       sub: 'Auto-rotating team focus. Best for showing player experience.',
     },
   };
-
-  const demoModeDescriptions: Record<DemoMode, { label: string; sub: string; color: string }> = {
-    scripted: {
-      label: 'Scripted',
-      sub: 'Pre-authored script playback. Predictable, polished sequence.',
-      color: 'robotic-yellow',
-    },
-    ai: {
-      label: 'AI Agents',
-      sub: 'Fully autonomous AI agents react to live injects in real time.',
-      color: 'robotic-cyan',
-    },
-    hybrid: {
-      label: 'Hybrid',
-      sub: 'Script drives main beats, AI agents fill gaps and react to dynamic events.',
-      color: 'robotic-green',
-    },
-  };
-
-  const needsScript = demoMode === 'scripted' || demoMode === 'hybrid';
 
   return (
     <div className="min-h-screen scanline flex items-center justify-center p-8">
@@ -210,81 +121,6 @@ export function DemoLanding() {
             ))}
           </select>
         </div>
-
-        {/* Demo mode */}
-        <div className="mb-6">
-          <label className="block text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-            Demo Mode
-          </label>
-          <div className="grid grid-cols-3 gap-2">
-            {(
-              Object.entries(demoModeDescriptions) as [
-                DemoMode,
-                { label: string; sub: string; color: string },
-              ][]
-            ).map(([mode, desc]) => (
-              <button
-                key={mode}
-                onClick={() => setDemoMode(mode)}
-                className={`p-3 border text-left transition-colors ${
-                  demoMode === mode
-                    ? `border-${desc.color} bg-${desc.color}/10`
-                    : 'border-robotic-yellow/20 hover:border-robotic-yellow/40'
-                }`}
-                style={
-                  demoMode === mode
-                    ? {
-                        borderColor: 'var(--color-robotic-yellow)',
-                        backgroundColor: 'rgba(255,200,0,0.08)',
-                      }
-                    : {}
-                }
-              >
-                <div className="text-sm terminal-text text-robotic-yellow font-bold">
-                  {desc.label}
-                </div>
-                <div className="text-[10px] terminal-text text-robotic-yellow/50 mt-1">
-                  {desc.sub}
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Script picker (only for scripted / hybrid modes) */}
-        {needsScript && (
-          <div className="mb-6">
-            <label className="block text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-              Demo Script
-            </label>
-            <div className="flex gap-2">
-              <select
-                value={selectedScript}
-                onChange={(e) => setSelectedScript(e.target.value)}
-                className="flex-1 px-4 py-3 bg-robotic-gray-400 border border-robotic-yellow/30 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow outline-none"
-              >
-                <option value="">Auto-detect</option>
-                {scripts.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.eventCount} events, ~{s.durationMinutes}min)
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={handleGenerateScript}
-                disabled={generating || !selectedScenario}
-                className="px-4 py-3 text-xs terminal-text uppercase font-bold border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                {generating ? 'Generating...' : 'Generate Script'}
-              </button>
-            </div>
-            {successMsg && (
-              <div className="mt-2 p-2 border border-green-500/40 bg-green-500/10 text-xs terminal-text text-green-400">
-                {successMsg}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* View mode */}
         <div className="mb-6">
@@ -364,7 +200,7 @@ export function DemoLanding() {
           <button
             onClick={handleLaunch}
             disabled={launching || !selectedScenario}
-            className="px-8 py-3 text-sm terminal-text uppercase font-bold bg-robotic-yellow text-robotic-gray-400 hover:bg-robotic-yellow/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-8 py-3 text-sm terminal-text uppercase font-bold bg-robotic-red text-white hover:bg-robotic-red/90 disabled:opacity-50 disabled:cursor-not-allowed tracking-wider"
           >
             {launching ? 'Launching...' : 'Launch Demo'}
           </button>

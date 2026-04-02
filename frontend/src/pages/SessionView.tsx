@@ -1449,19 +1449,24 @@ export const SessionView = () => {
           </span>
         </div>
 
-        {/* Top-right: Elapsed time */}
-        {elapsedTime && (
-          <div className="absolute top-4 right-4 z-[1000] px-4 py-2 bg-robotic-gray-300/90 border border-robotic-yellow/50 rounded backdrop-blur-sm">
-            <span className="text-xs terminal-text text-robotic-yellow/70 uppercase mr-2">
-              ELAPSED
-            </span>
-            <span className="text-lg terminal-text text-robotic-yellow font-mono font-bold">
-              {String(elapsedTime.hours).padStart(2, '0')}:
-              {String(elapsedTime.minutes).padStart(2, '0')}:
-              {String(elapsedTime.seconds).padStart(2, '0')}
-            </span>
+        {/* Top-right: Elapsed time + Music player */}
+        <div className="absolute top-4 right-4 z-[1000] flex items-center gap-3">
+          <div className="px-3 py-2 bg-robotic-gray-300/90 border border-robotic-yellow/50 rounded backdrop-blur-sm">
+            <BackgroundMusic src="/audio/detective-bgm.mp3" />
           </div>
-        )}
+          {elapsedTime && (
+            <div className="px-4 py-2 bg-robotic-gray-300/90 border border-robotic-yellow/50 rounded backdrop-blur-sm">
+              <span className="text-xs terminal-text text-robotic-yellow/70 uppercase mr-2">
+                ELAPSED
+              </span>
+              <span className="text-lg terminal-text text-robotic-yellow font-mono font-bold">
+                {String(elapsedTime.hours).padStart(2, '0')}:
+                {String(elapsedTime.minutes).padStart(2, '0')}:
+                {String(elapsedTime.seconds).padStart(2, '0')}
+              </span>
+            </div>
+          )}
+        </div>
 
         {/* Bottom-left: Mode switcher */}
         <div className="absolute bottom-4 left-4 z-[1000] flex items-center gap-1">
