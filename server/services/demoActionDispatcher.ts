@@ -9,12 +9,24 @@ import {
   updateStateOnDecisionExecution,
   updateTeamStateFromDecision,
 } from './scenarioStateService.js';
-import { classifyDecision } from './aiService.js';
+import { classifyDecision, shouldCancelScheduledInject } from './aiService.js';
 import { evaluateAllObjectivesForSession } from './objectiveTrackingService.js';
 import { evaluateDecisionBasedTriggers } from './injectTriggerService.js';
-import { updateTeamHeatMeter } from './heatMeterService.js';
+import {
+  updateTeamHeatMeter,
+  selectAndPublishPathwayOutcome,
+  nudgePublicSentiment,
+} from './heatMeterService.js';
 import { evaluateDecisionAgainstEnvironment } from './environmentalConsistencyService.js';
 import { evaluateEnvironmentalPrerequisite } from './environmentalPrerequisiteService.js';
+import {
+  evaluateEnvironmentalManagementIntentAndUpdateState,
+  recordSpaceClaim,
+} from './environmentalConditionManagementService.js';
+import { evaluateStateEffectManagementAndUpdateState } from './stateEffectManagementService.js';
+import { applyDecisionCasualtyEffects } from './decisionCasualtyEffectsService.js';
+import { evaluateTransportOutcome } from './transportOutcomeService.js';
+import { publishInjectToSession } from '../routes/injects.js';
 import { env } from '../env.js';
 import { io } from '../index.js';
 
@@ -231,6 +243,7 @@ export class DemoActionDispatcher {
     decision: Record<string, unknown>,
   ): Promise<void> {
     const sessionId = decision.session_id as string;
+    const botUserId = decision.proposed_by as string;
     const title = (decision.title as string) ?? '';
     const description = (decision.description as string) ?? '';
 
@@ -283,14 +296,42 @@ export class DemoActionDispatcher {
       logger.error({ error: err, decisionId }, 'Demo: AI classification failed');
     }
 
-    // Phase 3: Real environmental consistency evaluation (same as human players)
+    // Resolve author team + session metadata
     const { data: authorTeams } = await supabaseAdmin
       .from('session_teams')
       .select('team_name')
       .eq('session_id', sessionId)
-      .eq('user_id', decision.proposed_by as string);
+      .eq('user_id', botUserId);
     const authorTeamNames = (authorTeams ?? []).map((r: { team_name: string }) => r.team_name);
     const teamName = authorTeamNames.length > 0 ? authorTeamNames[0] : null;
+
+    const { data: sessionRow } = await supabaseAdmin
+      .from('sessions')
+      .select('start_time, scenario_id, trainer_id')
+      .eq('id', sessionId)
+      .single();
+    const sessionScenarioId = (sessionRow as { scenario_id?: string } | null)?.scenario_id ?? null;
+    const sessionTrainerId = (sessionRow as { trainer_id?: string } | null)?.trainer_id ?? null;
+    const startTime = (sessionRow as { start_time?: string } | null)?.start_time;
+    const elapsedMinutes = startTime
+      ? Math.floor((Date.now() - new Date(startTime).getTime()) / 60000)
+      : 0;
+
+    // Phase 3: Environmental consistency evaluation
+    let envResult: Record<string, unknown> = { consistent: true };
+    let aiEnvResult: Record<string, unknown> = { consistent: true };
+    let prereqResult: Record<string, unknown> | null = null;
+    let qualityFailureCount = 0;
+
+    if (authorTeamNames.length > 0) {
+      const { data: prevFailEvents } = await supabaseAdmin
+        .from('session_events')
+        .select('id')
+        .eq('session_id', sessionId)
+        .eq('event_type', 'quality_failure_inject_fired')
+        .filter('metadata->>team', 'eq', authorTeamNames[0]);
+      qualityFailureCount = prevFailEvents?.length ?? 0;
+    }
 
     try {
       const decisionForEval = {
@@ -301,20 +342,25 @@ export class DemoActionDispatcher {
         team_name: teamName ?? undefined,
       };
 
-      const [aiEnvResult, prereqOut] = await Promise.all([
+      const [rawEnvResult, prereqOut] = await Promise.all([
         evaluateDecisionAgainstEnvironment(
           sessionId,
           decisionForEval,
           env.openAiApiKey,
           null,
           teamName ?? undefined,
-          0,
+          qualityFailureCount,
         ),
         evaluateEnvironmentalPrerequisite(sessionId, decisionForEval, undefined, env.openAiApiKey),
       ]);
 
-      const { result: prereqResult, evaluationReason: envPrereqReason } = prereqOut;
-      const envResult = prereqResult && !prereqResult.consistent ? prereqResult : aiEnvResult;
+      aiEnvResult = rawEnvResult as unknown as Record<string, unknown>;
+      const { result: pResult, evaluationReason: envPrereqReason } = prereqOut;
+      prereqResult = pResult as unknown as Record<string, unknown> | null;
+      envResult =
+        prereqResult && !(prereqResult as { consistent?: boolean }).consistent
+          ? prereqResult
+          : (rawEnvResult as unknown as Record<string, unknown>);
 
       await supabaseAdmin
         .from('decisions')
@@ -331,9 +377,9 @@ export class DemoActionDispatcher {
       logger.info(
         {
           decisionId,
-          consistent: envResult.consistent,
-          mismatch_kind: envResult.mismatch_kind ?? null,
-          severity: envResult.severity ?? null,
+          consistent: (envResult as { consistent?: boolean }).consistent,
+          mismatch_kind: (envResult as { mismatch_kind?: string }).mismatch_kind ?? null,
+          severity: (envResult as { severity?: string }).severity ?? null,
         },
         'Demo: environmental consistency evaluated',
       );
@@ -354,20 +400,241 @@ export class DemoActionDispatcher {
       }
     }
 
-    // Phase 4: Team state + inject triggers
+    // Phase 4: Quality failure injects (specificity / env inconsistency consequences)
+    const envC = envResult as {
+      consistent?: boolean;
+      specific?: boolean;
+      feedback?: string;
+      reason?: string;
+      mismatch_kind?: string;
+      consequence_title?: string;
+      rejected?: boolean;
+      rejection_reason?: string;
+    };
+    const aiEnvC = aiEnvResult as typeof envC;
+
+    type FailureType =
+      | 'vague'
+      | 'contradiction'
+      | 'below_standard'
+      | 'prereq'
+      | 'rejected'
+      | 'infrastructure_gap';
+    let failureType: FailureType | null = null;
+    let failureContent = '';
+
+    const rejected = envC.rejected === true || aiEnvC.rejected === true;
+    const rejectionReason = envC.rejection_reason || aiEnvC.rejection_reason || '';
+
+    if (rejected && rejectionReason) {
+      failureType = 'rejected';
+      failureContent = rejectionReason;
+    } else if (envC.specific === false && envC.feedback) {
+      failureType = 'vague';
+      failureContent = envC.feedback;
+    } else if (!envC.consistent && envC.mismatch_kind === 'infrastructure_gap' && envC.reason) {
+      failureType = 'infrastructure_gap';
+      failureContent = envC.reason;
+    } else if (
+      !envC.consistent &&
+      envC.mismatch_kind !== 'below_standard' &&
+      envC.mismatch_kind !== 'infrastructure_gap' &&
+      envC.reason
+    ) {
+      failureType = 'contradiction';
+      failureContent = envC.reason;
+    } else if (!envC.consistent && envC.mismatch_kind === 'below_standard' && envC.reason) {
+      failureType = 'below_standard';
+      failureContent = envC.reason;
+    } else if (
+      prereqResult &&
+      !(prereqResult as { consistent?: boolean }).consistent &&
+      (prereqResult as { reason?: string }).reason
+    ) {
+      failureType = 'prereq';
+      failureContent = (prereqResult as { reason?: string }).reason!;
+    }
+
+    const FALLBACK_TITLES: Record<FailureType, string> = {
+      vague: 'Field report — operational complications',
+      contradiction: 'Field report — ground conditions',
+      below_standard: 'Field report — standards shortfall',
+      prereq: 'Field report — environmental constraint',
+      rejected: 'Action cannot be carried out',
+      infrastructure_gap: 'Field report — infrastructure not established',
+    };
+
+    if (
+      failureType &&
+      failureContent &&
+      authorTeamNames.length > 0 &&
+      sessionScenarioId &&
+      sessionTrainerId &&
+      io
+    ) {
+      try {
+        // Check if prior decisions already addressed this concern
+        if (env.openAiApiKey && failureType !== 'rejected') {
+          const { data: allDecisionRows } = await supabaseAdmin
+            .from('decisions')
+            .select('title, description, type')
+            .eq('session_id', sessionId)
+            .eq('status', 'executed')
+            .order('executed_at', { ascending: true })
+            .limit(50);
+          const allDecisions = (allDecisionRows ?? []).map(
+            (d: { title: string; description: string; type: string | null }) => ({
+              title: d.title ?? '',
+              description: d.description ?? '',
+              type: d.type,
+            }),
+          );
+
+          if (allDecisions.length > 0) {
+            try {
+              const cancelCheck = await shouldCancelScheduledInject(
+                { title: failureContent.slice(0, 200), content: failureContent },
+                allDecisions,
+                env.openAiApiKey,
+              );
+              if (cancelCheck.cancel) {
+                logger.info(
+                  { decisionId, team: authorTeamNames[0], failureType },
+                  'Demo: quality failure inject cancelled — decisions addressed concern',
+                );
+                await updateTeamHeatMeter(sessionId, authorTeamNames[0], 'good');
+                failureType = null;
+                failureContent = '';
+              }
+            } catch (cancelErr) {
+              logger.warn(
+                { err: cancelErr, decisionId },
+                'Demo: quality failure cancellation check failed, proceeding',
+              );
+            }
+          }
+        }
+
+        if (failureType && failureContent) {
+          const escalationIdx = Math.min(qualityFailureCount, 2);
+          const injectSeverity: 'medium' | 'high' | 'critical' =
+            failureType === 'rejected'
+              ? 'critical'
+              : escalationIdx >= 2
+                ? 'critical'
+                : escalationIdx >= 1
+                  ? 'high'
+                  : 'medium';
+          const aiTitle = envC.consequence_title || aiEnvC.consequence_title;
+          const titleBase = aiTitle || FALLBACK_TITLES[failureType];
+          const injectTitle = `${titleBase} – ${authorTeamNames[0]} (${decisionId.slice(0, 8)})`;
+
+          const { data: qualityInject, error: qualityInsertErr } = await supabaseAdmin
+            .from('scenario_injects')
+            .insert({
+              scenario_id: sessionScenarioId,
+              type: 'field_update',
+              title: injectTitle,
+              content: failureContent,
+              severity: injectSeverity,
+              inject_scope: 'team_specific',
+              target_teams: [authorTeamNames[0]],
+              requires_response: true,
+              requires_coordination: false,
+              ai_generated: true,
+              generation_source: 'specificity_feedback',
+            })
+            .select()
+            .single();
+
+          if (qualityInsertErr) {
+            logger.warn(
+              { err: qualityInsertErr, decisionId, team: authorTeamNames[0] },
+              'Demo: quality failure inject insert failed',
+            );
+          }
+
+          if (qualityInject) {
+            await publishInjectToSession(qualityInject.id, sessionId, sessionTrainerId, io);
+            await supabaseAdmin.from('session_events').insert({
+              session_id: sessionId,
+              event_type: 'quality_failure_inject_fired',
+              description: `Quality failure (${failureType}) for ${authorTeamNames[0]} (escalation ${qualityFailureCount + 1})`,
+              actor_id: null,
+              metadata: {
+                team: authorTeamNames[0],
+                decision_id: decisionId,
+                failure_type: failureType,
+                escalation: qualityFailureCount + 1,
+              },
+            });
+            logger.info(
+              {
+                sessionId,
+                decisionId,
+                team: authorTeamNames[0],
+                failureType,
+                escalation: qualityFailureCount + 1,
+                severity: injectSeverity,
+              },
+              'Demo: quality failure inject published',
+            );
+          }
+        }
+      } catch (qualityErr) {
+        logger.warn(
+          { err: qualityErr, sessionId, decisionId },
+          'Demo: failed to fire quality failure inject',
+        );
+      }
+    }
+
+    // Phase 5: Heat meter with proper mistake classification
+    if (teamName) {
+      let mistakeType: 'vague' | 'contradiction' | 'prereq' | 'rejected' | 'good' = 'good';
+      if (rejected) {
+        mistakeType = 'rejected';
+      } else if (envC.specific === false) {
+        mistakeType = 'vague';
+      } else if (!envC.consistent && envC.mismatch_kind === 'infrastructure_gap') {
+        mistakeType = 'prereq';
+      } else if (
+        !envC.consistent &&
+        envC.mismatch_kind !== 'below_standard' &&
+        envC.mismatch_kind !== 'infrastructure_gap'
+      ) {
+        mistakeType = 'contradiction';
+      } else if (!envC.consistent) {
+        mistakeType = 'prereq';
+      }
+
+      try {
+        const { heat_percentage } = await updateTeamHeatMeter(sessionId, teamName, mistakeType, io);
+
+        // Pathway outcome injects (escalation when heat is high)
+        if (sessionScenarioId && sessionTrainerId && io) {
+          await selectAndPublishPathwayOutcome(
+            sessionId,
+            teamName,
+            heat_percentage,
+            sessionScenarioId,
+            sessionTrainerId,
+            io,
+          );
+        }
+
+        // Public sentiment nudge (media team)
+        if (teamName === 'media') {
+          await nudgePublicSentiment(sessionId, mistakeType);
+        }
+      } catch (err) {
+        logger.error({ error: err, decisionId }, 'Demo: heat meter / pathway / sentiment failed');
+      }
+    }
+
+    // Phase 6: Team state + inject triggers
     if (aiClassification) {
       try {
-        const { data: sessionRow } = await supabaseAdmin
-          .from('sessions')
-          .select('start_time, scenario_id')
-          .eq('id', sessionId)
-          .single();
-
-        const startTime = (sessionRow as { start_time?: string } | null)?.start_time;
-        const elapsedMinutes = startTime
-          ? Math.floor((Date.now() - new Date(startTime).getTime()) / 60000)
-          : 0;
-
         await updateTeamStateFromDecision(
           sessionId,
           decisionId,
@@ -377,7 +644,7 @@ export class DemoActionDispatcher {
           {
             decisionTitle: title,
             decisionDescription: description,
-            scenarioId: (sessionRow as { scenario_id?: string } | null)?.scenario_id ?? undefined,
+            scenarioId: sessionScenarioId ?? undefined,
           },
         );
 
@@ -395,22 +662,147 @@ export class DemoActionDispatcher {
       }
     }
 
-    // Phase 5: Heat meter
-    try {
-      if (teamName) {
-        const heatOutcome = aiClassification ? 'good' : 'neutral';
-        await updateTeamHeatMeter(sessionId, teamName, heatOutcome as 'good');
-      }
-    } catch (err) {
-      logger.error({ error: err, decisionId }, 'Demo: heat meter update failed');
+    // Phase 7: Background tasks (env management, space claims, casualty effects, transport, objectives, events)
+    const bgTasks: Promise<unknown>[] = [];
+
+    // Environmental management intent
+    bgTasks.push(
+      evaluateEnvironmentalManagementIntentAndUpdateState(
+        sessionId,
+        { id: decisionId, title, description, type: (decision.type as string) ?? null },
+        env.openAiApiKey,
+      ).catch((err) =>
+        logger.error({ error: err, decisionId }, 'Demo: env condition management failed'),
+      ),
+    );
+
+    // State effect management
+    bgTasks.push(
+      evaluateStateEffectManagementAndUpdateState(
+        sessionId,
+        { id: decisionId, title, description },
+        env.openAiApiKey,
+        botUserId,
+      ).catch((err) =>
+        logger.error({ error: err, decisionId }, 'Demo: state effect management failed'),
+      ),
+    );
+
+    // Space claims auto-detection
+    if (authorTeamNames.length > 0 && sessionScenarioId) {
+      bgTasks.push(
+        (async () => {
+          const decisionLower = `${title} ${description}`.toLowerCase();
+          const { data: scLocations } = await supabaseAdmin
+            .from('scenario_locations')
+            .select('id, label, conditions')
+            .eq('scenario_id', sessionScenarioId);
+
+          if (scLocations && scLocations.length > 0) {
+            const assignmentPatterns =
+              /\b(set\s+up|establish|designate|use\s+as|deploy\s+at|create|place|position|station\s+at|locate|assign|convert|transform|operate)\b/i;
+            if (assignmentPatterns.test(decisionLower)) {
+              for (const loc of scLocations) {
+                const cond = (loc.conditions as Record<string, unknown>) ?? {};
+                const isCandidateSpace =
+                  cond.pin_category === 'candidate_space' || Array.isArray(cond.potential_uses);
+                if (!isCandidateSpace) continue;
+
+                const label = ((loc.label as string) ?? '').toLowerCase();
+                if (!label || !decisionLower.includes(label)) continue;
+
+                const usePatterns: Array<[RegExp, string]> = [
+                  [/triage/i, 'triage'],
+                  [/command\s*(post|center|centre)/i, 'command_post'],
+                  [/staging/i, 'staging'],
+                  [/evacuation|assembly/i, 'evacuation_assembly'],
+                  [/media/i, 'media_center'],
+                  [/negotiation/i, 'negotiation_post'],
+                  [/decontamination|decon/i, 'decontamination'],
+                  [/morgue|mortuary|casualty\s*collection/i, 'casualty_collection'],
+                  [/logistics|supply/i, 'logistics'],
+                ];
+                let claimedAs = 'designated_area';
+                for (const [pattern, name] of usePatterns) {
+                  if (pattern.test(decisionLower)) {
+                    claimedAs = name;
+                    break;
+                  }
+                }
+
+                const { data: sessionForTime } = await supabaseAdmin
+                  .from('sessions')
+                  .select('current_state')
+                  .eq('id', sessionId)
+                  .single();
+                const gameMinutes = (
+                  (sessionForTime as Record<string, unknown>)?.current_state as Record<
+                    string,
+                    unknown
+                  >
+                )?.game_time_minutes as number;
+
+                await recordSpaceClaim(
+                  sessionId,
+                  loc.id as string,
+                  authorTeamNames[0],
+                  claimedAs,
+                  typeof gameMinutes === 'number' ? gameMinutes : 0,
+                  (loc as { label?: string }).label ?? undefined,
+                );
+                break;
+              }
+            }
+          }
+        })().catch((err) =>
+          logger.error({ error: err, decisionId }, 'Demo: space claim recording failed'),
+        ),
+      );
     }
 
-    // Phase 6: Objectives evaluation
-    try {
-      await evaluateAllObjectivesForSession(sessionId, env.openAiApiKey);
-    } catch (err) {
-      logger.error({ error: err, decisionId }, 'Demo: objective evaluation failed');
+    // Casualty movement effects
+    bgTasks.push(
+      applyDecisionCasualtyEffects(sessionId, title, description, teamName).catch((err) =>
+        logger.error({ error: err, decisionId }, 'Demo: decision casualty effects failed'),
+      ),
+    );
+
+    // Transport outcome evaluation
+    if (authorTeamNames.length > 0 && io) {
+      bgTasks.push(
+        evaluateTransportOutcome(
+          sessionId,
+          { id: decisionId, title, description, type: (decision.type as string) ?? null },
+          authorTeamNames[0],
+          env.openAiApiKey,
+          io,
+        ).catch((err) =>
+          logger.error({ error: err, decisionId }, 'Demo: transport outcome failed'),
+        ),
+      );
     }
+
+    // Objectives evaluation
+    bgTasks.push(
+      evaluateAllObjectivesForSession(sessionId, env.openAiApiKey).catch((err) =>
+        logger.error({ error: err, decisionId }, 'Demo: objective evaluation failed'),
+      ),
+    );
+
+    // Event logging
+    if (io) {
+      bgTasks.push(
+        logAndBroadcastEvent(
+          io,
+          sessionId,
+          'decision_executed',
+          { decision_id: decisionId, title, description, team: teamName ?? 'unknown' },
+          botUserId,
+        ).catch((err) => logger.error({ error: err, decisionId }, 'Demo: event logging failed')),
+      );
+    }
+
+    await Promise.allSettled(bgTasks);
   }
 
   /**
