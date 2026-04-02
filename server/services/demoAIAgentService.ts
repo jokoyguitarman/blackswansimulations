@@ -545,17 +545,16 @@ export class DemoAIAgentService {
       '',
       'You interact through THREE action types. Return MULTIPLE actions per turn (2-4 is ideal).',
       '',
-      '### 1. DECISIONS (Most Important!)',
-      'Decisions are the PRIMARY game mechanic. Every significant action must be recorded as a decision. They appear in the War Room decisions panel, are evaluated against objectives, and drive the exercise forward.',
+      '### 1. DECISIONS (Most Important — EVERY turn MUST include at least one decision!)',
+      'Decisions are the PRIMARY game mechanic. They appear in the War Room decisions panel, are scored against objectives, and are the ONLY actions that count toward performance. If you only do placements and chat without decisions, your team gets ZERO credit.',
       '- title: Concise action title (e.g. "Establish Inner Cordon - 200m radius from blast site")',
-      '- description: Detailed explanation — what, why, resources needed, expected outcome. Reference specific locations, procedures, and standards. Vague decisions score poorly.',
-      '- decision_type: containment | tactical_deployment | resource_request | communication | medical_response | evacuation | investigation | public_information | negotiation | hazmat_response',
+      '- description: 2-3 sentences explaining what, why, resources, expected outcome. Reference specific locations and procedures.',
       '',
-      'Good: title="Deploy Forward Triage at Assembly North", description="Establishing START triage 150m from blast in upwind direction. Two paramedic teams assigned. P1 routed to SGH via Penang Rd. Requesting 4 additional ambulances."',
+      'Good: title="Deploy Forward Triage at Assembly North", description="Establishing START triage 150m from blast in upwind direction. Two paramedic teams assigned. P1 casualties routed to SGH via Penang Rd. Requesting 4 additional ambulances from SCDF."',
       'Bad: title="Set up triage", description="We should do triage somewhere"',
       '',
       '### 2. PLACEMENTS (Support Decisions with Map Actions)',
-      'Drop tactical assets on the map to visualize your decisions. Always pair with a related decision.',
+      'Drop tactical assets on the map to visualize your decisions. ONLY place an asset if you also submitted a related decision in the same turn.',
       '- asset_type: command_post | inner_cordon | outer_cordon | staging_area | triage_point | evacuation_route | sniper_position | tactical_unit | press_cordon | decontamination_zone | helicopter_lz | roadblock | observation_post | casualty_collection | forward_command | water_point | rest_area',
       '- label: Human-readable label',
       '- geometry: GeoJSON — Point for assets, LineString for cordons/routes, Polygon for zones',
@@ -582,11 +581,11 @@ export class DemoAIAgentService {
       'Example: "All stations, Police Actual. Inner cordon set 200m from epicenter. Orchard Rd and Penang Rd blocked. Request EMS staging at Assembly North. Over."',
       '',
       '## Response Format',
-      'Return a JSON object with an array of 2-4 actions:',
+      'Return a JSON object with an array of 2-4 actions. The FIRST action MUST be a decision:',
       '```json',
       '{',
       '  "actions": [',
-      '    { "action": "decision", "decision": { "title": "...", "description": "...", "decision_type": "..." } },',
+      '    { "action": "decision", "decision": { "title": "...", "description": "..." } },',
       '    { "action": "placement", "placement": { "asset_type": "...", "label": "...", "geometry": { "type": "Point", "coordinates": [lng, lat] } } },',
       '    { "action": "chat", "chat": { "content": "..." } }',
       '  ],',
@@ -600,13 +599,14 @@ export class DemoAIAgentService {
       '- Minutes 8-15: Tactical response, specialist deployments, evacuation, media management',
       '- Minutes 15+: Sustained operations, resource rotation, investigation, recovery planning',
       '',
-      '## Rules',
-      '- Prioritize DECISIONS — they are how performance is measured',
-      '- Pair placements with decisions that explain them',
-      '- Reference specific locations, routes, and standards',
-      "- Acknowledge other teams' actions in chat",
-      '- Do NOT repeat actions already taken',
-      '- Escalate appropriately as new injects arrive',
+      '## CRITICAL Rules',
+      '- EVERY turn MUST include at least one "decision" action. Placements and chat WITHOUT a decision are WORTHLESS.',
+      '- NEVER place an inner_cordon or outer_cordon more than once. If cordons already exist, do NOT place another.',
+      '- READ the "Recent actions by all teams" carefully. Do NOT duplicate what another team already did.',
+      '- Each decision must be UNIQUE — different title, different tactical purpose.',
+      '- Chat messages: SHORT (1-2 sentences), reference specific actions, acknowledge what OTHER teams did.',
+      '- Vary your actions: after cordons are set, move to resource requests, evacuations, specialist deployments, investigations.',
+      "- Focus on YOUR team's specialty. Police does cordons/security, Triage does medical, Evacuation does routes, Fire does rescue, Media does public info.",
     );
 
     return parts.join('\n');
@@ -729,7 +729,6 @@ export class DemoAIAgentService {
         await this.dispatcher.proposeAndExecuteDecision(sessionId, botUserId, {
           title: action.decision.title,
           description: action.decision.description,
-          decision_type: action.decision.decision_type,
         });
         break;
       }
@@ -875,6 +874,20 @@ export class DemoAIAgentService {
         const profile = p.placed_by_profile as Record<string, unknown> | null;
         const name = (profile?.full_name as string) || 'Unknown';
         lines.push(`${name} placed ${p.asset_type}: "${p.label}"`);
+      }
+
+      const { data: messages } = await supabaseAdmin
+        .from('chat_messages')
+        .select('content, created_at, sender:user_profiles!chat_messages_sender_id_fkey(full_name)')
+        .eq('session_id', sessionId)
+        .neq('type', 'system')
+        .order('created_at', { ascending: false })
+        .limit(6);
+
+      for (const m of (messages ?? []) as Array<Record<string, unknown>>) {
+        const sender = m.sender as Record<string, unknown> | null;
+        const name = (sender?.full_name as string) || 'Unknown';
+        lines.push(`${name} said: "${(m.content as string)?.slice(0, 120)}"`);
       }
     } catch (err) {
       logger.debug({ error: err, sessionId }, 'AI agent: failed to load recent activity');

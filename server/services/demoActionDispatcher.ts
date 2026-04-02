@@ -126,7 +126,7 @@ export class DemoActionDispatcher {
           response_to_incident_id: payload.response_to_incident_id || null,
           title,
           description: payload.description,
-          type: payload.decision_type || null,
+          type: null,
           status: 'proposed',
         })
         .select()
