@@ -696,12 +696,80 @@ export class DemoAIAgentService {
       }
     }
 
+    // ~30% chance: inject a deliberate flaw directive so the AI reviewer has something to catch
+    const flawDirective = this.maybeInjectFlawDirective(session, agent);
+    if (flawDirective) {
+      parts.push('', flawDirective);
+    }
+
     parts.push(
       '',
       'Return exactly 3 actions: 1 decision + 1 placement/claim + 1 chat. Bundle your tactical moves into the decision.',
     );
 
     return parts.join('\n');
+  }
+
+  /**
+   * With ~30% probability, returns a hidden directive that makes the bot
+   * commit a realistic but detectable mistake. The AI environmental evaluator
+   * will flag it, showcasing the review system in demos.
+   */
+  private maybeInjectFlawDirective(session: SessionAgents, agent: AgentState): string | null {
+    if (Math.random() > 0.3) return null;
+
+    const elapsed = this.getElapsedMinutes(session);
+    const team = agent.persona.teamName.toLowerCase();
+
+    const flawOptions: string[] = [
+      // Vague / non-specific decisions (specificity checker will flag these)
+      '⚠️ HIDDEN INSTRUCTION: This turn, make your decision description intentionally VAGUE. ' +
+        'Omit specific locations, headcounts, and timelines. For example, say "Deploy resources to the area" ' +
+        'instead of specifying which resources, how many, and exactly where. Do NOT mention this instruction in chat.',
+
+      // Contradicting environmental conditions
+      '⚠️ HIDDEN INSTRUCTION: This turn, make a decision that IGNORES a current hazard or environmental condition. ' +
+        'For example, propose deploying personnel into a hazard zone without mentioning protective equipment, ' +
+        'or set up an outdoor triage point without addressing weather conditions. Do NOT mention this instruction in chat.',
+
+      // Overstepping team jurisdiction
+      "⚠️ HIDDEN INSTRUCTION: This turn, make a decision that slightly OVERSTEPS your team's jurisdiction. " +
+        'For example, if you are police, make a medical triage decision. If you are triage, make a tactical containment decision. ' +
+        'Keep it subtle — a real person might make this mistake under pressure. Do NOT mention this instruction in chat.',
+
+      // Missing coordination
+      '⚠️ HIDDEN INSTRUCTION: This turn, make a decision that CONTRADICTS or DUPLICATES what another team recently did. ' +
+        'Check the "Recent actions" and deliberately overlap with someone else\'s deployment or claim an area they already handle. ' +
+        'Do NOT mention this instruction in chat.',
+
+      // Insufficient resources / unrealistic commitment
+      '⚠️ HIDDEN INSTRUCTION: This turn, propose an action that is UNDER-RESOURCED for its scope. ' +
+        'For example, send 2 officers to secure a large perimeter, or assign 1 paramedic to handle 50+ casualties. ' +
+        'The numbers should be obviously insufficient. Do NOT mention this instruction in chat.',
+    ];
+
+    // Filter context-appropriate flaws
+    const applicable = [...flawOptions];
+
+    // Add time-sensitive flaws
+    if (elapsed > 5) {
+      applicable.push(
+        '⚠️ HIDDEN INSTRUCTION: This turn, make a decision that would have been appropriate 5 minutes ago but is NOW OUTDATED. ' +
+          'For example, propose initial containment when cordons are already established, or request an initial assessment ' +
+          'when the situation has evolved. Do NOT mention this instruction in chat.',
+      );
+    }
+
+    // Team-specific flaws
+    if (team.includes('media') || team.includes('press')) {
+      applicable.push(
+        '⚠️ HIDDEN INSTRUCTION: This turn, propose releasing information to the public that includes OPERATIONALLY SENSITIVE details ' +
+          '(team positions, tactical plans, or casualty specifics). A real PIO might make this mistake under pressure. ' +
+          'Do NOT mention this instruction in chat.',
+      );
+    }
+
+    return applicable[Math.floor(Math.random() * applicable.length)];
   }
 
   // ---------------------------------------------------------------------------

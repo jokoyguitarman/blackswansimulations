@@ -13,6 +13,8 @@ import { classifyDecision } from './aiService.js';
 import { evaluateAllObjectivesForSession } from './objectiveTrackingService.js';
 import { evaluateDecisionBasedTriggers } from './injectTriggerService.js';
 import { updateTeamHeatMeter } from './heatMeterService.js';
+import { evaluateDecisionAgainstEnvironment } from './environmentalConsistencyService.js';
+import { evaluateEnvironmentalPrerequisite } from './environmentalPrerequisiteService.js';
 import { env } from '../env.js';
 import { io } from '../index.js';
 
@@ -207,9 +209,7 @@ export class DemoActionDispatcher {
       ).catch(() => {});
 
       // Queue background processing sequentially to avoid OpenAI rate-limit flooding
-      this.enqueueEvaluation(() =>
-        this.processDecisionBackground(decision.id, executed, botUserId),
-      );
+      this.enqueueEvaluation(() => this.processDecisionBackground(decision.id, executed));
 
       logger.info({ decisionId: decision.id, botUserId }, 'Demo: decision proposed + executed');
       return decision.id;
@@ -229,16 +229,18 @@ export class DemoActionDispatcher {
   private async processDecisionBackground(
     decisionId: string,
     decision: Record<string, unknown>,
-    botUserId: string,
   ): Promise<void> {
     const sessionId = decision.session_id as string;
+    const title = (decision.title as string) ?? '';
+    const description = (decision.description as string) ?? '';
 
+    // Phase 1: State update (quick DB write)
     try {
       await updateStateOnDecisionExecution(sessionId, {
         id: decisionId,
         decision_type: (decision.type as string) || 'operational_action',
-        title: (decision.title as string) ?? '',
-        description: (decision.description as string) ?? '',
+        title,
+        description,
         resources_needed: decision.resources_needed as Record<string, unknown> | undefined,
         consequences: decision.consequences as Record<string, unknown> | undefined,
       });
@@ -253,10 +255,7 @@ export class DemoActionDispatcher {
           .update({
             environmental_consistency: {
               consistent: true,
-              mismatch_kind: null,
-              severity: null,
               reason: 'Demo bot — no API key, auto-approved',
-              feedback: null,
             },
           })
           .eq('id', decisionId);
@@ -266,87 +265,87 @@ export class DemoActionDispatcher {
       return;
     }
 
+    // Phase 2: AI classification
     let aiClassification: Awaited<ReturnType<typeof classifyDecision>> | null = null;
     try {
-      aiClassification = await classifyDecision(
-        { title: decision.title as string, description: decision.description as string },
-        env.openAiApiKey,
-      );
+      aiClassification = await classifyDecision({ title, description }, env.openAiApiKey);
 
       await supabaseAdmin
         .from('decisions')
         .update({
           type: (aiClassification as { primary_category?: string }).primary_category,
           ai_classification: aiClassification,
-          environmental_consistency: {
-            consistent: true,
-            mismatch_kind: null,
-            severity: null,
-            reason: 'Demo bot — auto-approved',
-            feedback: null,
-          },
         })
         .eq('id', decisionId);
 
-      logger.info({ decisionId }, 'Demo: classification + environmental_consistency set');
-
-      const { data: authorTeams } = await supabaseAdmin
-        .from('session_teams')
-        .select('team_name')
-        .eq('session_id', sessionId)
-        .eq('user_id', decision.proposed_by as string);
-      const authorTeamNames = (authorTeams ?? []).map((r: { team_name: string }) => r.team_name);
-
-      const { data: sessionRow } = await supabaseAdmin
-        .from('sessions')
-        .select('start_time, scenario_id')
-        .eq('id', sessionId)
-        .single();
-
-      const startTime = (sessionRow as { start_time?: string } | null)?.start_time;
-      const elapsedMinutes = startTime
-        ? Math.floor((Date.now() - new Date(startTime).getTime()) / 60000)
-        : 0;
-
-      await updateTeamStateFromDecision(
-        sessionId,
-        decisionId,
-        authorTeamNames,
-        aiClassification!,
-        elapsedMinutes,
-        {
-          decisionTitle: (decision.title as string) ?? '',
-          decisionDescription: (decision.description as string) ?? '',
-          scenarioId: (sessionRow as { scenario_id?: string } | null)?.scenario_id ?? undefined,
-        },
-      );
-
-      if (io) {
-        const triggerTeamName = authorTeamNames.length > 0 ? authorTeamNames[0] : null;
-        await evaluateDecisionBasedTriggers(
-          sessionId,
-          {
-            id: decisionId,
-            title: decision.title as string,
-            description: decision.description as string,
-          },
-          aiClassification!,
-          io,
-          triggerTeamName,
-        );
-      }
+      logger.info({ decisionId }, 'Demo: classification complete');
     } catch (err) {
-      logger.error({ error: err, decisionId }, 'Demo: AI classification/triggers failed');
+      logger.error({ error: err, decisionId }, 'Demo: AI classification failed');
+    }
+
+    // Phase 3: Real environmental consistency evaluation (same as human players)
+    const { data: authorTeams } = await supabaseAdmin
+      .from('session_teams')
+      .select('team_name')
+      .eq('session_id', sessionId)
+      .eq('user_id', decision.proposed_by as string);
+    const authorTeamNames = (authorTeams ?? []).map((r: { team_name: string }) => r.team_name);
+    const teamName = authorTeamNames.length > 0 ? authorTeamNames[0] : null;
+
+    try {
+      const decisionForEval = {
+        id: decisionId,
+        title,
+        description,
+        type: (decision.type as string) ?? null,
+        team_name: teamName ?? undefined,
+      };
+
+      const [aiEnvResult, prereqOut] = await Promise.all([
+        evaluateDecisionAgainstEnvironment(
+          sessionId,
+          decisionForEval,
+          env.openAiApiKey,
+          null,
+          teamName ?? undefined,
+          0,
+        ),
+        evaluateEnvironmentalPrerequisite(sessionId, decisionForEval, undefined, env.openAiApiKey),
+      ]);
+
+      const { result: prereqResult, evaluationReason: envPrereqReason } = prereqOut;
+      const envResult = prereqResult && !prereqResult.consistent ? prereqResult : aiEnvResult;
+
+      await supabaseAdmin
+        .from('decisions')
+        .update({ environmental_consistency: envResult })
+        .eq('id', decisionId);
+
+      if (envPrereqReason != null) {
+        await supabaseAdmin
+          .from('decisions')
+          .update({ evaluation_reasoning: { env_prerequisite: envPrereqReason } })
+          .eq('id', decisionId);
+      }
+
+      logger.info(
+        {
+          decisionId,
+          consistent: envResult.consistent,
+          mismatch_kind: envResult.mismatch_kind ?? null,
+          severity: envResult.severity ?? null,
+        },
+        'Demo: environmental consistency evaluated',
+      );
+    } catch (err) {
+      logger.error({ error: err, decisionId }, 'Demo: environmental evaluation failed');
       try {
         await supabaseAdmin
           .from('decisions')
           .update({
             environmental_consistency: {
               consistent: true,
-              mismatch_kind: null,
-              severity: null,
-              reason: 'Demo bot — classification failed, auto-approved',
-              feedback: null,
+              reason: 'Demo bot — evaluation failed, auto-approved',
             },
           })
           .eq('id', decisionId);
@@ -355,22 +354,58 @@ export class DemoActionDispatcher {
       }
     }
 
-    // Heat meter update
+    // Phase 4: Team state + inject triggers
+    if (aiClassification) {
+      try {
+        const { data: sessionRow } = await supabaseAdmin
+          .from('sessions')
+          .select('start_time, scenario_id')
+          .eq('id', sessionId)
+          .single();
+
+        const startTime = (sessionRow as { start_time?: string } | null)?.start_time;
+        const elapsedMinutes = startTime
+          ? Math.floor((Date.now() - new Date(startTime).getTime()) / 60000)
+          : 0;
+
+        await updateTeamStateFromDecision(
+          sessionId,
+          decisionId,
+          authorTeamNames,
+          aiClassification,
+          elapsedMinutes,
+          {
+            decisionTitle: title,
+            decisionDescription: description,
+            scenarioId: (sessionRow as { scenario_id?: string } | null)?.scenario_id ?? undefined,
+          },
+        );
+
+        if (io && teamName) {
+          await evaluateDecisionBasedTriggers(
+            sessionId,
+            { id: decisionId, title, description },
+            aiClassification,
+            io,
+            teamName,
+          );
+        }
+      } catch (err) {
+        logger.error({ error: err, decisionId }, 'Demo: team state / triggers failed');
+      }
+    }
+
+    // Phase 5: Heat meter
     try {
-      const { data: authorTeams } = await supabaseAdmin
-        .from('session_teams')
-        .select('team_name')
-        .eq('session_id', sessionId)
-        .eq('user_id', botUserId);
-      const teamName = (authorTeams ?? [])[0]?.team_name;
       if (teamName) {
-        await updateTeamHeatMeter(sessionId, teamName, 'good');
+        const heatOutcome = aiClassification ? 'good' : 'neutral';
+        await updateTeamHeatMeter(sessionId, teamName, heatOutcome as 'good');
       }
     } catch (err) {
       logger.error({ error: err, decisionId }, 'Demo: heat meter update failed');
     }
 
-    // Objectives evaluation
+    // Phase 6: Objectives evaluation
     try {
       await evaluateAllObjectivesForSession(sessionId, env.openAiApiKey);
     } catch (err) {
