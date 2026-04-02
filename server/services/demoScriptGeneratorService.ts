@@ -137,7 +137,7 @@ async function loadFullScenarioContext(scenarioId: string): Promise<ScenarioCont
   try {
     const { data: scenario } = await supabaseAdmin
       .from('scenarios')
-      .select('id, title, description, scenario_type, center_lat, center_lng, insider_knowledge')
+      .select('id, title, description, category, center_lat, center_lng, insider_knowledge')
       .eq('id', scenarioId)
       .single();
 
@@ -176,7 +176,7 @@ async function loadFullScenarioContext(scenarioId: string): Promise<ScenarioCont
     return {
       title: (scenario as Record<string, unknown>).title as string,
       description: ((scenario as Record<string, unknown>).description as string) || '',
-      scenarioType: ((scenario as Record<string, unknown>).scenario_type as string) || 'general',
+      scenarioType: ((scenario as Record<string, unknown>).category as string) || 'general',
       centerLat: (scenario as Record<string, unknown>).center_lat as number | null,
       centerLng: (scenario as Record<string, unknown>).center_lng as number | null,
       teams: ((teams ?? []) as Array<Record<string, unknown>>).map((t) => ({

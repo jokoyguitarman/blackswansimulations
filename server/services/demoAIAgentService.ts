@@ -214,7 +214,7 @@ export class DemoAIAgentService {
     try {
       const { data: scenario } = await supabaseAdmin
         .from('scenarios')
-        .select('id, title, description, scenario_type, center_lat, center_lng, insider_knowledge')
+        .select('id, title, description, category, center_lat, center_lng, insider_knowledge')
         .eq('id', scenarioId)
         .single();
 
@@ -245,7 +245,7 @@ export class DemoAIAgentService {
 
       const scenarioSummary = [
         `Title: ${scenario.title}`,
-        `Type: ${scenario.scenario_type || 'general'}`,
+        `Type: ${scenario.category || 'general'}`,
         scenario.description ? `Description: ${scenario.description}` : '',
         locationSummary ? `Key Locations:\n${locationSummary}` : '',
       ]
