@@ -80,7 +80,7 @@ router.post(
       // 2. Load scenario teams
       const { data: scenarioTeams } = await supabaseAdmin
         .from('scenario_teams')
-        .select('team_name, description')
+        .select('team_name, team_description')
         .eq('scenario_id', scenarioId);
 
       const teamNames = (scenarioTeams ?? []).map((t: { team_name: string }) => t.team_name);

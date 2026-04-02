@@ -120,7 +120,7 @@ interface ScenarioContext {
   scenarioType: string;
   centerLat: number | null;
   centerLng: number | null;
-  teams: Array<{ team_name: string; description: string; role_name: string; agency_name: string }>;
+  teams: Array<{ team_name: string; description: string }>;
   injects: Array<{
     title: string;
     inject_text: string;
@@ -145,7 +145,7 @@ async function loadFullScenarioContext(scenarioId: string): Promise<ScenarioCont
 
     const { data: teams } = await supabaseAdmin
       .from('scenario_teams')
-      .select('team_name, description, role_name, agency_name')
+      .select('team_name, team_description')
       .eq('scenario_id', scenarioId);
 
     const { data: injects } = await supabaseAdmin
@@ -184,9 +184,7 @@ async function loadFullScenarioContext(scenarioId: string): Promise<ScenarioCont
       centerLng: (scenario as Record<string, unknown>).center_lng as number | null,
       teams: ((teams ?? []) as Array<Record<string, unknown>>).map((t) => ({
         team_name: (t.team_name as string) || '',
-        description: (t.description as string) || '',
-        role_name: (t.role_name as string) || '',
-        agency_name: (t.agency_name as string) || '',
+        description: (t.team_description as string) || '',
       })),
       injects: ((injects ?? []) as Array<Record<string, unknown>>).map((i) => ({
         title: (i.title as string) || '',
@@ -275,9 +273,7 @@ function buildGeneratorUserPrompt(
   parts.push('');
   parts.push('## Teams');
   for (const team of ctx.teams) {
-    parts.push(
-      `- **${team.team_name}** (${team.role_name}, ${team.agency_name}): ${team.description}`,
-    );
+    parts.push(`- **${team.team_name}**: ${team.description}`);
   }
 
   if (ctx.locations.length > 0) {

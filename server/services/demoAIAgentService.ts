@@ -120,8 +120,8 @@ export class DemoAIAgentService {
       const persona: AgentPersona = {
         botUserId,
         teamName: team.team_name,
-        roleName: team.role_name || team.team_name,
-        agencyName: team.agency_name || team.team_name,
+        roleName: team.team_name,
+        agencyName: team.team_name,
         teamDescription: team.description || '',
         doctrines: team.doctrines || '',
       };
@@ -207,8 +207,6 @@ export class DemoAIAgentService {
     sectorStandards: string;
     teams: Array<{
       team_name: string;
-      role_name: string;
-      agency_name: string;
       description: string;
       doctrines: string;
     }>;
@@ -224,7 +222,7 @@ export class DemoAIAgentService {
 
       const { data: teams } = await supabaseAdmin
         .from('scenario_teams')
-        .select('team_name, description, role_name, agency_name')
+        .select('team_name, team_description')
         .eq('scenario_id', scenarioId);
 
       const { data: insiderKnowledge } = await supabaseAdmin
@@ -270,9 +268,7 @@ export class DemoAIAgentService {
           : '';
         return {
           team_name: (t.team_name as string) || '',
-          role_name: (t.role_name as string) || '',
-          agency_name: (t.agency_name as string) || '',
-          description: (t.description as string) || '',
+          description: (t.team_description as string) || '',
           doctrines: doctrineText,
         };
       });
