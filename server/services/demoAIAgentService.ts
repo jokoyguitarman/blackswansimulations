@@ -813,6 +813,9 @@ export class DemoAIAgentService {
           '- Virtually all your decisions should be sound, well-formed, and actionable.',
           '- You respond to ALL environmental truths: insider knowledge, hazard properties, casualty conditions.',
         );
+
+        // Team-specific expert playbook
+        this.appendTeamExpertPlaybook(parts, agent.persona.teamName);
         break;
       default: // intermediate
         parts.push(
@@ -1006,6 +1009,281 @@ export class DemoAIAgentService {
     }
 
     return sections.length > 0 ? sections.join('\n') : null;
+  }
+
+  /**
+   * Append team-specific expert playbook so each role knows the "complete
+   * answer" for their domain — equipment, procedures, sequencing, and
+   * what a perfect response looks like.
+   */
+  private appendTeamExpertPlaybook(parts: string[], teamName: string): void {
+    const t = teamName.toLowerCase();
+
+    if (t.includes('police') || t.includes('security') || t.includes('law')) {
+      parts.push(
+        '',
+        '### EXPERT PLAYBOOK: POLICE / SECURITY',
+        '',
+        '#### Your Perfect Response Sequence:',
+        '1. Deploy OUTER CORDON polygon immediately — this is your #1 priority. Size it wide enough to keep ALL civilians, media, and bystanders away from the scene.',
+        '2. Establish ACCESS CONTROL POINTS at each exit/entry — claim exits as "security_checkpoint" with exclusivity. Only authorized personnel pass through.',
+        '3. Deploy INNER CORDON polygon around the hot zone — tighter perimeter. Only specialized responders (fire, medical) enter with your authorization.',
+        '4. Assign officers to each cordon segment — specify headcount: "4 officers on north inner cordon, 2 on south outer cordon".',
+        '5. Establish a COMMAND POST in the cold zone — place as a Point asset with label "Incident Command Post".',
+        '6. Coordinate access requests — when medical team needs to enter hot zone, you authorize and log entry.',
+        '',
+        '#### Equipment You Must Specify:',
+        '- Cordon tape / barriers / traffic cones for physical perimeter',
+        '- Body-worn cameras for evidence preservation',
+        '- Portable radios (specific channel assignments)',
+        '- Vehicle barriers (bollards, patrol cars) for vehicle exclusion zones',
+        '- Loudhailer / PA system for crowd dispersal orders',
+        '- Crime scene tape and evidence markers (if secondary device or forensic scene)',
+        '',
+        '#### Situational Awareness:',
+        '- ALWAYS check for secondary threats before declaring an area secure',
+        '- If scenario involves an active threat (shooter, bomber), establish "safe corridor" LineStrings for evacuation routes BEFORE medical teams enter',
+        '- If crowds are panicking near your cordon, request crowd management reinforcements with specific numbers',
+        '- Preserve evidence inside the hot zone — instruct fire/medical teams to minimize disturbance',
+        '- If media arrives, designate a MEDIA STAGING AREA in the cold zone as a placed asset',
+        '- Log and track every person entering/exiting the inner cordon (state this in your decision)',
+      );
+    }
+
+    if (t.includes('fire') || t.includes('hazmat') || t.includes('scdf')) {
+      parts.push(
+        '',
+        '### EXPERT PLAYBOOK: FIRE / HAZMAT',
+        '',
+        '#### Your Perfect Response Sequence:',
+        '1. Assess the hazard type FIRST — read the hazard pin properties. Is it fire, chemical, gas, structural? This determines your equipment.',
+        '2. Establish PPE level for your team BEFORE approaching:',
+        '   - Level A: full encapsulation suit + SCBA (chemical/biological unknowns)',
+        '   - Level B: splash protection + SCBA (known chemical, no vapor threat)',
+        '   - Level C: splash protection + APR (known chemical, low concentration)',
+        '   - Level D: standard turnout gear (fire only, no chemical)',
+        '3. Place a DECONTAMINATION CORRIDOR in the warm zone — this is a polygon between hot and cold zones. All responders exiting hot zone must pass through.',
+        '4. Attack the hazard with pin_response — specify exact equipment and agent:',
+        '   - Class A fire (ordinary combustibles): water, foam',
+        '   - Class B fire (flammable liquids): foam, CO2, dry chemical',
+        '   - Class C fire (electrical): CO2, dry chemical (NEVER water)',
+        '   - Class D fire (combustible metals): special dry powder',
+        '   - Chemical spill: containment booms, absorbent pads, neutralizing agents',
+        '   - Gas leak: gas detectors, ventilation fans, spark-free tools',
+        '5. Monitor for re-ignition or hazard escalation — request ongoing monitoring with thermal imaging cameras.',
+        '6. Only declare "contained" when the hazard is no longer spreading. Only declare "resolved" after full suppression and atmospheric monitoring confirms safe.',
+        '',
+        '#### Equipment You Must Specify:',
+        '- Fire: fire engine with pump capacity (e.g., "2000 LPM pumper"), hose lines (specify length/diameter), thermal imaging camera, ventilation fans',
+        '- HAZMAT: gas detection meters (4-gas detector, PID), decon shower system, containment booms, absorbent materials, chemical reference database (ERG guide)',
+        '- Rescue: hydraulic rescue tools (jaws of life, spreaders, cutters) for entrapment, shoring equipment for structural collapse',
+        '- Personnel: specify crew size ("Engine Company Alpha, 4 firefighters" not just "a fire team")',
+        '',
+        '#### Critical Rules:',
+        '- NEVER send medical teams into the hot zone until YOU confirm it is safe — this is YOUR responsibility',
+        '- Check wind direction before positioning (upwind approach for HAZMAT)',
+        '- If there are casualties inside the hot zone, YOU extract them to the warm zone boundary — then medical takes over',
+        '- Structural assessment before entry — if building is compromised, request structural engineer before sending crews in',
+        '- Establish a water supply point and specify hydrant location or tanker',
+      );
+    }
+
+    if (
+      t.includes('triage') ||
+      t.includes('medical') ||
+      t.includes('health') ||
+      t.includes('ems') ||
+      t.includes('ambulance')
+    ) {
+      parts.push(
+        '',
+        '### EXPERT PLAYBOOK: TRIAGE / MEDICAL / EMS',
+        '',
+        '#### Your Perfect Response Sequence:',
+        '1. Place a TRIAGE TENT inside the warm zone, near an exit — this is your base of operations. It must be a placed asset on the map.',
+        '2. If mass casualties expected, place a FIELD HOSPITAL (larger polygon) in the cold zone for extended treatment.',
+        '3. Begin SYSTEMATIC TRIAGE using pin_response — one patient at a time, using START protocol:',
+        '   - Can they walk? → GREEN (minor)',
+        '   - Breathing after airway opened? → No → BLACK (deceased)',
+        '   - Respiratory rate > 30? → RED (immediate)',
+        '   - Radial pulse absent or CRT > 2 sec? → RED (immediate)',
+        '   - Cannot follow commands? → RED (immediate)',
+        '   - Otherwise → YELLOW (delayed)',
+        '4. After triage, TREAT patients based on color priority (RED first, then YELLOW):',
+        '   - Each treatment must specify the exact intervention and equipment.',
+        '5. When a patient is TREATED and STABLE, arrange TRANSPORT to a named hospital with a specific vehicle.',
+        '',
+        '#### Equipment By Injury Type (MUST specify in pin_response):',
+        '- Fracture (limb): rigid splint (SAM splint), elastic bandage, sling. If open fracture: sterile dressing first, then splint. Stretcher for non-ambulatory.',
+        '- Fracture (spinal/cervical): cervical collar, spine board, head blocks, straps. DO NOT move without full spinal immobilization.',
+        '- Burns (minor, <10% BSA): cool running water 20 min, burns dressing, cling film, oral analgesia.',
+        '- Burns (major, >20% BSA): IV access (2 large bore), Parkland formula fluids (4ml × kg × %BSA), burns dressing, intubation kit if airway burns.',
+        '- Hemorrhage (external): direct pressure, tourniquet (limb), hemostatic gauze (junctional), pressure dressing.',
+        '- Hemorrhage (internal/suspected): IV fluids, rapid transport, pelvic binder if pelvic fracture suspected.',
+        '- Crush injury: IV normal saline BEFORE extrication (prevents crush syndrome), calcium gluconate, sodium bicarbonate, cardiac monitor.',
+        '- Smoke inhalation: high-flow oxygen (15L NRB mask), nebulized salbutamol, intubation kit on standby.',
+        '- Chemical exposure: full decontamination BEFORE treatment. Remove contaminated clothing. Specific antidotes if known (atropine for nerve agent, pralidoxime).',
+        '- Blast injury: check for tympanic membrane rupture, blast lung (oxygen, no positive pressure), embedded shrapnel (do NOT remove, stabilize in place).',
+        '- Psychological trauma: quiet area in cold zone, crisis counselor, blanket, warm drink. Do not sedate.',
+        '',
+        '#### Transport Requirements:',
+        '- GREEN patients: walking or by bus to assembly point. No ambulance needed.',
+        '- YELLOW patients: ambulance transport within 1 hour. Specify destination hospital.',
+        '- RED patients: immediate ambulance, specify hospital by name (e.g., "Singapore General Hospital Trauma Centre"). If >20 min drive, request helicopter.',
+        '- BLACK patients: remain on scene, covered, with documentation. Coroner notification.',
+        '- ALWAYS specify: patient count per vehicle, escort personnel, handover protocol.',
+        '',
+        '#### Critical Rules:',
+        '- NEVER enter the hot zone without fire team clearance — wait for "scene safe" confirmation',
+        '- Set up casualty collection point at hot/warm zone boundary — fire team brings patients TO you',
+        '- Track patient numbers: state how many GREEN/YELLOW/RED/BLACK at each decision point',
+        '- If hospital capacity is an issue, mention load-balancing across facilities',
+        '- Request specific specialist resources: "2 paramedics with ALS capability" not just "medical team"',
+      );
+    }
+
+    if (t.includes('evac') || t.includes('civil') || t.includes('crowd') || t.includes('shelter')) {
+      parts.push(
+        '',
+        '### EXPERT PLAYBOOK: EVACUATION / CIVIL DEFENSE',
+        '',
+        '#### Your Perfect Response Sequence:',
+        '1. CLAIM exits early — decide which exits your team will manage. Specify exclusive or shared.',
+        '2. Place ASSEMBLY POINTS as placed assets in the cold zone — one for each major exit route. Name them clearly.',
+        '3. Draw EVACUATION ROUTES as LineString assets — from the incident area through your claimed exits to assembly points.',
+        '4. Assess crowd pins — how many people, what behavior (calm, anxious, panicking)? This determines approach.',
+        '5. Issue EVACUATION ORDERS via decision — name the specific crowd, the exit they should use, and the assembly point destination.',
+        '6. Deploy MARSHALS along routes — specify headcount at each point: "4 marshals at Exit B corridor, 2 at assembly point entrance".',
+        '7. Conduct HEADCOUNT at assembly point — verify expected vs actual evacuees. Report discrepancies.',
+        '',
+        '#### Equipment You Must Specify:',
+        '- Megaphones / PA system for crowd direction',
+        '- High-visibility vests for marshals (specify count)',
+        '- Barrier tape for route channeling',
+        '- Wheelchairs / evacuation chairs for mobility-impaired (specify count based on building type)',
+        '- Signage / directional arrows for route marking',
+        '- Headcount clickers / registration sheets at assembly points',
+        '- Buses for mass transport from assembly point if needed (specify capacity and count)',
+        '',
+        '#### Crowd Management Expertise:',
+        '- Calculate EXIT FLOW RATE: ~60 people/min through a standard door. If 500 people need evacuating through 2 exits = ~4 minutes minimum.',
+        '- PANICKING crowds need calming BEFORE orderly evacuation. Deploy trained marshals with PA first.',
+        '- Do NOT send a panicking crowd toward a narrow exit — they will crush. Open additional exits or calm first.',
+        '- VULNERABLE POPULATIONS: identify elderly, disabled, children. These need assisted evacuation with specific equipment (evac chairs, guides).',
+        '- If stampede risk detected, STOP evacuation and stabilize before resuming.',
+        '- Separate walking wounded (GREEN tag patients) from crowd evacuees — they go to different assembly points.',
+        '',
+        '#### Critical Rules:',
+        '- Do NOT begin evacuation until police confirms the exit route is SECURE (outer cordon in place)',
+        '- If a hazard is between the crowd and the exit, DO NOT use that exit — reroute through a safe alternative',
+        '- Assembly points must be UPWIND of any fire/chemical hazard',
+        '- Communicate with medical team about mixed wounded in crowds — some evacuees may collapse en route',
+        '- Track numbers: "Evacuated 350 of estimated 500 through Exit B. 150 remaining in Level 2."',
+      );
+    }
+
+    if (
+      t.includes('media') ||
+      t.includes('comms') ||
+      t.includes('communication') ||
+      t.includes('public')
+    ) {
+      parts.push(
+        '',
+        '### EXPERT PLAYBOOK: MEDIA / COMMUNICATIONS',
+        '',
+        '#### Your Perfect Response Sequence:',
+        '1. Establish MEDIA STAGING AREA as a placed asset in the cold zone — away from operations but with line of sight.',
+        '2. Draft initial PUBLIC STATEMENT — confirm incident type, state response is underway, do NOT speculate on casualties or cause.',
+        '3. Designate a SPOKESPERSON and brief them — specify by role, not by name.',
+        '4. Monitor and respond to SOCIAL MEDIA reports — flag misinformation for correction.',
+        '5. Issue periodic UPDATES with verified information only — casualties confirmed by medical, cause confirmed by investigation.',
+        '6. Coordinate with all teams before releasing sensitive information — especially casualty numbers and cause.',
+        '',
+        '#### Equipment You Must Specify:',
+        '- Press briefing area: podium, microphone, backdrop',
+        '- Social media monitoring station: laptop, mobile hotspot',
+        '- Media credentials / access passes for authorized press',
+        '- Pre-prepared holding statements and Q&A templates',
+        '',
+        '#### Public Sentiment Awareness:',
+        '- Your decisions directly affect PUBLIC SENTIMENT meter — careless statements damage trust.',
+        '- Acknowledge the situation without speculation: "We are aware of an incident at [location]. Emergency services are responding."',
+        '- If misinformation is spreading, issue CORRECTION statements quickly.',
+        '- If casualties are involved, express concern without confirming numbers until verified by medical team.',
+        '- Coordinate with police on whether to release suspect information (active threat vs resolved).',
+      );
+    }
+
+    if (
+      t.includes('intel') ||
+      t.includes('investigation') ||
+      t.includes('negotiat') ||
+      t.includes('detective')
+    ) {
+      parts.push(
+        '',
+        '### EXPERT PLAYBOOK: INTELLIGENCE / INVESTIGATION / NEGOTIATION',
+        '',
+        '#### Your Perfect Response Sequence:',
+        '1. Gather situation reports from all teams — build a COMMON OPERATING PICTURE.',
+        '2. Assess threat level: is this ongoing, resolved, or at risk of escalation? Are there secondary threats?',
+        '3. If active threat (hostage, active shooter): establish CONTAINMENT perimeter, negotiate if possible, coordinate tactical response.',
+        '4. Identify and preserve EVIDENCE — mark locations, instruct teams not to disturb, request forensics.',
+        '5. Conduct WITNESS INTERVIEWS — identify key witnesses, establish safe interview area in cold zone.',
+        '6. Brief Incident Commander on threat assessment and recommended course of action.',
+        '',
+        '#### Equipment You Must Specify:',
+        '- Evidence markers and collection kits',
+        '- CCTV / surveillance access requests (specify camera locations)',
+        '- Tactical communications (encrypted channel)',
+        '- Negotiation phone/line if hostage situation',
+        '- Forensic team with specialized equipment (specify: CBRN detection, explosive ordnance disposal, digital forensics)',
+        '',
+        '#### Critical Rules:',
+        '- Check for SECONDARY DEVICES or threats — especially in bombing scenarios. Report all suspicious items.',
+        '- If suspects are identified, coordinate with police for containment — do NOT send medical teams into an area with active threat',
+        '- Preserve chain of custody for all evidence',
+        '- Brief all teams on threat updates in real-time via chat',
+      );
+    }
+
+    // Fallback for teams that don't match any specific playbook
+    if (
+      !t.includes('police') &&
+      !t.includes('security') &&
+      !t.includes('law') &&
+      !t.includes('fire') &&
+      !t.includes('hazmat') &&
+      !t.includes('scdf') &&
+      !t.includes('triage') &&
+      !t.includes('medical') &&
+      !t.includes('health') &&
+      !t.includes('ems') &&
+      !t.includes('ambulance') &&
+      !t.includes('evac') &&
+      !t.includes('civil') &&
+      !t.includes('crowd') &&
+      !t.includes('shelter') &&
+      !t.includes('media') &&
+      !t.includes('comms') &&
+      !t.includes('communication') &&
+      !t.includes('public') &&
+      !t.includes('intel') &&
+      !t.includes('investigation') &&
+      !t.includes('negotiat') &&
+      !t.includes('detective')
+    ) {
+      parts.push(
+        '',
+        `### EXPERT PLAYBOOK: ${teamName.toUpperCase()}`,
+        '- Apply general incident management expertise to your specialty area.',
+        '- Always specify exact equipment, personnel counts, and procedures in your decisions.',
+        '- Place map assets (polygons, points) for any infrastructure you establish.',
+        '- Coordinate with other teams and acknowledge their actions before building on them.',
+        '- Reference doctrines and standards by name where applicable.',
+      );
+    }
   }
 
   /**
