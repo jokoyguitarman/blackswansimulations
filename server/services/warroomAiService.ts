@@ -2932,54 +2932,74 @@ Examples:
 Return ONLY valid JSON: { "facilities": [ { "index": 1, "conditions": { ..., "environmental_challenges": [...] } } ] }
 Base response times on distance. Use the facility name to infer size/capabilities where possible.`;
 
-  try {
-    const parsed = await callOpenAi<{
-      facilities?: Array<{ index: number; conditions: Record<string, unknown> }>;
-    }>(
-      systemPrompt,
-      `Enrich ${cappedStubs.length} facilities for a ${scenarioType} response.`,
-      openAiApiKey,
-      6000,
-    );
+  // Batch enrichment by facility type so each call stays well within token limits
+  const typeGroups = new Map<string, PoiStub[]>();
+  for (const s of cappedStubs) {
+    const arr = typeGroups.get(s.location_type) ?? [];
+    arr.push(s);
+    typeGroups.set(s.location_type, arr);
+  }
 
-    const enriched = parsed.facilities ?? [];
-    const conditionsMap = new Map<number, Record<string, unknown>>();
-    for (const f of enriched) {
-      if (typeof f.index === 'number' && f.conditions) {
-        conditionsMap.set(f.index, f.conditions);
+  const conditionsMap = new Map<string, Record<string, unknown>>();
+
+  const batchPromises = [...typeGroups.entries()].map(async ([locType, stubs]) => {
+    const batchSummary = stubs
+      .map(
+        (s, i) =>
+          `${i + 1}. [${s.location_type}] "${s.label}" — ${s.distance_from_incident_m}m from incident`,
+      )
+      .join('\n');
+
+    const batchSystemPrompt = systemPrompt.replace(stubSummary, batchSummary);
+    const batchUserPrompt = `Enrich ${stubs.length} ${locType.replace(/_/g, ' ')} facilities for a ${scenarioType} response.`;
+
+    try {
+      const parsed = await callOpenAi<{
+        facilities?: Array<{ index: number; conditions: Record<string, unknown> }>;
+      }>(batchSystemPrompt, batchUserPrompt, openAiApiKey, 3000);
+
+      for (const f of parsed.facilities ?? []) {
+        if (
+          typeof f.index === 'number' &&
+          f.conditions &&
+          f.index >= 1 &&
+          f.index <= stubs.length
+        ) {
+          const stubKey = `${stubs[f.index - 1].location_type}:${stubs[f.index - 1].label}`;
+          conditionsMap.set(stubKey, f.conditions);
+        }
       }
+    } catch (err) {
+      logger.warn(
+        { err, locType, count: stubs.length },
+        'POI enrichment batch failed; stubs will be used',
+      );
     }
+  });
 
-    return cappedStubs.map((stub, i) => {
-      const aiConditions = conditionsMap.get(i + 1) ?? {};
-      return {
-        location_type: stub.location_type,
-        pin_category: stub.pin_category as string,
-        label: stub.label,
-        description: `${stub.location_type.replace(/_/g, ' ')} — ${stub.distance_from_incident_m}m from incident`,
-        coordinates: stub.coordinates,
-        conditions: {
-          distance_from_incident_m: stub.distance_from_incident_m,
-          ...aiConditions,
-        },
-        display_order: 100 + i,
-      };
-    });
-  } catch (err) {
-    logger.warn(
-      { err, count: cappedStubs.length },
-      'POI enrichment failed; using stubs with distance only',
-    );
-    return cappedStubs.map((stub, i) => ({
+  await Promise.all(batchPromises);
+
+  logger.info(
+    { batches: typeGroups.size, enriched: conditionsMap.size, total: cappedStubs.length },
+    'POI enrichment batch complete',
+  );
+
+  return cappedStubs.map((stub, i) => {
+    const key = `${stub.location_type}:${stub.label}`;
+    const aiConditions = conditionsMap.get(key) ?? {};
+    return {
       location_type: stub.location_type,
       pin_category: stub.pin_category as string,
       label: stub.label,
       description: `${stub.location_type.replace(/_/g, ' ')} — ${stub.distance_from_incident_m}m from incident`,
       coordinates: stub.coordinates,
-      conditions: { distance_from_incident_m: stub.distance_from_incident_m },
+      conditions: {
+        distance_from_incident_m: stub.distance_from_incident_m,
+        ...aiConditions,
+      },
       display_order: 100 + i,
-    }));
-  }
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -3146,59 +3166,91 @@ Return ONLY valid JSON:
   ]
 }`;
 
-  const userPrompt = `Assign traffic conditions for "${narrative?.title || scenario_type}" at ${venue}. ${corridors.length} routes to enrich.`;
+  type EnrichedRoute = {
+    route_id: string;
+    label: string;
+    travel_time_minutes: number | null;
+    problem: string | null;
+    managed: boolean;
+    connects_to?: string[];
+    is_optimal_for?: string[];
+  };
 
-  try {
-    const parsed = await callOpenAi<{
-      routes?: Array<{
-        route_id: string;
-        label: string;
-        travel_time_minutes: number | null;
-        problem: string | null;
-        managed: boolean;
-        connects_to?: string[];
-        is_optimal_for?: string[];
-      }>;
-    }>(systemPrompt, userPrompt, openAiApiKey, 3000);
+  const ROUTE_BATCH = 6;
+  const routeBatches: RouteCorridor[][] = [];
+  for (let i = 0; i < corridors.length; i += ROUTE_BATCH) {
+    routeBatches.push(corridors.slice(i, i + ROUTE_BATCH));
+  }
 
-    if (!parsed.routes?.length) {
-      logger.warn('Route enrichment AI returned no routes; using corridor stubs');
-      return corridors.map((c, i) => corridorToLocation(c, i));
+  const corridorMap = new Map(corridors.map((c) => [c.route_id, c]));
+  const allEnriched: EnrichedRoute[] = [];
+
+  const batchPromises = routeBatches.map(async (batch) => {
+    const batchCorridorSummary = batch
+      .map(
+        (c, i) =>
+          `${i + 1}. "${c.label}" [route_id: "${c.route_id}"] (${c.highway_type}, ${c.distance_m}m, ~${c.baseline_travel_min} min)${c.one_way ? ' [one-way]' : ''}${c.connects_to.length > 0 ? ` → connects to: ${c.connects_to.join(', ')}` : ''}`,
+      )
+      .join('\n');
+
+    const batchPrompt = systemPrompt.replace(corridorSummary, batchCorridorSummary);
+    const batchUserPrompt = `Assign traffic conditions for "${narrative?.title || scenario_type}" at ${venue}. ${batch.length} routes to enrich.`;
+
+    try {
+      const parsed = await callOpenAi<{ routes?: EnrichedRoute[] }>(
+        batchPrompt,
+        batchUserPrompt,
+        openAiApiKey,
+        2500,
+      );
+      return parsed.routes ?? [];
+    } catch (err) {
+      logger.warn({ err, batchSize: batch.length }, 'Route enrichment batch failed');
+      return [];
     }
+  });
 
-    const corridorMap = new Map(corridors.map((c) => [c.route_id, c]));
+  const results = await Promise.all(batchPromises);
+  for (const batch of results) allEnriched.push(...batch);
 
-    return parsed.routes.map((r, i) => {
-      const corridor = corridorMap.get(r.route_id);
-      const midpoint = corridor
-        ? corridor.geometry[Math.floor(corridor.geometry.length / 2)]
-        : [0, 0];
-      return {
-        location_type: 'route',
-        pin_category: 'route',
-        label: r.label || corridor?.label || 'Route',
-        description: r.problem || 'Clear route',
-        coordinates: { lat: midpoint[0], lng: midpoint[1] },
-        conditions: {
-          route_id: r.route_id,
-          highway_type: corridor?.highway_type,
-          one_way: corridor?.one_way ?? false,
-          distance_m: corridor?.distance_m,
-          baseline_travel_min: corridor?.baseline_travel_min,
-          travel_time_minutes: r.travel_time_minutes,
-          problem: r.problem,
-          managed: r.managed,
-          connects_to: r.connects_to ?? corridor?.connects_to ?? [],
-          is_optimal_for: r.is_optimal_for ?? [],
-          geometry: corridor?.geometry,
-        },
-        display_order: 200 + i,
-      };
-    });
-  } catch (err) {
-    logger.warn({ err }, 'Route enrichment failed; using corridor stubs');
+  logger.info(
+    { batches: routeBatches.length, enriched: allEnriched.length, total: corridors.length },
+    'Route enrichment batch complete',
+  );
+
+  if (allEnriched.length === 0) {
+    logger.warn('Route enrichment returned no routes; using corridor stubs');
     return corridors.map((c, i) => corridorToLocation(c, i));
   }
+
+  let displayIdx = 0;
+  return allEnriched.map((r) => {
+    const corridor = corridorMap.get(r.route_id);
+    const midpoint = corridor
+      ? corridor.geometry[Math.floor(corridor.geometry.length / 2)]
+      : [0, 0];
+    return {
+      location_type: 'route',
+      pin_category: 'route',
+      label: r.label || corridor?.label || 'Route',
+      description: r.problem || 'Clear route',
+      coordinates: { lat: midpoint[0], lng: midpoint[1] },
+      conditions: {
+        route_id: r.route_id,
+        highway_type: corridor?.highway_type,
+        one_way: corridor?.one_way ?? false,
+        distance_m: corridor?.distance_m,
+        baseline_travel_min: corridor?.baseline_travel_min,
+        travel_time_minutes: r.travel_time_minutes,
+        problem: r.problem,
+        managed: r.managed,
+        connects_to: r.connects_to ?? corridor?.connects_to ?? [],
+        is_optimal_for: r.is_optimal_for ?? [],
+        geometry: corridor?.geometry,
+      },
+      display_order: 200 + displayIdx++,
+    };
+  });
 }
 
 function corridorToLocation(

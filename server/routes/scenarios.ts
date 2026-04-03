@@ -439,9 +439,31 @@ router.patch('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) =>
     }
     if (hazards?.length) {
       for (const h of hazards) {
+        // Fetch existing zones so we can recalculate polygons at the new center
+        const { data: hazardRow } = await supabaseAdmin
+          .from('scenario_hazards')
+          .select('zones')
+          .eq('id', h.id)
+          .eq('scenario_id', scenarioId)
+          .single();
+
+        const existingZones = (hazardRow?.zones ?? []) as Array<Record<string, unknown>>;
+        const updatedZones = existingZones.map((z) => {
+          const radius = Number(z.radius_m) || 100;
+          return { ...z, polygon: circleToPolygon(h.lat, h.lng, radius) };
+        });
+
+        const updatePayload: Record<string, unknown> = {
+          location_lat: h.lat,
+          location_lng: h.lng,
+        };
+        if (existingZones.length > 0) {
+          updatePayload.zones = updatedZones;
+        }
+
         const { error } = await supabaseAdmin
           .from('scenario_hazards')
-          .update({ location_lat: h.lat, location_lng: h.lng })
+          .update(updatePayload)
           .eq('id', h.id)
           .eq('scenario_id', scenarioId);
         if (error) errors.push(`hazard ${h.id}: ${error.message}`);

@@ -1470,6 +1470,16 @@ const MapPinsTab = ({
 
   const onHazardDrag = useCallback((id: string, lat: number, lng: number) => {
     changesRef.current.hazards.set(id, { lat, lng });
+    setHazards((prev) =>
+      prev.map((h) => {
+        if (h.id !== id) return h;
+        const updatedZones = (h.zones ?? []).map((z) => ({
+          ...z,
+          polygon: generateCirclePolygon(lat, lng, z.radius_m),
+        }));
+        return { ...h, location_lat: lat, location_lng: lng, zones: updatedZones };
+      }),
+    );
     setDirty(true);
   }, []);
 
