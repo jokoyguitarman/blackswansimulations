@@ -97,6 +97,7 @@ const INTER_ACTION_RANGE_MS = 5_000;
 const HYBRID_DEFER_WINDOW_MS = 10_000;
 const MAX_RECENT_ACTIONS = 15;
 const AI_MODEL = 'gpt-4o-mini';
+const MAX_VALIDATION_RETRIES = 3;
 const PROACTIVE_INTERVAL_MS = 180_000; // 3 min between proactive ticks
 const PROACTIVE_ACT_PROBABILITY = 0.2; // 20% chance per agent per tick
 const PROACTIVE_ACT_PROBABILITY_EARLY = 0.4; // 40% during foundational phase
@@ -259,6 +260,29 @@ function getRequiredInfrastructure(teamName: string): string[] {
   const key = getTeamScopeKey(teamName);
   if (!key) return [];
   return TEAM_REQUIRED_INFRASTRUCTURE[key] ?? [];
+}
+
+async function checkInfrastructureStatus(
+  sessionId: string,
+  teamName: string,
+): Promise<{ ready: boolean; placed: string[]; missing: string[] }> {
+  const required = getRequiredInfrastructure(teamName);
+  if (required.length === 0) return { ready: true, placed: [], missing: [] };
+
+  const { data } = await supabaseAdmin
+    .from('placed_assets')
+    .select('asset_type')
+    .eq('session_id', sessionId)
+    .eq('team_name', teamName)
+    .eq('status', 'active')
+    .in('asset_type', required);
+
+  const placedSet = new Set(
+    (data ?? []).map((a) => (a as Record<string, unknown>).asset_type as string),
+  );
+  const placed = required.filter((r) => placedSet.has(r));
+  const missing = required.filter((r) => !placedSet.has(r));
+  return { ready: missing.length === 0, placed, missing };
 }
 
 function isInjectRelevantToTeam(
@@ -763,16 +787,54 @@ export class DemoAIAgentService {
       const systemPrompt = this.buildSystemPrompt(session, agent);
       const userPrompt = await this.buildUserPrompt(session, agent, triggerEvent);
 
-      const response = await this.callOpenAI(systemPrompt, userPrompt);
-      if (!response) {
-        agent.pendingCooldown = false;
-        return;
-      }
+      // --- Validation retry loop ---
+      let actions: SingleAction[] = [];
+      let attempt = 0;
+      let rejectionContext = '';
 
-      const actions = response.actions.filter((a) => a.action !== 'none');
-      if (actions.length === 0) {
-        agent.pendingCooldown = false;
-        return;
+      while (attempt < MAX_VALIDATION_RETRIES) {
+        attempt++;
+        const promptWithRejection =
+          attempt === 1
+            ? userPrompt
+            : `${userPrompt}\n\n## ⛔ YOUR PREVIOUS RESPONSE WAS REJECTED (attempt ${attempt}/${MAX_VALIDATION_RETRIES}):\n${rejectionContext}\n\nYou MUST fix the issue described above. Submit a corrected response.`;
+
+        const response = await this.callOpenAI(systemPrompt, promptWithRejection);
+        if (!response) {
+          agent.pendingCooldown = false;
+          return;
+        }
+
+        actions = response.actions.filter((a) => a.action !== 'none');
+        if (actions.length === 0) {
+          agent.pendingCooldown = false;
+          return;
+        }
+
+        // Validate the proposed actions
+        const validation = await this.validateActions(session, agent, actions, triggerEvent);
+        if (validation.valid) {
+          break;
+        }
+
+        logger.info(
+          { botUserId: agent.persona.botUserId, attempt, reason: validation.reason },
+          'AI agent: response rejected by validator, retrying',
+        );
+        rejectionContext = validation.reason;
+
+        // On final failed attempt, use the fallback
+        if (attempt >= MAX_VALIDATION_RETRIES) {
+          logger.info(
+            { botUserId: agent.persona.botUserId },
+            'AI agent: max retries reached, using programmatic fallback',
+          );
+          const fallbackActions = await this.generateFallbackPlacement(session, agent);
+          if (fallbackActions) {
+            actions = fallbackActions;
+          }
+          break;
+        }
       }
 
       // Limit to at most 3 actions (1 decision + 1 placement/claim + 1 chat)
@@ -819,11 +881,11 @@ export class DemoAIAgentService {
 
       agent.actedThisCycle = true;
 
-      // Fallback: parse decision text for infrastructure mentions and auto-create placements.
-      // Runs if no placement was included OR if included placements were blocked by team scope.
+      // AI-based placement extraction: if a decision was published but no placement was
+      // included, use AI to analyze the decision intent and auto-create placements.
       const decisionAction = actions.find((a) => a.action === 'decision' && a.decision);
       if (decisionAction?.decision) {
-        await this.tryExtractPlacementsFromDecision(
+        await this.aiExtractAndCreatePlacements(
           session,
           agent,
           decisionAction.decision.title,
@@ -843,12 +905,7 @@ export class DemoAIAgentService {
         );
       }
 
-      if (response.reasoning) {
-        logger.debug(
-          { botUserId: agent.persona.botUserId, reasoning: response.reasoning },
-          'AI agent reasoning',
-        );
-      }
+      // Reasoning is logged inside the retry loop; no need to log again here
 
       while (agent.recentActions.length > MAX_RECENT_ACTIONS) {
         agent.recentActions.shift();
@@ -1322,47 +1379,73 @@ export class DemoAIAgentService {
       parts.push(JSON.stringify(event.data, null, 2).slice(0, 1200));
     }
 
-    // Always tell the bot about the strict phase sequence
+    // Check live infrastructure status from the database
     const teamScopeKey = getTeamScopeKey(agent.persona.teamName);
+    const infraStatus = await checkInfrastructureStatus(session.sessionId, agent.persona.teamName);
     const requiredInfra = getRequiredInfrastructure(agent.persona.teamName);
-    const requiredStr =
-      requiredInfra.length > 0 ? requiredInfra.map((r) => r.replace(/_/g, ' ')).join(', ') : 'none';
+
+    // Dynamic infrastructure status — the bot knows EXACTLY what it has and what's missing
+    if (requiredInfra.length > 0) {
+      parts.push('', '## 🔒 YOUR INFRASTRUCTURE STATUS (live from database):');
+      for (const req of requiredInfra) {
+        const label = req.replace(/_/g, ' ');
+        if (infraStatus.placed.includes(req)) {
+          parts.push(`  ✅ ${label}: PLACED`);
+        } else {
+          parts.push(`  ❌ ${label}: NOT PLACED ← you must place this`);
+        }
+      }
+
+      if (!infraStatus.ready) {
+        parts.push(
+          '',
+          '⛔ YOU ARE NOT OPERATIONAL. The server will REJECT any pin_response or casualty interaction.',
+          '⛔ Your ONLY allowed action right now is a PLACEMENT to set up your missing infrastructure.',
+          '⛔ Do NOT write about treating patients, initiating triage, or responding to casualties.',
+          '⛔ Do NOT use the "decision" action to describe infrastructure — use the "placement" action with geometry.',
+        );
+      } else {
+        parts.push(
+          '',
+          '✅ You ARE OPERATIONAL. You may respond to casualties/hazards with pin_response.',
+        );
+      }
+    }
 
     parts.push(
       '',
       '## ⚠️ STRICT OPERATIONAL PHASES — you MUST follow this sequence',
       'Phase 1 (CLAIMING): Claim exits/entries. Already handled automatically — skip this phase.',
-      `Phase 2 (ESTABLISHING): Place your team's required infrastructure: [${requiredStr}].`,
-      '  → You MUST complete Phase 2 before doing ANYTHING else. Use a "placement" action.',
-      '  → Do NOT combine establishing infrastructure with treating patients in the same decision.',
-      'Phase 3 (OPERATIONAL): Only after your infrastructure exists on the map, respond to casualties/hazards/crowds using "pin_response".',
-      '  → The server BLOCKS pin_response if your infrastructure is missing.',
+      `Phase 2 (ESTABLISHING): Place your team's required infrastructure. Use a "placement" action with geometry coordinates.`,
+      '  → You MUST complete Phase 2 before doing ANYTHING else.',
+      '  → A "decision" that describes placing infrastructure does NOTHING. Only a "placement" action with geometry creates assets on the map.',
+      'Phase 3 (OPERATIONAL): Only after ALL your infrastructure is on the map (see status above), respond to casualties/hazards using "pin_response".',
       '',
       '## ⚠️ ONE ACTION PER DECISION — CRITICAL RULE',
       '- Each decision must focus on ONE specific action. Do NOT combine multiple actions in one decision.',
-      '- WRONG: "Establish triage area AND treat patient AND claim exit" in one decision.',
-      '- RIGHT: Decision 1 = "Establish triage area" (placement). Decision 2 = "Triage burn victim" (pin_response).',
-      '- If you want to place infrastructure, submit ONLY a placement action (no pin_response in the same turn).',
-      '- If you want to respond to a casualty/hazard, submit ONLY a pin_response (no placement in the same turn).',
+      '- If you want to place infrastructure, submit a "placement" action with geometry.',
+      '- If you want to respond to a casualty/hazard, submit a "pin_response" action.',
     );
 
-    if (elapsed < FOUNDATIONAL_PHASE_MINUTES) {
+    if (!infraStatus.ready) {
+      const stepGuidance =
+        teamScopeKey === 'police' || teamScopeKey === 'security'
+          ? 'Step 1: PLACE outer cordon polygon (circle, ~100m radius). Step 2: PLACE roadblocks at entry points.'
+          : teamScopeKey === 'triage' || teamScopeKey === 'medical' || teamScopeKey === 'ems'
+            ? 'Step 1: PLACE triage point (Point geometry). Step 2: PLACE inner cordon polygon (circle, ~50m radius) around triage area.'
+            : teamScopeKey === 'fire' || teamScopeKey === 'hazmat'
+              ? 'Step 1: PLACE forward command post (Point). Step 2: PLACE staging area polygon.'
+              : teamScopeKey === 'evacuation'
+                ? 'PLACE assembly point (Point geometry).'
+                : teamScopeKey === 'media'
+                  ? 'Step 1: PLACE press cordon polygon. Step 2: PLACE media staging area inside it.'
+                  : 'PLACE your operating area.';
       parts.push(
         '',
-        '## ⚠️ FOUNDATIONAL PHASE (first 8 minutes) — INFRASTRUCTURE PRIORITY',
-        `Your required infrastructure: [${requiredStr}]. If not yet placed, your ONLY action this turn must be a placement.`,
-        'Do NOT respond to any casualties, hazards, or crowds until your infrastructure is on the map.',
-        teamScopeKey === 'police' || teamScopeKey === 'security'
-          ? '→ Step 1: PLACE outer cordon polygon. Step 2: PLACE roadblocks/barricades at entry points to physically block access. Cordons alone are just lines on a map — barricades/roadblocks make them enforceable.'
-          : teamScopeKey === 'triage' || teamScopeKey === 'medical' || teamScopeKey === 'ems'
-            ? '→ Step 1: PLACE triage point (tent location). Step 2: PLACE inner cordon polygon around the triage area to create an operating perimeter. Personnel and supplies deploy after infrastructure is on the map.'
-            : teamScopeKey === 'fire' || teamScopeKey === 'hazmat'
-              ? '→ Step 1: PLACE forward command post. Step 2: PLACE staging area for equipment and personnel.'
-              : teamScopeKey === 'evacuation'
-                ? '→ PLACE assembly point / marshal post for evacuee gathering.'
-                : teamScopeKey === 'media'
-                  ? '→ Step 1: PLACE press cordon polygon. Step 2: PLACE media staging area inside it.'
-                  : '→ PLACE your operating area.',
+        '## 🚨 INFRASTRUCTURE NOT COMPLETE — ACTION REQUIRED',
+        `→ ${stepGuidance}`,
+        '→ Use a "placement" action with geometry { "type": "Point", "coordinates": [lng, lat] } or { "type": "Polygon", ... }.',
+        '→ Do NOT write a "decision" about infrastructure. Decisions are just text — they do NOT create map assets.',
       );
     }
 
@@ -1386,18 +1469,28 @@ export class DemoAIAgentService {
       }
     }
 
-    if (ground.casualties.length > 0) {
-      parts.push('', '## Casualties on the ground:');
-      for (const c of ground.casualties) {
-        parts.push(`- ${c}`);
+    // Only show casualties/hazards if team is operational — prevents premature triage attempts
+    if (infraStatus.ready) {
+      if (ground.casualties.length > 0) {
+        parts.push('', '## Casualties on the ground:');
+        for (const c of ground.casualties) {
+          parts.push(`- ${c}`);
+        }
       }
-    }
 
-    if (ground.hazards.length > 0) {
-      parts.push('', '## Active hazards:');
-      for (const h of ground.hazards) {
-        parts.push(`- ${h}`);
+      if (ground.hazards.length > 0) {
+        parts.push('', '## Active hazards:');
+        for (const h of ground.hazards) {
+          parts.push(`- ${h}`);
+        }
       }
+    } else if (ground.casualties.length > 0 || ground.hazards.length > 0) {
+      parts.push(
+        '',
+        `## ⚠️ There are ${ground.casualties.length} casualties and ${ground.hazards.length} hazards on the ground.`,
+        '→ You cannot interact with them until your infrastructure is established.',
+        '→ Focus on placing your missing infrastructure FIRST.',
+      );
     }
 
     const recentActivity = await this.loadRecentSessionActivity(session.sessionId);
@@ -2153,6 +2246,379 @@ export class DemoAIAgentService {
     } catch (err) {
       logger.error({ error: err }, 'AI agent: OpenAI call exception');
       return null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Pre-publish validation (deterministic + lightweight AI)
+  // ---------------------------------------------------------------------------
+
+  private async validateActions(
+    session: SessionAgents,
+    agent: AgentState,
+    actions: SingleAction[],
+    triggerEvent?: WebSocketEvent,
+  ): Promise<{ valid: boolean; reason: string }> {
+    const teamName = agent.persona.teamName;
+    const infraStatus = await checkInfrastructureStatus(session.sessionId, teamName);
+
+    // Check 1: If infrastructure is missing, block pin_response and casualty-flavored decisions
+    if (!infraStatus.ready) {
+      const hasPinResponse = actions.some((a) => a.action === 'pin_response');
+      if (hasPinResponse) {
+        return {
+          valid: false,
+          reason: `Your team is missing infrastructure: [${infraStatus.missing.join(', ')}]. You CANNOT use pin_response. Submit a "placement" action instead to place: ${infraStatus.missing[0]}.`,
+        };
+      }
+
+      const decisionAction = actions.find((a) => a.action === 'decision' && a.decision);
+      if (decisionAction?.decision) {
+        const text =
+          `${decisionAction.decision.title} ${decisionAction.decision.description}`.toLowerCase();
+        const casualtyPattern =
+          /casualty response|initiate triage|triage tag|administer first aid|establish iv|treat.*patient|treating.*casualt/i;
+        if (casualtyPattern.test(text)) {
+          return {
+            valid: false,
+            reason: `Your team is missing infrastructure: [${infraStatus.missing.join(', ')}]. You cannot perform casualty/triage operations yet. Submit a "placement" action with geometry to place: ${infraStatus.missing[0]}. Use { "type": "Point", "coordinates": [lng, lat] } for points or a 12-point circle polygon.`,
+          };
+        }
+      }
+
+      // Check 2: If infrastructure missing, ensure there's at least one placement action
+      const hasPlacement = actions.some((a) => a.action === 'placement' && a.placement?.geometry);
+      if (!hasPlacement) {
+        const hasDecision = actions.some((a) => a.action === 'decision');
+        if (hasDecision) {
+          return {
+            valid: false,
+            reason: `Your team is missing infrastructure: [${infraStatus.missing.join(', ')}]. You submitted a "decision" (text only) instead of a "placement" (map asset). Decisions do NOT create infrastructure on the map. Submit a "placement" action with asset_type "${infraStatus.missing[0]}" and geometry coordinates.`,
+          };
+        }
+      }
+    }
+
+    // Check 3: Inject relevance — if responding to an inject, does the response match the content?
+    if (triggerEvent?.type === 'inject.published') {
+      const injectData = (triggerEvent.data as Record<string, unknown>)?.inject as
+        | Record<string, unknown>
+        | undefined;
+      if (injectData) {
+        const injectText =
+          `${injectData.title || ''} ${injectData.content || injectData.description || ''}`.toLowerCase();
+        const NON_MEDICAL =
+          /media|press|journalist|reporter|camera|diplomat|ambassador|consul|official|vip|dignitar|politic|religious|influencer|social media|live.?stream/i;
+        const MEDICAL_KEYWORDS =
+          /casualty response|initiate triage|triage tag|administer first aid/i;
+        const decisionAction = actions.find((a) => a.action === 'decision' && a.decision);
+        if (
+          decisionAction?.decision &&
+          NON_MEDICAL.test(injectText) &&
+          MEDICAL_KEYWORDS.test(
+            `${decisionAction.decision.title} ${decisionAction.decision.description}`,
+          )
+        ) {
+          return {
+            valid: false,
+            reason: `The inject is about "${(injectData.title as string) || 'non-medical situation'}" — this is NOT a medical/casualty event. Do NOT respond with triage or casualty actions. Respond with a coordination order, communication action, or request for assistance from the relevant team.`,
+          };
+        }
+      }
+    }
+
+    return { valid: true, reason: '' };
+  }
+
+  /**
+   * Programmatic fallback: when the bot fails validation MAX_VALIDATION_RETRIES times,
+   * auto-generate a placement for the first missing infrastructure item.
+   */
+  private async generateFallbackPlacement(
+    session: SessionAgents,
+    agent: AgentState,
+  ): Promise<SingleAction[] | null> {
+    const infraStatus = await checkInfrastructureStatus(session.sessionId, agent.persona.teamName);
+    if (infraStatus.ready || infraStatus.missing.length === 0) return null;
+
+    const center = session.incidentCenter;
+    if (!center) return null;
+
+    const assetType = infraStatus.missing[0];
+    const isPolygon = ['inner_cordon', 'outer_cordon', 'staging_area', 'press_cordon'].includes(
+      assetType,
+    );
+    const label = `${agent.persona.teamName} ${assetType.replace(/_/g, ' ')}`;
+
+    let geometry: { type: string; coordinates: unknown };
+
+    if (isPolygon) {
+      const radius = assetType.includes('outer') ? 0.0009 : 0.00045;
+      const offset = 0.001 + Math.random() * 0.001;
+      const bearing = Math.random() * 2 * Math.PI;
+      const cLat = center.lat + offset * Math.cos(bearing);
+      const cLng = center.lng + offset * Math.sin(bearing);
+
+      const pts: [number, number][] = [];
+      for (let i = 0; i < 12; i++) {
+        const angle = (2 * Math.PI * i) / 12;
+        pts.push([cLng + radius * Math.cos(angle), cLat + radius * Math.sin(angle)]);
+      }
+      pts.push(pts[0]);
+      geometry = { type: 'Polygon', coordinates: [pts] };
+    } else {
+      const offset = 0.001 + Math.random() * 0.002;
+      const bearing = Math.random() * 2 * Math.PI;
+      geometry = {
+        type: 'Point',
+        coordinates: [
+          center.lng + offset * Math.sin(bearing),
+          center.lat + offset * Math.cos(bearing),
+        ],
+      };
+    }
+
+    logger.info(
+      { botUserId: agent.persona.botUserId, assetType, label },
+      'AI agent: generating fallback placement after failed retries',
+    );
+
+    return [
+      {
+        action: 'placement',
+        placement: {
+          asset_type: assetType,
+          label,
+          geometry,
+          properties: {},
+        },
+      },
+    ];
+  }
+
+  /**
+   * AI-based placement extraction: when a bot writes a decision that mentions
+   * infrastructure, use a lightweight AI call to identify intent and create
+   * the appropriate placements with correct geometry.
+   */
+  private async aiExtractAndCreatePlacements(
+    session: SessionAgents,
+    agent: AgentState,
+    title: string,
+    description: string,
+  ): Promise<void> {
+    const center = session.incidentCenter;
+    if (!center) return;
+
+    const teamName = agent.persona.teamName;
+
+    // Quick pre-check: skip if the team has all required infrastructure
+    const infraStatus = await checkInfrastructureStatus(session.sessionId, teamName);
+    if (infraStatus.ready) return;
+
+    const fullText = `${title} ${description}`;
+    // Quick keyword gate — only call AI if text mentions something placement-like
+    const mentionsInfra =
+      /cordon|tent|point|post|area|zone|staging|barricade|roadblock|perimeter|fence|barrier|assembly|command|triage|hospital|decon/i;
+    if (!mentionsInfra.test(fullText)) return;
+
+    // Build the allowed asset types for this team
+    const teamKey = getTeamScopeKey(teamName);
+    const TEAM_PLACEMENTS = teamKey
+      ? ((
+          {
+            police: [
+              'command_post',
+              'inner_cordon',
+              'outer_cordon',
+              'roadblock',
+              'observation_post',
+              'staging_area',
+              'forward_command',
+            ],
+            security: [
+              'command_post',
+              'inner_cordon',
+              'outer_cordon',
+              'roadblock',
+              'observation_post',
+              'staging_area',
+            ],
+            fire: [
+              'fire_truck',
+              'water_supply',
+              'forward_command',
+              'staging_area',
+              'command_post',
+              'decontamination_zone',
+            ],
+            hazmat: [
+              'fire_truck',
+              'water_supply',
+              'forward_command',
+              'staging_area',
+              'command_post',
+              'exclusion_zone',
+              'decontamination_zone',
+            ],
+            triage: [
+              'triage_point',
+              'field_hospital',
+              'casualty_collection',
+              'ambulance_staging',
+              'helicopter_lz',
+              'command_post',
+              'inner_cordon',
+            ],
+            medical: [
+              'triage_point',
+              'field_hospital',
+              'casualty_collection',
+              'ambulance_staging',
+              'helicopter_lz',
+              'command_post',
+              'inner_cordon',
+            ],
+            ems: [
+              'triage_point',
+              'field_hospital',
+              'casualty_collection',
+              'ambulance_staging',
+              'helicopter_lz',
+            ],
+            evacuation: ['assembly_point', 'staging_area', 'marshal_post', 'command_post'],
+            media: ['press_cordon', 'media_staging'],
+          } as Record<string, string[]>
+        )[teamKey] ?? [])
+      : [];
+
+    try {
+      const extractionPrompt = [
+        'Analyze this emergency response decision and identify any infrastructure the team intends to place on the map.',
+        '',
+        `Team: ${teamName}`,
+        `Allowed asset types: ${TEAM_PLACEMENTS.join(', ')}`,
+        `Missing required infrastructure: ${infraStatus.missing.join(', ')}`,
+        `Decision title: ${title}`,
+        `Decision text: ${description}`,
+        `Incident center: [${center.lat}, ${center.lng}]`,
+        '',
+        'For each intended placement, return JSON array:',
+        '[{ "asset_type": "...", "geometry_type": "point" or "polygon", "lat": number, "lng": number, "radius_deg": number_or_null, "label": "..." }]',
+        '',
+        'Rules:',
+        '- Only return placements from the allowed asset types list.',
+        '- Prioritize the missing required infrastructure.',
+        '- If coordinates are in the text, use them. Otherwise generate coords near the incident center (offset 0.001-0.003).',
+        '- For polygon types (cordon, staging_area, press_cordon): set radius_deg to 0.00045 (~50m) for inner/operating or 0.0009 (~100m) for outer.',
+        '- For point types: set radius_deg to null.',
+        '- Return empty array [] if no infrastructure placement is intended.',
+      ].join('\n');
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${env.openAiApiKey}`,
+        },
+        body: JSON.stringify({
+          model: AI_MODEL,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You extract infrastructure placement intents from emergency response decisions. Return valid JSON only.',
+            },
+            { role: 'user', content: extractionPrompt },
+          ],
+          temperature: 0.2,
+          max_tokens: 500,
+          response_format: { type: 'json_object' },
+        }),
+      });
+
+      if (!response.ok) return;
+
+      const json = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const content = json.choices?.[0]?.message?.content;
+      if (!content) return;
+
+      const parsed = JSON.parse(content) as Record<string, unknown>;
+      const placements = (
+        Array.isArray(parsed.placements) ? parsed.placements : Array.isArray(parsed) ? parsed : []
+      ) as Array<{
+        asset_type: string;
+        geometry_type: string;
+        lat?: number;
+        lng?: number;
+        radius_deg?: number;
+        label?: string;
+      }>;
+
+      if (placements.length === 0) return;
+
+      // Check what already exists to avoid duplicates
+      const { data: existingAssets } = await supabaseAdmin
+        .from('placed_assets')
+        .select('asset_type')
+        .eq('session_id', session.sessionId)
+        .eq('team_name', teamName)
+        .eq('status', 'active');
+
+      const existingTypes = new Set(
+        (existingAssets ?? []).map((a) => (a as Record<string, unknown>).asset_type as string),
+      );
+
+      let placedCount = 0;
+      for (const p of placements) {
+        if (placedCount >= 2) break;
+        if (!TEAM_PLACEMENTS.includes(p.asset_type)) continue;
+        if (existingTypes.has(p.asset_type)) continue;
+        if (!isPlacementAllowedForTeam(teamName, p.asset_type)) continue;
+
+        const pLat =
+          p.lat ?? center.lat + (0.001 + Math.random() * 0.002) * (Math.random() > 0.5 ? 1 : -1);
+        const pLng =
+          p.lng ?? center.lng + (0.001 + Math.random() * 0.002) * (Math.random() > 0.5 ? 1 : -1);
+
+        let geometry: { type: string; coordinates: unknown };
+        if (p.geometry_type === 'polygon' && p.radius_deg) {
+          const pts: [number, number][] = [];
+          for (let i = 0; i < 12; i++) {
+            const angle = (2 * Math.PI * i) / 12;
+            pts.push([
+              pLng + p.radius_deg * Math.cos(angle),
+              pLat + p.radius_deg * Math.sin(angle),
+            ]);
+          }
+          pts.push(pts[0]);
+          geometry = { type: 'Polygon', coordinates: [pts] };
+        } else {
+          geometry = { type: 'Point', coordinates: [pLng, pLat] };
+        }
+
+        const label = p.label || `${teamName} ${p.asset_type.replace(/_/g, ' ')}`;
+
+        logger.info(
+          { botUserId: agent.persona.botUserId, assetType: p.asset_type, label },
+          'AI agent: AI-extracted placement from decision text',
+        );
+
+        await this.dispatcher.createPlacement(session.sessionId, agent.persona.botUserId, {
+          team_name: teamName,
+          asset_type: p.asset_type,
+          label,
+          geometry,
+          properties: {},
+        });
+
+        existingTypes.add(p.asset_type);
+        placedCount++;
+      }
+    } catch (err) {
+      logger.warn({ error: err }, 'AI agent: AI placement extraction failed, skipping');
     }
   }
 
