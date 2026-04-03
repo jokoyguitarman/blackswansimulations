@@ -87,23 +87,23 @@ interface AgentMultiResponse {
 // Constants — tuned for realistic human-like pacing
 // ---------------------------------------------------------------------------
 
-const AGENT_THROTTLE_MS = 120_000; // 2 min cooldown per agent after acting
-const AGENT_THROTTLE_EARLY_MS = 45_000; // 45s cooldown during foundational phase (first 8 min)
+const AGENT_THROTTLE_MS = 180_000; // 3 min cooldown per agent after acting
+const AGENT_THROTTLE_EARLY_MS = 90_000; // 90s cooldown during foundational phase (first 8 min)
 const FOUNDATIONAL_PHASE_MINUTES = 8; // first N minutes: reduced throttle, higher proactive rate
-const AGENT_JITTER_BASE_MS = 8_000;
-const AGENT_JITTER_RANGE_MS = 12_000;
-const INTER_ACTION_BASE_MS = 4_000;
-const INTER_ACTION_RANGE_MS = 4_000;
+const AGENT_JITTER_BASE_MS = 15_000;
+const AGENT_JITTER_RANGE_MS = 20_000;
+const INTER_ACTION_BASE_MS = 5_000;
+const INTER_ACTION_RANGE_MS = 5_000;
 const HYBRID_DEFER_WINDOW_MS = 10_000;
 const MAX_RECENT_ACTIONS = 15;
 const AI_MODEL = 'gpt-4o-mini';
-const PROACTIVE_INTERVAL_MS = 120_000; // 2 min between proactive ticks
-const PROACTIVE_ACT_PROBABILITY = 0.35; // 35% chance per agent per tick
-const PROACTIVE_ACT_PROBABILITY_EARLY = 0.65; // 65% during foundational phase
-const KICKSTART_STAGGER_MS = 15_000; // 15s between kickstart agents
-const KICKSTART_INITIAL_DELAY_MS = 10_000;
-const MAX_DECISIONS_PER_INJECT_CYCLE = 8; // raised: all teams should get to act per cycle
-const INJECT_CYCLE_RESET_MS = 90_000; // auto-reset cycle budget after 90s
+const PROACTIVE_INTERVAL_MS = 180_000; // 3 min between proactive ticks
+const PROACTIVE_ACT_PROBABILITY = 0.2; // 20% chance per agent per tick
+const PROACTIVE_ACT_PROBABILITY_EARLY = 0.4; // 40% during foundational phase
+const KICKSTART_STAGGER_MS = 20_000; // 20s between kickstart agents
+const KICKSTART_INITIAL_DELAY_MS = 12_000;
+const MAX_DECISIONS_PER_INJECT_CYCLE = 5; // max decisions across ALL agents before waiting for next inject
+const INJECT_CYCLE_RESET_MS = 120_000; // auto-reset cycle budget after 2 min
 
 // ---------------------------------------------------------------------------
 // Service
@@ -240,27 +240,13 @@ export class DemoAIAgentService {
   private runKickstart(session: SessionAgents): void {
     const agentEntries = Array.from(session.agents.entries());
 
-    // ── PHASE 1: Claims-only pass (every team claims exits) ──
-    const claimsEvent: WebSocketEvent = {
-      type: 'session.started',
-      data: {
-        message:
-          'Exercise has begun. PHASE 1 — EXIT CLAIMS ONLY.\n' +
-          'Your ONLY task right now is to CLAIM the exits/entries relevant to your team.\n' +
-          'Return ONLY claim actions — do NOT place any infrastructure yet.\n' +
-          'Claim 1-2 exits as security checkpoints, evacuation routes, or staging access.\n' +
-          'If no exits are relevant to your team, claim the one closest to your operational area.',
-      },
-      timestamp: new Date().toISOString(),
-    };
-
     // ── PHASE 2: Infrastructure pass (place command posts, cordons, triage) ──
     const infraEvent: WebSocketEvent = {
       type: 'session.started',
       data: {
         message:
           'PHASE 2 — ESTABLISH INFRASTRUCTURE.\n' +
-          'You have claimed your exits. Now establish your foundational infrastructure:\n' +
+          'Exits have been claimed. Now establish your foundational infrastructure:\n' +
           '1. PLACE your COMMAND POST (point asset) at an appropriate staging location.\n' +
           '2. PLACE cordons, barricades, or perimeter assets your team is responsible for.\n' +
           '3. SET UP triage areas, evacuation holding points, or staging areas for your role.\n' +
@@ -273,25 +259,13 @@ export class DemoAIAgentService {
     session.cycleDecisionCount = 0;
     session.lastInjectTs = Date.now();
 
-    // Phase 1: all agents claim exits in rapid succession
-    for (let i = 0; i < agentEntries.length; i++) {
-      const [, agentState] = agentEntries[i];
-      const claimDelay = KICKSTART_INITIAL_DELAY_MS + i * 8_000 + Math.random() * 3000;
-
-      setTimeout(() => {
-        if (session.stopped) return;
-        agentState.lastActionTs = 0;
-        this.generateAndExecuteActions(session, agentState, claimsEvent).catch((err) => {
-          logger.error(
-            { error: err, botUserId: agentState.persona.botUserId },
-            'AI agent kickstart claims phase failed',
-          );
-        });
-      }, claimDelay);
-    }
+    // Phase 1: programmatic round-robin exit claiming (no AI involved)
+    this.claimExitsRoundRobin(session, agentEntries).catch((err) => {
+      logger.error({ error: err, sessionId: session.sessionId }, 'Kickstart exit claiming failed');
+    });
 
     // Phase 2: all agents place infrastructure (staggered after claims finish)
-    const phase2Start = KICKSTART_INITIAL_DELAY_MS + agentEntries.length * 8_000 + 10_000;
+    const phase2Start = KICKSTART_INITIAL_DELAY_MS + agentEntries.length * 5_000 + 15_000;
 
     for (let i = 0; i < agentEntries.length; i++) {
       const [, agentState] = agentEntries[i];
@@ -1100,9 +1074,19 @@ export class DemoAIAgentService {
     const ground = await this.loadGroundSituation(session.sessionId, session.scenarioId);
 
     if (ground.claimableExits.length > 0) {
-      parts.push('', '## Claimable Exits & Entries (claim before others take them!):');
-      for (const exit of ground.claimableExits) {
-        parts.push(`- "${exit.label}" (${exit.location_type}) — ${exit.claimStatus}`);
+      const unclaimed = ground.claimableExits.filter((e) => !e.claimStatus.startsWith('CLAIMED'));
+      if (unclaimed.length > 0) {
+        parts.push('', '## Unclaimed Exits & Entries (available to claim):');
+        for (const exit of unclaimed) {
+          parts.push(`- "${exit.label}" (${exit.location_type}) — ${exit.claimStatus}`);
+        }
+      }
+      const claimed = ground.claimableExits.filter((e) => e.claimStatus.startsWith('CLAIMED'));
+      if (claimed.length > 0) {
+        parts.push('', '## Already Claimed Exits (do NOT re-claim):');
+        for (const exit of claimed) {
+          parts.push(`- "${exit.label}" (${exit.location_type}) — ${exit.claimStatus}`);
+        }
       }
     }
 
@@ -2515,6 +2499,120 @@ export class DemoAIAgentService {
       existingTypes.add(inf.asset_type);
       placedCount++;
     }
+  }
+
+  /**
+   * Programmatic round-robin exit claiming: load all exits, assign one per team,
+   * then loop again until all exits are claimed or all teams have 2.
+   */
+  private async claimExitsRoundRobin(
+    session: SessionAgents,
+    agentEntries: Array<[string, AgentState]>,
+  ): Promise<void> {
+    const { data: allExits } = await supabaseAdmin
+      .from('scenario_locations')
+      .select('id, label, location_type, pin_category')
+      .eq('scenario_id', session.scenarioId)
+      .in('pin_category', ['entry_exit']);
+
+    const exitPins = (allExits ?? []) as Array<Record<string, unknown>>;
+    if (exitPins.length === 0) {
+      logger.info({ sessionId: session.sessionId }, 'No exits to claim in kickstart');
+      return;
+    }
+
+    const teamClaimPurpose = (teamName: string): string => {
+      const t = teamName.toLowerCase();
+      if (t.includes('police') || t.includes('security') || t.includes('law'))
+        return 'security_checkpoint';
+      if (t.includes('evacuation') || t.includes('crowd') || t.includes('marshal'))
+        return 'evacuation_exit';
+      if (
+        t.includes('medical') ||
+        t.includes('ems') ||
+        t.includes('triage') ||
+        t.includes('ambulance')
+      )
+        return 'casualty_entry';
+      if (t.includes('fire') || t.includes('hazmat') || t.includes('rescue'))
+        return 'emergency_access';
+      if (t.includes('media') || t.includes('press') || t.includes('pio')) return 'media_access';
+      return 'operational_use';
+    };
+
+    const remainingExits = [...exitPins];
+    const assignments: Array<{
+      agent: AgentState;
+      exitId: string;
+      exitLabel: string;
+      purpose: string;
+    }> = [];
+    const maxPerTeam = Math.max(1, Math.ceil(exitPins.length / agentEntries.length));
+
+    const teamClaimCounts = new Map<string, number>();
+
+    let round = 0;
+    while (remainingExits.length > 0 && round < maxPerTeam) {
+      for (const [, agentState] of agentEntries) {
+        if (remainingExits.length === 0) break;
+        const currentCount = teamClaimCounts.get(agentState.persona.teamName) || 0;
+        if (currentCount > round) continue;
+
+        const exit = remainingExits.shift()!;
+        const purpose = teamClaimPurpose(agentState.persona.teamName);
+        assignments.push({
+          agent: agentState,
+          exitId: exit.id as string,
+          exitLabel: exit.label as string,
+          purpose,
+        });
+        teamClaimCounts.set(agentState.persona.teamName, currentCount + 1);
+      }
+      round++;
+    }
+
+    let delay = KICKSTART_INITIAL_DELAY_MS;
+    for (const { agent, exitId, exitLabel, purpose } of assignments) {
+      const capturedDelay = delay;
+      setTimeout(async () => {
+        if (session.stopped) return;
+        try {
+          const claimed = await this.dispatcher.claimLocation(
+            session.sessionId,
+            exitId,
+            agent.persona.teamName,
+            purpose,
+            'exclusive',
+          );
+          if (claimed) {
+            const channelId = session.channelId;
+            if (channelId) {
+              await this.dispatcher.sendChatMessage(
+                channelId,
+                session.sessionId,
+                agent.persona.botUserId,
+                `${agent.persona.fullName} claiming ${exitLabel} as ${purpose.replace(/_/g, ' ')} for ${agent.persona.teamName}.`,
+              );
+            }
+          }
+        } catch (err) {
+          logger.error(
+            { error: err, exitId, team: agent.persona.teamName },
+            'Kickstart exit claim failed',
+          );
+        }
+      }, capturedDelay);
+      delay += 3_000 + Math.random() * 2_000;
+    }
+
+    logger.info(
+      {
+        sessionId: session.sessionId,
+        totalExits: exitPins.length,
+        assignments: assignments.length,
+      },
+      'Kickstart: programmatic round-robin exit claiming scheduled',
+    );
   }
 
   /**

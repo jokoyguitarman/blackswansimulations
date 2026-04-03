@@ -411,30 +411,14 @@ async function handleAdversarySighting(
     pinId = matchingPin.id;
     logger.info({ pinId, sessionId, injectId }, 'Revealed pre-created sighting pin');
   } else {
-    // Fallback: INSERT a new pin (backward compat for scenarios without pre-created pins)
-    const { data: newPin, error: insertErr } = await supabaseAdmin
-      .from('scenario_locations')
-      .insert({
-        scenario_id: session.scenario_id,
-        location_type: 'adversary_sighting',
-        pin_category: 'adversary_sighting',
-        label: `Sighting #${sightingOrder + 1}: ${zoneLabel}`,
-        coordinates: { lat, lng },
-        conditions: revealConditions,
-      })
-      .select('id')
-      .single();
-
-    if (insertErr || !newPin) {
-      logger.error({ error: insertErr, sessionId, injectId }, 'Failed to insert sighting pin');
-      return;
-    }
-    pinId = newPin.id;
+    // No pre-created pin found — broadcast-only (do NOT insert into scenario_locations
+    // to avoid polluting the scenario template with session-level data)
+    logger.warn(
+      { sessionId, injectId, adversaryId },
+      'No pre-created sighting pin matched this inject — broadcasting without persisting',
+    );
   }
 
-  if (!pinId) return;
-
-  // Use saved pin coordinates (trainer may have moved the pre-created pin)
   const broadcastLat = matchingPin
     ? ((matchingPin.coordinates as Record<string, number>)?.lat ?? lat)
     : lat;
@@ -446,7 +430,7 @@ async function handleAdversarySighting(
   getWebSocketService().broadcastToSession(sessionId, {
     type: 'adversary_sighting_new',
     data: {
-      pin_id: pinId,
+      pin_id: pinId ?? `ephemeral_${injectId}`,
       adversary_id: adversaryId,
       coordinates: { lat: broadcastLat, lng: broadcastLng },
       zone_label: zoneLabel,
