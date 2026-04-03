@@ -345,8 +345,7 @@ async function handleAdversarySighting(
     });
   }
 
-  // INSERT a new sighting pin
-  const newConditions: Record<string, unknown> = {
+  const revealConditions: Record<string, unknown> = {
     adversary_id: adversaryId,
     pin_category: 'adversary_sighting',
     sighting_status: 'active',
@@ -365,31 +364,82 @@ async function handleAdversarySighting(
     source_inject_id: injectId,
   };
 
-  const { data: newPin, error: insertErr } = await supabaseAdmin
+  // Try to find a pre-created sighting pin linked to this inject
+  let pinId: string | undefined;
+  const { data: preCreated } = await supabaseAdmin
     .from('scenario_locations')
-    .insert({
-      scenario_id: session.scenario_id,
-      location_type: 'adversary_sighting',
-      pin_category: 'adversary_sighting',
-      label: `Sighting #${sightingOrder + 1}: ${zoneLabel}`,
-      coordinates: { lat, lng },
-      conditions: newConditions,
-    })
-    .select('id')
-    .single();
+    .select('id, coordinates, conditions')
+    .eq('scenario_id', session.scenario_id)
+    .eq('pin_category', 'adversary_sighting');
 
-  if (insertErr || !newPin) {
-    logger.error({ error: insertErr, sessionId, injectId }, 'Failed to insert sighting pin');
-    return;
+  const matchingPin = (preCreated ?? []).find((p) => {
+    const conds = p.conditions as Record<string, unknown> | null;
+    return conds?.source_inject_id === injectId && conds?.sighting_status === 'hidden';
+  });
+
+  if (matchingPin) {
+    // Reveal the pre-created pin (use its saved coordinates — trainer may have moved it)
+    const savedCoords = matchingPin.coordinates as { lat: number; lng: number } | null;
+    const revealLat = savedCoords?.lat ?? lat;
+    const revealLng = savedCoords?.lng ?? lng;
+
+    const { error: updateErr } = await supabaseAdmin
+      .from('scenario_locations')
+      .update({
+        label: `Sighting #${sightingOrder + 1}: ${zoneLabel}`,
+        coordinates: { lat: revealLat, lng: revealLng },
+        conditions: { ...revealConditions, is_false_lead: isFalseLead },
+      })
+      .eq('id', matchingPin.id);
+
+    if (updateErr) {
+      logger.error(
+        { error: updateErr, sessionId, pinId: matchingPin.id },
+        'Failed to reveal pre-created sighting pin',
+      );
+      return;
+    }
+    pinId = matchingPin.id;
+    logger.info({ pinId, sessionId, injectId }, 'Revealed pre-created sighting pin');
+  } else {
+    // Fallback: INSERT a new pin (backward compat for scenarios without pre-created pins)
+    const { data: newPin, error: insertErr } = await supabaseAdmin
+      .from('scenario_locations')
+      .insert({
+        scenario_id: session.scenario_id,
+        location_type: 'adversary_sighting',
+        pin_category: 'adversary_sighting',
+        label: `Sighting #${sightingOrder + 1}: ${zoneLabel}`,
+        coordinates: { lat, lng },
+        conditions: revealConditions,
+      })
+      .select('id')
+      .single();
+
+    if (insertErr || !newPin) {
+      logger.error({ error: insertErr, sessionId, injectId }, 'Failed to insert sighting pin');
+      return;
+    }
+    pinId = newPin.id;
   }
+
+  if (!pinId) return;
+
+  // Use saved pin coordinates (trainer may have moved the pre-created pin)
+  const broadcastLat = matchingPin
+    ? ((matchingPin.coordinates as Record<string, number>)?.lat ?? lat)
+    : lat;
+  const broadcastLng = matchingPin
+    ? ((matchingPin.coordinates as Record<string, number>)?.lng ?? lng)
+    : lng;
 
   // Broadcast new sighting to frontend
   getWebSocketService().broadcastToSession(sessionId, {
     type: 'adversary_sighting_new',
     data: {
-      pin_id: newPin.id,
+      pin_id: pinId,
       adversary_id: adversaryId,
-      coordinates: { lat, lng },
+      coordinates: { lat: broadcastLat, lng: broadcastLng },
       zone_label: zoneLabel,
       description,
       last_seen_at_minutes: elapsed,
@@ -437,7 +487,7 @@ async function handleAdversarySighting(
 
     const rows = investigativeTeams.map((t) => ({
       session_id: sessionId,
-      sighting_pin_id: newPin.id,
+      sighting_pin_id: pinId,
       inject_id: injectId,
       adversary_id: adversaryId,
       team_name: (t as Record<string, unknown>).team_name as string,
@@ -458,9 +508,9 @@ async function handleAdversarySighting(
       sessionId,
       injectId,
       adversaryId,
-      pinId: newPin.id,
-      lat,
-      lng,
+      pinId,
+      lat: broadcastLat,
+      lng: broadcastLng,
       zoneLabel,
       intelSource,
       natoGrade: natoGrade.grade,

@@ -1699,12 +1699,49 @@ Return ONLY valid JSON: { "team_name": "operational" | "non_operational" } for e
   return fallback;
 }
 
+function repairTruncatedJson(raw: string): string {
+  let s = raw.trim();
+  // Strip trailing commas before we close brackets
+  s = s.replace(/,\s*$/, '');
+
+  const stack: string[] = [];
+  let inString = false;
+  let escape = false;
+  for (const ch of s) {
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === '{' || ch === '[') stack.push(ch);
+    if (ch === '}' || ch === ']') stack.pop();
+  }
+  if (inString) s += '"';
+  // Close any remaining open brackets/braces in reverse order
+  while (stack.length > 0) {
+    const opener = stack.pop();
+    // Strip trailing commas before closing
+    s = s.replace(/,\s*$/, '');
+    s += opener === '{' ? '}' : ']';
+  }
+  return s;
+}
+
 async function callOpenAi<T>(
   systemPrompt: string,
   userPrompt: string,
   openAiApiKey: string,
   maxTokens = 4000,
   temperature = 0.7,
+  _retryCount = 0,
 ): Promise<T> {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -1739,7 +1776,43 @@ async function callOpenAi<T>(
     throw new Error('No content from OpenAI');
   }
 
-  return JSON.parse(content) as T;
+  const finishReason = data.choices?.[0]?.finish_reason as string | undefined;
+  const wasTruncated = finishReason === 'length';
+
+  // Try normal parse first
+  try {
+    return JSON.parse(content) as T;
+  } catch {
+    // Always attempt JSON repair (handles both truncation and minor malformation)
+    logger.warn(
+      { finishReason, wasTruncated, contentLength: content.length, maxTokens },
+      'JSON parse failed; attempting repair',
+    );
+    try {
+      const repaired = repairTruncatedJson(content);
+      return JSON.parse(repaired) as T;
+    } catch {
+      // Repair failed — retry with higher budget if we haven't already
+      if (_retryCount < 1) {
+        const newBudget = Math.round(maxTokens * 1.6);
+        logger.info(
+          { oldBudget: maxTokens, newBudget, retryCount: _retryCount + 1 },
+          'Retrying callOpenAi with higher token budget after JSON repair failure',
+        );
+        return callOpenAi<T>(
+          systemPrompt,
+          userPrompt,
+          openAiApiKey,
+          newBudget,
+          temperature,
+          _retryCount + 1,
+        );
+      }
+    }
+    throw new Error(
+      `JSON parse failed (finish_reason=${finishReason}, length=${content.length}, maxTokens=${maxTokens})`,
+    );
+  }
 }
 
 function getRequiredTeamsFromTemplate(
@@ -3943,21 +4016,68 @@ Return ONLY valid JSON:
 
 CRITICAL: You MUST return ${minCasualties}-${maxCasualties} victims. Do NOT return fewer.`;
 
-  const userPrompt = `Generate ${minCasualties}-${maxCasualties} victim profiles for a ${scenarioType} involving ${weaponDesc} with ${threatProfile?.adversary_count ?? 1} attacker(s) at ${venue}.`;
+  const BATCH_SIZE = 5;
+  const totalTarget = Math.round((minCasualties + maxCasualties) / 2);
+  const batchCount = Math.ceil(totalTarget / BATCH_SIZE);
+  const allProfiles: VictimProfile[] = [];
 
-  try {
-    const victimTokenBudget = Math.max(6000, minCasualties * 200);
-    const parsed = await callOpenAi<{ victims?: VictimProfile[] }>(
-      systemPrompt,
-      userPrompt,
-      openAiApiKey,
-      victimTokenBudget,
+  const batchPromises: Array<Promise<VictimProfile[] | null>> = [];
+  for (let b = 0; b < batchCount; b++) {
+    const batchMin = Math.min(BATCH_SIZE, totalTarget - b * BATCH_SIZE);
+    const batchMax = batchMin;
+    const startId = b * BATCH_SIZE + 1;
+    const batchTriageHint =
+      b === 0
+        ? `This is batch ${b + 1}/${batchCount}. Focus on the most severely injured (red/black triage).`
+        : b === batchCount - 1
+          ? `This is batch ${b + 1}/${batchCount}. Focus on walking wounded and psychological cases (green triage).`
+          : `This is batch ${b + 1}/${batchCount}. Focus on moderately injured (yellow triage) with some variety.`;
+
+    const batchSystemPrompt =
+      systemPrompt.replace(
+        /You MUST generate EXACTLY \d+ to \d+ individual victim profiles/,
+        `You MUST generate EXACTLY ${batchMin} to ${batchMax} individual victim profiles`,
+      ) + `\n\nStart victim IDs at ${startId}. ${batchTriageHint}`;
+    const batchUserPrompt = `Generate ${batchMin}-${batchMax} victim profiles (IDs starting at ${startId}) for a ${scenarioType} involving ${weaponDesc} with ${threatProfile?.adversary_count ?? 1} attacker(s) at ${venue}.`;
+
+    batchPromises.push(
+      (async () => {
+        try {
+          const parsed = await callOpenAi<{ victims?: VictimProfile[] }>(
+            batchSystemPrompt,
+            batchUserPrompt,
+            openAiApiKey,
+            4000,
+          );
+          return parsed.victims?.length ? parsed.victims : null;
+        } catch (err) {
+          logger.warn({ err, batch: b + 1 }, 'Victim profile batch failed');
+          return null;
+        }
+      })(),
     );
-    return parsed.victims?.length ? parsed.victims : null;
-  } catch (err) {
-    logger.warn({ err }, 'Victim profile generation failed');
-    return null;
   }
+
+  const batchResults = await Promise.all(batchPromises);
+  for (const result of batchResults) {
+    if (result) allProfiles.push(...result);
+  }
+
+  // Re-number IDs sequentially
+  allProfiles.forEach((p, i) => {
+    p.id = i + 1;
+  });
+
+  logger.info(
+    {
+      batches: batchCount,
+      totalGenerated: allProfiles.length,
+      targetRange: `${minCasualties}-${maxCasualties}`,
+    },
+    'Victim profile batch generation complete',
+  );
+
+  return allProfiles.length > 0 ? allProfiles : null;
 }
 
 /**
@@ -4059,67 +4179,69 @@ RULES:
 - Coordinates must be within realistic distance of the venue/incident site.
 - Do NOT change victim count — place ALL ${profiles.length} victims.`;
 
-  const userPrompt = `Place all ${profiles.length} victims on the map for "${narrative?.title || scenarioType}" at ${venue}.`;
-  const placementTokenBudget = Math.max(4000, profiles.length * 60);
+  type Placement = {
+    id: number;
+    location_lat: number;
+    location_lng: number;
+    floor_level: string;
+    accessibility: string;
+  };
 
-  try {
-    const parsed = await callOpenAi<{
-      placements?: Array<{
-        id: number;
-        location_lat: number;
-        location_lng: number;
-        floor_level: string;
-        accessibility: string;
-      }>;
-    }>(systemPrompt, userPrompt, openAiApiKey, placementTokenBudget);
+  const PLACEMENT_BATCH = 15;
+  const placementMap = new Map<number, Placement>();
 
-    if (!parsed.placements?.length) return undefined;
+  const placementBatches: VictimProfile[][] = [];
+  for (let i = 0; i < profiles.length; i += PLACEMENT_BATCH) {
+    placementBatches.push(profiles.slice(i, i + PLACEMENT_BATCH));
+  }
 
-    const placementMap = new Map(parsed.placements.map((p) => [p.id, p]));
+  const placementPromises = placementBatches.map(async (batch) => {
+    const batchSummary = batch
+      .map(
+        (p) =>
+          `Victim #${p.id}: triage=${p.triage_color}, mobility=${p.mobility}, injuries=[${p.injuries.map((i) => `${i.severity} ${i.type} to ${i.body_part}`).join('; ')}], appears_at=${p.appears_at_minutes}min`,
+      )
+      .join('\n');
 
-    const merged: NonNullable<WarroomScenarioPayload['casualties']> = profiles.map((profile) => {
-      const placement = placementMap.get(profile.id);
-      return {
-        casualty_type: 'patient' as const,
-        location_lat: placement?.location_lat ?? incidentSites[0]?.coordinates.lat ?? 0,
-        location_lng: placement?.location_lng ?? incidentSites[0]?.coordinates.lng ?? 0,
-        floor_level: placement?.floor_level ?? 'G',
-        headcount: 1,
-        conditions: {
-          injuries: profile.injuries,
-          triage_color: profile.triage_color,
-          mobility: profile.mobility,
-          accessibility: placement?.accessibility ?? 'open',
-          consciousness: profile.consciousness,
-          breathing: profile.breathing,
-          visible_description: profile.visible_description,
-          treatment_requirements: profile.treatment_requirements,
-          transport_prerequisites: profile.transport_prerequisites,
-          contraindications: profile.contraindications,
-          ideal_response_sequence: profile.ideal_response_sequence,
-          required_ppe: profile.required_ppe,
-          required_equipment: profile.required_equipment,
-          expected_time_to_treat_minutes: profile.expected_time_to_treat_minutes,
-        },
-        status: 'undiscovered' as const,
-        appears_at_minutes: profile.appears_at_minutes ?? 0,
-      };
-    });
+    const batchPrompt = systemPrompt
+      .replace(profileSummary, batchSummary)
+      .replace(/Return EXACTLY \d+ placements/, `Return EXACTLY ${batch.length} placements`)
+      .replace(/place ALL \d+ victims/, `place ALL ${batch.length} victims`);
+    const batchUserPrompt = `Place ${batch.length} victims (IDs: ${batch.map((p) => p.id).join(', ')}) on the map for "${narrative?.title || scenarioType}" at ${venue}.`;
 
-    return merged;
-  } catch (err) {
-    logger.warn({ err }, 'Victim placement failed; returning profiles without placement');
-    return profiles.map((profile) => ({
+    try {
+      const parsed = await callOpenAi<{ placements?: Placement[] }>(
+        batchPrompt,
+        batchUserPrompt,
+        openAiApiKey,
+        Math.max(2000, batch.length * 80),
+      );
+      return parsed.placements ?? [];
+    } catch (err) {
+      logger.warn({ err, batchSize: batch.length }, 'Victim placement batch failed');
+      return [];
+    }
+  });
+
+  const placementResults = await Promise.all(placementPromises);
+  for (const batch of placementResults) {
+    for (const p of batch) placementMap.set(p.id, p);
+  }
+
+  // Merge profiles with placements (fall back to incident site for unplaced victims)
+  return profiles.map((profile) => {
+    const placement = placementMap.get(profile.id);
+    return {
       casualty_type: 'patient' as const,
-      location_lat: incidentSites[0]?.coordinates.lat ?? 0,
-      location_lng: incidentSites[0]?.coordinates.lng ?? 0,
-      floor_level: 'G',
+      location_lat: placement?.location_lat ?? incidentSites[0]?.coordinates.lat ?? 0,
+      location_lng: placement?.location_lng ?? incidentSites[0]?.coordinates.lng ?? 0,
+      floor_level: placement?.floor_level ?? 'G',
       headcount: 1,
       conditions: {
         injuries: profile.injuries,
         triage_color: profile.triage_color,
         mobility: profile.mobility,
-        accessibility: 'open',
+        accessibility: placement?.accessibility ?? 'open',
         consciousness: profile.consciousness,
         breathing: profile.breathing,
         visible_description: profile.visible_description,
@@ -4133,8 +4255,8 @@ RULES:
       },
       status: 'undiscovered' as const,
       appears_at_minutes: profile.appears_at_minutes ?? 0,
-    }));
-  }
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -4244,17 +4366,61 @@ ${isMeleeAttack ? '- Most groups should be calm or anxious — only groups withi
 - Some groups appear later as people emerge from different parts of the venue
 - Vary group sizes based on proximity to the incident`;
 
-  const userPrompt = `Generate crowd/evacuee group pins for "${narrative?.title || scenario_type}" at ${venue}.`;
+  const crowdZones = isMeleeAttack
+    ? [
+        {
+          label: 'near-attack and nearby crowds (within 100m)',
+          count: '2-4',
+          focus: 'Groups closest to the attack — terrified, screaming, some frozen.',
+        },
+        {
+          label: 'further-out and perimeter crowds (beyond 100m)',
+          count: '2-4',
+          focus: 'Groups further away — confused bystanders, onlookers, people near exits.',
+        },
+      ]
+    : [
+        {
+          label: 'warm-zone and exit crowds',
+          count: '4-7',
+          focus: 'Groups staggering out of danger area and bottlenecking at exits.',
+        },
+        {
+          label: 'assembly area and perimeter crowds',
+          count: '4-8',
+          focus: 'Groups outside — calmer evacuees, bystanders, onlookers filming.',
+        },
+      ];
 
-  try {
-    const parsed = await callOpenAi<{
-      crowds?: WarroomScenarioPayload['casualties'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
-    return parsed.crowds?.length ? parsed.crowds : undefined;
-  } catch (err) {
-    logger.warn({ err }, 'Crowd pin generation failed; continuing without');
-    return undefined;
-  }
+  const batchPromises = crowdZones.map(async (zone) => {
+    const batchPrompt =
+      systemPrompt.replace(
+        /Generate \d+-\d+ crowd\/evacuee group pins/,
+        `Generate ${zone.count} crowd/evacuee group pins`,
+      ) + `\n\nFOCUS ON: ${zone.label}. ${zone.focus}`;
+    const batchUserPrompt = `Generate ${zone.count} ${zone.label} for "${narrative?.title || scenario_type}" at ${venue}.`;
+
+    try {
+      const parsed = await callOpenAi<{ crowds?: WarroomScenarioPayload['casualties'] }>(
+        batchPrompt,
+        batchUserPrompt,
+        openAiApiKey,
+        4000,
+      );
+      return parsed.crowds ?? [];
+    } catch (err) {
+      logger.warn({ err, zone: zone.label }, 'Crowd pin batch failed');
+      return [];
+    }
+  });
+
+  const results = await Promise.all(batchPromises);
+  const allCrowds = results.flat();
+  logger.info(
+    { batches: crowdZones.length, totalCrowds: allCrowds.length },
+    'Crowd pin batch generation complete',
+  );
+  return allCrowds.length > 0 ? allCrowds : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -4387,21 +4553,75 @@ RULES:
 - Vary obstruction_risk: media and family tend to be higher risk
 - Each convergent_crowd entry MUST have a matching alert_inject with the SAME trigger_time_minutes as the crowd's appears_at_minutes`;
 
-  const userPrompt = `Generate convergent crowd pins for "${narrative?.title || scenario_type}" at ${venue}. These are people arriving from outside after the incident.`;
+  const convergentBatches = isMeleeConvergent
+    ? [
+        {
+          label: 'onlookers, media, family, and helpers',
+          count: '2-4',
+          focus: 'Smaller convergent groups for a localized melee attack.',
+        },
+      ]
+    : [
+        {
+          label: 'onlooker and helper groups',
+          count: '2-4',
+          focus: 'Curious bystanders and self-appointed volunteers arriving at perimeter.',
+        },
+        {
+          label: 'media and family groups',
+          count: '2-4',
+          focus:
+            'News crews pushing for access and distraught family members searching for loved ones.',
+        },
+      ];
 
-  try {
-    const parsed = await callOpenAi<{
-      convergent_crowds?: WarroomScenarioPayload['casualties'];
-      alert_injects?: WarroomScenarioPayload['time_injects'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
-    return {
-      crowds: parsed.convergent_crowds?.length ? parsed.convergent_crowds : undefined,
-      alertInjects: parsed.alert_injects?.length ? parsed.alert_injects : undefined,
-    };
-  } catch (err) {
-    logger.warn({ err }, 'Convergent crowd generation failed; continuing without');
-    return {};
+  const allCrowds: NonNullable<WarroomScenarioPayload['casualties']> = [];
+  const allAlertInjects: NonNullable<WarroomScenarioPayload['time_injects']> = [];
+
+  const batchPromises = convergentBatches.map(async (batch) => {
+    const batchPrompt =
+      systemPrompt.replace(
+        /Generate 4-8 convergent crowd groups/,
+        `Generate ${batch.count} convergent crowd groups`,
+      ) + `\n\nFOCUS ON: ${batch.label}. ${batch.focus}`;
+    const batchUserPrompt = `Generate ${batch.count} convergent ${batch.label} for "${narrative?.title || scenario_type}" at ${venue}.`;
+
+    try {
+      const parsed = await callOpenAi<{
+        convergent_crowds?: WarroomScenarioPayload['casualties'];
+        alert_injects?: WarroomScenarioPayload['time_injects'];
+      }>(batchPrompt, batchUserPrompt, openAiApiKey, 4000);
+      return {
+        crowds: parsed.convergent_crowds ?? [],
+        injects: parsed.alert_injects ?? [],
+      };
+    } catch (err) {
+      logger.warn({ err, batch: batch.label }, 'Convergent crowd batch failed');
+      return {
+        crowds: [] as NonNullable<WarroomScenarioPayload['casualties']>,
+        injects: [] as NonNullable<WarroomScenarioPayload['time_injects']>,
+      };
+    }
+  });
+
+  const results = await Promise.all(batchPromises);
+  for (const r of results) {
+    allCrowds.push(...r.crowds);
+    allAlertInjects.push(...r.injects);
   }
+
+  logger.info(
+    {
+      batches: convergentBatches.length,
+      totalCrowds: allCrowds.length,
+      totalInjects: allAlertInjects.length,
+    },
+    'Convergent crowd batch generation complete',
+  );
+  return {
+    crowds: allCrowds.length > 0 ? allCrowds : undefined,
+    alertInjects: allAlertInjects.length > 0 ? allAlertInjects : undefined,
+  };
 }
 
 // ---------------------------------------------------------------------------

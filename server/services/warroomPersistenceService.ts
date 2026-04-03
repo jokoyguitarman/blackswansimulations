@@ -184,6 +184,69 @@ export async function persistWarroomScenario(
       }
     }
 
+    // Pre-create sighting pins for pursuit injects that have adversary_sighting data
+    const sightingPinRows: Array<Record<string, unknown>> = [];
+    let sightingOrder = 0;
+    for (const inj of time_injects) {
+      const injAny = inj as Record<string, unknown>;
+      const pursuitIdx = injAny._pursuit_inject_index as number | undefined;
+      const se = inj.state_effect as Record<string, unknown> | undefined;
+      const sighting = se?.adversary_sighting as Record<string, unknown> | undefined;
+      if (!sighting || typeof sighting.lat !== 'number' || typeof sighting.lng !== 'number')
+        continue;
+
+      const injectDbId =
+        typeof pursuitIdx === 'number' ? pursuitIndexToDbId.get(pursuitIdx) : undefined;
+      const adversaryId = (sighting.adversary_id as string) || 'adversary_1';
+      const isFalseLead = sighting.is_false_lead === true;
+      const intelSource = (sighting.intel_source as string) || 'unknown';
+      const confidence = (sighting.confidence as string) || 'medium';
+      const accuracyRadius = (sighting.accuracy_radius_m as number) || 300;
+      const directionOfTravel = (sighting.direction_of_travel as string) || null;
+      const zoneLabel = (sighting.zone_label as string) || intelSource.replace(/_/g, ' ');
+      const triggerMin = inj.trigger_time_minutes ?? 0;
+
+      sightingPinRows.push({
+        scenario_id: scenarioId,
+        location_type: 'adversary_sighting',
+        pin_category: 'adversary_sighting',
+        label: `Sighting #${sightingOrder + 1}: ${zoneLabel} (T+${triggerMin}min)`,
+        coordinates: { lat: sighting.lat, lng: sighting.lng },
+        conditions: {
+          adversary_id: adversaryId,
+          pin_category: 'adversary_sighting',
+          sighting_status: 'hidden',
+          sighting_order: sightingOrder,
+          zone_label: zoneLabel,
+          intel_source: intelSource,
+          confidence,
+          accuracy_radius_m: accuracyRadius,
+          direction_of_travel: directionOfTravel,
+          is_false_lead: isFalseLead,
+          trigger_time_minutes: triggerMin,
+          source_inject_id: injectDbId ?? null,
+        },
+        display_order: 900 + sightingOrder,
+      });
+      sightingOrder++;
+    }
+    if (sightingPinRows.length > 0) {
+      const { error: sightingErr } = await supabaseAdmin
+        .from('scenario_locations')
+        .insert(sightingPinRows);
+      if (sightingErr) {
+        logger.warn(
+          { error: sightingErr },
+          'Pre-created sighting pins insert failed (non-blocking)',
+        );
+      } else {
+        logger.info(
+          { count: sightingPinRows.length, scenarioId },
+          'Pre-created adversary sighting pins from pursuit injects',
+        );
+      }
+    }
+
     if (objectives.length > 0) {
       const { error: objError } = await supabaseAdmin.from('scenario_objectives').insert(
         objectives.map((o) => ({

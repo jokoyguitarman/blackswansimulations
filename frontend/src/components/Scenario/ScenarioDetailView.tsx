@@ -1588,7 +1588,12 @@ const MapPinsTab = ({
     }));
 
   const patients = casualties.filter((c) => c.casualty_type === 'patient');
-  const crowds = casualties.filter((c) => c.casualty_type === 'crowd');
+  const crowds = casualties.filter(
+    (c) =>
+      c.casualty_type === 'crowd' ||
+      c.casualty_type === 'evacuee_group' ||
+      c.casualty_type === 'convergent_crowd',
+  );
 
   const allCoords: [number, number][] = [
     ...validPins
