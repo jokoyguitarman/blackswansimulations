@@ -194,6 +194,50 @@ const TEAM_ALLOWED_PIN_TYPES: Record<string, Set<string>> = {
 
 const EXTRACT_ONLY_TEAMS = new Set(['fire', 'hazmat']);
 
+// Per-team required infrastructure that MUST be placed before pin_response is allowed.
+// Once ALL required assets exist in placed_assets, the team is "operational".
+const TEAM_REQUIRED_INFRASTRUCTURE: Record<string, string[]> = {
+  police: ['outer_cordon'],
+  security: ['outer_cordon'],
+  fire: ['forward_command'],
+  hazmat: ['forward_command'],
+  triage: ['triage_point'],
+  medical: ['triage_point'],
+  ems: ['triage_point'],
+  evacuation: ['assembly_point'],
+  media: ['press_cordon'],
+};
+
+// Inject keyword domains — if an inject's title/description contains these keywords,
+// only the listed team keys should react. Teams not listed ignore the inject.
+const INJECT_DOMAIN_KEYWORDS: Array<{ patterns: RegExp; teams: string[] }> = [
+  {
+    patterns: /media|press|journalist|reporter|camera|microphone|footage|interview|broadcast/i,
+    teams: ['media'],
+  },
+  {
+    patterns: /casualt|patient|injur|wound|bleed|triage|medical|ambulance|stretcher/i,
+    teams: ['triage', 'medical', 'ems', 'fire', 'hazmat'],
+  },
+  {
+    patterns: /fire|blaze|smoke|flame|burn|hazmat|chemical|spill|toxic|gas|explosion/i,
+    teams: ['fire', 'hazmat'],
+  },
+  {
+    patterns: /crowd|panic|stampede|evacuat|assembly|shelter|civilian/i,
+    teams: ['evacuation', 'police', 'security'],
+  },
+  {
+    patterns: /cordon|perimete|barricade|roadblock|checkpoint|secur|breach|intrud/i,
+    teams: ['police', 'security'],
+  },
+  {
+    patterns: /sighting|suspect|adversary|pursuit|fugitive|shooter|armed|weapon/i,
+    teams: ['police', 'security', 'intelligence'],
+  },
+  { patterns: /negotiate|hostage|demand|surrender/i, teams: ['negotiation', 'police'] },
+];
+
 function getTeamScopeKey(teamName: string): string | null {
   const t = teamName.toLowerCase();
   const keys = Object.keys(TEAM_ALLOWED_PLACEMENTS);
@@ -207,6 +251,30 @@ function isPlacementAllowedForTeam(teamName: string, assetType: string): boolean
   const key = getTeamScopeKey(teamName);
   if (!key) return true;
   return TEAM_ALLOWED_PLACEMENTS[key].has(assetType);
+}
+
+function getRequiredInfrastructure(teamName: string): string[] {
+  const key = getTeamScopeKey(teamName);
+  if (!key) return [];
+  return TEAM_REQUIRED_INFRASTRUCTURE[key] ?? [];
+}
+
+function isInjectRelevantToTeam(
+  teamName: string,
+  injectTitle: string,
+  injectDescription: string,
+): boolean {
+  const text = `${injectTitle} ${injectDescription}`;
+  const teamKey = getTeamScopeKey(teamName);
+  if (!teamKey) return true;
+
+  for (const { patterns, teams } of INJECT_DOMAIN_KEYWORDS) {
+    if (patterns.test(text)) {
+      return teams.includes(teamKey);
+    }
+  }
+  // No domain keywords matched — universal inject, all teams react
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -627,6 +695,21 @@ export class DemoAIAgentService {
           }
         }
 
+        // Domain-relevance filter: skip injects whose content doesn't match this team's domain
+        const injectTitle = (injectData?.title as string) ?? '';
+        const injectDesc = (injectData?.description as string) ?? '';
+        if (!isInjectRelevantToTeam(agentState.persona.teamName, injectTitle, injectDesc)) {
+          logger.debug(
+            {
+              botUserId: agentState.persona.botUserId,
+              team: agentState.persona.teamName,
+              injectTitle,
+            },
+            'AI agent: skipping inject outside team domain',
+          );
+          continue;
+        }
+
         // Human-like delay before this agent responds
         const delay = AGENT_JITTER_BASE_MS + Math.random() * AGENT_JITTER_RANGE_MS;
         await new Promise((resolve) => setTimeout(resolve, delay));
@@ -802,15 +885,22 @@ export class DemoAIAgentService {
       '',
       '## How This Exercise Works',
       '',
-      'Each turn you return EXACTLY 3 actions in this order:',
-      '1. ONE consolidated DECISION (bundles everything you want to do this cycle)',
-      '2. ONE PLACEMENT or ONE CLAIM (the most important map action from your decision)',
+      'Each turn you return at most 3 actions in this order:',
+      '1. ONE DECISION (a single, focused tactical action)',
+      '2. ONE PLACEMENT or ONE CLAIM (map action matching your decision)',
       '3. ONE short CHAT message (radio summary of what you just did)',
+      '',
+      '### ⚠️ ONE ACTION PER DECISION — CRITICAL',
+      'Your decision must describe EXACTLY ONE tactical action. Do NOT bundle multiple actions.',
+      '- WRONG: "Establish triage point AND treat burn victim AND set up decon zone"',
+      '- RIGHT: "Establish Triage Point in Warm Zone" (then next turn: "Triage Burn Victim near Gate B")',
+      'If your decision mentions infrastructure placement, your action MUST be a "placement" — NOT a pin_response.',
+      'If your decision mentions treating/extracting a patient, your action MUST be a "pin_response" — NOT a placement.',
       '',
       '### DECISIONS (the only thing that counts)',
       'Decisions appear in the War Room panel and are scored. Placements/chat without a decision score ZERO.',
-      '- title: Concise but specific (e.g. "Initial Containment: Inner Cordon + Triage Deployment")',
-      '- description: 2-4 sentences bundling ALL tactical moves for this cycle. Reference locations, headcounts, procedures.',
+      '- title: Concise and specific to the SINGLE action (e.g. "Establish Inner Cordon" or "Triage Burn Victim")',
+      '- description: 2-3 sentences about the ONE action. Reference location, resources, procedure.',
       '',
       '### PLACEMENTS (visualize ONE key map action per decision)',
       '⚠️ CRITICAL: If your decision mentions establishing any infrastructure (cordon, triage tent, command post, assembly point, staging area, decon zone), you MUST include a placement action with it.',
@@ -1159,20 +1249,47 @@ export class DemoAIAgentService {
       parts.push(JSON.stringify(event.data, null, 2).slice(0, 1200));
     }
 
+    // Always tell the bot about the strict phase sequence
+    const teamScopeKey = getTeamScopeKey(agent.persona.teamName);
+    const requiredInfra = getRequiredInfrastructure(agent.persona.teamName);
+    const requiredStr =
+      requiredInfra.length > 0 ? requiredInfra.map((r) => r.replace(/_/g, ' ')).join(', ') : 'none';
+
+    parts.push(
+      '',
+      '## ⚠️ STRICT OPERATIONAL PHASES — you MUST follow this sequence',
+      'Phase 1 (CLAIMING): Claim exits/entries. Already handled automatically — skip this phase.',
+      `Phase 2 (ESTABLISHING): Place your team's required infrastructure: [${requiredStr}].`,
+      '  → You MUST complete Phase 2 before doing ANYTHING else. Use a "placement" action.',
+      '  → Do NOT combine establishing infrastructure with treating patients in the same decision.',
+      'Phase 3 (OPERATIONAL): Only after your infrastructure exists on the map, respond to casualties/hazards/crowds using "pin_response".',
+      '  → The server BLOCKS pin_response if your infrastructure is missing.',
+      '',
+      '## ⚠️ ONE ACTION PER DECISION — CRITICAL RULE',
+      '- Each decision must focus on ONE specific action. Do NOT combine multiple actions in one decision.',
+      '- WRONG: "Establish triage area AND treat patient AND claim exit" in one decision.',
+      '- RIGHT: Decision 1 = "Establish triage area" (placement). Decision 2 = "Triage burn victim" (pin_response).',
+      '- If you want to place infrastructure, submit ONLY a placement action (no pin_response in the same turn).',
+      '- If you want to respond to a casualty/hazard, submit ONLY a pin_response (no placement in the same turn).',
+    );
+
     if (elapsed < FOUNDATIONAL_PHASE_MINUTES) {
       parts.push(
         '',
-        '## ⚠️ FOUNDATIONAL PHASE (first 8 minutes) — PRIORITY ACTIONS',
-        'You are still in the early stage of the exercise. Before responding to injects or doing anything else,',
-        'CHECK whether your team has completed these foundational tasks. If not, DO THEM NOW:',
-        '- CLAIM at least one exit/entry relevant to your jurisdiction',
-        '- PLACE a command post or staging area for your team',
-        '- ESTABLISH cordons/perimeters if you are Police/Security',
-        '- SET UP triage area if you are Medical/EMS',
-        '- IDENTIFY zones (hot/warm/cold) if you are Fire/HAZMAT',
-        '- PLACE barricades or assembly points if you are Evacuation',
-        'If these are not done, your performance score will be HEAVILY penalized.',
-        'Include at least ONE placement action with your decision.',
+        '## ⚠️ FOUNDATIONAL PHASE (first 8 minutes) — INFRASTRUCTURE PRIORITY',
+        `Your required infrastructure: [${requiredStr}]. If not yet placed, your ONLY action this turn must be a placement.`,
+        'Do NOT respond to any casualties, hazards, or crowds until your infrastructure is on the map.',
+        teamScopeKey === 'police' || teamScopeKey === 'security'
+          ? '→ ESTABLISH outer cordon / inner cordon / command post.'
+          : teamScopeKey === 'triage' || teamScopeKey === 'medical' || teamScopeKey === 'ems'
+            ? '→ SET UP triage point / field hospital / casualty collection.'
+            : teamScopeKey === 'fire' || teamScopeKey === 'hazmat'
+              ? '→ ESTABLISH forward command / staging area.'
+              : teamScopeKey === 'evacuation'
+                ? '→ PLACE assembly point / marshal post.'
+                : teamScopeKey === 'media'
+                  ? '→ ESTABLISH press cordon / media staging.'
+                  : '→ PLACE your operating area.',
       );
     }
 
@@ -1998,12 +2115,37 @@ export class DemoAIAgentService {
               'AI agent: skipping auto-converted pin_response — team has no jurisdiction',
             );
           } else {
-            logger.info(
-              { botUserId, targetId: converted.target_id, targetType: converted.target_type },
-              'AI agent: auto-converted decision to pin_response (decision text referenced a pin)',
-            );
-            await this.dispatcher.respondToPin(sessionId, botUserId, teamName, converted);
-            break;
+            // Phase gate: block if team hasn't set up infrastructure yet
+            const convReqAssets = getRequiredInfrastructure(teamName);
+            let infraReady = true;
+            if (convReqAssets.length > 0) {
+              const { data: convExisting } = await supabaseAdmin
+                .from('placed_assets')
+                .select('asset_type')
+                .eq('session_id', sessionId)
+                .eq('team_name', teamName)
+                .eq('status', 'active')
+                .in('asset_type', convReqAssets);
+              const convPlaced = new Set(
+                (convExisting ?? []).map(
+                  (a) => (a as Record<string, unknown>).asset_type as string,
+                ),
+              );
+              infraReady = convReqAssets.every((r) => convPlaced.has(r));
+            }
+            if (!infraReady) {
+              logger.info(
+                { botUserId, teamName },
+                'AI agent: skipping auto-converted pin_response — infrastructure not established',
+              );
+            } else {
+              logger.info(
+                { botUserId, targetId: converted.target_id, targetType: converted.target_type },
+                'AI agent: auto-converted decision to pin_response (decision text referenced a pin)',
+              );
+              await this.dispatcher.respondToPin(sessionId, botUserId, teamName, converted);
+              break;
+            }
           }
         }
 
@@ -2059,6 +2201,28 @@ export class DemoAIAgentService {
             'AI agent: pin_response missing target_id, skipping',
           );
           break;
+        }
+        // Phase gate: block pin_response until team's required infrastructure is placed
+        const requiredAssets = getRequiredInfrastructure(teamName);
+        if (requiredAssets.length > 0) {
+          const { data: existingAssets } = await supabaseAdmin
+            .from('placed_assets')
+            .select('asset_type')
+            .eq('session_id', sessionId)
+            .eq('team_name', teamName)
+            .eq('status', 'active')
+            .in('asset_type', requiredAssets);
+          const placedTypes = new Set(
+            (existingAssets ?? []).map((a) => (a as Record<string, unknown>).asset_type as string),
+          );
+          const missing = requiredAssets.filter((r) => !placedTypes.has(r));
+          if (missing.length > 0) {
+            logger.info(
+              { botUserId, teamName, missing },
+              'AI agent: pin_response blocked — team must establish infrastructure first',
+            );
+            break;
+          }
         }
         // Server-side jurisdiction guard: block teams that shouldn't interact with pins
         if (this.isTeamBlockedFromPinResponse(teamName, action.pin_response.target_type)) {

@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import type { WebSocketEvent } from '../../lib/websocketClient';
+import { api } from '../../lib/api';
 
 interface DecisionEntry {
   id: string;
@@ -114,6 +115,45 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
     eventTypes: ['decision.executed', 'decision.proposed'],
   });
 
+  // Load existing decisions on mount so we don't miss any that fired before WebSocket connected
+  useEffect(() => {
+    const loadExisting = async () => {
+      try {
+        const result = await api.decisions.list(sessionId);
+        const existing = (result.data as Array<Record<string, unknown>>) || [];
+        if (existing.length === 0) return;
+
+        const entries: DecisionEntry[] = existing.map((d) => {
+          const creator = d.creator as { full_name?: string } | undefined;
+          const teamName = (d.team_name as string) ?? (creator?.full_name as string) ?? 'Unknown';
+          const aiEval = d.ai_evaluation as Record<string, unknown> | undefined;
+          return {
+            id: (d.id as string) ?? `dec-${Date.now()}`,
+            teamName,
+            creatorName: (creator?.full_name as string) ?? teamName,
+            title: (d.title as string) ?? 'Decision',
+            description: (d.description as string) ?? '',
+            type: (d.decision_type as string) ?? (d.type as string) ?? '',
+            status: (d.status as string) ?? 'executed',
+            aiVerdict: (aiEval?.verdict as string) ?? '',
+            aiNote: (aiEval?.note as string) ?? (aiEval?.explanation as string) ?? '',
+            timestamp: new Date((d.created_at as string) ?? Date.now()),
+          };
+        });
+
+        setDecisions((prev) => {
+          const existingIds = new Set(prev.map((p) => p.id));
+          const newEntries = entries.filter((e) => !existingIds.has(e.id));
+          if (newEntries.length === 0) return prev;
+          return [...prev, ...newEntries].slice(0, 100);
+        });
+      } catch {
+        // Non-critical — WebSocket will pick up new ones
+      }
+    };
+    loadExisting();
+  }, [sessionId]);
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({ left: 0, behavior: 'smooth' });
@@ -121,15 +161,15 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
   }, [decisions.length]);
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-[998] flex flex-col">
+    <div className="absolute bottom-[30px] left-0 right-0 z-[998] flex flex-col">
       {/* Header bar */}
-      <button
-        onClick={() => setCollapsed((c) => !c)}
-        className={`flex items-center justify-between px-4 py-1.5 border-t border-x border-robotic-yellow/40 rounded-t-lg mx-4 backdrop-blur-md transition-all ${
+      <div
+        className={`flex items-center px-4 py-1.5 border-t border-x border-robotic-yellow/40 rounded-t-lg mx-4 backdrop-blur-md transition-all cursor-pointer ${
           newFlash
             ? 'bg-blue-600/30 border-blue-500/60'
             : 'bg-robotic-gray-300/95 border-robotic-yellow/40'
         }`}
+        onClick={() => setCollapsed((c) => !c)}
       >
         <div className="flex items-center gap-2">
           <span className="text-xs terminal-text uppercase text-robotic-yellow font-bold">
@@ -140,19 +180,19 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
               {decisions.length}
             </span>
           )}
+          <span className="text-xs terminal-text text-robotic-yellow/50">
+            {collapsed ? '\u25B2' : '\u25BC'}
+          </span>
         </div>
-        <span className="text-xs terminal-text text-robotic-yellow/50">
-          {collapsed ? '\u25B2' : '\u25BC'}
-        </span>
-      </button>
+      </div>
 
       {/* Horizontal scrollable cards */}
       {!collapsed && (
         <div className="bg-robotic-gray-300/95 border-t border-robotic-yellow/30 backdrop-blur-md">
           <div
             ref={scrollRef}
-            className="flex gap-3 px-4 py-3 overflow-x-auto"
-            style={{ maxHeight: '240px' }}
+            className="flex gap-3 px-4 py-2 overflow-x-auto"
+            style={{ maxHeight: '180px' }}
           >
             {decisions.length === 0 && (
               <div className="flex items-center justify-center w-full py-4">
@@ -174,7 +214,7 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
                   key={dec.id}
                   className={`shrink-0 rounded-lg border border-robotic-yellow/20 bg-black/30 cursor-pointer hover:bg-black/40 transition-all ${
                     isNew ? 'animate-pulse' : ''
-                  } ${isExpanded ? 'w-[480px]' : 'w-[320px]'}`}
+                  } ${isExpanded ? 'w-[400px]' : 'w-[280px]'}`}
                   style={{ borderTopWidth: 3, borderTopColor: color }}
                   onClick={() => setExpandedId(isExpanded ? null : dec.id)}
                 >
@@ -218,7 +258,7 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
                     {dec.description && (
                       <div
                         className={`text-[11px] terminal-text text-robotic-yellow/60 leading-snug whitespace-pre-wrap overflow-y-auto ${
-                          isExpanded ? 'max-h-[140px]' : 'line-clamp-3'
+                          isExpanded ? 'max-h-[100px]' : 'line-clamp-2'
                         }`}
                       >
                         {dec.description}

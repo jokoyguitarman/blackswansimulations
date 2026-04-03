@@ -157,8 +157,8 @@ export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) 
         </div>
       )}
 
-      {/* Floating action cards (above decisions panel) */}
-      <div className="absolute bottom-[100px] left-4 z-[1000] w-96 flex flex-col gap-2">
+      {/* Floating action cards (above decisions panel, right of metrics) */}
+      <div className="absolute bottom-[56px] left-[220px] z-[1000] w-80 flex flex-col gap-2">
         {cards.map((card) => {
           const color = getTeamColor(card.team);
           const typeIcon = card.type === 'placement' ? '📍' : card.type === 'inject' ? '🔴' : '📻';

@@ -171,8 +171,8 @@ export function SpectatorInjectsPanel({ sessionId }: SpectatorInjectsPanelProps)
 
   return (
     <div
-      className="absolute top-20 right-4 z-[999] flex flex-col"
-      style={{ maxHeight: 'calc(100vh - 140px)' }}
+      className="absolute top-16 right-4 z-[999] flex flex-col"
+      style={{ maxHeight: 'calc(100vh - 200px)' }}
     >
       {/* Header / toggle */}
       <button
@@ -202,8 +202,8 @@ export function SpectatorInjectsPanel({ sessionId }: SpectatorInjectsPanelProps)
       {!collapsed && (
         <div
           ref={listRef}
-          className="w-80 overflow-y-auto rounded-b-lg border border-t-0 border-robotic-yellow/30 bg-robotic-gray-300/90 backdrop-blur-md"
-          style={{ maxHeight: 'calc(100vh - 180px)' }}
+          className="w-72 overflow-y-auto rounded-b-lg border border-t-0 border-robotic-yellow/30 bg-robotic-gray-300/90 backdrop-blur-md"
+          style={{ maxHeight: 'calc(100vh - 240px)' }}
         >
           {injects.length === 0 && (
             <div className="px-3 py-6 text-center">

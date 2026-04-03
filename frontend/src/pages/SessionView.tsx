@@ -1514,39 +1514,39 @@ export const SessionView = () => {
           )}
         </div>
 
-        {/* Bottom-left: Mode switcher (above decisions panel) */}
-        <div className="absolute bottom-[52px] left-4 z-[1000] flex items-center gap-1">
-          {(['cinematic', 'god', 'spotlight'] as const).map((m) => (
+        {/* Bottom bar: Mode switcher + Exit — anchored to decisions panel header */}
+        <div className="absolute bottom-0 left-0 right-0 z-[1000] pointer-events-none">
+          <div className="flex items-center justify-between px-5 py-1 pointer-events-auto">
+            <div className="flex items-center gap-1">
+              {(['cinematic', 'god', 'spotlight'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => {
+                    setSearchParams(
+                      (prev) => {
+                        prev.set('mode', m);
+                        return prev;
+                      },
+                      { replace: true },
+                    );
+                  }}
+                  className={`px-2.5 py-1 text-[10px] terminal-text uppercase border rounded backdrop-blur-sm ${
+                    spectatorMode === m
+                      ? 'bg-robotic-yellow/20 border-robotic-yellow text-robotic-yellow'
+                      : 'bg-robotic-gray-300/70 border-robotic-yellow/30 text-robotic-yellow/50 hover:text-robotic-yellow/80'
+                  }`}
+                >
+                  {m === 'cinematic' ? 'CINE' : m === 'god' ? 'GOD' : 'TEAM'}
+                </button>
+              ))}
+            </div>
             <button
-              key={m}
-              onClick={() => {
-                setSearchParams(
-                  (prev) => {
-                    prev.set('mode', m);
-                    return prev;
-                  },
-                  { replace: true },
-                );
-              }}
-              className={`px-3 py-1.5 text-xs terminal-text uppercase border rounded backdrop-blur-sm ${
-                spectatorMode === m
-                  ? 'bg-robotic-yellow/20 border-robotic-yellow text-robotic-yellow'
-                  : 'bg-robotic-gray-300/70 border-robotic-yellow/30 text-robotic-yellow/50 hover:text-robotic-yellow/80'
-              }`}
+              onClick={() => navigate(`/sessions/${id}`)}
+              className="px-2.5 py-1 text-[10px] terminal-text uppercase border border-robotic-orange/50 text-robotic-orange/70 hover:text-robotic-orange rounded bg-robotic-gray-300/70 backdrop-blur-sm"
             >
-              {m === 'cinematic' ? 'CINE' : m === 'god' ? 'GOD' : 'TEAM'}
+              EXIT DEMO
             </button>
-          ))}
-        </div>
-
-        {/* Bottom-right: Exit spectator (above decisions panel) */}
-        <div className="absolute bottom-[52px] right-4 z-[1000]">
-          <button
-            onClick={() => navigate(`/sessions/${id}`)}
-            className="px-3 py-1.5 text-xs terminal-text uppercase border border-robotic-orange/50 text-robotic-orange/70 hover:text-robotic-orange rounded bg-robotic-gray-300/70 backdrop-blur-sm"
-          >
-            EXIT DEMO
-          </button>
+          </div>
         </div>
       </div>
     );

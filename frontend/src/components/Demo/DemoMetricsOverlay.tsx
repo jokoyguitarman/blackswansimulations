@@ -66,8 +66,11 @@ export function DemoMetricsOverlay({ sessionId, currentState }: DemoMetricsOverl
 
   const handleEvent = useCallback((event: WebSocketEvent) => {
     if (event.type === 'state.updated') {
-      const patch = event.data as Record<string, unknown>;
-      setState((prev) => ({ ...prev, ...patch }));
+      const payload = event.data as { state?: Record<string, unknown> };
+      const stateData = payload.state;
+      if (stateData && typeof stateData === 'object') {
+        setState((prev) => ({ ...prev, ...stateData }));
+      }
     }
   }, []);
 
@@ -81,10 +84,8 @@ export function DemoMetricsOverlay({ sessionId, currentState }: DemoMetricsOverl
   const heatTeams = Object.entries(heatMeter).filter(([, v]) => v?.heat_percentage !== undefined);
   const teamCounters = extractTeamCounters(state);
 
-  if (heatTeams.length === 0 && teamCounters.length === 0) return null;
-
   return (
-    <div className="absolute top-16 left-4 z-[999] flex flex-col gap-2 max-w-[280px]">
+    <div className="absolute top-16 left-4 z-[999] flex flex-col gap-1.5 w-[200px] max-h-[calc(100vh-160px)] overflow-y-auto">
       <button
         onClick={() => setCollapsed(!collapsed)}
         className="self-start px-2 py-1 text-[10px] terminal-text uppercase tracking-wider bg-robotic-gray-300/90 border border-robotic-yellow/40 rounded backdrop-blur-sm text-robotic-yellow/70 hover:text-robotic-yellow"
@@ -95,11 +96,15 @@ export function DemoMetricsOverlay({ sessionId, currentState }: DemoMetricsOverl
       {!collapsed && (
         <>
           {/* Heat Meter */}
-          {heatTeams.length > 0 && (
-            <div className="bg-robotic-gray-300/90 border border-robotic-yellow/30 rounded p-2.5 backdrop-blur-sm">
-              <div className="text-[10px] terminal-text uppercase text-robotic-yellow/60 mb-1.5 tracking-wider">
-                HEAT METER
+          <div className="bg-robotic-gray-300/90 border border-robotic-yellow/30 rounded p-2.5 backdrop-blur-sm">
+            <div className="text-[10px] terminal-text uppercase text-robotic-yellow/60 mb-1.5 tracking-wider">
+              HEAT METER
+            </div>
+            {heatTeams.length === 0 ? (
+              <div className="text-[10px] terminal-text text-robotic-yellow/30 italic">
+                Awaiting first decisions...
               </div>
+            ) : (
               <div className="space-y-1.5">
                 {heatTeams.map(([name, data]) => {
                   const pct = data.heat_percentage ?? 0;
@@ -139,33 +144,63 @@ export function DemoMetricsOverlay({ sessionId, currentState }: DemoMetricsOverl
                   );
                 })}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Team Counters */}
-          {teamCounters.map(({ teamName, counters }) => (
-            <div
-              key={teamName}
-              className="bg-robotic-gray-300/90 border border-robotic-yellow/30 rounded p-2.5 backdrop-blur-sm"
-            >
+          {teamCounters.length === 0 ? (
+            <div className="bg-robotic-gray-300/90 border border-robotic-yellow/30 rounded p-2.5 backdrop-blur-sm">
               <div className="text-[10px] terminal-text uppercase text-robotic-yellow/60 mb-1 tracking-wider">
-                {teamName}
+                COUNTERS
               </div>
               <div className="space-y-0.5">
-                {counters.map(({ label, value, alert }) => (
-                  <div
-                    key={label}
-                    className={`flex justify-between text-[11px] terminal-text ${
-                      alert ? 'text-red-400' : 'text-robotic-gray-50/80'
-                    }`}
-                  >
-                    <span className="truncate mr-2">{label}</span>
-                    <span className="font-mono shrink-0">{value}</span>
-                  </div>
-                ))}
+                <div className="flex justify-between text-[11px] terminal-text text-robotic-gray-50/80">
+                  <span>debris cleared</span>
+                  <span className="font-mono">0</span>
+                </div>
+                <div className="flex justify-between text-[11px] terminal-text text-robotic-gray-50/80">
+                  <span>fires resolved</span>
+                  <span className="font-mono">0</span>
+                </div>
+                <div className="flex justify-between text-[11px] terminal-text text-robotic-gray-50/80">
+                  <span>fires contained</span>
+                  <span className="font-mono">0</span>
+                </div>
+                <div className="flex justify-between text-[11px] terminal-text text-robotic-gray-50/80">
+                  <span>extracted to warm</span>
+                  <span className="font-mono">0</span>
+                </div>
+                <div className="flex justify-between text-[11px] terminal-text text-robotic-gray-50/80">
+                  <span>casualties in hot zone</span>
+                  <span className="font-mono">0</span>
+                </div>
               </div>
             </div>
-          ))}
+          ) : (
+            teamCounters.map(({ teamName, counters }) => (
+              <div
+                key={teamName}
+                className="bg-robotic-gray-300/90 border border-robotic-yellow/30 rounded p-2.5 backdrop-blur-sm"
+              >
+                <div className="text-[10px] terminal-text uppercase text-robotic-yellow/60 mb-1 tracking-wider">
+                  {teamName}
+                </div>
+                <div className="space-y-0.5">
+                  {counters.map(({ label, value, alert }) => (
+                    <div
+                      key={label}
+                      className={`flex justify-between text-[11px] terminal-text ${
+                        alert ? 'text-red-400' : 'text-robotic-gray-50/80'
+                      }`}
+                    >
+                      <span className="truncate mr-2">{label}</span>
+                      <span className="font-mono shrink-0">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
         </>
       )}
     </div>
