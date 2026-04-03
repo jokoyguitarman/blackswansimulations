@@ -239,41 +239,75 @@ export class DemoAIAgentService {
 
   private runKickstart(session: SessionAgents): void {
     const agentEntries = Array.from(session.agents.entries());
-    const kickstartEvent: WebSocketEvent = {
+
+    // ── PHASE 1: Claims-only pass (every team claims exits) ──
+    const claimsEvent: WebSocketEvent = {
       type: 'session.started',
       data: {
         message:
-          'Exercise has begun. MANDATORY FIRST ACTIONS for all teams:\n' +
-          "1. CLAIM the exits/entries on the map that are relevant to your team's jurisdiction.\n" +
-          '2. Establish your COMMAND POST by placing a point asset at an appropriate staging location.\n' +
-          '3. Identify and acknowledge the HOT, WARM, and COLD zones based on current hazard information.\n' +
-          '4. PLACE any initial cordons, barricades, or perimeter assets your team is responsible for.\n' +
-          '5. Set up TRIAGE areas, evacuation holding points, or staging areas relevant to your role.\n' +
-          '6. Perform your initial SITUATION ASSESSMENT and communicate it to your team channel.\n' +
-          'You MUST take at least 2-3 of these foundational actions NOW before anything else.',
+          'Exercise has begun. PHASE 1 — EXIT CLAIMS ONLY.\n' +
+          'Your ONLY task right now is to CLAIM the exits/entries relevant to your team.\n' +
+          'Return ONLY claim actions — do NOT place any infrastructure yet.\n' +
+          'Claim 1-2 exits as security checkpoints, evacuation routes, or staging access.\n' +
+          'If no exits are relevant to your team, claim the one closest to your operational area.',
       },
       timestamp: new Date().toISOString(),
     };
 
-    // Kickstart is a fresh cycle
+    // ── PHASE 2: Infrastructure pass (place command posts, cordons, triage) ──
+    const infraEvent: WebSocketEvent = {
+      type: 'session.started',
+      data: {
+        message:
+          'PHASE 2 — ESTABLISH INFRASTRUCTURE.\n' +
+          'You have claimed your exits. Now establish your foundational infrastructure:\n' +
+          '1. PLACE your COMMAND POST (point asset) at an appropriate staging location.\n' +
+          '2. PLACE cordons, barricades, or perimeter assets your team is responsible for.\n' +
+          '3. SET UP triage areas, evacuation holding points, or staging areas for your role.\n' +
+          '4. Perform your initial SITUATION ASSESSMENT and communicate it to chat.\n' +
+          'You MUST include at least ONE placement action. Describe coordinates precisely.',
+      },
+      timestamp: new Date().toISOString(),
+    };
+
     session.cycleDecisionCount = 0;
     session.lastInjectTs = Date.now();
 
+    // Phase 1: all agents claim exits in rapid succession
     for (let i = 0; i < agentEntries.length; i++) {
       const [, agentState] = agentEntries[i];
-      const delay = KICKSTART_INITIAL_DELAY_MS + i * KICKSTART_STAGGER_MS + Math.random() * 5000;
+      const claimDelay = KICKSTART_INITIAL_DELAY_MS + i * 8_000 + Math.random() * 3000;
 
       setTimeout(() => {
         if (session.stopped) return;
-        // Kickstart is exempt from cycle budget — every team MUST get their initial turn
         agentState.lastActionTs = 0;
-        this.generateAndExecuteActions(session, agentState, kickstartEvent).catch((err) => {
+        this.generateAndExecuteActions(session, agentState, claimsEvent).catch((err) => {
           logger.error(
             { error: err, botUserId: agentState.persona.botUserId },
-            'AI agent kickstart failed',
+            'AI agent kickstart claims phase failed',
           );
         });
-      }, delay);
+      }, claimDelay);
+    }
+
+    // Phase 2: all agents place infrastructure (staggered after claims finish)
+    const phase2Start = KICKSTART_INITIAL_DELAY_MS + agentEntries.length * 8_000 + 10_000;
+
+    for (let i = 0; i < agentEntries.length; i++) {
+      const [, agentState] = agentEntries[i];
+      const infraDelay = phase2Start + i * KICKSTART_STAGGER_MS + Math.random() * 5000;
+
+      setTimeout(() => {
+        if (session.stopped) return;
+        agentState.lastActionTs = 0;
+        agentState.actedThisCycle = false;
+        this.generateAndExecuteActions(session, agentState, infraEvent).catch((err) => {
+          logger.error(
+            { error: err, botUserId: agentState.persona.botUserId },
+            'AI agent kickstart infrastructure phase failed',
+          );
+        });
+      }, infraDelay);
     }
   }
 
@@ -1807,7 +1841,7 @@ export class DemoAIAgentService {
             { role: 'user', content: userPrompt },
           ],
           temperature: 0.7,
-          max_tokens: 900,
+          max_tokens: 1400,
           response_format: { type: 'json_object' },
         }),
       });

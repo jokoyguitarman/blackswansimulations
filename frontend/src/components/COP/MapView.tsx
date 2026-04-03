@@ -971,11 +971,16 @@ export const MapView = ({
         if (d.pin_ids?.length) {
           const staleSet = new Set(d.pin_ids);
           setScenarioLocations((prev) =>
-            prev.map((loc) =>
-              staleSet.has(loc.id)
-                ? { ...loc, conditions: { ...(loc.conditions ?? {}), sighting_status: 'stale' } }
-                : loc,
-            ),
+            prev.map((loc) => {
+              if (!staleSet.has(loc.id)) return loc;
+              // Don't mark hidden pins as stale — they haven't appeared yet
+              const curStatus = (loc.conditions as Record<string, unknown>)?.sighting_status;
+              if (curStatus === 'hidden') return loc;
+              return {
+                ...loc,
+                conditions: { ...(loc.conditions ?? {}), sighting_status: 'stale' },
+              };
+            }),
           );
         }
       }
@@ -1163,8 +1168,13 @@ export const MapView = ({
 
   const scenarioLocationsForMap = scenarioLocationsWithCoords.filter((loc) => {
     if (loc.pin_category === 'incident_zone' || loc.location_type === 'incident_zone') return false;
-    // Hidden sighting pins appear only when their inject fires (via adversary_sighting_new event)
-    if (loc.conditions?.sighting_status === 'hidden') return false;
+    // Sighting pins that haven't been revealed yet must be completely invisible.
+    // 'hidden' = pre-created, not yet triggered. Also filter any sighting pin without 'active' status
+    // that was incorrectly marked 'stale' before its inject fired.
+    const sightingStatus = loc.conditions?.sighting_status as string | undefined;
+    const isSightingPin =
+      loc.pin_category === 'adversary_sighting' || loc.location_type === 'adversary_sighting';
+    if (isSightingPin && sightingStatus === 'hidden') return false;
     // Entry/exit pins are rendered separately via EntryExitPin component
     if (loc.pin_category === 'entry_exit') return false;
 

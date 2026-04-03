@@ -1495,7 +1495,7 @@ const MapPinsTab = ({
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [activeFloor, setActiveFloor] = useState('G');
   const changesRef = useRef<{
-    locations: Map<string, { lat: number; lng: number }>;
+    locations: Map<string, { lat: number; lng: number; conditions?: Record<string, unknown> }>;
     hazards: Map<string, { lat: number; lng: number }>;
     casualties: Map<string, { lat: number; lng: number }>;
     zones: Map<string, { hazard_id: string; zone_type: string; radius_m: number }>;
@@ -1558,26 +1558,24 @@ const MapPinsTab = ({
   );
 
   const onZoneLocationDrag = useCallback((id: string, lat: number, lng: number) => {
-    changesRef.current.locations.set(id, { lat, lng });
-    setLocations((prev) =>
-      prev.map((loc) => {
-        if (loc.id !== id) return loc;
-        const conds = (loc.conditions ?? {}) as Record<string, unknown>;
-        const radiusM = Number(conds.radius_m) || 100;
-        const newPolygon = generateCirclePolygon(lat, lng, radiusM);
-        return {
-          ...loc,
-          coordinates: { lat, lng },
-          conditions: { ...conds, polygon: newPolygon },
-        };
-      }),
-    );
+    setLocations((prev) => {
+      const loc = prev.find((l) => l.id === id);
+      if (!loc) return prev;
+      const conds = (loc.conditions ?? {}) as Record<string, unknown>;
+      const radiusM = Number(conds.radius_m) || 100;
+      const newPolygon = generateCirclePolygon(lat, lng, radiusM);
+      const updatedConditions = { ...conds, polygon: newPolygon };
+      changesRef.current.locations.set(id, { lat, lng, conditions: updatedConditions });
+      return prev.map((l) =>
+        l.id === id ? { ...l, coordinates: { lat, lng }, conditions: updatedConditions } : l,
+      );
+    });
     setDirty(true);
   }, []);
 
   const onZoneLocationRadiusChange = useCallback((id: string, newRadius: number) => {
-    setLocations((prev) =>
-      prev.map((loc) => {
+    setLocations((prev) => {
+      return prev.map((loc) => {
         if (loc.id !== id) return loc;
         const conds = (loc.conditions ?? {}) as Record<string, unknown>;
         const newPolygon = generateCirclePolygon(
@@ -1585,17 +1583,15 @@ const MapPinsTab = ({
           loc.coordinates.lng,
           newRadius,
         );
-        const updatedLoc = {
-          ...loc,
-          conditions: { ...conds, radius_m: newRadius, polygon: newPolygon },
-        };
+        const updatedConditions = { ...conds, radius_m: newRadius, polygon: newPolygon };
         changesRef.current.locations.set(id, {
           lat: loc.coordinates.lat,
           lng: loc.coordinates.lng,
+          conditions: updatedConditions,
         });
-        return updatedLoc;
-      }),
-    );
+        return { ...loc, conditions: updatedConditions };
+      });
+    });
     setDirty(true);
   }, []);
 
@@ -1618,13 +1614,10 @@ const MapPinsTab = ({
       } = {};
       if (c.locations.size) {
         payload.locations = [...c.locations.entries()].map(([id, p]) => {
-          const loc = locations.find((l) => l.id === id);
-          const isZone =
-            loc?.location_type === 'incident_zone' || loc?.pin_category === 'incident_zone';
-          if (isZone && loc?.conditions) {
-            return { id, ...p, conditions: loc.conditions as Record<string, unknown> };
+          if (p.conditions) {
+            return { id, lat: p.lat, lng: p.lng, conditions: p.conditions };
           }
-          return { id, ...p };
+          return { id, lat: p.lat, lng: p.lng };
         });
       }
       if (c.hazards.size)
