@@ -630,11 +630,45 @@ export async function generateAndPersistWarroomScenario(
     }
   }
 
+  // Ensure we always have center coordinates: geocode first, then fall back to incident_site pin
+  let finalCenterLat = geocodeResult?.lat;
+  let finalCenterLng = geocodeResult?.lng;
+
+  if (finalCenterLat == null || finalCenterLng == null) {
+    const incidentPin = (payload.locations ?? []).find(
+      (l) =>
+        l.pin_category === 'incident_site' &&
+        typeof l.coordinates?.lat === 'number' &&
+        typeof l.coordinates?.lng === 'number',
+    );
+    if (incidentPin) {
+      finalCenterLat = incidentPin.coordinates.lat;
+      finalCenterLng = incidentPin.coordinates.lng;
+      logger.info(
+        { lat: finalCenterLat, lng: finalCenterLng },
+        'Using incident_site pin coordinates as scenario center (geocode unavailable)',
+      );
+    } else {
+      // Last resort: pick the first location pin that has coordinates
+      const anyPin = (payload.locations ?? []).find(
+        (l) => typeof l.coordinates?.lat === 'number' && typeof l.coordinates?.lng === 'number',
+      );
+      if (anyPin) {
+        finalCenterLat = anyPin.coordinates.lat;
+        finalCenterLng = anyPin.coordinates.lng;
+        logger.info(
+          { lat: finalCenterLat, lng: finalCenterLng, label: anyPin.label },
+          'Using first available pin coordinates as scenario center (no geocode, no incident_site)',
+        );
+      }
+    }
+  }
+
   onProgress?.('persist', 'Saving scenario to database: teams, injects, objectives...');
   const scenarioId = await persistWarroomScenario(payload, createdBy, {
-    center_lat: geocodeResult?.lat,
-    center_lng: geocodeResult?.lng,
-    vicinity_radius_meters: geocodeResult ? 10000 : undefined,
+    center_lat: finalCenterLat,
+    center_lng: finalCenterLng,
+    vicinity_radius_meters: finalCenterLat != null ? 10000 : undefined,
   });
 
   // Persist research cases and link them to the scenario (non-blocking)

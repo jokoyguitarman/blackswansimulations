@@ -321,12 +321,21 @@ async function handleAdversarySighting(
     return conds?.adversary_id === adversaryId;
   });
 
-  const sightingOrder = adversarySightings.length;
+  // Only count revealed (active/stale) pins for ordering — hidden pins haven't appeared yet
+  const revealedCount = adversarySightings.filter((p) => {
+    const conds = (p.conditions as Record<string, unknown>) || {};
+    return conds.sighting_status === 'active' || conds.sighting_status === 'stale';
+  }).length;
+  const sightingOrder = revealedCount;
 
-  // Mark all previous sighting pins for this adversary as stale
-  for (const pin of adversarySightings) {
+  // Mark only ACTIVE sighting pins as stale (leave hidden pins untouched — they haven't appeared yet)
+  const pinsToStale = adversarySightings.filter((pin) => {
     const conds = (pin.conditions as Record<string, unknown>) || {};
-    if (conds.sighting_status === 'stale') continue;
+    return conds.sighting_status === 'active';
+  });
+
+  for (const pin of pinsToStale) {
+    const conds = (pin.conditions as Record<string, unknown>) || {};
     await supabaseAdmin
       .from('scenario_locations')
       .update({
@@ -336,8 +345,8 @@ async function handleAdversarySighting(
   }
 
   // Broadcast stale updates so frontend grays out old pins
-  if (adversarySightings.length > 0) {
-    const staleIds = adversarySightings.map((p) => p.id);
+  if (pinsToStale.length > 0) {
+    const staleIds = pinsToStale.map((p) => p.id);
     getWebSocketService().broadcastToSession(sessionId, {
       type: 'sighting_stale',
       data: { adversary_id: adversaryId, pin_ids: staleIds },

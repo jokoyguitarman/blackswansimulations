@@ -366,10 +366,39 @@ export class DemoAIAgentService {
         .eq('scenario_id', scenarioId)
         .limit(15);
 
-      const incidentCenter =
+      let incidentCenter: { lat: number; lng: number } | null =
         scenario.center_lat != null && scenario.center_lng != null
           ? { lat: scenario.center_lat as number, lng: scenario.center_lng as number }
           : null;
+
+      // Fallback: derive center from incident_site pin or first location with coords
+      if (!incidentCenter && locations?.length) {
+        const incidentPin = (locations as Array<Record<string, unknown>>).find((l) =>
+          (l.location_type as string)?.includes('incident_site'),
+        );
+        const targetPin = incidentPin ?? (locations as Array<Record<string, unknown>>)[0];
+        const coords = targetPin?.coordinates as { lat?: number; lng?: number } | null;
+        if (coords?.lat != null && coords?.lng != null) {
+          incidentCenter = { lat: coords.lat, lng: coords.lng };
+          logger.info(
+            { lat: coords.lat, lng: coords.lng, scenarioId },
+            'AI agent: derived incident center from scenario_locations (center_lat/lng were null)',
+          );
+          // Backfill the scenario record so future loads are faster
+          supabaseAdmin
+            .from('scenarios')
+            .update({ center_lat: coords.lat, center_lng: coords.lng })
+            .eq('id', scenarioId)
+            .then(({ error: backfillErr }) => {
+              if (backfillErr) {
+                logger.warn(
+                  { error: backfillErr, scenarioId },
+                  'Failed to backfill scenario center coords',
+                );
+              }
+            });
+        }
+      }
 
       const locationSummary = (locations ?? [])
         .map((l: Record<string, unknown>) => {
@@ -596,6 +625,18 @@ export class DemoAIAgentService {
       const decisionAction = actions.find((a) => a.action === 'decision' && a.decision);
       if (!hasPlacement && decisionAction?.decision) {
         await this.tryExtractPlacementsFromDecision(
+          session,
+          agent,
+          decisionAction.decision.title,
+          decisionAction.decision.description,
+        );
+      }
+
+      // Fallback: if the bot mentioned claiming exits but didn't include a claim action,
+      // try to auto-claim exits from the decision text
+      const hasClaim = actions.some((a) => a.action === 'claim');
+      if (!hasClaim && decisionAction?.decision) {
+        await this.tryExtractClaimsFromDecision(
           session,
           agent,
           decisionAction.decision.title,
@@ -2443,6 +2484,76 @@ export class DemoAIAgentService {
   }
 
   /**
+   * Fallback: if a decision mentions claiming/securing exits but no claim action was included,
+   * find matching exit locations and auto-claim them.
+   */
+  private async tryExtractClaimsFromDecision(
+    session: SessionAgents,
+    agent: AgentState,
+    title: string,
+    description: string,
+  ): Promise<void> {
+    const fullText = `${title} ${description}`.toLowerCase();
+
+    // Only proceed if the text mentions claiming/securing/checkpoint
+    if (!/(claim|secur|checkpoint|control|man(ning)?|assign|designat)\b/i.test(fullText)) {
+      return;
+    }
+
+    // Fetch all claimable exits that haven't been claimed yet
+    const { data: allExits } = await supabaseAdmin
+      .from('scenario_locations')
+      .select('id, label, pin_category')
+      .eq('scenario_id', session.scenarioId);
+
+    if (!allExits?.length) return;
+
+    const exitPins = (allExits as Array<Record<string, unknown>>).filter(
+      (l) => (l.pin_category as string) === 'entry_exit',
+    );
+    if (exitPins.length === 0) return;
+
+    // Check existing claims
+    const { data: existingClaims } = await supabaseAdmin
+      .from('session_location_claims')
+      .select('location_id')
+      .eq('session_id', session.sessionId);
+    const claimedIds = new Set(
+      (existingClaims ?? []).map((c) => (c as Record<string, unknown>).location_id as string),
+    );
+
+    let claimedCount = 0;
+    for (const exit of exitPins) {
+      if (claimedCount >= 2) break;
+      const exitId = exit.id as string;
+      if (claimedIds.has(exitId)) continue;
+
+      const exitLabel = ((exit.label as string) || '').toLowerCase();
+      const exitWords = exitLabel.split(/[\s,/-]+/).filter((w) => w.length > 3);
+      const matchScore = exitWords.filter((w) => fullText.includes(w)).length;
+
+      if (matchScore >= 1) {
+        logger.info(
+          {
+            botUserId: agent.persona.botUserId,
+            exitLabel: exit.label,
+            team: agent.persona.teamName,
+          },
+          'AI agent: auto-claiming exit from decision text (fallback)',
+        );
+        await this.dispatcher.claimLocation(
+          session.sessionId,
+          exitId,
+          agent.persona.teamName,
+          'security_checkpoint',
+          'exclusive',
+        );
+        claimedCount++;
+      }
+    }
+  }
+
+  /**
    * Returns true if the given team should NOT be allowed to use pin_response
    * on the given target type. Enforces operational jurisdiction.
    */
@@ -2479,14 +2590,49 @@ export class DemoAIAgentService {
 
   private async resolveLocationId(scenarioId: string, label: string): Promise<string | null> {
     try {
-      const { data } = await supabaseAdmin
+      // Strategy 1: exact ilike match
+      const { data: exact } = await supabaseAdmin
         .from('scenario_locations')
         .select('id, label')
         .eq('scenario_id', scenarioId)
         .ilike('label', `%${label}%`)
-        .limit(1)
-        .single();
-      return (data as Record<string, unknown>)?.id as string | null;
+        .limit(1);
+
+      if (exact?.length) return (exact[0] as Record<string, unknown>).id as string;
+
+      // Strategy 2: try each significant word in the label
+      const words = label
+        .split(/[\s,/-]+/)
+        .filter((w) => w.length > 3)
+        .map((w) => w.toLowerCase());
+
+      if (words.length > 0) {
+        const { data: allLocs } = await supabaseAdmin
+          .from('scenario_locations')
+          .select('id, label')
+          .eq('scenario_id', scenarioId);
+
+        if (allLocs?.length) {
+          let bestMatch: string | null = null;
+          let bestScore = 0;
+          for (const loc of allLocs) {
+            const locLabel = (
+              ((loc as Record<string, unknown>).label as string) || ''
+            ).toLowerCase();
+            let score = 0;
+            for (const w of words) {
+              if (locLabel.includes(w)) score++;
+            }
+            if (score > bestScore) {
+              bestScore = score;
+              bestMatch = (loc as Record<string, unknown>).id as string;
+            }
+          }
+          if (bestScore >= 1) return bestMatch;
+        }
+      }
+
+      return null;
     } catch {
       return null;
     }
