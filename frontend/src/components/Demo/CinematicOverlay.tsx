@@ -49,6 +49,7 @@ function formatTeamName(name: string): string {
 
 const MAX_CARDS = 5;
 const CARD_LIFETIME_MS = 12000;
+const DECISION_LIFETIME_MS = 25000;
 
 export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) {
   const [cards, setCards] = useState<ActionCard[]>([]);
@@ -62,9 +63,10 @@ export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) 
       if (prev.some((c) => c.id === card.id)) return prev;
       return [card, ...prev].slice(0, MAX_CARDS);
     });
+    const lifetime = card.type === 'decision' ? DECISION_LIFETIME_MS : CARD_LIFETIME_MS;
     setTimeout(() => {
       setCards((prev) => prev.filter((c) => c.id !== card.id));
-    }, CARD_LIFETIME_MS);
+    }, lifetime);
   }, []);
 
   const handleEvent = useCallback(
@@ -78,7 +80,7 @@ export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) 
           team: (creator?.full_name as string) ?? 'Command',
           type: 'decision',
           title: (decision.title as string) ?? 'Decision',
-          description: (decision.description as string)?.slice(0, 160) ?? '',
+          description: (decision.description as string) ?? '',
           timestamp: new Date(),
         });
       }
@@ -178,7 +180,7 @@ export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) 
       )}
 
       {/* Floating action cards (bottom-left) */}
-      <div className="absolute bottom-16 left-4 z-[1000] w-80 flex flex-col gap-2">
+      <div className="absolute bottom-16 left-4 z-[1000] w-96 flex flex-col gap-2">
         {cards.map((card) => {
           const color = getTeamColor(card.team);
           const typeIcon =
@@ -217,7 +219,9 @@ export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) 
                 {card.title}
               </div>
               {card.description && (
-                <div className="text-xs terminal-text text-robotic-yellow/60 mt-0.5 line-clamp-2">
+                <div
+                  className={`text-xs terminal-text text-robotic-yellow/60 mt-0.5 ${card.type === 'decision' ? 'whitespace-pre-wrap' : 'line-clamp-3'}`}
+                >
                   {card.description}
                 </div>
               )}

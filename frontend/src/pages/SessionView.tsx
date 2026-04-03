@@ -567,6 +567,7 @@ import { DemoPinResponseReplay } from '../components/Demo/DemoPinResponseReplay'
 import { DemoMetricsOverlay } from '../components/Demo/DemoMetricsOverlay';
 import { SpectatorInjectsPanel } from '../components/Demo/SpectatorInjectsPanel';
 import { PursuitMetricsPanel } from '../components/Demo/PursuitMetricsPanel';
+import { SpectatorDecisionsPanel } from '../components/Demo/SpectatorDecisionsPanel';
 import { DemoMapAnimator } from '../components/Demo/DemoMapAnimator';
 
 interface Session {
@@ -1471,6 +1472,9 @@ export const SessionView = () => {
 
         {/* Persistent Injects Panel (stays visible, accumulates all injects) */}
         <SpectatorInjectsPanel sessionId={id} />
+
+        {/* Persistent Decisions Panel (stays visible, full text, accumulates all decisions) */}
+        <SpectatorDecisionsPanel sessionId={id} />
 
         {/* Pursuit Metrics Panel (shows for investigative teams during pursuit scenarios) */}
         <PursuitMetricsPanel
