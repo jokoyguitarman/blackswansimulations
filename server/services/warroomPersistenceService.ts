@@ -184,6 +184,13 @@ export async function persistWarroomScenario(
       }
     }
 
+    // Clear any existing sighting pins before pre-creating (prevents duplicates on re-generation)
+    await supabaseAdmin
+      .from('scenario_locations')
+      .delete()
+      .eq('scenario_id', scenarioId)
+      .eq('pin_category', 'adversary_sighting');
+
     // Pre-create sighting pins for pursuit injects that have adversary_sighting data
     const sightingPinRows: Array<Record<string, unknown>> = [];
     let sightingOrder = 0;

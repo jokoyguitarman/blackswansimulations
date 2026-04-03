@@ -19,12 +19,22 @@ async function resetSightingPinsForScenario(scenarioId: string): Promise<void> {
     const toDelete: string[] = [];
     const toReset: Array<{ id: string; conditions: Record<string, unknown> }> = [];
 
+    // Track seen source_inject_ids to deduplicate pins sharing the same inject
+    const seenInjectIds = new Set<string>();
+
     for (const pin of sightingPins) {
       const conds = (pin.conditions as Record<string, unknown>) || {};
-      if (!conds.source_inject_id) {
+      const sourceInjectId = conds.source_inject_id as string | null;
+
+      if (!sourceInjectId) {
         toDelete.push(pin.id as string);
-      } else if (conds.sighting_status !== 'hidden') {
-        toReset.push({ id: pin.id as string, conditions: conds });
+      } else if (seenInjectIds.has(sourceInjectId)) {
+        toDelete.push(pin.id as string);
+      } else {
+        seenInjectIds.add(sourceInjectId);
+        if (conds.sighting_status !== 'hidden') {
+          toReset.push({ id: pin.id as string, conditions: conds });
+        }
       }
     }
 
