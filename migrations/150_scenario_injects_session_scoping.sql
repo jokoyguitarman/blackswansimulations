@@ -32,8 +32,17 @@ ALTER TABLE scenario_injects
       'sentiment_positive'
     ));
 
--- Clean up existing runtime-generated injects that polluted scenarios.
+-- Clean up ALL existing runtime-generated injects that polluted scenarios.
 -- These have no session_id (column just added) but can be identified by generation_source.
--- Safest approach: delete them since they are session-ephemeral data.
+-- All of these sources are purely runtime — never used during scenario generation.
 DELETE FROM scenario_injects
-  WHERE generation_source IN ('deterioration_cycle', 'sentiment_positive');
+  WHERE generation_source IN (
+    'deterioration_cycle',
+    'sentiment_positive',
+    'adversary_adaptation',
+    'pathway_outcome',
+    'inaction_penalty',
+    'decision_response',
+    'matrix_friction',
+    'specificity_feedback'
+  );

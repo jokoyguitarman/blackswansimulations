@@ -1070,6 +1070,7 @@ export class AIInjectSchedulerService {
             .from('scenario_injects')
             .insert({
               scenario_id: session.scenario_id,
+              session_id: session.id,
               trigger_time_minutes: null,
               trigger_condition: null,
               type: toPublish.inject_payload.type,
@@ -1212,6 +1213,7 @@ export class AIInjectSchedulerService {
       .from('scenario_injects')
       .insert({
         scenario_id: session.scenario_id,
+        session_id: session.id,
         trigger_time_minutes: null,
         trigger_condition: null,
         type: generatedInject.type,
@@ -1219,12 +1221,12 @@ export class AIInjectSchedulerService {
         content: generatedInject.content,
         severity: generatedInject.severity,
         affected_roles: generatedInject.affected_roles || [],
-        inject_scope: 'universal', // Force universal
-        target_teams: null, // Not team-specific
+        inject_scope: 'universal',
+        target_teams: null,
         requires_response: generatedInject.requires_response ?? false,
         requires_coordination: generatedInject.requires_coordination ?? false,
         ai_generated: true,
-        triggered_by_user_id: null, // Universal, not tied to a specific user
+        triggered_by_user_id: null,
         generation_source: 'decision_response',
       })
       .select()
@@ -1343,6 +1345,7 @@ export class AIInjectSchedulerService {
       .from('scenario_injects')
       .insert({
         scenario_id: session.scenario_id,
+        session_id: session.id,
         trigger_time_minutes: null,
         trigger_condition: null,
         type: generatedInject.type,
@@ -1350,12 +1353,12 @@ export class AIInjectSchedulerService {
         content: generatedInject.content,
         severity: generatedInject.severity,
         affected_roles: generatedInject.affected_roles || [],
-        inject_scope: 'team_specific', // Force team-specific
-        target_teams: [teamName], // Only this team
+        inject_scope: 'team_specific',
+        target_teams: [teamName],
         requires_response: generatedInject.requires_response ?? false,
         requires_coordination: generatedInject.requires_coordination ?? false,
         ai_generated: true,
-        triggered_by_user_id: null, // Team-based, not user-based
+        triggered_by_user_id: null,
         generation_source: 'decision_response',
       })
       .select()
@@ -1478,6 +1481,7 @@ export class AIInjectSchedulerService {
         .from('scenario_injects')
         .insert({
           scenario_id: session.scenario_id,
+          session_id: session.id,
           trigger_time_minutes: null,
           trigger_condition: null,
           type: generatedInject.type,

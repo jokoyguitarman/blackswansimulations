@@ -1100,6 +1100,7 @@ async function processExecutedDecisionInBackground(
             .from('scenario_injects')
             .insert({
               scenario_id: sessionScenarioId,
+              session_id: sessionId,
               type: 'field_update',
               title: injectTitle,
               content: failureContent,
