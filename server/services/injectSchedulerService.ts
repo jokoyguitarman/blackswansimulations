@@ -5,6 +5,7 @@ import { shouldCancelScheduledInject } from './aiService.js';
 import { updateTeamHeatMeter } from './heatMeterService.js';
 import { runGateEvaluationForSession } from './gateEvaluationService.js';
 import { mergeStateWithInjectEffects } from './injectPublishEffectsService.js';
+import { runPursuitResponseCheck } from './pursuitResponseTracker.js';
 import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
 import { evaluatePinResolution } from './pinResolutionService.js';
@@ -433,6 +434,13 @@ export class InjectSchedulerService {
       ioForGates = io;
     }
     await runGateEvaluationForSession(session.id, elapsedMinutes, ioForGates);
+
+    // Evaluate pursuit response windows (breadcrumb sighting intel tracking)
+    try {
+      await runPursuitResponseCheck(session.id);
+    } catch (pursuitErr) {
+      logger.warn({ err: pursuitErr, sessionId: session.id }, 'Pursuit response check error');
+    }
 
     // Load gate progress for this session (for required_gate_id and required_gate_not_met_id filtering, and for condition context).
     // scenario_injects.required_gate_id / required_gate_not_met_id are scenario_gates.id (UUID); session_gate_progress uses gate_id (TEXT). Build map by scenario_gates.id.

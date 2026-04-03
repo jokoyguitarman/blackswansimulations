@@ -359,6 +359,7 @@ export async function generateAndPersistWarroomScenario(
     team_description: t.team_description || '',
     min_participants: t.min_participants ?? 1,
     max_participants: t.max_participants ?? 10,
+    is_investigative: (t as unknown as Record<string, unknown>).is_investigative === true,
   }));
 
   // Run Phase 1 (core + teams) to get the narrative before standards research
@@ -519,9 +520,13 @@ export async function generateAndPersistWarroomScenario(
       (payload.insider_knowledge as Record<string, unknown>).adversary_profiles =
         pursuitResult.adversary_profiles;
 
-      payload.time_injects = [...payload.time_injects, ...pursuitResult.pursuit_time_injects].sort(
+      const taggedPursuitInjects = pursuitResult.pursuit_time_injects.map((inj, i) => ({
+        ...inj,
+        _pursuit_inject_index: i,
+      }));
+      payload.time_injects = [...payload.time_injects, ...taggedPursuitInjects].sort(
         (a, b) => a.trigger_time_minutes - b.trigger_time_minutes,
-      );
+      ) as typeof payload.time_injects;
 
       if (!payload.condition_driven_injects) payload.condition_driven_injects = [];
       (payload.condition_driven_injects as Array<Record<string, unknown>>).push(

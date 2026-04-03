@@ -11,6 +11,7 @@ interface Session {
   trainer_id: string;
   start_time: string | null;
   end_time: string | null;
+  join_token?: string;
   scenarios?: {
     title: string;
     category: string;
@@ -159,6 +160,11 @@ export const Sessions = () => {
                     <h3 className="text-lg terminal-text uppercase">
                       {session.scenarios?.title || 'Unknown Scenario'}
                     </h3>
+                    {session.join_token?.startsWith('demo-') && (
+                      <span className="text-[10px] terminal-text px-2 py-0.5 bg-robotic-red/20 text-robotic-red border border-robotic-red rounded uppercase font-bold">
+                        DEMO
+                      </span>
+                    )}
                     <span
                       className={`text-xs terminal-text px-2 py-1 border ${getStatusColor(session.status)}`}
                     >
@@ -200,6 +206,16 @@ export const Sessions = () => {
                         : session.status === 'in_progress'
                           ? '[JOIN]'
                           : '[VIEW]'}
+                    </button>
+                  )}
+                  {session.status === 'in_progress' && session.join_token?.startsWith('demo-') && (
+                    <button
+                      onClick={() =>
+                        navigate(`/sessions/${session.id}?spectator=true&mode=cinematic`)
+                      }
+                      className="px-4 py-2 text-sm terminal-text uppercase border border-robotic-red text-robotic-red hover:bg-robotic-red/10 transition-all"
+                    >
+                      [SPECTATE]
                     </button>
                   )}
                 </div>

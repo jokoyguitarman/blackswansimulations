@@ -7,7 +7,8 @@
       "team_name": "police",
       "team_description": "Active shooter response, room clearance, neutralisation, perimeter",
       "min_participants": 2,
-      "max_participants": 10
+      "max_participants": 10,
+      "is_investigative": true
     },
     {
       "team_name": "evacuation",

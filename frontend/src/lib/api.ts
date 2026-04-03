@@ -438,6 +438,14 @@ export const api = {
         }>;
       }>(await fetch(apiUrl(`/api/sessions/${sessionId}/insider/history`), { headers }));
     },
+    pursuitTimeline: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        responses: unknown[];
+        investigative_teams?: string[];
+        pursuit_metrics?: Record<string, unknown>;
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/pursuit-timeline`), { headers }));
+    },
     hospitalList: async (sessionId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{

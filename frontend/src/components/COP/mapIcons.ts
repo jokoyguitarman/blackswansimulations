@@ -54,6 +54,8 @@ const paths: Record<string, string> = {
 
   // ── Adversary / Pursuit ──
   suspect_silhouette: `<circle cx="8" cy="4" r="2.8" fill="#1f2937" stroke="#ef4444" stroke-width="0.8"/><path d="M4 14v-4a4 4 0 018 0v4" fill="#1f2937" stroke="#ef4444" stroke-width="0.8"/><text x="8" y="12.5" font-size="6" font-weight="bold" fill="#ef4444" text-anchor="middle" font-family="monospace">?</text>`,
+  suspect_debunked: `<circle cx="8" cy="4" r="2.8" fill="#374151" stroke="#6b7280" stroke-width="0.8" opacity="0.5"/><path d="M4 14v-4a4 4 0 018 0v4" fill="#374151" stroke="#6b7280" stroke-width="0.8" opacity="0.5"/><line x1="3" y1="3" x2="13" y2="13" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"/><line x1="13" y1="3" x2="3" y2="13" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"/>`,
+  suspect_stale: `<circle cx="8" cy="4" r="2.8" fill="#374151" stroke="#6b7280" stroke-width="0.8" opacity="0.6"/><path d="M4 14v-4a4 4 0 018 0v4" fill="#374151" stroke="#6b7280" stroke-width="0.8" opacity="0.6"/><text x="8" y="12.5" font-size="6" font-weight="bold" fill="#6b7280" text-anchor="middle" font-family="monospace">?</text>`,
 
   // ── Personnel (team-specific) ──
   marshal: `<circle cx="8" cy="3.5" r="2.2" fill="white"/><path d="M5 14v-4.5a3 3 0 016 0V14" fill="none" stroke="white" stroke-width="1.8"/><rect x="5.5" y="7.5" width="5" height="3" rx="0.5" fill="#f97316" opacity="0.85"/>`,

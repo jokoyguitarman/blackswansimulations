@@ -2369,4 +2369,76 @@ router.use(
   hospitalRouter,
 );
 
+// Pursuit intelligence timeline data for AAR
+router.get(
+  '/:id/pursuit-timeline',
+  requireAuth,
+  validate(schemas.id),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+
+      const { data: responses, error } = await supabaseAdmin
+        .from('session_pursuit_responses')
+        .select('*')
+        .eq('session_id', id)
+        .order('response_window_start', { ascending: true });
+
+      if (error) {
+        return res.status(500).json({ error: error.message });
+      }
+
+      // Load session to get scenario_id and pursuit_metrics from current_state
+      const { data: session } = await supabaseAdmin
+        .from('sessions')
+        .select('scenario_id, current_state')
+        .eq('id', id)
+        .single();
+
+      // Load investigative team info
+      let investigativeTeams: string[] = [];
+      if (session?.scenario_id) {
+        const { data: teams } = await supabaseAdmin
+          .from('scenario_teams')
+          .select('team_name, is_investigative')
+          .eq('scenario_id', session.scenario_id);
+
+        investigativeTeams = (teams ?? [])
+          .filter((t) => (t as Record<string, unknown>).is_investigative === true)
+          .map((t) => (t as Record<string, unknown>).team_name as string);
+      }
+
+      const pursuitMetrics =
+        (session?.current_state as Record<string, unknown>)?.pursuit_metrics || {};
+
+      // Enrich with sighting pin data
+      const enriched = [];
+      for (const row of responses ?? []) {
+        const { data: pin } = await supabaseAdmin
+          .from('scenario_locations')
+          .select('conditions')
+          .eq('id', row.sighting_pin_id)
+          .single();
+
+        const conds = (pin?.conditions as Record<string, unknown>) || {};
+        enriched.push({
+          ...row,
+          zone_label: conds.zone_label || 'Unknown',
+          sighting_order: conds.sighting_order ?? 0,
+          sighting_status: conds.sighting_status || 'active',
+        });
+      }
+
+      return res.json({
+        responses: enriched,
+        investigative_teams: investigativeTeams,
+        pursuit_metrics: pursuitMetrics,
+      });
+    } catch (err) {
+      logger.error({ err, sessionId: req.params.id }, 'Failed to load pursuit timeline');
+      return res.status(500).json({ error: 'Failed to load pursuit timeline' });
+    }
+  },
+);
+
 export { router as sessionsRouter };

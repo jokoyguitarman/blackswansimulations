@@ -100,6 +100,7 @@ interface Team {
   min_participants: number;
   max_participants: number;
   counter_definitions?: CounterDef[];
+  is_investigative?: boolean;
 }
 
 interface LocationPin {
@@ -485,8 +486,13 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                 <div className="space-y-4">
                   {teams.map((team) => (
                     <div key={team.id} className="military-border p-4">
-                      <div className="text-sm terminal-text text-robotic-yellow font-medium uppercase mb-1">
+                      <div className="text-sm terminal-text text-robotic-yellow font-medium uppercase mb-1 flex items-center gap-2">
                         {team.team_name}
+                        {team.is_investigative && (
+                          <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded border border-purple-500/60 bg-purple-500/20 text-purple-300">
+                            INVESTIGATIVE
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs terminal-text text-robotic-yellow/70 mb-2">
                         {team.team_description}
@@ -1980,38 +1986,168 @@ const MapPinsTab = ({
                     </button>
                   </div>
                   {isExpanded && (
-                    <div className="px-4 pb-3 border-t border-robotic-yellow/15 pt-2 space-y-2">
-                      {h.resolution_requirements &&
-                        Object.keys(h.resolution_requirements).length > 0 && (
+                    <div className="px-4 pb-3 border-t border-robotic-yellow/15 pt-2 space-y-3">
+                      {/* Ideal Response Sequence */}
+                      {Array.isArray(
+                        (h.resolution_requirements as Record<string, unknown>)
+                          ?.ideal_response_sequence,
+                      ) &&
+                        (
+                          (h.resolution_requirements as Record<string, unknown>)
+                            .ideal_response_sequence as Array<Record<string, unknown>>
+                        ).length > 0 && (
                           <div>
-                            <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-1">
-                              Resolution Requirements
+                            <div className="text-xs terminal-text text-cyan-400/80 uppercase mb-1 font-bold">
+                              Ideal Response Sequence
                             </div>
-                            <pre className="text-xs terminal-text text-robotic-yellow/60 whitespace-pre-wrap">
-                              {JSON.stringify(h.resolution_requirements, null, 2)}
-                            </pre>
+                            {(
+                              (h.resolution_requirements as Record<string, unknown>)
+                                .ideal_response_sequence as Array<Record<string, unknown>>
+                            ).map((step, i) => (
+                              <div
+                                key={i}
+                                className="flex gap-2 text-xs terminal-text text-robotic-yellow/70 mb-0.5"
+                              >
+                                <span className="text-cyan-400/60 shrink-0 w-5">
+                                  {(step.step as number) ?? i + 1}.
+                                </span>
+                                <span className="flex-1">
+                                  <b className="text-robotic-yellow/90">{String(step.action)}</b>
+                                  {step.detail ? (
+                                    <span className="text-robotic-yellow/50">
+                                      {' '}
+                                      — {String(step.detail)}
+                                    </span>
+                                  ) : null}
+                                  {step.responsible_team ? (
+                                    <span className="text-cyan-400/50 ml-1">
+                                      [{String(step.responsible_team)}]
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </div>
+                            ))}
                           </div>
                         )}
+                      {/* Required PPE */}
+                      {Array.isArray(
+                        (h.resolution_requirements as Record<string, unknown>)?.required_ppe,
+                      ) &&
+                        (
+                          (h.resolution_requirements as Record<string, unknown>)
+                            .required_ppe as Array<Record<string, unknown>>
+                        ).length > 0 && (
+                          <div>
+                            <div className="text-xs terminal-text text-amber-400/80 uppercase mb-1 font-bold">
+                              Required PPE
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(
+                                (h.resolution_requirements as Record<string, unknown>)
+                                  .required_ppe as Array<Record<string, unknown>>
+                              ).map((ppe, i) => (
+                                <span
+                                  key={i}
+                                  className="text-[10px] terminal-text bg-amber-900/30 text-amber-400 px-1.5 py-0.5 rounded border border-amber-400/30"
+                                >
+                                  {String(ppe.item ?? ppe)}
+                                  {ppe.mandatory ? ' *' : ''}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      {/* Estimated Resolution Time */}
+                      {(h.resolution_requirements as Record<string, unknown>)
+                        ?.estimated_resolution_minutes != null && (
+                        <div className="text-xs terminal-text text-robotic-yellow/60">
+                          Est. resolution:{' '}
+                          <b className="text-robotic-yellow/90">
+                            {
+                              (h.resolution_requirements as Record<string, unknown>)
+                                .estimated_resolution_minutes as number
+                            }{' '}
+                            min
+                          </b>
+                        </div>
+                      )}
+                      {/* Equipment Requirements */}
+                      {Array.isArray(h.equipment_requirements) &&
+                        h.equipment_requirements.length > 0 && (
+                          <div>
+                            <div className="text-xs terminal-text text-green-400/80 uppercase mb-1 font-bold">
+                              Equipment Required
+                            </div>
+                            <div className="grid grid-cols-1 gap-1">
+                              {(h.equipment_requirements as Array<Record<string, unknown>>).map(
+                                (eq, i) => (
+                                  <div
+                                    key={i}
+                                    className="text-xs terminal-text text-robotic-yellow/60 flex gap-2"
+                                  >
+                                    <span className="text-green-400/60">
+                                      ×{Number(eq.quantity ?? 1)}
+                                    </span>
+                                    <span>{String(eq.label ?? eq.equipment_type ?? '')}</span>
+                                    {eq.critical ? (
+                                      <span className="text-red-400/60">critical</span>
+                                    ) : null}
+                                    {Array.isArray(eq.applicable_teams) && (
+                                      <span className="text-robotic-yellow/40">
+                                        [{(eq.applicable_teams as string[]).join(', ')}]
+                                      </span>
+                                    )}
+                                  </div>
+                                ),
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      {/* Personnel Requirements */}
                       {h.personnel_requirements &&
                         Object.keys(h.personnel_requirements).length > 0 && (
                           <div>
-                            <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-1">
+                            <div className="text-xs terminal-text text-purple-400/80 uppercase mb-1 font-bold">
                               Personnel
                             </div>
-                            <pre className="text-xs terminal-text text-robotic-yellow/60 whitespace-pre-wrap">
-                              {JSON.stringify(h.personnel_requirements, null, 2)}
-                            </pre>
+                            {Object.entries(h.personnel_requirements).map(([role, details]) => (
+                              <div
+                                key={role}
+                                className="text-xs terminal-text text-robotic-yellow/60 mb-0.5"
+                              >
+                                <span className="text-purple-400/60">
+                                  {role.replace(/_/g, ' ')}:
+                                </span>{' '}
+                                {typeof details === 'object' && details !== null
+                                  ? Object.entries(details as Record<string, unknown>)
+                                      .filter(([k]) => k !== 'role')
+                                      .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
+                                      .join(', ')
+                                  : String(details)}
+                              </div>
+                            ))}
                           </div>
                         )}
+                      {/* Deterioration Timeline */}
                       {h.deterioration_timeline &&
                         Object.keys(h.deterioration_timeline).length > 0 && (
                           <div>
-                            <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-1">
+                            <div className="text-xs terminal-text text-red-400/80 uppercase mb-1 font-bold">
                               Deterioration Timeline
                             </div>
-                            <pre className="text-xs terminal-text text-robotic-yellow/60 whitespace-pre-wrap">
-                              {JSON.stringify(h.deterioration_timeline, null, 2)}
-                            </pre>
+                            {Object.entries(h.deterioration_timeline).map(([stage, info]) => (
+                              <div
+                                key={stage}
+                                className="text-xs terminal-text text-robotic-yellow/60 mb-0.5"
+                              >
+                                <span className="text-red-400/60">{stage.replace(/_/g, ' ')}:</span>{' '}
+                                {typeof info === 'object' && info !== null
+                                  ? Object.entries(info as Record<string, unknown>)
+                                      .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
+                                      .join(', ')
+                                  : String(info)}
+                              </div>
+                            ))}
                           </div>
                         )}
                     </div>
@@ -2067,33 +2203,187 @@ const MapPinsTab = ({
                         </span>
                       </div>
                     </div>
-                    {injuries.length > 0 && (
-                      <button
-                        onClick={() => setExpandedPin(isExpanded ? null : `cas-${c.id}`)}
-                        className="text-robotic-yellow/40 hover:text-robotic-yellow terminal-text text-xs shrink-0 self-start"
-                      >
-                        {isExpanded ? '▲' : '▼'}
-                      </button>
-                    )}
+                    <button
+                      onClick={() => setExpandedPin(isExpanded ? null : `cas-${c.id}`)}
+                      className="text-robotic-yellow/40 hover:text-robotic-yellow terminal-text text-xs shrink-0 self-start"
+                    >
+                      {isExpanded ? '▲' : '▼'}
+                    </button>
                   </div>
-                  {isExpanded && injuries.length > 0 && (
-                    <div className="px-4 pb-3 border-t border-robotic-yellow/15 pt-2">
-                      <div className="space-y-1">
-                        {injuries.map((inj, i) => (
-                          <div
-                            key={i}
-                            className="text-xs terminal-text text-robotic-yellow/60 flex gap-2"
-                          >
-                            <span className="text-robotic-yellow/40">{inj.severity as string}</span>
-                            <span>
-                              {(inj.type as string)?.replace(/_/g, ' ')} — {inj.body_part as string}
-                            </span>
-                            {typeof inj.visible_signs === 'string' && (
-                              <span className="text-robotic-yellow/40">({inj.visible_signs})</span>
+                  {isExpanded && (
+                    <div className="px-4 pb-3 border-t border-robotic-yellow/15 pt-2 space-y-3">
+                      {/* Injuries */}
+                      {injuries.length > 0 && (
+                        <div>
+                          <div className="text-xs terminal-text text-red-400/80 uppercase mb-1 font-bold">
+                            Injuries
+                          </div>
+                          <div className="space-y-0.5">
+                            {injuries.map((inj, i) => (
+                              <div
+                                key={i}
+                                className="text-xs terminal-text text-robotic-yellow/60 flex gap-2"
+                              >
+                                <span className="text-robotic-yellow/40">
+                                  {inj.severity as string}
+                                </span>
+                                <span>
+                                  {(inj.type as string)?.replace(/_/g, ' ')} —{' '}
+                                  {inj.body_part as string}
+                                </span>
+                                {typeof inj.visible_signs === 'string' && (
+                                  <span className="text-robotic-yellow/40">
+                                    ({inj.visible_signs})
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {/* Treatment Requirements */}
+                      {Array.isArray(conds.treatment_requirements) &&
+                        (conds.treatment_requirements as string[]).length > 0 && (
+                          <div>
+                            <div className="text-xs terminal-text text-green-400/80 uppercase mb-1 font-bold">
+                              Treatment Requirements
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(conds.treatment_requirements as string[]).map((req, i) => (
+                                <span
+                                  key={i}
+                                  className="text-[10px] terminal-text bg-green-900/30 text-green-400 px-1.5 py-0.5 rounded border border-green-400/30"
+                                >
+                                  {req}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      {/* Transport Prerequisites */}
+                      {Array.isArray(conds.transport_prerequisites) &&
+                        (conds.transport_prerequisites as string[]).length > 0 && (
+                          <div>
+                            <div className="text-xs terminal-text text-blue-400/80 uppercase mb-1 font-bold">
+                              Transport Prerequisites
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(conds.transport_prerequisites as string[]).map((req, i) => (
+                                <span
+                                  key={i}
+                                  className="text-[10px] terminal-text bg-blue-900/30 text-blue-400 px-1.5 py-0.5 rounded border border-blue-400/30"
+                                >
+                                  {req}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      {/* Contraindications */}
+                      {Array.isArray(conds.contraindications) &&
+                        (conds.contraindications as string[]).length > 0 && (
+                          <div>
+                            <div className="text-xs terminal-text text-red-400/80 uppercase mb-1 font-bold">
+                              Contraindications
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(conds.contraindications as string[]).map((c2, i) => (
+                                <span
+                                  key={i}
+                                  className="text-[10px] terminal-text bg-red-900/30 text-red-400 px-1.5 py-0.5 rounded border border-red-400/30"
+                                >
+                                  {c2}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      {/* Required PPE */}
+                      {Array.isArray(conds.required_ppe) &&
+                        (conds.required_ppe as string[]).length > 0 && (
+                          <div>
+                            <div className="text-xs terminal-text text-amber-400/80 uppercase mb-1 font-bold">
+                              Required PPE
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(conds.required_ppe as string[]).map((ppe, i) => (
+                                <span
+                                  key={i}
+                                  className="text-[10px] terminal-text bg-amber-900/30 text-amber-400 px-1.5 py-0.5 rounded border border-amber-400/30"
+                                >
+                                  {ppe}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      {/* Required Equipment */}
+                      {Array.isArray(conds.required_equipment) &&
+                        (conds.required_equipment as Array<Record<string, unknown>>).length > 0 && (
+                          <div>
+                            <div className="text-xs terminal-text text-cyan-400/80 uppercase mb-1 font-bold">
+                              Required Equipment
+                            </div>
+                            {(conds.required_equipment as Array<Record<string, unknown>>).map(
+                              (eq, i) => (
+                                <div
+                                  key={i}
+                                  className="text-xs terminal-text text-robotic-yellow/60 flex gap-2 mb-0.5"
+                                >
+                                  <span className="text-cyan-400/60">
+                                    ×{Number(eq.quantity ?? 1)}
+                                  </span>
+                                  <span>{String(eq.item ?? '')}</span>
+                                  {eq.purpose ? (
+                                    <span className="text-robotic-yellow/40">
+                                      ({String(eq.purpose)})
+                                    </span>
+                                  ) : null}
+                                </div>
+                              ),
                             )}
                           </div>
-                        ))}
-                      </div>
+                        )}
+                      {/* Ideal Response Sequence */}
+                      {Array.isArray(conds.ideal_response_sequence) &&
+                        (conds.ideal_response_sequence as Array<Record<string, unknown>>).length >
+                          0 && (
+                          <div>
+                            <div className="text-xs terminal-text text-cyan-400/80 uppercase mb-1 font-bold">
+                              Ideal Response Sequence
+                            </div>
+                            {(conds.ideal_response_sequence as Array<Record<string, unknown>>).map(
+                              (step, i) => (
+                                <div
+                                  key={i}
+                                  className="flex gap-2 text-xs terminal-text text-robotic-yellow/70 mb-0.5"
+                                >
+                                  <span className="text-cyan-400/60 shrink-0 w-5">
+                                    {Number(step.step ?? i + 1)}.
+                                  </span>
+                                  <span>
+                                    <b className="text-robotic-yellow/90">{String(step.action)}</b>
+                                    {step.detail ? (
+                                      <span className="text-robotic-yellow/50">
+                                        {' '}
+                                        — {String(step.detail)}
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        )}
+                      {/* Expected Time to Treat */}
+                      {typeof conds.expected_time_to_treat_minutes === 'number' && (
+                        <div className="text-xs terminal-text text-robotic-yellow/60">
+                          Est. treatment time:{' '}
+                          <b className="text-robotic-yellow/90">
+                            {conds.expected_time_to_treat_minutes as number} min
+                          </b>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2112,12 +2402,13 @@ const MapPinsTab = ({
             {crowds.map((c) => {
               const conds = c.conditions;
               const wounded = (conds.mixed_wounded as Array<Record<string, unknown>>) ?? [];
+              const isExpanded = expandedPin === `crowd-${c.id}`;
               return (
                 <div key={c.id} className="military-border">
                   <div className="p-4 flex gap-4">
                     <div className="shrink-0 w-28">
                       <div className="text-xs terminal-text text-violet-400/80 uppercase">
-                        👥 {c.headcount} people
+                        {c.headcount} people
                       </div>
                       <div className="text-xs terminal-text text-robotic-yellow/30 mt-0.5">
                         {c.location_lat.toFixed(4)}, {c.location_lng.toFixed(4)}
@@ -2147,7 +2438,141 @@ const MapPinsTab = ({
                         )}
                       </div>
                     </div>
+                    <button
+                      onClick={() => setExpandedPin(isExpanded ? null : `crowd-${c.id}`)}
+                      className="text-robotic-yellow/40 hover:text-robotic-yellow terminal-text text-xs shrink-0 self-start"
+                    >
+                      {isExpanded ? '▲' : '▼'}
+                    </button>
                   </div>
+                  {isExpanded && (
+                    <div className="px-4 pb-3 border-t border-robotic-yellow/15 pt-2 space-y-3">
+                      {/* Management Priority */}
+                      {conds.management_priority ? (
+                        <div className="text-xs terminal-text text-robotic-yellow/60">
+                          Priority:{' '}
+                          <b className="text-violet-400">
+                            {String(conds.management_priority).replace(/_/g, ' ').toUpperCase()}
+                          </b>
+                        </div>
+                      ) : null}
+                      {/* Ideal Response Sequence */}
+                      {Array.isArray(conds.ideal_response_sequence) &&
+                        (conds.ideal_response_sequence as Array<Record<string, unknown>>).length >
+                          0 && (
+                          <div>
+                            <div className="text-xs terminal-text text-cyan-400/80 uppercase mb-1 font-bold">
+                              Ideal Response Sequence
+                            </div>
+                            {(conds.ideal_response_sequence as Array<Record<string, unknown>>).map(
+                              (step, i) => (
+                                <div
+                                  key={i}
+                                  className="flex gap-2 text-xs terminal-text text-robotic-yellow/70 mb-0.5"
+                                >
+                                  <span className="text-cyan-400/60 shrink-0 w-5">
+                                    {Number(step.step ?? i + 1)}.
+                                  </span>
+                                  <span>
+                                    <b className="text-robotic-yellow/90">{String(step.action)}</b>
+                                    {step.detail ? (
+                                      <span className="text-robotic-yellow/50">
+                                        {' '}
+                                        — {String(step.detail)}
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        )}
+                      {/* Required Personnel */}
+                      {Array.isArray(conds.required_personnel) &&
+                        (conds.required_personnel as Array<Record<string, unknown>>).length > 0 && (
+                          <div>
+                            <div className="text-xs terminal-text text-purple-400/80 uppercase mb-1 font-bold">
+                              Required Personnel
+                            </div>
+                            {(conds.required_personnel as Array<Record<string, unknown>>).map(
+                              (p, i) => (
+                                <div
+                                  key={i}
+                                  className="text-xs terminal-text text-robotic-yellow/60 flex gap-2 mb-0.5"
+                                >
+                                  <span className="text-purple-400/60">
+                                    ×{Number(p.count ?? 1)}
+                                  </span>
+                                  <span>{String(p.role ?? p.type ?? '')}</span>
+                                  {p.purpose ? (
+                                    <span className="text-robotic-yellow/40">
+                                      ({String(p.purpose)})
+                                    </span>
+                                  ) : null}
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        )}
+                      {/* Required Equipment */}
+                      {Array.isArray(conds.required_equipment) &&
+                        (conds.required_equipment as Array<Record<string, unknown>>).length > 0 && (
+                          <div>
+                            <div className="text-xs terminal-text text-green-400/80 uppercase mb-1 font-bold">
+                              Required Equipment
+                            </div>
+                            {(conds.required_equipment as Array<Record<string, unknown>>).map(
+                              (eq, i) => (
+                                <div
+                                  key={i}
+                                  className="text-xs terminal-text text-robotic-yellow/60 flex gap-2 mb-0.5"
+                                >
+                                  <span className="text-green-400/60">
+                                    ×{Number(eq.quantity ?? 1)}
+                                  </span>
+                                  <span>{String(eq.item ?? eq.type ?? '')}</span>
+                                  {eq.purpose ? (
+                                    <span className="text-robotic-yellow/40">
+                                      ({String(eq.purpose)})
+                                    </span>
+                                  ) : null}
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        )}
+                      {/* Estimated Resolution Time */}
+                      {typeof conds.estimated_resolution_minutes === 'number' && (
+                        <div className="text-xs terminal-text text-robotic-yellow/60">
+                          Est. resolution:{' '}
+                          <b className="text-robotic-yellow/90">
+                            {conds.estimated_resolution_minutes as number} min
+                          </b>
+                        </div>
+                      )}
+                      {/* Mixed Wounded Details */}
+                      {wounded.length > 0 && (
+                        <div>
+                          <div className="text-xs terminal-text text-amber-400/80 uppercase mb-1 font-bold">
+                            Mixed Wounded
+                          </div>
+                          {wounded.map((w, i) => (
+                            <div
+                              key={i}
+                              className="text-xs terminal-text text-robotic-yellow/60 flex gap-2 mb-0.5"
+                            >
+                              <span className="text-amber-400/60">
+                                ×{(w.count as number) ?? '?'}
+                              </span>
+                              <span>
+                                {(w.condition as string) ?? (w.triage_color as string) ?? 'unknown'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}

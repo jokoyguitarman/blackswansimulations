@@ -7,7 +7,8 @@
       "team_name": "police",
       "team_description": "Lead response, perimeter, tactical options",
       "min_participants": 2,
-      "max_participants": 8
+      "max_participants": 8,
+      "is_investigative": true
     },
     {
       "team_name": "negotiation",
@@ -19,7 +20,8 @@
       "team_name": "intelligence",
       "team_description": "Intelligence gathering, ingress/egress assessment",
       "min_participants": 2,
-      "max_participants": 6
+      "max_participants": 6,
+      "is_investigative": true
     },
     {
       "team_name": "resort_security",

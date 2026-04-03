@@ -557,6 +557,19 @@ export class DemoAIAgentService {
 
       agent.actedThisCycle = true;
 
+      // Fallback: if the bot submitted a decision but no placement action,
+      // parse the decision text for infrastructure mentions and auto-create placements
+      const hasPlacement = actions.some((a) => a.action === 'placement');
+      const decisionAction = actions.find((a) => a.action === 'decision' && a.decision);
+      if (!hasPlacement && decisionAction?.decision) {
+        await this.tryExtractPlacementsFromDecision(
+          session,
+          agent,
+          decisionAction.decision.title,
+          decisionAction.decision.description,
+        );
+      }
+
       if (response.reasoning) {
         logger.debug(
           { botUserId: agent.persona.botUserId, reasoning: response.reasoning },
@@ -615,6 +628,10 @@ export class DemoAIAgentService {
       '- description: 2-4 sentences bundling ALL tactical moves for this cycle. Reference locations, headcounts, procedures.',
       '',
       '### PLACEMENTS (visualize ONE key map action per decision)',
+      '⚠️ CRITICAL: If your decision mentions establishing any infrastructure (cordon, triage tent, command post, assembly point, staging area, decon zone), you MUST include a placement action with it.',
+      'A decision that says "establish inner cordon" WITHOUT a placement polygon is INCOMPLETE — the cordon will NOT appear on the map.',
+      'If an inject says infrastructure is missing (e.g., "no triage tent deployed", "no cordon in place"), your response MUST include the placement action to fix it.',
+      '',
       'Each placement MUST use the correct geometry type for its asset:',
       '',
       'POINT assets (single location): command_post, triage_point, tactical_unit, helicopter_lz, roadblock, observation_post, casualty_collection, forward_command, medic, fire_truck, ambulance, decontamination_zone',
@@ -655,6 +672,18 @@ export class DemoAIAgentService {
       '⚠️ MANDATORY: You MUST use pin_response (not a regular decision) when interacting with any casualty or hazard.',
       'A regular text decision about a casualty or hazard has NO physical effect on the map. ONLY pin_response actually updates the pin.',
       'If the Ground Situation lists casualties or hazards in your jurisdiction, your FIRST priority is to use pin_response on them.',
+      '',
+      '⚠️ PIN RESPONSE JURISDICTION — ONLY these teams may use pin_response:',
+      '- TRIAGE / MEDICAL / EMS / AMBULANCE teams → pin_response on CASUALTIES (triage, treat, transport)',
+      '- FIRE / HAZMAT teams → pin_response on HAZARDS (contain, mitigate, suppress) AND on casualties in the HOT ZONE (extract only, then hand off to medical)',
+      '- EVACUATION teams → pin_response on CROWDS only (direct evacuation, not medical treatment)',
+      '',
+      'Teams that must NEVER use pin_response:',
+      '- POLICE / SECURITY → Do NOT triage patients or mitigate hazards. Your job is cordons, exits, containment, pursuit. If you find casualties, radio medical/triage team in chat.',
+      '- MEDIA / PRESS / PIO → Do NOT interact with any pins. Your job is public communication and media management only.',
+      '- INTELLIGENCE / COMMAND → Do NOT interact with pins directly. Coordinate through other teams via chat.',
+      '',
+      'If a casualty or hazard appears and it is NOT your jurisdiction, send a CHAT message alerting the responsible team instead of using pin_response.',
       '',
       '- target_id: COPY the exact UUID from the casualties/hazards list below (the part inside [id:...]). This must be exact.',
       '- target_type: "casualty" or "hazard"',
@@ -716,6 +745,8 @@ export class DemoAIAgentService {
       '',
       '## CRITICAL Rules',
       '- Every turn MUST have exactly 1 decision (or 1 pin_response) + 1 placement/claim + 1 chat.',
+      '- If your decision mentions establishing ANY infrastructure (cordon, triage, command post, staging, zone, decon, assembly point, roadblock, fire engine), you MUST ALSO include a placement action for it in the same turn.',
+      '- If for some reason you cannot include a placement action, your decision text MUST include the exact coordinates [lat, lng] where the structure should be placed. This is a FALLBACK only — always prefer the placement action.',
       '- ALWAYS prefer pin_response over decision when there are casualties or hazards in your jurisdiction. A text decision CANNOT triage a patient or contain a hazard — only pin_response can.',
       '- Only use a regular decision when there are NO actionable casualties/hazards for your team, or for general operational actions (establishing cordons, requesting resources, coordinating).',
       '- Bundle ALL your tactical moves into ONE decision with a rich description.',
@@ -743,6 +774,12 @@ export class DemoAIAgentService {
           '- You may ignore active hazards or not check environmental conditions before deploying.',
           '- Your polygons for cordons are often too small or poorly positioned.',
           '- About 40% of your decisions should have some kind of quality issue.',
+          '',
+          '### Adversary Pursuit (if applicable)',
+          '- If sighting injects appear with intel grades (like B2, D4), you tend to IGNORE the grade.',
+          '- You commit resources impulsively to every sighting — even low-confidence ones.',
+          '- You often fall for false leads and do NOT verify intelligence before deploying.',
+          '- You rarely discuss source reliability or cross-reference multiple sightings.',
         );
         break;
       case 'advanced':
@@ -750,18 +787,19 @@ export class DemoAIAgentService {
           'You are an ADVANCED EXPERT responder with deep operational and game-mechanics knowledge.',
           'You play like a seasoned crisis management professional who understands every nuance of the system.',
           '',
-          '### Zone Architecture (MANDATORY for expert play)',
-          '- You MUST establish 3 concentric zone polygons early: HOT ZONE (innermost, immediate danger area around the incident), WARM ZONE (buffer/decontamination/triage staging), COLD ZONE (outermost, safe area for command post, media, logistics).',
-          '- The HOT zone polygon should tightly surround the incident and known hazards.',
-          '- The WARM zone polygon should be larger, encompassing triage points, decon corridors, and casualty collection areas.',
-          '- The COLD zone polygon should be the outermost perimeter, containing assembly points, command post, and media staging.',
-          '- Every casualty and hazard pin should be INSIDE a zone polygon. Pins outside any zone are operationally unsecured.',
+          '### Zone Architecture (ownership rules)',
+          'The scene requires 3 concentric zone polygons: HOT ZONE (innermost), WARM ZONE (buffer/staging), COLD ZONE (outermost).',
+          "- ONLY the Police/Security team OR Fire/HAZMAT team draws these zone polygons. They are the Incident Commander's responsibility.",
+          '- If you are Police/Security or Fire/HAZMAT: draw the zone polygons early as one of your first placements.',
+          '- If you are ANY OTHER TEAM: do NOT draw zone polygons. Instead, REFERENCE the zones already drawn by police/fire when describing where you are operating.',
+          '- If you see in "Deployed Infrastructure" that zone polygons already exist, do NOT redraw them. Work within what is already established.',
+          '- The HOT zone tightly surrounds the incident and hazards. The WARM zone is larger (triage, decon). The COLD zone is outermost (command, media, assembly).',
           '',
-          '### Cordon & Security Layers',
-          '- INNER CORDON: a polygon tightly around the hot zone. Only authorized responders enter. Place this BEFORE entering the hot zone.',
-          '- OUTER CORDON: a wider polygon around the entire scene. Controls public access. Place this to keep civilians, media, and bystanders out.',
-          '- Cordons should be drawn BEFORE operations begin inside them. You do NOT enter an unsecured hot zone.',
-          '- Every operational area (triage tent, decon zone, field hospital) should be placed INSIDE the appropriate zone polygon.',
+          '### Cordon & Security Layers (Police/Security responsibility)',
+          '- INNER CORDON and OUTER CORDON are drawn EXCLUSIVELY by the Police/Security team.',
+          '- Other teams do NOT draw cordons. They request police to secure an area if needed.',
+          '- Police must place outer cordon BEFORE other teams begin operations.',
+          '- Every operational area should be placed INSIDE the appropriate zone polygon.',
           '',
           '### Equipment & Resource Specificity',
           '- When triaging or treating a patient, you MUST specify the equipment and resources being deployed:',
@@ -806,15 +844,54 @@ export class DemoAIAgentService {
           '',
           '### Operational Sequencing (expert knows the correct order)',
           '1. FIRST: Place COMMAND POST for your team in the cold zone → this is your base.',
-          '2. SECOND: Establish outer cordon and claim exits → scene security before anything else.',
-          '3. THIRD: Draw hot/warm/cold zone polygons → define the operational geography.',
-          '4. FOURTH: Deploy inner cordon around hot zone → secure the danger area.',
-          '5. FIFTH: Place team-specific infrastructure (triage tent, decon corridor, staging area) inside the appropriate zone.',
-          '6. SIXTH: Begin pin_response interactions — one casualty/hazard at a time. Specify all equipment and PPE.',
-          '7. SEVENTH: Extract patients from hot zone to warm zone with proper equipment → specify stretchers, splints, PPE.',
-          '8. EIGHTH: Treat patients at triage point → administer care based on triage color with named equipment.',
-          '9. NINTH: Transport treated patients to named hospital → only after treatment, with named vehicle.',
-          '10. THROUGHOUT: Contain and mitigate hazards before they escalate → fire suppression, chemical containment.',
+          '2. SECOND (Police/Security ONLY): Establish outer cordon, claim exits, draw hot/warm/cold zone polygons.',
+          "3. THIRD (Fire/HAZMAT ONLY): If police hasn't drawn zones yet, draw them. Place decon corridor. Assess hazards.",
+          '4. FOURTH: Place team-specific infrastructure INSIDE the appropriate zone (triage tent in warm zone, assembly point in cold zone, etc.).',
+          '5. FIFTH: Begin pin_response interactions — one casualty/hazard at a time. Specify all equipment AND PPE.',
+          '6. SIXTH: Follow jurisdiction rules for patient movement:',
+          '   - HOT ZONE extraction: ONLY Fire/HAZMAT or trained HAZMAT paramedics extract patients from hot zone to warm zone boundary. They wear full PPE.',
+          '   - WARM ZONE treatment: Medical/Triage team receives patients at the warm zone boundary. They triage and treat.',
+          '   - COLD ZONE transport: Medical team arranges transport from warm/cold zone to hospital.',
+          '   - If you are NOT Fire/HAZMAT, do NOT enter the hot zone. Request fire team to extract casualties to you.',
+          '7. SEVENTH: Transport treated patients to named hospital → only after treatment, with named vehicle.',
+          '8. THROUGHOUT: Contain and mitigate hazards (fire/HAZMAT only). Other teams support from outside.',
+          '',
+          '### Responding to Injects (CRITICAL)',
+          'The Injects Panel shows time-based events, consequences, and situational updates during the exercise.',
+          '- You MUST read and respond to the inject that triggered your current turn.',
+          '- If the inject describes a new threat, casualty, or situation change — address it directly in your decision.',
+          '- If the inject is a consequence of a previous failure (e.g., "fire has spread", "suspect escaped"), acknowledge it and take corrective action.',
+          '- If the inject is a specificity failure or environmental inconsistency feedback — fix the issue in your next decision (e.g., place the missing equipment, correct the approach).',
+          '- ⚠️ IMPORTANT: If the inject says infrastructure is MISSING (e.g., "no triage tent", "no cordon", "no command post"), your response MUST include a PLACEMENT action to create it. Writing about it in text is NOT enough — the physical asset must appear on the map.',
+          '- Do NOT ignore injects. Every inject requires acknowledgment and a team-appropriate response.',
+          '- If the inject is not relevant to your team (e.g., fire update for evacuation team), acknowledge in chat but do not take action outside your jurisdiction.',
+          '',
+          '### How to Construct Your Answer (MANDATORY format)',
+          'Every decision description MUST follow this structure:',
+          '',
+          '**1. SITUATION ASSESSMENT (1 sentence):**',
+          'State what you are responding to. Reference the inject or ground situation by name.',
+          'Example: "In response to the reported fire spread at Level 2 corridor, ..."',
+          '',
+          '**2. ACTION (specific):**',
+          'State exactly what you are doing. Name the target by location/description.',
+          'Example: "...deploying Engine Company Alpha to suppress the fire at Level 2 east wing corridor."',
+          '',
+          '**3. EQUIPMENT LIST (specific items from available resources):**',
+          'Name every piece of equipment being used. Do NOT say "appropriate equipment" — list them.',
+          'Example: "Equipment: 2x 38mm hose lines (60m each), 1x thermal imaging camera, Class A foam concentrate, 1x positive pressure ventilation fan."',
+          '',
+          '**4. PERSONNEL ASSIGNMENT (exact numbers):**',
+          'Assign specific numbers of personnel by role. Do NOT say "a team" — give exact count and role.',
+          'Example: "Personnel: 4 firefighters from Engine Company Alpha (2 on hose line, 1 on ventilation, 1 as safety officer), supervised by Station Officer Tan."',
+          '',
+          '**5. PROTECTIVE GEAR (for the responders):**',
+          'State what PPE the responders are wearing. This is required for any hot/warm zone operation.',
+          'Example: "PPE: Full turnout gear, SCBA (30-min cylinders), flash hoods, heat-resistant gloves."',
+          '',
+          '**6. EXPECTED OUTCOME (1 sentence):**',
+          'State what you expect to achieve.',
+          'Example: "Expected to contain the fire within 15 minutes, preventing spread to Level 3."',
           '',
           '### Spatial Awareness',
           '- Every decision should reference WHERE on the map the action is happening.',
@@ -823,18 +900,35 @@ export class DemoAIAgentService {
           '- Evacuation routes (LineString) should connect the incident area through exits to assembly points.',
           '- Do NOT place triage inside the hot zone — it is dangerous and operationally incorrect.',
           '',
-          '### Coordination & Communication',
+          '### Coordination & Jurisdiction',
           '- Reference what other teams have done and build on their work.',
-          '- When fire team contains a hazard, medical team can then safely enter to extract casualties.',
-          '- When police secures a cordon, evacuation team can begin directing crowds through safe exits.',
+          '- Fire/HAZMAT clears the hot zone → then medical can operate at the warm zone boundary.',
+          '- Police secures cordons → then evacuation can direct crowds through secured exits.',
+          '- Medical triages and treats → then transport arranges ambulance to hospital.',
+          "- NEVER do another team's job. If you need something outside your jurisdiction, REQUEST it in chat.",
           '- Use proper radio protocol: state your team, your action, your location, your resource request.',
           '',
           '### Expert Decision Quality',
-          '- Your decisions are always OPERATIONALLY SPECIFIC: exact locations, personnel counts, equipment lists, procedure names.',
+          '- Your decisions are always OPERATIONALLY SPECIFIC: exact locations, exact personnel counts, exact equipment lists, procedure names.',
           '- You reference sector standards and doctrines by name.',
           '- You check environmental conditions and hazard status before committing resources.',
           '- Virtually all your decisions should be sound, well-formed, and actionable.',
           '- You respond to ALL environmental truths: insider knowledge, hazard properties, casualty conditions.',
+          '- NEVER use vague language like "appropriate resources", "a team", "necessary equipment". Always name specifics.',
+          '',
+          '### Adversary Pursuit Intelligence (EXPERT)',
+          'When sighting injects appear with NATO intel grades, apply analytical rigor:',
+          '- ALWAYS reference the NATO grade in your decision text (e.g., "This B2-graded sighting from CCTV...").',
+          '- Source Reliability: A=completely reliable, B=usually reliable, C=fairly reliable, D=not usually reliable, E=unreliable, F=cannot judge.',
+          '- Information Credibility: 1=confirmed, 2=probably true, 3=possibly true, 4=doubtful, 5=improbable.',
+          '- A high-reliability source CAN deliver wrong information (e.g., CCTV capturing the wrong person). The source grade and the truth are independent.',
+          '- For A1-B2 sightings: commit resources with confidence but verify — maintain reserves.',
+          '- For C3-D4 sightings: exercise caution. Discuss in team chat. Deploy observation only, not full commitment.',
+          '- For E5-F5 sightings: treat with EXTREME skepticism. Do NOT commit resources. Request corroboration from a second source before acting.',
+          '- When a sighting appears AFTER a previous one in a different direction: analyze if the movement pattern makes sense. Fleeing suspects follow logical paths.',
+          '- Cross-reference multiple sightings: if an E5 bystander sighting aligns with a B2 CCTV sighting in the same corridor, the E5 gains credibility.',
+          '- If you identify a potential false lead, mention it in chat: "B2 sighting at Car Park B may be a civilian — contradicts the A1 body camera direction of travel."',
+          '- The system silently tracks your resource allocation to sighting tips — wasting resources on false leads incurs heat penalties.',
         );
 
         // Team-specific expert playbook
@@ -848,6 +942,12 @@ export class DemoAIAgentService {
           '- You generally stay within your team jurisdiction with occasional minor overlap.',
           '- You use some professional terminology but may not always cite specific standards.',
           '- About 15-20% of your decisions should have minor quality issues.',
+          '',
+          '### Adversary Pursuit (if applicable)',
+          "- When sighting injects appear with intel grades (like B2, D4), you acknowledge them but don't always act on the grading systematically.",
+          '- You sometimes commit resources to medium-confidence sightings without fully evaluating.',
+          "- You occasionally discuss source reliability in chat but don't consistently apply critical analysis.",
+          '- You may catch one false lead but miss others — your judgment is decent but imperfect.',
         );
     }
 
@@ -958,55 +1058,274 @@ export class DemoAIAgentService {
         }
       }
 
-      // Hazard detailed properties
+      // Hazard detailed properties with full resolution playbook
       const { data: hazards } = await supabaseAdmin
         .from('scenario_hazards')
-        .select('hazard_type, status, properties, resolution_requirements')
+        .select(
+          'hazard_type, status, properties, resolution_requirements, personnel_requirements, equipment_requirements, enriched_description',
+        )
         .eq('session_id', sessionId)
         .in('status', ['active', 'escalating', 'contained'])
         .limit(8);
 
       if (hazards && hazards.length > 0) {
-        sections.push('', '## 🔬 HAZARD DETAILS (full environmental truth):');
+        sections.push(
+          '',
+          '## 🔬 HAZARD DETAILS (full environmental truth — use to make perfect decisions):',
+        );
         for (const h of hazards as Array<Record<string, unknown>>) {
           const props = h.properties as Record<string, unknown> | null;
           const reqs = h.resolution_requirements as Record<string, unknown> | null;
-          const details = [
-            `Type: ${h.hazard_type}, Status: ${h.status}`,
-            props ? `Properties: ${JSON.stringify(props)}` : '',
-            reqs ? `Resolution requires: ${JSON.stringify(reqs)}` : '',
-          ]
-            .filter(Boolean)
-            .join('. ');
-          sections.push(`- ${details}`);
+          const persReqs = h.personnel_requirements as Record<string, unknown> | null;
+          const eqReqs = h.equipment_requirements as Array<Record<string, unknown>> | null;
+
+          sections.push(`\n### Hazard: ${h.hazard_type} — Status: ${h.status}`);
+          if (h.enriched_description) {
+            sections.push(`  Situation: ${h.enriched_description}`);
+          }
+          if (props) {
+            sections.push(`  Properties: ${JSON.stringify(props)}`);
+          }
+
+          if (reqs) {
+            const idealSeq = reqs.ideal_response_sequence as
+              | Array<{ step: number; action: string; detail: string; responsible_team?: string }>
+              | undefined;
+            const reqPpe = reqs.required_ppe as
+              | Array<{ item: string; for_role?: string }>
+              | undefined;
+
+            if (idealSeq && idealSeq.length > 0) {
+              sections.push('  ✅ IDEAL RESPONSE SEQUENCE (follow this exactly):');
+              for (const s of idealSeq) {
+                sections.push(
+                  `    Step ${s.step}: ${s.action}${s.responsible_team ? ` [${s.responsible_team}]` : ''} — ${s.detail}`,
+                );
+              }
+            }
+            if (reqPpe && reqPpe.length > 0) {
+              sections.push(
+                `  🧤 REQUIRED PPE: ${reqPpe.map((p) => `${p.item}${p.for_role ? ` (${p.for_role})` : ''}`).join(', ')}`,
+              );
+            }
+            const safetyPrecautions = reqs.safety_precautions as string[] | undefined;
+            if (safetyPrecautions && safetyPrecautions.length > 0) {
+              sections.push(`  ⚠️ Safety precautions: ${safetyPrecautions.join('; ')}`);
+            }
+            if (reqs.approach_method) {
+              sections.push(`  Approach method: ${reqs.approach_method}`);
+            }
+            if (reqs.estimated_resolution_minutes) {
+              sections.push(
+                `  Expected resolution time: ~${reqs.estimated_resolution_minutes} minutes`,
+              );
+            }
+          }
+
+          if (persReqs) {
+            sections.push(
+              `  Personnel: ${persReqs.primary_responder ?? 'unknown'} x${persReqs.minimum_count ?? '?'}${persReqs.specialist_needed ? `, specialist: ${persReqs.specialist_type}` : ''}${(persReqs.support_roles as string[])?.length ? `, support: ${(persReqs.support_roles as string[]).join(', ')}` : ''}`,
+            );
+          }
+
+          if (eqReqs && eqReqs.length > 0) {
+            sections.push(
+              `  Equipment: ${eqReqs.map((e) => `${e.label || e.equipment_type} x${e.quantity}${e.critical ? ' [CRITICAL]' : ''}`).join(', ')}`,
+            );
+          }
         }
       }
 
-      // Casualty detailed conditions
+      // Casualty detailed conditions with full ideal response playbook
       const { data: casualties } = await supabaseAdmin
         .from('scenario_casualties')
-        .select(
-          'casualty_type, headcount, status, conditions, treatment_requirements, transport_prerequisites',
-        )
+        .select('id, casualty_type, headcount, status, conditions')
         .eq('session_id', sessionId)
-        .in('status', ['undiscovered', 'identified', 'endorsed_to_triage', 'in_treatment'])
-        .limit(10);
+        .in('status', [
+          'undiscovered',
+          'identified',
+          'endorsed_to_triage',
+          'in_treatment',
+          'being_evacuated',
+          'at_assembly',
+        ])
+        .limit(15);
 
       if (casualties && casualties.length > 0) {
-        sections.push('', '## 🏥 CASUALTY MEDICAL DETAILS (full clinical truth):');
-        for (const c of casualties as Array<Record<string, unknown>>) {
-          const conds = c.conditions as Record<string, unknown> | null;
-          const treatReqs = c.treatment_requirements as Record<string, unknown> | null;
-          const transReqs = c.transport_prerequisites as Record<string, unknown> | null;
-          const details = [
-            `${c.casualty_type} (${c.headcount}), status: ${c.status}`,
-            conds ? `Conditions: ${JSON.stringify(conds)}` : '',
-            treatReqs ? `Treatment required: ${JSON.stringify(treatReqs)}` : '',
-            transReqs ? `Transport prerequisites: ${JSON.stringify(transReqs)}` : '',
-          ]
-            .filter(Boolean)
-            .join('. ');
-          sections.push(`- ${details}`);
+        const patients = (casualties as Array<Record<string, unknown>>).filter(
+          (c) => c.casualty_type === 'patient',
+        );
+        const crowds = (casualties as Array<Record<string, unknown>>).filter(
+          (c) => c.casualty_type === 'crowd' || c.casualty_type === 'evacuee_group',
+        );
+        const convergent = (casualties as Array<Record<string, unknown>>).filter(
+          (c) => c.casualty_type === 'convergent_crowd',
+        );
+
+        if (patients.length > 0) {
+          sections.push(
+            '',
+            '## 🏥 PATIENT DETAILS (full clinical truth — use to make perfect decisions):',
+          );
+          for (const c of patients) {
+            const conds = (c.conditions ?? {}) as Record<string, unknown>;
+            const idShort = (c.id as string).slice(0, 8);
+            sections.push(`\n### Patient [${idShort}] — Status: ${c.status}`);
+            sections.push(
+              `  Triage: ${conds.triage_color ?? 'unassessed'}, Mobility: ${conds.mobility ?? 'unknown'}, Consciousness: ${conds.consciousness ?? 'unknown'}, Breathing: ${conds.breathing ?? 'unknown'}`,
+            );
+
+            const injuries = conds.injuries as
+              | Array<{ type: string; severity: string; body_part: string }>
+              | undefined;
+            if (injuries?.length) {
+              sections.push(
+                `  Injuries: ${injuries.map((i) => `${i.severity} ${i.type} (${i.body_part})`).join('; ')}`,
+              );
+            }
+
+            const treatReqs = conds.treatment_requirements as
+              | Array<{ intervention: string; priority: string; reason: string }>
+              | undefined;
+            if (treatReqs?.length) {
+              sections.push(
+                `  Required treatment: ${treatReqs.map((t) => `${t.intervention} [${t.priority}] — ${t.reason}`).join('; ')}`,
+              );
+            }
+
+            const transPrereqs = conds.transport_prerequisites as string[] | undefined;
+            if (transPrereqs?.length) {
+              sections.push(`  Before transport: ${transPrereqs.join(', ')}`);
+            }
+
+            const contraindications = conds.contraindications as string[] | undefined;
+            if (contraindications?.length) {
+              sections.push(`  ⛔ Do NOT: ${contraindications.join(', ')}`);
+            }
+
+            const idealSeq = conds.ideal_response_sequence as
+              | Array<{ step: number; action: string; detail: string }>
+              | undefined;
+            if (idealSeq?.length) {
+              sections.push('  ✅ IDEAL RESPONSE SEQUENCE (follow this exactly):');
+              for (const s of idealSeq) {
+                sections.push(`    Step ${s.step}: ${s.action} — ${s.detail}`);
+              }
+            }
+
+            const reqPpe = conds.required_ppe as string[] | undefined;
+            if (reqPpe?.length) {
+              sections.push(`  🧤 PPE for responder: ${reqPpe.join(', ')}`);
+            }
+
+            const reqEquip = conds.required_equipment as
+              | Array<{ item: string; quantity: number; purpose: string }>
+              | undefined;
+            if (reqEquip?.length) {
+              sections.push(
+                `  🔧 Equipment needed: ${reqEquip.map((e) => `${e.item} x${e.quantity} (${e.purpose})`).join('; ')}`,
+              );
+            }
+
+            const expectedTime = conds.expected_time_to_treat_minutes as number | undefined;
+            if (expectedTime) {
+              sections.push(`  ⏱️ Expected treatment time: ~${expectedTime} minutes`);
+            }
+          }
+        }
+
+        if (crowds.length > 0) {
+          sections.push('', '## 👥 CROWD DETAILS (use to make perfect evacuation decisions):');
+          for (const c of crowds) {
+            const conds = (c.conditions ?? {}) as Record<string, unknown>;
+            sections.push(
+              `\n### Crowd (${c.headcount} people) — Status: ${c.status}, Behavior: ${conds.behavior ?? 'unknown'}`,
+            );
+            if (conds.visible_description) {
+              sections.push(`  Visible: ${conds.visible_description}`);
+            }
+            if (conds.blocking_exit) {
+              sections.push(`  ⚠️ Blocking exit: ${conds.blocking_exit}`);
+            }
+            if (conds.bottleneck) {
+              sections.push('  ⚠️ Bottleneck risk: YES');
+            }
+            if (conds.movement_direction) {
+              sections.push(`  Moving: ${conds.movement_direction}`);
+            }
+
+            const crowdIdealSeq = conds.ideal_response_sequence as
+              | Array<{ step: number; action: string; detail: string }>
+              | undefined;
+            if (crowdIdealSeq?.length) {
+              sections.push('  ✅ IDEAL CROWD MANAGEMENT SEQUENCE:');
+              for (const s of crowdIdealSeq) {
+                sections.push(`    Step ${s.step}: ${s.action} — ${s.detail}`);
+              }
+            }
+
+            const crowdEquip = conds.required_equipment as
+              | Array<{ item: string; quantity: number; purpose: string }>
+              | undefined;
+            if (crowdEquip?.length) {
+              sections.push(
+                `  Equipment: ${crowdEquip.map((e) => `${e.item} x${e.quantity} (${e.purpose})`).join('; ')}`,
+              );
+            }
+
+            const crowdPersonnel = conds.required_personnel as
+              | { role: string; count: number }
+              | undefined;
+            if (crowdPersonnel) {
+              sections.push(`  Personnel: ${crowdPersonnel.count}x ${crowdPersonnel.role}`);
+            }
+
+            if (conds.management_priority) {
+              sections.push(`  Priority: ${conds.management_priority}`);
+            }
+          }
+        }
+
+        if (convergent.length > 0) {
+          sections.push('', '## 🚶 CONVERGENT CROWD DETAILS (arriving from outside):');
+          for (const c of convergent) {
+            const conds = (c.conditions ?? {}) as Record<string, unknown>;
+            sections.push(
+              `\n### ${conds.crowd_origin ?? 'Unknown'} group (${c.headcount} people) — Status: ${c.status}, Behavior: ${conds.behavior ?? 'unknown'}`,
+            );
+            if (conds.visible_description) {
+              sections.push(`  Visible: ${conds.visible_description}`);
+            }
+            if (conds.obstruction_risk) {
+              sections.push(`  Obstruction risk: ${conds.obstruction_risk}`);
+            }
+
+            const convIdealSeq = conds.ideal_response_sequence as
+              | Array<{ step: number; action: string; detail: string }>
+              | undefined;
+            if (convIdealSeq?.length) {
+              sections.push('  ✅ IDEAL MANAGEMENT SEQUENCE:');
+              for (const s of convIdealSeq) {
+                sections.push(`    Step ${s.step}: ${s.action} — ${s.detail}`);
+              }
+            }
+
+            const convEquip = conds.required_equipment as
+              | Array<{ item: string; quantity: number; purpose: string }>
+              | undefined;
+            if (convEquip?.length) {
+              sections.push(
+                `  Equipment: ${convEquip.map((e) => `${e.item} x${e.quantity} (${e.purpose})`).join('; ')}`,
+              );
+            }
+
+            const convPersonnel = conds.required_personnel as
+              | { role: string; count: number }
+              | undefined;
+            if (convPersonnel) {
+              sections.push(`  Personnel: ${convPersonnel.count}x ${convPersonnel.role}`);
+            }
+          }
         }
       }
 
@@ -1103,11 +1422,12 @@ export class DemoAIAgentService {
         '- Personnel: specify crew size ("Engine Company Alpha, 4 firefighters" not just "a fire team")',
         '',
         '#### Critical Rules:',
-        '- NEVER send medical teams into the hot zone until YOU confirm it is safe — this is YOUR responsibility',
+        '- YOU are the ONLY team authorized to enter the hot zone. No medical, police, or evacuation team enters until you declare it safe.',
+        '- Hot zone casualty extraction is YOUR exclusive job: locate casualties, stabilize with basic DRABC, carry them on stretcher with full PPE to the warm zone boundary. Then radio medical to take over.',
         '- Check wind direction before positioning (upwind approach for HAZMAT)',
-        '- If there are casualties inside the hot zone, YOU extract them to the warm zone boundary — then medical takes over',
         '- Structural assessment before entry — if building is compromised, request structural engineer before sending crews in',
         '- Establish a water supply point and specify hydrant location or tanker',
+        '- When responding to an inject about fire spread or hazard escalation, your decision MUST name: which engine company, how many firefighters, what hose line diameter, what agent, what PPE level.',
       );
     }
 
@@ -1161,7 +1481,8 @@ export class DemoAIAgentService {
         '- Set up casualty collection point at hot/warm zone boundary — fire team brings patients TO you',
         '- Track patient numbers: state how many GREEN/YELLOW/RED/BLACK at each decision point',
         '- If hospital capacity is an issue, mention load-balancing across facilities',
-        '- Request specific specialist resources: "2 paramedics with ALS capability" not just "medical team"',
+        '- Request specific specialist resources by exact count and role: "2 paramedics with ALS capability, 1 triage officer, 3 stretcher bearers" — NEVER just "medical team"',
+        '- Every pin_response MUST list: equipment items by name, responder count, PPE worn by responders, expected outcome',
       );
     }
 
@@ -1455,12 +1776,20 @@ export class DemoAIAgentService {
           action.decision.description,
         );
         if (converted) {
-          logger.info(
-            { botUserId, targetId: converted.target_id, targetType: converted.target_type },
-            'AI agent: auto-converted decision to pin_response (decision text referenced a pin)',
-          );
-          await this.dispatcher.respondToPin(sessionId, botUserId, teamName, converted);
-          break;
+          // Block auto-conversion for teams without pin jurisdiction
+          if (this.isTeamBlockedFromPinResponse(teamName, converted.target_type)) {
+            logger.info(
+              { botUserId, teamName, targetType: converted.target_type },
+              'AI agent: skipping auto-converted pin_response — team has no jurisdiction',
+            );
+          } else {
+            logger.info(
+              { botUserId, targetId: converted.target_id, targetType: converted.target_type },
+              'AI agent: auto-converted decision to pin_response (decision text referenced a pin)',
+            );
+            await this.dispatcher.respondToPin(sessionId, botUserId, teamName, converted);
+            break;
+          }
         }
 
         await this.dispatcher.proposeAndExecuteDecision(sessionId, botUserId, {
@@ -1506,6 +1835,14 @@ export class DemoAIAgentService {
           logger.warn(
             { botUserId, pinResponse: action.pin_response },
             'AI agent: pin_response missing target_id, skipping',
+          );
+          break;
+        }
+        // Server-side jurisdiction guard: block teams that shouldn't interact with pins
+        if (this.isTeamBlockedFromPinResponse(teamName, action.pin_response.target_type)) {
+          logger.warn(
+            { botUserId, teamName, targetType: action.pin_response.target_type },
+            'AI agent: pin_response blocked — team has no jurisdiction over this pin type',
           );
           break;
         }
@@ -1759,6 +2096,305 @@ export class DemoAIAgentService {
       if (actions.length === 0) actions.push('Assess and Contain');
     }
     return actions;
+  }
+
+  /**
+   * When a bot writes a decision mentioning infrastructure (cordon, triage tent,
+   * command post, etc.) but didn't include a placement action, parse the text
+   * and auto-create the placement on the map.
+   */
+  private async tryExtractPlacementsFromDecision(
+    session: SessionAgents,
+    agent: AgentState,
+    title: string,
+    description: string,
+  ): Promise<void> {
+    const fullText = `${title} ${description}`.toLowerCase();
+    const center = session.incidentCenter;
+    if (!center) return;
+
+    // Known infrastructure patterns → asset_type + geometry type
+    const INFRASTRUCTURE_PATTERNS: Array<{
+      pattern: RegExp;
+      asset_type: string;
+      geometry: 'point' | 'polygon';
+      zoneOffset: 'hot' | 'warm' | 'cold';
+      label: string;
+    }> = [
+      {
+        pattern: /command\s*post/i,
+        asset_type: 'command_post',
+        geometry: 'point',
+        zoneOffset: 'cold',
+        label: 'Command Post',
+      },
+      {
+        pattern: /triage\s*(tent|point|area|station)/i,
+        asset_type: 'triage_point',
+        geometry: 'point',
+        zoneOffset: 'warm',
+        label: 'Triage Point',
+      },
+      {
+        pattern: /field\s*hospital/i,
+        asset_type: 'field_hospital',
+        geometry: 'point',
+        zoneOffset: 'cold',
+        label: 'Field Hospital',
+      },
+      {
+        pattern: /assembly\s*(point|area)/i,
+        asset_type: 'assembly_point',
+        geometry: 'point',
+        zoneOffset: 'cold',
+        label: 'Assembly Point',
+      },
+      {
+        pattern: /decon(tamination)?\s*(corridor|zone|area|station)/i,
+        asset_type: 'decontamination_zone',
+        geometry: 'point',
+        zoneOffset: 'warm',
+        label: 'Decon Zone',
+      },
+      {
+        pattern: /staging\s*(area|point|zone)/i,
+        asset_type: 'staging_area',
+        geometry: 'polygon',
+        zoneOffset: 'cold',
+        label: 'Staging Area',
+      },
+      {
+        pattern: /inner\s*cordon/i,
+        asset_type: 'inner_cordon',
+        geometry: 'polygon',
+        zoneOffset: 'hot',
+        label: 'Inner Cordon',
+      },
+      {
+        pattern: /outer\s*cordon/i,
+        asset_type: 'outer_cordon',
+        geometry: 'polygon',
+        zoneOffset: 'cold',
+        label: 'Outer Cordon',
+      },
+      {
+        pattern: /media\s*(staging|area|point|zone)/i,
+        asset_type: 'press_cordon',
+        geometry: 'polygon',
+        zoneOffset: 'cold',
+        label: 'Media Staging Area',
+      },
+      {
+        pattern: /hot\s*zone/i,
+        asset_type: 'hot_zone',
+        geometry: 'polygon',
+        zoneOffset: 'hot',
+        label: 'Hot Zone',
+      },
+      {
+        pattern: /warm\s*zone/i,
+        asset_type: 'warm_zone',
+        geometry: 'polygon',
+        zoneOffset: 'warm',
+        label: 'Warm Zone',
+      },
+      {
+        pattern: /cold\s*zone/i,
+        asset_type: 'cold_zone',
+        geometry: 'polygon',
+        zoneOffset: 'cold',
+        label: 'Cold Zone',
+      },
+      {
+        pattern: /casualty\s*collection/i,
+        asset_type: 'casualty_collection',
+        geometry: 'point',
+        zoneOffset: 'warm',
+        label: 'Casualty Collection Point',
+      },
+      {
+        pattern: /observation\s*(post|point)/i,
+        asset_type: 'observation_post',
+        geometry: 'point',
+        zoneOffset: 'cold',
+        label: 'Observation Post',
+      },
+      {
+        pattern: /ambulance\s*(staging|bay|point)/i,
+        asset_type: 'ambulance_staging',
+        geometry: 'point',
+        zoneOffset: 'cold',
+        label: 'Ambulance Staging',
+      },
+      {
+        pattern: /helicopter\s*(lz|landing)/i,
+        asset_type: 'helicopter_lz',
+        geometry: 'point',
+        zoneOffset: 'cold',
+        label: 'Helicopter LZ',
+      },
+      {
+        pattern: /roadblock/i,
+        asset_type: 'roadblock',
+        geometry: 'point',
+        zoneOffset: 'cold',
+        label: 'Roadblock',
+      },
+      {
+        pattern: /fire\s*(truck|engine|appliance)/i,
+        asset_type: 'fire_truck',
+        geometry: 'point',
+        zoneOffset: 'warm',
+        label: 'Fire Engine',
+      },
+      {
+        pattern: /forward\s*command/i,
+        asset_type: 'forward_command',
+        geometry: 'point',
+        zoneOffset: 'warm',
+        label: 'Forward Command',
+      },
+      {
+        pattern: /water\s*supply\s*(point)?/i,
+        asset_type: 'water_supply',
+        geometry: 'point',
+        zoneOffset: 'warm',
+        label: 'Water Supply Point',
+      },
+    ];
+
+    // Check which infrastructure already exists on the map
+    const { data: existingAssets } = await supabaseAdmin
+      .from('placed_assets')
+      .select('asset_type, label')
+      .eq('session_id', session.sessionId)
+      .eq('status', 'active');
+
+    const existingTypes = new Set(
+      (existingAssets ?? []).map((a) => (a as Record<string, unknown>).asset_type as string),
+    );
+
+    // Zone offsets from center (degrees)
+    const ZONE_OFFSETS: Record<string, number> = {
+      hot: 0.001,
+      warm: 0.003,
+      cold: 0.005,
+    };
+
+    // Try to extract coordinates from text (e.g., "[1.3045, 103.8367]" or "lat 1.3045, lng 103.8367")
+    const coordMatches = Array.from(
+      `${title} ${description}`.matchAll(/\[?\s*(-?\d+\.\d{3,})\s*[,\s]+\s*(-?\d+\.\d{3,})\s*\]?/g),
+    );
+
+    let placedCount = 0;
+
+    for (const inf of INFRASTRUCTURE_PATTERNS) {
+      if (!inf.pattern.test(fullText)) continue;
+      if (existingTypes.has(inf.asset_type)) continue;
+      if (placedCount >= 2) break;
+
+      // Try to use coordinates from the text first, otherwise generate from zone offsets
+      let pointLat: number;
+      let pointLng: number;
+
+      if (coordMatches.length > placedCount) {
+        const m = coordMatches[placedCount];
+        const a = parseFloat(m[1]);
+        const b = parseFloat(m[2]);
+        // Heuristic: latitude is usually smaller than longitude for most locations,
+        // but we validate by checking proximity to the incident center
+        const distALat = Math.abs(a - center.lat) + Math.abs(b - center.lng);
+        const distBLat = Math.abs(b - center.lat) + Math.abs(a - center.lng);
+        if (distALat < distBLat) {
+          pointLat = a;
+          pointLng = b;
+        } else {
+          pointLat = b;
+          pointLng = a;
+        }
+        // Clamp to play area (within ~0.01 degrees of center)
+        pointLat = Math.max(center.lat - 0.01, Math.min(center.lat + 0.01, pointLat));
+        pointLng = Math.max(center.lng - 0.01, Math.min(center.lng + 0.01, pointLng));
+      } else {
+        const offset = ZONE_OFFSETS[inf.zoneOffset];
+        const bearing = (placedCount * 90 + Math.random() * 30) * (Math.PI / 180);
+        pointLat = center.lat + offset * Math.cos(bearing);
+        pointLng = center.lng + offset * Math.sin(bearing);
+      }
+
+      let geometry: { type: string; coordinates: unknown };
+
+      if (inf.geometry === 'point') {
+        geometry = { type: 'Point', coordinates: [pointLng, pointLat] };
+      } else {
+        const size = inf.zoneOffset === 'hot' ? 0.002 : inf.zoneOffset === 'warm' ? 0.003 : 0.005;
+        geometry = {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [pointLng - size, pointLat - size],
+              [pointLng + size, pointLat - size],
+              [pointLng + size, pointLat + size],
+              [pointLng - size, pointLat + size],
+              [pointLng - size, pointLat - size],
+            ],
+          ],
+        };
+      }
+
+      const label = `${agent.persona.teamName} ${inf.label}`;
+
+      logger.info(
+        { botUserId: agent.persona.botUserId, assetType: inf.asset_type, label },
+        'AI agent: auto-creating placement from decision text (fallback)',
+      );
+
+      await this.dispatcher.createPlacement(session.sessionId, agent.persona.botUserId, {
+        team_name: agent.persona.teamName,
+        asset_type: inf.asset_type,
+        label,
+        geometry,
+        properties: {},
+      });
+
+      existingTypes.add(inf.asset_type);
+      placedCount++;
+    }
+  }
+
+  /**
+   * Returns true if the given team should NOT be allowed to use pin_response
+   * on the given target type. Enforces operational jurisdiction.
+   */
+  private isTeamBlockedFromPinResponse(teamName: string, targetType?: string): boolean {
+    const t = teamName.toLowerCase();
+
+    // Media / Press / PIO → never interact with any pins
+    if (
+      t.includes('media') ||
+      t.includes('press') ||
+      t.includes('pio') ||
+      t.includes('public information')
+    ) {
+      return true;
+    }
+
+    // Intelligence / Command → never interact with pins directly
+    if (t.includes('intelligence') || t.includes('command') || t.includes('coordinator')) {
+      return true;
+    }
+
+    // Police / Security → may interact with crowds (evacuation support) but NOT casualties or hazards
+    if (t.includes('police') || t.includes('security') || t.includes('law enforcement')) {
+      if (targetType === 'casualty' || targetType === 'hazard') return true;
+    }
+
+    // Evacuation → may interact with crowds but NOT casualties (medical) or hazards (fire)
+    if (t.includes('evacuation') || t.includes('crowd') || t.includes('marshal')) {
+      if (targetType === 'casualty' || targetType === 'hazard') return true;
+    }
+
+    return false;
   }
 
   private async resolveLocationId(scenarioId: string, label: string): Promise<string | null> {

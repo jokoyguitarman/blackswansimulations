@@ -565,6 +565,8 @@ import { ActivityTicker } from '../components/Demo/ActivityTicker';
 import { TeamSpotlightOverlay } from '../components/Demo/TeamSpotlightOverlay';
 import { DemoPinResponseReplay } from '../components/Demo/DemoPinResponseReplay';
 import { DemoMetricsOverlay } from '../components/Demo/DemoMetricsOverlay';
+import { SpectatorInjectsPanel } from '../components/Demo/SpectatorInjectsPanel';
+import { PursuitMetricsPanel } from '../components/Demo/PursuitMetricsPanel';
 import { DemoMapAnimator } from '../components/Demo/DemoMapAnimator';
 
 interface Session {
@@ -1460,6 +1462,18 @@ export const SessionView = () => {
 
         {/* Heat Meter + Team Counters */}
         <DemoMetricsOverlay
+          sessionId={id}
+          currentState={mergeInjectEffects(
+            (session?.current_state as Record<string, unknown>) ?? {},
+            session?.inject_state_effects,
+          )}
+        />
+
+        {/* Persistent Injects Panel (stays visible, accumulates all injects) */}
+        <SpectatorInjectsPanel sessionId={id} />
+
+        {/* Pursuit Metrics Panel (shows for investigative teams during pursuit scenarios) */}
+        <PursuitMetricsPanel
           sessionId={id}
           currentState={mergeInjectEffects(
             (session?.current_state as Record<string, unknown>) ?? {},

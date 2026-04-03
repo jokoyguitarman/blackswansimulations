@@ -13,7 +13,8 @@
       "team_name": "police",
       "team_description": "Perimeter control, suspect pursuit, tactical response, crime scene preservation",
       "min_participants": 2,
-      "max_participants": 10
+      "max_participants": 10,
+      "is_investigative": true
     },
     {
       "team_name": "triage",
@@ -37,7 +38,8 @@
       "team_name": "intelligence",
       "team_description": "Threat intelligence, suspect identification, prior-warning analysis, real-time surveillance",
       "min_participants": 2,
-      "max_participants": 6
+      "max_participants": 6,
+      "is_investigative": true
     }
   ],
   "environmental_factors": [

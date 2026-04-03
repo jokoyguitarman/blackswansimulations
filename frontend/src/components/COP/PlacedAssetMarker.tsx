@@ -1,3 +1,4 @@
+import { useRef, useCallback } from 'react';
 import { Marker, Popup, Polygon, Polyline, Tooltip } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import type { LatLngExpression } from 'leaflet';
@@ -31,6 +32,7 @@ interface PlacedAssetMarkerProps {
   onRemove?: (id: string) => void;
   onRelocate?: (id: string) => void;
   onDragEnd?: (id: string, newLat: number, newLng: number) => void;
+  onGeometryDragEnd?: (id: string, newGeometry: { type: string; coordinates: unknown }) => void;
 }
 
 const TEAM_COLORS: Record<string, string> = {
@@ -97,6 +99,38 @@ function getScoreIndicator(score: Record<string, unknown> | null): {
   return { symbol: '✓', color: '#22c55e' };
 }
 
+function computeCentroid(positions: [number, number][]): [number, number] {
+  if (!positions.length) return [0, 0];
+  let latSum = 0,
+    lngSum = 0;
+  for (const [lat, lng] of positions) {
+    latSum += lat;
+    lngSum += lng;
+  }
+  return [latSum / positions.length, lngSum / positions.length];
+}
+
+function createDragHandleIcon(color: string): DivIcon {
+  return new DivIcon({
+    className: 'polygon-drag-handle',
+    html: `
+      <div style="
+        width: 28px; height: 28px; border-radius: 50%;
+        background: ${color}; border: 2px solid white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+        display: flex; align-items: center; justify-content: center;
+        cursor: grab;
+      ">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="white">
+          <path d="M8 1l3 3H9v3h3V5l3 3-3 3V9H9v3h2l-3 3-3-3h2V9H4v2l-3-3 3-3v2h3V4H5l3-3z"/>
+        </svg>
+      </div>
+    `,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+}
+
 function createPlacedAssetIcon(
   asset: PlacedAsset,
   isOwnTeam: boolean,
@@ -158,8 +192,33 @@ export const PlacedAssetMarker = ({
   onRemove,
   onRelocate,
   onDragEnd,
+  onGeometryDragEnd,
 }: PlacedAssetMarkerProps) => {
   const geom = asset.geometry;
+  const centroidRef = useRef<[number, number]>([0, 0]);
+
+  const handlePolygonDrag = useCallback(
+    (e: { target: { getLatLng: () => { lat: number; lng: number } } }) => {
+      if (!onGeometryDragEnd) return;
+      const { lat: newLat, lng: newLng } = e.target.getLatLng();
+      const [oldLat, oldLng] = centroidRef.current;
+      const dLat = newLat - oldLat;
+      const dLng = newLng - oldLng;
+
+      if (geom.type === 'Polygon') {
+        const coords = geom.coordinates as [number, number][][];
+        const newCoords = coords.map((ring) =>
+          ring.map(([lng, lat]) => [lng + dLng, lat + dLat] as [number, number]),
+        );
+        onGeometryDragEnd(asset.id, { type: 'Polygon', coordinates: newCoords });
+      } else if (geom.type === 'LineString') {
+        const coords = geom.coordinates as [number, number][];
+        const newCoords = coords.map(([lng, lat]) => [lng + dLng, lat + dLat] as [number, number]);
+        onGeometryDragEnd(asset.id, { type: 'LineString', coordinates: newCoords });
+      }
+    },
+    [asset.id, geom, onGeometryDragEnd],
+  );
 
   if (geom.type === 'Polygon') {
     const coords = geom.coordinates as [number, number][][];
@@ -167,6 +226,13 @@ export const PlacedAssetMarker = ({
     const positions: LatLngExpression[] = coords[0].map(
       ([lng, lat]) => [lat, lng] as LatLngExpression,
     );
+
+    const latLngPairs = coords[0].map(([lng, lat]) => [lat, lng] as [number, number]);
+    const centroid = computeCentroid(latLngPairs);
+    centroidRef.current = centroid;
+
+    const canDrag = isDraggable && isOwnTeam && !drawingActive && !!onGeometryDragEnd;
+    const color = getTeamColor(asset.team_name);
 
     if (asset.asset_type === 'hazard_zone') {
       const classification = asset.properties?.zone_classification as string | undefined;
@@ -180,33 +246,47 @@ export const PlacedAssetMarker = ({
       const borderColor = zone?.border ?? '#94a3b8';
 
       return (
-        <Polygon
-          positions={positions}
-          interactive={!drawingActive}
-          bubblingMouseEvents={drawingActive}
-          pathOptions={{
-            color: borderColor,
-            fillColor,
-            fillOpacity: classification === 'hot' ? 0.18 : classification === 'warm' ? 0.13 : 0.08,
-            weight: 2,
-            dashArray: '10, 6',
-          }}
-        >
-          {!drawingActive && (
-            <Popup autoPan={false}>
-              <AssetPopupContent
-                asset={asset}
-                isOwnTeam={isOwnTeam}
-                onRemove={onRemove}
-                onRelocate={onRelocate}
-              />
-            </Popup>
+        <>
+          <Polygon
+            positions={positions}
+            interactive={!drawingActive}
+            bubblingMouseEvents={drawingActive}
+            pathOptions={{
+              color: borderColor,
+              fillColor,
+              fillOpacity:
+                classification === 'hot' ? 0.18 : classification === 'warm' ? 0.13 : 0.08,
+              weight: 2,
+              dashArray: '10, 6',
+            }}
+          >
+            {!drawingActive && (
+              <Popup autoPan={false}>
+                <AssetPopupContent
+                  asset={asset}
+                  isOwnTeam={isOwnTeam}
+                  onRemove={onRemove}
+                  onRelocate={onRelocate}
+                />
+              </Popup>
+            )}
+          </Polygon>
+          {canDrag && (
+            <Marker
+              position={centroid as LatLngExpression}
+              icon={createDragHandleIcon(borderColor)}
+              draggable
+              eventHandlers={{ dragend: handlePolygonDrag }}
+            >
+              <Tooltip direction="top" offset={[0, -14]}>
+                <span style={{ fontSize: 10 }}>Drag to move zone</span>
+              </Tooltip>
+            </Marker>
           )}
-        </Polygon>
+        </>
       );
     }
 
-    const color = getTeamColor(asset.team_name);
     const lengthM = asset.properties?.length_m as number | undefined;
     const areaM2 = asset.properties?.area_m2 as number | undefined;
     const enclosesCount = Array.isArray(asset.properties?.encloses)
@@ -214,61 +294,75 @@ export const PlacedAssetMarker = ({
       : 0;
 
     return (
-      <Polygon
-        positions={positions}
-        interactive={!drawingActive}
-        bubblingMouseEvents={drawingActive}
-        pathOptions={{
-          color,
-          fillColor: color,
-          fillOpacity: isOwnTeam ? 0.2 : 0.1,
-          weight: 2,
-          dashArray: isOwnTeam ? undefined : '6, 4',
-          className: isNew ? 'demo-draw-line demo-fill-reveal' : undefined,
-        }}
-      >
-        {!drawingActive && (
-          <>
-            <Tooltip sticky>
-              <div className="text-xs">
-                <div className="font-semibold">
-                  {getAssetIcon(asset.asset_type)} {asset.label}
+      <>
+        <Polygon
+          positions={positions}
+          interactive={!drawingActive}
+          bubblingMouseEvents={drawingActive}
+          pathOptions={{
+            color,
+            fillColor: color,
+            fillOpacity: isOwnTeam ? 0.2 : 0.1,
+            weight: 2,
+            dashArray: isOwnTeam ? undefined : '6, 4',
+            className: isNew ? 'demo-draw-line demo-fill-reveal' : undefined,
+          }}
+        >
+          {!drawingActive && (
+            <>
+              <Tooltip sticky>
+                <div className="text-xs">
+                  <div className="font-semibold">
+                    {getAssetIcon(asset.asset_type)} {asset.label}
+                  </div>
+                  <div className="text-gray-500">{asset.team_name}</div>
+                  {areaM2 != null && (
+                    <div className="text-gray-400 font-mono">
+                      {areaM2 >= 1_000_000
+                        ? `${(areaM2 / 1_000_000).toFixed(2)} km²`
+                        : areaM2 >= 10_000
+                          ? `${(areaM2 / 10_000).toFixed(2)} ha`
+                          : `${Math.round(areaM2)} m²`}
+                    </div>
+                  )}
+                  {lengthM != null && !areaM2 && (
+                    <div className="text-gray-400 font-mono">
+                      {lengthM >= 1000
+                        ? `${(lengthM / 1000).toFixed(2)} km`
+                        : `${Math.round(lengthM)} m`}
+                    </div>
+                  )}
+                  {enclosesCount > 0 && (
+                    <div className="text-green-500 font-medium">
+                      {enclosesCount} asset{enclosesCount > 1 ? 's' : ''} enclosed
+                    </div>
+                  )}
                 </div>
-                <div className="text-gray-500">{asset.team_name}</div>
-                {areaM2 != null && (
-                  <div className="text-gray-400 font-mono">
-                    {areaM2 >= 1_000_000
-                      ? `${(areaM2 / 1_000_000).toFixed(2)} km²`
-                      : areaM2 >= 10_000
-                        ? `${(areaM2 / 10_000).toFixed(2)} ha`
-                        : `${Math.round(areaM2)} m²`}
-                  </div>
-                )}
-                {lengthM != null && !areaM2 && (
-                  <div className="text-gray-400 font-mono">
-                    {lengthM >= 1000
-                      ? `${(lengthM / 1000).toFixed(2)} km`
-                      : `${Math.round(lengthM)} m`}
-                  </div>
-                )}
-                {enclosesCount > 0 && (
-                  <div className="text-green-500 font-medium">
-                    {enclosesCount} asset{enclosesCount > 1 ? 's' : ''} enclosed
-                  </div>
-                )}
-              </div>
+              </Tooltip>
+              <Popup autoPan={false}>
+                <AssetPopupContent
+                  asset={asset}
+                  isOwnTeam={isOwnTeam}
+                  onRemove={onRemove}
+                  onRelocate={onRelocate}
+                />
+              </Popup>
+            </>
+          )}
+        </Polygon>
+        {canDrag && (
+          <Marker
+            position={centroid as LatLngExpression}
+            icon={createDragHandleIcon(color)}
+            draggable
+            eventHandlers={{ dragend: handlePolygonDrag }}
+          >
+            <Tooltip direction="top" offset={[0, -14]}>
+              <span style={{ fontSize: 10 }}>Drag to move</span>
             </Tooltip>
-            <Popup autoPan={false}>
-              <AssetPopupContent
-                asset={asset}
-                isOwnTeam={isOwnTeam}
-                onRemove={onRemove}
-                onRelocate={onRelocate}
-              />
-            </Popup>
-          </>
+          </Marker>
         )}
-      </Polygon>
+      </>
     );
   }
 
@@ -281,47 +375,66 @@ export const PlacedAssetMarker = ({
     const color = getTeamColor(asset.team_name);
     const lengthM = asset.properties?.length_m as number | undefined;
 
+    const latLngPairs = coords.map(([lng, lat]) => [lat, lng] as [number, number]);
+    const centroid = computeCentroid(latLngPairs);
+    centroidRef.current = centroid;
+    const canDrag = isDraggable && isOwnTeam && !drawingActive && !!onGeometryDragEnd;
+
     return (
-      <Polyline
-        positions={positions}
-        interactive={!drawingActive}
-        bubblingMouseEvents={drawingActive}
-        pathOptions={{
-          color,
-          weight: 4,
-          opacity: isOwnTeam ? 0.9 : 0.65,
-          dashArray: isOwnTeam ? undefined : '8, 4',
-          className: isNew ? 'demo-draw-line' : undefined,
-        }}
-      >
-        {!drawingActive && (
-          <>
-            <Tooltip sticky>
-              <div className="text-xs">
-                <div className="font-semibold">
-                  {getAssetIcon(asset.asset_type)} {asset.label}
-                </div>
-                <div className="text-gray-500">{asset.team_name}</div>
-                {lengthM != null && (
-                  <div className="text-gray-400 font-mono">
-                    {lengthM >= 1000
-                      ? `${(lengthM / 1000).toFixed(2)} km`
-                      : `${Math.round(lengthM)} m`}
+      <>
+        <Polyline
+          positions={positions}
+          interactive={!drawingActive}
+          bubblingMouseEvents={drawingActive}
+          pathOptions={{
+            color,
+            weight: 4,
+            opacity: isOwnTeam ? 0.9 : 0.65,
+            dashArray: isOwnTeam ? undefined : '8, 4',
+            className: isNew ? 'demo-draw-line' : undefined,
+          }}
+        >
+          {!drawingActive && (
+            <>
+              <Tooltip sticky>
+                <div className="text-xs">
+                  <div className="font-semibold">
+                    {getAssetIcon(asset.asset_type)} {asset.label}
                   </div>
-                )}
-              </div>
+                  <div className="text-gray-500">{asset.team_name}</div>
+                  {lengthM != null && (
+                    <div className="text-gray-400 font-mono">
+                      {lengthM >= 1000
+                        ? `${(lengthM / 1000).toFixed(2)} km`
+                        : `${Math.round(lengthM)} m`}
+                    </div>
+                  )}
+                </div>
+              </Tooltip>
+              <Popup autoPan={false}>
+                <AssetPopupContent
+                  asset={asset}
+                  isOwnTeam={isOwnTeam}
+                  onRemove={onRemove}
+                  onRelocate={onRelocate}
+                />
+              </Popup>
+            </>
+          )}
+        </Polyline>
+        {canDrag && (
+          <Marker
+            position={centroid as LatLngExpression}
+            icon={createDragHandleIcon(color)}
+            draggable
+            eventHandlers={{ dragend: handlePolygonDrag }}
+          >
+            <Tooltip direction="top" offset={[0, -14]}>
+              <span style={{ fontSize: 10 }}>Drag to move</span>
             </Tooltip>
-            <Popup autoPan={false}>
-              <AssetPopupContent
-                asset={asset}
-                isOwnTeam={isOwnTeam}
-                onRemove={onRemove}
-                onRelocate={onRelocate}
-              />
-            </Popup>
-          </>
+          </Marker>
         )}
-      </Polyline>
+      </>
     );
   }
 

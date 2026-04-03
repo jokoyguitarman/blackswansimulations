@@ -103,12 +103,17 @@ export async function persistWarroomScenario(
           min_participants: t.min_participants ?? 1,
           max_participants: t.max_participants ?? 10,
           ...(t.counter_definitions?.length ? { counter_definitions: t.counter_definitions } : {}),
+          is_investigative: t.is_investigative ?? false,
         })),
       );
       if (teamsError) throw new Error(`scenario_teams: ${teamsError.message}`);
     }
 
     const timeUsedTitles = new Set<string>();
+    // Track pursuit inject indices → DB UUIDs for debunk resolution
+    const pursuitIndexToDbId = new Map<number, string>();
+    const debunkInjectIds: Array<{ dbId: string; debunksIndex: number }> = [];
+
     for (const inj of time_injects) {
       let title = inj.title || 'Timed inject';
       if (timeUsedTitles.has(title)) {
@@ -117,28 +122,66 @@ export async function persistWarroomScenario(
         title = `${title} (${suffix})`;
       }
       timeUsedTitles.add(title);
-      const { error: injError } = await supabaseAdmin.from('scenario_injects').insert({
-        scenario_id: scenarioId,
-        trigger_time_minutes: inj.trigger_time_minutes,
-        trigger_condition: null,
-        type: normalizeInjectType(inj.type),
-        title,
-        content: inj.content,
-        affected_roles: [],
-        severity: inj.severity || 'high',
-        inject_scope: normalizeInjectScope(inj.inject_scope),
-        target_teams: inj.target_teams || [],
-        requires_response: inj.requires_response ?? true,
-        requires_coordination: inj.requires_coordination ?? false,
-        conditions_to_appear: inj.conditions_to_appear ?? null,
-        conditions_to_cancel: inj.conditions_to_cancel ?? null,
-        eligible_after_minutes: inj.eligible_after_minutes ?? null,
-        objective_penalty: inj.objective_penalty ?? null,
-        state_effect: inj.state_effect ?? null,
-        ai_generated: true,
-        generation_source: 'war_room',
-      });
+      const injAny = inj as Record<string, unknown>;
+      const pursuitIdx = injAny._pursuit_inject_index as number | undefined;
+      const debunksIdx = injAny.debunks_inject_index as number | undefined;
+
+      const { data: insertedInj, error: injError } = await supabaseAdmin
+        .from('scenario_injects')
+        .insert({
+          scenario_id: scenarioId,
+          trigger_time_minutes: inj.trigger_time_minutes,
+          trigger_condition: null,
+          type: normalizeInjectType(inj.type),
+          title,
+          content: inj.content,
+          affected_roles: [],
+          severity: inj.severity || 'high',
+          inject_scope: normalizeInjectScope(inj.inject_scope),
+          target_teams: inj.target_teams || [],
+          requires_response: inj.requires_response ?? true,
+          requires_coordination: inj.requires_coordination ?? false,
+          conditions_to_appear: inj.conditions_to_appear ?? null,
+          conditions_to_cancel: inj.conditions_to_cancel ?? null,
+          eligible_after_minutes: inj.eligible_after_minutes ?? null,
+          objective_penalty: inj.objective_penalty ?? null,
+          state_effect: inj.state_effect ?? null,
+          ai_generated: true,
+          generation_source: 'war_room',
+        })
+        .select('id')
+        .single();
       if (injError) throw new Error(`scenario_injects (time): ${injError.message}`);
+
+      const dbId = insertedInj?.id as string;
+      if (typeof pursuitIdx === 'number' && dbId) {
+        pursuitIndexToDbId.set(pursuitIdx, dbId);
+      }
+      if (typeof debunksIdx === 'number' && dbId) {
+        debunkInjectIds.push({ dbId, debunksIndex: debunksIdx });
+      }
+    }
+
+    // Resolve debunk references: set debunks_sighting_inject_id in state_effect
+    for (const { dbId, debunksIndex } of debunkInjectIds) {
+      const targetId = pursuitIndexToDbId.get(debunksIndex);
+      if (targetId) {
+        await supabaseAdmin
+          .from('scenario_injects')
+          .update({
+            state_effect: { debunks_sighting_inject_id: targetId },
+          })
+          .eq('id', dbId);
+        logger.info(
+          { debunkInjectId: dbId, targetSightingInjectId: targetId, debunksIndex },
+          'Resolved debunk inject → sighting inject link',
+        );
+      } else {
+        logger.warn(
+          { dbId, debunksIndex },
+          'Could not resolve debunks_inject_index — target sighting inject not found',
+        );
+      }
     }
 
     if (objectives.length > 0) {

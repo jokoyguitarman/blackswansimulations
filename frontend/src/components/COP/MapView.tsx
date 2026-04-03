@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, useMap, Polygon } from 'react-leaflet';
+import { MapContainer, TileLayer, useMap, Polygon, Polyline } from 'react-leaflet';
 import { Icon, Marker as LeafletMarker } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { IncidentMarker } from './IncidentMarker';
@@ -88,6 +88,8 @@ const ALWAYS_SHOW_PIN_CATEGORIES = new Set([
   'triage',
   'command',
   'staging',
+  'last_known_adversary',
+  'adversary_sighting',
 ]);
 
 const ALWAYS_SHOW_LOCATION_TYPE_KEYWORDS = [
@@ -693,6 +695,9 @@ export const MapView = ({
       'casualty.updated',
       'casualty.created',
       'adversary_sighting_update',
+      'adversary_sighting_new',
+      'sighting_stale',
+      'sighting_debunked',
       'adversary_location_cleared',
       'adversary_casualties_spawned',
       'containment_held',
@@ -865,6 +870,86 @@ export const MapView = ({
                       direction_of_travel: d.direction_of_travel,
                       tests_containment: d.tests_containment,
                       sighting_history: d.sighting_history,
+                    },
+                  }
+                : loc,
+            ),
+          );
+        }
+      }
+      if (event.type === 'adversary_sighting_new') {
+        const d = event.data as {
+          pin_id?: string;
+          adversary_id?: string;
+          coordinates?: { lat: number; lng: number };
+          zone_label?: string;
+          description?: string;
+          last_seen_at_minutes?: number;
+          intel_source?: string;
+          confidence?: string;
+          accuracy_radius_m?: number;
+          direction_of_travel?: string | null;
+          tests_containment?: boolean;
+          sighting_order?: number;
+          nato_grade?: string;
+          sighting_status?: string;
+        };
+        if (d.pin_id && d.coordinates) {
+          setScenarioLocations((prev) => {
+            if (prev.some((loc) => loc.id === d.pin_id)) return prev;
+            return [
+              ...prev,
+              {
+                id: d.pin_id!,
+                location_type: 'adversary_sighting',
+                pin_category: 'adversary_sighting',
+                label: `Sighting #${(d.sighting_order ?? 0) + 1}: ${d.zone_label || 'Unknown'}`,
+                coordinates: d.coordinates!,
+                conditions: {
+                  adversary_id: d.adversary_id,
+                  pin_category: 'adversary_sighting',
+                  sighting_status: d.sighting_status || 'active',
+                  sighting_order: d.sighting_order,
+                  zone_label: d.zone_label,
+                  last_seen_at_minutes: d.last_seen_at_minutes,
+                  last_seen_description: d.description,
+                  intel_source: d.intel_source,
+                  confidence: d.confidence,
+                  accuracy_radius_m: d.accuracy_radius_m,
+                  direction_of_travel: d.direction_of_travel,
+                  tests_containment: d.tests_containment,
+                  nato_grade: d.nato_grade,
+                },
+              },
+            ];
+          });
+        }
+      }
+      if (event.type === 'sighting_stale') {
+        const d = event.data as { pin_ids?: string[] };
+        if (d.pin_ids?.length) {
+          const staleSet = new Set(d.pin_ids);
+          setScenarioLocations((prev) =>
+            prev.map((loc) =>
+              staleSet.has(loc.id)
+                ? { ...loc, conditions: { ...(loc.conditions ?? {}), sighting_status: 'stale' } }
+                : loc,
+            ),
+          );
+        }
+      }
+      if (event.type === 'sighting_debunked') {
+        const d = event.data as { pin_id?: string; debunked_at_minutes?: number };
+        if (d.pin_id) {
+          setScenarioLocations((prev) =>
+            prev.map((loc) =>
+              loc.id === d.pin_id
+                ? {
+                    ...loc,
+                    conditions: {
+                      ...(loc.conditions ?? {}),
+                      sighting_status: 'debunked',
+                      debunked_at_minutes: d.debunked_at_minutes,
                     },
                   }
                 : loc,
@@ -1107,6 +1192,22 @@ export const MapView = ({
         prev.map((p) => (p.id === assetId ? { ...p, geometry: newGeom } : p)),
       );
       api.placements.update(sessionId, assetId, { geometry: newGeom }).catch(() => {
+        api.placements.list(sessionId).then((res) => {
+          if (Array.isArray(res.data)) {
+            setPlacedAssets(res.data as unknown as PlacedAsset[]);
+          }
+        });
+      });
+    },
+    [sessionId],
+  );
+
+  const handleGeometryDragEnd = useCallback(
+    (assetId: string, newGeometry: { type: string; coordinates: unknown }) => {
+      setPlacedAssets((prev) =>
+        prev.map((p) => (p.id === assetId ? { ...p, geometry: newGeometry } : p)),
+      );
+      api.placements.update(sessionId, assetId, { geometry: newGeometry }).catch(() => {
         api.placements.list(sessionId).then((res) => {
           if (Array.isArray(res.data)) {
             setPlacedAssets(res.data as unknown as PlacedAsset[]);
@@ -1446,6 +1547,53 @@ export const MapView = ({
             />
           ))}
 
+          {/* Adversary sighting breadcrumb trails */}
+          {(() => {
+            const sightingPins = scenarioLocationsForMap
+              .filter((loc) => {
+                const cat = loc.pin_category?.toLowerCase() ?? '';
+                const condCat = ((loc.conditions?.pin_category as string) ?? '').toLowerCase();
+                return (
+                  cat === 'adversary_sighting' ||
+                  condCat === 'adversary_sighting' ||
+                  cat === 'last_known_adversary' ||
+                  condCat === 'last_known_adversary'
+                );
+              })
+              .sort(
+                (a, b) =>
+                  ((a.conditions?.sighting_order as number) ?? 0) -
+                  ((b.conditions?.sighting_order as number) ?? 0),
+              );
+
+            const byAdversary = new Map<string, typeof sightingPins>();
+            for (const pin of sightingPins) {
+              const advId = (pin.conditions?.adversary_id as string) || 'adversary_1';
+              if (!byAdversary.has(advId)) byAdversary.set(advId, []);
+              byAdversary.get(advId)!.push(pin);
+            }
+
+            return Array.from(byAdversary.entries()).map(([advId, pins]) => {
+              if (pins.length < 2) return null;
+              const positions = pins
+                .filter((p) => p.coordinates.lat != null && p.coordinates.lng != null)
+                .map((p) => [p.coordinates.lat!, p.coordinates.lng!] as [number, number]);
+              if (positions.length < 2) return null;
+              return (
+                <Polyline
+                  key={`trail-${advId}`}
+                  positions={positions}
+                  pathOptions={{
+                    color: '#f97316',
+                    weight: 2,
+                    opacity: 0.4,
+                    dashArray: '8 6',
+                  }}
+                />
+              );
+            });
+          })()}
+
           {/* Scenario location pins (Step 6: labels only; cordon hidden so teams decide) */}
           {scenarioLocationsForMap.map((loc) => (
             <ScenarioLocationMarker
@@ -1500,6 +1648,7 @@ export const MapView = ({
                   teamName && asset.team_name === teamName ? handleRemovePlacement : undefined
                 }
                 onDragEnd={handlePlacementDragEnd}
+                onGeometryDragEnd={handleGeometryDragEnd}
               />
             ))}
 

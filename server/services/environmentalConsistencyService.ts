@@ -242,6 +242,14 @@ async function buildCasualtyContext(sessionId: string): Promise<string> {
       | undefined;
     const transportPrereqs = conds.transport_prerequisites as string[] | undefined;
     const contraindications = conds.contraindications as string[] | undefined;
+    const idealSequence = conds.ideal_response_sequence as
+      | Array<{ step: number; action: string; detail: string }>
+      | undefined;
+    const requiredPpe = conds.required_ppe as string[] | undefined;
+    const requiredEquipment = conds.required_equipment as
+      | Array<{ item: string; quantity: number; purpose: string }>
+      | undefined;
+    const expectedTime = conds.expected_time_to_treat_minutes as number | undefined;
 
     const injuryList = injuries?.map((i) => `${i.severity} ${i.type} (${i.body_part})`).join('; ');
 
@@ -272,6 +280,22 @@ async function buildCasualtyContext(sessionId: string): Promise<string> {
     }
     if (contraindications && contraindications.length > 0) {
       patientLines.push(`  Contraindications: ${contraindications.join(', ')}`);
+    }
+    if (idealSequence && idealSequence.length > 0) {
+      patientLines.push(
+        `  Ideal response sequence: ${idealSequence.map((s) => `${s.step}. ${s.action}: ${s.detail}`).join(' → ')}`,
+      );
+    }
+    if (requiredPpe && requiredPpe.length > 0) {
+      patientLines.push(`  Required PPE for responder: ${requiredPpe.join(', ')}`);
+    }
+    if (requiredEquipment && requiredEquipment.length > 0) {
+      patientLines.push(
+        `  Required equipment: ${requiredEquipment.map((e) => `${e.item} x${e.quantity} (${e.purpose})`).join('; ')}`,
+      );
+    }
+    if (expectedTime) {
+      patientLines.push(`  Expected treatment time: ~${expectedTime} minutes`);
     }
 
     // Fallback: if no explicit treatment data, the LLM can infer from injuries
@@ -362,7 +386,7 @@ async function buildHazardSafetyContext(sessionId: string): Promise<string> {
   const { data: hazards } = await supabaseAdmin
     .from('scenario_hazards')
     .select(
-      'id, hazard_type, location_lat, location_lng, floor_level, properties, equipment_requirements, personnel_requirements, status, zones',
+      'id, hazard_type, location_lat, location_lng, floor_level, properties, equipment_requirements, personnel_requirements, resolution_requirements, status, zones',
     )
     .eq('scenario_id', session.scenario_id)
     .eq('session_id', sessionId)
@@ -535,6 +559,30 @@ async function buildHazardSafetyContext(sessionId: string): Promise<string> {
           .join(', ');
         hazardLines.push(`  Required safety equipment: ${reqList}`);
       }
+    }
+
+    // Ideal response sequence and PPE from resolution requirements
+    const resReqs = (h.resolution_requirements ?? {}) as Record<string, unknown>;
+    const hazardIdealSeq = resReqs.ideal_response_sequence as
+      | Array<{ step: number; action: string; detail: string; responsible_team?: string }>
+      | undefined;
+    const hazardReqPpe = resReqs.required_ppe as
+      | Array<{ item: string; for_role?: string; mandatory?: boolean }>
+      | undefined;
+    const estResolution = resReqs.estimated_resolution_minutes as number | undefined;
+
+    if (hazardIdealSeq && hazardIdealSeq.length > 0) {
+      hazardLines.push(
+        `  Ideal response sequence: ${hazardIdealSeq.map((s) => `${s.step}. ${s.action}${s.responsible_team ? ` [${s.responsible_team}]` : ''}: ${s.detail}`).join(' → ')}`,
+      );
+    }
+    if (hazardReqPpe && hazardReqPpe.length > 0) {
+      hazardLines.push(
+        `  Required PPE for responders: ${hazardReqPpe.map((p) => `${p.item}${p.for_role ? ` (${p.for_role})` : ''}${p.mandatory ? ' [MANDATORY]' : ''}`).join('; ')}`,
+      );
+    }
+    if (estResolution) {
+      hazardLines.push(`  Expected resolution time: ~${estResolution} minutes`);
     }
 
     if (ppeInRange.length > 0) {
@@ -820,7 +868,7 @@ When "ACTIVE CASUALTIES IN SCENE" is provided, evaluate whether the decision pro
 
 4. RELEVANCE: Only evaluate casualty treatment when the decision DIRECTLY involves patient care, treatment, or transport. Generic command decisions, infrastructure setup, or communication orders should NOT be evaluated against casualty data.
 
-When treatment_requirements or transport_prerequisites are listed for a patient, use them as ground truth. When they are absent, infer required care from the injury data using standard pre-hospital protocols (PHTLS, ITLS, TCCC).
+When treatment_requirements or transport_prerequisites are listed for a patient, use them as ground truth. When ideal_response_sequence is provided, use it as the benchmark for a perfect response — check if the player's actions follow the correct order and include all critical steps. When required_ppe is listed, the decision MUST mention appropriate PPE or it is a specificity failure. When required_equipment is listed, the decision MUST name the specific equipment or it is a specificity failure. When they are absent, infer required care from the injury data using standard pre-hospital protocols (PHTLS, ITLS, TCCC).
 
 === ZONE MANAGEMENT & SAFETY ===
 When "HAZARD ZONE SAFETY STATUS" is provided, evaluate four dimensions following ICS/NIMS zone protocol. The game does NOT hard-block any action — all decisions proceed, but violations produce consequence injects.

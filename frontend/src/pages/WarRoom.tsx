@@ -9,6 +9,7 @@ type TeamEntry = {
   team_description: string;
   min_participants: number;
   max_participants: number;
+  is_investigative?: boolean;
 };
 
 const SCENARIO_TYPES = [
@@ -406,11 +407,12 @@ export const WarRoom = () => {
       const opts = buildOptions();
       const { data } = await api.warroom.suggestTeams(opts);
       setTeams(
-        data.suggested_teams.map((t) => ({
-          team_name: t.team_name,
-          team_description: t.team_description || '',
-          min_participants: t.min_participants ?? 1,
-          max_participants: t.max_participants ?? 10,
+        data.suggested_teams.map((t: Record<string, unknown>) => ({
+          team_name: t.team_name as string,
+          team_description: (t.team_description as string) || '',
+          min_participants: (t.min_participants as number) ?? 1,
+          max_participants: (t.max_participants as number) ?? 10,
+          is_investigative: (t.is_investigative as boolean) ?? false,
         })),
       );
       if (data.scenario_type) setResolvedScenarioType(data.scenario_type);
@@ -437,6 +439,7 @@ export const WarRoom = () => {
         team_description: t.team_description,
         min_participants: t.min_participants,
         max_participants: t.max_participants,
+        is_investigative: t.is_investigative ?? false,
       }));
 
       const result = await api.warroom.generateStream(options, (phase, message) => {
@@ -711,7 +714,7 @@ export const WarRoom = () => {
                     className="px-3 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
                     disabled={loading}
                   />
-                  <div className="flex gap-4">
+                  <div className="flex gap-4 items-center">
                     <label className="flex items-center gap-2 text-xs terminal-text text-robotic-yellow/70">
                       Min:
                       <input
@@ -740,6 +743,26 @@ export const WarRoom = () => {
                         disabled={loading}
                       />
                     </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setTeams((prev) =>
+                          prev.map((team, idx) =>
+                            idx === i
+                              ? { ...team, is_investigative: !team.is_investigative }
+                              : team,
+                          ),
+                        )
+                      }
+                      disabled={loading}
+                      className={`ml-auto px-3 py-1 text-[10px] terminal-text uppercase tracking-wider border rounded transition-all ${
+                        t.is_investigative
+                          ? 'border-purple-500 bg-purple-500/20 text-purple-300'
+                          : 'border-robotic-yellow/30 text-robotic-yellow/40 hover:border-purple-500/50 hover:text-purple-400'
+                      }`}
+                    >
+                      {t.is_investigative ? '⬟ INVESTIGATIVE' : '○ INVESTIGATIVE'}
+                    </button>
                   </div>
                 </div>
               ))}

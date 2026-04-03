@@ -38,10 +38,29 @@ const isLastKnownAdversary = (pin: ScenarioLocationPin): boolean => {
   return cat === 'last_known_adversary' || condCat === 'last_known_adversary';
 };
 
+const isAdversarySighting = (pin: ScenarioLocationPin): boolean => {
+  const cat = pin.pin_category?.toLowerCase() ?? '';
+  const condCat = ((pin.conditions?.pin_category as string) ?? '').toLowerCase();
+  return cat === 'adversary_sighting' || condCat === 'adversary_sighting';
+};
+
+const getSightingStatus = (pin: ScenarioLocationPin): 'active' | 'stale' | 'debunked' => {
+  return ((pin.conditions?.sighting_status as string) || 'active') as
+    | 'active'
+    | 'stale'
+    | 'debunked';
+};
+
 const getPinColor = (pin: ScenarioLocationPin): string => {
   const cat = pin.pin_category?.toLowerCase() ?? '';
   const t = pin.location_type.toLowerCase();
 
+  if (isAdversarySighting(pin)) {
+    const status = getSightingStatus(pin);
+    if (status === 'debunked') return '#6b7280';
+    if (status === 'stale') return '#9ca3af';
+    return '#dc2626';
+  }
   if (isLastKnownAdversary(pin)) return '#dc2626';
   if (
     cat === 'incident_site' ||
@@ -107,6 +126,12 @@ const getSymbol = (pin: ScenarioLocationPin): string => {
   const cat = pin.pin_category?.toLowerCase() ?? '';
   const t = pin.location_type.toLowerCase();
 
+  if (isAdversarySighting(pin)) {
+    const status = getSightingStatus(pin);
+    if (status === 'debunked') return svg('suspect_debunked');
+    if (status === 'stale') return svg('suspect_stale');
+    return svg('suspect_silhouette');
+  }
   if (isLastKnownAdversary(pin)) return svg('suspect_silhouette');
   if (
     cat === 'incident_site' ||
@@ -177,26 +202,57 @@ const createPinIcon = (pin: ScenarioLocationPin, stalenessMinutes?: number): Div
   const symbol = getSymbol(pin);
   const primary = isIncidentSite(pin);
   const adversary = isLastKnownAdversary(pin);
+  const sighting = isAdversarySighting(pin);
+  const sightingStatus = sighting ? getSightingStatus(pin) : null;
+  const isSightingActive = sighting && sightingStatus === 'active';
+  const isSightingStale = sighting && sightingStatus === 'stale';
+  const isSightingDebunked = sighting && sightingStatus === 'debunked';
 
-  const size = primary ? 48 : adversary ? 44 : 32;
-  const borderWidth = primary ? 3 : adversary ? 3 : 2;
-  const svgSize = primary ? 24 : adversary ? 22 : 16;
-  const borderColor = primary ? '#fbbf24' : adversary ? '#ef4444' : 'white';
+  const sightingSize = isSightingDebunked ? 28 : isSightingStale ? 30 : 40;
+  const size = primary ? 48 : adversary ? 44 : sighting ? sightingSize : 32;
+  const borderWidth = primary ? 3 : adversary || isSightingActive ? 3 : 2;
+  const svgSize = primary
+    ? 24
+    : adversary
+      ? 22
+      : isSightingActive
+        ? 20
+        : isSightingStale
+          ? 14
+          : isSightingDebunked
+            ? 14
+            : 16;
+  const borderColor = primary
+    ? '#fbbf24'
+    : adversary || isSightingActive
+      ? '#ef4444'
+      : isSightingDebunked
+        ? '#6b7280'
+        : isSightingStale
+          ? '#9ca3af'
+          : 'white';
   const shadowStyle = primary
     ? `0 0 16px 4px ${color}88, 0 4px 12px rgba(0,0,0,0.4)`
-    : adversary
+    : adversary || isSightingActive
       ? `0 0 20px 6px rgba(239,68,68,0.5), 0 4px 12px rgba(0,0,0,0.4)`
-      : '0 2px 6px rgba(0,0,0,0.3)';
+      : isSightingDebunked
+        ? '0 2px 4px rgba(0,0,0,0.2)'
+        : '0 2px 6px rgba(0,0,0,0.3)';
   const cssClass = primary
     ? 'scenario-location-marker primary-incident'
-    : adversary
+    : adversary || isSightingActive
       ? 'scenario-location-marker adversary-marker'
       : 'scenario-location-marker';
-  const pulseClass = primary ? 'primary-incident-pulse' : adversary ? 'adversary-pulse' : '';
+  const pulseClass = primary
+    ? 'primary-incident-pulse'
+    : adversary || isSightingActive
+      ? 'adversary-pulse'
+      : '';
 
-  const stalenessLabel =
-    adversary && stalenessMinutes != null && stalenessMinutes > 0
-      ? `<div style="
+  const showStaleness =
+    (adversary || isSightingActive) && stalenessMinutes != null && stalenessMinutes > 0;
+  const stalenessLabel = showStaleness
+    ? `<div style="
           position:absolute;
           bottom:-18px;left:50%;transform:translateX(-50%);
           white-space:nowrap;
@@ -205,21 +261,73 @@ const createPinIcon = (pin: ScenarioLocationPin, stalenessMinutes?: number): Div
           text-shadow:0 1px 3px rgba(0,0,0,0.8);
           font-family:monospace;
           pointer-events:none;
-        ">Last seen ${Math.round(stalenessMinutes)}m ago</div>`
+        ">Last seen ${Math.round(stalenessMinutes!)}m ago</div>`
+    : '';
+
+  const natoGrade = (pin.conditions?.nato_grade as string) || null;
+  const natoColor = natoGrade
+    ? /^[AB][12]/.test(natoGrade)
+      ? '#22c55e'
+      : /^[CD][34]/.test(natoGrade)
+        ? '#f59e0b'
+        : '#ef4444'
+    : null;
+  const natoLabel =
+    natoGrade && (sighting || adversary)
+      ? `<div style="
+          position:absolute;
+          top:-14px;left:50%;transform:translateX(-50%);
+          white-space:nowrap;
+          font-size:9px;font-weight:900;
+          color:${natoColor};
+          background:rgba(0,0,0,0.75);
+          padding:0 3px;border-radius:2px;
+          border:1px solid ${natoColor}44;
+          font-family:monospace;
+          pointer-events:none;
+          letter-spacing:0.5px;
+        ">${natoGrade}</div>`
       : '';
+
+  const debunkedLabel = isSightingDebunked
+    ? `<div style="
+          position:absolute;
+          bottom:-16px;left:50%;transform:translateX(-50%);
+          white-space:nowrap;
+          font-size:8px;font-weight:bold;
+          color:#ef4444;
+          text-shadow:0 1px 3px rgba(0,0,0,0.8);
+          font-family:monospace;
+          pointer-events:none;
+          text-decoration:line-through;
+        ">FALSE LEAD</div>`
+    : '';
+
+  const sightingOrderLabel = isSightingStale
+    ? `<div style="
+          position:absolute;
+          bottom:-14px;left:50%;transform:translateX(-50%);
+          white-space:nowrap;
+          font-size:8px;font-weight:bold;
+          color:#9ca3af;
+          text-shadow:0 1px 3px rgba(0,0,0,0.8);
+          font-family:monospace;
+          pointer-events:none;
+        ">#${((pin.conditions?.sighting_order as number) ?? 0) + 1}</div>`
+    : '';
 
   return new DivIcon({
     className: cssClass,
     html: `
       ${
-        primary || adversary
+        primary || adversary || isSightingActive
           ? `<div class="${pulseClass}" style="
         position:absolute;
         top:50%;left:50%;
         width:${size + 16}px;height:${size + 16}px;
         margin-left:-${(size + 16) / 2}px;margin-top:-${(size + 16) / 2}px;
         border-radius:50%;
-        border:2px solid ${adversary ? '#ef4444' : color};
+        border:2px solid ${adversary || isSightingActive ? '#ef4444' : color};
         opacity:0;
         pointer-events:none;
       "></div>`
@@ -239,10 +347,14 @@ const createPinIcon = (pin: ScenarioLocationPin, stalenessMinutes?: number): Div
         font-size: ${svgSize}px;
         line-height: 1;
         z-index:10;
+        ${isSightingDebunked ? 'opacity:0.5;' : isSightingStale ? 'opacity:0.65;' : ''}
       ">
-        ${primary || adversary ? symbol.replace(/width="16"/, `width="${svgSize}"`).replace(/height="16"/, `height="${svgSize}"`) : symbol}
+        ${primary || adversary || sighting ? symbol.replace(/width="16"/, `width="${svgSize}"`).replace(/height="16"/, `height="${svgSize}"`) : symbol}
       </div>
+      ${natoLabel}
       ${stalenessLabel}
+      ${debunkedLabel}
+      ${sightingOrderLabel}
     `,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
@@ -318,11 +430,14 @@ export const ScenarioLocationMarker = ({
   sessionElapsedMinutes,
 }: ScenarioLocationMarkerProps) => {
   const adversary = isLastKnownAdversary(location);
-  const lastSeenAt = adversary
+  const sighting = isAdversarySighting(location);
+  const anyAdversary = adversary || sighting;
+  const sightingStatus = sighting ? getSightingStatus(location) : null;
+  const lastSeenAt = anyAdversary
     ? ((location.conditions?.last_seen_at_minutes as number | undefined) ?? 0)
     : 0;
   const stalenessMinutes =
-    adversary && sessionElapsedMinutes != null ? sessionElapsedMinutes - lastSeenAt : undefined;
+    anyAdversary && sessionElapsedMinutes != null ? sessionElapsedMinutes - lastSeenAt : undefined;
   const icon = createPinIcon(location, stalenessMinutes);
   const narrativeDesc =
     location.narrative_description ??
@@ -333,13 +448,16 @@ export const ScenarioLocationMarker = ({
   const accuracyRadiusM = (location.conditions?.accuracy_radius_m as number) || 0;
   const directionOfTravel = (location.conditions?.direction_of_travel as string) || null;
   const testsContainment = (location.conditions?.tests_containment as boolean) || false;
+  const natoGrade = (location.conditions?.nato_grade as string) || null;
 
   const confidenceStyle = confidence
     ? CONFIDENCE_STYLES[confidence] || CONFIDENCE_STYLES.low
     : null;
   const intelMeta = intelSource ? INTEL_SOURCE_LABELS[intelSource] || null : null;
 
-  const effectiveRadius = adversary
+  const showUncertainty =
+    anyAdversary && sightingStatus !== 'debunked' && sightingStatus !== 'stale';
+  const effectiveRadius = showUncertainty
     ? accuracyRadiusM > 0
       ? accuracyRadiusM +
         (stalenessMinutes != null && stalenessMinutes > 0
@@ -357,12 +475,13 @@ export const ScenarioLocationMarker = ({
         (position as { lat: number; lng: number }).lng,
       ];
 
+  const showDirection = anyAdversary && sightingStatus !== 'debunked' && sightingStatus !== 'stale';
   const directionArrow =
-    adversary && directionOfTravel
+    showDirection && directionOfTravel
       ? computeDirectionArrow(posArray, directionOfTravel, effectiveRadius || 200)
       : null;
 
-  // Sighting history trail for ghost pins + pursuit corridor
+  // Legacy sighting history trail (only for old-style single moving pin)
   const sightingHistory =
     adversary && Array.isArray(location.conditions?.sighting_history)
       ? (location.conditions.sighting_history as Array<{
@@ -451,7 +570,7 @@ export const ScenarioLocationMarker = ({
         );
       })}
 
-      {adversary && effectiveRadius > 0 && (
+      {showUncertainty && effectiveRadius > 0 && (
         <Circle
           center={position}
           radius={effectiveRadius}
@@ -497,10 +616,63 @@ export const ScenarioLocationMarker = ({
               {location.label}
             </div>
             <div className="text-xs text-robotic-yellow/60 mt-0.5 capitalize">
-              {adversary ? 'Last Known Position' : location.location_type.replace(/_/g, ' ')}
+              {sighting
+                ? sightingStatus === 'debunked'
+                  ? 'DEBUNKED — False Lead'
+                  : `Sighting Report #${((location.conditions?.sighting_order as number) ?? 0) + 1}`
+                : adversary
+                  ? 'Last Known Position'
+                  : location.location_type.replace(/_/g, ' ')}
             </div>
 
-            {adversary && intelMeta && (
+            {natoGrade && anyAdversary && (
+              <div className="flex items-center gap-1.5 mt-1">
+                <span
+                  className="px-1.5 py-0.5 text-[11px] font-black rounded font-mono tracking-wider"
+                  style={{
+                    backgroundColor:
+                      (/^[AB][12]/.test(natoGrade)
+                        ? '#22c55e'
+                        : /^[CD][34]/.test(natoGrade)
+                          ? '#f59e0b'
+                          : '#ef4444') + '22',
+                    color: /^[AB][12]/.test(natoGrade)
+                      ? '#22c55e'
+                      : /^[CD][34]/.test(natoGrade)
+                        ? '#f59e0b'
+                        : '#ef4444',
+                    border: `1px solid ${/^[AB][12]/.test(natoGrade) ? '#22c55e' : /^[CD][34]/.test(natoGrade) ? '#f59e0b' : '#ef4444'}44`,
+                  }}
+                >
+                  INTEL {natoGrade}
+                </span>
+                <span className="text-[9px] text-robotic-yellow/50 font-mono">
+                  {natoGrade[0] === 'A'
+                    ? 'Completely Reliable'
+                    : natoGrade[0] === 'B'
+                      ? 'Usually Reliable'
+                      : natoGrade[0] === 'C'
+                        ? 'Fairly Reliable'
+                        : natoGrade[0] === 'D'
+                          ? 'Not Usually Reliable'
+                          : natoGrade[0] === 'E'
+                            ? 'Unreliable'
+                            : 'Cannot Judge'}{' '}
+                  ·{' '}
+                  {natoGrade[1] === '1'
+                    ? 'Confirmed'
+                    : natoGrade[1] === '2'
+                      ? 'Probably True'
+                      : natoGrade[1] === '3'
+                        ? 'Possibly True'
+                        : natoGrade[1] === '4'
+                          ? 'Doubtful'
+                          : 'Improbable'}
+                </span>
+              </div>
+            )}
+
+            {anyAdversary && intelMeta && (
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                 <span
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold rounded"
@@ -530,28 +702,37 @@ export const ScenarioLocationMarker = ({
               </div>
             )}
 
-            {adversary && stalenessMinutes != null && stalenessMinutes > 0 && (
-              <div className="text-xs text-red-400 mt-1 font-mono">
-                Last seen {Math.round(stalenessMinutes)} min ago
-                {effectiveRadius > 0 && ` · ~${Math.round(effectiveRadius)}m radius`}
+            {sighting && sightingStatus === 'debunked' && (
+              <div className="text-xs text-red-400 mt-1 font-mono font-bold">
+                Debunked at T+
+                {Math.round((location.conditions?.debunked_at_minutes as number) ?? 0)}min
               </div>
             )}
-            {adversary && directionOfTravel && (
+            {anyAdversary &&
+              sightingStatus !== 'debunked' &&
+              stalenessMinutes != null &&
+              stalenessMinutes > 0 && (
+                <div className="text-xs text-red-400 mt-1 font-mono">
+                  Last seen {Math.round(stalenessMinutes)} min ago
+                  {effectiveRadius > 0 && ` · ~${Math.round(effectiveRadius)}m radius`}
+                </div>
+              )}
+            {anyAdversary && sightingStatus !== 'debunked' && directionOfTravel && (
               <div className="text-xs text-amber-400 mt-0.5 font-mono">
                 Direction: {directionOfTravel}
               </div>
             )}
-            {adversary && testsContainment && (
+            {anyAdversary && testsContainment && (
               <div className="text-xs text-purple-400 mt-0.5 font-mono font-bold">
                 ⚡ TESTING PERIMETER
               </div>
             )}
-            {adversary && typeof location.conditions?.last_seen_description === 'string' && (
+            {anyAdversary && typeof location.conditions?.last_seen_description === 'string' && (
               <div className="text-xs text-robotic-yellow/80 mt-1 leading-snug italic">
                 {location.conditions.last_seen_description}
               </div>
             )}
-            {narrativeDesc && !adversary && (
+            {narrativeDesc && !anyAdversary && (
               <div className="text-xs text-robotic-yellow/80 mt-1 leading-snug">
                 {narrativeDesc}
               </div>

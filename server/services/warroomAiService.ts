@@ -1039,6 +1039,7 @@ export interface WarroomScenarioPayload {
     min_participants: number;
     max_participants: number;
     counter_definitions?: CounterDefinition[];
+    is_investigative?: boolean;
   }>;
   objectives: Array<{
     objective_id: string;
@@ -1750,6 +1751,7 @@ function getRequiredTeamsFromTemplate(
         team_description: string;
         min_participants?: number;
         max_participants?: number;
+        is_investigative?: boolean;
       }>
     | undefined;
   if (!Array.isArray(teams) || teams.length === 0) return [];
@@ -1758,6 +1760,7 @@ function getRequiredTeamsFromTemplate(
     team_description: t.team_description || '',
     min_participants: t.min_participants ?? 1,
     max_participants: t.max_participants ?? 10,
+    ...(t.is_investigative ? { is_investigative: true } : {}),
   }));
 }
 
@@ -1813,12 +1816,13 @@ async function generateTeamsAndCore(
     ? ''
     : `,
   "teams": [
-    { "team_name": "string", "team_description": "string", "min_participants": 2, "max_participants": 8 },
+    { "team_name": "string", "team_description": "string", "min_participants": 2, "max_participants": 8, "is_investigative": false },
     ...
   ]`;
   const teamsRule = hasUserTeams
     ? ''
-    : '\n- You MUST include at least 4 teams. Use required_teams from the scenario type template as a base; you may add or adapt.';
+    : '\n- You MUST include at least 4 teams. Use required_teams from the scenario type template as a base; you may add or adapt.' +
+      '\n- Set "is_investigative": true on any team whose primary role involves investigating, pursuing, or tracking adversaries (e.g. police, intelligence, detective). Most scenarios have 1 investigative team; some have 0.';
 
   const originalPromptBlock = original_prompt
     ? `\nUser's original request: "${original_prompt}"\nIMPORTANT: The scenario title, description, and briefing MUST reference the specific venue/location the user described. Do NOT substitute a different venue type or name.`
@@ -2558,7 +2562,7 @@ function teamNameToStateKey(teamName: string): string {
     return 'police_state';
   if (lower.includes('fire') || lower.includes('hazard') || lower.includes('hazmat'))
     return 'fire_state';
-  return lower.replace(/[\s-]+/g, '_') + '_state';
+  return lower.replaceAll(' ', '_').replaceAll('-', '_') + '_state';
 }
 
 function enrichWithStandardDecisionIntentKeys(
@@ -3318,7 +3322,12 @@ Teams available: ${(teamNames ?? []).join(', ') || 'not specified'}`;
     enriched_description: descResult.enriched_description ?? undefined,
     fire_class: descResult.fire_class ?? undefined,
     debris_type: descResult.debris_type ?? undefined,
-    resolution_requirements: reqsResult.resolution_requirements ?? {},
+    resolution_requirements: {
+      ...(reqsResult.resolution_requirements ?? {}),
+      ideal_response_sequence: reqsResult.ideal_response_sequence ?? [],
+      required_ppe: reqsResult.required_ppe ?? [],
+      estimated_resolution_minutes: reqsResult.estimated_resolution_minutes ?? null,
+    },
     personnel_requirements: reqsResult.personnel_requirements ?? {},
     equipment_requirements: reqsResult.equipment_requirements ?? [],
     deterioration_timeline: deteriorationResult.deterioration_timeline ?? {},
@@ -3376,6 +3385,9 @@ async function enrichHazardRequirements(
   resolution_requirements?: Record<string, unknown>;
   personnel_requirements?: Record<string, unknown>;
   equipment_requirements?: Array<Record<string, unknown>>;
+  ideal_response_sequence?: Array<Record<string, unknown>>;
+  required_ppe?: Array<Record<string, unknown>>;
+  estimated_resolution_minutes?: number;
 }> {
   const systemPrompt = `You are an expert in emergency response requirements. Determine the EXACT personnel, equipment, and procedures needed to resolve this hazard.
 
@@ -3405,13 +3417,23 @@ Return ONLY valid JSON:
   "equipment_requirements": [
     { "equipment_type": "internal_id", "label": "Human readable name", "quantity": <number>, "critical": <true if essential>, "applicable_teams": ["team_name_1", "team_name_2"] },
     { "equipment_type": "another_item", "label": "Display name", "quantity": <number>, "critical": <true/false>, "applicable_teams": ["team_name"] }
-  ]
+  ],
+  "ideal_response_sequence": [
+    { "step": 1, "action": "string (e.g. 'Establish exclusion zone')", "detail": "string (e.g. 'Set up 50m perimeter upwind, evacuate all civilians')", "responsible_team": "string" },
+    { "step": 2, "action": "string", "detail": "string", "responsible_team": "string" }
+  ],
+  "required_ppe": [
+    { "item": "string (e.g. 'SCBA 30-min cylinder')", "for_role": "string", "mandatory": true }
+  ],
+  "estimated_resolution_minutes": <number>
 }
 
 IMPORTANT:
 - equipment_requirements MUST contain at least 2 items. Be specific — not just "fire_extinguisher" but the correct type (foam, CO2, dry chemical, etc.) for this hazard.
 - ALWAYS include the personal protective equipment (PPE) that responders MUST wear when approaching this hazard. Examples: breathing_apparatus, hazmat_suit, fire_protective_gear, safety_vest, helmet, ppe_medical, chemical_gloves, face_shield. Mark PPE items as critical: true.
 - safety_precautions should list procedural safety steps (e.g. "establish exclusion zone", "approach from upwind").
+- ideal_response_sequence: the COMPLETE ordered playbook a perfect team follows from first alarm to resolution. Each step must name the responsible team. Include PPE donning, zone setup, approach, containment, mitigation, monitoring, and stand-down.
+- required_ppe: list ALL PPE items that each role must wear when approaching this hazard. Be specific (e.g. "Level B HAZMAT suit" not just "PPE").
 - applicable_teams: assign each equipment item ONLY to the team(s) trained to use it. Use the EXACT team names from "Teams available" above. Rules:
   - Fire-fighting gear (turnout gear, hose, foam units, fire extinguishers) → fire/hazmat team only
   - HAZMAT PPE (hazmat_suit, breathing_apparatus, chemical_gloves) → fire/hazmat team only
@@ -3426,11 +3448,14 @@ IMPORTANT:
       resolution_requirements?: Record<string, unknown>;
       personnel_requirements?: Record<string, unknown>;
       equipment_requirements?: Array<Record<string, unknown>>;
+      ideal_response_sequence?: Array<Record<string, unknown>>;
+      required_ppe?: Array<Record<string, unknown>>;
+      estimated_resolution_minutes?: number;
     }>(
       systemPrompt,
       `What personnel, equipment, and procedures are needed to resolve this ${hazard.hazard_type} at ${venue}?`,
       openAiApiKey,
-      2000,
+      3000,
     );
   } catch (err) {
     logger.warn({ err, hazardType: hazard.hazard_type }, 'Hazard requirements enrichment failed');
@@ -3718,6 +3743,10 @@ interface VictimProfile {
   treatment_requirements: Array<{ intervention: string; priority: string; reason: string }>;
   transport_prerequisites: string[];
   contraindications: string[];
+  ideal_response_sequence: Array<{ step: number; action: string; detail: string }>;
+  required_ppe: string[];
+  required_equipment: Array<{ item: string; quantity: number; purpose: string }>;
+  expected_time_to_treat_minutes: number;
   appears_at_minutes: number;
 }
 
@@ -3883,6 +3912,10 @@ For EACH victim, provide:
 - treatment_requirements: real pre-hospital interventions with priority and clinical rationale
 - transport_prerequisites: what MUST be stabilized before safe transport
 - contraindications: dangerous actions for this specific patient
+- ideal_response_sequence: ORDERED step-by-step sequence of what a perfect responder does from approach to handoff (e.g. step 1: Don PPE, step 2: Primary survey DRABC, step 3: Apply tourniquet, etc.)
+- required_ppe: list of specific PPE items responders MUST wear to safely treat this patient (e.g. "nitrile gloves", "N95 respirator", "face shield", "full turnout gear")
+- required_equipment: list of specific equipment items with quantity and purpose needed to treat this patient (e.g. { "item": "SAM splint", "quantity": 2, "purpose": "immobilize fractured left tibia" })
+- expected_time_to_treat_minutes: realistic estimate of time (in minutes) for pre-hospital treatment before transport-ready
 - appears_at_minutes: 0 for immediately visible, 5-20 for delayed discovery
 
 Return ONLY valid JSON:
@@ -3899,6 +3932,10 @@ Return ONLY valid JSON:
       "treatment_requirements": [{ "intervention": "string", "priority": "critical|high|medium", "reason": "string" }],
       "transport_prerequisites": ["string"],
       "contraindications": ["string"],
+      "ideal_response_sequence": [{ "step": 1, "action": "string", "detail": "string" }],
+      "required_ppe": ["string"],
+      "required_equipment": [{ "item": "string", "quantity": 1, "purpose": "string" }],
+      "expected_time_to_treat_minutes": 10,
       "appears_at_minutes": 0
     }
   ]
@@ -4059,6 +4096,10 @@ RULES:
           treatment_requirements: profile.treatment_requirements,
           transport_prerequisites: profile.transport_prerequisites,
           contraindications: profile.contraindications,
+          ideal_response_sequence: profile.ideal_response_sequence,
+          required_ppe: profile.required_ppe,
+          required_equipment: profile.required_equipment,
+          expected_time_to_treat_minutes: profile.expected_time_to_treat_minutes,
         },
         status: 'undiscovered' as const,
         appears_at_minutes: profile.appears_at_minutes ?? 0,
@@ -4085,6 +4126,10 @@ RULES:
         treatment_requirements: profile.treatment_requirements,
         transport_prerequisites: profile.transport_prerequisites,
         contraindications: profile.contraindications,
+        ideal_response_sequence: profile.ideal_response_sequence,
+        required_ppe: profile.required_ppe,
+        required_equipment: profile.required_equipment,
+        expected_time_to_treat_minutes: profile.expected_time_to_treat_minutes,
       },
       status: 'undiscovered' as const,
       appears_at_minutes: profile.appears_at_minutes ?? 0,
@@ -4175,13 +4220,23 @@ Return ONLY valid JSON:
         "mixed_wounded": [{ "injury_type": "string", "severity": "minor|moderate", "count": number }],
         "bottleneck": true/false,
         "blocking_exit": "string|null (label of exit being blocked, if any)",
-        "visible_description": "1-2 sentence description of what a marshal approaching sees"
+        "visible_description": "1-2 sentence description of what a marshal approaching sees",
+        "ideal_response_sequence": [{ "step": 1, "action": "string", "detail": "string" }],
+        "required_equipment": [{ "item": "string", "quantity": 1, "purpose": "string" }],
+        "required_personnel": { "role": "string", "count": number },
+        "management_priority": "low|medium|high|critical"
       },
       "status": "identified",
       "appears_at_minutes": 0
     }
   ]
 }
+
+CROWD RESPONSE REQUIREMENTS:
+- ideal_response_sequence: Step-by-step perfect response for managing this crowd. E.g.: step 1: Assess crowd size and mood, step 2: Deploy marshals at bottleneck, step 3: Open alternative exit, step 4: Use PA to redirect, step 5: Monitor for crush risk.
+- required_equipment: what is needed (megaphone, barriers, first aid kit for mixed_wounded, etc.)
+- required_personnel: who handles this crowd (marshal, police officer, etc.) and how many
+- management_priority: how urgently this crowd needs attention (critical if bottleneck or stampede risk)
 
 RULES:
 - Total civilian count across all groups should be ${isMeleeAttack ? '50-150' : '200-500'} (proportional to venue size and panic radius)
@@ -4294,7 +4349,11 @@ Return ONLY valid JSON:
         "crowd_origin": "onlooker|media|family|helper",
         "behavior": "calm|anxious|aggressive|demanding|filming",
         "visible_description": "1-2 sentence description of what responders see",
-        "obstruction_risk": "low|medium|high"
+        "obstruction_risk": "low|medium|high",
+        "ideal_response_sequence": [{ "step": 1, "action": "string", "detail": "string" }],
+        "required_equipment": [{ "item": "string", "quantity": 1, "purpose": "string" }],
+        "required_personnel": { "role": "string", "count": number },
+        "management_priority": "low|medium|high|critical"
       },
       "status": "identified",
       "appears_at_minutes": number (5-${Math.min(45, durationMinutes - 5)}),
@@ -4366,7 +4425,7 @@ async function generateScenarioEquipment(
     }
   >();
 
-  const normalizeTeam = (t: string) => t.toLowerCase().replace(/[\s-]+/g, '_');
+  const normalizeTeam = (t: string) => t.toLowerCase().replaceAll(' ', '_').replaceAll('-', '_');
 
   const mergeTeams = (existing: string[], incoming: string[]) => {
     const set = new Set(existing.map(normalizeTeam));
@@ -5628,9 +5687,16 @@ WHAT TO GENERATE:
 
 1. ADVERSARY PROFILE${multiAdversary ? 'S' : ''}: ${multiAdversary ? `${adversaryCount} distinct adversaries, each with unique IDs, behavior profiles, and initial zones.` : 'A single adversary with behavior matching the scenario.'}
 
-2. PURSUIT TIME INJECTS (8-12 injects): Delivered at fixed times. EACH sighting inject uses a DIFFERENT intel_source. You MUST use at least 4 distinct intel_source types across all injects, chosen from sources that would realistically exist at this venue. Mix high/medium/low confidence sources to force players to weigh conflicting intel. Each sighting inject must include an "adversary_sighting" in state_effect with intel_source, confidence, accuracy_radius_m, and optional direction_of_travel.
+2. PURSUIT TIME INJECTS (8-12 injects): Delivered at fixed times. EACH sighting inject uses a DIFFERENT intel_source. You MUST use at least 4 distinct intel_source types across all injects. Intel sources are graded by NATO Admiralty reliability — use this to create tension:
+   - A (completely reliable): body_camera, dash_camera
+   - B (usually reliable): cctv_operator, facial_recognition, license_plate_reader, aerial_unit, helicopter_thermal
+   - C (fairly reliable): tracking_team, forensic_team, radio_intercept, k9_tracking, cell_tower
+   - D (not usually reliable): security_guard, store_clerk, taxi_driver, hospital_alert, informant
+   - E (unreliable): anonymous_caller, social_media, bystander, eyewitness
+   Mix high/medium/low confidence sources. Use the exact snake_case intel_source values above. Each sighting inject must include an "adversary_sighting" in state_effect with intel_source, confidence, accuracy_radius_m, and optional direction_of_travel.
 
-3. FALSE LEAD INJECTS (2-3 injects within pursuit_time_injects): Mark these with "is_false_lead": true in the adversary_sighting. These are reports that turn out to be WRONG — similar-looking individual, a lookalike captured on camera, a cloned or misread number plate, or a civilian matching the description at a hospital. FALSE LEADS CAN COME FROM ANY CONFIDENCE LEVEL — in fact, at least one MUST be high-confidence (e.g. clear camera footage of the wrong person) because those are the most tactically dangerous: commanders will commit heavy resources based on precise-but-wrong intel. The content should be plausible and the location should draw resources AWAY from the actual pursuit corridor. The map pin will still update (players don't know it's false until a later inject reveals it). Include a follow-up inject later that debunks the false lead.
+3. FALSE LEAD INJECTS (2-3 injects within pursuit_time_injects): Mark these with "is_false_lead": true in the adversary_sighting. These are reports that turn out to be WRONG — similar-looking individual, a lookalike captured on camera, a cloned or misread number plate, or a civilian matching the description at a hospital. FALSE LEADS CAN COME FROM ANY CONFIDENCE LEVEL — in fact, at least one MUST be high-confidence (e.g. clear camera footage of the wrong person) because those are the most tactically dangerous: commanders will commit heavy resources based on precise-but-wrong intel. The content should be plausible and the location should draw resources AWAY from the actual pursuit corridor. A new map pin will appear at the false location (players don't know it's false until a later inject reveals it).
+   DEBUNK INJECTS: For EACH false lead, include a follow-up inject later in pursuit_time_injects that reveals it was wrong. On the debunk inject, add "debunks_inject_index": N in the root of the inject object (NOT inside state_effect), where N is the 0-based index of the false-lead inject within the pursuit_time_injects array. The debunk inject should NOT have an adversary_sighting in state_effect. Its content should explain how the false lead was discovered (e.g. "CCTV review confirms the individual at Car Park B was a maintenance worker — NOT the suspect").
 
 4. PURSUIT CONDITION INJECTS (3-5 injects): Branches that fire based on which decisions the pursuit team made. Use trigger_condition with keywords matching the prior decision.
 
@@ -5858,6 +5924,10 @@ RULES:
       requires_response: (inj.requires_response as boolean) ?? true,
       requires_coordination: false,
       state_effect: inj.state_effect as Record<string, unknown> | undefined,
+      debunks_inject_index:
+        typeof inj.debunks_inject_index === 'number'
+          ? (inj.debunks_inject_index as number)
+          : undefined,
     }));
 
     const witnessInjects = (parsed.witness_injects || []).map((inj) => ({

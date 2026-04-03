@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { api } from '../../lib/api';
+import { PursuitTimeline } from './PursuitTimeline';
 
 const AAR_SECTION_KEYS = [
   'executive',
@@ -1035,6 +1036,9 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
           </div>
         </div>
       )}
+
+      {/* Pursuit Intelligence Timeline */}
+      <PursuitTimeline sessionId={sessionId} />
 
       {/* Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -176,13 +176,23 @@ export async function applyInjectPublishEffects(
       logger.error({ err: stateErr, sessionId, injectId }, 'Failed to apply inject state effects');
     }
 
-    // Adversary sighting: update the last_known_adversary pin on the map
+    // Adversary sighting: create breadcrumb pin on the map
     const sighting = stateEffect.adversary_sighting as Record<string, unknown> | undefined;
     if (sighting && typeof sighting.lat === 'number' && typeof sighting.lng === 'number') {
       try {
         await handleAdversarySighting(sessionId, injectId, sighting);
       } catch (sightErr) {
         logger.error({ err: sightErr, sessionId, injectId }, 'Failed to handle adversary sighting');
+      }
+    }
+
+    // Debunk: mark a previous false-lead sighting pin as debunked
+    const debunkTarget = stateEffect.debunks_sighting_inject_id as unknown as string | undefined;
+    if (debunkTarget) {
+      try {
+        await handleSightingDebunk(sessionId, injectId, debunkTarget);
+      } catch (debunkErr) {
+        logger.error({ err: debunkErr, sessionId, injectId }, 'Failed to handle sighting debunk');
       }
     }
 
@@ -198,9 +208,59 @@ export async function applyInjectPublishEffects(
   }
 }
 
+// ─── NATO Admiralty Grading ───────────────────────────────────────────────────
+
+const SOURCE_RELIABILITY_MAP: Record<string, string> = {
+  body_camera: 'A',
+  dash_camera: 'A',
+  cctv_operator: 'B',
+  cctv: 'B',
+  facial_recognition: 'B',
+  license_plate_reader: 'B',
+  anpr: 'B',
+  aerial_unit: 'B',
+  helicopter_thermal: 'B',
+  tracking_team: 'C',
+  forensic_team: 'C',
+  forensic: 'C',
+  radio_intercept: 'C',
+  k9_tracking: 'C',
+  cell_tower: 'C',
+  security_guard: 'D',
+  store_clerk: 'D',
+  taxi_driver: 'D',
+  hospital_alert: 'D',
+  anonymous_caller: 'E',
+  social_media: 'E',
+  bystander: 'E',
+  eyewitness: 'E',
+  informant: 'D',
+  financial: 'D',
+};
+
+export function computeNatoGrade(
+  intelSource: string,
+  confidence: string,
+  accuracyRadius: number,
+): { sourceReliability: string; infoCredibility: string; grade: string } {
+  const src = intelSource.toLowerCase().replace(/[\s-]/g, '_');
+  const sourceReliability = SOURCE_RELIABILITY_MAP[src] || 'F';
+
+  let infoCredibility: string;
+  if (confidence === 'high' && accuracyRadius <= 50) infoCredibility = '1';
+  else if (confidence === 'high') infoCredibility = '2';
+  else if (confidence === 'medium') infoCredibility = '3';
+  else if (confidence === 'low' && accuracyRadius <= 300) infoCredibility = '4';
+  else infoCredibility = '5';
+
+  return { sourceReliability, infoCredibility, grade: `${sourceReliability}${infoCredibility}` };
+}
+
+// ─── Breadcrumb-Style Adversary Sighting Pins ────────────────────────────────
+
 /**
- * Update the last_known_adversary scenario location pin with new coordinates
- * from an adversary sighting inject.
+ * Create a new static sighting pin for each adversary report (breadcrumb trail).
+ * Marks previous sighting pins as stale. Opens a response tracking window.
  */
 async function handleAdversarySighting(
   sessionId: string,
@@ -225,6 +285,7 @@ async function handleAdversarySighting(
   const directionOfTravel = (sighting.direction_of_travel as string) || null;
   const resourceHint = (sighting.resource_hint as string) || null;
   const testsContainment = (sighting.tests_containment as boolean) || false;
+  const isFalseLead = (sighting.is_false_lead as boolean) || false;
 
   let effectiveConfidence = confidence;
   let effectiveRadius = accuracyRadiusM;
@@ -245,123 +306,259 @@ async function handleAdversarySighting(
     await evaluateContainment(sessionId, injectId, { lat, lng }, zoneLabel, adversaryId);
   }
 
-  // Find the specific adversary's pin — filter by adversary_id in JSONB conditions
-  const { data: allAdversaryPins } = await supabaseAdmin
+  const natoGrade = computeNatoGrade(intelSource, effectiveConfidence, effectiveRadius);
+  const elapsed = await getSessionElapsedMinutes(sessionId);
+
+  // Count existing sighting pins for this adversary to determine sighting_order
+  const { data: existingSightings } = await supabaseAdmin
     .from('scenario_locations')
-    .select('id, coordinates, conditions')
+    .select('id, conditions')
     .eq('scenario_id', session.scenario_id)
-    .eq('pin_category', 'last_known_adversary');
+    .in('pin_category', ['adversary_sighting', 'last_known_adversary']);
 
-  const existingPin =
-    allAdversaryPins?.find((p) => {
-      const conds = p.conditions as Record<string, unknown> | null;
-      return conds?.adversary_id === adversaryId;
-    }) || (allAdversaryPins?.length === 1 ? allAdversaryPins[0] : null);
+  const adversarySightings = (existingSightings ?? []).filter((p) => {
+    const conds = p.conditions as Record<string, unknown> | null;
+    return conds?.adversary_id === adversaryId;
+  });
 
-  if (existingPin) {
-    const elapsed = await getSessionElapsedMinutes(sessionId);
-    const oldConditions = (existingPin.conditions as Record<string, unknown>) || {};
-    const oldCoords = existingPin.coordinates as { lat?: number; lng?: number } | null;
+  const sightingOrder = adversarySightings.length;
 
-    // Build sighting history trail — append old position before moving the pin
-    const sightingHistory = Array.isArray(oldConditions.sighting_history)
-      ? [...(oldConditions.sighting_history as Array<Record<string, unknown>>)]
-      : [];
-    const oldLat = oldCoords?.lat;
-    const oldLng = oldCoords?.lng;
-    const pinMoved =
-      oldLat != null &&
-      oldLng != null &&
-      (Math.abs(oldLat - lat) > 0.00001 || Math.abs(oldLng! - lng) > 0.00001);
+  // Mark all previous sighting pins for this adversary as stale
+  for (const pin of adversarySightings) {
+    const conds = (pin.conditions as Record<string, unknown>) || {};
+    if (conds.sighting_status === 'stale') continue;
+    await supabaseAdmin
+      .from('scenario_locations')
+      .update({
+        conditions: { ...conds, sighting_status: 'stale' },
+      })
+      .eq('id', pin.id);
+  }
 
-    if (pinMoved && oldLat != null && oldLng != null) {
-      sightingHistory.push({
-        lat: oldLat,
-        lng: oldLng,
-        zone_label: oldConditions.zone_label || 'Unknown',
-        seen_at_minutes: oldConditions.last_seen_at_minutes ?? 0,
-        intel_source: oldConditions.intel_source || 'unknown',
-        confidence: oldConditions.confidence || 'low',
-      });
-    }
+  // Broadcast stale updates so frontend grays out old pins
+  if (adversarySightings.length > 0) {
+    const staleIds = adversarySightings.map((p) => p.id);
+    getWebSocketService().broadcastToSession(sessionId, {
+      type: 'sighting_stale',
+      data: { adversary_id: adversaryId, pin_ids: staleIds },
+      timestamp: new Date().toISOString(),
+    });
+  }
 
-    const updatedConditions = {
-      ...oldConditions,
+  // INSERT a new sighting pin
+  const newConditions: Record<string, unknown> = {
+    adversary_id: adversaryId,
+    pin_category: 'adversary_sighting',
+    sighting_status: 'active',
+    sighting_order: sightingOrder,
+    zone_label: zoneLabel,
+    last_seen_at_minutes: elapsed,
+    last_seen_description: description,
+    intel_source: intelSource,
+    confidence: effectiveConfidence,
+    accuracy_radius_m: effectiveRadius,
+    direction_of_travel: directionOfTravel,
+    resource_hint: resourceHint,
+    tests_containment: testsContainment,
+    is_false_lead: isFalseLead,
+    nato_grade: natoGrade.grade,
+    source_inject_id: injectId,
+  };
+
+  const { data: newPin, error: insertErr } = await supabaseAdmin
+    .from('scenario_locations')
+    .insert({
+      scenario_id: session.scenario_id,
+      location_type: 'adversary_sighting',
+      pin_category: 'adversary_sighting',
+      label: `Sighting #${sightingOrder + 1}: ${zoneLabel}`,
+      coordinates: { lat, lng },
+      conditions: newConditions,
+    })
+    .select('id')
+    .single();
+
+  if (insertErr || !newPin) {
+    logger.error({ error: insertErr, sessionId, injectId }, 'Failed to insert sighting pin');
+    return;
+  }
+
+  // Broadcast new sighting to frontend
+  getWebSocketService().broadcastToSession(sessionId, {
+    type: 'adversary_sighting_new',
+    data: {
+      pin_id: newPin.id,
       adversary_id: adversaryId,
+      coordinates: { lat, lng },
       zone_label: zoneLabel,
+      description,
       last_seen_at_minutes: elapsed,
-      last_seen_description: description,
-      pin_category: 'last_known_adversary',
       intel_source: intelSource,
       confidence: effectiveConfidence,
       accuracy_radius_m: effectiveRadius,
       direction_of_travel: directionOfTravel,
-      resource_hint: resourceHint,
       tests_containment: testsContainment,
-      sighting_history: sightingHistory,
-    };
-    await supabaseAdmin
-      .from('scenario_locations')
-      .update({
-        coordinates: { lat, lng },
-        label: `Last Seen: ${zoneLabel}`,
-        conditions: updatedConditions,
-      })
-      .eq('id', existingPin.id);
+      sighting_order: sightingOrder,
+      nato_grade: natoGrade.grade,
+      source_reliability: natoGrade.sourceReliability,
+      info_credibility: natoGrade.infoCredibility,
+      is_false_lead: false, // never reveal to frontend during play
+      sighting_status: 'active',
+    },
+    timestamp: new Date().toISOString(),
+  });
 
-    getWebSocketService().broadcastToSession(sessionId, {
-      type: 'adversary_sighting_update',
-      data: {
-        pin_id: existingPin.id,
-        adversary_id: adversaryId,
-        coordinates: { lat, lng },
-        old_coordinates: pinMoved && oldLat != null ? { lat: oldLat, lng: oldLng } : undefined,
-        zone_label: zoneLabel,
-        description,
-        last_seen_at_minutes: elapsed,
-        intel_source: intelSource,
-        confidence: effectiveConfidence,
-        accuracy_radius_m: effectiveRadius,
-        direction_of_travel: directionOfTravel,
-        tests_containment: testsContainment,
-        sighting_history: sightingHistory,
-      },
-      timestamp: new Date().toISOString(),
-    });
+  // Open response tracking windows for investigative teams
+  try {
+    const { data: teams } = await supabaseAdmin
+      .from('scenario_teams')
+      .select('team_name, is_investigative')
+      .eq('scenario_id', session.scenario_id);
 
-    // Broadcast "location cleared" event when the pin moves to a new location
-    if (pinMoved) {
-      const oldZone = (oldConditions.zone_label as string) || 'previous location';
-      getWebSocketService().broadcastToSession(sessionId, {
-        type: 'adversary_location_cleared',
-        data: {
-          adversary_id: adversaryId,
-          cleared_coordinates: { lat: oldLat, lng: oldLng },
-          cleared_zone_label: oldZone,
-          new_zone_label: zoneLabel,
-          message: `Units at ${oldZone}: area swept — suspect NOT at this location. All resources redirecting to ${zoneLabel}.`,
-        },
-        timestamp: new Date().toISOString(),
+    let investigativeTeams = (teams ?? []).filter(
+      (t) => (t as Record<string, unknown>).is_investigative === true,
+    );
+    // Fallback: if no teams marked investigative, use name-based heuristic
+    if (investigativeTeams.length === 0) {
+      investigativeTeams = (teams ?? []).filter((t) => {
+        const n = (((t as Record<string, unknown>).team_name as string) || '').toLowerCase();
+        return (
+          n.includes('police') ||
+          n.includes('security') ||
+          n.includes('law') ||
+          n.includes('pursuit') ||
+          n.includes('intelligence')
+        );
       });
     }
+    if (investigativeTeams.length === 0 && (teams ?? []).length > 0) {
+      investigativeTeams = [teams![0]];
+    }
 
-    logger.info(
-      {
-        sessionId,
-        injectId,
-        adversaryId,
-        lat,
-        lng,
-        zoneLabel,
-        intelSource,
-        effectiveConfidence,
-        historyLength: sightingHistory.length,
-      },
-      'Last-known adversary pin updated',
-    );
-  } else {
-    logger.warn({ sessionId, adversaryId }, 'No last_known_adversary pin found to update');
+    const rows = investigativeTeams.map((t) => ({
+      session_id: sessionId,
+      sighting_pin_id: newPin.id,
+      inject_id: injectId,
+      adversary_id: adversaryId,
+      team_name: (t as Record<string, unknown>).team_name as string,
+      source_reliability: natoGrade.sourceReliability,
+      info_credibility: natoGrade.infoCredibility,
+      is_false_lead: isFalseLead,
+      response_type: 'pending',
+    }));
+    if (rows.length > 0) {
+      await supabaseAdmin.from('session_pursuit_responses').insert(rows);
+    }
+  } catch (trackErr) {
+    logger.warn({ err: trackErr, sessionId }, 'Failed to open pursuit response tracking window');
   }
+
+  logger.info(
+    {
+      sessionId,
+      injectId,
+      adversaryId,
+      pinId: newPin.id,
+      lat,
+      lng,
+      zoneLabel,
+      intelSource,
+      natoGrade: natoGrade.grade,
+      sightingOrder,
+      isFalseLead,
+    },
+    'Adversary sighting breadcrumb pin created',
+  );
+}
+
+/**
+ * Handle a debunk inject: mark the corresponding false-lead sighting pin as debunked,
+ * broadcast to frontend, and close/score the response tracking window.
+ */
+export async function handleSightingDebunk(
+  sessionId: string,
+  debunkInjectId: string,
+  debunkedSightingInjectId: string,
+): Promise<void> {
+  const elapsed = await getSessionElapsedMinutes(sessionId);
+
+  // Find the sighting pin created from the original false-lead inject
+  const { data: pins } = await supabaseAdmin
+    .from('scenario_locations')
+    .select('id, conditions')
+    .eq('pin_category', 'adversary_sighting');
+
+  const targetPin = (pins ?? []).find((p) => {
+    const conds = p.conditions as Record<string, unknown> | null;
+    return conds?.source_inject_id === debunkedSightingInjectId;
+  });
+
+  if (!targetPin) {
+    logger.warn(
+      { sessionId, debunkInjectId, debunkedSightingInjectId },
+      'No sighting pin found for debunk — inject may not have fired yet',
+    );
+    return;
+  }
+
+  const conds = (targetPin.conditions as Record<string, unknown>) || {};
+  await supabaseAdmin
+    .from('scenario_locations')
+    .update({
+      conditions: {
+        ...conds,
+        sighting_status: 'debunked',
+        debunked_at_minutes: elapsed,
+        debunked_by_inject_id: debunkInjectId,
+      },
+    })
+    .eq('id', targetPin.id);
+
+  getWebSocketService().broadcastToSession(sessionId, {
+    type: 'sighting_debunked',
+    data: {
+      pin_id: targetPin.id,
+      adversary_id: (conds.adversary_id as string) || 'adversary_1',
+      debunked_at_minutes: elapsed,
+      zone_label: (conds.zone_label as string) || 'Unknown',
+    },
+    timestamp: new Date().toISOString(),
+  });
+
+  // Close response tracking window and score
+  const { data: responseRow } = await supabaseAdmin
+    .from('session_pursuit_responses')
+    .select('id, response_type, response_window_start, decisions_committed')
+    .eq('sighting_pin_id', targetPin.id)
+    .single();
+
+  if (responseRow) {
+    const wasCommitted =
+      responseRow.response_type === 'committed' || responseRow.response_type === 'split';
+    const windowStartMs = new Date(responseRow.response_window_start as string).getTime();
+    const wastedMs = wasCommitted ? Math.max(0, Date.now() - windowStartMs) : 0;
+    const scoreImpact = wasCommitted ? ('wasted_resources' as const) : ('good_caution' as const);
+
+    await supabaseAdmin
+      .from('session_pursuit_responses')
+      .update({
+        response_window_end: new Date().toISOString(),
+        score_impact: scoreImpact,
+        time_wasted_seconds: Math.round(wastedMs / 1000),
+        ...(responseRow.response_type === 'pending' ? { response_type: 'ignored' } : {}),
+      })
+      .eq('id', responseRow.id);
+
+    if (wasCommitted) {
+      await penalizeContainmentFailure(sessionId);
+      logger.info(
+        { sessionId, pinId: targetPin.id, wastedMs },
+        'False lead committed — heat penalty applied',
+      );
+    }
+  }
+
+  logger.info({ sessionId, debunkInjectId, pinId: targetPin.id }, 'Sighting pin debunked');
 }
 
 const RESOURCE_ASSET_MAP: Record<string, string[]> = {

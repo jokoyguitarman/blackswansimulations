@@ -7,7 +7,8 @@
       "team_name": "police",
       "team_description": "Tactical response, perimeter, interception, armed intervention options",
       "min_participants": 2,
-      "max_participants": 10
+      "max_participants": 10,
+      "is_investigative": true
     },
     {
       "team_name": "negotiation",
@@ -19,7 +20,8 @@
       "team_name": "intelligence",
       "team_description": "Perpetrator identification, real-time surveillance, threat assessment",
       "min_participants": 2,
-      "max_participants": 6
+      "max_participants": 6,
+      "is_investigative": true
     },
     {
       "team_name": "media",
