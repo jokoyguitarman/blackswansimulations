@@ -157,8 +157,8 @@ export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) 
         </div>
       )}
 
-      {/* Floating action cards (above decisions panel, right of metrics) */}
-      <div className="absolute bottom-[56px] left-[220px] z-[1000] w-80 flex flex-col gap-2">
+      {/* Floating action cards (center of screen) */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] w-80 flex flex-col gap-2 pointer-events-none">
         {cards.map((card) => {
           const color = getTeamColor(card.team);
           const typeIcon = card.type === 'placement' ? '📍' : card.type === 'inject' ? '🔴' : '📻';
@@ -166,11 +166,11 @@ export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) 
           return (
             <div
               key={card.id}
-              className="bg-robotic-gray-300/90 backdrop-blur-md border border-robotic-yellow/30 rounded-lg p-3 shadow-lg"
+              className="bg-robotic-gray-300/95 backdrop-blur-md border border-robotic-yellow/30 rounded-lg p-3 shadow-2xl pointer-events-auto"
               style={{
                 borderLeftWidth: 4,
                 borderLeftColor: color,
-                animation: 'slideInLeft 0.4s ease-out',
+                animation: 'fadeIn 0.5s ease-out',
               }}
             >
               <div className="flex items-center gap-2 mb-1">

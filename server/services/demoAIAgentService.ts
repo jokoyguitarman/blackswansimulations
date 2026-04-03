@@ -787,7 +787,7 @@ export class DemoAIAgentService {
           continue;
         }
 
-        await this.executeSingleAction(session, agent, action);
+        await this.executeSingleAction(session, agent, action, triggerEvent);
 
         if (action.action === 'decision' || action.action === 'pin_response') {
           session.cycleDecisionCount++;
@@ -928,13 +928,23 @@ export class DemoAIAgentService {
       const { lat, lng } = session.incidentCenter;
       parts.push(
         '',
-        `- Incident center: [${lat}, ${lng}]. All coordinates MUST be real map coordinates near this center.`,
-        `- For POINTS: use the center ± small offsets (0.0005 to 0.003).`,
-        `- For POLYGONS: create a ring around the target area. Example inner cordon around incident center:`,
-        `  { "type": "Polygon", "coordinates": [[[${(lng - 0.002).toFixed(4)},${(lat - 0.002).toFixed(4)}], [${(lng + 0.002).toFixed(4)},${(lat - 0.002).toFixed(4)}], [${(lng + 0.002).toFixed(4)},${(lat + 0.002).toFixed(4)}], [${(lng - 0.002).toFixed(4)},${(lat + 0.002).toFixed(4)}], [${(lng - 0.002).toFixed(4)},${(lat - 0.002).toFixed(4)}]]] }`,
-        `- For outer cordon, use a LARGER polygon (± 0.004 to 0.006 from center).`,
-        `- For LINESTRINGS: connect known locations. Example evacuation route:`,
-        `  { "type": "LineString", "coordinates": [[${(lng - 0.001).toFixed(4)},${(lat + 0.001).toFixed(4)}], [${(lng + 0.002).toFixed(4)},${(lat + 0.003).toFixed(4)}]] }`,
+        '⚠️ COORDINATE SIZING — CRITICAL (polygons MUST be small and realistic):',
+        `- Incident center: [${lat}, ${lng}]. All coordinates MUST be near this center.`,
+        '- 0.001° ≈ 111 meters. Keep this scale in mind for ALL placements.',
+        `- For POINTS: offset from center by ± 0.0003 to 0.001 (30m to 110m).`,
+        '',
+        '- For INNER CORDON: ± 0.0006 from center (~65m radius, ~130m across). Example:',
+        `  { "type": "Polygon", "coordinates": [[[${(lng - 0.0006).toFixed(5)},${(lat - 0.0006).toFixed(5)}], [${(lng + 0.0006).toFixed(5)},${(lat - 0.0006).toFixed(5)}], [${(lng + 0.0006).toFixed(5)},${(lat + 0.0006).toFixed(5)}], [${(lng - 0.0006).toFixed(5)},${(lat + 0.0006).toFixed(5)}], [${(lng - 0.0006).toFixed(5)},${(lat - 0.0006).toFixed(5)}]]] }`,
+        '',
+        '- For OUTER CORDON: ± 0.0015 from center (~165m radius, ~330m across). Example:',
+        `  { "type": "Polygon", "coordinates": [[[${(lng - 0.0015).toFixed(5)},${(lat - 0.0015).toFixed(5)}], [${(lng + 0.0015).toFixed(5)},${(lat - 0.0015).toFixed(5)}], [${(lng + 0.0015).toFixed(5)},${(lat + 0.0015).toFixed(5)}], [${(lng - 0.0015).toFixed(5)},${(lat + 0.0015).toFixed(5)}], [${(lng - 0.0015).toFixed(5)},${(lat - 0.0015).toFixed(5)}]]] }`,
+        '',
+        '- For STAGING/TRIAGE/ASSEMBLY areas: ± 0.0003 to 0.0005 (~30-55m, small area). These are localized zones, NOT sprawling regions.',
+        '',
+        '- For LINESTRINGS (routes): 2-5 waypoints, each offset by ± 0.0005 to 0.002 from center.',
+        `  Example route: { "type": "LineString", "coordinates": [[${(lng - 0.0005).toFixed(5)},${(lat + 0.0005).toFixed(5)}], [${(lng + 0.001).toFixed(5)},${(lat + 0.0015).toFixed(5)}]] }`,
+        '',
+        '⚠️ NEVER create polygons larger than ± 0.002 from center. The server will reject oversized polygons.',
       );
     }
 
@@ -1007,30 +1017,37 @@ export class DemoAIAgentService {
       'Professional radio comms. Reference YOUR decision. Acknowledge what other teams did.',
       '',
       '## ⚠️ INJECT CLASSIFICATION — READ THE INJECT CAREFULLY BEFORE RESPONDING',
-      'Not every inject requires a pin_response or casualty treatment. CLASSIFY the inject first:',
+      '⚠️ YOUR RESPONSE MUST DIRECTLY ADDRESS THE INJECT. Do NOT default to your standard playbook.',
+      'Ask yourself: "What is this inject actually asking me to do?" — then respond to THAT, not your generic team action.',
       '',
-      'TYPE A — CASUALTY/HAZARD INJECT: The inject describes an injured person, a fire, a spill, etc.',
+      'STEP 1: Classify the inject:',
+      '',
+      'TYPE A — CASUALTY/HAZARD: The inject describes an injured person, a fire, a spill, etc.',
       '  → Use pin_response on the specific casualty/hazard pin if you have jurisdiction.',
       '',
-      'TYPE B — EXTERNAL PRESSURE INJECT: The inject describes media approaching, VIPs arriving, civilians panicking, public complaints, etc.',
-      '  → These are NOT casualties. Do NOT triage or treat them.',
-      '  → Respond with a DECISION describing how you handle the pressure (e.g. "Request police to establish media perimeter").',
-      '  → Or send a CHAT message alerting the responsible team (e.g. radio police about crowd control).',
+      'TYPE B — EXTERNAL PRESSURE: Media approaching, civilians panicking, public complaints, crowd disruption.',
+      '  → NOT casualties. Do NOT triage or treat them. Do NOT default to your team playbook.',
+      '  → Respond with a DECISION that directly addresses the pressure described in the inject.',
       '',
-      'TYPE C — SITUATIONAL UPDATE: The inject describes a change in conditions (weather, escalation, resource arrival, etc.).',
-      '  → Respond with a DECISION adapting your operations, or acknowledge via CHAT.',
+      'TYPE C — STAKEHOLDER/DIPLOMATIC: Ambassador demands, government inquiry, VIP arrival, inter-agency request, family notifications.',
+      '  → These require COMMUNICATION actions: prepare briefings, assign liaison officers, draft statements, compile status reports.',
+      '  → Do NOT respond with infrastructure placement or medical procedures. Address the stakeholder need directly.',
       '',
-      'EXAMPLES of WRONG responses:',
-      '  ❌ Inject: "Media personnel approaching perimeter with cameras" → Triage bot: "Initiate Triage, Apply Tourniquet" (media are NOT patients!)',
-      '  ❌ Inject: "VIP official arriving at scene" → Medical bot: "Triage VIP, assign YELLOW tag" (VIPs are NOT casualties!)',
-      '  ❌ Inject: "Civilians crowding the exits" → Triage bot: "Casualty Response: civilians at exit" (crowds are NOT your jurisdiction!)',
+      'TYPE D — SITUATIONAL UPDATE: Change in conditions (weather, escalation, resource arrival, intelligence update).',
+      '  → Respond with a DECISION adapting your operations to the new situation.',
       '',
-      'EXAMPLES of CORRECT responses:',
-      '  ✅ Inject: "Media personnel approaching perimeter with cameras" → Triage bot: Decision "Request Media Liaison / Police to redirect press away from triage area"',
-      '  ✅ Inject: "VIP official arriving at scene" → Police bot: Decision "Assign escort detail for VIP, brief on situation"',
-      '  ✅ Inject: "Civilians crowding the exits" → Evacuation bot: Decision "Deploy marshals to manage crowd flow at Gate B"',
+      'STEP 2: Match your response to the inject content:',
+      '  ❌ WRONG: Inject says "ambassador demands safety updates" → You place a press cordon (that does not address the ambassador)',
+      '  ❌ WRONG: Inject says "media approaching triage area" → You "Initiate Triage" on the media (media are not patients)',
+      '  ❌ WRONG: Inject says "diplomatic pressure from ally government" → You run an evacuation protocol (not what was asked)',
       '',
-      'RULE: If the inject describes people who are NOT injured/sick/contaminated, they are NOT casualties. Respond with a decision or chat, NOT a pin_response.',
+      '  ✅ RIGHT: Inject says "ambassador demands safety updates" → Decision: "Compile attendee safety status report for Israeli consulate liaison"',
+      '  ✅ RIGHT: Inject says "media approaching triage area" → Decision: "Request police to redirect press away from triage perimeter"',
+      '  ✅ RIGHT: Inject says "diplomatic pressure from ally government" → Decision: "Assign senior officer as diplomatic liaison, prepare official briefing"',
+      '  ✅ RIGHT: Inject says "civilians crowding exits" → Evacuation: "Deploy marshals to manage crowd flow at Gate B"',
+      '',
+      'RULE: Read the inject text. Identify what it ACTUALLY needs. Respond to THAT specific need. Do NOT substitute your default team action.',
+      'RULE: If the inject describes people who are NOT injured/sick/contaminated, they are NOT casualties — no pin_response.',
       '',
       '## Response Format',
       '```json',
@@ -2120,9 +2137,21 @@ export class DemoAIAgentService {
     session: SessionAgents,
     agent: AgentState,
     action: SingleAction,
+    triggerEvent?: WebSocketEvent,
   ): Promise<void> {
     const { sessionId, channelId } = session;
     const { botUserId, teamName } = agent.persona;
+
+    // Extract trigger inject text for relevance checks
+    const triggerInjectData =
+      triggerEvent?.type === 'inject.published'
+        ? ((triggerEvent.data as Record<string, unknown>)?.inject as
+            | Record<string, unknown>
+            | undefined)
+        : undefined;
+    const triggerInjectText = triggerInjectData
+      ? `${(triggerInjectData.title as string) ?? ''} ${(triggerInjectData.description as string) ?? (triggerInjectData.content as string) ?? ''}`.toLowerCase()
+      : '';
 
     switch (action.action) {
       case 'decision': {
@@ -2135,6 +2164,7 @@ export class DemoAIAgentService {
           agent,
           action.decision.title,
           action.decision.description,
+          triggerInjectText,
         );
         if (converted) {
           // Block auto-conversion for teams without pin jurisdiction
@@ -2329,7 +2359,7 @@ export class DemoAIAgentService {
     geometry: { type: string; coordinates: unknown },
     center: { lat: number; lng: number } | null,
   ): { type: string; coordinates: unknown } {
-    if (!center) return geometry;
+    if (!center) return this.clampPolygonSize(geometry, center);
 
     const isNearOrigin = (coord: number[]): boolean =>
       Math.abs(coord[0]) < 1 && Math.abs(coord[1]) < 1;
@@ -2360,7 +2390,67 @@ export class DemoAIAgentService {
     } catch {
       // geometry already absolute or malformed
     }
-    return geometry;
+    return this.clampPolygonSize(geometry, center);
+  }
+
+  /**
+   * Shrink oversized polygons so they don't span unrealistically large areas.
+   * Max allowed span: ~0.004° (~440m). If larger, scale coordinates toward centroid.
+   */
+  private clampPolygonSize(
+    geometry: { type: string; coordinates: unknown },
+    center: { lat: number; lng: number } | null,
+  ): { type: string; coordinates: unknown } {
+    if (geometry.type !== 'Polygon') return geometry;
+    const MAX_SPAN = 0.004; // ~440m — generous ceiling
+
+    try {
+      const rings = geometry.coordinates as number[][][];
+      if (!Array.isArray(rings) || rings.length === 0 || rings[0].length < 4) return geometry;
+
+      const ring = rings[0];
+      let minLng = Infinity,
+        maxLng = -Infinity,
+        minLat = Infinity,
+        maxLat = -Infinity;
+      for (const c of ring) {
+        if (c[0] < minLng) minLng = c[0];
+        if (c[0] > maxLng) maxLng = c[0];
+        if (c[1] < minLat) minLat = c[1];
+        if (c[1] > maxLat) maxLat = c[1];
+      }
+
+      const spanLng = maxLng - minLng;
+      const spanLat = maxLat - minLat;
+
+      if (spanLng <= MAX_SPAN && spanLat <= MAX_SPAN) return geometry;
+
+      const scaleFactor = Math.min(
+        MAX_SPAN / Math.max(spanLng, 0.0001),
+        MAX_SPAN / Math.max(spanLat, 0.0001),
+      );
+      const cLng = center?.lng ?? (minLng + maxLng) / 2;
+      const cLat = center?.lat ?? (minLat + maxLat) / 2;
+
+      const scaled = rings.map((r) =>
+        r.map((coord) => [
+          cLng + (coord[0] - cLng) * scaleFactor,
+          cLat + (coord[1] - cLat) * scaleFactor,
+        ]),
+      );
+
+      logger.info(
+        {
+          originalSpan: { lng: spanLng.toFixed(5), lat: spanLat.toFixed(5) },
+          scaleFactor: scaleFactor.toFixed(3),
+        },
+        'AI agent: clamped oversized polygon',
+      );
+
+      return { type: 'Polygon', coordinates: scaled };
+    } catch {
+      return geometry;
+    }
   }
 
   /**
@@ -2373,6 +2463,7 @@ export class DemoAIAgentService {
     agent: AgentState,
     title: string,
     description: string,
+    triggerInjectText?: string,
   ): Promise<{
     target_id: string;
     target_type: 'casualty' | 'hazard';
@@ -2433,7 +2524,27 @@ export class DemoAIAgentService {
       }
     }
 
-    // Also detect keyword-based references to casualties/hazards without UUIDs
+    // Also detect keyword-based references to casualties/hazards without UUIDs.
+    // BUT FIRST: if the trigger inject describes a non-medical/non-hazard situation
+    // (media, diplomats, VIPs, crowds without injuries), do NOT auto-convert even
+    // if the bot's generated text mentions triage/treatment keywords.
+    const NON_MEDICAL_INJECT_PATTERNS =
+      /media|press|journalist|reporter|camera|diplomat|ambassador|consul|official|vip|dignitar|politic|protest|complain|public (concern|outrage|pressure)|social media|broadcast|interview|crowd.*(approach|gather|watch|curious)/i;
+    const ACTUAL_INJURY_IN_INJECT =
+      /injur|wound|bleed|casualt|victim|burn|fractur|unconscious|cardiac|breathing|pain|trauma|contaminat|expos|collapse/i;
+
+    if (
+      triggerInjectText &&
+      NON_MEDICAL_INJECT_PATTERNS.test(triggerInjectText) &&
+      !ACTUAL_INJURY_IN_INJECT.test(triggerInjectText)
+    ) {
+      logger.debug(
+        { botUserId: agent.persona.botUserId, team: agent.persona.teamName },
+        'AI agent: skipping keyword-based pin_response auto-conversion — trigger inject is not a medical/hazard situation',
+      );
+      return null;
+    }
+
     const casualtyKeywords =
       /triage|treat|first aid|tourniquet|administer|assess (patient|casualt|victim|injur)/i;
     const hazardKeywords =

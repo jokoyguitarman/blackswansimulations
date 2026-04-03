@@ -1210,6 +1210,7 @@ async function processExecutedDecisionInBackground(
         );
 
         if (sessionScenarioId && sessionTrainerId && io) {
+          const decisionTextForRelevance = `${(decision.title as string) ?? ''} ${(decision.description as string) ?? ''}`;
           await selectAndPublishPathwayOutcome(
             sessionId,
             authorTeamNames[0],
@@ -1217,6 +1218,7 @@ async function processExecutedDecisionInBackground(
             sessionScenarioId,
             sessionTrainerId,
             io,
+            decisionTextForRelevance,
           );
         }
 

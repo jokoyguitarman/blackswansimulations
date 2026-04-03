@@ -85,7 +85,7 @@ export function DemoMetricsOverlay({ sessionId, currentState }: DemoMetricsOverl
   const teamCounters = extractTeamCounters(state);
 
   return (
-    <div className="absolute top-16 left-4 z-[999] flex flex-col gap-1.5 w-[200px] max-h-[calc(100vh-160px)] overflow-y-auto">
+    <div className="absolute top-16 left-4 z-[999] flex flex-col gap-1.5 w-[200px] max-h-[calc(100vh-280px)] overflow-y-auto scrollbar-thin scrollbar-thumb-robotic-yellow/30">
       <button
         onClick={() => setCollapsed(!collapsed)}
         className="self-start px-2 py-1 text-[10px] terminal-text uppercase tracking-wider bg-robotic-gray-300/90 border border-robotic-yellow/40 rounded backdrop-blur-sm text-robotic-yellow/70 hover:text-robotic-yellow"

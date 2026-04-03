@@ -4,8 +4,9 @@ import L from 'leaflet';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import type { WebSocketEvent } from '../../lib/websocketClient';
 
-const ZOOM_LEVEL = 18;
-const ZOOM_DURATION = 1.2;
+const PIN_ZOOM = 20;
+const PLACEMENT_ZOOM = 19;
+const ZOOM_DURATION = 1.5;
 const RETURN_DELAY_MS = 8000;
 const IDLE_ROAM_INTERVAL_MS = 20000;
 const ROAM_ZOOM = 17;
@@ -20,22 +21,37 @@ interface DemoMapAnimatorProps {
 
 const PULSE_CSS = `
 @keyframes demo-pin-pulse {
-  0%   { transform: scale(0.3); opacity: 0.9; }
-  50%  { transform: scale(1.2); opacity: 0.3; }
-  100% { transform: scale(0.3); opacity: 0; }
+  0%   { transform: scale(0.2); opacity: 1; }
+  60%  { transform: scale(1.5); opacity: 0.4; }
+  100% { transform: scale(2); opacity: 0; }
+}
+@keyframes demo-pin-glow {
+  0%, 100% { box-shadow: 0 0 12px 4px rgba(245, 158, 11, 0.6); }
+  50%      { box-shadow: 0 0 30px 10px rgba(245, 158, 11, 0.9); }
 }
 .demo-pin-pulse-ring {
   position: absolute;
-  width: 80px;
-  height: 80px;
-  margin-left: -40px;
-  margin-top: -40px;
+  width: 100px;
+  height: 100px;
+  margin-left: -50px;
+  margin-top: -50px;
   border-radius: 50%;
-  border: 4px solid #f59e0b;
-  box-shadow: 0 0 20px 4px rgba(245, 158, 11, 0.5);
-  animation: demo-pin-pulse 1.5s ease-out infinite;
+  border: 3px solid #f59e0b;
+  animation: demo-pin-pulse 1.8s ease-out infinite;
   pointer-events: none;
   z-index: 9999;
+}
+.demo-pin-pulse-core {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  margin-left: -12px;
+  margin-top: -12px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(245,158,11,0.8) 0%, rgba(245,158,11,0) 70%);
+  animation: demo-pin-glow 1s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 10000;
 }
 `;
 
@@ -83,7 +99,7 @@ export function DemoMapAnimator({ sessionId, initialCenter, initialZoom }: DemoM
       removePulse();
       const icon = L.divIcon({
         className: '',
-        html: '<div class="demo-pin-pulse-ring"></div>',
+        html: '<div class="demo-pin-pulse-ring"></div><div class="demo-pin-pulse-core"></div>',
         iconSize: [0, 0],
         iconAnchor: [0, 0],
       });
@@ -107,7 +123,7 @@ export function DemoMapAnimator({ sessionId, initialCenter, initialZoom }: DemoM
       lastFocusTs.current = now;
 
       clearTimers();
-      map.flyTo([lat, lng], zoom ?? ZOOM_LEVEL, { duration: ZOOM_DURATION });
+      map.flyTo([lat, lng], zoom ?? PIN_ZOOM, { duration: ZOOM_DURATION });
 
       if (pulse) showPulse(lat, lng);
 
@@ -132,7 +148,7 @@ export function DemoMapAnimator({ sessionId, initialCenter, initialZoom }: DemoM
         const lat = Number(d.target_lat);
         const lng = Number(d.target_lng);
         if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
-          focusOn(lat, lng, ZOOM_LEVEL, true);
+          focusOn(lat, lng, PIN_ZOOM, true);
         }
       } else if (event.type === 'asset.placed') {
         const d = event.data as Record<string, unknown>;
@@ -140,7 +156,7 @@ export function DemoMapAnimator({ sessionId, initialCenter, initialZoom }: DemoM
         const geom = asset.geometry as Record<string, unknown> | undefined;
         if (geom?.type === 'Point') {
           const coords = geom.coordinates as number[];
-          if (coords?.length >= 2) focusOn(coords[1], coords[0], ROAM_ZOOM, true);
+          if (coords?.length >= 2) focusOn(coords[1], coords[0], PLACEMENT_ZOOM, true);
         } else if (geom?.type === 'Polygon') {
           const ring = (geom.coordinates as number[][][])?.[0];
           if (ring?.length) {
@@ -150,7 +166,7 @@ export function DemoMapAnimator({ sessionId, initialCenter, initialZoom }: DemoM
               cLat += c[1];
               cLng += c[0];
             }
-            focusOn(cLat / ring.length, cLng / ring.length, ROAM_ZOOM, true);
+            focusOn(cLat / ring.length, cLng / ring.length, PLACEMENT_ZOOM, true);
           }
         }
       } else if (event.type === 'decision.proposed' || event.type === 'decision.executed') {

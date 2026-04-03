@@ -143,6 +143,8 @@ function parseOutcomes(raw: PathwayOutcome[] | string | null | undefined): Pathw
 /**
  * Select a matching pathway outcome based on heat-derived robustness band
  * and publish it immediately. Marks the row as consumed to avoid duplicates.
+ * If decisionText is provided, checks relevance against the trigger inject —
+ * decisions that miss the inject's point get downgraded to low band.
  */
 export async function selectAndPublishPathwayOutcome(
   sessionId: string,
@@ -151,6 +153,7 @@ export async function selectAndPublishPathwayOutcome(
   scenarioId: string,
   trainerId: string,
   io: IoServer,
+  decisionText?: string,
 ): Promise<void> {
   try {
     const { data: rows } = await supabaseAdmin
@@ -209,7 +212,30 @@ export async function selectAndPublishPathwayOutcome(
     const outcomes = parseOutcomes(chosenRow.outcomes);
     if (outcomes.length === 0) return;
 
-    const band = heatPercentageToRobustnessBand(heatPercentage);
+    let band = heatPercentageToRobustnessBand(heatPercentage);
+
+    // Relevance check: if the decision text doesn't address the trigger inject's
+    // core topic, downgrade to low band (escalation/consequence outcome).
+    if (decisionText && chosenRow.trigger_inject_id && band !== 'low') {
+      const relevanceMiss = await checkDecisionRelevance(
+        sessionId,
+        chosenRow.trigger_inject_id,
+        decisionText,
+      );
+      if (relevanceMiss) {
+        logger.info(
+          {
+            sessionId,
+            team: teamName,
+            triggerInjectId: chosenRow.trigger_inject_id,
+            reason: relevanceMiss,
+          },
+          'Pathway outcome: decision missed inject point — downgrading to low band',
+        );
+        band = 'low';
+      }
+    }
+
     const matching = outcomes.filter((o) => o.robustness_band === band);
     const toPublish =
       matching.length > 0 ? matching[0] : outcomes[Math.floor(Math.random() * outcomes.length)];
@@ -268,6 +294,84 @@ export async function selectAndPublishPathwayOutcome(
     );
   } catch (err) {
     logger.warn({ err, sessionId, team: teamName }, 'selectAndPublishPathwayOutcome failed');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Decision-to-Inject Relevance Check
+// Returns a reason string if the decision misses the inject's point, or null if relevant.
+// ---------------------------------------------------------------------------
+
+const INJECT_TOPIC_SIGNATURES: Array<{
+  pattern: RegExp;
+  requiredInDecision: RegExp;
+  topic: string;
+}> = [
+  {
+    pattern:
+      /ambassador|consul|diplom|embassy|foreign (ministry|affairs|government)|ally.*government|international.*pressure/i,
+    requiredInDecision:
+      /liaison|brief|statement|report|communicate|update.*status|notify|consult|coordinate.*with|inform|respond.*to.*ambassador|diplomatic/i,
+    topic: 'diplomatic/stakeholder communication',
+  },
+  {
+    pattern:
+      /media.*approach|press.*approach|journalist|reporter|camera.*crew|photographer.*approach|broadcast.*team/i,
+    requiredInDecision:
+      /redirect|manage.*media|press.*perimete|media.*liaison|public.*information|escort.*press|media.*cordon|restrict.*access|brief.*media|media.*staging/i,
+    topic: 'media management',
+  },
+  {
+    pattern: /vip.*arriv|dignitar|minister.*arriv|official.*visit|high.*profile.*guest/i,
+    requiredInDecision:
+      /escort|security.*detail|brief|liaison|protocol|vip.*area|coordinate.*arrival/i,
+    topic: 'VIP/dignitary management',
+  },
+  {
+    pattern: /family.*notif|next.*of.*kin|relative.*inquir|family.*member.*asking|loved.*ones/i,
+    requiredInDecision:
+      /notif|family.*liaison|information.*center|welfare.*check|victim.*identification|reunif/i,
+    topic: 'family/next-of-kin notification',
+  },
+  {
+    pattern:
+      /public.*(outrage|anger|protest|complaint)|community.*concern|social.*media.*(backlash|viral)/i,
+    requiredInDecision:
+      /public.*statement|community.*liaison|address.*concern|calm|reassur|public.*information|transparent/i,
+    topic: 'public concern management',
+  },
+];
+
+async function checkDecisionRelevance(
+  sessionId: string,
+  triggerInjectId: string,
+  decisionText: string,
+): Promise<string | null> {
+  try {
+    const { data: inject } = await supabaseAdmin
+      .from('scenario_injects')
+      .select('title, content')
+      .eq('id', triggerInjectId)
+      .maybeSingle();
+
+    if (!inject) return null;
+
+    const injectText = `${(inject.title as string) ?? ''} ${(inject.content as string) ?? ''}`;
+    const decLower = decisionText.toLowerCase();
+
+    for (const sig of INJECT_TOPIC_SIGNATURES) {
+      if (sig.pattern.test(injectText)) {
+        if (!sig.requiredInDecision.test(decLower)) {
+          return `Inject requires ${sig.topic}, but decision does not address it`;
+        }
+        return null;
+      }
+    }
+
+    return null;
+  } catch (err) {
+    logger.warn({ err, sessionId, triggerInjectId }, 'Decision relevance check failed');
+    return null;
   }
 }
 
