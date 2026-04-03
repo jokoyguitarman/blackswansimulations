@@ -14,6 +14,7 @@ interface DecisionEntry {
   aiVerdict: string;
   aiNote: string;
   timestamp: Date;
+  entryKind: 'decision' | 'placement';
 }
 
 interface SpectatorDecisionsPanelProps {
@@ -54,6 +55,8 @@ function statusBadge(status: string): { text: string; cls: string } {
       return { text: 'APPROVED', cls: 'bg-cyan-500 text-white' };
     case 'rejected':
       return { text: 'REJECTED', cls: 'bg-red-600 text-white' };
+    case 'placed':
+      return { text: 'PLACED', cls: 'bg-amber-600 text-white' };
     default:
       return { text: status.toUpperCase(), cls: 'bg-gray-500 text-white' };
   }
@@ -73,36 +76,64 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const handleEvent = useCallback((event: WebSocketEvent) => {
-    if (event.type !== 'decision.executed' && event.type !== 'decision.proposed') return;
+    let entry: DecisionEntry | null = null;
 
-    const decision = (event.data as { decision?: Record<string, unknown> })?.decision;
-    if (!decision) return;
+    if (event.type === 'decision.executed' || event.type === 'decision.proposed') {
+      const decision = (event.data as { decision?: Record<string, unknown> })?.decision;
+      if (!decision) return;
 
-    const creator = decision.creator as { full_name?: string } | undefined;
-    const teamName = (decision.team_name as string) ?? (creator?.full_name as string) ?? 'Unknown';
-    const aiEval = decision.ai_evaluation as Record<string, unknown> | undefined;
+      const creator = decision.creator as { full_name?: string } | undefined;
+      const teamName =
+        (decision.team_name as string) ?? (creator?.full_name as string) ?? 'Unknown';
+      const aiEval = decision.ai_evaluation as Record<string, unknown> | undefined;
 
-    const entry: DecisionEntry = {
-      id: (decision.id as string) ?? `dec-${Date.now()}`,
-      teamName,
-      creatorName: (creator?.full_name as string) ?? teamName,
-      title: (decision.title as string) ?? 'Decision',
-      description: (decision.description as string) ?? '',
-      type: (decision.decision_type as string) ?? '',
-      status: event.type === 'decision.executed' ? 'executed' : 'proposed',
-      aiVerdict: (aiEval?.verdict as string) ?? '',
-      aiNote: (aiEval?.note as string) ?? (aiEval?.explanation as string) ?? '',
-      timestamp: new Date(),
-    };
+      entry = {
+        id: (decision.id as string) ?? `dec-${Date.now()}`,
+        teamName,
+        creatorName: (creator?.full_name as string) ?? teamName,
+        title: (decision.title as string) ?? 'Decision',
+        description: (decision.description as string) ?? '',
+        type: (decision.decision_type as string) ?? '',
+        status: event.type === 'decision.executed' ? 'executed' : 'proposed',
+        aiVerdict: (aiEval?.verdict as string) ?? '',
+        aiNote: (aiEval?.note as string) ?? (aiEval?.explanation as string) ?? '',
+        timestamp: new Date(),
+        entryKind: 'decision',
+      };
+    } else if (event.type === 'placement.created') {
+      const placement = (event.data as { placement?: Record<string, unknown> })?.placement;
+      if (!placement) return;
 
+      const teamName = (placement.team_name as string) ?? 'Unknown';
+      const assetType = ((placement.asset_type as string) ?? '').replace(/_/g, ' ');
+      const label = (placement.label as string) ?? assetType;
+
+      entry = {
+        id: `plc-${(placement.id as string) ?? Date.now()}`,
+        teamName,
+        creatorName: teamName,
+        title: label,
+        description: `${assetType} placed by ${teamName.replace(/_/g, ' ')}`,
+        type: 'placement',
+        status: 'placed',
+        aiVerdict: '',
+        aiNote: '',
+        timestamp: new Date(),
+        entryKind: 'placement',
+      };
+    }
+
+    if (!entry) return;
+
+    const newEntry = entry;
     setDecisions((prev) => {
-      const existing = prev.findIndex((d) => d.id === entry.id);
+      const existing = prev.findIndex((d) => d.id === newEntry.id);
       if (existing >= 0) {
         const updated = [...prev];
-        updated[existing] = entry;
+        updated[existing] = newEntry;
         return updated;
       }
-      return [entry, ...prev].slice(0, 100);
+      return [newEntry, ...prev].slice(0, 100);
     });
 
     setNewFlash(true);
@@ -112,7 +143,7 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
   useWebSocket({
     sessionId,
     onEvent: handleEvent,
-    eventTypes: ['decision.executed', 'decision.proposed'],
+    eventTypes: ['decision.executed', 'decision.proposed', 'placement.created'],
   });
 
   // Load existing decisions on mount so we don't miss any that fired before WebSocket connected
@@ -138,6 +169,7 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
             aiVerdict: (aiEval?.verdict as string) ?? '',
             aiNote: (aiEval?.note as string) ?? (aiEval?.explanation as string) ?? '',
             timestamp: new Date((d.created_at as string) ?? Date.now()),
+            entryKind: 'decision' as const,
           };
         });
 
@@ -173,7 +205,7 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
       >
         <div className="flex items-center gap-2">
           <span className="text-xs terminal-text uppercase text-robotic-yellow font-bold">
-            DECISIONS
+            ACTIVITY
           </span>
           {decisions.length > 0 && (
             <span className="px-1.5 py-0.5 text-[10px] terminal-text bg-blue-600/80 text-white rounded-full min-w-[18px] text-center">
@@ -221,6 +253,7 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
                   <div className="px-3 py-2">
                     {/* Header */}
                     <div className="flex items-center gap-2 mb-1">
+                      {dec.entryKind === 'placement' && <span className="text-sm">📍</span>}
                       <span
                         className="text-[10px] terminal-text font-bold uppercase"
                         style={{ color }}

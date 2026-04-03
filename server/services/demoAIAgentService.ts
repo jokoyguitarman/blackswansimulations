@@ -162,6 +162,7 @@ const TEAM_ALLOWED_PLACEMENTS: Record<string, Set<string>> = {
     'ambulance_staging',
     'helicopter_lz',
     'command_post',
+    'inner_cordon',
   ]),
   medical: new Set([
     'triage_point',
@@ -170,6 +171,7 @@ const TEAM_ALLOWED_PLACEMENTS: Record<string, Set<string>> = {
     'ambulance_staging',
     'helicopter_lz',
     'command_post',
+    'inner_cordon',
   ]),
   ems: new Set([
     'triage_point',
@@ -197,15 +199,15 @@ const EXTRACT_ONLY_TEAMS = new Set(['fire', 'hazmat']);
 // Per-team required infrastructure that MUST be placed before pin_response is allowed.
 // Once ALL required assets exist in placed_assets, the team is "operational".
 const TEAM_REQUIRED_INFRASTRUCTURE: Record<string, string[]> = {
-  police: ['outer_cordon'],
-  security: ['outer_cordon'],
-  fire: ['forward_command'],
-  hazmat: ['forward_command'],
-  triage: ['triage_point'],
-  medical: ['triage_point'],
+  police: ['outer_cordon', 'roadblock'],
+  security: ['outer_cordon', 'roadblock'],
+  fire: ['forward_command', 'staging_area'],
+  hazmat: ['forward_command', 'staging_area'],
+  triage: ['triage_point', 'inner_cordon'],
+  medical: ['triage_point', 'inner_cordon'],
   ems: ['triage_point'],
   evacuation: ['assembly_point'],
-  media: ['press_cordon'],
+  media: ['press_cordon', 'media_staging'],
 };
 
 // Inject keyword domains — if an inject's title/description contains these keywords,
@@ -931,20 +933,20 @@ export class DemoAIAgentService {
         '⚠️ COORDINATE SIZING — CRITICAL (polygons MUST be small and realistic):',
         `- Incident center: [${lat}, ${lng}]. All coordinates MUST be near this center.`,
         '- 0.001° ≈ 111 meters. Keep this scale in mind for ALL placements.',
-        `- For POINTS: offset from center by ± 0.0003 to 0.001 (30m to 110m).`,
+        `- For POINTS: offset from center by ± 0.0002 to 0.0005 (22m to 55m).`,
         '',
-        '- For INNER CORDON: ± 0.0006 from center (~65m radius, ~130m across). Example:',
-        `  { "type": "Polygon", "coordinates": [[[${(lng - 0.0006).toFixed(5)},${(lat - 0.0006).toFixed(5)}], [${(lng + 0.0006).toFixed(5)},${(lat - 0.0006).toFixed(5)}], [${(lng + 0.0006).toFixed(5)},${(lat + 0.0006).toFixed(5)}], [${(lng - 0.0006).toFixed(5)},${(lat + 0.0006).toFixed(5)}], [${(lng - 0.0006).toFixed(5)},${(lat - 0.0006).toFixed(5)}]]] }`,
+        '- For INNER CORDON / OPERATING CORDON: ± 0.0003 from center (~33m radius, ~66m across). Example:',
+        `  { "type": "Polygon", "coordinates": [[[${(lng - 0.0003).toFixed(5)},${(lat - 0.0003).toFixed(5)}], [${(lng + 0.0003).toFixed(5)},${(lat - 0.0003).toFixed(5)}], [${(lng + 0.0003).toFixed(5)},${(lat + 0.0003).toFixed(5)}], [${(lng - 0.0003).toFixed(5)},${(lat + 0.0003).toFixed(5)}], [${(lng - 0.0003).toFixed(5)},${(lat - 0.0003).toFixed(5)}]]] }`,
         '',
-        '- For OUTER CORDON: ± 0.0015 from center (~165m radius, ~330m across). Example:',
-        `  { "type": "Polygon", "coordinates": [[[${(lng - 0.0015).toFixed(5)},${(lat - 0.0015).toFixed(5)}], [${(lng + 0.0015).toFixed(5)},${(lat - 0.0015).toFixed(5)}], [${(lng + 0.0015).toFixed(5)},${(lat + 0.0015).toFixed(5)}], [${(lng - 0.0015).toFixed(5)},${(lat + 0.0015).toFixed(5)}], [${(lng - 0.0015).toFixed(5)},${(lat - 0.0015).toFixed(5)}]]] }`,
+        '- For OUTER CORDON: ± 0.0005 from center (~55m radius, ~110m across). Example:',
+        `  { "type": "Polygon", "coordinates": [[[${(lng - 0.0005).toFixed(5)},${(lat - 0.0005).toFixed(5)}], [${(lng + 0.0005).toFixed(5)},${(lat - 0.0005).toFixed(5)}], [${(lng + 0.0005).toFixed(5)},${(lat + 0.0005).toFixed(5)}], [${(lng - 0.0005).toFixed(5)},${(lat + 0.0005).toFixed(5)}], [${(lng - 0.0005).toFixed(5)},${(lat - 0.0005).toFixed(5)}]]] }`,
         '',
-        '- For STAGING/TRIAGE/ASSEMBLY areas: ± 0.0003 to 0.0005 (~30-55m, small area). These are localized zones, NOT sprawling regions.',
+        '- For STAGING/TRIAGE/ASSEMBLY/PRESS areas: ± 0.0002 (~22m, small localized area).',
         '',
-        '- For LINESTRINGS (routes): 2-5 waypoints, each offset by ± 0.0005 to 0.002 from center.',
-        `  Example route: { "type": "LineString", "coordinates": [[${(lng - 0.0005).toFixed(5)},${(lat + 0.0005).toFixed(5)}], [${(lng + 0.001).toFixed(5)},${(lat + 0.0015).toFixed(5)}]] }`,
+        '- For LINESTRINGS (routes): 2-5 waypoints, each offset by ± 0.0003 to 0.001 from center.',
+        `  Example route: { "type": "LineString", "coordinates": [[${(lng - 0.0003).toFixed(5)},${(lat + 0.0003).toFixed(5)}], [${(lng + 0.0005).toFixed(5)},${(lat + 0.0008).toFixed(5)}]] }`,
         '',
-        '⚠️ NEVER create polygons larger than ± 0.002 from center. The server will reject oversized polygons.',
+        '⚠️ NEVER create polygons larger than ± 0.0006 from center. The server will reject oversized polygons.',
       );
     }
 
@@ -1326,15 +1328,15 @@ export class DemoAIAgentService {
         `Your required infrastructure: [${requiredStr}]. If not yet placed, your ONLY action this turn must be a placement.`,
         'Do NOT respond to any casualties, hazards, or crowds until your infrastructure is on the map.',
         teamScopeKey === 'police' || teamScopeKey === 'security'
-          ? '→ ESTABLISH outer cordon / inner cordon / command post.'
+          ? '→ Step 1: PLACE outer cordon polygon. Step 2: PLACE roadblocks/barricades at entry points to physically block access. Cordons alone are just lines on a map — barricades/roadblocks make them enforceable.'
           : teamScopeKey === 'triage' || teamScopeKey === 'medical' || teamScopeKey === 'ems'
-            ? '→ SET UP triage point / field hospital / casualty collection.'
+            ? '→ Step 1: PLACE triage point (tent location). Step 2: PLACE inner cordon polygon around the triage area to create an operating perimeter. Personnel and supplies deploy after infrastructure is on the map.'
             : teamScopeKey === 'fire' || teamScopeKey === 'hazmat'
-              ? '→ ESTABLISH forward command / staging area.'
+              ? '→ Step 1: PLACE forward command post. Step 2: PLACE staging area for equipment and personnel.'
               : teamScopeKey === 'evacuation'
-                ? '→ PLACE assembly point / marshal post.'
+                ? '→ PLACE assembly point / marshal post for evacuee gathering.'
                 : teamScopeKey === 'media'
-                  ? '→ ESTABLISH press cordon / media staging.'
+                  ? '→ Step 1: PLACE press cordon polygon. Step 2: PLACE media staging area inside it.'
                   : '→ PLACE your operating area.',
       );
     }
@@ -2402,7 +2404,7 @@ export class DemoAIAgentService {
     center: { lat: number; lng: number } | null,
   ): { type: string; coordinates: unknown } {
     if (geometry.type !== 'Polygon') return geometry;
-    const MAX_SPAN = 0.004; // ~440m — generous ceiling
+    const MAX_SPAN = 0.0012; // ~130m — tight realistic ceiling
 
     try {
       const rings = geometry.coordinates as number[][][];

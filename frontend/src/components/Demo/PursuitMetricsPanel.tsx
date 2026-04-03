@@ -41,14 +41,13 @@ function gradeFromAccuracy(pct: number): string {
 
 export function PursuitMetricsPanel({ sessionId, currentState }: PursuitMetricsPanelProps) {
   const [metrics, setMetrics] = useState<Record<string, TeamPursuitMetrics>>({});
-  const [collapsed, setCollapsed] = useState(true);
-  const [hasData, setHasData] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [hasPursuit, setHasPursuit] = useState(false);
 
   useEffect(() => {
     const pm = currentState?.pursuit_metrics as Record<string, TeamPursuitMetrics> | undefined;
     if (pm && Object.keys(pm).length > 0) {
       setMetrics(pm);
-      setHasData(true);
     }
   }, [currentState]);
 
@@ -58,7 +57,6 @@ export function PursuitMetricsPanel({ sessionId, currentState }: PursuitMetricsP
         ?.pursuit_metrics;
       if (pm) {
         setMetrics(pm);
-        setHasData(true);
       }
     }
   }, []);
@@ -70,28 +68,58 @@ export function PursuitMetricsPanel({ sessionId, currentState }: PursuitMetricsP
     enabled: true,
   });
 
-  // Also try loading from pursuit-timeline on mount
+  // Check on mount whether the scenario has pursuit challenge enabled
   useEffect(() => {
-    if (hasData) return;
     const load = async () => {
       try {
         const result = await api.sessions.pursuitTimeline(sessionId);
-        const responses = (result.responses as Array<Record<string, unknown>>) || [];
-        if (responses.length === 0) return;
-        setHasData(true);
+        const teams = (result.investigative_teams as string[]) || [];
+        if (teams.length > 0) {
+          setHasPursuit(true);
+        }
+        const pm = result.pursuit_metrics as Record<string, TeamPursuitMetrics> | undefined;
+        if (pm && Object.keys(pm).length > 0) {
+          setMetrics(pm);
+          setHasPursuit(true);
+        }
       } catch {
-        // Non-pursuit scenario — no data
+        // Non-pursuit scenario — hide panel
       }
     };
     load();
-  }, [sessionId, hasData]);
+  }, [sessionId]);
 
-  if (!hasData || Object.keys(metrics).length === 0) return null;
+  // Also mark as pursuit scenario from state
+  useEffect(() => {
+    const cs = currentState as Record<string, unknown>;
+    if (cs?.pursuit_challenge_active || cs?.pursuit_metrics) {
+      setHasPursuit(true);
+    }
+  }, [currentState]);
+
+  if (!hasPursuit) return null;
 
   const teamNames = Object.keys(metrics);
+  const emptyMetrics: TeamPursuitMetrics = {
+    tips_received: 0,
+    tips_committed: 0,
+    tips_cautious: 0,
+    tips_ignored: 0,
+    true_leads_committed: 0,
+    false_leads_committed: 0,
+    true_leads_ignored: 0,
+    false_leads_avoided: 0,
+    accuracy_pct: 0,
+    avg_response_time_sec: 0,
+    resources_deployed: 0,
+    containment_actions: 0,
+    time_wasted_sec: 0,
+    intel_quality_score: 0,
+  };
+  const displayTeams = teamNames.length > 0 ? teamNames : ['police'];
 
   return (
-    <div className="absolute bottom-[56px] right-[340px] z-[1000] w-72">
+    <div className="absolute top-[440px] right-4 z-[998] w-72">
       <button
         onClick={() => setCollapsed(!collapsed)}
         className="w-full flex items-center justify-between px-3 py-2 bg-gray-900/95 border border-purple-500/40 rounded-t text-xs terminal-text text-purple-300 hover:bg-gray-800/95 transition-colors"
@@ -100,16 +128,16 @@ export function PursuitMetricsPanel({ sessionId, currentState }: PursuitMetricsP
           <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
           PURSUIT METRICS
           <span className="text-purple-400/60">
-            ({teamNames.length} team{teamNames.length !== 1 ? 's' : ''})
+            ({displayTeams.length} team{displayTeams.length !== 1 ? 's' : ''})
           </span>
         </span>
-        <span className="text-purple-400/60">{collapsed ? '▲' : '▼'}</span>
+        <span className="text-purple-400/60">{collapsed ? '▼' : '▲'}</span>
       </button>
 
       {!collapsed && (
-        <div className="bg-gray-900/95 border border-t-0 border-purple-500/40 rounded-b p-3 max-h-96 overflow-y-auto space-y-4">
-          {teamNames.map((teamName) => {
-            const m = metrics[teamName];
+        <div className="bg-gray-900/95 border border-t-0 border-purple-500/40 rounded-b p-3 max-h-72 overflow-y-auto space-y-4">
+          {displayTeams.map((teamName) => {
+            const m = metrics[teamName] ?? emptyMetrics;
             const grade = gradeFromAccuracy(m.accuracy_pct);
             const color = accuracyColor(m.accuracy_pct);
 

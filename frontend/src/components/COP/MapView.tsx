@@ -143,6 +143,8 @@ interface MapViewProps {
   locationsRefreshTrigger?: number;
   /** When true (e.g. trainer view), show all pins regardless of Insider reveal; default false. */
   showAllPins?: boolean;
+  /** When true, pre-built incident zone polygons (hot/warm/cold) are hidden from the map. They remain in ground truth only. */
+  hidePrebuiltZones?: boolean;
   /** Live session current_state — used to conditionally show/hide pins with visible_after_state_key. */
   currentState?: Record<string, unknown>;
   /** Draggable asset definitions for the player's team (Phase 3). */
@@ -483,6 +485,7 @@ export const MapView = ({
   fillHeight = false,
   locationsRefreshTrigger = 0,
   showAllPins = false,
+  hidePrebuiltZones = false,
   currentState,
   draggableAssets = [],
   teamName,
@@ -1720,7 +1723,7 @@ export const MapView = ({
             ))}
 
           {/* Zone polygons from independent zone locations (new format) or hazard zones (legacy) */}
-          {showAllPins && zoneLocationPins.length > 0
+          {showAllPins && !hidePrebuiltZones && zoneLocationPins.length > 0
             ? [...zoneLocationPins]
                 .sort((a, b) => {
                   const rA = Number((a.conditions as Record<string, unknown>)?.radius_m) || 0;
@@ -1757,6 +1760,7 @@ export const MapView = ({
                   );
                 })
             : showAllPins &&
+              !hidePrebuiltZones &&
               hazards
                 .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
                 .flatMap((hazard) =>

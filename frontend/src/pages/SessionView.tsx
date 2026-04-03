@@ -1410,6 +1410,7 @@ export const SessionView = () => {
             isVisible={true}
             fillHeight
             showAllPins
+            hidePrebuiltZones
             bypassExitGate
             locationsRefreshTrigger={locationsRefreshTrigger}
             sessionStartTime={session?.start_time ?? undefined}
@@ -2376,6 +2377,7 @@ export const SessionView = () => {
                     isVisible={true}
                     fillHeight
                     showAllPins
+                    hidePrebuiltZones
                     bypassExitGate
                     locationsRefreshTrigger={locationsRefreshTrigger}
                     sessionStartTime={session?.start_time ?? undefined}

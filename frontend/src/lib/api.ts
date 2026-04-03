@@ -434,6 +434,20 @@ export const api = {
         sessionId: string;
       }>(await fetch(apiUrl(`/api/sessions/${sessionId}/backend-activity`), { headers }));
     },
+    publishedInjects: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          title: string;
+          description: string;
+          severity: string;
+          trigger_type: string;
+          state_effect: unknown;
+          created_at: string;
+        }>;
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/published-injects`), { headers }));
+    },
     insiderAsk: async (sessionId: string, body: { content: string; channel_id?: string }) => {
       const headers = await getAuthHeaders();
       return handleResponse<{

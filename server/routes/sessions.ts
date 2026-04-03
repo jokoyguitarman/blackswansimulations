@@ -696,6 +696,44 @@ router.get(
   },
 );
 
+// Get published injects for a session (spectator/trainer view)
+router.get(
+  '/:id/published-injects',
+  requireAuth,
+  validate(schemas.id),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id: sessionId } = req.params;
+
+      const { data: events } = await supabaseAdmin
+        .from('session_events')
+        .select('id, metadata, created_at')
+        .eq('session_id', sessionId)
+        .eq('event_type', 'inject')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      const injects = (events || []).map((e) => {
+        const meta = (e.metadata as Record<string, unknown>) || {};
+        return {
+          id: (meta.inject_id as string) || e.id,
+          title: (meta.title as string) || 'Inject',
+          description: (meta.content as string) || '',
+          severity: (meta.severity as string) || 'medium',
+          trigger_type: (meta.type as string) || 'time_based',
+          state_effect: meta.state_effect || null,
+          created_at: e.created_at,
+        };
+      });
+
+      return res.json({ data: injects });
+    } catch (err) {
+      logger.error({ error: err }, 'Failed to fetch published injects');
+      return res.status(500).json({ error: 'Failed to fetch published injects' });
+    }
+  },
+);
+
 // Get escalation data for a session (factors + pathways, trainer only)
 router.get(
   '/:id/escalation',

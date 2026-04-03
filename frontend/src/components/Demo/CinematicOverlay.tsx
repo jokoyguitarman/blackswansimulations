@@ -5,7 +5,7 @@ import type { WebSocketEvent } from '../../lib/websocketClient';
 interface ActionCard {
   id: string;
   team: string;
-  type: 'placement' | 'chat' | 'inject';
+  type: 'chat' | 'inject';
   title: string;
   description: string;
   timestamp: Date;
@@ -13,7 +13,6 @@ interface ActionCard {
 
 interface CinematicOverlayProps {
   sessionId: string;
-  onPanTo?: (lat: number, lng: number) => void;
 }
 
 const TEAM_COLORS: Record<string, string> = {
@@ -40,17 +39,10 @@ function getTeamColor(teamName: string): string {
   return '#94a3b8';
 }
 
-function formatTeamName(name: string): string {
-  return name
-    .split('_')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
-
 const MAX_CARDS = 5;
 const CARD_LIFETIME_MS = 12000;
 
-export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) {
+export function CinematicOverlay({ sessionId }: CinematicOverlayProps) {
   const [cards, setCards] = useState<ActionCard[]>([]);
   const [injectBanner, setInjectBanner] = useState<{ title: string; severity: string } | null>(
     null,
@@ -69,31 +61,6 @@ export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) 
 
   const handleEvent = useCallback(
     (event: WebSocketEvent) => {
-      if (event.type === 'placement.created') {
-        const placement = (event.data as { placement?: Record<string, unknown> })?.placement;
-        if (!placement) return;
-        const teamName = (placement.team_name as string) ?? '';
-        addCard({
-          id: `plc-${placement.id}`,
-          team: teamName,
-          type: 'placement',
-          title:
-            (placement.label as string) ??
-            (placement.asset_type as string)?.replace(/_/g, ' ') ??
-            'Asset',
-          description: `${formatTeamName(teamName)} placed ${(placement.asset_type as string)?.replace(/_/g, ' ')}`,
-          timestamp: new Date(),
-        });
-
-        if (onPanTo) {
-          const geom = placement.geometry as { type?: string; coordinates?: unknown } | undefined;
-          if (geom?.type === 'Point') {
-            const coords = geom.coordinates as [number, number];
-            if (coords) onPanTo(coords[1], coords[0]);
-          }
-        }
-      }
-
       if (event.type === 'message.sent') {
         const message = (event.data as { message?: Record<string, unknown> })?.message;
         if (!message) return;
@@ -121,13 +88,13 @@ export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) 
         bannerTimeoutRef.current = setTimeout(() => setInjectBanner(null), 8000);
       }
     },
-    [addCard, onPanTo],
+    [addCard],
   );
 
   useWebSocket({
     sessionId,
     onEvent: handleEvent,
-    eventTypes: ['placement.created', 'message.sent', 'inject.published'],
+    eventTypes: ['message.sent', 'inject.published'],
   });
 
   useEffect(() => {
@@ -161,7 +128,7 @@ export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) 
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] w-80 flex flex-col gap-2 pointer-events-none">
         {cards.map((card) => {
           const color = getTeamColor(card.team);
-          const typeIcon = card.type === 'placement' ? '📍' : card.type === 'inject' ? '🔴' : '📻';
+          const typeIcon = card.type === 'inject' ? '🔴' : '📻';
 
           return (
             <div

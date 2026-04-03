@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import type { WebSocketEvent } from '../../lib/websocketClient';
+import { api } from '../../lib/api';
 
 interface InjectEntry {
   id: string;
@@ -162,6 +163,35 @@ export function SpectatorInjectsPanel({ sessionId }: SpectatorInjectsPanelProps)
     onEvent: handleEvent,
     eventTypes: ['inject.published', 'sighting_debunked'],
   });
+
+  useEffect(() => {
+    const loadExisting = async () => {
+      try {
+        const result = await api.sessions.publishedInjects(sessionId);
+        const existing = (result.data as Array<Record<string, unknown>>) || [];
+        if (existing.length === 0) return;
+
+        const entries: InjectEntry[] = existing.map((d) => ({
+          id: (d.id as string) ?? `inj-${Date.now()}`,
+          title: (d.title as string) ?? 'Inject',
+          description: (d.description as string) ?? '',
+          severity: (d.severity as string) ?? 'medium',
+          triggerType: (d.trigger_type as string) ?? 'time_based',
+          timestamp: new Date((d.created_at as string) ?? Date.now()),
+        }));
+
+        setInjects((prev) => {
+          const existingIds = new Set(prev.map((p) => p.id));
+          const newEntries = entries.filter((e) => !existingIds.has(e.id));
+          if (newEntries.length === 0) return prev;
+          return [...prev, ...newEntries].slice(0, 50);
+        });
+      } catch {
+        // Non-critical — WebSocket will pick up new ones
+      }
+    };
+    loadExisting();
+  }, [sessionId]);
 
   useEffect(() => {
     if (listRef.current) {
