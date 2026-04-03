@@ -918,8 +918,9 @@ export class DemoAIAgentService {
       '  → geometry: { "type": "Point", "coordinates": [lng, lat] }',
       '',
       'POLYGON assets (enclosed area perimeter): inner_cordon, outer_cordon, staging_area, press_cordon, hot_zone, warm_zone, cold_zone, assembly_area',
-      '  → geometry: { "type": "Polygon", "coordinates": [[[lng1,lat1], [lng2,lat2], [lng3,lat3], [lng4,lat4], [lng1,lat1]]] }',
-      '  → MUST be a closed ring (first and last coordinate identical), minimum 4 corners',
+      '  → geometry: { "type": "Polygon", "coordinates": [[[lng1,lat1], [lng2,lat2], ..., [lng1,lat1]]] }',
+      '  → MUST be a closed ring (first and last coordinate identical)',
+      '  → ⚠️ ALWAYS draw CIRCLES with 12 evenly-spaced points around the center, NOT squares or rectangles.',
       '',
       'LINESTRING assets (route/path): evacuation_route, patrol_route, supply_route',
       '  → geometry: { "type": "LineString", "coordinates": [[lng1,lat1], [lng2,lat2], [lng3,lat3]] }',
@@ -928,25 +929,49 @@ export class DemoAIAgentService {
 
     if (session.incidentCenter) {
       const { lat, lng } = session.incidentCenter;
+
+      // Generate example circle coordinates for the prompt
+      const makeCircle = (cLat: number, cLng: number, radiusDeg: number, n = 12): string => {
+        const pts: string[] = [];
+        for (let i = 0; i < n; i++) {
+          const angle = (2 * Math.PI * i) / n;
+          const pLng = cLng + radiusDeg * Math.cos(angle);
+          const pLat = cLat + radiusDeg * Math.sin(angle);
+          pts.push(`[${pLng.toFixed(5)},${pLat.toFixed(5)}]`);
+        }
+        pts.push(pts[0]); // close the ring
+        return `[${pts.join(',')}]`;
+      };
+
+      const innerExample = makeCircle(lat, lng, 0.00045); // ~50m radius
+      const outerExample = makeCircle(lat, lng, 0.0009); // ~100m radius
+      const smallExample = makeCircle(lat, lng, 0.00027); // ~30m radius
+
       parts.push(
         '',
-        '⚠️ COORDINATE SIZING — CRITICAL (polygons MUST be small and realistic):',
+        '⚠️ COORDINATE SIZING — CRITICAL (polygons MUST be CIRCLES, 50m-100m radius):',
         `- Incident center: [${lat}, ${lng}]. All coordinates MUST be near this center.`,
         '- 0.001° ≈ 111 meters. Keep this scale in mind for ALL placements.',
         `- For POINTS: offset from center by ± 0.0002 to 0.0005 (22m to 55m).`,
         '',
-        '- For INNER CORDON / OPERATING CORDON: ± 0.0003 from center (~33m radius, ~66m across). Example:',
-        `  { "type": "Polygon", "coordinates": [[[${(lng - 0.0003).toFixed(5)},${(lat - 0.0003).toFixed(5)}], [${(lng + 0.0003).toFixed(5)},${(lat - 0.0003).toFixed(5)}], [${(lng + 0.0003).toFixed(5)},${(lat + 0.0003).toFixed(5)}], [${(lng - 0.0003).toFixed(5)},${(lat + 0.0003).toFixed(5)}], [${(lng - 0.0003).toFixed(5)},${(lat - 0.0003).toFixed(5)}]]] }`,
+        '⚠️ ALL POLYGONS MUST BE CIRCLES — 12 evenly-spaced points around a center point.',
+        '  To make a circle: for i = 0..11: lng = centerLng + radius * cos(i * 30°), lat = centerLat + radius * sin(i * 30°)',
+        '  Close the ring by repeating the first point at the end.',
         '',
-        '- For OUTER CORDON: ± 0.0005 from center (~55m radius, ~110m across). Example:',
-        `  { "type": "Polygon", "coordinates": [[[${(lng - 0.0005).toFixed(5)},${(lat - 0.0005).toFixed(5)}], [${(lng + 0.0005).toFixed(5)},${(lat - 0.0005).toFixed(5)}], [${(lng + 0.0005).toFixed(5)},${(lat + 0.0005).toFixed(5)}], [${(lng - 0.0005).toFixed(5)},${(lat + 0.0005).toFixed(5)}], [${(lng - 0.0005).toFixed(5)},${(lat - 0.0005).toFixed(5)}]]] }`,
+        '- For INNER CORDON / OPERATING CORDON / BARRICADE PERIMETER: radius ≈ 0.00045 (~50m). Example:',
+        `  { "type": "Polygon", "coordinates": [${innerExample}] }`,
         '',
-        '- For STAGING/TRIAGE/ASSEMBLY/PRESS areas: ± 0.0002 (~22m, small localized area).',
+        '- For OUTER CORDON / SECURITY PERIMETER: radius ≈ 0.0009 (~100m). Example:',
+        `  { "type": "Polygon", "coordinates": [${outerExample}] }`,
+        '',
+        '- For STAGING/TRIAGE/ASSEMBLY/PRESS areas: radius ≈ 0.00027 (~30m). Example:',
+        `  { "type": "Polygon", "coordinates": [${smallExample}] }`,
         '',
         '- For LINESTRINGS (routes): 2-5 waypoints, each offset by ± 0.0003 to 0.001 from center.',
         `  Example route: { "type": "LineString", "coordinates": [[${(lng - 0.0003).toFixed(5)},${(lat + 0.0003).toFixed(5)}], [${(lng + 0.0005).toFixed(5)},${(lat + 0.0008).toFixed(5)}]] }`,
         '',
-        '⚠️ NEVER create polygons larger than ± 0.0006 from center. The server will reject oversized polygons.',
+        '⚠️ NEVER use squares or rectangles. ALWAYS use 12-point circles.',
+        '⚠️ NEVER create polygons larger than radius 0.001 (~111m). The server will reject oversized polygons.',
       );
     }
 
@@ -2404,7 +2429,7 @@ export class DemoAIAgentService {
     center: { lat: number; lng: number } | null,
   ): { type: string; coordinates: unknown } {
     if (geometry.type !== 'Polygon') return geometry;
-    const MAX_SPAN = 0.0012; // ~130m — tight realistic ceiling
+    const MAX_SPAN = 0.002; // ~220m diameter — fits 100m radius circles
 
     try {
       const rings = geometry.coordinates as number[][][];
