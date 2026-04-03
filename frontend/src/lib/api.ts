@@ -183,8 +183,9 @@ export const api = {
           id: string;
           scenario_id: string;
           location_type: string;
+          pin_category?: string;
           label: string;
-          coordinates: { lat?: number; lng?: number };
+          coordinates: { lat: number; lng: number };
           conditions?: Record<string, unknown>;
           display_order: number;
         }>;
@@ -304,7 +305,12 @@ export const api = {
     updatePinPositions: async (
       id: string,
       payload: {
-        locations?: Array<{ id: string; lat: number; lng: number }>;
+        locations?: Array<{
+          id: string;
+          lat: number;
+          lng: number;
+          conditions?: Record<string, unknown>;
+        }>;
         hazards?: Array<{ id: string; lat: number; lng: number }>;
         casualties?: Array<{ id: string; lat: number; lng: number }>;
         zones?: Array<{ hazard_id: string; zone_type: string; radius_m: number }>;
@@ -316,6 +322,20 @@ export const api = {
           method: 'PATCH',
           headers: { ...headers, 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
+        }),
+      );
+    },
+    retryRoutes: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        ok: boolean;
+        routes_count?: number;
+        message?: string;
+        error?: string;
+      }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/retry-routes`), {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
         }),
       );
     },

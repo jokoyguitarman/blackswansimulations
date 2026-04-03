@@ -106,8 +106,9 @@ interface Team {
 interface LocationPin {
   id: string;
   location_type: string;
+  pin_category?: string;
   label: string;
-  coordinates: { lat?: number; lng?: number };
+  coordinates: { lat: number; lng: number };
   conditions?: Record<string, unknown>;
   display_order: number;
 }
@@ -271,6 +272,8 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
     key_points: [''],
   });
   const [savingDoctrine, setSavingDoctrine] = useState(false);
+  const [retryingRoutes, setRetryingRoutes] = useState(false);
+  const [retryRoutesMsg, setRetryRoutesMsg] = useState<string | null>(null);
 
   const saveDoctrine = useCallback(
     async (updated: StandardsFinding[]) => {
@@ -677,53 +680,95 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
             <div>
               {(() => {
                 const routePins = locations.filter((l) => l.location_type === 'route');
-                if (routePins.length === 0) {
-                  return (
-                    <p className="text-sm terminal-text text-robotic-yellow/50">[NO ROUTE DATA]</p>
-                  );
-                }
+                const hasRoutes = routePins.length > 0;
                 return (
-                  <div className="space-y-2">
-                    <p className="text-xs terminal-text text-robotic-yellow/60 mb-3">
-                      Enriched route conditions — used by transport outcome service and
-                      environmental condition management.
-                    </p>
-                    {routePins.map((r, i) => {
-                      const c = (r.conditions ?? {}) as Record<string, unknown>;
-                      return (
-                        <div key={r.id ?? i} className="military-border p-3">
-                          <div className="text-sm terminal-text text-robotic-yellow font-medium">
-                            {r.label}
-                          </div>
-                          <div className="text-xs terminal-text mt-1 space-y-0.5">
-                            <div>
-                              {c.problem ? (
-                                <span className="text-orange-400">{String(c.problem)}</span>
-                              ) : (
-                                <span className="text-green-400">Clear</span>
-                              )}
-                              {' — '}
-                              {c.managed ? 'managed' : 'unmanaged'}
-                            </div>
-                            <div>
-                              {c.highway_type ? `${String(c.highway_type)} ` : null}
-                              {c.one_way ? '[one-way] ' : ''}
-                              {c.distance_m != null ? `${c.distance_m}m ` : null}
-                              {c.travel_time_minutes != null
-                                ? `~${c.travel_time_minutes} min`
-                                : null}
-                            </div>
-                            {Array.isArray(c.connects_to) &&
-                              (c.connects_to as string[]).length > 0 && (
-                                <div className="text-robotic-yellow/50">
-                                  Connects to: {(c.connects_to as string[]).join(', ')}
+                  <>
+                    {!hasRoutes && (
+                      <p className="text-sm terminal-text text-robotic-yellow/50 mb-3">
+                        [NO ROUTE DATA]
+                      </p>
+                    )}
+                    <div className="flex items-center gap-3 mb-3">
+                      <button
+                        onClick={async () => {
+                          setRetryingRoutes(true);
+                          setRetryRoutesMsg(null);
+                          try {
+                            const res = await api.scenarios.retryRoutes(scenarioId);
+                            if (res.routes_count) {
+                              setRetryRoutesMsg(`${res.routes_count} routes generated`);
+                              const locRes = await api.scenarios.getScenarioLocations(scenarioId);
+                              setLocations((locRes.data ?? []) as LocationPin[]);
+                            } else {
+                              setRetryRoutesMsg(res.message || res.error || 'No routes generated');
+                            }
+                          } catch (err) {
+                            setRetryRoutesMsg(
+                              err instanceof Error ? err.message : 'Failed to fetch routes',
+                            );
+                          } finally {
+                            setRetryingRoutes(false);
+                          }
+                        }}
+                        disabled={retryingRoutes || hasRoutes}
+                        className="px-4 py-1.5 text-xs terminal-text bg-blue-700 hover:bg-blue-600 text-white rounded border border-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {retryingRoutes
+                          ? 'FETCHING ROUTES...'
+                          : hasRoutes
+                            ? 'ROUTES AVAILABLE'
+                            : 'RETRY ROUTE FETCH'}
+                      </button>
+                      {retryRoutesMsg && (
+                        <span className="text-xs terminal-text text-green-400">
+                          {retryRoutesMsg}
+                        </span>
+                      )}
+                    </div>
+                    {hasRoutes && (
+                      <div className="space-y-2">
+                        <p className="text-xs terminal-text text-robotic-yellow/60 mb-3">
+                          Enriched route conditions — used by transport outcome service and
+                          environmental condition management.
+                        </p>
+                        {routePins.map((r, i) => {
+                          const c = (r.conditions ?? {}) as Record<string, unknown>;
+                          return (
+                            <div key={r.id ?? i} className="military-border p-3">
+                              <div className="text-sm terminal-text text-robotic-yellow font-medium">
+                                {r.label}
+                              </div>
+                              <div className="text-xs terminal-text mt-1 space-y-0.5">
+                                <div>
+                                  {c.problem ? (
+                                    <span className="text-orange-400">{String(c.problem)}</span>
+                                  ) : (
+                                    <span className="text-green-400">Clear</span>
+                                  )}
+                                  {' — '}
+                                  {c.managed ? 'managed' : 'unmanaged'}
                                 </div>
-                              )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                                <div>
+                                  {c.highway_type ? `${String(c.highway_type)} ` : null}
+                                  {c.one_way ? '[one-way] ' : ''}
+                                  {c.distance_m != null ? `${c.distance_m}m ` : null}
+                                  {c.travel_time_minutes != null
+                                    ? `~${c.travel_time_minutes} min`
+                                    : null}
+                                </div>
+                                {Array.isArray(c.connects_to) &&
+                                  (c.connects_to as string[]).length > 0 && (
+                                    <div className="text-robotic-yellow/50">
+                                      Connects to: {(c.connects_to as string[]).join(', ')}
+                                    </div>
+                                  )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
                 );
               })()}
             </div>
@@ -1496,7 +1541,6 @@ const MapPinsTab = ({
         zone_type: zoneType,
         radius_m: newRadius,
       });
-      // Update local state to re-render the polygon at the new radius
       setHazards((prev) =>
         prev.map((h) => {
           if (h.id !== hazardId) return h;
@@ -1513,6 +1557,48 @@ const MapPinsTab = ({
     [],
   );
 
+  const onZoneLocationDrag = useCallback((id: string, lat: number, lng: number) => {
+    changesRef.current.locations.set(id, { lat, lng });
+    setLocations((prev) =>
+      prev.map((loc) => {
+        if (loc.id !== id) return loc;
+        const conds = (loc.conditions ?? {}) as Record<string, unknown>;
+        const radiusM = Number(conds.radius_m) || 100;
+        const newPolygon = generateCirclePolygon(lat, lng, radiusM);
+        return {
+          ...loc,
+          coordinates: { lat, lng },
+          conditions: { ...conds, polygon: newPolygon },
+        };
+      }),
+    );
+    setDirty(true);
+  }, []);
+
+  const onZoneLocationRadiusChange = useCallback((id: string, newRadius: number) => {
+    setLocations((prev) =>
+      prev.map((loc) => {
+        if (loc.id !== id) return loc;
+        const conds = (loc.conditions ?? {}) as Record<string, unknown>;
+        const newPolygon = generateCirclePolygon(
+          loc.coordinates.lat,
+          loc.coordinates.lng,
+          newRadius,
+        );
+        const updatedLoc = {
+          ...loc,
+          conditions: { ...conds, radius_m: newRadius, polygon: newPolygon },
+        };
+        changesRef.current.locations.set(id, {
+          lat: loc.coordinates.lat,
+          lng: loc.coordinates.lng,
+        });
+        return updatedLoc;
+      }),
+    );
+    setDirty(true);
+  }, []);
+
   const handleSave = useCallback(async () => {
     if (!hasChanges()) return;
     setSaving(true);
@@ -1520,13 +1606,27 @@ const MapPinsTab = ({
     try {
       const c = changesRef.current;
       const payload: {
-        locations?: Array<{ id: string; lat: number; lng: number }>;
+        locations?: Array<{
+          id: string;
+          lat: number;
+          lng: number;
+          conditions?: Record<string, unknown>;
+        }>;
         hazards?: Array<{ id: string; lat: number; lng: number }>;
         casualties?: Array<{ id: string; lat: number; lng: number }>;
         zones?: Array<{ hazard_id: string; zone_type: string; radius_m: number }>;
       } = {};
-      if (c.locations.size)
-        payload.locations = [...c.locations.entries()].map(([id, p]) => ({ id, ...p }));
+      if (c.locations.size) {
+        payload.locations = [...c.locations.entries()].map(([id, p]) => {
+          const loc = locations.find((l) => l.id === id);
+          const isZone =
+            loc?.location_type === 'incident_zone' || loc?.pin_category === 'incident_zone';
+          if (isZone && loc?.conditions) {
+            return { id, ...p, conditions: loc.conditions as Record<string, unknown> };
+          }
+          return { id, ...p };
+        });
+      }
       if (c.hazards.size)
         payload.hazards = [...c.hazards.entries()].map(([id, p]) => ({ id, ...p }));
       if (c.casualties.size)
@@ -1585,7 +1685,15 @@ const MapPinsTab = ({
     return <p className="text-sm terminal-text text-robotic-yellow/50">[NO MAP DATA]</p>;
   }
 
-  const validPins: ScenarioLocationPin[] = locations
+  // Separate zone locations from regular pins
+  const zoneLocations = locations.filter(
+    (loc) => loc.location_type === 'incident_zone' || loc.pin_category === 'incident_zone',
+  );
+  const nonZoneLocations = locations.filter(
+    (loc) => loc.location_type !== 'incident_zone' && loc.pin_category !== 'incident_zone',
+  );
+
+  const validPins: ScenarioLocationPin[] = nonZoneLocations
     .filter((loc) => loc.coordinates.lat != null && loc.coordinates.lng != null)
     .map((loc) => ({
       id: loc.id,
@@ -1676,105 +1784,227 @@ const MapPinsTab = ({
             .map((floor) => (
               <FloorPlanOverlay key={floor.id} floor={floor} />
             ))}
-          {/* Ground-truth zone polygons with editable radius — render largest first so smallest is on top */}
-          {hazards
-            .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
-            .flatMap((hazard) =>
-              [...(hazard.zones ?? [])]
-                .filter((z) => z.polygon && z.polygon.length >= 3)
-                .sort((a, b) => b.radius_m - a.radius_m)
-                .map((zone) => {
+          {/* Independent zone locations — draggable center + editable radius */}
+          {zoneLocations.length > 0
+            ? [...zoneLocations]
+                .sort((a, b) => {
+                  const rA = Number((a.conditions as Record<string, unknown>)?.radius_m) || 0;
+                  const rB = Number((b.conditions as Record<string, unknown>)?.radius_m) || 0;
+                  return rB - rA;
+                })
+                .map((zl) => {
+                  const conds = (zl.conditions ?? {}) as Record<string, unknown>;
+                  const zoneType = (conds.zone_type as string) || 'unknown';
+                  const radiusM = Number(conds.radius_m) || 100;
+                  const polygon = conds.polygon as number[][] | undefined;
+                  if (!polygon || polygon.length < 3) return null;
                   const ZONE_COLORS: Record<string, { color: string; fillColor: string }> = {
                     hot: { color: '#dc2626', fillColor: '#dc262640' },
                     warm: { color: '#f59e0b', fillColor: '#f59e0b30' },
                     cold: { color: '#3b82f6', fillColor: '#3b82f620' },
                   };
-                  const style = ZONE_COLORS[zone.zone_type] ?? {
+                  const style = ZONE_COLORS[zoneType] ?? {
                     color: '#6b7280',
                     fillColor: '#6b728020',
                   };
-                  const positions = zone.polygon!.map((p) => [p[0], p[1]] as [number, number]);
+                  const positions = polygon.map((p) => [p[0], p[1]] as [number, number]);
                   return (
-                    <Polygon
-                      key={`zone-${hazard.id}-${zone.zone_type}`}
-                      positions={positions}
-                      pathOptions={{
-                        color: style.color,
-                        fillColor: style.fillColor,
-                        fillOpacity: 0.3,
-                        weight: 2,
-                        dashArray: '6 4',
-                      }}
-                    >
-                      <Tooltip direction="center" permanent={false}>
-                        {zone.zone_type.toUpperCase()} zone ({zone.radius_m}m)
-                      </Tooltip>
-                      <Popup>
-                        <div style={{ minWidth: 160 }}>
-                          <div
-                            style={{
-                              fontWeight: 700,
-                              fontSize: 13,
-                              color: style.color,
-                              marginBottom: 6,
-                              textTransform: 'uppercase',
-                              letterSpacing: 1,
-                            }}
-                          >
-                            {zone.zone_type} zone
+                    <span key={`zl-${zl.id}`}>
+                      <Polygon
+                        positions={positions}
+                        pathOptions={{
+                          color: style.color,
+                          fillColor: style.fillColor,
+                          fillOpacity: 0.3,
+                          weight: 2,
+                          dashArray: '6 4',
+                        }}
+                      >
+                        <Tooltip direction="center" permanent={false}>
+                          {zoneType.toUpperCase()} zone ({radiusM}m) — drag center marker to move
+                        </Tooltip>
+                        <Popup>
+                          <div style={{ minWidth: 160 }}>
+                            <div
+                              style={{
+                                fontWeight: 700,
+                                fontSize: 13,
+                                color: style.color,
+                                marginBottom: 6,
+                                textTransform: 'uppercase',
+                                letterSpacing: 1,
+                              }}
+                            >
+                              {zoneType} zone
+                            </div>
+                            <label
+                              style={{
+                                fontSize: 11,
+                                display: 'block',
+                                marginBottom: 2,
+                                color: '#666',
+                              }}
+                            >
+                              Radius (meters)
+                            </label>
+                            <input
+                              type="number"
+                              min={10}
+                              max={5000}
+                              step={5}
+                              defaultValue={radiusM}
+                              onBlur={(e) => {
+                                const val = parseInt(e.target.value, 10);
+                                if (!isNaN(val) && val >= 10 && val !== radiusM) {
+                                  onZoneLocationRadiusChange(zl.id, val);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                              }}
+                              style={{
+                                width: '100%',
+                                padding: '4px 6px',
+                                fontSize: 13,
+                                border: `1px solid ${style.color}`,
+                                borderRadius: 4,
+                                outline: 'none',
+                              }}
+                            />
+                            {(conds.ppe_required as string[] | undefined)?.length ? (
+                              <div style={{ marginTop: 6, fontSize: 10, color: '#888' }}>
+                                PPE: {(conds.ppe_required as string[]).join(', ')}
+                              </div>
+                            ) : null}
+                            {(conds.allowed_teams as string[] | undefined)?.length ? (
+                              <div style={{ fontSize: 10, color: '#888' }}>
+                                Teams: {(conds.allowed_teams as string[]).join(', ')}
+                              </div>
+                            ) : null}
                           </div>
-                          <label
-                            style={{
-                              fontSize: 11,
-                              display: 'block',
-                              marginBottom: 2,
-                              color: '#666',
-                            }}
-                          >
-                            Radius (meters)
-                          </label>
-                          <input
-                            type="number"
-                            min={10}
-                            max={5000}
-                            step={5}
-                            defaultValue={zone.radius_m}
-                            onBlur={(e) => {
-                              const val = parseInt(e.target.value, 10);
-                              if (!isNaN(val) && val >= 10 && val !== zone.radius_m) {
-                                onZoneRadiusChange(hazard.id, zone.zone_type, val);
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                (e.target as HTMLInputElement).blur();
-                              }
-                            }}
-                            style={{
-                              width: '100%',
-                              padding: '4px 6px',
-                              fontSize: 13,
-                              border: `1px solid ${style.color}`,
-                              borderRadius: 4,
-                              outline: 'none',
-                            }}
-                          />
-                          {zone.ppe_required?.length ? (
-                            <div style={{ marginTop: 6, fontSize: 10, color: '#888' }}>
-                              PPE: {zone.ppe_required.join(', ')}
-                            </div>
-                          ) : null}
-                          {zone.allowed_teams?.length ? (
-                            <div style={{ fontSize: 10, color: '#888' }}>
-                              Teams: {zone.allowed_teams.join(', ')}
-                            </div>
-                          ) : null}
-                        </div>
-                      </Popup>
-                    </Polygon>
+                        </Popup>
+                      </Polygon>
+                      <Marker
+                        position={[zl.coordinates.lat, zl.coordinates.lng]}
+                        draggable
+                        icon={
+                          new DivIcon({
+                            className: '',
+                            html: `<div style="width:18px;height:18px;border-radius:50%;border:3px solid ${style.color};background:${style.fillColor};cursor:grab" title="Drag to move ${zoneType} zone"></div>`,
+                            iconSize: [18, 18],
+                            iconAnchor: [9, 9],
+                          })
+                        }
+                        eventHandlers={{
+                          dragend: (e) => {
+                            const latlng = e.target.getLatLng();
+                            onZoneLocationDrag(zl.id, latlng.lat, latlng.lng);
+                          },
+                        }}
+                      >
+                        <Tooltip direction="top" offset={[0, -12]}>
+                          Drag to move {zoneType.toUpperCase()} zone
+                        </Tooltip>
+                      </Marker>
+                    </span>
                   );
-                }),
-            )}
+                })
+            : /* Legacy: hazard-based zone polygons */
+              hazards
+                .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
+                .flatMap((hazard) =>
+                  [...(hazard.zones ?? [])]
+                    .filter((z) => z.polygon && z.polygon.length >= 3)
+                    .sort((a, b) => b.radius_m - a.radius_m)
+                    .map((zone) => {
+                      const ZONE_COLORS: Record<string, { color: string; fillColor: string }> = {
+                        hot: { color: '#dc2626', fillColor: '#dc262640' },
+                        warm: { color: '#f59e0b', fillColor: '#f59e0b30' },
+                        cold: { color: '#3b82f6', fillColor: '#3b82f620' },
+                      };
+                      const style = ZONE_COLORS[zone.zone_type] ?? {
+                        color: '#6b7280',
+                        fillColor: '#6b728020',
+                      };
+                      const positions = zone.polygon!.map((p) => [p[0], p[1]] as [number, number]);
+                      return (
+                        <Polygon
+                          key={`zone-${hazard.id}-${zone.zone_type}`}
+                          positions={positions}
+                          pathOptions={{
+                            color: style.color,
+                            fillColor: style.fillColor,
+                            fillOpacity: 0.3,
+                            weight: 2,
+                            dashArray: '6 4',
+                          }}
+                        >
+                          <Tooltip direction="center" permanent={false}>
+                            {zone.zone_type.toUpperCase()} zone ({zone.radius_m}m)
+                          </Tooltip>
+                          <Popup>
+                            <div style={{ minWidth: 160 }}>
+                              <div
+                                style={{
+                                  fontWeight: 700,
+                                  fontSize: 13,
+                                  color: style.color,
+                                  marginBottom: 6,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: 1,
+                                }}
+                              >
+                                {zone.zone_type} zone
+                              </div>
+                              <label
+                                style={{
+                                  fontSize: 11,
+                                  display: 'block',
+                                  marginBottom: 2,
+                                  color: '#666',
+                                }}
+                              >
+                                Radius (meters)
+                              </label>
+                              <input
+                                type="number"
+                                min={10}
+                                max={5000}
+                                step={5}
+                                defaultValue={zone.radius_m}
+                                onBlur={(e) => {
+                                  const val = parseInt(e.target.value, 10);
+                                  if (!isNaN(val) && val >= 10 && val !== zone.radius_m)
+                                    onZoneRadiusChange(hazard.id, zone.zone_type, val);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                }}
+                                style={{
+                                  width: '100%',
+                                  padding: '4px 6px',
+                                  fontSize: 13,
+                                  border: `1px solid ${style.color}`,
+                                  borderRadius: 4,
+                                  outline: 'none',
+                                }}
+                              />
+                              {zone.ppe_required?.length ? (
+                                <div style={{ marginTop: 6, fontSize: 10, color: '#888' }}>
+                                  PPE: {zone.ppe_required.join(', ')}
+                                </div>
+                              ) : null}
+                              {zone.allowed_teams?.length ? (
+                                <div style={{ fontSize: 10, color: '#888' }}>
+                                  Teams: {zone.allowed_teams.join(', ')}
+                                </div>
+                              ) : null}
+                            </div>
+                          </Popup>
+                        </Polygon>
+                      );
+                    }),
+                )}
           {validPins.map((pin) => (
             <ScenarioLocationMarker
               key={pin.id}

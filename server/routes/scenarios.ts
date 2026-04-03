@@ -417,7 +417,12 @@ router.patch('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) =>
     }
     const { id: scenarioId } = req.params;
     const { locations, hazards, casualties, zones } = req.body as {
-      locations?: Array<{ id: string; lat: number; lng: number }>;
+      locations?: Array<{
+        id: string;
+        lat: number;
+        lng: number;
+        conditions?: Record<string, unknown>;
+      }>;
       hazards?: Array<{ id: string; lat: number; lng: number }>;
       casualties?: Array<{ id: string; lat: number; lng: number }>;
       zones?: Array<{ hazard_id: string; zone_type: string; radius_m: number }>;
@@ -427,11 +432,32 @@ router.patch('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) =>
 
     if (locations?.length) {
       for (const loc of locations) {
+        const updatePayload: Record<string, unknown> = {
+          coordinates: { lat: loc.lat, lng: loc.lng },
+        };
+
+        // For zone locations, recalculate the polygon when center moves or radius changes
+        if (loc.conditions) {
+          updatePayload.conditions = loc.conditions;
+        } else {
+          const { data: existingLoc } = await supabaseAdmin
+            .from('scenario_locations')
+            .select('pin_category, conditions')
+            .eq('id', loc.id)
+            .eq('scenario_id', scenarioId)
+            .single();
+
+          if (existingLoc?.pin_category === 'incident_zone') {
+            const conds = (existingLoc.conditions ?? {}) as Record<string, unknown>;
+            const radiusM = Number(conds.radius_m) || 100;
+            const newPolygon = circleToPolygon(loc.lat, loc.lng, radiusM);
+            updatePayload.conditions = { ...conds, polygon: newPolygon };
+          }
+        }
+
         const { error } = await supabaseAdmin
           .from('scenario_locations')
-          .update({
-            coordinates: { lat: loc.lat, lng: loc.lng },
-          })
+          .update(updatePayload)
           .eq('id', loc.id)
           .eq('scenario_id', scenarioId);
         if (error) errors.push(`location ${loc.id}: ${error.message}`);
@@ -1012,6 +1038,176 @@ router.post(
     }
   },
 );
+
+// Retry route generation for a scenario
+router.post('/:id/retry-routes', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { id: scenarioId } = req.params;
+
+    const { data: scenario, error: scenErr } = await supabaseAdmin
+      .from('scenarios')
+      .select('center_lat, center_lng, category, title, description, briefing, insider_knowledge')
+      .eq('id', scenarioId)
+      .single();
+
+    if (scenErr || !scenario) {
+      return res.status(404).json({ error: 'Scenario not found' });
+    }
+    if (!scenario.center_lat || !scenario.center_lng) {
+      return res.status(400).json({ error: 'Scenario has no geocoded center coordinates' });
+    }
+
+    // Check if routes already exist
+    const { data: existingRoutes } = await supabaseAdmin
+      .from('scenario_locations')
+      .select('id')
+      .eq('scenario_id', scenarioId)
+      .eq('location_type', 'route')
+      .limit(1);
+
+    if (existingRoutes?.length) {
+      return res.json({
+        ok: true,
+        message: 'Routes already exist',
+        routes_count: existingRoutes.length,
+      });
+    }
+
+    const openAiApiKey = process.env.OPENAI_API_KEY;
+    if (!openAiApiKey) {
+      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    }
+
+    const { fetchRouteGeometries: fetchRoutes } = await import('../services/osmVicinityService.js');
+    const { computeRouteCorridors, enrichRouteLocations: enrichRoutes } =
+      await import('../services/warroomAiService.js');
+
+    const lat = Number(scenario.center_lat);
+    const lng = Number(scenario.center_lng);
+
+    logger.info({ scenarioId, lat, lng }, 'Retrying route generation');
+
+    const routeGeoms = await fetchRoutes(lat, lng, 6000);
+    if (!routeGeoms.length) {
+      return res
+        .status(502)
+        .json({
+          error: 'OSM route fetch returned no data — Overpass may be unavailable. Try again later.',
+        });
+    }
+
+    // Fetch existing POI locations for corridor computation
+    const { data: poiLocs } = await supabaseAdmin
+      .from('scenario_locations')
+      .select('id, label, location_type, pin_category, coordinates, conditions')
+      .eq('scenario_id', scenarioId)
+      .eq('pin_category', 'poi');
+
+    const facilityPins = (poiLocs ?? []).map((p) => ({
+      label: p.label as string,
+      coordinates: p.coordinates as { lat: number; lng: number },
+      location_type: p.location_type as string,
+      conditions: (p.conditions ?? {}) as Record<string, unknown>,
+    }));
+
+    const incidentLoc = await supabaseAdmin
+      .from('scenario_locations')
+      .select('coordinates')
+      .eq('scenario_id', scenarioId)
+      .eq('pin_category', 'incident_site')
+      .limit(1)
+      .single();
+
+    const incidentCoords = (incidentLoc.data?.coordinates as { lat: number; lng: number }) ?? {
+      lat,
+      lng,
+    };
+
+    const corridors = computeRouteCorridors(
+      routeGeoms,
+      facilityPins.map((p) => ({
+        label: p.label,
+        coordinates: p.coordinates,
+        location_type: p.location_type,
+      })),
+      incidentCoords,
+    );
+
+    if (!corridors.length) {
+      return res.status(422).json({ error: 'No route corridors computed from OSM data' });
+    }
+
+    const routeLocations = await enrichRoutes(
+      {
+        scenario_type: scenario.category || 'terrorism',
+        setting: '',
+        terrain: '',
+        location: null,
+        venue_name: scenario.title || '',
+        complexity_tier: 'full',
+        typeSpec: {},
+        settingSpec: {},
+        terrainSpec: {},
+      },
+      corridors,
+      facilityPins.map((p) => ({
+        label: p.label,
+        location_type: p.location_type,
+        conditions: p.conditions,
+      })),
+      openAiApiKey,
+      undefined,
+      { title: scenario.title, description: scenario.description, briefing: scenario.briefing },
+    );
+
+    if (!routeLocations?.length) {
+      return res.status(422).json({ error: 'AI route enrichment returned no results' });
+    }
+
+    // Insert the route locations
+    const rows = routeLocations.map((r) => ({
+      scenario_id: scenarioId,
+      location_type: r.location_type,
+      pin_category: r.pin_category ?? 'route',
+      label: r.label,
+      coordinates: r.coordinates,
+      conditions: r.conditions ?? {},
+      display_order: r.display_order ?? 500,
+    }));
+
+    const { error: insertErr } = await supabaseAdmin.from('scenario_locations').insert(rows);
+    if (insertErr) {
+      logger.error({ error: insertErr, scenarioId }, 'Failed to insert retry-route locations');
+      return res.status(500).json({ error: 'Failed to save route locations' });
+    }
+
+    // Also store route summaries in insider_knowledge.osm_vicinity.emergency_routes
+    const ik = (scenario.insider_knowledge ?? {}) as Record<string, unknown>;
+    const osmVicinity = (ik.osm_vicinity ?? {}) as Record<string, unknown>;
+    const routeSummaries = routeLocations.map((r) => {
+      const c = (r.conditions ?? {}) as Record<string, unknown>;
+      return {
+        description: r.label,
+        highway_type: c.highway_type as string | undefined,
+        one_way: c.one_way as boolean | undefined,
+      };
+    });
+    osmVicinity.emergency_routes = routeSummaries;
+    ik.osm_vicinity = osmVicinity;
+    await supabaseAdmin.from('scenarios').update({ insider_knowledge: ik }).eq('id', scenarioId);
+
+    logger.info({ scenarioId, count: rows.length }, 'Route locations generated via retry');
+    res.json({ ok: true, routes_count: rows.length });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in POST /scenarios/:id/retry-routes');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // Delete scenario (creator or admin only)
 router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {

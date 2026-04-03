@@ -41,7 +41,13 @@ async function fetchSessionZones(sessionId: string, scenarioId?: string): Promis
   const playerZones = await fetchPlayerDrawnZones(sessionId);
   if (playerZones.length > 0) return playerZones;
 
-  // 2. Fall back to war room ground-truth zones stored on hazards
+  // 2. Try independent zone locations (new format — scenario_locations with pin_category = 'incident_zone')
+  if (scenarioId) {
+    const locationZones = await fetchZoneLocations(scenarioId);
+    if (locationZones.length > 0) return locationZones;
+  }
+
+  // 3. Fall back to war room ground-truth zones stored on hazards (legacy format)
   if (scenarioId) {
     const warRoomZones = await fetchWarRoomZones(sessionId, scenarioId);
     if (warRoomZones.length > 0) return warRoomZones;
@@ -75,6 +81,43 @@ async function fetchPlayerDrawnZones(sessionId: string): Promise<ZonePolygon[]> 
 
     const ring: [number, number][] = geoRing.map((c) => [c[1], c[0]]);
     zones.push({ classification: classification as 'hot' | 'warm' | 'cold', ring });
+  }
+
+  zones.sort((a, b) => (ZONE_ORDER[a.classification] ?? 9) - (ZONE_ORDER[b.classification] ?? 9));
+  return zones;
+}
+
+async function fetchZoneLocations(scenarioId: string): Promise<ZonePolygon[]> {
+  const { data } = await supabaseAdmin
+    .from('scenario_locations')
+    .select('conditions, coordinates')
+    .eq('scenario_id', scenarioId)
+    .eq('pin_category', 'incident_zone');
+
+  if (!data?.length) return [];
+
+  const zones: ZonePolygon[] = [];
+  for (const row of data) {
+    const conds = row.conditions as Record<string, unknown> | null;
+    if (!conds) continue;
+
+    const zoneType = conds.zone_type as string;
+    if (!VALID_CLASSIFICATIONS.includes(zoneType)) continue;
+
+    const polygon = conds.polygon as [number, number][] | undefined;
+    const coords = row.coordinates as { lat: number; lng: number } | null;
+    const radiusM = Number(conds.radius_m) || 0;
+
+    let ring: [number, number][];
+    if (polygon?.length && polygon.length >= 3) {
+      ring = polygon;
+    } else if (coords && radiusM > 0) {
+      ring = circleToPolygon(coords.lat, coords.lng, radiusM);
+    } else {
+      continue;
+    }
+
+    zones.push({ classification: zoneType as 'hot' | 'warm' | 'cold', ring });
   }
 
   zones.sort((a, b) => (ZONE_ORDER[a.classification] ?? 9) - (ZONE_ORDER[b.classification] ?? 9));

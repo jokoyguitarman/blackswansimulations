@@ -1115,7 +1115,13 @@ export const MapView = ({
   // Trainer sees all pins except cordon. Players see incident/access/triage/command/staging always;
   // poi only after Insider reveals it; cordon always hidden from players.
   // Pins with visible_after_state_key only appear once that state key is truthy.
+  // Zone locations rendered as polygons, not as pin markers
+  const zoneLocationPins = scenarioLocationsWithCoords.filter(
+    (loc) => loc.pin_category === 'incident_zone' || loc.location_type === 'incident_zone',
+  );
+
   const scenarioLocationsForMap = scenarioLocationsWithCoords.filter((loc) => {
+    if (loc.pin_category === 'incident_zone' || loc.location_type === 'incident_zone') return false;
     // Entry/exit pins are rendered separately via EntryExitPin component
     if (loc.pin_category === 'entry_exit') return false;
 
@@ -1659,40 +1665,76 @@ export const MapView = ({
               <FloorPlanOverlay key={floor.id} floor={floor} />
             ))}
 
-          {/* Ground-truth zone polygons — trainer view only, largest first so smallest is clickable on top */}
-          {showAllPins &&
-            hazards
-              .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
-              .flatMap((hazard) =>
-                [...(hazard.zones ?? [])]
-                  .filter((z) => z.polygon && z.polygon.length >= 3)
-                  .sort((a, b) => b.radius_m - a.radius_m)
-                  .map((zone) => {
-                    const ZONE_COLORS: Record<string, { color: string; fillColor: string }> = {
-                      hot: { color: '#dc2626', fillColor: '#dc262640' },
-                      warm: { color: '#f59e0b', fillColor: '#f59e0b30' },
-                      cold: { color: '#3b82f6', fillColor: '#3b82f620' },
-                    };
-                    const style = ZONE_COLORS[zone.zone_type] ?? {
-                      color: '#6b7280',
-                      fillColor: '#6b728020',
-                    };
-                    const positions = zone.polygon!.map((p) => [p[0], p[1]] as [number, number]);
-                    return (
-                      <Polygon
-                        key={`zone-${hazard.id}-${zone.zone_type}`}
-                        positions={positions}
-                        pathOptions={{
-                          color: style.color,
-                          fillColor: style.fillColor,
-                          fillOpacity: 0.3,
-                          weight: 2,
-                          dashArray: '6 4',
-                        }}
-                      />
-                    );
-                  }),
-              )}
+          {/* Zone polygons from independent zone locations (new format) or hazard zones (legacy) */}
+          {showAllPins && zoneLocationPins.length > 0
+            ? [...zoneLocationPins]
+                .sort((a, b) => {
+                  const rA = Number((a.conditions as Record<string, unknown>)?.radius_m) || 0;
+                  const rB = Number((b.conditions as Record<string, unknown>)?.radius_m) || 0;
+                  return rB - rA;
+                })
+                .map((zl) => {
+                  const conds = (zl.conditions ?? {}) as Record<string, unknown>;
+                  const zoneType = (conds.zone_type as string) || 'unknown';
+                  const polygon = conds.polygon as number[][] | undefined;
+                  if (!polygon || polygon.length < 3) return null;
+                  const ZONE_COLORS: Record<string, { color: string; fillColor: string }> = {
+                    hot: { color: '#dc2626', fillColor: '#dc262640' },
+                    warm: { color: '#f59e0b', fillColor: '#f59e0b30' },
+                    cold: { color: '#3b82f6', fillColor: '#3b82f620' },
+                  };
+                  const style = ZONE_COLORS[zoneType] ?? {
+                    color: '#6b7280',
+                    fillColor: '#6b728020',
+                  };
+                  const positions = polygon.map((p) => [p[0], p[1]] as [number, number]);
+                  return (
+                    <Polygon
+                      key={`zl-${zl.id}`}
+                      positions={positions}
+                      pathOptions={{
+                        color: style.color,
+                        fillColor: style.fillColor,
+                        fillOpacity: 0.3,
+                        weight: 2,
+                        dashArray: '6 4',
+                      }}
+                    />
+                  );
+                })
+            : showAllPins &&
+              hazards
+                .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
+                .flatMap((hazard) =>
+                  [...(hazard.zones ?? [])]
+                    .filter((z) => z.polygon && z.polygon.length >= 3)
+                    .sort((a, b) => b.radius_m - a.radius_m)
+                    .map((zone) => {
+                      const ZONE_COLORS: Record<string, { color: string; fillColor: string }> = {
+                        hot: { color: '#dc2626', fillColor: '#dc262640' },
+                        warm: { color: '#f59e0b', fillColor: '#f59e0b30' },
+                        cold: { color: '#3b82f6', fillColor: '#3b82f620' },
+                      };
+                      const style = ZONE_COLORS[zone.zone_type] ?? {
+                        color: '#6b7280',
+                        fillColor: '#6b728020',
+                      };
+                      const positions = zone.polygon!.map((p) => [p[0], p[1]] as [number, number]);
+                      return (
+                        <Polygon
+                          key={`zone-${hazard.id}-${zone.zone_type}`}
+                          positions={positions}
+                          pathOptions={{
+                            color: style.color,
+                            fillColor: style.fillColor,
+                            fillOpacity: 0.3,
+                            weight: 2,
+                            dashArray: '6 4',
+                          }}
+                        />
+                      );
+                    }),
+                )}
 
           {/* Hazard Markers — gated behind exit claiming, filtered by active floor */}
           {allExitsClaimed &&

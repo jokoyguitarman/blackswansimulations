@@ -40,7 +40,62 @@ import {
   type TeamInput,
 } from './warroomResearchService.js';
 
+import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import type { OsmVicinity } from './osmVicinityService.js';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const OSM_CACHE_RADIUS_M = 5000;
+
+/**
+ * Look for a nearby scenario that already has osm_vicinity data cached in
+ * its insider_knowledge. Returns the cached vicinity if one exists within
+ * OSM_CACHE_RADIUS_M meters, otherwise null.
+ */
+async function findCachedOsmVicinity(lat: number, lng: number): Promise<OsmVicinity | null> {
+  try {
+    const degApprox = OSM_CACHE_RADIUS_M / 111_000;
+    const { data: rows } = await supabaseAdmin
+      .from('scenarios')
+      .select('center_lat, center_lng, insider_knowledge')
+      .not('insider_knowledge', 'is', null)
+      .gte('center_lat', lat - degApprox)
+      .lte('center_lat', lat + degApprox)
+      .gte('center_lng', lng - degApprox)
+      .lte('center_lng', lng + degApprox)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (!rows?.length) return null;
+
+    for (const row of rows) {
+      const ik = row.insider_knowledge as Record<string, unknown> | null;
+      const cached = ik?.osm_vicinity as OsmVicinity | undefined;
+      if (!cached) continue;
+
+      const hasData =
+        (cached.hospitals?.length ?? 0) > 0 ||
+        (cached.police?.length ?? 0) > 0 ||
+        (cached.fire_stations?.length ?? 0) > 0;
+      if (!hasData) continue;
+
+      const dLat = (Number(row.center_lat) - lat) * 111_000;
+      const dLng = (Number(row.center_lng) - lng) * 111_000 * Math.cos((lat * Math.PI) / 180);
+      const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+      if (dist <= OSM_CACHE_RADIUS_M) {
+        logger.info(
+          { dist: Math.round(dist), hospitals: cached.hospitals?.length ?? 0 },
+          'Reusing cached OSM vicinity from nearby scenario',
+        );
+        return cached;
+      }
+    }
+    return null;
+  } catch (err) {
+    logger.warn({ err }, 'OSM vicinity cache lookup failed; will fetch fresh');
+    return null;
+  }
+}
 
 export interface WarroomTeamInput {
   team_name: string;
@@ -287,7 +342,7 @@ export async function generateAndPersistWarroomScenario(
     );
   }
 
-  let osmVicinity = undefined;
+  let osmVicinity: OsmVicinity | undefined = undefined;
   let osmOpenSpaces: import('./osmVicinityService.js').OsmOpenSpace[] | undefined;
   let osmBuildings: import('./osmVicinityService.js').OsmBuilding[] | undefined;
   let osmRouteGeometries: import('./osmVicinityService.js').OsmRouteGeometry[] | undefined;
@@ -299,12 +354,13 @@ export async function generateAndPersistWarroomScenario(
     try {
       const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-      const vicinity = await fetchOsmVicinityByCoordinates(
-        geocodeResult.lat,
-        geocodeResult.lng,
-        5000,
-      );
-      await delay(1500);
+      // Try cache first — reuse OSM vicinity from a nearby scenario
+      const cachedVicinity = await findCachedOsmVicinity(geocodeResult.lat, geocodeResult.lng);
+
+      const vicinity =
+        cachedVicinity ??
+        (await fetchOsmVicinityByCoordinates(geocodeResult.lat, geocodeResult.lng, 5000));
+      if (!cachedVicinity) await delay(1500);
 
       const buildings = await fetchVenueBuilding(geocodeResult.lat, geocodeResult.lng, 300).catch(
         (err) => {

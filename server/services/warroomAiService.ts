@@ -3006,7 +3006,7 @@ Base response times on distance. Use the facility name to infer size/capabilitie
 // Phase 4b — Route Network (corridor computation + AI enrichment)
 // ---------------------------------------------------------------------------
 
-interface RouteCorridor {
+export interface RouteCorridor {
   route_id: string;
   label: string;
   highway_type: string;
@@ -3046,7 +3046,7 @@ function slugify(name: string): string {
  * Deterministic corridor computation: link OSM road polylines to nearby
  * facilities (hospitals, police, fire) and the incident site.
  */
-function computeRouteCorridors(
+export function computeRouteCorridors(
   routeGeometries: OsmRouteGeometry[],
   facilities: Array<{
     label: string;
@@ -3107,7 +3107,7 @@ function computeRouteCorridors(
  * AI enrichment: assign traffic conditions to route corridors and return
  * them as scenario_locations rows (location_type = 'route', pin_category = 'route').
  */
-async function enrichRouteLocations(
+export async function enrichRouteLocations(
   input: WarroomGenerateInput,
   corridors: RouteCorridor[],
   facilities: Array<{ label: string; location_type: string; conditions?: Record<string, unknown> }>,
@@ -6565,7 +6565,7 @@ export async function warroomGenerateScenario(
   ]);
   const floorPlansResult = undefined;
 
-  // Generate unified incident zones (one hot/warm/cold set for the whole incident)
+  // Generate unified incident zones as independent locations (draggable in preview)
   let unifiedZones: ZoneWithPolygon[] = [];
   if (scenarioHazards?.length) {
     unifiedZones = await generateUnifiedIncidentZones(
@@ -6575,7 +6575,7 @@ export async function warroomGenerateScenario(
       teamNames,
       onProgress,
     );
-    // Store zones on the first hazard only; others get empty arrays
+    // Also keep zones on the first hazard for backward compatibility with zonePlacementService
     if (unifiedZones.length > 0) {
       scenarioHazards[0].zones = unifiedZones;
       for (let i = 1; i < scenarioHazards.length; i++) {
@@ -6729,13 +6729,40 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
       )
     : time_injects;
 
+  // Create independent zone location entries (draggable in preview)
+  let finalLocations = locations;
+  if (unifiedZones.length > 0) {
+    const incidentPin = locations?.find((l) => l.pin_category === 'incident_site');
+    const zoneCenterLat = incidentPin?.coordinates.lat ?? scenarioHazards?.[0]?.location_lat ?? 0;
+    const zoneCenterLng = incidentPin?.coordinates.lng ?? scenarioHazards?.[0]?.location_lng ?? 0;
+    const zoneDisplayOrder: Record<string, number> = { hot: 800, warm: 801, cold: 802 };
+    const zoneLocations: NonNullable<WarroomScenarioPayload['locations']> = unifiedZones.map(
+      (z) => ({
+        location_type: 'incident_zone',
+        pin_category: 'incident_zone',
+        label: `${z.zone_type.toUpperCase()} Zone (${z.radius_m}m)`,
+        coordinates: { lat: zoneCenterLat, lng: zoneCenterLng },
+        display_order: zoneDisplayOrder[z.zone_type] ?? 803,
+        conditions: {
+          zone_type: z.zone_type,
+          radius_m: z.radius_m,
+          polygon: z.polygon,
+          ppe_required: z.ppe_required,
+          allowed_teams: z.allowed_teams,
+          activities: z.activities,
+        },
+      }),
+    );
+    finalLocations = [...(locations ?? []), ...zoneLocations];
+  }
+
   return {
     scenario: scenarioWithType,
     teams: phase1.teams,
     objectives: phase1.objectives,
     time_injects: finalTimeInjects,
     condition_driven_injects,
-    locations,
+    locations: finalLocations,
     hazards: scenarioHazards,
     casualties,
     equipment: scenarioEquipment,
