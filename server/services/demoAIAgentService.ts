@@ -695,19 +695,22 @@ export class DemoAIAgentService {
           }
         }
 
-        // Domain-relevance filter: skip injects whose content doesn't match this team's domain
-        const injectTitle = (injectData?.title as string) ?? '';
-        const injectDesc = (injectData?.description as string) ?? '';
-        if (!isInjectRelevantToTeam(agentState.persona.teamName, injectTitle, injectDesc)) {
-          logger.debug(
-            {
-              botUserId: agentState.persona.botUserId,
-              team: agentState.persona.teamName,
-              injectTitle,
-            },
-            'AI agent: skipping inject outside team domain',
-          );
-          continue;
+        // Domain-relevance filter: only applies to universal/unscoped injects.
+        // If the inject explicitly targets this team (via target_teams), never filter it out.
+        if (isUniversal) {
+          const injectTitle = (injectData?.title as string) ?? '';
+          const injectDesc = (injectData?.description as string) ?? '';
+          if (!isInjectRelevantToTeam(agentState.persona.teamName, injectTitle, injectDesc)) {
+            logger.debug(
+              {
+                botUserId: agentState.persona.botUserId,
+                team: agentState.persona.teamName,
+                injectTitle,
+              },
+              'AI agent: skipping universal inject outside team domain',
+            );
+            continue;
+          }
         }
 
         // Human-like delay before this agent responds
@@ -1002,6 +1005,32 @@ export class DemoAIAgentService {
       '',
       '### CHAT (1-2 sentences max)',
       'Professional radio comms. Reference YOUR decision. Acknowledge what other teams did.',
+      '',
+      '## ⚠️ INJECT CLASSIFICATION — READ THE INJECT CAREFULLY BEFORE RESPONDING',
+      'Not every inject requires a pin_response or casualty treatment. CLASSIFY the inject first:',
+      '',
+      'TYPE A — CASUALTY/HAZARD INJECT: The inject describes an injured person, a fire, a spill, etc.',
+      '  → Use pin_response on the specific casualty/hazard pin if you have jurisdiction.',
+      '',
+      'TYPE B — EXTERNAL PRESSURE INJECT: The inject describes media approaching, VIPs arriving, civilians panicking, public complaints, etc.',
+      '  → These are NOT casualties. Do NOT triage or treat them.',
+      '  → Respond with a DECISION describing how you handle the pressure (e.g. "Request police to establish media perimeter").',
+      '  → Or send a CHAT message alerting the responsible team (e.g. radio police about crowd control).',
+      '',
+      'TYPE C — SITUATIONAL UPDATE: The inject describes a change in conditions (weather, escalation, resource arrival, etc.).',
+      '  → Respond with a DECISION adapting your operations, or acknowledge via CHAT.',
+      '',
+      'EXAMPLES of WRONG responses:',
+      '  ❌ Inject: "Media personnel approaching perimeter with cameras" → Triage bot: "Initiate Triage, Apply Tourniquet" (media are NOT patients!)',
+      '  ❌ Inject: "VIP official arriving at scene" → Medical bot: "Triage VIP, assign YELLOW tag" (VIPs are NOT casualties!)',
+      '  ❌ Inject: "Civilians crowding the exits" → Triage bot: "Casualty Response: civilians at exit" (crowds are NOT your jurisdiction!)',
+      '',
+      'EXAMPLES of CORRECT responses:',
+      '  ✅ Inject: "Media personnel approaching perimeter with cameras" → Triage bot: Decision "Request Media Liaison / Police to redirect press away from triage area"',
+      '  ✅ Inject: "VIP official arriving at scene" → Police bot: Decision "Assign escort detail for VIP, brief on situation"',
+      '  ✅ Inject: "Civilians crowding the exits" → Evacuation bot: Decision "Deploy marshals to manage crowd flow at Gate B"',
+      '',
+      'RULE: If the inject describes people who are NOT injured/sick/contaminated, they are NOT casualties. Respond with a decision or chat, NOT a pin_response.',
       '',
       '## Response Format',
       '```json',
