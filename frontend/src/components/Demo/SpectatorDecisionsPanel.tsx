@@ -68,8 +68,8 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
   const [decisions, setDecisions] = useState<DecisionEntry[]>([]);
   const [collapsed, setCollapsed] = useState(false);
   const [newFlash, setNewFlash] = useState(false);
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const listRef = useRef<HTMLDivElement>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const handleEvent = useCallback((event: WebSocketEvent) => {
     if (event.type !== 'decision.executed' && event.type !== 'decision.proposed') return;
@@ -115,31 +115,20 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
   });
 
   useEffect(() => {
-    if (listRef.current) {
-      listRef.current.scrollTop = 0;
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ left: 0, behavior: 'smooth' });
     }
   }, [decisions.length]);
 
-  const toggleExpanded = (id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   return (
-    <div
-      className="absolute top-20 left-4 z-[999] flex flex-col"
-      style={{ maxHeight: 'calc(100vh - 140px)' }}
-    >
+    <div className="absolute bottom-0 left-0 right-0 z-[998] flex flex-col">
+      {/* Header bar */}
       <button
         onClick={() => setCollapsed((c) => !c)}
-        className={`flex items-center justify-between px-3 py-2 rounded-t-lg border backdrop-blur-md transition-all ${
+        className={`flex items-center justify-between px-4 py-1.5 border-t border-x border-robotic-yellow/40 rounded-t-lg mx-4 backdrop-blur-md transition-all ${
           newFlash
             ? 'bg-blue-600/30 border-blue-500/60'
-            : 'bg-robotic-gray-300/90 border-robotic-yellow/40'
+            : 'bg-robotic-gray-300/95 border-robotic-yellow/40'
         }`}
       >
         <div className="flex items-center gap-2">
@@ -157,100 +146,108 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
         </span>
       </button>
 
+      {/* Horizontal scrollable cards */}
       {!collapsed && (
-        <div
-          ref={listRef}
-          className="w-[420px] overflow-y-auto rounded-b-lg border border-t-0 border-robotic-yellow/30 bg-robotic-gray-300/90 backdrop-blur-md"
-          style={{ maxHeight: 'calc(100vh - 180px)' }}
-        >
-          {decisions.length === 0 && (
-            <div className="px-3 py-6 text-center">
-              <span className="text-xs terminal-text text-robotic-yellow/40">
-                No decisions yet...
-              </span>
-            </div>
-          )}
-
-          {decisions.map((dec, idx) => {
-            const isNew = idx === 0 && newFlash;
-            const color = getTeamColor(dec.teamName);
-            const badge = statusBadge(dec.status);
-            const verdict = dec.aiVerdict ? verdictStyle(dec.aiVerdict) : null;
-            const isExpanded = expandedIds.has(dec.id);
-
-            return (
-              <div
-                key={dec.id}
-                className={`px-3 py-2.5 border-b border-robotic-yellow/10 transition-all cursor-pointer hover:bg-white/5 ${
-                  isNew ? 'animate-pulse' : ''
-                }`}
-                style={{ borderLeftWidth: 4, borderLeftColor: color }}
-                onClick={() => toggleExpanded(dec.id)}
-              >
-                {/* Header row */}
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[10px] terminal-text font-bold uppercase" style={{ color }}>
-                    {dec.teamName.replace(/_/g, ' ')}
-                  </span>
-                  <span
-                    className={`px-1.5 py-0.5 text-[9px] terminal-text uppercase rounded ${badge.cls}`}
-                  >
-                    {badge.text}
-                  </span>
-                  {dec.type && (
-                    <span className="px-1.5 py-0.5 text-[9px] terminal-text uppercase rounded bg-robotic-gray-200/50 text-robotic-yellow/70 border border-robotic-yellow/20">
-                      {dec.type.replace(/_/g, ' ')}
-                    </span>
-                  )}
-                  {verdict && (
-                    <span className={`text-xs font-bold ${verdict.cls}`}>{verdict.icon}</span>
-                  )}
-                  <span className="ml-auto text-[9px] terminal-text text-robotic-yellow/40">
-                    {dec.timestamp.toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      second: '2-digit',
-                    })}
-                  </span>
-                </div>
-
-                {/* Title */}
-                <div className="text-xs terminal-text text-robotic-yellow font-semibold leading-tight">
-                  {dec.title}
-                </div>
-
-                {/* Description - full text when expanded, preview when collapsed */}
-                {dec.description && (
-                  <div
-                    className={`text-[11px] terminal-text text-robotic-yellow/60 mt-1 leading-snug whitespace-pre-wrap ${
-                      !isExpanded ? 'line-clamp-3' : ''
-                    }`}
-                  >
-                    {dec.description}
-                  </div>
-                )}
-
-                {/* AI Evaluation note */}
-                {isExpanded && dec.aiNote && (
-                  <div className="mt-2 px-2 py-1.5 rounded bg-black/30 border border-robotic-yellow/15">
-                    <div className="text-[9px] terminal-text text-robotic-yellow/40 uppercase mb-0.5">
-                      AI Evaluation
-                    </div>
-                    <div className="text-[11px] terminal-text text-robotic-yellow/70 leading-snug whitespace-pre-wrap">
-                      {dec.aiNote}
-                    </div>
-                  </div>
-                )}
-
-                {/* Expand indicator */}
-                {dec.description && dec.description.length > 120 && !isExpanded && (
-                  <div className="text-[9px] terminal-text text-robotic-yellow/30 mt-1">
-                    Click to expand...
-                  </div>
-                )}
+        <div className="bg-robotic-gray-300/95 border-t border-robotic-yellow/30 backdrop-blur-md">
+          <div
+            ref={scrollRef}
+            className="flex gap-3 px-4 py-3 overflow-x-auto"
+            style={{ maxHeight: '240px' }}
+          >
+            {decisions.length === 0 && (
+              <div className="flex items-center justify-center w-full py-4">
+                <span className="text-xs terminal-text text-robotic-yellow/40">
+                  No decisions yet...
+                </span>
               </div>
-            );
-          })}
+            )}
+
+            {decisions.map((dec, idx) => {
+              const isNew = idx === 0 && newFlash;
+              const color = getTeamColor(dec.teamName);
+              const badge = statusBadge(dec.status);
+              const verdict = dec.aiVerdict ? verdictStyle(dec.aiVerdict) : null;
+              const isExpanded = expandedId === dec.id;
+
+              return (
+                <div
+                  key={dec.id}
+                  className={`shrink-0 rounded-lg border border-robotic-yellow/20 bg-black/30 cursor-pointer hover:bg-black/40 transition-all ${
+                    isNew ? 'animate-pulse' : ''
+                  } ${isExpanded ? 'w-[480px]' : 'w-[320px]'}`}
+                  style={{ borderTopWidth: 3, borderTopColor: color }}
+                  onClick={() => setExpandedId(isExpanded ? null : dec.id)}
+                >
+                  <div className="px-3 py-2">
+                    {/* Header */}
+                    <div className="flex items-center gap-2 mb-1">
+                      <span
+                        className="text-[10px] terminal-text font-bold uppercase"
+                        style={{ color }}
+                      >
+                        {dec.teamName.replace(/_/g, ' ')}
+                      </span>
+                      <span
+                        className={`px-1.5 py-0.5 text-[9px] terminal-text uppercase rounded ${badge.cls}`}
+                      >
+                        {badge.text}
+                      </span>
+                      {dec.type && (
+                        <span className="px-1.5 py-0.5 text-[9px] terminal-text uppercase rounded bg-robotic-gray-200/50 text-robotic-yellow/70 border border-robotic-yellow/20">
+                          {dec.type.replace(/_/g, ' ')}
+                        </span>
+                      )}
+                      {verdict && (
+                        <span className={`text-xs font-bold ${verdict.cls}`}>{verdict.icon}</span>
+                      )}
+                      <span className="ml-auto text-[9px] terminal-text text-robotic-yellow/40 shrink-0">
+                        {dec.timestamp.toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                        })}
+                      </span>
+                    </div>
+
+                    {/* Title */}
+                    <div className="text-xs terminal-text text-robotic-yellow font-semibold leading-tight mb-1">
+                      {dec.title}
+                    </div>
+
+                    {/* Description */}
+                    {dec.description && (
+                      <div
+                        className={`text-[11px] terminal-text text-robotic-yellow/60 leading-snug whitespace-pre-wrap overflow-y-auto ${
+                          isExpanded ? 'max-h-[140px]' : 'line-clamp-3'
+                        }`}
+                      >
+                        {dec.description}
+                      </div>
+                    )}
+
+                    {/* AI Evaluation */}
+                    {isExpanded && dec.aiNote && (
+                      <div className="mt-2 px-2 py-1.5 rounded bg-black/40 border border-robotic-yellow/15">
+                        <div className="text-[9px] terminal-text text-robotic-yellow/40 uppercase mb-0.5">
+                          AI Evaluation
+                        </div>
+                        <div className="text-[11px] terminal-text text-robotic-yellow/70 leading-snug whitespace-pre-wrap">
+                          {dec.aiNote}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Expand hint */}
+                    {!isExpanded && dec.description && dec.description.length > 100 && (
+                      <div className="text-[9px] terminal-text text-robotic-yellow/30 mt-1">
+                        Click to expand...
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

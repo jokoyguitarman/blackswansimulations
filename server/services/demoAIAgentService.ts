@@ -106,6 +106,110 @@ const MAX_DECISIONS_PER_INJECT_CYCLE = 5; // max decisions across ALL agents bef
 const INJECT_CYCLE_RESET_MS = 120_000; // auto-reset cycle budget after 2 min
 
 // ---------------------------------------------------------------------------
+// Hardcoded team scope — what each team is allowed to place / respond to.
+// Keys are matched via .includes() against the lowercased team name.
+// ---------------------------------------------------------------------------
+
+const TEAM_ALLOWED_PLACEMENTS: Record<string, Set<string>> = {
+  police: new Set([
+    'command_post',
+    'inner_cordon',
+    'outer_cordon',
+    'roadblock',
+    'observation_post',
+    'hot_zone',
+    'warm_zone',
+    'cold_zone',
+    'staging_area',
+    'forward_command',
+  ]),
+  security: new Set([
+    'command_post',
+    'inner_cordon',
+    'outer_cordon',
+    'roadblock',
+    'observation_post',
+    'hot_zone',
+    'warm_zone',
+    'cold_zone',
+    'staging_area',
+  ]),
+  fire: new Set([
+    'fire_truck',
+    'water_supply',
+    'forward_command',
+    'hot_zone',
+    'warm_zone',
+    'decontamination_zone',
+    'staging_area',
+    'command_post',
+  ]),
+  hazmat: new Set([
+    'fire_truck',
+    'water_supply',
+    'forward_command',
+    'hot_zone',
+    'warm_zone',
+    'decontamination_zone',
+    'staging_area',
+    'command_post',
+    'exclusion_zone',
+  ]),
+  triage: new Set([
+    'triage_point',
+    'field_hospital',
+    'casualty_collection',
+    'ambulance_staging',
+    'helicopter_lz',
+    'command_post',
+  ]),
+  medical: new Set([
+    'triage_point',
+    'field_hospital',
+    'casualty_collection',
+    'ambulance_staging',
+    'helicopter_lz',
+    'command_post',
+  ]),
+  ems: new Set([
+    'triage_point',
+    'field_hospital',
+    'casualty_collection',
+    'ambulance_staging',
+    'helicopter_lz',
+  ]),
+  evacuation: new Set(['assembly_point', 'staging_area', 'marshal_post', 'command_post']),
+  media: new Set(['press_cordon', 'media_staging']),
+};
+
+const TEAM_ALLOWED_PIN_TYPES: Record<string, Set<string>> = {
+  triage: new Set(['casualty']),
+  medical: new Set(['casualty']),
+  ems: new Set(['casualty']),
+  ambulance: new Set(['casualty']),
+  fire: new Set(['hazard', 'casualty']),
+  hazmat: new Set(['hazard', 'casualty']),
+  evacuation: new Set(['crowd']),
+};
+
+const EXTRACT_ONLY_TEAMS = new Set(['fire', 'hazmat']);
+
+function getTeamScopeKey(teamName: string): string | null {
+  const t = teamName.toLowerCase();
+  const keys = Object.keys(TEAM_ALLOWED_PLACEMENTS);
+  for (const k of keys) {
+    if (t.includes(k)) return k;
+  }
+  return null;
+}
+
+function isPlacementAllowedForTeam(teamName: string, assetType: string): boolean {
+  const key = getTeamScopeKey(teamName);
+  if (!key) return true;
+  return TEAM_ALLOWED_PLACEMENTS[key].has(assetType);
+}
+
+// ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
 
@@ -627,11 +731,10 @@ export class DemoAIAgentService {
 
       agent.actedThisCycle = true;
 
-      // Fallback: if the bot submitted a decision but no placement action,
-      // parse the decision text for infrastructure mentions and auto-create placements
-      const hasPlacement = actions.some((a) => a.action === 'placement');
+      // Fallback: parse decision text for infrastructure mentions and auto-create placements.
+      // Runs if no placement was included OR if included placements were blocked by team scope.
       const decisionAction = actions.find((a) => a.action === 'decision' && a.decision);
-      if (!hasPlacement && decisionAction?.decision) {
+      if (decisionAction?.decision) {
         await this.tryExtractPlacementsFromDecision(
           session,
           agent,
@@ -756,8 +859,11 @@ export class DemoAIAgentService {
       'If the Ground Situation lists casualties or hazards in your jurisdiction, your FIRST priority is to use pin_response on them.',
       '',
       '⚠️ PIN RESPONSE JURISDICTION — ONLY these teams may use pin_response:',
-      '- TRIAGE / MEDICAL / EMS / AMBULANCE teams → pin_response on CASUALTIES (triage, treat, transport)',
-      '- FIRE / HAZMAT teams → pin_response on HAZARDS (contain, mitigate, suppress) AND on casualties in the HOT ZONE (extract only, then hand off to medical)',
+      '- TRIAGE / MEDICAL / EMS / AMBULANCE teams → pin_response on CASUALTIES (triage, treat, transport). These are the ONLY teams that may assign triage_color.',
+      '- FIRE / HAZMAT teams → pin_response on HAZARDS (contain, mitigate, suppress).',
+      '  FIRE / HAZMAT may ALSO respond to CASUALTIES but ONLY for extraction — NOT triage or treatment.',
+      '  Fire/Hazmat extraction actions: basic first aid, apply safety equipment (SCBA, blanket, splint), package patient on stretcher/backboard, carry patient out of hot zone to warm zone or decon zone.',
+      '  Fire/Hazmat MUST NOT assign triage_color (the server strips it). After extraction, hand off to Triage/Medical via chat.',
       '- EVACUATION teams → pin_response on CROWDS only (direct evacuation, not medical treatment)',
       '',
       'Teams that must NEVER use pin_response:',
@@ -1910,6 +2016,13 @@ export class DemoAIAgentService {
 
       case 'placement': {
         if (!action.placement) break;
+        if (!isPlacementAllowedForTeam(teamName, action.placement.asset_type)) {
+          logger.warn(
+            { botUserId, teamName, assetType: action.placement.asset_type },
+            'AI agent: placement blocked — asset type not allowed for this team',
+          );
+          break;
+        }
         const geometry = this.translateGeometry(action.placement.geometry, session.incidentCenter);
         await this.dispatcher.createPlacement(sessionId, botUserId, {
           team_name: teamName,
@@ -1960,13 +2073,19 @@ export class DemoAIAgentService {
           { botUserId, targetId: pr.target_id, targetType: pr.target_type, label: pr.target_label },
           'AI agent: executing pin_response',
         );
+
+        // Fire/Hazmat teams can extract casualties but cannot assign triage colors
+        const teamKey = getTeamScopeKey(teamName);
+        const stripTriage =
+          teamKey && EXTRACT_ONLY_TEAMS.has(teamKey) && pr.target_type === 'casualty';
+
         await this.dispatcher.respondToPin(sessionId, botUserId, teamName, {
           target_id: pr.target_id,
           target_type: pr.target_type,
           target_label: pr.target_label || 'Unknown target',
           actions: pr.actions || [],
           resources: pr.resources || [],
-          triage_color: pr.triage_color,
+          triage_color: stripTriage ? undefined : pr.triage_color,
           description: pr.description || '',
         });
         break;
@@ -2430,6 +2549,7 @@ export class DemoAIAgentService {
     for (const inf of INFRASTRUCTURE_PATTERNS) {
       if (!inf.pattern.test(fullText)) continue;
       if (existingTypes.has(inf.asset_type)) continue;
+      if (!isPlacementAllowedForTeam(agent.persona.teamName, inf.asset_type)) continue;
       if (placedCount >= 2) break;
 
       // Try to use coordinates from the text first, otherwise generate from zone offsets
@@ -2687,34 +2807,35 @@ export class DemoAIAgentService {
 
   /**
    * Returns true if the given team should NOT be allowed to use pin_response
-   * on the given target type. Enforces operational jurisdiction.
+   * on the given target type. Uses the hardcoded TEAM_ALLOWED_PIN_TYPES map.
    */
   private isTeamBlockedFromPinResponse(teamName: string, targetType?: string): boolean {
+    if (!targetType) return false;
     const t = teamName.toLowerCase();
 
-    // Media / Press / PIO → never interact with any pins
+    // These teams never interact with any pins directly
     if (
       t.includes('media') ||
       t.includes('press') ||
       t.includes('pio') ||
-      t.includes('public information')
+      t.includes('public information') ||
+      t.includes('intelligence') ||
+      t.includes('command') ||
+      t.includes('coordinator')
     ) {
       return true;
     }
 
-    // Intelligence / Command → never interact with pins directly
-    if (t.includes('intelligence') || t.includes('command') || t.includes('coordinator')) {
-      return true;
+    // Check against the hardcoded allowed pin types
+    for (const [key, allowedTypes] of Object.entries(TEAM_ALLOWED_PIN_TYPES)) {
+      if (t.includes(key)) {
+        return !allowedTypes.has(targetType);
+      }
     }
 
-    // Police / Security → may interact with crowds (evacuation support) but NOT casualties or hazards
+    // Police/Security: no pin responses on casualties or hazards
     if (t.includes('police') || t.includes('security') || t.includes('law enforcement')) {
-      if (targetType === 'casualty' || targetType === 'hazard') return true;
-    }
-
-    // Evacuation → may interact with crowds but NOT casualties (medical) or hazards (fire)
-    if (t.includes('evacuation') || t.includes('crowd') || t.includes('marshal')) {
-      if (targetType === 'casualty' || targetType === 'hazard') return true;
+      return targetType === 'casualty' || targetType === 'hazard';
     }
 
     return false;

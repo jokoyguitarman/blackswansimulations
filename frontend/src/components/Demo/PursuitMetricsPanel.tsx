@@ -91,7 +91,7 @@ export function PursuitMetricsPanel({ sessionId, currentState }: PursuitMetricsP
   const teamNames = Object.keys(metrics);
 
   return (
-    <div className="absolute bottom-14 right-4 z-[1000] w-80">
+    <div className="absolute bottom-[100px] right-4 z-[1000] w-80">
       <button
         onClick={() => setCollapsed(!collapsed)}
         className="w-full flex items-center justify-between px-3 py-2 bg-gray-900/95 border border-purple-500/40 rounded-t text-xs terminal-text text-purple-300 hover:bg-gray-800/95 transition-colors"

@@ -5,7 +5,7 @@ import type { WebSocketEvent } from '../../lib/websocketClient';
 interface ActionCard {
   id: string;
   team: string;
-  type: 'decision' | 'placement' | 'chat' | 'inject';
+  type: 'placement' | 'chat' | 'inject';
   title: string;
   description: string;
   timestamp: Date;
@@ -49,7 +49,6 @@ function formatTeamName(name: string): string {
 
 const MAX_CARDS = 5;
 const CARD_LIFETIME_MS = 12000;
-const DECISION_LIFETIME_MS = 25000;
 
 export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) {
   const [cards, setCards] = useState<ActionCard[]>([]);
@@ -63,28 +62,13 @@ export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) 
       if (prev.some((c) => c.id === card.id)) return prev;
       return [card, ...prev].slice(0, MAX_CARDS);
     });
-    const lifetime = card.type === 'decision' ? DECISION_LIFETIME_MS : CARD_LIFETIME_MS;
     setTimeout(() => {
       setCards((prev) => prev.filter((c) => c.id !== card.id));
-    }, lifetime);
+    }, CARD_LIFETIME_MS);
   }, []);
 
   const handleEvent = useCallback(
     (event: WebSocketEvent) => {
-      if (event.type === 'decision.executed' || event.type === 'decision.proposed') {
-        const decision = (event.data as { decision?: Record<string, unknown> })?.decision;
-        if (!decision) return;
-        const creator = decision.creator as { full_name?: string } | undefined;
-        addCard({
-          id: `dec-${decision.id}`,
-          team: (creator?.full_name as string) ?? 'Command',
-          type: 'decision',
-          title: (decision.title as string) ?? 'Decision',
-          description: (decision.description as string) ?? '',
-          timestamp: new Date(),
-        });
-      }
-
       if (event.type === 'placement.created') {
         const placement = (event.data as { placement?: Record<string, unknown> })?.placement;
         if (!placement) return;
@@ -143,13 +127,7 @@ export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) 
   useWebSocket({
     sessionId,
     onEvent: handleEvent,
-    eventTypes: [
-      'decision.executed',
-      'decision.proposed',
-      'placement.created',
-      'message.sent',
-      'inject.published',
-    ],
+    eventTypes: ['placement.created', 'message.sent', 'inject.published'],
   });
 
   useEffect(() => {
@@ -179,18 +157,11 @@ export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) 
         </div>
       )}
 
-      {/* Floating action cards (bottom-left) */}
-      <div className="absolute bottom-16 left-4 z-[1000] w-96 flex flex-col gap-2">
+      {/* Floating action cards (above decisions panel) */}
+      <div className="absolute bottom-[100px] left-4 z-[1000] w-96 flex flex-col gap-2">
         {cards.map((card) => {
           const color = getTeamColor(card.team);
-          const typeIcon =
-            card.type === 'decision'
-              ? '⚡'
-              : card.type === 'placement'
-                ? '📍'
-                : card.type === 'inject'
-                  ? '🔴'
-                  : '📻';
+          const typeIcon = card.type === 'placement' ? '📍' : card.type === 'inject' ? '🔴' : '📻';
 
           return (
             <div
@@ -219,9 +190,7 @@ export function CinematicOverlay({ sessionId, onPanTo }: CinematicOverlayProps) 
                 {card.title}
               </div>
               {card.description && (
-                <div
-                  className={`text-xs terminal-text text-robotic-yellow/60 mt-0.5 ${card.type === 'decision' ? 'whitespace-pre-wrap' : 'line-clamp-3'}`}
-                >
+                <div className="text-xs terminal-text text-robotic-yellow/60 mt-0.5 line-clamp-3">
                   {card.description}
                 </div>
               )}

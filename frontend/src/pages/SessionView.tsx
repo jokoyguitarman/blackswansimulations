@@ -1514,8 +1514,8 @@ export const SessionView = () => {
           )}
         </div>
 
-        {/* Bottom-left: Mode switcher */}
-        <div className="absolute bottom-4 left-4 z-[1000] flex items-center gap-1">
+        {/* Bottom-left: Mode switcher (above decisions panel) */}
+        <div className="absolute bottom-[52px] left-4 z-[1000] flex items-center gap-1">
           {(['cinematic', 'god', 'spotlight'] as const).map((m) => (
             <button
               key={m}
@@ -1539,8 +1539,8 @@ export const SessionView = () => {
           ))}
         </div>
 
-        {/* Bottom-right: Exit spectator */}
-        <div className="absolute bottom-4 right-4 z-[1000]">
+        {/* Bottom-right: Exit spectator (above decisions panel) */}
+        <div className="absolute bottom-[52px] right-4 z-[1000]">
           <button
             onClick={() => navigate(`/sessions/${id}`)}
             className="px-3 py-1.5 text-xs terminal-text uppercase border border-robotic-orange/50 text-robotic-orange/70 hover:text-robotic-orange rounded bg-robotic-gray-300/70 backdrop-blur-sm"
