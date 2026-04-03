@@ -7,6 +7,7 @@ import {
   type InternalEventHandler,
 } from './websocketService.js';
 import { DemoActionDispatcher, resolveBotUserId } from './demoActionDispatcher.js';
+import { haversineM, pointInPolygon } from './geoUtils.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -2011,7 +2012,19 @@ export class DemoAIAgentService {
       '- Bundle ALL your tactical moves into ONE decision with a rich description.',
       '- NEVER place an inner_cordon or outer_cordon if one already exists.',
       '- READ "Recent actions" and "Ground situation" carefully. Address SPECIFIC casualties and hazards by name/location.',
-      "- Focus EXCLUSIVELY on YOUR team specialty. Fire/HAZMAT handles fires. Triage/Medical handles casualties. Police handles security. Evacuation handles crowd movement. NEVER make decisions about another team's domain.",
+      "- Focus EXCLUSIVELY on YOUR team specialty. Fire/HAZMAT handles fires and hot zone extraction. Triage/Medical handles patient triage and treatment (warm/cold zone). Police handles security and cordons. Evacuation handles crowd movement and assembly areas. NEVER make decisions about another team's domain.",
+      '',
+      '## 🚫 ZONE ACCESS RULES (STRICTLY ENFORCED):',
+      '- HOT ZONE: ONLY Fire/HAZMAT teams may enter. They extract patients to the warm zone boundary using DRABC, stretcher, and full PPE. They do NOT triage — they hand off to Triage/Medical.',
+      '- WARM ZONE: Triage/Medical teams triage and stabilize patients here. Fire/HAZMAT may pass through during extraction.',
+      '- COLD ZONE: All teams operate here. Command posts, staging areas, media zones go in the cold zone.',
+      '- Triage/Medical/EMS: You CANNOT enter the hot zone. If patients are in the hot zone, request Fire/HAZMAT to extract them first.',
+      '',
+      '## 🚫 CROWD vs PATIENT JURISDICTION (STRICTLY ENFORCED):',
+      '- CROWD pins (type: crowd, evacuee_group, convergent_crowd): ONLY Evacuation team handles these. Police may assist with order.',
+      '- PATIENT pins (type: patient, casualty): Triage/Medical triages and treats. Fire/HAZMAT extracts from hot zone only.',
+      '- If you see a crowd pin and you are NOT the Evacuation team — DO NOT interact with it. Return { "actions": [{ "action": "none" }] }.',
+      '- If a pin has NO injury information and describes a group of people — it is a CROWD, not a patient. Do NOT triage crowds.',
       '- READ "Recent actions by all teams" CAREFULLY. If another team already addressed a fire, casualty, or hazard — DO NOT address the same one. Find something DIFFERENT to do.',
       '- Each decision must be UNIQUE — never repeat or closely resemble a previous decision by ANY team.',
       '- If the situation is stable and nothing new requires action, return { "actions": [{ "action": "none" }] }.',
@@ -2329,7 +2342,7 @@ export class DemoAIAgentService {
       '- If you want to respond to a casualty/hazard, submit a "pin_response" action.',
     );
 
-    // Ground situation: casualties, hazards, claimable exits
+    // Ground situation: patients, crowds, hazards, claimable exits — zone-tagged and team-filtered
     const ground = await this.loadGroundSituation(session.sessionId, session.scenarioId);
 
     if (ground.claimableExits.length > 0) {
@@ -2349,30 +2362,109 @@ export class DemoAIAgentService {
       }
     }
 
-    // Only show casualties/hazards if team is operational
+    // Only show pins if team is operational
     const isOperational =
       !blueprint || blueprint.items.every((item) => placedAssetTypes.has(item.asset_type));
+
     if (isOperational) {
-      if (ground.casualties.length > 0) {
-        parts.push('', '## Casualties on the ground:');
-        for (const c of ground.casualties) {
-          parts.push(`- ${c}`);
+      // Team-filtered pin visibility based on jurisdiction and zone
+      const tk = teamScopeKey || '';
+      const isFireHazmat = tk === 'fire' || tk === 'hazmat';
+      const isTriageMedical =
+        tk === 'triage' || tk === 'medical' || tk === 'ems' || tk === 'ambulance';
+      const isEvacuation = tk === 'evacuation';
+      const isPolice = tk === 'police' || tk === 'security';
+
+      // Patients: show to triage/medical (all zones), fire/hazmat (hot zone only for extraction)
+      if (ground.patients.length > 0 && (isTriageMedical || isFireHazmat)) {
+        if (isFireHazmat) {
+          const hotZonePatients = ground.patients.filter((p) => p.includes('ZONE: HOT'));
+          const otherPatients = ground.patients.filter((p) => !p.includes('ZONE: HOT'));
+          if (hotZonePatients.length > 0) {
+            parts.push(
+              '',
+              '## 🔥 HOT ZONE Patients (YOUR jurisdiction — extraction only):',
+              '→ Extract these patients to the warm zone boundary. Basic DRABC, stretcher, full PPE.',
+              '→ Do NOT triage or treat — hand off to medical/triage team after extraction.',
+            );
+            for (const p of hotZonePatients) parts.push(`- ${p}`);
+          }
+          if (otherPatients.length > 0) {
+            parts.push(
+              '',
+              `## ℹ️ ${otherPatients.length} patient(s) in warm/cold zones — NOT your jurisdiction.`,
+              '→ These patients are handled by Triage/Medical teams. Do NOT interact with them.',
+            );
+          }
+        } else {
+          // Triage/Medical: show warm/cold zone patients, flag hot zone ones as needing extraction first
+          const hotZonePatients = ground.patients.filter((p) => p.includes('ZONE: HOT'));
+          const accessiblePatients = ground.patients.filter((p) => !p.includes('ZONE: HOT'));
+
+          if (accessiblePatients.length > 0) {
+            parts.push('', '## Patients awaiting triage/treatment (YOUR jurisdiction):');
+            for (const p of accessiblePatients) parts.push(`- ${p}`);
+          }
+          if (hotZonePatients.length > 0) {
+            parts.push(
+              '',
+              `## ⛔ ${hotZonePatients.length} patient(s) in HOT ZONE — you CANNOT enter.`,
+              '→ Request Fire/HAZMAT to extract them to the warm zone first via chat.',
+              '→ Do NOT use pin_response on hot zone patients. You will receive them after extraction.',
+            );
+          }
+        }
+      } else if (ground.patients.length > 0) {
+        parts.push(
+          '',
+          `## ℹ️ ${ground.patients.length} patient(s) on the ground — handled by Triage/Medical teams.`,
+          '→ Not your jurisdiction. If you encounter a patient, radio the medical team via chat.',
+        );
+      }
+
+      // Crowds: show ONLY to evacuation (and police for crowd control)
+      if (ground.crowds.length > 0) {
+        if (isEvacuation) {
+          parts.push('', '## 👥 Crowds & Evacuee Groups (YOUR jurisdiction):');
+          for (const cr of ground.crowds) parts.push(`- ${cr}`);
+        } else if (isPolice) {
+          parts.push('', '## 👥 Crowds requiring management (coordinate with Evacuation):');
+          for (const cr of ground.crowds) parts.push(`- ${cr}`);
+          parts.push(
+            '→ Your role: maintain order, secure routes. Evacuation team handles the actual movement.',
+          );
+        } else {
+          parts.push(
+            '',
+            `## ℹ️ ${ground.crowds.length} crowd/evacuee group(s) on scene — handled by Evacuation team.`,
+            '→ Not your jurisdiction. Do NOT interact with crowd pins.',
+          );
         }
       }
 
+      // Hazards: show to fire/hazmat (all), others just summary
       if (ground.hazards.length > 0) {
-        parts.push('', '## Active hazards:');
-        for (const h of ground.hazards) {
-          parts.push(`- ${h}`);
+        if (isFireHazmat) {
+          parts.push('', '## 🔥 Active Hazards (YOUR jurisdiction):');
+          for (const h of ground.hazards) parts.push(`- ${h}`);
+        } else {
+          parts.push(
+            '',
+            `## ⚠️ ${ground.hazards.length} active hazard(s) — handled by Fire/HAZMAT team.`,
+            '→ Not your jurisdiction. Stay clear and request Fire/HAZMAT via chat if needed.',
+          );
         }
       }
-    } else if (ground.casualties.length > 0 || ground.hazards.length > 0) {
-      parts.push(
-        '',
-        `## ⚠️ There are ${ground.casualties.length} casualties and ${ground.hazards.length} hazards on the ground.`,
-        '→ You CANNOT interact with them until your operating area blueprint is fully built.',
-        '→ Focus on placing the NEXT item in your blueprint.',
-      );
+    } else {
+      const totalPins = ground.patients.length + ground.crowds.length + ground.hazards.length;
+      if (totalPins > 0) {
+        parts.push(
+          '',
+          `## ⚠️ There are ${ground.patients.length} patients, ${ground.crowds.length} crowds, and ${ground.hazards.length} hazards on the ground.`,
+          '→ You CANNOT interact with them until your operating area blueprint is fully built.',
+          '→ Focus on placing the NEXT item in your blueprint.',
+        );
+      }
     }
 
     const recentActivity = await this.loadRecentSessionActivity(session.sessionId);
@@ -3208,7 +3300,42 @@ export class DemoAIAgentService {
       }
     }
 
-    // Check 3: Inject relevance — if responding to an inject, does the response match the content?
+    // Check 3: Cross-jurisdiction — fire/triage handling crowds, or triage entering hot zone
+    if (isOperational) {
+      const decisionAction = actions.find((a) => a.action === 'decision' && a.decision);
+      if (decisionAction?.decision) {
+        const text =
+          `${decisionAction.decision.title} ${decisionAction.decision.description}`.toLowerCase();
+
+        // Fire/hazmat should not triage, treat, or handle crowds
+        if (teamKey === 'fire' || teamKey === 'hazmat') {
+          const triagePattern =
+            /initiate triage|triage tag|administer first aid|establish iv|triage.*patient|casualty response.*crowd|casualty response.*gathering|casualty response.*assembly|casualty response.*evacuee/i;
+          if (triagePattern.test(text)) {
+            return {
+              valid: false,
+              reason:
+                'Fire/HAZMAT teams do NOT triage patients or handle crowds. You may only EXTRACT patients from the hot zone (basic DRABC, stretcher, carry to warm zone boundary). For crowds, request Evacuation team via chat. For patient treatment, hand off to Triage/Medical.',
+            };
+          }
+        }
+
+        // Non-evacuation teams should not manage crowds
+        if (teamKey !== 'evacuation' && teamKey !== 'police' && teamKey !== 'security') {
+          const crowdPattern =
+            /crowd.*management|direct.*evacuees|marshal.*crowd|assembly.*area.*crowd|evacuat.*crowd|guide.*crowd/i;
+          if (crowdPattern.test(text)) {
+            return {
+              valid: false,
+              reason:
+                "Crowd management is the Evacuation team's jurisdiction. Request Evacuation team to handle crowds via chat. Your team should focus on its own specialty.",
+            };
+          }
+        }
+      }
+    }
+
+    // Check 4: Inject relevance — if responding to an inject, does the response match the content?
     if (triggerEvent?.type === 'inject.published') {
       const injectData = (triggerEvent.data as Record<string, unknown>)?.inject as
         | Record<string, unknown>
@@ -3606,10 +3733,23 @@ export class DemoAIAgentService {
           triggerInjectText,
         );
         if (converted) {
+          // Look up casualty subtype for auto-converted pin_response
+          let convCasualtyType: string | undefined;
+          if (converted.target_type === 'casualty' && converted.target_id) {
+            const { data: convPin } = await supabaseAdmin
+              .from('scenario_casualties')
+              .select('casualty_type')
+              .eq('id', converted.target_id)
+              .single();
+            if (convPin)
+              convCasualtyType = (convPin as Record<string, unknown>).casualty_type as string;
+          }
           // Block auto-conversion for teams without pin jurisdiction
-          if (this.isTeamBlockedFromPinResponse(teamName, converted.target_type)) {
+          if (
+            this.isTeamBlockedFromPinResponse(teamName, converted.target_type, convCasualtyType)
+          ) {
             logger.info(
-              { botUserId, teamName, targetType: converted.target_type },
+              { botUserId, teamName, targetType: converted.target_type, convCasualtyType },
               'AI agent: skipping auto-converted pin_response — team has no jurisdiction',
             );
           } else {
@@ -3722,11 +3862,91 @@ export class DemoAIAgentService {
             break;
           }
         }
-        // Server-side jurisdiction guard: block teams that shouldn't interact with pins
-        if (this.isTeamBlockedFromPinResponse(teamName, action.pin_response.target_type)) {
+        // Look up the pin's casualty_type and zone for jurisdiction checks
+        let pinCasualtyType: string | undefined;
+        let pinZone: string | undefined;
+        if (action.pin_response.target_type === 'casualty') {
+          const { data: pinData } = await supabaseAdmin
+            .from('scenario_casualties')
+            .select('casualty_type, location_lat, location_lng')
+            .eq('id', action.pin_response.target_id)
+            .single();
+          if (pinData) {
+            pinCasualtyType = (pinData as Record<string, unknown>).casualty_type as string;
+            const pLat = Number((pinData as Record<string, unknown>).location_lat);
+            const pLng = Number((pinData as Record<string, unknown>).location_lng);
+            if (session.incidentCenter) {
+              // Fetch actual zone radii from scenario_hazards.zones
+              const { data: zoneSource } = await supabaseAdmin
+                .from('scenario_hazards')
+                .select('zones')
+                .eq('session_id', sessionId)
+                .in('status', ['active', 'escalating'])
+                .limit(5);
+              interface ZoneRadii {
+                zone_type: string;
+                radius_m: number;
+                polygon?: [number, number][];
+              }
+              let zones: ZoneRadii[] = [];
+              for (const zs of (zoneSource ?? []) as Array<Record<string, unknown>>) {
+                const z = zs.zones as ZoneRadii[] | null;
+                if (z && z.length > 0) {
+                  zones = z;
+                  break;
+                }
+              }
+              const dist = haversineM(
+                pLat,
+                pLng,
+                session.incidentCenter.lat,
+                session.incidentCenter.lng,
+              );
+              if (zones.length > 0) {
+                const sorted = [...zones].sort((a, b) => a.radius_m - b.radius_m);
+                let matched = false;
+                for (const z of sorted) {
+                  if (z.polygon && z.polygon.length > 0) {
+                    if (pointInPolygon(pLat, pLng, z.polygon)) {
+                      pinZone = z.zone_type;
+                      matched = true;
+                      break;
+                    }
+                  } else if (dist <= z.radius_m) {
+                    pinZone = z.zone_type;
+                    matched = true;
+                    break;
+                  }
+                }
+                if (!matched) pinZone = 'outside';
+              } else {
+                if (dist <= 50) pinZone = 'hot';
+                else if (dist <= 150) pinZone = 'warm';
+                else if (dist <= 300) pinZone = 'cold';
+                else pinZone = 'outside';
+              }
+            }
+          }
+        }
+
+        // Server-side jurisdiction guard: block based on team, target type, casualty subtype, and zone
+        if (
+          this.isTeamBlockedFromPinResponse(
+            teamName,
+            action.pin_response.target_type,
+            pinCasualtyType,
+            pinZone,
+          )
+        ) {
           logger.warn(
-            { botUserId, teamName, targetType: action.pin_response.target_type },
-            'AI agent: pin_response blocked — team has no jurisdiction over this pin type',
+            {
+              botUserId,
+              teamName,
+              targetType: action.pin_response.target_type,
+              pinCasualtyType,
+              pinZone,
+            },
+            'AI agent: pin_response blocked — team has no jurisdiction over this pin',
           );
           break;
         }
@@ -4549,12 +4769,18 @@ export class DemoAIAgentService {
   }
 
   /**
-   * Returns true if the given team should NOT be allowed to use pin_response
-   * on the given target type. Uses the hardcoded TEAM_ALLOWED_PIN_TYPES map.
+   * Returns true if the given team should NOT be allowed to use pin_response.
+   * Checks: team type, target type, casualty subtype, and zone access.
    */
-  private isTeamBlockedFromPinResponse(teamName: string, targetType?: string): boolean {
+  private isTeamBlockedFromPinResponse(
+    teamName: string,
+    targetType?: string,
+    casualtyType?: string,
+    pinZone?: string,
+  ): boolean {
     if (!targetType) return false;
     const t = teamName.toLowerCase();
+    const tk = getTeamScopeKey(teamName);
 
     // These teams never interact with any pins directly
     if (
@@ -4567,6 +4793,31 @@ export class DemoAIAgentService {
       t.includes('coordinator')
     ) {
       return true;
+    }
+
+    // Crowd pins: ONLY evacuation (and police for crowd control) may interact
+    if (
+      casualtyType === 'crowd' ||
+      casualtyType === 'evacuee_group' ||
+      casualtyType === 'convergent_crowd'
+    ) {
+      if (tk === 'evacuation') return false;
+      if (tk === 'police' || tk === 'security') return false;
+      return true;
+    }
+
+    // Zone-based access control for patients
+    if (targetType === 'casualty' && pinZone === 'hot') {
+      // Hot zone: ONLY fire/hazmat may extract — triage/medical/ems/evac CANNOT enter
+      if (tk === 'fire' || tk === 'hazmat') return false;
+      return true;
+    }
+
+    // Fire/hazmat can only interact with patients for extraction (not in warm/cold zone)
+    if (targetType === 'casualty' && (tk === 'fire' || tk === 'hazmat')) {
+      if (pinZone && pinZone !== 'hot' && pinZone !== 'unknown' && pinZone !== 'outside') {
+        return true;
+      }
     }
 
     // Check against the hardcoded allowed pin types
@@ -4635,29 +4886,76 @@ export class DemoAIAgentService {
   }
 
   // ---------------------------------------------------------------------------
-  // Ground situation loader (casualties, hazards, claimable exits)
+  // Ground situation loader — separated by type with zone tagging
   // ---------------------------------------------------------------------------
 
   private async loadGroundSituation(
     sessionId: string,
     scenarioId: string,
   ): Promise<{
-    casualties: string[];
+    patients: string[];
+    crowds: string[];
     hazards: string[];
     claimableExits: Array<{
       label: string;
       location_type: string;
       claimStatus: string;
     }>;
+    pinZoneMap: Map<string, string>;
   }> {
     const result = {
-      casualties: [] as string[],
+      patients: [] as string[],
+      crowds: [] as string[],
       hazards: [] as string[],
       claimableExits: [] as Array<{ label: string; location_type: string; claimStatus: string }>,
+      pinZoneMap: new Map<string, string>(),
     };
 
     try {
-      // Casualties (include ID so agents can target specific ones with pin_response)
+      // Load zone ground truth polygons for zone classification
+      const { data: hazardsWithZones } = await supabaseAdmin
+        .from('scenario_hazards')
+        .select('location_lat, location_lng, zones')
+        .eq('session_id', sessionId)
+        .in('status', ['active', 'escalating'])
+        .limit(5);
+
+      interface ZoneGT {
+        zone_type: string;
+        radius_m: number;
+        polygon?: [number, number][];
+        allowed_teams: string[];
+      }
+
+      let zoneData: ZoneGT[] = [];
+      let hazardCenter: { lat: number; lng: number } | null = null;
+      for (const h of (hazardsWithZones ?? []) as Array<Record<string, unknown>>) {
+        const zones = h.zones as ZoneGT[] | null;
+        if (zones && zones.length > 0) {
+          zoneData = zones;
+          hazardCenter = {
+            lat: Number(h.location_lat),
+            lng: Number(h.location_lng),
+          };
+          break;
+        }
+      }
+
+      const classifyPinZone = (lat: number, lng: number): string => {
+        if (zoneData.length === 0 || !hazardCenter) return 'unknown';
+        const dist = haversineM(lat, lng, hazardCenter.lat, hazardCenter.lng);
+        const sorted = [...zoneData].sort((a, b) => a.radius_m - b.radius_m);
+        for (const z of sorted) {
+          if (z.polygon && z.polygon.length > 0) {
+            if (pointInPolygon(lat, lng, z.polygon)) return z.zone_type;
+          } else if (dist <= z.radius_m) {
+            return z.zone_type;
+          }
+        }
+        return 'outside';
+      };
+
+      // Casualties — split into patients vs crowds
       const { data: casualties } = await supabaseAdmin
         .from('scenario_casualties')
         .select(
@@ -4672,19 +4970,33 @@ export class DemoAIAgentService {
           'endorsed_to_triage',
           'in_treatment',
         ])
-        .limit(12);
+        .limit(15);
 
       for (const c of (casualties ?? []) as Array<Record<string, unknown>>) {
+        const cType = c.casualty_type as string;
+        const lat = Number(c.location_lat);
+        const lng = Number(c.location_lng);
+        const zone = classifyPinZone(lat, lng);
         const conds = c.conditions as Record<string, unknown> | null;
         const condSummary = conds?.description || conds?.injury_type || '';
         const triageTag = c.player_triage_color ? `, triage: ${c.player_triage_color}` : '';
         const assigned = c.assigned_team ? `, assigned: ${c.assigned_team}` : '';
-        result.casualties.push(
-          `[id:${c.id}] ${c.casualty_type} (${c.headcount} people) at [${c.location_lat}, ${c.location_lng}] — status: ${c.status}${triageTag}${assigned}${condSummary ? `, ${condSummary}` : ''}`,
-        );
+        const zoneLabel =
+          zone !== 'unknown' && zone !== 'outside' ? `, ZONE: ${zone.toUpperCase()}` : '';
+        const pinId = c.id as string;
+
+        result.pinZoneMap.set(pinId, zone);
+
+        const line = `[id:${pinId}] ${cType} (${c.headcount} people) at [${lat}, ${lng}] — status: ${c.status}${zoneLabel}${triageTag}${assigned}${condSummary ? `, ${condSummary}` : ''}`;
+
+        if (cType === 'crowd' || cType === 'evacuee_group' || cType === 'convergent_crowd') {
+          result.crowds.push(line);
+        } else {
+          result.patients.push(line);
+        }
       }
 
-      // Hazards (include ID)
+      // Hazards (include ID, tagged with zone)
       const { data: hazards } = await supabaseAdmin
         .from('scenario_hazards')
         .select('id, hazard_type, status, location_lat, location_lng, properties')
@@ -4695,8 +5007,15 @@ export class DemoAIAgentService {
       for (const h of (hazards ?? []) as Array<Record<string, unknown>>) {
         const props = h.properties as Record<string, unknown> | null;
         const propSummary = props?.description || props?.size || '';
+        const lat = Number(h.location_lat);
+        const lng = Number(h.location_lng);
+        const zone = classifyPinZone(lat, lng);
+        const zoneLabel =
+          zone !== 'unknown' && zone !== 'outside' ? `, ZONE: ${zone.toUpperCase()}` : '';
+        const pinId = h.id as string;
+        result.pinZoneMap.set(pinId, zone);
         result.hazards.push(
-          `[id:${h.id}] ${h.hazard_type} at [${h.location_lat}, ${h.location_lng}] — ${h.status}${propSummary ? `, ${propSummary}` : ''}`,
+          `[id:${pinId}] ${h.hazard_type} at [${lat}, ${lng}] — ${h.status}${zoneLabel}${propSummary ? `, ${propSummary}` : ''}`,
         );
       }
 
