@@ -145,6 +145,7 @@ const TEAM_ALLOWED_PLACEMENTS: Record<string, Set<string>> = {
     'decontamination_zone',
     'staging_area',
     'command_post',
+    'inner_cordon',
   ]),
   hazmat: new Set([
     'fire_truck',
@@ -156,6 +157,7 @@ const TEAM_ALLOWED_PLACEMENTS: Record<string, Set<string>> = {
     'staging_area',
     'command_post',
     'exclusion_zone',
+    'inner_cordon',
   ]),
   triage: new Set([
     'triage_point',
@@ -181,8 +183,15 @@ const TEAM_ALLOWED_PLACEMENTS: Record<string, Set<string>> = {
     'casualty_collection',
     'ambulance_staging',
     'helicopter_lz',
+    'inner_cordon',
   ]),
-  evacuation: new Set(['assembly_point', 'staging_area', 'marshal_post', 'command_post']),
+  evacuation: new Set([
+    'assembly_point',
+    'staging_area',
+    'marshal_post',
+    'command_post',
+    'inner_cordon',
+  ]),
   media: new Set(['press_cordon', 'media_staging']),
 };
 
@@ -344,34 +353,7 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
           ? metrics.casualtyClusters
           : [{ lat: c.lat, lng: c.lng, count: metrics.totalCasualties, zone: 'warm' }];
 
-      // Casualty Collection Point(s) near hot zone boundary
-      const ccpCount = Math.max(1, Math.min(clusters.length, 2));
-      for (let i = 0; i < ccpCount; i++) {
-        const cluster = clusters[i] || clusters[0];
-        items.push({
-          id: `casualty_collection_${i + 1}`,
-          asset_type: 'casualty_collection',
-          label:
-            `Casualty Collection Point ${ccpCount > 1 ? String.fromCharCode(65 + i) : ''}`.trim(),
-          geometry_type: 'point',
-          zone: 'boundary',
-          placement_hint: `Near hot/warm zone boundary, close to casualty cluster at [${cluster.lat}, ${cluster.lng}] (~${cluster.count} patients)`,
-          personnel: [
-            { role: 'Collection Officer', count: 1, ppe: 'helmet, safety vest, gloves' },
-            {
-              role: 'Stretcher Bearer',
-              count: Math.max(2, Math.ceil(cluster.count / 5)),
-              ppe: 'helmet, safety vest, gloves',
-            },
-          ],
-          equipment: ['stretchers', 'spine boards', 'blankets', 'patient tracking tags', 'radio'],
-          capacity: Math.ceil(cluster.count * 1.2),
-          description: `Casualty collection point receiving patients extracted from hot zone. Capacity for ~${Math.ceil(cluster.count * 1.2)} patients. Stretcher bearers staged for rapid extraction relay.`,
-          priority: 1,
-        });
-      }
-
-      // Triage station(s) in warm zone
+      // 1. Triage station(s) FIRST — core sorting point before anything else
       for (let i = 0; i < triagePointCount; i++) {
         const patientsServed = Math.ceil(metrics.totalCasualties / triagePointCount);
         items.push({
@@ -382,7 +364,7 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
           zone: 'warm',
           placement_hint:
             i === 0
-              ? `Warm zone, accessible from casualty collection point, offset ~80m from incident center`
+              ? `Warm zone, offset ~80m from incident center, accessible for stretcher relay from hot zone`
               : `Warm zone, near secondary exit or casualty cluster, spaced from Triage Station A`,
           personnel: [
             {
@@ -413,7 +395,34 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         });
       }
 
-      // Inner cordon around triage area
+      // 2. Casualty Collection Point(s) — buffer at hot/warm boundary feeding into triage
+      const ccpCount = Math.max(1, Math.min(clusters.length, 2));
+      for (let i = 0; i < ccpCount; i++) {
+        const cluster = clusters[i] || clusters[0];
+        items.push({
+          id: `casualty_collection_${i + 1}`,
+          asset_type: 'casualty_collection',
+          label:
+            `Casualty Collection Point ${ccpCount > 1 ? String.fromCharCode(65 + i) : ''}`.trim(),
+          geometry_type: 'point',
+          zone: 'boundary',
+          placement_hint: `Near hot/warm zone boundary, between incident and Triage Station, close to casualty cluster at [${cluster.lat}, ${cluster.lng}] (~${cluster.count} patients)`,
+          personnel: [
+            { role: 'Collection Officer', count: 1, ppe: 'helmet, safety vest, gloves' },
+            {
+              role: 'Stretcher Bearer',
+              count: Math.max(2, Math.ceil(cluster.count / 5)),
+              ppe: 'helmet, safety vest, gloves',
+            },
+          ],
+          equipment: ['stretchers', 'spine boards', 'blankets', 'patient tracking tags', 'radio'],
+          capacity: Math.ceil(cluster.count * 1.2),
+          description: `Casualty collection point receiving patients extracted from hot zone. Feeds into Triage Station. Capacity for ~${Math.ceil(cluster.count * 1.2)} patients. Stretcher bearers staged for rapid extraction relay.`,
+          priority: 2,
+        });
+      }
+
+      // 3. Inner cordon around triage area
       items.push({
         id: 'triage_inner_cordon',
         asset_type: 'inner_cordon',
@@ -426,10 +435,10 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         equipment: ['barrier tape', 'portable barriers', 'access control signage'],
         description:
           'Controlled perimeter around triage area. Only medical personnel and authorized responders permitted inside. Prevents crowd interference with patient care.',
-        priority: 2,
+        priority: 3,
       });
 
-      // Treatment zones by priority
+      // 4. Treatment zones
       const redCount = Math.max(1, Math.ceil(metrics.totalCasualties * 0.2));
       const yellowCount = Math.max(1, Math.ceil(metrics.totalCasualties * 0.3));
 
@@ -465,7 +474,7 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         ],
         capacity: redCount,
         description: `T1 Immediate treatment zone for RED-tagged critical patients. Staffed for ${redCount} simultaneous critical cases. Full resuscitation capability.`,
-        priority: 3,
+        priority: 4,
       });
 
       items.push({
@@ -493,10 +502,10 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         ],
         capacity: yellowCount,
         description: `T2 Delayed treatment zone for YELLOW-tagged patients with non-life-threatening but significant injuries. Capacity for ${yellowCount} patients.`,
-        priority: 3,
+        priority: 4,
       });
 
-      // Ambulance staging
+      // 5. Ambulance staging — last, in cold zone
       items.push({
         id: 'ambulance_staging',
         asset_type: 'ambulance_staging',
@@ -520,7 +529,7 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         ],
         capacity: Math.max(2, Math.ceil(redCount / 2)),
         description: `Ambulance staging with ${Math.max(2, Math.ceil(redCount / 2))} units ready. Transport coordinator maintains hospital capacity board and rotates units to prevent bottleneck.`,
-        priority: 4,
+        priority: 5,
       });
       break;
     }
@@ -558,6 +567,21 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
       });
 
       items.push({
+        id: 'ems_operating_perimeter',
+        asset_type: 'inner_cordon',
+        label: 'EMS Operating Perimeter',
+        geometry_type: 'polygon',
+        zone: 'warm',
+        radius_deg: 0.00045,
+        placement_hint: `Circle around the EMS triage station, radius ~50m, securing the medical operating area`,
+        personnel: [{ role: 'Access Controller', count: 2, ppe: 'high-vis vest' }],
+        equipment: ['portable barriers', 'barrier tape', 'access control signage'],
+        description:
+          'Controlled perimeter around EMS operating area. Only authorized medical personnel permitted inside. Barriers prevent unauthorized access.',
+        priority: 2,
+      });
+
+      items.push({
         id: 'ambulance_staging',
         asset_type: 'ambulance_staging',
         label: 'Ambulance Staging Area',
@@ -579,7 +603,7 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         ],
         capacity: Math.max(2, Math.ceil(patientsServed / 5)),
         description: `Ambulance staging with ${Math.max(2, Math.ceil(patientsServed / 5))} units. Transport coordinator tracks hospital capacity and rotates units.`,
-        priority: 2,
+        priority: 3,
       });
       break;
     }
@@ -646,6 +670,22 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         priority: 1,
       });
 
+      // Operating perimeter around fire/hazmat staging and command area
+      items.push({
+        id: 'fire_operating_perimeter',
+        asset_type: 'inner_cordon',
+        label: `${teamKey === 'hazmat' ? 'HAZMAT' : 'Fire'} Operations Perimeter`,
+        geometry_type: 'polygon',
+        zone: 'warm',
+        radius_deg: 0.00054,
+        placement_hint: `Circle around forward command post and staging area, radius ~60m, securing fire/hazmat operations zone`,
+        personnel: [{ role: 'Perimeter Guard', count: 2, ppe: 'high-vis vest, helmet' }],
+        equipment: ['portable barriers', 'barrier tape', 'hazard signage', 'access log'],
+        description:
+          'Controlled perimeter around fire/hazmat operations. Only personnel with appropriate PPE and accountability check-in may enter. Barriers prevent unauthorized access to hazardous area.',
+        priority: 2,
+      });
+
       if (teamKey === 'hazmat' || metrics.hazardCount > 0) {
         const deconCapacity = Math.max(
           4,
@@ -683,7 +723,7 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
           ],
           capacity: deconCapacity,
           description: `${Math.max(1, Math.ceil(deconCapacity / 4))}-lane decontamination corridor. Capacity: ${deconCapacity} persons/hour. All personnel and casualties exiting hot zone must pass through decon before entering clean area.`,
-          priority: 2,
+          priority: 3,
         });
       }
 
@@ -704,7 +744,7 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         ],
         description:
           'Water supply point maintaining continuous flow for fire suppression and decontamination operations.',
-        priority: 2,
+        priority: 3,
       });
       break;
     }
@@ -756,6 +796,33 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         });
       }
 
+      // Assembly area perimeter to contain evacuees and prevent unauthorized re-entry
+      items.push({
+        id: 'assembly_perimeter',
+        asset_type: 'inner_cordon',
+        label: 'Assembly Area Perimeter',
+        geometry_type: 'polygon',
+        zone: 'cold',
+        radius_deg: 0.00063,
+        placement_hint: `Circle encompassing all assembly areas, radius ~70m, preventing evacuees from wandering back toward danger zones`,
+        personnel: [
+          {
+            role: 'Perimeter Marshal',
+            count: Math.max(2, assemblyCount * 2),
+            ppe: 'high-vis vest',
+          },
+        ],
+        equipment: [
+          'portable barriers',
+          'crowd control barriers',
+          'barrier tape',
+          'directional signage',
+        ],
+        description:
+          'Perimeter barriers around assembly areas preventing evacuees from re-entering the incident zone. Marshals direct foot traffic through controlled access points only.',
+        priority: 2,
+      });
+
       // Marshal staging
       items.push({
         id: 'marshal_staging',
@@ -777,7 +844,7 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         ],
         description:
           'Central coordination post for all evacuation marshals. Route scouts verify evacuation paths are clear before directing crowd flow.',
-        priority: 2,
+        priority: 3,
       });
 
       // Family reunification
@@ -807,7 +874,7 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
           ],
           capacity: Math.ceil(metrics.totalCrowdSize * 0.3),
           description: `Family reunification center. Registered evacuees matched with waiting family members. Crisis counseling available.`,
-          priority: 3,
+          priority: 4,
         });
       }
       break;
@@ -897,7 +964,7 @@ function buildLayoutRationale(teamKey: string, m: ScenarioMetrics): string {
   switch (teamKey) {
     case 'triage':
     case 'medical':
-      return `${m.totalCasualties} casualties across ${m.casualtyClusters.length || 1} cluster(s) → ${Math.max(1, Math.ceil(m.totalCasualties / 15))} triage station(s) needed. Patient flow: CCP (hot/warm boundary) → Triage (warm zone) → T1/T2 Treatment (warm zone) → Ambulance Staging (cold zone) → Hospital.`;
+      return `${m.totalCasualties} casualties across ${m.casualtyClusters.length || 1} cluster(s) → ${Math.max(1, Math.ceil(m.totalCasualties / 15))} triage station(s) needed. Build order: Triage Station (tent) FIRST → CCP at hot/warm boundary → Cordon around triage → T1/T2 Treatment zones → Ambulance Staging (cold zone). Patient flow: CCP → Triage → T1/T2 → Ambulance → Hospital.`;
     case 'police':
     case 'security':
       return `${m.exitCount} access points → ${Math.max(2, Math.min(m.exitCount, 4))} roadblocks needed. Outer cordon encloses all zones. Inner cordon secures crime scene/hot zone.`;
@@ -1920,11 +1987,17 @@ export class DemoAIAgentService {
       '- triage_color: for casualties only — assign based on severity: "green" (minor/walking), "yellow" (delayed/moderate), "red" (immediate/critical), or "black" (deceased)',
       '- description: brief description of what you are doing',
       '',
-      'Example pin_response for a casualty:',
-      '{ "action": "pin_response", "pin_response": { "target_id": "a1b2c3d4-...", "target_type": "casualty", "target_label": "Burn victims near Gate B", "actions": ["Initiate Triage", "Administer IV Fluids"], "resources": [{ "type": "medic", "label": "Paramedic Team Alpha", "quantity": 2 }], "triage_color": "red", "description": "Triaging critical burn victim, establishing IV access" } }',
+      'Example pin_response for a casualty (note personnel count, ratio, and destination):',
+      '{ "action": "pin_response", "pin_response": { "target_id": "a1b2c3d4-...", "target_type": "casualty", "target_label": "Burn victims near Gate B", "actions": ["Initiate Triage", "Administer IV Fluids", "Apply burn dressings"], "resources": [{ "type": "medic", "label": "Paramedic Team Alpha", "quantity": 2 }], "triage_color": "red", "description": "Deploying 2x Paramedics (1:1 medic-to-patient ratio for critical burn). Initiating triage, establishing IV access with saline, applying burn dressings. After stabilization, transport by ambulance to City General Hospital Burns Unit (est. 8 min)." } }',
+      '',
+      'Example pin_response for extraction (note handover destination):',
+      '{ "action": "pin_response", "pin_response": { "target_id": "b2c3d4e5-...", "target_type": "casualty", "target_label": "Trapped person under debris", "actions": ["DRABC Assessment", "Package on spine board", "Carry to warm zone"], "resources": [{ "type": "firefighter", "label": "Extraction Team Charlie", "quantity": 4 }], "description": "Deploying 4x Firefighters in full SCBA (2:1 bearer-to-patient ratio). DRABC assessment, packaging on spine board with cervical collar. Extracting to warm zone boundary for handover to Triage Station A." } }',
       '',
       'Example pin_response for a hazard:',
-      '{ "action": "pin_response", "pin_response": { "target_id": "e5f6g7h8-...", "target_type": "hazard", "target_label": "Chemical spill at Loading Bay", "actions": ["Deploy Containment Boom", "Establish Decon Corridor"], "resources": [{ "type": "hazmat_unit", "label": "HAZMAT Team Bravo", "quantity": 1 }], "description": "Containing chemical spill and setting up decontamination" } }',
+      '{ "action": "pin_response", "pin_response": { "target_id": "e5f6g7h8-...", "target_type": "hazard", "target_label": "Chemical spill at Loading Bay", "actions": ["Deploy Containment Boom", "Establish Decon Corridor"], "resources": [{ "type": "hazmat_unit", "label": "HAZMAT Team Bravo", "quantity": 1 }], "description": "Deploying 1x HAZMAT Team (4 technicians in Level B suits). Deploying absorbent booms to contain spill. Contaminated casualties will be routed through Decontamination Corridor before handover to medical." } }',
+      '',
+      'Example pin_response for a crowd (note destination):',
+      '{ "action": "pin_response", "pin_response": { "target_id": "f6g7h8i9-...", "target_type": "casualty", "target_label": "Crowd sheltering near Exit C", "actions": ["Issue evacuation order", "Deploy marshals along route"], "resources": [{ "type": "marshal", "label": "Evacuation Marshal Squad Delta", "quantity": 4 }], "description": "Deploying 4x Assembly Marshals (1:25 marshal-to-evacuee ratio for ~100 people). Directing crowd via Exit C to Assembly Area B at [-33.889, 151.274]. Route scouts have confirmed path is clear." } }',
       '',
       '## STATUS CHAIN RULES (must follow strictly)',
       'Every casualty and hazard follows a strict lifecycle. You can ONLY take actions valid for their current status.',
@@ -2031,6 +2104,32 @@ export class DemoAIAgentService {
       '- You are NOT expected to act every time. Real professionals wait, observe, and only act when there is something meaningful to address.',
       '- RESPECT THE STATUS CHAIN: check each casualty/hazard status before acting. Do NOT order transport for untreated patients, do NOT evacuate crowds that have not been given a direct movement order, do NOT resolve hazards that are not contained.',
       '- When writing decisions, be EXPLICIT about what you are doing. Say "transport burn victim at Gate B to Singapore General Hospital" NOT just "manage casualties". Vague decisions without named targets or destinations have NO effect on the map.',
+      '',
+      '## 📋 PERSONNEL DEPLOYMENT — MANDATORY FORMAT:',
+      '- When deploying personnel in any decision or pin_response, ALWAYS state:',
+      '  1. The exact COUNT of personnel being deployed (e.g., "Deploying 3x Triage Nurses")',
+      '  2. The estimated personnel-to-patient RATIO (e.g., "1:5 nurse-to-patient ratio for 15 casualties")',
+      '  3. For crowds: personnel-to-evacuee ratio (e.g., "1:25 marshal-to-evacuee ratio for ~100 people")',
+      '  Example: "Deploying 4x Stretcher Bearers and 1x Collection Officer (1:3 bearer-to-patient ratio for 12 extracted casualties)"',
+      '  Example: "Assigning 2x Triage Nurses and 1x Triage Officer (1:5 nurse-to-patient ratio, ~10 patients expected at this station)"',
+      '',
+      '## 📢 MEDIA STATEMENTS & PUBLIC COMMUNICATION — MANDATORY SPECIFICS:',
+      '- When YOU issue a public statement, or when you coordinate with the media team to publish one, the statement MUST contain:',
+      '  1. SPECIFIC numbers: casualty count, evacuee count, hazard count — use the ground situation data',
+      '  2. SPECIFIC locations: name the incident site, exits, zones, assembly areas',
+      '  3. SPECIFIC actions: what teams are doing (triaging X patients, evacuating Y people via Exit Z)',
+      '  4. Timeline: when the incident occurred, when response began, when next update is expected',
+      '- NEVER submit a generic statement like "the situation is under control" or "all necessary measures are being taken".',
+      '- If coordinating with media team via chat, provide them with EXACT figures to include in their release.',
+      '',
+      '## 🚑 TRANSPORT & HANDOVER — MANDATORY DESTINATION:',
+      '- When transporting or handing off a patient or crowd, ALWAYS specify the DESTINATION:',
+      '  → Patient extraction: "Extracting to warm zone boundary for handover to Triage Station A at [lat, lng]"',
+      '  → Patient transport: "Transporting RED patient by ambulance to [Hospital Name] (estimated 12 min)"',
+      '  → Crowd movement: "Directing crowd of ~50 via Exit B to Assembly Area A at [lat, lng]"',
+      '  → Inter-team handoff: "Handing off decontaminated patient to Triage Station for START assessment"',
+      '- NEVER say just "transport patient" or "evacuate crowd" without naming WHERE they are going.',
+      '- Reference placed assets by name if they exist (e.g., "Triage Station A", "Assembly Area B", "Ambulance Staging Point").',
     );
 
     // Difficulty-specific behavioral tuning
@@ -2941,12 +3040,13 @@ export class DemoAIAgentService {
         '- Blast injury: check for tympanic membrane rupture, blast lung (oxygen, no positive pressure), embedded shrapnel (do NOT remove, stabilize in place).',
         '- Psychological trauma: quiet area in cold zone, crisis counselor, blanket, warm drink. Do not sedate.',
         '',
-        '#### Transport Requirements:',
-        '- GREEN patients: walking or by bus to assembly point. No ambulance needed.',
-        '- YELLOW patients: ambulance transport within 1 hour. Specify destination hospital.',
-        '- RED patients: immediate ambulance, specify hospital by name (e.g., "Singapore General Hospital Trauma Centre"). If >20 min drive, request helicopter.',
+        '#### Transport Requirements (DESTINATION IS MANDATORY):',
+        '- GREEN patients: walking or by bus to Assembly Area [name] at [coords]. State personnel ratio (e.g., "1 marshal per 20 walking wounded").',
+        '- YELLOW patients: ambulance transport within 1 hour to [Hospital Name] (e.g., "2 patients by ambulance to City General ED, est. 12 min"). State escort count.',
+        '- RED patients: immediate ambulance to [Hospital Name + Department] (e.g., "1 patient by ambulance to Singapore General Hospital Trauma Centre, est. 8 min"). If >20 min drive, request helicopter. State 1:1 paramedic escort.',
         '- BLACK patients: remain on scene, covered, with documentation. Coroner notification.',
-        '- ALWAYS specify: patient count per vehicle, escort personnel, handover protocol.',
+        '- ALWAYS specify: patient count per vehicle, escort personnel with ratio, receiving facility name, and estimated transit time.',
+        '- For handoff between teams: name the receiving team and their asset (e.g., "Handover to Triage Station A for START assessment by Dr. [persona]").',
         '',
         '#### Critical Rules:',
         '- NEVER enter the hot zone without fire team clearance — wait for "scene safe" confirmation',
@@ -2968,9 +3068,10 @@ export class DemoAIAgentService {
         '2. Place ASSEMBLY POINTS as placed assets in the cold zone — one for each major exit route. Name them clearly.',
         '3. Draw EVACUATION ROUTES as LineString assets — from the incident area through your claimed exits to assembly points.',
         '4. Assess crowd pins — how many people, what behavior (calm, anxious, panicking)? This determines approach.',
-        '5. Issue EVACUATION ORDERS via decision — name the specific crowd, the exit they should use, and the assembly point destination.',
-        '6. Deploy MARSHALS along routes — specify headcount at each point: "4 marshals at Exit B corridor, 2 at assembly point entrance".',
-        '7. Conduct HEADCOUNT at assembly point — verify expected vs actual evacuees. Report discrepancies.',
+        '5. Issue EVACUATION ORDERS via decision — name the specific crowd, the exit they should use, and the EXACT assembly point destination by name and coordinates.',
+        '   Example: "Directing ~80 evacuees near Main Hall via Exit B to Assembly Area A at [-33.889, 151.274]. Deploying 4x Marshals (1:20 marshal-to-evacuee ratio)."',
+        '6. Deploy MARSHALS along routes — specify headcount AND ratio: "4 marshals at Exit B corridor (1:20 ratio for 80 evacuees), 2 at assembly point entrance".',
+        '7. Conduct HEADCOUNT at assembly point — verify expected vs actual evacuees. Report discrepancies. State personnel: "2x Registration Officers processing arrivals (1:50 ratio)".',
         '',
         '#### Equipment You Must Specify:',
         '- Megaphones / PA system for crowd direction',
@@ -3015,6 +3116,14 @@ export class DemoAIAgentService {
         '4. Monitor and respond to SOCIAL MEDIA reports — flag misinformation for correction.',
         '5. Issue periodic UPDATES with verified information only — casualties confirmed by medical, cause confirmed by investigation.',
         '6. Coordinate with all teams before releasing sensitive information — especially casualty numbers and cause.',
+        '',
+        '#### ⚠️ STATEMENT QUALITY — MANDATORY (enforced by validation):',
+        '- Every public statement MUST contain SPECIFIC, ACCURATE information — generic phrases will be REJECTED.',
+        '- BAD (too vague): "We are managing the situation and all necessary measures are being taken."',
+        '- GOOD (specific): "At 14:32, an incident was reported at Bondi Beach Festival grounds. Emergency services responded within 4 minutes. Currently, 12 casualties are being triaged at the warm zone triage station. 3 critical patients have been transported to St Vincent Hospital. Approximately 200 evacuees have been directed to Assembly Area A via Exit B. The inner perimeter is secured by police. We will provide updates every 30 minutes."',
+        '- Include: incident time, location by name, casualty count (verified by triage), evacuation count, hazard status, team deployments, next update time.',
+        '- If exact numbers are not yet verified, say "approximately X" or "at least X confirmed" — but NEVER omit numbers entirely.',
+        '- Reference the ground situation data provided to you for accurate figures.',
         '',
         '#### Equipment You Must Specify:',
         '- Press briefing area: podium, microphone, backdrop',
@@ -3335,7 +3444,71 @@ export class DemoAIAgentService {
       }
     }
 
-    // Check 4: Inject relevance — if responding to an inject, does the response match the content?
+    // Check 4: Media statement / public communication quality
+    const decisionForMedia = actions.find((a) => a.action === 'decision' && a.decision);
+    if (decisionForMedia?.decision) {
+      const fullText = `${decisionForMedia.decision.title} ${decisionForMedia.decision.description}`;
+      const textLower = fullText.toLowerCase();
+
+      const isMediaStatement =
+        /public statement|press release|media release|media statement|press briefing|public update|official statement|public communication|issue.*statement|release.*statement|coordinate.*media.*statement/i.test(
+          textLower,
+        );
+      const isCoordinateWithMedia =
+        /coordinate.*with.*media|request.*media.*team|liaise.*with.*pio|ask.*media.*to.*publish|media.*team.*to.*issue/i.test(
+          textLower,
+        );
+
+      if (isMediaStatement || isCoordinateWithMedia) {
+        const hasSpecificNumbers =
+          /\d+\s*(casualt|patient|injur|dead|wound|affect|evacuee|people|person|crowd|responder|ambulance|team)/i.test(
+            fullText,
+          );
+        const hasSpecificLocation =
+          /\bat\b.*\b(gate|exit|zone|area|street|road|station|beach|building|hall)/i.test(
+            textLower,
+          );
+        const hasSpecificAction =
+          /\b(triage|evacuat|contain|cordon|secur|transport|treat|deploy|establish|decontaminat)/i.test(
+            textLower,
+          );
+        const isGenericFluff =
+          /managing the situation|situation is under control|response is underway|working to ensure|all necessary measures|appropriate action|responding accordingly|we are aware/i.test(
+            textLower,
+          );
+
+        const issues: string[] = [];
+        if (!hasSpecificNumbers) {
+          issues.push(
+            `Include SPECIFIC numbers: e.g., "${scenarioMetrics.totalCasualties} casualties being treated", "${scenarioMetrics.totalCrowdSize} evacuees directed to assembly areas", "${scenarioMetrics.hazardCount} active hazard(s) being contained"`,
+          );
+        }
+        if (!hasSpecificLocation) {
+          issues.push(
+            'Include SPECIFIC locations: name the incident site, zones, exits, or assembly areas by name',
+          );
+        }
+        if (!hasSpecificAction) {
+          issues.push(
+            'Include SPECIFIC actions taken: what teams are doing (triaging, evacuating, cordoning, transporting) — not just "responding"',
+          );
+        }
+        if (isGenericFluff && !hasSpecificNumbers) {
+          issues.push(
+            'Your statement is too GENERIC. Replace vague phrases like "managing the situation" with concrete facts: casualty counts, hazard status, evacuation progress, team deployments',
+          );
+        }
+
+        if (issues.length >= 2) {
+          return {
+            valid: false,
+            reason: `Media statements and public communications MUST contain accurate, specific information — not generic reassurances. Fix these issues:\n${issues.map((i) => `• ${i}`).join('\n')}\n\nUse the ground truth: ${scenarioMetrics.totalCasualties} casualties, ${scenarioMetrics.totalCrowdSize} crowd members, ${scenarioMetrics.hazardCount} hazard(s), ${scenarioMetrics.exitCount} exits.`,
+          };
+        }
+      }
+    }
+
+    // Check 5: Inject relevance — if responding to an inject, does the response match the content?
     if (triggerEvent?.type === 'inject.published') {
       const injectData = (triggerEvent.data as Record<string, unknown>)?.inject as
         | Record<string, unknown>
