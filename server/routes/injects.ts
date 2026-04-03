@@ -543,12 +543,12 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     let allInjects: Record<string, unknown>[] | null = null;
 
     if (session_id && finalScenarioId) {
-      // 1. Premade (template) injects only
+      // 1. Premade (template) injects only — session_id IS NULL
       const { data: premadeInjects, error: premadeError } = await supabaseAdmin
         .from('scenario_injects')
         .select('*')
         .eq('scenario_id', finalScenarioId)
-        .or('ai_generated.is.null,ai_generated.eq.false')
+        .is('session_id', null)
         .order('trigger_time_minutes', { ascending: true });
 
       if (premadeError) {
@@ -602,7 +602,8 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       });
       allInjects = combined;
     } else {
-      // No session_id: all scenario injects (e.g. scenario editor)
+      // No session_id: template injects only (scenario editor / preview)
+      query = query.is('session_id', null);
       const { data, error } = await query.order('trigger_time_minutes', {
         ascending: true,
       });

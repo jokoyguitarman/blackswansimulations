@@ -220,6 +220,7 @@ export async function selectAndPublishPathwayOutcome(
       .from('scenario_injects')
       .insert({
         scenario_id: scenarioId,
+        session_id: sessionId,
         trigger_time_minutes: null,
         trigger_condition: null,
         type: toPublish.inject_payload.type,
@@ -328,6 +329,7 @@ export async function nudgePublicSentiment(
         if (current < t && nudged >= t && scenarioId) {
           await supabaseAdmin.from('scenario_injects').insert({
             scenario_id: scenarioId,
+            session_id: sessionId,
             title: t >= 8 ? 'Positive public response' : 'Public sentiment stabilising',
             body:
               t >= 8

@@ -201,6 +201,7 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
 
     const { error: injectErr } = await supabaseAdmin.from('scenario_injects').insert({
       scenario_id: session.scenario_id,
+      session_id: sessionId,
       title: `Hazard Escalation: ${(hazard.hazard_type as string).replace(/_/g, ' ')}`,
       content: injectContent,
       type: 'field_update',

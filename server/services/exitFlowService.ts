@@ -380,6 +380,7 @@ export async function checkPendingEndorsements(sessionId: string): Promise<void>
     if (minutesSinceUpdate >= 5) {
       await supabaseAdmin.from('scenario_injects').insert({
         scenario_id: session.scenario_id,
+        session_id: sessionId,
         title: 'Unendorsed Wounded in Evacuee Group',
         body: `${woundedCount} walking wounded in an evacuated group near assembly area have NOT been endorsed to triage. Their condition may deteriorate without medical attention.`,
         inject_type: 'deterioration',

@@ -110,6 +110,7 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
             statusChange = 'deceased';
             injectsToCreate.push({
               scenario_id: session.scenario_id,
+              session_id: sessionId,
               title: 'Patient Deceased',
               body: `A patient near the incident area has died due to lack of treatment. Visible condition: ${(conds.visible_description as string)?.slice(0, 100) || 'unknown'}`,
               inject_type: 'deterioration',
@@ -121,6 +122,7 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
           } else {
             injectsToCreate.push({
               scenario_id: session.scenario_id,
+              session_id: sessionId,
               title: 'Patient Condition Worsening',
               body: `A patient's condition has deteriorated from ${currentTriage.toUpperCase()} to ${newTriage.toUpperCase()} triage. ${(conds.visible_description as string)?.slice(0, 100) || ''}`,
               inject_type: 'deterioration',
@@ -144,6 +146,7 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
         updated = true;
         injectsToCreate.push({
           scenario_id: session.scenario_id,
+          session_id: sessionId,
           title: 'Patient Waiting Without Care',
           body: `A patient endorsed to triage has been waiting for treatment without care. Condition: ${currentTriage.toUpperCase()}.`,
           inject_type: 'deterioration',
@@ -178,6 +181,7 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
                 : 'while awaiting transport — ambulance did not arrive in time';
             injectsToCreate.push({
               scenario_id: session.scenario_id,
+              session_id: sessionId,
               title: 'Critical Patient Deceased — Transport Failure',
               body: `A critical (RED) patient has died ${context}. ${(conds.visible_description as string)?.slice(0, 100) || ''}`,
               inject_type: 'deterioration',
@@ -197,6 +201,7 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
             const remainingMin = CRITICAL_TRANSPORT_WINDOW_MIN - minutesInCritical;
             injectsToCreate.push({
               scenario_id: session.scenario_id,
+              session_id: sessionId,
               title: 'URGENT: Critical Patient Requires Immediate Transport',
               body: `A critical (RED) patient's condition is deteriorating rapidly. Without hospital transfer within ~${remainingMin} minutes, this patient will not survive. ${(conds.visible_description as string)?.slice(0, 100) || ''}`,
               inject_type: 'deterioration',
@@ -226,6 +231,7 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
 
           injectsToCreate.push({
             scenario_id: session.scenario_id,
+            session_id: sessionId,
             title: 'Crowd Behavior Escalation',
             body: `A group of ${cas.headcount} civilians has escalated from ${currentBehavior} to ${newBehavior}. ${(conds.visible_description as string)?.slice(0, 100) || ''}`,
             inject_type: 'deterioration',
@@ -279,6 +285,7 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
             if (stampedeCasualties > 0) {
               injectsToCreate.push({
                 scenario_id: session.scenario_id,
+                session_id: sessionId,
                 title: 'Stampede Injuries',
                 body: `${stampedeCasualties} people have been injured in a stampede caused by panicking crowd of ${cas.headcount}.`,
                 inject_type: 'deterioration',

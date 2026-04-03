@@ -139,6 +139,7 @@ async function runAiCancellationGate(
           .from('scenario_injects')
           .insert({
             scenario_id: session.scenario_id,
+            session_id: session.id,
             type: 'field_update',
             title: adaptTitle,
             content: result.adversary_inject.content,
@@ -511,12 +512,14 @@ export class InjectSchedulerService {
     }
 
     // Get time-based injects for this scenario (trigger_time_minutes <= elapsed)
+    // Include template injects (session_id IS NULL) and this session's runtime injects
     const { data: injectsRaw, error: injectsError } = await supabaseAdmin
       .from('scenario_injects')
       .select(
         'id, trigger_time_minutes, title, content, required_gate_id, required_gate_not_met_id, target_teams, inject_scope',
       )
       .eq('scenario_id', session.scenario_id)
+      .or(`session_id.is.null,session_id.eq.${session.id}`)
       .not('trigger_time_minutes', 'is', null)
       .lte('trigger_time_minutes', elapsedMinutes);
 
@@ -700,6 +703,7 @@ export class InjectSchedulerService {
           'id, title, content, severity, target_teams, inject_scope, conditions_to_appear, conditions_to_cancel, eligible_after_minutes, state_effect',
         )
         .eq('scenario_id', session.scenario_id)
+        .or(`session_id.is.null,session_id.eq.${session.id}`)
         .not('conditions_to_appear', 'is', null)
         .is('trigger_time_minutes', null);
 

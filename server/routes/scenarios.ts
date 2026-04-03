@@ -200,6 +200,7 @@ router.get('/:id/injects', requireAuth, async (req: AuthenticatedRequest, res) =
       .from('scenario_injects')
       .select('*')
       .eq('scenario_id', id)
+      .is('session_id', null)
       .order('trigger_time_minutes', { ascending: true, nullsFirst: false });
     if (error) {
       logger.error({ error, scenarioId: id }, 'Failed to fetch scenario injects');
@@ -921,11 +922,12 @@ router.post(
         return res.status(403).json({ error: 'Only trainers can clone scenarios' });
       }
 
-      // Get all injects for the original scenario
+      // Get template injects only (exclude session-scoped runtime injects)
       const { data: originalInjects, error: injectsError } = await supabaseAdmin
         .from('scenario_injects')
         .select('*')
-        .eq('scenario_id', id);
+        .eq('scenario_id', id)
+        .is('session_id', null);
 
       if (injectsError) {
         logger.error(
@@ -1094,11 +1096,9 @@ router.post('/:id/retry-routes', requireAuth, async (req: AuthenticatedRequest, 
 
     const routeGeoms = await fetchRoutes(lat, lng, 6000);
     if (!routeGeoms.length) {
-      return res
-        .status(502)
-        .json({
-          error: 'OSM route fetch returned no data — Overpass may be unavailable. Try again later.',
-        });
+      return res.status(502).json({
+        error: 'OSM route fetch returned no data — Overpass may be unavailable. Try again later.',
+      });
     }
 
     // Fetch existing POI locations for corridor computation
