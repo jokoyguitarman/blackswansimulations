@@ -197,19 +197,739 @@ const TEAM_ALLOWED_PIN_TYPES: Record<string, Set<string>> = {
 
 const EXTRACT_ONLY_TEAMS = new Set(['fire', 'hazmat']);
 
-// Per-team required infrastructure that MUST be placed before pin_response is allowed.
-// Once ALL required assets exist in placed_assets, the team is "operational".
-const TEAM_REQUIRED_INFRASTRUCTURE: Record<string, string[]> = {
-  police: ['outer_cordon', 'roadblock'],
-  security: ['outer_cordon', 'roadblock'],
-  fire: ['forward_command', 'staging_area'],
-  hazmat: ['forward_command', 'staging_area'],
-  triage: ['triage_point', 'inner_cordon'],
-  medical: ['triage_point', 'inner_cordon'],
-  ems: ['triage_point'],
-  evacuation: ['assembly_point'],
-  media: ['press_cordon', 'media_staging'],
-};
+// ---------------------------------------------------------------------------
+// Operating Area Blueprint — standards-compliant site layout with capacity,
+// personnel, and equipment requirements scaled to the scenario.
+// ---------------------------------------------------------------------------
+
+interface BlueprintItem {
+  id: string;
+  asset_type: string;
+  label: string;
+  geometry_type: 'point' | 'polygon';
+  zone: 'hot' | 'warm' | 'cold' | 'boundary';
+  radius_deg?: number;
+  placement_hint: string; // where relative to incident center / zones
+  personnel: Array<{ role: string; count: number; ppe?: string }>;
+  equipment: string[];
+  capacity?: number;
+  description: string; // what the bot should say when placing this
+  priority: number; // 1 = must place first, 2 = second, etc.
+}
+
+interface OperatingAreaBlueprint {
+  team: string;
+  items: BlueprintItem[];
+  layout_rationale: string;
+}
+
+interface ScenarioMetrics {
+  totalCasualties: number;
+  totalCrowdSize: number;
+  casualtyClusters: Array<{ lat: number; lng: number; count: number; zone: string }>;
+  hazardCount: number;
+  exitCount: number;
+  exitLocations: Array<{ label: string; lat: number; lng: number }>;
+  incidentCenter: { lat: number; lng: number };
+  hotZoneRadius: number;
+  warmZoneRadius: number;
+  coldZoneRadius: number;
+}
+
+function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): OperatingAreaBlueprint {
+  const c = metrics.incidentCenter;
+  const items: BlueprintItem[] = [];
+
+  switch (teamKey) {
+    case 'police':
+    case 'security': {
+      const roadblockCount = Math.max(2, Math.min(metrics.exitCount, 4));
+
+      items.push({
+        id: 'outer_cordon',
+        asset_type: 'outer_cordon',
+        label: 'Outer Security Cordon',
+        geometry_type: 'polygon',
+        zone: 'cold',
+        radius_deg: 0.0009,
+        placement_hint: `Circle centered on incident [${c.lat}, ${c.lng}], radius ~100m, enclosing all operational zones`,
+        personnel: [
+          {
+            role: 'Cordon Officer',
+            count: Math.max(4, roadblockCount * 2),
+            ppe: 'high-vis vest, helmet',
+          },
+          { role: 'Cordon Supervisor', count: 1, ppe: 'high-vis vest, radio' },
+        ],
+        equipment: ['barrier tape', 'traffic cones', 'portable barriers', 'radios', 'flashlights'],
+        description:
+          'Establishing outer security cordon to control all access. All personnel and vehicles must pass through controlled entry points.',
+        priority: 1,
+      });
+
+      for (let i = 0; i < roadblockCount; i++) {
+        const exitLabel = metrics.exitLocations[i]?.label || `Access Point ${i + 1}`;
+        items.push({
+          id: `roadblock_${i + 1}`,
+          asset_type: 'roadblock',
+          label: `Roadblock at ${exitLabel}`,
+          geometry_type: 'point',
+          zone: 'cold',
+          placement_hint: metrics.exitLocations[i]
+            ? `Near exit "${exitLabel}" at [${metrics.exitLocations[i].lat}, ${metrics.exitLocations[i].lng}]`
+            : `At access point ${i + 1} on the outer cordon perimeter`,
+          personnel: [{ role: 'Checkpoint Officer', count: 2, ppe: 'high-vis vest, body armor' }],
+          equipment: ['vehicle barrier', 'ID check station', 'radio', 'stop sign'],
+          description: `Blocking vehicular and unauthorized pedestrian access at ${exitLabel}. Checkpoint officers verifying credentials for all inbound traffic.`,
+          priority: 2,
+        });
+      }
+
+      items.push({
+        id: 'command_post',
+        asset_type: 'command_post',
+        label: 'Police Forward Command Post',
+        geometry_type: 'point',
+        zone: 'cold',
+        placement_hint: `Cold zone, offset ~150m from incident center in safe direction`,
+        personnel: [
+          { role: 'Incident Commander', count: 1, ppe: 'command vest' },
+          { role: 'Communications Officer', count: 1, ppe: 'radio headset' },
+          { role: 'Scribe/Logger', count: 1 },
+        ],
+        equipment: [
+          'command table',
+          'situation board',
+          'multi-channel radio',
+          'maps',
+          'laptop with CAD access',
+        ],
+        description:
+          'Central command post for coordinating all police operations, maintaining situational awareness, and inter-agency liaison.',
+        priority: 2,
+      });
+
+      if (metrics.totalCasualties > 0) {
+        items.push({
+          id: 'inner_cordon',
+          asset_type: 'inner_cordon',
+          label: 'Inner Cordon (Crime Scene / Hot Zone)',
+          geometry_type: 'polygon',
+          zone: 'hot',
+          radius_deg: 0.00045,
+          placement_hint: `Tight circle around incident center [${c.lat}, ${c.lng}], radius ~50m, containing the hot zone`,
+          personnel: [
+            {
+              role: 'Inner Cordon Guard',
+              count: Math.max(2, Math.ceil(metrics.hazardCount * 2)),
+              ppe: 'body armor, helmet, radio',
+            },
+          ],
+          equipment: ['barrier tape', 'scene logs', 'body-worn cameras'],
+          description:
+            'Inner cordon securing the hot zone / crime scene. Only authorized emergency responders in appropriate PPE may enter.',
+          priority: 1,
+        });
+      }
+      break;
+    }
+
+    case 'triage':
+    case 'medical': {
+      const triagePointCount = Math.max(1, Math.ceil(metrics.totalCasualties / 15));
+      const nursesPer = Math.max(2, Math.ceil(metrics.totalCasualties / triagePointCount / 5));
+      const clusters =
+        metrics.casualtyClusters.length > 0
+          ? metrics.casualtyClusters
+          : [{ lat: c.lat, lng: c.lng, count: metrics.totalCasualties, zone: 'warm' }];
+
+      // Casualty Collection Point(s) near hot zone boundary
+      const ccpCount = Math.max(1, Math.min(clusters.length, 2));
+      for (let i = 0; i < ccpCount; i++) {
+        const cluster = clusters[i] || clusters[0];
+        items.push({
+          id: `casualty_collection_${i + 1}`,
+          asset_type: 'casualty_collection',
+          label:
+            `Casualty Collection Point ${ccpCount > 1 ? String.fromCharCode(65 + i) : ''}`.trim(),
+          geometry_type: 'point',
+          zone: 'boundary',
+          placement_hint: `Near hot/warm zone boundary, close to casualty cluster at [${cluster.lat}, ${cluster.lng}] (~${cluster.count} patients)`,
+          personnel: [
+            { role: 'Collection Officer', count: 1, ppe: 'helmet, safety vest, gloves' },
+            {
+              role: 'Stretcher Bearer',
+              count: Math.max(2, Math.ceil(cluster.count / 5)),
+              ppe: 'helmet, safety vest, gloves',
+            },
+          ],
+          equipment: ['stretchers', 'spine boards', 'blankets', 'patient tracking tags', 'radio'],
+          capacity: Math.ceil(cluster.count * 1.2),
+          description: `Casualty collection point receiving patients extracted from hot zone. Capacity for ~${Math.ceil(cluster.count * 1.2)} patients. Stretcher bearers staged for rapid extraction relay.`,
+          priority: 1,
+        });
+      }
+
+      // Triage station(s) in warm zone
+      for (let i = 0; i < triagePointCount; i++) {
+        const patientsServed = Math.ceil(metrics.totalCasualties / triagePointCount);
+        items.push({
+          id: `triage_point_${i + 1}`,
+          asset_type: 'triage_point',
+          label: `Triage Station ${triagePointCount > 1 ? String.fromCharCode(65 + i) : ''}`.trim(),
+          geometry_type: 'point',
+          zone: 'warm',
+          placement_hint:
+            i === 0
+              ? `Warm zone, accessible from casualty collection point, offset ~80m from incident center`
+              : `Warm zone, near secondary exit or casualty cluster, spaced from Triage Station A`,
+          personnel: [
+            {
+              role: 'Triage Officer (START-certified)',
+              count: 1,
+              ppe: 'gloves, safety vest, N95 mask',
+            },
+            { role: 'Triage Nurse', count: nursesPer, ppe: 'gloves, safety vest, N95 mask' },
+            {
+              role: 'Triage Assistant',
+              count: Math.max(1, Math.ceil(nursesPer / 2)),
+              ppe: 'gloves, safety vest',
+            },
+          ],
+          equipment: [
+            `${patientsServed * 2} triage tags (START system)`,
+            'trauma shears',
+            'pulse oximeters',
+            'blood pressure cuffs',
+            'stethoscopes',
+            `${patientsServed} emergency blankets`,
+            'patient tracking board',
+            'radio',
+          ],
+          capacity: patientsServed,
+          description: `Triage station using START protocol. Capacity for ~${patientsServed} patients. Triage officer assigns RED/YELLOW/GREEN/BLACK tags and directs patients to appropriate treatment zones.`,
+          priority: 1,
+        });
+      }
+
+      // Inner cordon around triage area
+      items.push({
+        id: 'triage_inner_cordon',
+        asset_type: 'inner_cordon',
+        label: 'Triage Operating Perimeter',
+        geometry_type: 'polygon',
+        zone: 'warm',
+        radius_deg: 0.00045,
+        placement_hint: `Circle around the triage station(s), radius ~50m, securing the medical operating area`,
+        personnel: [{ role: 'Access Controller', count: 2, ppe: 'high-vis vest' }],
+        equipment: ['barrier tape', 'portable barriers', 'access control signage'],
+        description:
+          'Controlled perimeter around triage area. Only medical personnel and authorized responders permitted inside. Prevents crowd interference with patient care.',
+        priority: 2,
+      });
+
+      // Treatment zones by priority
+      const redCount = Math.max(1, Math.ceil(metrics.totalCasualties * 0.2));
+      const yellowCount = Math.max(1, Math.ceil(metrics.totalCasualties * 0.3));
+
+      items.push({
+        id: 'treatment_t1',
+        asset_type: 'field_hospital',
+        label: 'T1 Treatment Zone (Immediate/RED)',
+        geometry_type: 'point',
+        zone: 'warm',
+        placement_hint: `Adjacent to triage station, warm zone — closest to ambulance staging for rapid transport`,
+        personnel: [
+          {
+            role: 'Emergency Physician / Paramedic',
+            count: Math.max(1, Math.ceil(redCount / 3)),
+            ppe: 'gloves, N95, eye protection, gown',
+          },
+          {
+            role: 'Trauma Nurse',
+            count: Math.max(2, Math.ceil(redCount / 2)),
+            ppe: 'gloves, N95, eye protection, gown',
+          },
+        ],
+        equipment: [
+          'advanced airway kits',
+          `${redCount} IV setups with fluids`,
+          'tourniquet kits',
+          'chest seal kits',
+          'portable defibrillators',
+          'ventilators (portable)',
+          'surgical supplies (emergency)',
+          'blood products (if available)',
+          'portable monitors',
+        ],
+        capacity: redCount,
+        description: `T1 Immediate treatment zone for RED-tagged critical patients. Staffed for ${redCount} simultaneous critical cases. Full resuscitation capability.`,
+        priority: 3,
+      });
+
+      items.push({
+        id: 'treatment_t2',
+        asset_type: 'field_hospital',
+        label: 'T2 Treatment Zone (Delayed/YELLOW)',
+        geometry_type: 'point',
+        zone: 'warm',
+        placement_hint: `Adjacent to triage station, warm zone — separate area from T1 to prevent cross-flow`,
+        personnel: [
+          { role: 'Paramedic', count: Math.max(1, Math.ceil(yellowCount / 5)), ppe: 'gloves, N95' },
+          {
+            role: 'EMT / Nurse',
+            count: Math.max(2, Math.ceil(yellowCount / 4)),
+            ppe: 'gloves, N95',
+          },
+        ],
+        equipment: [
+          `${yellowCount} splint sets`,
+          `${yellowCount} wound dressing kits`,
+          'IV setups',
+          'pain management supplies',
+          'portable monitors',
+          'blankets',
+        ],
+        capacity: yellowCount,
+        description: `T2 Delayed treatment zone for YELLOW-tagged patients with non-life-threatening but significant injuries. Capacity for ${yellowCount} patients.`,
+        priority: 3,
+      });
+
+      // Ambulance staging
+      items.push({
+        id: 'ambulance_staging',
+        asset_type: 'ambulance_staging',
+        label: 'Ambulance Staging & Transport Point',
+        geometry_type: 'point',
+        zone: 'cold',
+        placement_hint: `Cold zone near road access, within 100m of T1 treatment zone for rapid loading`,
+        personnel: [
+          { role: 'Transport Coordinator', count: 1, ppe: 'high-vis vest, radio' },
+          {
+            role: 'Ambulance Crew',
+            count: Math.max(2, Math.ceil(redCount / 2)) * 2,
+            ppe: 'standard EMS PPE',
+          },
+        ],
+        equipment: [
+          `${Math.max(2, Math.ceil(redCount / 2))} ambulances staged`,
+          'hospital capacity board (tracking bed availability)',
+          'patient manifest forms',
+          'radios',
+        ],
+        capacity: Math.max(2, Math.ceil(redCount / 2)),
+        description: `Ambulance staging with ${Math.max(2, Math.ceil(redCount / 2))} units ready. Transport coordinator maintains hospital capacity board and rotates units to prevent bottleneck.`,
+        priority: 4,
+      });
+      break;
+    }
+
+    case 'ems': {
+      const patientsServed = Math.max(5, metrics.totalCasualties);
+      const nurseCount = Math.max(2, Math.ceil(patientsServed / 5));
+
+      items.push({
+        id: 'triage_point',
+        asset_type: 'triage_point',
+        label: 'EMS Triage Station',
+        geometry_type: 'point',
+        zone: 'warm',
+        placement_hint: `Warm zone, accessible from extraction routes, offset ~80m from incident center`,
+        personnel: [
+          {
+            role: 'Triage Officer (START-certified)',
+            count: 1,
+            ppe: 'gloves, safety vest, N95 mask',
+          },
+          { role: 'EMT / Paramedic', count: nurseCount, ppe: 'gloves, safety vest, N95 mask' },
+        ],
+        equipment: [
+          `${patientsServed * 2} triage tags`,
+          'trauma kits',
+          'AED units',
+          'stretchers',
+          'patient tracking board',
+          'radio',
+        ],
+        capacity: patientsServed,
+        description: `EMS triage station using START protocol. Capacity for ~${patientsServed} patients. Full triage and stabilization capability.`,
+        priority: 1,
+      });
+
+      items.push({
+        id: 'ambulance_staging',
+        asset_type: 'ambulance_staging',
+        label: 'Ambulance Staging Area',
+        geometry_type: 'point',
+        zone: 'cold',
+        placement_hint: `Cold zone near road access for rapid ambulance loading`,
+        personnel: [
+          { role: 'Transport Coordinator', count: 1, ppe: 'high-vis vest' },
+          {
+            role: 'Ambulance Crew',
+            count: Math.max(2, Math.ceil(patientsServed / 5)) * 2,
+            ppe: 'standard EMS PPE',
+          },
+        ],
+        equipment: [
+          `${Math.max(2, Math.ceil(patientsServed / 5))} ambulances`,
+          'hospital capacity board',
+          'patient manifest',
+        ],
+        capacity: Math.max(2, Math.ceil(patientsServed / 5)),
+        description: `Ambulance staging with ${Math.max(2, Math.ceil(patientsServed / 5))} units. Transport coordinator tracks hospital capacity and rotates units.`,
+        priority: 2,
+      });
+      break;
+    }
+
+    case 'fire':
+    case 'hazmat': {
+      items.push({
+        id: 'forward_command',
+        asset_type: 'forward_command',
+        label: `${teamKey === 'hazmat' ? 'HAZMAT' : 'Fire'} Forward Command Post`,
+        geometry_type: 'point',
+        zone: 'warm',
+        placement_hint: `Warm zone, upwind from hazards, ~80m from incident center with clear line of sight`,
+        personnel: [
+          {
+            role: `${teamKey === 'hazmat' ? 'HAZMAT' : 'Fire'} Sector Commander`,
+            count: 1,
+            ppe: 'command vest, radio, helmet',
+          },
+          { role: 'Safety Officer', count: 1, ppe: 'full turnout gear, gas monitor' },
+          { role: 'Communications Operator', count: 1, ppe: 'radio headset' },
+        ],
+        equipment: [
+          'situation board',
+          'accountability board (PAR tracking)',
+          'multi-channel radio',
+          'binoculars',
+          'wind direction indicator',
+          'maps',
+        ],
+        description: `Forward command post for ${teamKey === 'hazmat' ? 'HAZMAT' : 'fire'} operations. Upwind position with accountability tracking for all personnel entering hot zone.`,
+        priority: 1,
+      });
+
+      items.push({
+        id: 'staging_area',
+        asset_type: 'staging_area',
+        label: `${teamKey === 'hazmat' ? 'HAZMAT' : 'Fire'} Equipment Staging Area`,
+        geometry_type: 'polygon',
+        zone: 'warm',
+        radius_deg: 0.00027,
+        placement_hint: `Warm zone, adjacent to forward command post, accessible to apparatus`,
+        personnel: [
+          { role: 'Staging Officer', count: 1, ppe: 'turnout gear' },
+          {
+            role: 'Firefighter / HAZMAT Tech',
+            count: Math.max(4, metrics.hazardCount * 3),
+            ppe: 'full turnout gear or Level B HAZMAT suit',
+          },
+        ],
+        equipment: [
+          `${Math.max(2, metrics.hazardCount)} SCBA sets with spare cylinders`,
+          'hose lines and nozzles',
+          teamKey === 'hazmat'
+            ? 'chemical identification kits (HazCat, pH strips, RAD monitors)'
+            : 'thermal imaging cameras',
+          teamKey === 'hazmat' ? 'absorbent booms and pads' : 'forcible entry tools',
+          'portable lighting',
+          'RIT (Rapid Intervention Team) pack',
+          'rehabilitation supplies (water, electrolytes)',
+        ],
+        capacity: Math.max(4, metrics.hazardCount * 3),
+        description: `Staging area with ${Math.max(4, metrics.hazardCount * 3)} responders ready for rotation into hot zone. Full SCBA and rehabilitation capability. 2-in/2-out protocol enforced.`,
+        priority: 1,
+      });
+
+      if (teamKey === 'hazmat' || metrics.hazardCount > 0) {
+        const deconCapacity = Math.max(
+          4,
+          Math.ceil((metrics.totalCasualties + metrics.hazardCount * 3) / 3),
+        );
+        items.push({
+          id: 'decontamination_zone',
+          asset_type: 'decontamination_zone',
+          label: 'Decontamination Corridor',
+          geometry_type: 'point',
+          zone: 'boundary',
+          placement_hint: `On the hot/warm zone boundary, between the hazard area and the clean warm zone. Upwind.`,
+          personnel: [
+            { role: 'Decon Team Leader', count: 1, ppe: 'Level B HAZMAT suit' },
+            {
+              role: 'Decon Technician',
+              count: Math.max(2, Math.ceil(deconCapacity / 4)),
+              ppe: 'Level B HAZMAT suit, splash protection',
+            },
+            {
+              role: 'Patient Handler (clean side)',
+              count: Math.max(1, Math.ceil(deconCapacity / 6)),
+              ppe: 'Level C (APR + splash protection)',
+            },
+          ],
+          equipment: [
+            `${Math.max(1, Math.ceil(deconCapacity / 4))} portable shower units`,
+            'water supply (minimum 500L)',
+            'chemical neutralization agents',
+            'runoff containment pools',
+            `${deconCapacity} sets of replacement clothing and blankets`,
+            'patient modesty screens',
+            'biomedical waste containers',
+            'decontamination solution (soap, activated charcoal)',
+          ],
+          capacity: deconCapacity,
+          description: `${Math.max(1, Math.ceil(deconCapacity / 4))}-lane decontamination corridor. Capacity: ${deconCapacity} persons/hour. All personnel and casualties exiting hot zone must pass through decon before entering clean area.`,
+          priority: 2,
+        });
+      }
+
+      // Water supply
+      items.push({
+        id: 'water_supply',
+        asset_type: 'water_supply',
+        label: 'Water Supply Point',
+        geometry_type: 'point',
+        zone: 'warm',
+        placement_hint: `Near staging area, connected to nearest hydrant or tanker access`,
+        personnel: [{ role: 'Pump Operator', count: 1, ppe: 'turnout gear' }],
+        equipment: [
+          'pump truck or portable pump',
+          'supply hose (minimum 100m)',
+          'hydrant wrench',
+          'standpipe',
+        ],
+        description:
+          'Water supply point maintaining continuous flow for fire suppression and decontamination operations.',
+        priority: 2,
+      });
+      break;
+    }
+
+    case 'evacuation': {
+      // Number of assembly points based on crowd size and exit count
+      const assemblyCount = Math.max(
+        1,
+        Math.min(Math.ceil(metrics.totalCrowdSize / 100), metrics.exitCount, 3),
+      );
+      const marshalsPerPoint = Math.max(2, Math.ceil(metrics.totalCrowdSize / assemblyCount / 25));
+      const crowdPerPoint = Math.ceil(metrics.totalCrowdSize / assemblyCount);
+
+      for (let i = 0; i < assemblyCount; i++) {
+        const exitRef = metrics.exitLocations[i];
+        const exitLabel = exitRef?.label || `Exit ${i + 1}`;
+        items.push({
+          id: `assembly_point_${i + 1}`,
+          asset_type: 'assembly_point',
+          label:
+            `Assembly Area ${assemblyCount > 1 ? String.fromCharCode(65 + i) : ''} (${exitLabel})`.trim(),
+          geometry_type: 'point',
+          zone: 'cold',
+          placement_hint: exitRef
+            ? `Cold zone near "${exitLabel}" at [${exitRef.lat}, ${exitRef.lng}], safe distance from incident`
+            : `Cold zone, clear area near exit ${i + 1} with good visibility`,
+          personnel: [
+            { role: 'Assembly Marshal', count: marshalsPerPoint, ppe: 'high-vis vest, PA system' },
+            {
+              role: 'Registration Officer',
+              count: Math.max(1, Math.ceil(marshalsPerPoint / 3)),
+              ppe: 'high-vis vest',
+            },
+            { role: 'Welfare Officer', count: 1, ppe: 'high-vis vest' },
+          ],
+          equipment: [
+            'PA system / megaphone',
+            `registration clipboard/tablets for ${crowdPerPoint} evacuees`,
+            `${Math.ceil(crowdPerPoint / 10)} water stations`,
+            'first aid kit (basic)',
+            `${Math.ceil(crowdPerPoint / 4)} emergency blankets`,
+            'signage (multilingual if applicable)',
+            'portable lighting',
+            'radio for coordination with command',
+          ],
+          capacity: crowdPerPoint,
+          description: `Assembly area near ${exitLabel} for ~${crowdPerPoint} evacuees. ${marshalsPerPoint} marshals managing registration, headcount, and welfare. Water and blankets available.`,
+          priority: 1,
+        });
+      }
+
+      // Marshal staging
+      items.push({
+        id: 'marshal_staging',
+        asset_type: 'staging_area',
+        label: 'Evacuation Marshal Staging Post',
+        geometry_type: 'point',
+        zone: 'cold',
+        placement_hint: `Cold zone, central location between assembly areas for rapid marshal deployment`,
+        personnel: [
+          { role: 'Evacuation Coordinator', count: 1, ppe: 'command vest, radio' },
+          { role: 'Route Scout', count: Math.max(2, assemblyCount), ppe: 'high-vis vest, radio' },
+        ],
+        equipment: [
+          'route maps',
+          'bullhorns',
+          'traffic wands',
+          'spare high-vis vests',
+          'headcount tally sheets',
+        ],
+        description:
+          'Central coordination post for all evacuation marshals. Route scouts verify evacuation paths are clear before directing crowd flow.',
+        priority: 2,
+      });
+
+      // Family reunification
+      if (metrics.totalCrowdSize > 50) {
+        items.push({
+          id: 'reunification_point',
+          asset_type: 'assembly_point',
+          label: 'Family Reunification Center',
+          geometry_type: 'point',
+          zone: 'cold',
+          placement_hint: `Cold zone, distinct from assembly areas, near public access but outside cordon if possible`,
+          personnel: [
+            {
+              role: 'Reunification Officer',
+              count: Math.max(1, Math.ceil(metrics.totalCrowdSize / 100)),
+              ppe: 'high-vis vest',
+            },
+            { role: 'Crisis Counselor', count: 1 },
+          ],
+          equipment: [
+            'registration tablets',
+            'privacy screens',
+            'seating',
+            'water',
+            'phone charging station',
+            'information board',
+          ],
+          capacity: Math.ceil(metrics.totalCrowdSize * 0.3),
+          description: `Family reunification center. Registered evacuees matched with waiting family members. Crisis counseling available.`,
+          priority: 3,
+        });
+      }
+      break;
+    }
+
+    case 'media': {
+      items.push({
+        id: 'press_cordon',
+        asset_type: 'press_cordon',
+        label: 'Media Access Cordon',
+        geometry_type: 'polygon',
+        zone: 'cold',
+        radius_deg: 0.00027,
+        placement_hint: `Cold zone, line-of-sight to incident area but safe distance (~200m from hot zone). Downwind.`,
+        personnel: [
+          { role: 'Public Information Officer (PIO)', count: 1, ppe: 'ID badge, radio' },
+          {
+            role: 'Media Liaison',
+            count: Math.max(1, Math.ceil(metrics.totalCrowdSize / 200)),
+            ppe: 'ID badge',
+          },
+        ],
+        equipment: [
+          'press credential verification station',
+          'portable barriers',
+          'signage (MEDIA ONLY)',
+        ],
+        description:
+          'Controlled media access area with line-of-sight to incident. All media must present credentials and receive briefing on restricted areas.',
+        priority: 1,
+      });
+
+      items.push({
+        id: 'media_staging',
+        asset_type: 'media_staging',
+        label: 'Media Staging & Briefing Area',
+        geometry_type: 'point',
+        zone: 'cold',
+        placement_hint: `Inside press cordon, with backdrop suitable for camera shots away from sensitive operations`,
+        personnel: [
+          { role: 'PIO / Spokesperson', count: 1, ppe: 'ID badge' },
+          { role: 'Social Media Monitor', count: 1 },
+          {
+            role: 'Media Escort',
+            count: Math.max(1, Math.ceil(metrics.totalCrowdSize / 300)),
+            ppe: 'high-vis vest, ID',
+          },
+        ],
+        equipment: [
+          'press podium / briefing stand',
+          'power outlets / generator for media equipment',
+          'Wi-Fi hotspot',
+          'printed fact sheets (timeline, casualty count, hotline)',
+          'LCD screen for press conference visuals',
+        ],
+        description:
+          'Media staging area with press briefing capability. PIO conducts regular updates. Social media monitored for misinformation.',
+        priority: 2,
+      });
+      break;
+    }
+
+    default:
+      break;
+  }
+
+  const teamLabels: Record<string, string> = {
+    police: 'Police / Security',
+    security: 'Police / Security',
+    triage: 'Triage / Medical',
+    medical: 'Triage / Medical',
+    ems: 'EMS',
+    fire: 'Fire',
+    hazmat: 'HAZMAT',
+    evacuation: 'Evacuation',
+    media: 'Media / PIO',
+  };
+
+  return {
+    team: teamLabels[teamKey] || teamKey,
+    items,
+    layout_rationale: buildLayoutRationale(teamKey, metrics),
+  };
+}
+
+function buildLayoutRationale(teamKey: string, m: ScenarioMetrics): string {
+  switch (teamKey) {
+    case 'triage':
+    case 'medical':
+      return `${m.totalCasualties} casualties across ${m.casualtyClusters.length || 1} cluster(s) → ${Math.max(1, Math.ceil(m.totalCasualties / 15))} triage station(s) needed. Patient flow: CCP (hot/warm boundary) → Triage (warm zone) → T1/T2 Treatment (warm zone) → Ambulance Staging (cold zone) → Hospital.`;
+    case 'police':
+    case 'security':
+      return `${m.exitCount} access points → ${Math.max(2, Math.min(m.exitCount, 4))} roadblocks needed. Outer cordon encloses all zones. Inner cordon secures crime scene/hot zone.`;
+    case 'evacuation':
+      return `${m.totalCrowdSize} people to evacuate → ${Math.max(1, Math.min(Math.ceil(m.totalCrowdSize / 100), m.exitCount, 3))} assembly areas (1 marshal per 25 evacuees). Crowd flow: incident area → exits → assembly areas → reunification.`;
+    case 'fire':
+    case 'hazmat':
+      return `${m.hazardCount} active hazard(s) → staging for ${Math.max(4, m.hazardCount * 3)} responders with SCBA rotation. Decon corridor required between hot and warm zones. 2-in/2-out protocol.`;
+    case 'media':
+      return `Media cordon positioned in cold zone with line-of-sight. PIO conducts regular briefings to control narrative and prevent unauthorized access.`;
+    default:
+      return '';
+  }
+}
+
+// Backwards-compatible: returns just the required asset_type list from blueprint
+function getRequiredInfraFromBlueprint(teamKey: string): string[] {
+  const dummyMetrics: ScenarioMetrics = {
+    totalCasualties: 10,
+    totalCrowdSize: 100,
+    casualtyClusters: [],
+    hazardCount: 1,
+    exitCount: 3,
+    exitLocations: [],
+    incidentCenter: { lat: 0, lng: 0 },
+    hotZoneRadius: 50,
+    warmZoneRadius: 150,
+    coldZoneRadius: 300,
+  };
+  const bp = generateTeamBlueprint(teamKey, dummyMetrics);
+  const priorityOne = bp.items.filter((i) => i.priority <= 2).map((i) => i.asset_type);
+  return [...new Set(priorityOne)];
+}
 
 // Inject keyword domains — if an inject's title/description contains these keywords,
 // only the listed team keys should react. Teams not listed ignore the inject.
@@ -259,7 +979,138 @@ function isPlacementAllowedForTeam(teamName: string, assetType: string): boolean
 function getRequiredInfrastructure(teamName: string): string[] {
   const key = getTeamScopeKey(teamName);
   if (!key) return [];
-  return TEAM_REQUIRED_INFRASTRUCTURE[key] ?? [];
+  return getRequiredInfraFromBlueprint(key);
+}
+
+async function loadScenarioMetrics(
+  sessionId: string,
+  scenarioId: string,
+  incidentCenter: { lat: number; lng: number } | null,
+): Promise<ScenarioMetrics> {
+  const center = incidentCenter ?? { lat: 0, lng: 0 };
+  const metrics: ScenarioMetrics = {
+    totalCasualties: 0,
+    totalCrowdSize: 0,
+    casualtyClusters: [],
+    hazardCount: 0,
+    exitCount: 0,
+    exitLocations: [],
+    incidentCenter: center,
+    hotZoneRadius: 50,
+    warmZoneRadius: 150,
+    coldZoneRadius: 300,
+  };
+
+  try {
+    // Casualties — count and cluster
+    const { data: casualties } = await supabaseAdmin
+      .from('scenario_casualties')
+      .select('casualty_type, headcount, location_lat, location_lng, status')
+      .eq('session_id', sessionId)
+      .in('status', [
+        'undiscovered',
+        'identified',
+        'being_evacuated',
+        'at_assembly',
+        'endorsed_to_triage',
+        'in_treatment',
+      ]);
+
+    const patients: Array<{ lat: number; lng: number; count: number }> = [];
+    for (const c of (casualties ?? []) as Array<Record<string, unknown>>) {
+      const hc = (c.headcount as number) || 1;
+      const cType = c.casualty_type as string;
+      if (cType === 'crowd' || cType === 'evacuee_group' || cType === 'convergent_crowd') {
+        metrics.totalCrowdSize += hc;
+      } else {
+        metrics.totalCasualties += hc;
+        patients.push({ lat: c.location_lat as number, lng: c.location_lng as number, count: hc });
+      }
+    }
+
+    // Simple clustering — group patients within ~100m of each other
+    const used = new Set<number>();
+    for (let i = 0; i < patients.length; i++) {
+      if (used.has(i)) continue;
+      const cluster = {
+        lat: patients[i].lat,
+        lng: patients[i].lng,
+        count: patients[i].count,
+        zone: 'warm' as string,
+      };
+      used.add(i);
+      for (let j = i + 1; j < patients.length; j++) {
+        if (used.has(j)) continue;
+        const dist = Math.sqrt(
+          (patients[j].lat - cluster.lat) ** 2 + (patients[j].lng - cluster.lng) ** 2,
+        );
+        if (dist < 0.001) {
+          cluster.lat =
+            (cluster.lat * cluster.count + patients[j].lat * patients[j].count) /
+            (cluster.count + patients[j].count);
+          cluster.lng =
+            (cluster.lng * cluster.count + patients[j].lng * patients[j].count) /
+            (cluster.count + patients[j].count);
+          cluster.count += patients[j].count;
+          used.add(j);
+        }
+      }
+      metrics.casualtyClusters.push(cluster);
+    }
+
+    // Hazards
+    const { data: hazards } = await supabaseAdmin
+      .from('scenario_hazards')
+      .select('id')
+      .eq('session_id', sessionId)
+      .in('status', ['active', 'escalating']);
+    metrics.hazardCount = (hazards ?? []).length;
+
+    // Exits
+    const { data: exits } = await supabaseAdmin
+      .from('scenario_locations')
+      .select('id, label, coordinates, location_type')
+      .eq('scenario_id', scenarioId)
+      .in('location_type', ['exit', 'entry', 'exit_entry', 'entry_exit']);
+
+    metrics.exitCount = (exits ?? []).length;
+    for (const e of (exits ?? []) as Array<Record<string, unknown>>) {
+      const coords = e.coordinates as Record<string, unknown> | null;
+      if (coords && coords.lat && coords.lng) {
+        metrics.exitLocations.push({
+          label: e.label as string,
+          lat: coords.lat as number,
+          lng: coords.lng as number,
+        });
+      }
+    }
+
+    // Zone radii from scenario_locations (incident_zone pins)
+    const { data: zones } = await supabaseAdmin
+      .from('scenario_locations')
+      .select('label, conditions')
+      .eq('scenario_id', scenarioId)
+      .eq('pin_category', 'incident_zone');
+
+    for (const z of (zones ?? []) as Array<Record<string, unknown>>) {
+      const conds = z.conditions as Record<string, unknown> | null;
+      const radius = (conds?.radius_m as number) || 0;
+      const label = ((z.label as string) || '').toLowerCase();
+      if (label.includes('hot') && radius > 0) metrics.hotZoneRadius = radius;
+      else if (label.includes('warm') && radius > 0) metrics.warmZoneRadius = radius;
+      else if (label.includes('cold') && radius > 0) metrics.coldZoneRadius = radius;
+    }
+
+    // Ensure minimums
+    if (metrics.totalCasualties === 0 && metrics.totalCrowdSize === 0) {
+      metrics.totalCasualties = 5;
+      metrics.totalCrowdSize = 50;
+    }
+  } catch (err) {
+    logger.debug({ error: err }, 'Failed to load scenario metrics for blueprint');
+  }
+
+  return metrics;
 }
 
 async function checkInfrastructureStatus(
@@ -1379,35 +2230,86 @@ export class DemoAIAgentService {
       parts.push(JSON.stringify(event.data, null, 2).slice(0, 1200));
     }
 
-    // Check live infrastructure status from the database
+    // Load scenario metrics and generate operating area blueprint
     const teamScopeKey = getTeamScopeKey(agent.persona.teamName);
-    const infraStatus = await checkInfrastructureStatus(session.sessionId, agent.persona.teamName);
-    const requiredInfra = getRequiredInfrastructure(agent.persona.teamName);
+    const scenarioMetrics = await loadScenarioMetrics(
+      session.sessionId,
+      session.scenarioId,
+      session.incidentCenter,
+    );
+    const blueprint = teamScopeKey ? generateTeamBlueprint(teamScopeKey, scenarioMetrics) : null;
 
-    // Dynamic infrastructure status — the bot knows EXACTLY what it has and what's missing
-    if (requiredInfra.length > 0) {
-      parts.push('', '## 🔒 YOUR INFRASTRUCTURE STATUS (live from database):');
-      for (const req of requiredInfra) {
-        const label = req.replace(/_/g, ' ');
-        if (infraStatus.placed.includes(req)) {
-          parts.push(`  ✅ ${label}: PLACED`);
-        } else {
-          parts.push(`  ❌ ${label}: NOT PLACED ← you must place this`);
+    // Query ALL placed assets for this team to match against blueprint items
+    const { data: allPlacedRaw } = await supabaseAdmin
+      .from('placed_assets')
+      .select('asset_type, label')
+      .eq('session_id', session.sessionId)
+      .eq('team_name', agent.persona.teamName)
+      .eq('status', 'active');
+    const placedAssetTypes = new Set(
+      (allPlacedRaw ?? []).map((a) => (a as Record<string, unknown>).asset_type as string),
+    );
+
+    if (blueprint && blueprint.items.length > 0) {
+      // Sort blueprint by priority
+      const sorted = [...blueprint.items].sort((a, b) => a.priority - b.priority);
+
+      // Determine which items are placed vs pending
+      const pending = sorted.filter((item) => !placedAssetTypes.has(item.asset_type));
+      const placed = sorted.filter((item) => placedAssetTypes.has(item.asset_type));
+
+      parts.push(
+        '',
+        `## 📋 YOUR OPERATING AREA BLUEPRINT — ${blueprint.team}`,
+        `Layout rationale: ${blueprint.layout_rationale}`,
+        '',
+        `Scene data: ${scenarioMetrics.totalCasualties} casualties across ${scenarioMetrics.casualtyClusters.length || 1} cluster(s), ${scenarioMetrics.totalCrowdSize} evacuees, ${scenarioMetrics.hazardCount} hazard(s), ${scenarioMetrics.exitCount} exits.`,
+      );
+
+      if (placed.length > 0) {
+        parts.push('', '### ✅ COMPLETED (already on the map):');
+        for (const item of placed) {
+          parts.push(`  ✅ ${item.label} (${item.asset_type})`);
         }
       }
 
-      if (!infraStatus.ready) {
+      if (pending.length > 0) {
+        parts.push('', '### ❌ REMAINING (you must place these):');
+        for (let i = 0; i < pending.length; i++) {
+          const item = pending[i];
+          const isNext = i === 0;
+          const personnelStr = item.personnel
+            .map((p) => `${p.count}x ${p.role}${p.ppe ? ` (${p.ppe})` : ''}`)
+            .join(', ');
+          const equipStr = item.equipment.slice(0, 6).join(', ');
+
+          parts.push(
+            `  ${isNext ? '→ NEXT' : `  ${i + 1}`}: ${item.label} (${item.asset_type}) — Priority ${item.priority}`,
+            `     Zone: ${item.zone} | Geometry: ${item.geometry_type}${item.radius_deg ? ` (radius ${item.radius_deg})` : ''}`,
+            `     Location: ${item.placement_hint}`,
+            `     Personnel: ${personnelStr}`,
+            `     Equipment: ${equipStr}`,
+            `     ${item.capacity ? `Capacity: ${item.capacity} persons | ` : ''}${item.description}`,
+          );
+        }
+
         parts.push(
           '',
-          '⛔ YOU ARE NOT OPERATIONAL. The server will REJECT any pin_response or casualty interaction.',
-          '⛔ Your ONLY allowed action right now is a PLACEMENT to set up your missing infrastructure.',
-          '⛔ Do NOT write about treating patients, initiating triage, or responding to casualties.',
-          '⛔ Do NOT use the "decision" action to describe infrastructure — use the "placement" action with geometry.',
+          '⛔ YOU ARE NOT FULLY OPERATIONAL.',
+          `⛔ Your NEXT action MUST be a "placement" for: ${pending[0].label} (${pending[0].asset_type})`,
+          '⛔ Do NOT write text-only decisions about infrastructure. ONLY a "placement" action with geometry creates assets on the map.',
+          '⛔ Do NOT respond to casualties, hazards, or injects until your operating area is built.',
+          '',
+          `⚠️ Your decision description for this placement MUST mention the personnel and equipment you are deploying:`,
+          `   Personnel: ${pending[0].personnel.map((p) => `${p.count}x ${p.role}${p.ppe ? ` in ${p.ppe}` : ''}`).join(', ')}`,
+          `   Equipment: ${pending[0].equipment.join(', ')}`,
+          `   ${pending[0].capacity ? `Capacity: ${pending[0].capacity} persons` : ''}`,
         );
       } else {
         parts.push(
           '',
-          '✅ You ARE OPERATIONAL. You may respond to casualties/hazards with pin_response.',
+          '✅ YOUR OPERATING AREA IS FULLY ESTABLISHED. You are operational.',
+          '✅ You may now respond to casualties, hazards, and injects with pin_response.',
         );
       }
     }
@@ -1415,39 +2317,17 @@ export class DemoAIAgentService {
     parts.push(
       '',
       '## ⚠️ STRICT OPERATIONAL PHASES — you MUST follow this sequence',
-      'Phase 1 (CLAIMING): Claim exits/entries. Already handled automatically — skip this phase.',
-      `Phase 2 (ESTABLISHING): Place your team's required infrastructure. Use a "placement" action with geometry coordinates.`,
-      '  → You MUST complete Phase 2 before doing ANYTHING else.',
-      '  → A "decision" that describes placing infrastructure does NOTHING. Only a "placement" action with geometry creates assets on the map.',
-      'Phase 3 (OPERATIONAL): Only after ALL your infrastructure is on the map (see status above), respond to casualties/hazards using "pin_response".',
+      'Phase 1 (CLAIMING): Claim exits/entries. Handled automatically — skip.',
+      'Phase 2 (BUILDING OPERATING AREA): Follow the blueprint above. Place infrastructure one item at a time using "placement" actions with geometry.',
+      '  → A "decision" that describes placing infrastructure does NOTHING. Only "placement" actions with geometry create map assets.',
+      '  → Each placement decision MUST describe the personnel deployed and equipment provided — do not place empty structures.',
+      'Phase 3 (OPERATIONAL): Only after ALL blueprint items are placed, respond to casualties/hazards using "pin_response".',
       '',
       '## ⚠️ ONE ACTION PER DECISION — CRITICAL RULE',
       '- Each decision must focus on ONE specific action. Do NOT combine multiple actions in one decision.',
       '- If you want to place infrastructure, submit a "placement" action with geometry.',
       '- If you want to respond to a casualty/hazard, submit a "pin_response" action.',
     );
-
-    if (!infraStatus.ready) {
-      const stepGuidance =
-        teamScopeKey === 'police' || teamScopeKey === 'security'
-          ? 'Step 1: PLACE outer cordon polygon (circle, ~100m radius). Step 2: PLACE roadblocks at entry points.'
-          : teamScopeKey === 'triage' || teamScopeKey === 'medical' || teamScopeKey === 'ems'
-            ? 'Step 1: PLACE triage point (Point geometry). Step 2: PLACE inner cordon polygon (circle, ~50m radius) around triage area.'
-            : teamScopeKey === 'fire' || teamScopeKey === 'hazmat'
-              ? 'Step 1: PLACE forward command post (Point). Step 2: PLACE staging area polygon.'
-              : teamScopeKey === 'evacuation'
-                ? 'PLACE assembly point (Point geometry).'
-                : teamScopeKey === 'media'
-                  ? 'Step 1: PLACE press cordon polygon. Step 2: PLACE media staging area inside it.'
-                  : 'PLACE your operating area.';
-      parts.push(
-        '',
-        '## 🚨 INFRASTRUCTURE NOT COMPLETE — ACTION REQUIRED',
-        `→ ${stepGuidance}`,
-        '→ Use a "placement" action with geometry { "type": "Point", "coordinates": [lng, lat] } or { "type": "Polygon", ... }.',
-        '→ Do NOT write a "decision" about infrastructure. Decisions are just text — they do NOT create map assets.',
-      );
-    }
 
     // Ground situation: casualties, hazards, claimable exits
     const ground = await this.loadGroundSituation(session.sessionId, session.scenarioId);
@@ -1469,8 +2349,10 @@ export class DemoAIAgentService {
       }
     }
 
-    // Only show casualties/hazards if team is operational — prevents premature triage attempts
-    if (infraStatus.ready) {
+    // Only show casualties/hazards if team is operational
+    const isOperational =
+      !blueprint || blueprint.items.every((item) => placedAssetTypes.has(item.asset_type));
+    if (isOperational) {
       if (ground.casualties.length > 0) {
         parts.push('', '## Casualties on the ground:');
         for (const c of ground.casualties) {
@@ -1488,8 +2370,8 @@ export class DemoAIAgentService {
       parts.push(
         '',
         `## ⚠️ There are ${ground.casualties.length} casualties and ${ground.hazards.length} hazards on the ground.`,
-        '→ You cannot interact with them until your infrastructure is established.',
-        '→ Focus on placing your missing infrastructure FIRST.',
+        '→ You CANNOT interact with them until your operating area blueprint is fully built.',
+        '→ Focus on placing the NEXT item in your blueprint.',
       );
     }
 
@@ -2260,15 +3142,42 @@ export class DemoAIAgentService {
     triggerEvent?: WebSocketEvent,
   ): Promise<{ valid: boolean; reason: string }> {
     const teamName = agent.persona.teamName;
-    const infraStatus = await checkInfrastructureStatus(session.sessionId, teamName);
+    const teamKey = getTeamScopeKey(teamName);
 
-    // Check 1: If infrastructure is missing, block pin_response and casualty-flavored decisions
-    if (!infraStatus.ready) {
+    // Load blueprint to check completeness
+    const scenarioMetrics = await loadScenarioMetrics(
+      session.sessionId,
+      session.scenarioId,
+      session.incidentCenter,
+    );
+    const blueprint = teamKey ? generateTeamBlueprint(teamKey, scenarioMetrics) : null;
+
+    const { data: placedRaw } = await supabaseAdmin
+      .from('placed_assets')
+      .select('asset_type')
+      .eq('session_id', session.sessionId)
+      .eq('team_name', teamName)
+      .eq('status', 'active');
+    const placedTypes = new Set(
+      (placedRaw ?? []).map((a) => (a as Record<string, unknown>).asset_type as string),
+    );
+
+    const isOperational =
+      !blueprint || blueprint.items.every((item) => placedTypes.has(item.asset_type));
+    const pendingItems = blueprint
+      ? blueprint.items
+          .filter((item) => !placedTypes.has(item.asset_type))
+          .sort((a, b) => a.priority - b.priority)
+      : [];
+
+    // Check 1: If operating area incomplete, block pin_response and casualty-flavored decisions
+    if (!isOperational && pendingItems.length > 0) {
+      const next = pendingItems[0];
       const hasPinResponse = actions.some((a) => a.action === 'pin_response');
       if (hasPinResponse) {
         return {
           valid: false,
-          reason: `Your team is missing infrastructure: [${infraStatus.missing.join(', ')}]. You CANNOT use pin_response. Submit a "placement" action instead to place: ${infraStatus.missing[0]}.`,
+          reason: `Your operating area is incomplete. You still need to place: ${next.label} (${next.asset_type}). You CANNOT use pin_response until your operating area is fully built. Submit a "placement" action for ${next.asset_type} with ${next.geometry_type} geometry. Remember to staff it with: ${next.personnel.map((p) => `${p.count}x ${p.role}`).join(', ')} and equip it with: ${next.equipment.slice(0, 4).join(', ')}.`,
         };
       }
 
@@ -2281,19 +3190,19 @@ export class DemoAIAgentService {
         if (casualtyPattern.test(text)) {
           return {
             valid: false,
-            reason: `Your team is missing infrastructure: [${infraStatus.missing.join(', ')}]. You cannot perform casualty/triage operations yet. Submit a "placement" action with geometry to place: ${infraStatus.missing[0]}. Use { "type": "Point", "coordinates": [lng, lat] } for points or a 12-point circle polygon.`,
+            reason: `Your operating area is incomplete (next: ${next.label}). You cannot perform casualty/triage operations yet. Submit a "placement" action for ${next.asset_type}. Your placement must include personnel (${next.personnel.map((p) => `${p.count}x ${p.role}`).join(', ')}) and equipment (${next.equipment.slice(0, 4).join(', ')}).`,
           };
         }
       }
 
-      // Check 2: If infrastructure missing, ensure there's at least one placement action
+      // Check 2: If blueprint incomplete, ensure there's at least one placement action
       const hasPlacement = actions.some((a) => a.action === 'placement' && a.placement?.geometry);
       if (!hasPlacement) {
         const hasDecision = actions.some((a) => a.action === 'decision');
         if (hasDecision) {
           return {
             valid: false,
-            reason: `Your team is missing infrastructure: [${infraStatus.missing.join(', ')}]. You submitted a "decision" (text only) instead of a "placement" (map asset). Decisions do NOT create infrastructure on the map. Submit a "placement" action with asset_type "${infraStatus.missing[0]}" and geometry coordinates.`,
+            reason: `Your operating area is incomplete. Next item: ${next.label} (${next.asset_type}, ${next.geometry_type}). You submitted a text-only "decision" which does NOT create assets on the map. Submit a "placement" action with geometry. Place it at: ${next.placement_hint}. Staff with: ${next.personnel.map((p) => `${p.count}x ${p.role}`).join(', ')}.`,
           };
         }
       }
@@ -2331,29 +3240,47 @@ export class DemoAIAgentService {
   }
 
   /**
-   * Programmatic fallback: when the bot fails validation MAX_VALIDATION_RETRIES times,
-   * auto-generate a placement for the first missing infrastructure item.
+   * Programmatic fallback using the blueprint: when the bot fails validation
+   * MAX_VALIDATION_RETRIES times, auto-place the next blueprint item with
+   * correct geometry, personnel, and equipment.
    */
   private async generateFallbackPlacement(
     session: SessionAgents,
     agent: AgentState,
   ): Promise<SingleAction[] | null> {
-    const infraStatus = await checkInfrastructureStatus(session.sessionId, agent.persona.teamName);
-    if (infraStatus.ready || infraStatus.missing.length === 0) return null;
-
     const center = session.incidentCenter;
     if (!center) return null;
 
-    const assetType = infraStatus.missing[0];
-    const isPolygon = ['inner_cordon', 'outer_cordon', 'staging_area', 'press_cordon'].includes(
-      assetType,
-    );
-    const label = `${agent.persona.teamName} ${assetType.replace(/_/g, ' ')}`;
+    const teamKey = getTeamScopeKey(agent.persona.teamName);
+    if (!teamKey) return null;
 
+    const scenarioMetrics = await loadScenarioMetrics(
+      session.sessionId,
+      session.scenarioId,
+      center,
+    );
+    const blueprint = generateTeamBlueprint(teamKey, scenarioMetrics);
+
+    const { data: placedRaw } = await supabaseAdmin
+      .from('placed_assets')
+      .select('asset_type')
+      .eq('session_id', session.sessionId)
+      .eq('team_name', agent.persona.teamName)
+      .eq('status', 'active');
+    const placedTypes = new Set(
+      (placedRaw ?? []).map((a) => (a as Record<string, unknown>).asset_type as string),
+    );
+
+    const pending = blueprint.items
+      .filter((item) => !placedTypes.has(item.asset_type))
+      .sort((a, b) => a.priority - b.priority);
+
+    if (pending.length === 0) return null;
+
+    const next = pending[0];
     let geometry: { type: string; coordinates: unknown };
 
-    if (isPolygon) {
-      const radius = assetType.includes('outer') ? 0.0009 : 0.00045;
+    if (next.geometry_type === 'polygon' && next.radius_deg) {
       const offset = 0.001 + Math.random() * 0.001;
       const bearing = Math.random() * 2 * Math.PI;
       const cLat = center.lat + offset * Math.cos(bearing);
@@ -2362,7 +3289,10 @@ export class DemoAIAgentService {
       const pts: [number, number][] = [];
       for (let i = 0; i < 12; i++) {
         const angle = (2 * Math.PI * i) / 12;
-        pts.push([cLng + radius * Math.cos(angle), cLat + radius * Math.sin(angle)]);
+        pts.push([
+          cLng + next.radius_deg * Math.cos(angle),
+          cLat + next.radius_deg * Math.sin(angle),
+        ]);
       }
       pts.push(pts[0]);
       geometry = { type: 'Polygon', coordinates: [pts] };
@@ -2378,19 +3308,35 @@ export class DemoAIAgentService {
       };
     }
 
+    const personnelDesc = next.personnel
+      .map((p) => `${p.count}x ${p.role}${p.ppe ? ` (${p.ppe})` : ''}`)
+      .join(', ');
+    const equipDesc = next.equipment.join(', ');
+
     logger.info(
-      { botUserId: agent.persona.botUserId, assetType, label },
-      'AI agent: generating fallback placement after failed retries',
+      { botUserId: agent.persona.botUserId, assetType: next.asset_type, label: next.label },
+      'AI agent: generating fallback placement from blueprint after failed retries',
     );
 
     return [
       {
         action: 'placement',
         placement: {
-          asset_type: assetType,
-          label,
+          asset_type: next.asset_type,
+          label: next.label,
           geometry,
-          properties: {},
+          properties: {
+            personnel: personnelDesc,
+            equipment: equipDesc,
+            capacity: next.capacity,
+          },
+        },
+      },
+      {
+        action: 'decision',
+        decision: {
+          title: `Establish ${next.label}`,
+          description: `${next.description} Deploying ${personnelDesc}. Equipment: ${equipDesc}.`,
         },
       },
     ];
