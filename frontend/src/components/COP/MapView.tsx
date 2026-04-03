@@ -349,6 +349,21 @@ const MapInitializer = ({
 };
 
 /**
+ * Re-centers the map when the effective center is computed from loaded locations
+ * (used when the scenario has no center_lat/center_lng).
+ */
+const MapAutoCenter = ({ center, zoom }: { center: [number, number] | null; zoom: number }) => {
+  const map = useMap();
+  const hasCentered = useRef(false);
+  useEffect(() => {
+    if (!center || hasCentered.current) return;
+    hasCentered.current = true;
+    map.flyTo(center, zoom, { duration: 1.2 });
+  }, [map, center, zoom]);
+  return null;
+};
+
+/**
  * Map Updater - Handles map updates and centering
  */
 const MapUpdater = ({
@@ -641,6 +656,32 @@ export const MapView = ({
       cancelled = true;
     };
   }, [sessionId, isMapDisabled, locationsRefreshTrigger]);
+
+  // Compute effective map center from incident site pin when scenario has no center_lat/lng
+  const effectiveCenter = useMemo(() => {
+    if (
+      !Array.isArray(initialCenter) ||
+      Math.abs((initialCenter as number[])[0] - 1.3521) > 0.01 ||
+      Math.abs((initialCenter as number[])[1] - 103.8198) > 0.01
+    ) {
+      return null;
+    }
+    const incidentPin = scenarioLocations.find(
+      (loc) =>
+        (loc.pin_category === 'incident_site' || loc.location_type === 'incident_site') &&
+        typeof loc.coordinates?.lat === 'number',
+    );
+    const targetPin =
+      incidentPin ??
+      scenarioLocations.find(
+        (loc) =>
+          typeof loc.coordinates?.lat === 'number' && typeof loc.coordinates?.lng === 'number',
+      );
+    if (targetPin?.coordinates?.lat && targetPin?.coordinates?.lng) {
+      return [targetPin.coordinates.lat, targetPin.coordinates.lng] as [number, number];
+    }
+    return null;
+  }, [scenarioLocations, initialCenter]);
 
   // Extract entry/exit pins from scenario locations
   useEffect(() => {
@@ -1122,6 +1163,8 @@ export const MapView = ({
 
   const scenarioLocationsForMap = scenarioLocationsWithCoords.filter((loc) => {
     if (loc.pin_category === 'incident_zone' || loc.location_type === 'incident_zone') return false;
+    // Hidden sighting pins appear only when their inject fires (via adversary_sighting_new event)
+    if (loc.conditions?.sighting_status === 'hidden') return false;
     // Entry/exit pins are rendered separately via EntryExitPin component
     if (loc.pin_category === 'entry_exit') return false;
 
@@ -1464,6 +1507,7 @@ export const MapView = ({
             }}
           />
           <MapSizeInvalidator isVisible={isVisible} />
+          <MapAutoCenter center={effectiveCenter} zoom={initialZoom ?? 16} />
           <MapCleanup />
 
           {/* Drop handler for drag-and-drop asset placement (disabled while drawing or not recording) */}

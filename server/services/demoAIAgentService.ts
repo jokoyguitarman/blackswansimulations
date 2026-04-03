@@ -87,20 +87,23 @@ interface AgentMultiResponse {
 // Constants — tuned for realistic human-like pacing
 // ---------------------------------------------------------------------------
 
-const AGENT_THROTTLE_MS = 180_000; // 3 min cooldown per agent after acting
-const AGENT_JITTER_BASE_MS = 12_000;
-const AGENT_JITTER_RANGE_MS = 18_000;
-const INTER_ACTION_BASE_MS = 5_000;
-const INTER_ACTION_RANGE_MS = 5_000;
+const AGENT_THROTTLE_MS = 120_000; // 2 min cooldown per agent after acting
+const AGENT_THROTTLE_EARLY_MS = 45_000; // 45s cooldown during foundational phase (first 8 min)
+const FOUNDATIONAL_PHASE_MINUTES = 8; // first N minutes: reduced throttle, higher proactive rate
+const AGENT_JITTER_BASE_MS = 8_000;
+const AGENT_JITTER_RANGE_MS = 12_000;
+const INTER_ACTION_BASE_MS = 4_000;
+const INTER_ACTION_RANGE_MS = 4_000;
 const HYBRID_DEFER_WINDOW_MS = 10_000;
 const MAX_RECENT_ACTIONS = 15;
 const AI_MODEL = 'gpt-4o-mini';
-const PROACTIVE_INTERVAL_MS = 180_000; // 3 min between proactive ticks
-const PROACTIVE_ACT_PROBABILITY = 0.15; // only 15% chance per agent per tick
-const KICKSTART_STAGGER_MS = 25_000; // 25s between kickstart agents
-const KICKSTART_INITIAL_DELAY_MS = 15_000;
-const MAX_DECISIONS_PER_INJECT_CYCLE = 3; // max decisions across ALL agents before waiting for next inject
-const INJECT_CYCLE_RESET_MS = 120_000; // auto-reset cycle budget after 2 min even without new inject
+const PROACTIVE_INTERVAL_MS = 120_000; // 2 min between proactive ticks
+const PROACTIVE_ACT_PROBABILITY = 0.35; // 35% chance per agent per tick
+const PROACTIVE_ACT_PROBABILITY_EARLY = 0.65; // 65% during foundational phase
+const KICKSTART_STAGGER_MS = 15_000; // 15s between kickstart agents
+const KICKSTART_INITIAL_DELAY_MS = 10_000;
+const MAX_DECISIONS_PER_INJECT_CYCLE = 8; // raised: all teams should get to act per cycle
+const INJECT_CYCLE_RESET_MS = 90_000; // auto-reset cycle budget after 90s
 
 // ---------------------------------------------------------------------------
 // Service
@@ -240,7 +243,14 @@ export class DemoAIAgentService {
       type: 'session.started',
       data: {
         message:
-          'Exercise has begun. Check the exits/entries on the map and CLAIM the ones relevant to your team. Then make your initial situation assessment.',
+          'Exercise has begun. MANDATORY FIRST ACTIONS for all teams:\n' +
+          "1. CLAIM the exits/entries on the map that are relevant to your team's jurisdiction.\n" +
+          '2. Establish your COMMAND POST by placing a point asset at an appropriate staging location.\n' +
+          '3. Identify and acknowledge the HOT, WARM, and COLD zones based on current hazard information.\n' +
+          '4. PLACE any initial cordons, barricades, or perimeter assets your team is responsible for.\n' +
+          '5. Set up TRIAGE areas, evacuation holding points, or staging areas relevant to your role.\n' +
+          '6. Perform your initial SITUATION ASSESSMENT and communicate it to your team channel.\n' +
+          'You MUST take at least 2-3 of these foundational actions NOW before anything else.',
       },
       timestamp: new Date().toISOString(),
     };
@@ -251,17 +261,11 @@ export class DemoAIAgentService {
 
     for (let i = 0; i < agentEntries.length; i++) {
       const [, agentState] = agentEntries[i];
-      const delay = KICKSTART_INITIAL_DELAY_MS + i * KICKSTART_STAGGER_MS + Math.random() * 8000;
+      const delay = KICKSTART_INITIAL_DELAY_MS + i * KICKSTART_STAGGER_MS + Math.random() * 5000;
 
       setTimeout(() => {
         if (session.stopped) return;
-        if (session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE) {
-          logger.info(
-            { botUserId: agentState.persona.botUserId },
-            'AI agent: kickstart skipped, cycle budget used',
-          );
-          return;
-        }
+        // Kickstart is exempt from cycle budget — every team MUST get their initial turn
         agentState.lastActionTs = 0;
         this.generateAndExecuteActions(session, agentState, kickstartEvent).catch((err) => {
           logger.error(
@@ -306,8 +310,9 @@ export class DemoAIAgentService {
     );
     if (eligible.length === 0) return;
 
-    // Only act with PROACTIVE_ACT_PROBABILITY chance
-    if (Math.random() > PROACTIVE_ACT_PROBABILITY) return;
+    const isEarly = elapsed < FOUNDATIONAL_PHASE_MINUTES;
+    const actProbability = isEarly ? PROACTIVE_ACT_PROBABILITY_EARLY : PROACTIVE_ACT_PROBABILITY;
+    if (Math.random() > actProbability) return;
 
     const agent = eligible[Math.floor(Math.random() * eligible.length)];
     const jitter = AGENT_JITTER_BASE_MS + Math.random() * AGENT_JITTER_RANGE_MS;
@@ -442,6 +447,14 @@ export class DemoAIAgentService {
       'AI agents: new inject cycle started',
     );
 
+    // Determine which teams this inject targets
+    const injectData = (event.data as Record<string, unknown>)?.inject as
+      | Record<string, unknown>
+      | undefined;
+    const targetTeams = (injectData?.target_teams as string[] | undefined) ?? [];
+    const injectScope = (injectData?.inject_scope as string) ?? 'universal';
+    const isUniversal = injectScope === 'universal' || targetTeams.length === 0;
+
     // Sequential agent responses: each agent waits for the previous to finish
     // so it can see what was already done and avoid duplicating actions.
     const agentEntries = Array.from(session.agents.entries());
@@ -452,6 +465,26 @@ export class DemoAIAgentService {
         const [, agentState] = agentEntries[i];
         if (!this.canAct(agentState, session)) continue;
         if (agentState.actedThisCycle) continue;
+
+        // Skip agents whose team is not targeted by this inject (unless universal)
+        if (!isUniversal) {
+          const teamLower = agentState.persona.teamName.toLowerCase();
+          const isTargeted = targetTeams.some((t) => {
+            const tl = t.toLowerCase();
+            return teamLower.includes(tl) || tl.includes(teamLower);
+          });
+          if (!isTargeted) {
+            logger.debug(
+              {
+                botUserId: agentState.persona.botUserId,
+                team: agentState.persona.teamName,
+                targetTeams,
+              },
+              'AI agent: skipping inject not targeted at this team',
+            );
+            continue;
+          }
+        }
 
         // Human-like delay before this agent responds
         const delay = AGENT_JITTER_BASE_MS + Math.random() * AGENT_JITTER_RANGE_MS;
@@ -969,6 +1002,23 @@ export class DemoAIAgentService {
     } else {
       parts.push(`New event: ${event.type}`);
       parts.push(JSON.stringify(event.data, null, 2).slice(0, 1200));
+    }
+
+    if (elapsed < FOUNDATIONAL_PHASE_MINUTES) {
+      parts.push(
+        '',
+        '## ⚠️ FOUNDATIONAL PHASE (first 8 minutes) — PRIORITY ACTIONS',
+        'You are still in the early stage of the exercise. Before responding to injects or doing anything else,',
+        'CHECK whether your team has completed these foundational tasks. If not, DO THEM NOW:',
+        '- CLAIM at least one exit/entry relevant to your jurisdiction',
+        '- PLACE a command post or staging area for your team',
+        '- ESTABLISH cordons/perimeters if you are Police/Security',
+        '- SET UP triage area if you are Medical/EMS',
+        '- IDENTIFY zones (hot/warm/cold) if you are Fire/HAZMAT',
+        '- PLACE barricades or assembly points if you are Evacuation',
+        'If these are not done, your performance score will be HEAVILY penalized.',
+        'Include at least ONE placement action with your decision.',
+      );
     }
 
     // Ground situation: casualties, hazards, claimable exits
@@ -1880,7 +1930,9 @@ export class DemoAIAgentService {
     if (agent.actedThisCycle && session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE)
       return false;
     const now = Date.now();
-    if (now - agent.lastActionTs < AGENT_THROTTLE_MS) return false;
+    const isEarly = this.getElapsedMinutes(session) < FOUNDATIONAL_PHASE_MINUTES;
+    const throttle = isEarly ? AGENT_THROTTLE_EARLY_MS : AGENT_THROTTLE_MS;
+    if (now - agent.lastActionTs < throttle) return false;
     if (session.scriptAware && session.scriptNextEventTs > 0) {
       if (session.scriptNextEventTs - now < HYBRID_DEFER_WINDOW_MS) return false;
     }
@@ -2204,6 +2256,34 @@ export class DemoAIAgentService {
         geometry: 'polygon',
         zoneOffset: 'cold',
         label: 'Cold Zone',
+      },
+      {
+        pattern: /(?<!inner\s)(?<!outer\s)cordon\b/i,
+        asset_type: 'outer_cordon',
+        geometry: 'polygon',
+        zoneOffset: 'cold',
+        label: 'Security Cordon',
+      },
+      {
+        pattern: /barricade|road\s*closure/i,
+        asset_type: 'roadblock',
+        geometry: 'point',
+        zoneOffset: 'cold',
+        label: 'Barricade',
+      },
+      {
+        pattern: /exclusion\s*zone|hazard\s*exclusion/i,
+        asset_type: 'hot_zone',
+        geometry: 'polygon',
+        zoneOffset: 'hot',
+        label: 'Exclusion Zone',
+      },
+      {
+        pattern: /evacuation\s*(holding|point|area|assembly)/i,
+        asset_type: 'assembly_point',
+        geometry: 'point',
+        zoneOffset: 'cold',
+        label: 'Evacuation Holding Area',
       },
       {
         pattern: /casualty\s*collection/i,

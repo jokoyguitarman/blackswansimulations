@@ -895,11 +895,18 @@ router.get(
         return merged;
       });
 
+      // Exclude hidden sighting pins — they appear only when their inject fires
+      const sightingFiltered = locRows.filter((row) => {
+        const conds = row.conditions as Record<string, unknown> | null;
+        if (conds?.sighting_status === 'hidden') return false;
+        return true;
+      });
+
       // Filter by visible_to_teams: if a pin has visible_to_teams set and the user is not a trainer,
       // exclude it unless one of the user's teams is in the array.
       const visFiltered = isTrainer
-        ? locRows
-        : locRows.filter((row) => {
+        ? sightingFiltered
+        : sightingFiltered.filter((row) => {
             const vis = row.visible_to_teams as string[] | null;
             if (!vis || vis.length === 0) return true;
             return userTeamNames.some((t) => vis.includes(t));
