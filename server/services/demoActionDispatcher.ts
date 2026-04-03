@@ -1101,7 +1101,32 @@ export class DemoActionDispatcher {
           .in('status', ['active', 'escalating']);
       }
 
-      // Broadcast demo.pin_response so spectator UI can animate the panel
+      // Fetch target coordinates for map zoom
+      let targetLat: number | null = null;
+      let targetLng: number | null = null;
+      if (payload.target_type === 'casualty') {
+        const { data: pin } = await supabaseAdmin
+          .from('scenario_casualties')
+          .select('location_lat, location_lng')
+          .eq('id', payload.target_id)
+          .single();
+        if (pin) {
+          targetLat = Number(pin.location_lat);
+          targetLng = Number(pin.location_lng);
+        }
+      } else {
+        const { data: pin } = await supabaseAdmin
+          .from('scenario_hazards')
+          .select('location_lat, location_lng')
+          .eq('id', payload.target_id)
+          .single();
+        if (pin) {
+          targetLat = Number(pin.location_lat);
+          targetLng = Number(pin.location_lng);
+        }
+      }
+
+      // Broadcast demo.pin_response so spectator UI can animate the panel and zoom map
       try {
         getWebSocketService().broadcastToSession(sessionId, {
           type: 'demo.pin_response',
@@ -1116,6 +1141,8 @@ export class DemoActionDispatcher {
             resources: payload.resources,
             triage_color: payload.triage_color || null,
             description: payload.description,
+            target_lat: targetLat,
+            target_lng: targetLng,
           },
           timestamp: new Date().toISOString(),
         });

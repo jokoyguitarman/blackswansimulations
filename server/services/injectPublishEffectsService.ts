@@ -12,6 +12,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { addObjectivePenalty } from './objectiveTrackingService.js';
 import { getWebSocketService } from './websocketService.js';
+import { updateTeamHeatMeter } from './heatMeterService.js';
 
 /**
  * Deep-merge helper: merge `inject_state_effects` on top of `current_state`.
@@ -430,6 +431,8 @@ async function evaluateContainment(
       },
       timestamp: new Date().toISOString(),
     });
+    // Penalize police/security heat meter for containment failure
+    await penalizeContainmentFailure(sessionId);
     logger.info({ sessionId, injectId, zoneLabel }, 'Containment test: no cordons found');
     return;
   }
@@ -497,7 +500,42 @@ async function evaluateContainment(
       },
       timestamp: new Date().toISOString(),
     });
+    // Penalize police/security heat meter for containment failure
+    await penalizeContainmentFailure(sessionId);
     logger.info({ sessionId, injectId, zoneLabel }, 'Containment test: breach — no cordon nearby');
+  }
+}
+
+/**
+ * Find the police/security team for this session and apply a heat penalty
+ * for failing to contain the adversary.
+ */
+async function penalizeContainmentFailure(sessionId: string): Promise<void> {
+  try {
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('scenario_id')
+      .eq('id', sessionId)
+      .single();
+    if (!session) return;
+
+    const { data: teams } = await supabaseAdmin
+      .from('scenario_teams')
+      .select('team_name')
+      .eq('scenario_id', session.scenario_id);
+
+    const policeTeam = (teams ?? []).find((t) => {
+      const n = (((t as Record<string, unknown>).team_name as string) || '').toLowerCase();
+      return n.includes('police') || n.includes('security') || n.includes('law');
+    });
+
+    const teamName = (policeTeam as Record<string, unknown>)?.team_name as string;
+    if (teamName) {
+      await updateTeamHeatMeter(sessionId, teamName, 'rejected');
+      logger.info({ sessionId, teamName }, 'Containment breach: police heat meter penalized');
+    }
+  } catch (err) {
+    logger.warn({ err, sessionId }, 'Failed to penalize police heat meter for containment breach');
   }
 }
 

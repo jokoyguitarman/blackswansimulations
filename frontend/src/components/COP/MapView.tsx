@@ -192,6 +192,8 @@ interface MapViewProps {
   scenarioType?: string;
   /** Session start time (ISO string) for computing elapsed time in markers. */
   sessionStartTime?: string;
+  /** Optional children rendered inside MapContainer (e.g. DemoMapAnimator). */
+  children?: React.ReactNode;
 }
 
 /**
@@ -478,6 +480,7 @@ export const MapView = ({
   bypassExitGate = false,
   scenarioType,
   sessionStartTime,
+  children,
 }: MapViewProps) => {
   const mapDisabledByEnv = import.meta.env.VITE_DISABLE_MAP === 'true';
   const isMapDisabled = disabled || mapDisabledByEnv;
@@ -1651,6 +1654,7 @@ export const MapView = ({
               }}
             />
           ))}
+          {children}
         </MapContainer>
       )}
 

@@ -564,6 +564,8 @@ import { CinematicOverlay } from '../components/Demo/CinematicOverlay';
 import { ActivityTicker } from '../components/Demo/ActivityTicker';
 import { TeamSpotlightOverlay } from '../components/Demo/TeamSpotlightOverlay';
 import { DemoPinResponseReplay } from '../components/Demo/DemoPinResponseReplay';
+import { DemoMetricsOverlay } from '../components/Demo/DemoMetricsOverlay';
+import { DemoMapAnimator } from '../components/Demo/DemoMapAnimator';
 
 interface Session {
   id: string;
@@ -1424,7 +1426,20 @@ export const SessionView = () => {
               ((session?.current_state as Record<string, unknown>)?.scenario_type as string) ??
               undefined
             }
-          />
+          >
+            <DemoMapAnimator
+              sessionId={id}
+              initialCenter={
+                session?.scenarios?.center_lat != null && session?.scenarios?.center_lng != null
+                  ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
+                      number,
+                      number,
+                    ])
+                  : [1.3521, 103.8198]
+              }
+              initialZoom={16}
+            />
+          </MapView>
         </div>
 
         {/* God View: Activity ticker sidebar */}
@@ -1442,6 +1457,15 @@ export const SessionView = () => {
 
         {/* Pin Response Replay (shows when bots interact with casualties/hazards) */}
         <DemoPinResponseReplay sessionId={id} />
+
+        {/* Heat Meter + Team Counters */}
+        <DemoMetricsOverlay
+          sessionId={id}
+          currentState={mergeInjectEffects(
+            (session?.current_state as Record<string, unknown>) ?? {},
+            session?.inject_state_effects,
+          )}
+        />
 
         {/* Top-left: DEMO badge + scenario name */}
         <div className="absolute top-4 left-4 z-[1000] flex items-center gap-3">
