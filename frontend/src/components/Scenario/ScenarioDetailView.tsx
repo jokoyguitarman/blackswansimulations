@@ -169,6 +169,40 @@ const SEVERITY_COLORS: Record<string, string> = {
   low: 'text-green-400 border-green-400',
 };
 
+function itemLabel(item: unknown): string {
+  if (typeof item === 'string') return item;
+  if (item == null) return '';
+  if (typeof item !== 'object') return String(item);
+  const obj = item as Record<string, unknown>;
+  const parts: string[] = [];
+  for (const key of [
+    'name',
+    'item',
+    'reason',
+    'action',
+    'label',
+    'type',
+    'role',
+    'condition',
+    'description',
+  ]) {
+    if (typeof obj[key] === 'string') {
+      parts.push(obj[key] as string);
+      break;
+    }
+  }
+  if (parts.length === 0)
+    parts.push(
+      Object.values(obj)
+        .filter((v) => typeof v === 'string')
+        .join(' — ') || JSON.stringify(obj),
+    );
+  for (const key of ['priority', 'intervention', 'detail', 'purpose']) {
+    if (typeof obj[key] === 'string') parts.push(`(${obj[key]})`);
+  }
+  return parts.join(' ');
+}
+
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <div className="mb-6">
     <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase tracking-widest mb-3 border-b border-robotic-yellow/20 pb-1">
@@ -2050,8 +2084,12 @@ const MapPinsTab = ({
                                   key={i}
                                   className="text-[10px] terminal-text bg-amber-900/30 text-amber-400 px-1.5 py-0.5 rounded border border-amber-400/30"
                                 >
-                                  {String(ppe.item ?? ppe)}
-                                  {ppe.mandatory ? ' *' : ''}
+                                  {itemLabel(ppe)}
+                                  {typeof ppe === 'object' &&
+                                  ppe != null &&
+                                  (ppe as Record<string, unknown>).mandatory
+                                    ? ' *'
+                                    : ''}
                                 </span>
                               ))}
                             </div>
@@ -2243,18 +2281,18 @@ const MapPinsTab = ({
                       )}
                       {/* Treatment Requirements */}
                       {Array.isArray(conds.treatment_requirements) &&
-                        (conds.treatment_requirements as string[]).length > 0 && (
+                        (conds.treatment_requirements as unknown[]).length > 0 && (
                           <div>
                             <div className="text-xs terminal-text text-green-400/80 uppercase mb-1 font-bold">
                               Treatment Requirements
                             </div>
                             <div className="flex flex-wrap gap-1.5">
-                              {(conds.treatment_requirements as string[]).map((req, i) => (
+                              {(conds.treatment_requirements as unknown[]).map((req, i) => (
                                 <span
                                   key={i}
                                   className="text-[10px] terminal-text bg-green-900/30 text-green-400 px-1.5 py-0.5 rounded border border-green-400/30"
                                 >
-                                  {req}
+                                  {itemLabel(req)}
                                 </span>
                               ))}
                             </div>
@@ -2262,18 +2300,18 @@ const MapPinsTab = ({
                         )}
                       {/* Transport Prerequisites */}
                       {Array.isArray(conds.transport_prerequisites) &&
-                        (conds.transport_prerequisites as string[]).length > 0 && (
+                        (conds.transport_prerequisites as unknown[]).length > 0 && (
                           <div>
                             <div className="text-xs terminal-text text-blue-400/80 uppercase mb-1 font-bold">
                               Transport Prerequisites
                             </div>
                             <div className="flex flex-wrap gap-1.5">
-                              {(conds.transport_prerequisites as string[]).map((req, i) => (
+                              {(conds.transport_prerequisites as unknown[]).map((req, i) => (
                                 <span
                                   key={i}
                                   className="text-[10px] terminal-text bg-blue-900/30 text-blue-400 px-1.5 py-0.5 rounded border border-blue-400/30"
                                 >
-                                  {req}
+                                  {itemLabel(req)}
                                 </span>
                               ))}
                             </div>
@@ -2281,18 +2319,18 @@ const MapPinsTab = ({
                         )}
                       {/* Contraindications */}
                       {Array.isArray(conds.contraindications) &&
-                        (conds.contraindications as string[]).length > 0 && (
+                        (conds.contraindications as unknown[]).length > 0 && (
                           <div>
                             <div className="text-xs terminal-text text-red-400/80 uppercase mb-1 font-bold">
                               Contraindications
                             </div>
                             <div className="flex flex-wrap gap-1.5">
-                              {(conds.contraindications as string[]).map((c2, i) => (
+                              {(conds.contraindications as unknown[]).map((c2, i) => (
                                 <span
                                   key={i}
                                   className="text-[10px] terminal-text bg-red-900/30 text-red-400 px-1.5 py-0.5 rounded border border-red-400/30"
                                 >
-                                  {c2}
+                                  {itemLabel(c2)}
                                 </span>
                               ))}
                             </div>
@@ -2300,18 +2338,18 @@ const MapPinsTab = ({
                         )}
                       {/* Required PPE */}
                       {Array.isArray(conds.required_ppe) &&
-                        (conds.required_ppe as string[]).length > 0 && (
+                        (conds.required_ppe as unknown[]).length > 0 && (
                           <div>
                             <div className="text-xs terminal-text text-amber-400/80 uppercase mb-1 font-bold">
                               Required PPE
                             </div>
                             <div className="flex flex-wrap gap-1.5">
-                              {(conds.required_ppe as string[]).map((ppe, i) => (
+                              {(conds.required_ppe as unknown[]).map((ppe, i) => (
                                 <span
                                   key={i}
                                   className="text-[10px] terminal-text bg-amber-900/30 text-amber-400 px-1.5 py-0.5 rounded border border-amber-400/30"
                                 >
-                                  {ppe}
+                                  {itemLabel(ppe)}
                                 </span>
                               ))}
                             </div>
@@ -3020,7 +3058,7 @@ const ConditionsSummary = ({ conditions }: { conditions?: Record<string, unknown
         <div key={key}>
           <span className="text-robotic-yellow/40">{key.replace(/_/g, ' ')}: </span>
           {Array.isArray(val) ? (
-            <span>{(val as string[]).join(', ')}</span>
+            <span>{(val as unknown[]).map((v) => itemLabel(v)).join(', ')}</span>
           ) : typeof val === 'boolean' ? (
             <span>{val ? 'yes' : 'no'}</span>
           ) : (
