@@ -14,7 +14,7 @@ import { getWebSocketService } from './websocketService.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { env } from '../env.js';
 import type { Server as IoServer } from 'socket.io';
-import type { PathwayOutcome } from './aiService.js';
+// PathwayOutcome type import removed — pathway system replaced by dynamic consequences
 
 export type MistakeType = 'vague' | 'contradiction' | 'prereq' | 'no_intel' | 'rejected' | 'good';
 
@@ -125,29 +125,19 @@ export function heatPercentageToRobustnessBand(heat: number): 'low' | 'medium' |
 }
 
 // ---------------------------------------------------------------------------
-// Immediate Pathway Outcome Selection
+// Dynamic Decision Consequence Generator
+// Replaces pre-generated pathway outcomes with on-the-fly consequence generation.
+// Uses the team's actual decision + robustness band + escalation factors to produce
+// a contextually accurate consequence inject every time.
 // ---------------------------------------------------------------------------
 
-function parseOutcomes(raw: PathwayOutcome[] | string | null | undefined): PathwayOutcome[] {
-  if (Array.isArray(raw)) return raw;
-  if (typeof raw === 'string') {
-    try {
-      const parsed = JSON.parse(raw) as PathwayOutcome[] | PathwayOutcome;
-      return Array.isArray(parsed) ? parsed : [parsed];
-    } catch {
-      return [];
-    }
-  }
-  return [];
-}
-
 /**
- * Select a matching pathway outcome based on heat-derived robustness band
- * and publish it immediately. Marks the row as consumed to avoid duplicates.
- * If decisionText is provided, checks relevance against the trigger inject —
- * decisions that miss the inject's point get downgraded to low band.
+ * Generate a consequence inject based on the team's actual decision and their
+ * current robustness (heat) band. Loads recent escalation factors for context
+ * and uses the LLM to produce a consequence that logically follows from what
+ * the team actually did (or failed to do).
  */
-export async function selectAndPublishPathwayOutcome(
+export async function generateDecisionConsequence(
   sessionId: string,
   teamName: string,
   heatPercentage: number,
@@ -156,265 +146,86 @@ export async function selectAndPublishPathwayOutcome(
   io: IoServer,
   decisionText?: string,
 ): Promise<void> {
-  try {
-    const { data: rows } = await supabaseAdmin
-      .from('session_pathway_outcomes')
-      .select('id, outcomes, trigger_inject_id')
-      .eq('session_id', sessionId)
-      .is('consumed_at', null)
-      .order('evaluated_at', { ascending: false });
-
-    if (!rows || rows.length === 0) return;
-
-    const typedRows = rows as Array<{
-      id: string;
-      outcomes: PathwayOutcome[] | string;
-      trigger_inject_id?: string;
-    }>;
-
-    let chosenRow: (typeof typedRows)[number] | null = null;
-
-    // First pass: prefer rows whose outcomes explicitly target this team
-    for (const row of typedRows) {
-      const outcomes = parseOutcomes(row.outcomes);
-      if (outcomes.length === 0) continue;
-      const scope = outcomes[0]?.inject_payload?.inject_scope ?? 'universal';
-      const targetTeams = (outcomes[0]?.inject_payload?.target_teams as string[] | null) ?? [];
-      if (
-        (scope === 'team_specific' || scope === 'team') &&
-        targetTeams.length > 0 &&
-        targetTeams.includes(teamName)
-      ) {
-        chosenRow = row;
-        break;
-      }
-    }
-
-    // Second pass: fall back to universal rows (no team-specific targeting)
-    if (!chosenRow) {
-      for (const row of typedRows) {
-        const outcomes = parseOutcomes(row.outcomes);
-        if (outcomes.length === 0) continue;
-        const scope = outcomes[0]?.inject_payload?.inject_scope ?? 'universal';
-        const targetTeams = (outcomes[0]?.inject_payload?.target_teams as string[] | null) ?? [];
-        if (scope !== 'team_specific' && scope !== 'team') {
-          chosenRow = row;
-          break;
-        }
-        // Also accept team_specific rows with empty target_teams (effectively universal)
-        if (targetTeams.length === 0) {
-          chosenRow = row;
-          break;
-        }
-      }
-    }
-    if (!chosenRow) return;
-
-    const outcomes = parseOutcomes(chosenRow.outcomes);
-    if (outcomes.length === 0) return;
-
-    let band = heatPercentageToRobustnessBand(heatPercentage);
-
-    // Relevance check: if the decision text doesn't address the trigger inject's
-    // core topic, downgrade to low band (escalation/consequence outcome).
-    if (decisionText && chosenRow.trigger_inject_id && band !== 'low') {
-      const relevanceMiss = await checkDecisionRelevance(
-        sessionId,
-        chosenRow.trigger_inject_id,
-        decisionText,
-      );
-      if (relevanceMiss) {
-        logger.info(
-          {
-            sessionId,
-            team: teamName,
-            triggerInjectId: chosenRow.trigger_inject_id,
-            reason: relevanceMiss,
-          },
-          'Pathway outcome: decision missed inject point — downgrading to low band',
-        );
-        band = 'low';
-      }
-    }
-
-    const matching = outcomes.filter((o) => o.robustness_band === band);
-    const toPublish =
-      matching.length > 0 ? matching[0] : outcomes[Math.floor(Math.random() * outcomes.length)];
-
-    // Contextual rewrite: if the team provided a decision, rewrite the pre-generated
-    // pathway inject so its narrative matches what the team actually did.
-    let finalTitle = toPublish.inject_payload.title;
-    let finalContent = toPublish.inject_payload.content;
-
-    if (decisionText) {
-      let triggerInjectTitle: string | undefined;
-      if (chosenRow.trigger_inject_id) {
-        const { data: trigInject } = await supabaseAdmin
-          .from('scenario_injects')
-          .select('title')
-          .eq('id', chosenRow.trigger_inject_id)
-          .maybeSingle();
-        triggerInjectTitle = (trigInject?.title as string) ?? undefined;
-      }
-
-      const rewritten = await rewritePathwayInjectForContext(
-        finalTitle,
-        finalContent,
-        decisionText,
-        teamName,
-        band,
-        triggerInjectTitle,
-      );
-      finalTitle = rewritten.title;
-      finalContent = rewritten.content;
-    }
-
-    const requiresResponse = band !== 'high';
-
-    const { data: createdInject, error: createError } = await supabaseAdmin
-      .from('scenario_injects')
-      .insert({
-        scenario_id: scenarioId,
-        session_id: sessionId,
-        trigger_time_minutes: null,
-        trigger_condition: null,
-        type: toPublish.inject_payload.type,
-        title: finalTitle,
-        content: finalContent,
-        severity: toPublish.inject_payload.severity,
-        affected_roles: toPublish.inject_payload.affected_roles ?? [],
-        inject_scope: toPublish.inject_payload.inject_scope ?? 'universal',
-        target_teams: toPublish.inject_payload.target_teams ?? null,
-        requires_response: requiresResponse,
-        requires_coordination: false,
-        ai_generated: true,
-        triggered_by_user_id: null,
-        generation_source: 'pathway_outcome',
-      })
-      .select()
-      .single();
-
-    if (createError || !createdInject) {
-      logger.warn(
-        { error: createError, sessionId, team: teamName },
-        'Pathway outcome inject insert failed',
-      );
-      return;
-    }
-
-    await publishInjectToSession(createdInject.id, sessionId, trainerId, io);
-
-    await supabaseAdmin
-      .from('session_pathway_outcomes')
-      .update({ consumed_at: new Date().toISOString() })
-      .eq('id', chosenRow.id);
-
-    logger.info(
-      {
-        sessionId,
-        team: teamName,
-        injectId: createdInject.id,
-        robustnessBand: band,
-        heatPercentage,
-        outcomeId: toPublish.outcome_id,
-        triggerInjectId: chosenRow.trigger_inject_id,
-      },
-      'Pathway outcome inject published (per-decision)',
-    );
-  } catch (err) {
-    logger.warn({ err, sessionId, team: teamName }, 'selectAndPublishPathwayOutcome failed');
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Decision-to-Inject Relevance Check
-// Returns a reason string if the decision misses the inject's point, or null if relevant.
-// ---------------------------------------------------------------------------
-
-const INJECT_TOPIC_SIGNATURES: Array<{
-  pattern: RegExp;
-  requiredInDecision: RegExp;
-  topic: string;
-}> = [
-  {
-    pattern:
-      /ambassador|consul|diplom|embassy|foreign (ministry|affairs|government)|ally.*government|international.*pressure/i,
-    requiredInDecision:
-      /liaison|brief|statement|report|communicate|update.*status|notify|consult|coordinate.*with|inform|respond.*to.*ambassador|diplomatic/i,
-    topic: 'diplomatic/stakeholder communication',
-  },
-  {
-    pattern:
-      /media.*approach|press.*approach|journalist|reporter|camera.*crew|photographer.*approach|broadcast.*team/i,
-    requiredInDecision:
-      /redirect|manage.*media|press.*perimete|media.*liaison|public.*information|escort.*press|media.*cordon|restrict.*access|brief.*media|media.*staging/i,
-    topic: 'media management',
-  },
-  {
-    pattern: /vip.*arriv|dignitar|minister.*arriv|official.*visit|high.*profile.*guest/i,
-    requiredInDecision:
-      /escort|security.*detail|brief|liaison|protocol|vip.*area|coordinate.*arrival/i,
-    topic: 'VIP/dignitary management',
-  },
-  {
-    pattern: /family.*notif|next.*of.*kin|relative.*inquir|family.*member.*asking|loved.*ones/i,
-    requiredInDecision:
-      /notif|family.*liaison|information.*center|welfare.*check|victim.*identification|reunif/i,
-    topic: 'family/next-of-kin notification',
-  },
-  {
-    pattern:
-      /public.*(outrage|anger|protest|complaint)|community.*concern|social.*media.*(backlash|viral)/i,
-    requiredInDecision:
-      /public.*statement|community.*liaison|address.*concern|calm|reassur|public.*information|transparent/i,
-    topic: 'public concern management',
-  },
-];
-
-// ---------------------------------------------------------------------------
-// Contextual Pathway Inject Rewrite
-// Rewrites a pre-generated pathway inject so its narrative matches the team's
-// actual decision while preserving the robustness band's tone.
-// ---------------------------------------------------------------------------
-
-async function rewritePathwayInjectForContext(
-  originalTitle: string,
-  originalContent: string,
-  decisionText: string,
-  teamName: string,
-  band: 'low' | 'medium' | 'high',
-  triggerInjectTitle?: string,
-): Promise<{ title: string; content: string }> {
   const apiKey = env.openAiApiKey;
-  if (!apiKey) return { title: originalTitle, content: originalContent };
+  if (!apiKey || !decisionText) return;
 
-  const toneGuide =
-    band === 'high'
-      ? 'POSITIVE: The team acted well. Describe a favourable outcome that flows logically from their specific action.'
-      : band === 'medium'
-        ? 'MIXED: The team made a reasonable effort but gaps remain. Describe a partial improvement with lingering challenges.'
-        : 'NEGATIVE: The team failed to act adequately. Describe a worsening situation that flows from their inadequate action or inaction.';
+  try {
+    const band = heatPercentageToRobustnessBand(heatPercentage);
 
-  const systemPrompt = `You rewrite crisis exercise pathway injects so they accurately reflect what the team actually did.
+    // Load recent escalation factors for situational context
+    const { data: factorRows } = await supabaseAdmin
+      .from('session_escalation_factors')
+      .select('factors, de_escalation_factors, target_team, trigger_inject_id')
+      .eq('session_id', sessionId)
+      .order('evaluated_at', { ascending: false })
+      .limit(3);
+
+    const relevantFactors = (factorRows ?? [])
+      .filter(
+        (r) =>
+          !(r as Record<string, unknown>).target_team ||
+          (r as Record<string, unknown>).target_team === teamName,
+      )
+      .slice(0, 2);
+
+    const factorSummary = relevantFactors
+      .flatMap((r) => {
+        const esc = (r.factors as Array<{ name?: string; description?: string }>) ?? [];
+        const deEsc =
+          (r.de_escalation_factors as Array<{ name?: string; description?: string }>) ?? [];
+        return [
+          ...esc.map((f) => `⬆ ${f.name}: ${f.description}`),
+          ...deEsc.map((f) => `⬇ ${f.name}: ${f.description}`),
+        ];
+      })
+      .slice(0, 8)
+      .join('\n');
+
+    // Load the most recent trigger inject for context
+    let triggerInjectContext = '';
+    const latestTriggerInjectId =
+      relevantFactors[0] && (relevantFactors[0] as Record<string, unknown>).trigger_inject_id;
+    if (latestTriggerInjectId) {
+      const { data: trigInject } = await supabaseAdmin
+        .from('scenario_injects')
+        .select('title, content')
+        .eq('id', latestTriggerInjectId as string)
+        .maybeSingle();
+      if (trigInject) {
+        triggerInjectContext = `\nTRIGGER INJECT: ${(trigInject.title as string) ?? ''}\n${((trigInject.content as string) ?? '').slice(0, 300)}`;
+      }
+    }
+
+    const toneGuide =
+      band === 'high'
+        ? 'POSITIVE — the team performed well. Describe a favourable in-world outcome that logically follows from their specific action. Acknowledge what they did right. The consequence should feel like a reward — reduced panic, improved coordination, lives saved, public confidence boosted.'
+        : band === 'medium'
+          ? 'MIXED — the team made a reasonable effort but with gaps. Describe a partial improvement with lingering challenges. Acknowledge the effort but highlight what was missed or incomplete. The situation improves somewhat but problems persist.'
+          : 'NEGATIVE — the team responded inadequately or missed the point. Describe a worsening in-world situation that flows directly from their poor decision. Be specific about what went wrong as a consequence. Panic increases, conditions deteriorate, coordination breaks down.';
+
+    const systemPrompt = `You are a crisis simulation consequence engine. Given a team's decision and the current situational context, generate a realistic in-world consequence inject.
 
 RULES:
-1. The rewritten inject must describe an outcome that LOGICALLY FOLLOWS from the team's actual decision — not from an imagined action they never took.
-2. Preserve the robustness tone: ${toneGuide}
-3. Keep the same length and style as the original (1-3 sentences, present tense, describing what is happening now as a consequence).
-4. Do NOT invent actions the team did not mention. Only reference what they actually decided.
-5. Return ONLY a JSON object: { "title": "...", "content": "..." }`;
+1. The consequence MUST logically follow from the team's ACTUAL decision — never invent actions they didn't take.
+2. Tone: ${toneGuide}
+3. Length: 2-4 sentences, present tense, describing what is NOW happening as a direct result.
+4. The consequence should feel like a natural development in the crisis, not an artificial game mechanic.
+5. Reference specific details from the decision (locations, personnel, equipment mentioned).
+6. The title should be 3-8 words summarising the consequence.
+7. Set severity: "low" for positive outcomes, "medium" for mixed, "high" for negative.
+8. Return ONLY valid JSON: { "title": "...", "content": "...", "severity": "low|medium|high" }`;
 
-  const userPrompt = `TEAM: ${teamName}
-${triggerInjectTitle ? `TRIGGER INJECT: ${triggerInjectTitle}` : ''}
-TEAM'S ACTUAL DECISION: ${decisionText.slice(0, 500)}
+    const userPrompt = `TEAM: ${teamName}
+ROBUSTNESS BAND: ${band} (heat: ${Math.round(heatPercentage)}%)
+${triggerInjectContext}
 
-PRE-GENERATED PATHWAY INJECT (does NOT match the decision — rewrite it):
-Title: ${originalTitle}
-Content: ${originalContent}
+TEAM'S ACTUAL DECISION:
+${decisionText.slice(0, 600)}
 
-Rewrite the inject so it describes an outcome that follows from the team's ACTUAL decision. Return JSON only.`;
+${factorSummary ? `CURRENT ESCALATION/DE-ESCALATION FACTORS:\n${factorSummary}` : ''}
 
-  try {
+Generate a consequence inject that describes what happens IN THE WORLD as a result of this team's decision. Return JSON only.`;
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -428,13 +239,13 @@ Rewrite the inject so it describes an outcome that follows from the team's ACTUA
           { role: 'user', content: userPrompt },
         ],
         temperature: 0.7,
-        max_tokens: 300,
+        max_tokens: 350,
       }),
     });
 
     if (!response.ok) {
-      logger.warn({ status: response.status }, 'Pathway rewrite: OpenAI API error');
-      return { title: originalTitle, content: originalContent };
+      logger.warn({ status: response.status }, 'Decision consequence: OpenAI API error');
+      return;
     }
 
     const json = (await response.json()) as {
@@ -445,52 +256,67 @@ Rewrite the inject so it describes an outcome that follows from the team's ACTUA
       .replace(/```json\s*/g, '')
       .replace(/```/g, '')
       .trim();
-    const parsed = JSON.parse(cleaned) as { title?: string; content?: string };
 
-    if (parsed.title && parsed.content) {
-      logger.info(
-        { teamName, band, originalTitle, rewrittenTitle: parsed.title },
-        'Pathway inject rewritten to match team decision context',
-      );
-      return { title: parsed.title, content: parsed.content };
+    let parsed: { title?: string; content?: string; severity?: string };
+    try {
+      parsed = JSON.parse(cleaned) as { title?: string; content?: string; severity?: string };
+    } catch {
+      logger.warn({ raw: cleaned.slice(0, 200) }, 'Decision consequence: failed to parse JSON');
+      return;
     }
-    return { title: originalTitle, content: originalContent };
-  } catch (err) {
-    logger.warn({ err }, 'Pathway rewrite failed — using original');
-    return { title: originalTitle, content: originalContent };
-  }
-}
 
-async function checkDecisionRelevance(
-  sessionId: string,
-  triggerInjectId: string,
-  decisionText: string,
-): Promise<string | null> {
-  try {
-    const { data: inject } = await supabaseAdmin
+    if (!parsed.title || !parsed.content) return;
+
+    const requiresResponse = band !== 'high';
+    const severity =
+      parsed.severity || (band === 'high' ? 'low' : band === 'medium' ? 'medium' : 'high');
+
+    const { data: createdInject, error: createError } = await supabaseAdmin
       .from('scenario_injects')
-      .select('title, content')
-      .eq('id', triggerInjectId)
-      .maybeSingle();
+      .insert({
+        scenario_id: scenarioId,
+        session_id: sessionId,
+        trigger_time_minutes: null,
+        trigger_condition: null,
+        type: band === 'high' ? 'pathway' : 'warroom',
+        title: parsed.title,
+        content: parsed.content,
+        severity,
+        affected_roles: [],
+        inject_scope: 'team_specific',
+        target_teams: [teamName],
+        requires_response: requiresResponse,
+        requires_coordination: false,
+        ai_generated: true,
+        triggered_by_user_id: null,
+        generation_source: 'decision_consequence',
+      })
+      .select()
+      .single();
 
-    if (!inject) return null;
-
-    const injectText = `${(inject.title as string) ?? ''} ${(inject.content as string) ?? ''}`;
-    const decLower = decisionText.toLowerCase();
-
-    for (const sig of INJECT_TOPIC_SIGNATURES) {
-      if (sig.pattern.test(injectText)) {
-        if (!sig.requiredInDecision.test(decLower)) {
-          return `Inject requires ${sig.topic}, but decision does not address it`;
-        }
-        return null;
-      }
+    if (createError || !createdInject) {
+      logger.warn(
+        { error: createError, sessionId, team: teamName },
+        'Decision consequence inject insert failed',
+      );
+      return;
     }
 
-    return null;
+    await publishInjectToSession(createdInject.id, sessionId, trainerId, io);
+
+    logger.info(
+      {
+        sessionId,
+        team: teamName,
+        injectId: createdInject.id,
+        robustnessBand: band,
+        heatPercentage,
+        title: parsed.title,
+      },
+      'Decision consequence inject published',
+    );
   } catch (err) {
-    logger.warn({ err, sessionId, triggerInjectId }, 'Decision relevance check failed');
-    return null;
+    logger.warn({ err, sessionId, team: teamName }, 'generateDecisionConsequence failed');
   }
 }
 

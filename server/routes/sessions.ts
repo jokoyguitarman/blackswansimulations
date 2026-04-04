@@ -13,7 +13,7 @@ import { snapshotFinalStateOnCompletion } from '../services/scenarioStateService
 import { loadAndApplyEnvironmentalState } from '../services/environmentalStateService.js';
 import { cloneScenarioPinsForSession } from '../services/sessionPinCloningService.js';
 import { getWebSocketService } from '../services/websocketService.js';
-import { identifyEscalationFactors, generateEscalationPathways } from '../services/aiService.js';
+import { identifyEscalationFactors } from '../services/aiService.js';
 import { generateScenarioMaps } from '../services/scenarioMapImageService.js';
 import { uploadScenarioMap } from '../lib/storage.js';
 import { env } from '../env.js';
@@ -1356,24 +1356,12 @@ router.patch(
             evaluated_at: new Date().toISOString(),
             factors: mergedFactors,
           });
-          const pathwaysResult = await generateEscalationPathways(
-            scenarioDescription,
-            currentState,
-            mergedFactors,
-            env.openAiApiKey,
-          );
-          await supabaseAdmin.from('session_escalation_pathways').insert({
-            session_id: id,
-            evaluated_at: new Date().toISOString(),
-            pathways: pathwaysResult.pathways,
-          });
           logger.info(
             {
               sessionId: id,
               factorCount: factorsResult.factors.length,
-              pathwayCount: pathwaysResult.pathways.length,
             },
-            'Initial escalation factors and pathways persisted at session start',
+            'Initial escalation factors persisted at session start',
           );
         } catch (escalationErr) {
           logger.warn(

@@ -8,7 +8,6 @@ import {
   computeDecisionsSummaryLine,
   type ThemeUsageByScope,
   type ThemeUsageEntry,
-  type PathwayOutcome,
 } from './aiService.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { env } from '../env.js';
@@ -180,16 +179,6 @@ async function applyEnvironmentalConsistencyCap(
     }
   }
   return { capped, capDetails };
-}
-
-/** When session has not_met gates, prefer escalation (low/medium) over de-escalation (high). */
-function effectiveRobustnessBand(
-  band: 'low' | 'medium' | 'high',
-  hasNotMetGates: boolean,
-): 'low' | 'medium' | 'high' {
-  if (!hasNotMetGates) return band;
-  if (band === 'high') return 'medium';
-  return band;
 }
 
 /**
@@ -605,21 +594,10 @@ export class AIInjectSchedulerService {
       description: string;
       severity: string;
     }> = [];
-    let escalationPathwaysSnapshot: Array<{
-      pathway_id: string;
-      trajectory: string;
-      trigger_behaviours: string[];
-    }> = [];
     let deEscalationFactorsSnapshot: Array<{
       id: string;
       name: string;
       description: string;
-    }> = [];
-    let deEscalationPathwaysSnapshot: Array<{
-      pathway_id: string;
-      trajectory: string;
-      mitigating_behaviours: string[];
-      emerging_challenges?: string[];
     }> = [];
     const { data: latestFactorsRow } = await supabaseAdmin
       .from('session_escalation_factors')
@@ -646,21 +624,6 @@ export class AIInjectSchedulerService {
         description: string;
         severity: string;
       }>;
-    }
-    const { data: latestPathwaysRow } = await supabaseAdmin
-      .from('session_escalation_pathways')
-      .select('pathways, de_escalation_pathways')
-      .eq('session_id', session.id)
-      .order('evaluated_at', { ascending: false })
-      .limit(1)
-      .single();
-    if (latestPathwaysRow) {
-      escalationPathwaysSnapshot = Array.isArray(latestPathwaysRow.pathways)
-        ? latestPathwaysRow.pathways
-        : [];
-      deEscalationPathwaysSnapshot = Array.isArray(latestPathwaysRow.de_escalation_pathways)
-        ? latestPathwaysRow.de_escalation_pathways
-        : [];
     }
 
     // Latest impact matrix/factors for inject generation (Checkpoint 8)
@@ -731,7 +694,7 @@ export class AIInjectSchedulerService {
             env.openAiApiKey,
             scenarioContext,
             escalationFactorsSnapshot.length > 0 ? escalationFactorsSnapshot : undefined,
-            escalationPathwaysSnapshot.length > 0 ? escalationPathwaysSnapshot : undefined,
+            undefined, // pathways removed — consequences generated per-decision
             Object.keys(responseTaxonomy).length > 0 ? responseTaxonomy : undefined,
             formattedInjects.length > 0 ? formattedInjects : undefined,
             impactTeamDoctrines,
@@ -939,204 +902,62 @@ export class AIInjectSchedulerService {
       latestRobustnessByDecision: latestRobustnessByDecision ?? undefined,
       escalationFactors:
         escalationFactorsSnapshot.length > 0 ? escalationFactorsSnapshot : undefined,
-      escalationPathways:
-        escalationPathwaysSnapshot.length > 0 ? escalationPathwaysSnapshot : undefined,
       deEscalationFactors:
         deEscalationFactorsSnapshot.length > 0 ? deEscalationFactorsSnapshot : undefined,
-      deEscalationPathways:
-        deEscalationPathwaysSnapshot.length > 0 ? deEscalationPathwaysSnapshot : undefined,
       responseTaxonomy: Object.keys(responseTaxonomy).length > 0 ? responseTaxonomy : undefined,
     });
-
-    // When session has not_met gates, bias outcome selection toward escalation (low/medium) over high
-    const { data: notMetGates } = await supabaseAdmin
-      .from('session_gate_progress')
-      .select('gate_id')
-      .eq('session_id', session.id)
-      .eq('status', 'not_met')
-      .limit(1);
-    const hasNotMetGates = (notMetGates?.length ?? 0) > 0;
 
     // Teams that had actionable incidents (requires_response: true) in the lookback window
     const teamsWithActionable = await teamsWithActionableIncidents(session.id, lookbackIso);
 
-    // Load unconsumed pathway outcome rows from the lookback window
-    const { data: pathwayOutcomesRows } = await supabaseAdmin
-      .from('session_pathway_outcomes')
-      .select('id, outcomes, trigger_inject_id, evaluated_at')
-      .eq('session_id', session.id)
-      .gte('evaluated_at', lookbackIso)
-      .is('consumed_at', null)
-      .order('evaluated_at', { ascending: true });
-
-    const rows = (pathwayOutcomesRows ?? []) as Array<{
-      id: string;
-      outcomes: PathwayOutcome[] | string;
-      trigger_inject_id?: string;
-      evaluated_at?: string;
-    }>;
-    const maxPathwayOutcomesPerCycle = 5;
-    const rowsToProcess = rows.slice(0, maxPathwayOutcomesPerCycle);
-
-    function parseOutcomes(raw: PathwayOutcome[] | string | null | undefined): PathwayOutcome[] {
-      if (Array.isArray(raw)) return raw;
-      if (typeof raw === 'string') {
-        try {
-          const parsed = JSON.parse(raw) as PathwayOutcome[] | PathwayOutcome;
-          return Array.isArray(parsed) ? parsed : [parsed];
-        } catch {
-          return [];
-        }
-      }
-      return [];
-    }
-
-    const hasPathwayOutcomes = rowsToProcess.some((r) => parseOutcomes(r.outcomes).length > 0);
-
     const generatedThisCycle: Array<{ title: string; content: string }> = [];
 
     if (formattedDecisions.length > 0) {
-      // Pathway outcomes now fire per-decision (via selectAndPublishPathwayOutcome in decisions.ts).
-      // Fallback AI inject generation when no pathway outcomes were pre-generated (e.g. first cycle).
-      if (!hasPathwayOutcomes) {
-        if (env.openAiApiKey) {
-          await supabaseAdmin.from('session_events').insert({
-            session_id: session.id,
-            event_type: 'ai_step_start',
-            description: 'AI: Generating injects from decisions…',
-            actor_id: null,
-            metadata: { step: 'inject_generation' },
-          });
-        }
-        const universalResult = await this.generateUniversalInject(
-          session,
-          baseContext,
-          formattedDecisions,
-        );
-        if (universalResult) generatedThisCycle.push(universalResult);
-        for (const teamName of teamsWithMembers) {
-          const teamDecisions = formattedDecisions.filter((d) => d.team === teamName);
-          if (teamDecisions.length > 0) {
-            const teamResult = await this.generateTeamSpecificInject(
-              session,
-              baseContext,
-              teamName,
-              teamDecisions,
-              generatedThisCycle,
-            );
-            if (teamResult) generatedThisCycle.push(teamResult);
-          }
-        }
-        if (env.openAiApiKey) {
-          await supabaseAdmin.from('session_events').insert({
-            session_id: session.id,
-            event_type: 'ai_step_end',
-            description: 'AI: Injects generated',
-            actor_id: null,
-            metadata: { step: 'inject_generation' },
-          });
+      // Decision consequences now fire per-decision via generateDecisionConsequence
+      // in decisions.ts / demoActionDispatcher.ts. Here we generate supplementary
+      // situation-development injects based on overall team activity.
+      if (env.openAiApiKey) {
+        await supabaseAdmin.from('session_events').insert({
+          session_id: session.id,
+          event_type: 'ai_step_start',
+          description: 'AI: Generating injects from decisions…',
+          actor_id: null,
+          metadata: { step: 'inject_generation' },
+        });
+      }
+      const universalResult = await this.generateUniversalInject(
+        session,
+        baseContext,
+        formattedDecisions,
+      );
+      if (universalResult) generatedThisCycle.push(universalResult);
+      for (const teamName of teamsWithMembers) {
+        const teamDecisions = formattedDecisions.filter((d) => d.team === teamName);
+        if (teamDecisions.length > 0) {
+          const teamResult = await this.generateTeamSpecificInject(
+            session,
+            baseContext,
+            teamName,
+            teamDecisions,
+            generatedThisCycle,
+          );
+          if (teamResult) generatedThisCycle.push(teamResult);
         }
       }
+      if (env.openAiApiKey) {
+        await supabaseAdmin.from('session_events').insert({
+          session_id: session.id,
+          event_type: 'ai_step_end',
+          description: 'AI: Injects generated',
+          actor_id: null,
+          metadata: { step: 'inject_generation' },
+        });
+      }
     } else {
-      // No decisions in 5-minute window: punish inaction (pathway outcome or inaction inject)
+      // No decisions in 5-minute window: punish inaction
       // Skip penalty if no team had actionable incidents – they had nothing to respond to
       const anyTeamHadActionable = teamsWithActionable.size > 0;
-      if (hasPathwayOutcomes && anyTeamHadActionable) {
-        const robustnessBand = effectiveRobustnessBand('low', hasNotMetGates);
-        if (!this.io) {
-          const { io } = await import('../index.js');
-          this.io = io;
-        }
-
-        // Deduplicate: at most one inaction inject per team (or one universal)
-        const inactionTeamsCovered = new Set<string>();
-        let universalInactionPublished = false;
-
-        for (const row of rowsToProcess) {
-          const outcomes = parseOutcomes(row.outcomes);
-          if (outcomes.length === 0) continue;
-          const firstOutcome = outcomes[0];
-          const targetTeamsRow = (firstOutcome?.inject_payload?.target_teams as string[]) ?? [];
-          const isTeamSpecific =
-            (firstOutcome?.inject_payload?.inject_scope as string) === 'team_specific' &&
-            targetTeamsRow.length > 0;
-          const targetHadActionable =
-            !isTeamSpecific || targetTeamsRow.some((t) => teamsWithActionable.has(t));
-          if (!targetHadActionable) continue;
-
-          // Skip if we already published an inaction inject for this team/scope
-          if (!isTeamSpecific && universalInactionPublished) continue;
-          if (isTeamSpecific && targetTeamsRow.every((t) => inactionTeamsCovered.has(t))) continue;
-
-          const matching = outcomes.filter((o) => o.robustness_band === robustnessBand);
-          const inactionOutcome =
-            matching.length > 0
-              ? matching.find((o) => o.consequence_for_inaction === true)
-              : undefined;
-          const toPublish =
-            inactionOutcome ??
-            (matching.length > 0
-              ? matching[0]
-              : outcomes[Math.floor(Math.random() * outcomes.length)]);
-          const { data: createdInject, error: createError } = await supabaseAdmin
-            .from('scenario_injects')
-            .insert({
-              scenario_id: session.scenario_id,
-              session_id: session.id,
-              trigger_time_minutes: null,
-              trigger_condition: null,
-              type: toPublish.inject_payload.type,
-              title: toPublish.inject_payload.title,
-              content: toPublish.inject_payload.content,
-              severity: toPublish.inject_payload.severity,
-              affected_roles: toPublish.inject_payload.affected_roles ?? [],
-              inject_scope: toPublish.inject_payload.inject_scope ?? 'universal',
-              target_teams: toPublish.inject_payload.target_teams ?? null,
-              requires_response: true,
-              requires_coordination: false,
-              ai_generated: true,
-              triggered_by_user_id: null,
-              generation_source: 'inaction_penalty',
-            })
-            .select()
-            .single();
-          if (!createError && createdInject) {
-            await publishInjectToSession(
-              createdInject.id,
-              session.id,
-              session.trainer_id,
-              this.io!,
-            );
-            await supabaseAdmin
-              .from('session_pathway_outcomes')
-              .update({ consumed_at: new Date().toISOString() })
-              .eq('id', row.id);
-            if (!isTeamSpecific) universalInactionPublished = true;
-            for (const t of targetTeamsRow) inactionTeamsCovered.add(t);
-            logger.info(
-              {
-                sessionId: session.id,
-                injectId: createdInject.id,
-                robustnessBand,
-                outcomeId: toPublish.outcome_id,
-                trigger_inject_id: row.trigger_inject_id,
-              },
-              'Pathway outcome inject published (inaction, low band)',
-            );
-          } else {
-            logger.warn(
-              {
-                error: createError,
-                sessionId: session.id,
-                trigger_inject_id: row.trigger_inject_id,
-              },
-              'Failed to create outcome inject for row (inaction), continuing',
-            );
-          }
-        }
-        // When hasPathwayOutcomes but !anyTeamHadActionable: skip penalty (teams had nothing to respond to)
-      } else if (!hasPathwayOutcomes) {
-        // No pathway outcomes: generate one universal inaction inject via AI
+      if (anyTeamHadActionable) {
         if (env.openAiApiKey) {
           await supabaseAdmin.from('session_events').insert({
             session_id: session.id,

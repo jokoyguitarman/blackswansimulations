@@ -1,26 +1,23 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
-import {
-  identifyEscalationFactors,
-  identifyDeEscalationFactors,
-  generateEscalationPathways,
-  generateDeEscalationPathways,
-  generatePathwayOutcomeInjects,
-} from './aiService.js';
+import { identifyEscalationFactors, identifyDeEscalationFactors } from './aiService.js';
 import { env } from '../env.js';
 
 /**
- * Run pathway outcomes generation when an inject is published.
- * Identifies factors and pathways from the just-published inject, generates outcome injects
- * (worst to best by robustness band), and stores them for the next 5-min cycle to match and publish.
- * Called fire-and-forget from publishInjectToSession.
+ * Run escalation/de-escalation factor identification when an inject is published.
+ * Factors are stored and used as context for the dynamic decision consequence system
+ * (generateDecisionConsequence in heatMeterService.ts).
+ *
+ * Pathway generation and pre-generated outcome injects have been removed —
+ * consequences are now generated on-the-fly per decision based on the actual
+ * decision text + robustness band + these stored factors.
  */
 export async function runPathwayOutcomesOnInjectPublished(
   sessionId: string,
   injectId: string,
 ): Promise<void> {
   if (!env.openAiApiKey) {
-    logger.debug({ sessionId, injectId }, 'No OpenAI key; skipping pathway outcomes');
+    logger.debug({ sessionId, injectId }, 'No OpenAI key; skipping factor identification');
     return;
   }
 
@@ -28,9 +25,9 @@ export async function runPathwayOutcomesOnInjectPublished(
     await supabaseAdmin.from('session_events').insert({
       session_id: sessionId,
       event_type: 'ai_step_start',
-      description: 'AI: Generating pathway outcomes from published inject…',
+      description: 'AI: Identifying escalation factors from published inject…',
       actor_id: null,
-      metadata: { step: 'pathway_outcomes', inject_id: injectId },
+      metadata: { step: 'escalation_factors', inject_id: injectId },
     });
   } catch {
     // non-fatal
@@ -44,7 +41,7 @@ export async function runPathwayOutcomesOnInjectPublished(
       .single();
 
     if (sessionError || !session) {
-      logger.warn({ error: sessionError, sessionId }, 'Pathway outcomes: session not found');
+      logger.warn({ error: sessionError, sessionId }, 'Factor identification: session not found');
       return;
     }
 
@@ -57,7 +54,7 @@ export async function runPathwayOutcomesOnInjectPublished(
     if (injectError || !inject) {
       logger.warn(
         { error: injectError, injectId, sessionId },
-        'Pathway outcomes: inject not found',
+        'Factor identification: inject not found',
       );
       return;
     }
@@ -104,21 +101,7 @@ export async function runPathwayOutcomesOnInjectPublished(
       }),
     );
 
-    // Bad-branch context: session has not_met gates → bias AI toward escalation
-    const { data: notMetProgress } = await supabaseAdmin
-      .from('session_gate_progress')
-      .select('gate_id')
-      .eq('session_id', sessionId)
-      .eq('status', 'not_met');
-    const notMetGateIds = (notMetProgress ?? []).map((r: { gate_id: string }) => r.gate_id);
-    const badBranchContext =
-      notMetGateIds.length > 0
-        ? `Session is on the bad branch for gate(s): [${notMetGateIds.join(', ')}]. Bias toward escalation and ongoing consequences; avoid suggesting improvement unless decisions are concrete and specific.`
-        : '';
-    const scenarioDescriptionWithContext =
-      (scenario?.description ?? '') +
-      layoutContext +
-      (badBranchContext ? '\n\n' + badBranchContext : '');
+    const scenarioDescription = (scenario?.description ?? '') + layoutContext;
 
     const singleInjectContext = [
       {
@@ -127,7 +110,6 @@ export async function runPathwayOutcomesOnInjectPublished(
         content: inject.content,
       },
     ];
-    const justPublishedInject = singleInjectContext[0] ?? null;
 
     const triggerScope = (inject as { inject_scope?: string | null }).inject_scope;
     const triggerTargetTeams = (inject as { target_teams?: string[] | null }).target_teams;
@@ -136,9 +118,6 @@ export async function runPathwayOutcomesOnInjectPublished(
       Array.isArray(triggerTargetTeams) &&
       triggerTargetTeams.length > 0;
 
-    // For universal / all-teams injects, generate per-team pathway batches
-    // so each team is evaluated independently against factors relevant to
-    // their domain. For team-specific injects, run once with team focus.
     let teamsToProcess: string[];
     if (isTeamSpecific) {
       teamsToProcess = triggerTargetTeams!;
@@ -162,29 +141,19 @@ export async function runPathwayOutcomesOnInjectPublished(
         }>)
       : [];
 
-    const pathwayUsageSummary = await buildPathwayUsageSummary(sessionId);
-    const sessionStartTime = (session as { start_time?: string | null }).start_time;
-    const elapsedMinutes =
-      sessionStartTime != null
-        ? Math.floor((Date.now() - new Date(sessionStartTime).getTime()) / (1000 * 60))
-        : 0;
-    const upcomingPremadeThemes =
-      sessionStartTime != null
-        ? await buildUpcomingPremadeThemes(session.scenario_id, elapsedMinutes)
-        : '';
-
-    let totalOutcomeCount = 0;
-
     for (const teamName of teamsToProcess) {
       const isSingleTeamFallback = teamName === 'all';
       const teamFocusContext = isSingleTeamFallback
         ? undefined
-        : `This inject targets the ${teamName} team specifically. All factors, pathways, and outcome injects must relate exclusively to this team's domain, responsibilities, and potential actions or failures. Do not generate factors, pathways, or outcomes about other teams' domains.`;
+        : `This inject targets the ${teamName} team specifically. All factors must relate exclusively to this team's domain, responsibilities, and potential actions or failures.`;
 
-      logger.info({ sessionId, injectId, team: teamName }, 'Pathway outcomes: generating for team');
+      logger.info(
+        { sessionId, injectId, team: teamName },
+        'Identifying escalation factors for team',
+      );
 
       const factorsResult = await identifyEscalationFactors(
-        scenarioDescriptionWithContext,
+        scenarioDescription,
         (session.current_state as Record<string, unknown>) ?? {},
         objectivesForFactors,
         singleInjectContext,
@@ -200,7 +169,7 @@ export async function runPathwayOutcomesOnInjectPublished(
       let deEscalationFactors: Array<{ id: string; name: string; description: string }> = [];
       try {
         const deEscResult = await identifyDeEscalationFactors(
-          scenarioDescriptionWithContext,
+          scenarioDescription,
           (session.current_state as Record<string, unknown>) ?? {},
           objectivesForFactors,
           singleInjectContext,
@@ -212,75 +181,9 @@ export async function runPathwayOutcomesOnInjectPublished(
       } catch (deEscErr) {
         logger.warn(
           { error: deEscErr, sessionId, team: teamName },
-          'Pathway outcomes: de-escalation factors failed, continuing',
+          'De-escalation factors failed, continuing',
         );
       }
-
-      const pathwaysResult = await generateEscalationPathways(
-        scenarioDescriptionWithContext,
-        (session.current_state as Record<string, unknown>) ?? {},
-        mergedFactors,
-        justPublishedInject,
-        env.openAiApiKey,
-        teamFocusContext,
-      );
-
-      let deEscalationPathways: Array<{
-        pathway_id: string;
-        trajectory: string;
-        mitigating_behaviours: string[];
-        emerging_challenges?: string[];
-      }> = [];
-      try {
-        const dePathResult = await generateDeEscalationPathways(
-          scenarioDescriptionWithContext,
-          (session.current_state as Record<string, unknown>) ?? {},
-          pathwaysResult.pathways,
-          deEscalationFactors,
-          justPublishedInject,
-          env.openAiApiKey,
-          teamFocusContext,
-        );
-        deEscalationPathways = dePathResult.pathways;
-      } catch (dePathErr) {
-        logger.warn(
-          { error: dePathErr, sessionId, team: teamName },
-          'Pathway outcomes: de-escalation pathways failed, continuing',
-        );
-      }
-
-      const outcomeResult = await generatePathwayOutcomeInjects(
-        scenarioDescriptionWithContext,
-        { type: inject.type, title: inject.title, content: inject.content },
-        pathwaysResult.pathways,
-        deEscalationPathways,
-        pathwayUsageSummary,
-        env.openAiApiKey,
-        upcomingPremadeThemes || undefined,
-        teamFocusContext,
-      );
-
-      // Tag every outcome as team_specific so the selection logic in
-      // heatMeterService and aiInjectSchedulerService routes them only
-      // to the correct team.
-      const targetTeamsForRow = isSingleTeamFallback ? null : [teamName];
-      for (const outcome of outcomeResult.outcomes) {
-        if (outcome.inject_payload) {
-          if (!isSingleTeamFallback) {
-            outcome.inject_payload.inject_scope = 'team_specific';
-            outcome.inject_payload.target_teams = targetTeamsForRow;
-          }
-        }
-      }
-
-      const factorsSnapshot = {
-        escalation: mergedFactors,
-        de_escalation: deEscalationFactors,
-      };
-      const pathwaysSnapshot = {
-        escalation: pathwaysResult.pathways,
-        de_escalation: deEscalationPathways,
-      };
 
       await supabaseAdmin.from('session_escalation_factors').insert({
         session_id: sessionId,
@@ -291,122 +194,32 @@ export async function runPathwayOutcomesOnInjectPublished(
         de_escalation_factors: deEscalationFactors,
       });
 
-      await supabaseAdmin.from('session_escalation_pathways').insert({
-        session_id: sessionId,
-        evaluated_at: new Date().toISOString(),
-        trigger_inject_id: injectId,
-        target_team: isSingleTeamFallback ? null : teamName,
-        pathways: pathwaysResult.pathways,
-        de_escalation_pathways: deEscalationPathways,
-      });
-
-      await supabaseAdmin.from('session_pathway_outcomes').insert({
-        session_id: sessionId,
-        trigger_inject_id: injectId,
-        evaluated_at: new Date().toISOString(),
-        factors_snapshot: factorsSnapshot,
-        pathways_snapshot: pathwaysSnapshot,
-        outcomes: outcomeResult.outcomes,
-      });
-
-      totalOutcomeCount += outcomeResult.outcomes.length;
-
       logger.info(
-        { sessionId, injectId, team: teamName, outcomeCount: outcomeResult.outcomes.length },
-        'Pathway outcomes generated for team',
+        {
+          sessionId,
+          injectId,
+          team: teamName,
+          escalationCount: mergedFactors.length,
+          deEscalationCount: deEscalationFactors.length,
+        },
+        'Escalation factors identified and stored for team',
       );
     }
 
     logger.info(
-      {
-        sessionId,
-        injectId,
-        teamsProcessed: teamsToProcess,
-        totalOutcomeCount,
-      },
-      'Pathway outcomes generated and stored for all teams',
+      { sessionId, injectId, teamsProcessed: teamsToProcess },
+      'Escalation factors identified for all teams',
     );
 
     await supabaseAdmin.from('session_events').insert({
       session_id: sessionId,
       event_type: 'ai_step_end',
-      description: 'AI: Pathway outcomes generated',
+      description: 'AI: Escalation factors identified',
       actor_id: null,
-      metadata: { step: 'pathway_outcomes', inject_id: injectId },
+      metadata: { step: 'escalation_factors', inject_id: injectId },
     });
   } catch (err) {
-    logger.error({ err, sessionId, injectId }, 'Pathway outcomes on inject publish failed');
+    logger.error({ err, sessionId, injectId }, 'Factor identification on inject publish failed');
     throw err;
-  }
-}
-
-async function buildUpcomingPremadeThemes(
-  scenarioId: string,
-  elapsedMinutes: number,
-): Promise<string> {
-  try {
-    const { data: injects } = await supabaseAdmin
-      .from('scenario_injects')
-      .select('title')
-      .eq('scenario_id', scenarioId)
-      .not('trigger_time_minutes', 'is', null)
-      .gt('trigger_time_minutes', elapsedMinutes)
-      .lte('trigger_time_minutes', elapsedMinutes + 15)
-      .or('ai_generated.is.null,ai_generated.eq.false')
-      .order('trigger_time_minutes', { ascending: true });
-
-    if (!injects?.length) return '';
-    const titles = injects
-      .map((i) => (i as { title?: string }).title)
-      .filter((t): t is string => typeof t === 'string' && t.length > 0);
-    return titles.join('; ');
-  } catch {
-    return '';
-  }
-}
-
-async function buildPathwayUsageSummary(sessionId: string): Promise<string | undefined> {
-  try {
-    const { data: pathwayRows } = await supabaseAdmin
-      .from('session_escalation_pathways')
-      .select('pathways, de_escalation_pathways')
-      .eq('session_id', sessionId)
-      .order('evaluated_at', { ascending: false })
-      .limit(5);
-
-    const { data: outcomeRows } = await supabaseAdmin
-      .from('session_pathway_outcomes')
-      .select('pathways_snapshot')
-      .eq('session_id', sessionId)
-      .order('evaluated_at', { ascending: false })
-      .limit(5);
-
-    const themes: string[] = [];
-    const addTrajectories = (pathways: Array<{ trajectory?: string; pathway_id?: string }>) => {
-      for (const p of pathways || []) {
-        if (p.trajectory) themes.push(p.trajectory.slice(0, 80));
-      }
-    };
-
-    for (const row of pathwayRows || []) {
-      const pathways = row.pathways as Array<{ trajectory?: string }> | null;
-      const dePathways = row.de_escalation_pathways as Array<{ trajectory?: string }> | null;
-      if (pathways) addTrajectories(pathways);
-      if (dePathways) addTrajectories(dePathways);
-    }
-    for (const row of outcomeRows || []) {
-      const snap = row.pathways_snapshot as {
-        escalation?: Array<{ trajectory?: string }>;
-        de_escalation?: Array<{ trajectory?: string }>;
-      } | null;
-      if (snap?.escalation) addTrajectories(snap.escalation);
-      if (snap?.de_escalation) addTrajectories(snap.de_escalation);
-    }
-
-    if (themes.length === 0) return undefined;
-    const unique = [...new Set(themes)].slice(0, 10);
-    return unique.join('; ');
-  } catch {
-    return undefined;
   }
 }

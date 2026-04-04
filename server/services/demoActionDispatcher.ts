@@ -14,7 +14,7 @@ import { evaluateAllObjectivesForSession } from './objectiveTrackingService.js';
 import { evaluateDecisionBasedTriggers } from './injectTriggerService.js';
 import {
   updateTeamHeatMeter,
-  selectAndPublishPathwayOutcome,
+  generateDecisionConsequence,
   nudgePublicSentiment,
 } from './heatMeterService.js';
 import { evaluateDecisionAgainstEnvironment } from './environmentalConsistencyService.js';
@@ -647,15 +647,17 @@ export class DemoActionDispatcher {
       try {
         const { heat_percentage } = await updateTeamHeatMeter(sessionId, teamName, mistakeType, io);
 
-        // Pathway outcome injects (escalation when heat is high)
+        // Dynamic consequence inject based on actual decision
         if (sessionScenarioId && sessionTrainerId && io) {
-          await selectAndPublishPathwayOutcome(
+          const decisionTextForConsequence = `${title ?? ''} ${description ?? ''}`.trim();
+          await generateDecisionConsequence(
             sessionId,
             teamName,
             heat_percentage,
             sessionScenarioId,
             sessionTrainerId,
             io,
+            decisionTextForConsequence || undefined,
           );
         }
 

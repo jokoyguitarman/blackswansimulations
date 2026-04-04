@@ -23,7 +23,7 @@ import {
 import { evaluateStateEffectManagementAndUpdateState } from '../services/stateEffectManagementService.js';
 import {
   updateTeamHeatMeter,
-  selectAndPublishPathwayOutcome,
+  generateDecisionConsequence,
   nudgePublicSentiment,
 } from '../services/heatMeterService.js';
 import { applyDecisionCasualtyEffects } from '../services/decisionCasualtyEffectsService.js';
@@ -1243,15 +1243,15 @@ async function processExecutedDecisionInBackground(
         );
 
         if (sessionScenarioId && sessionTrainerId && io) {
-          const decisionTextForRelevance = `${(decision.title as string) ?? ''} ${(decision.description as string) ?? ''}`;
-          await selectAndPublishPathwayOutcome(
+          const decisionTextForConsequence = `${(decision.title as string) ?? ''} ${(decision.description as string) ?? ''}`;
+          await generateDecisionConsequence(
             sessionId,
             authorTeamNames[0],
             heat_percentage,
             sessionScenarioId,
             sessionTrainerId,
             io,
-            decisionTextForRelevance,
+            decisionTextForConsequence,
           );
         }
 
