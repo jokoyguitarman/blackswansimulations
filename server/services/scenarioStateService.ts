@@ -455,9 +455,12 @@ export async function updateTeamStateFromDecision(
       const teamToStateKey = (name: string): string => {
         const n = (name ?? '').toLowerCase();
         if (/evacuation|evac/.test(n)) return 'evacuation_state';
-        if (/triage/.test(n)) return 'triage_state';
-        if (/media/.test(n)) return 'media_state';
-        return `${n.replace(/\s+/g, '_')}_state`;
+        if (/triage|medical/.test(n)) return 'triage_state';
+        if (/media|communi/.test(n)) return 'media_state';
+        if (/fire|hazmat/.test(n)) return 'fire_state';
+        if (/pursuit|investigation|police|intelligence/.test(n)) return 'pursuit_state';
+        if (/bomb|eod|explosive/.test(n)) return 'bomb_squad_state';
+        return `${n.replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}_state`;
       };
 
       // Collect all candidate keys across all author teams for a single AI call

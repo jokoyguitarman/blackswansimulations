@@ -553,6 +553,278 @@
         "behavior": "state_effect",
         "visible_to": "all"
       }
+    ],
+    "Pursuit & Investigation": [
+      {
+        "key": "outer_cordon_set",
+        "label": "Outer Cordon Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["cordon", "perimeter", "outer", "secure"]
+        }
+      },
+      {
+        "key": "traffic_control_active",
+        "label": "Traffic Control Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["traffic", "diversion", "road", "access route"]
+        }
+      },
+      {
+        "key": "public_order_units",
+        "label": "Public Order Units Deployed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ],
+    "Medical Triage": [
+      {
+        "key": "total_patients",
+        "label": "Total Patients",
+        "type": "number",
+        "initial_value": 200,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "triage_processed",
+        "label": "Patients Processed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "trainer_only",
+        "config": {
+          "base_rate_per_min": 10,
+          "cap_key": "total_patients",
+          "robustness_affects": true,
+          "robustness_low_mult": 0.4,
+          "robustness_high_mult": 1.3,
+          "impact_sensitive": true,
+          "rate_modifier_key": "treatment_rate_modifier"
+        }
+      },
+      {
+        "key": "treatment_rate_modifier",
+        "label": "Treatment Rate Modifier",
+        "type": "number",
+        "initial_value": 1,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "patients_being_treated",
+        "label": "Patients Being Treated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all",
+        "config": {
+          "source_pool_key": "total_patients",
+          "rate_key": "triage_processed",
+          "split_fractions": {
+            "deaths_on_site": 0.08,
+            "handed_over_to_hospital": 0.5
+          },
+          "split_fractions_low": {
+            "deaths_on_site": 0.2,
+            "handed_over_to_hospital": 0.25
+          },
+          "split_fractions_high": {
+            "deaths_on_site": 0.03,
+            "handed_over_to_hospital": 0.65
+          }
+        }
+      },
+      {
+        "key": "patients_waiting",
+        "label": "Patients Waiting",
+        "type": "number",
+        "initial_value": 200,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "handed_over_to_hospital",
+        "label": "Handed Over to Hospital",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "deaths_on_site",
+        "label": "Deaths on Site",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "supply_request_made",
+        "label": "Supply Request Made",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["supply", "request", "stretcher", "oxygen", "equipment"]
+        }
+      }
+    ],
+    "Media & Communications": [
+      {
+        "key": "public_sentiment",
+        "label": "Public Sentiment",
+        "type": "number",
+        "initial_value": 4,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "media_protocol_score",
+        "label": "Protocol Adherence",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "statements_issued",
+        "label": "Statements Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "pa_announcement_made",
+        "label": "PA Announcement Made",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["PA", "loudspeaker", "public address", "broadcast", "announce"]
+        }
+      },
+      {
+        "key": "unaddressed_misinformation_count",
+        "label": "Unaddressed Misinformation",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "victim_dignity_respected",
+        "label": "Victim Dignity Respected",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": [
+            "no names",
+            "family first",
+            "notify family",
+            "victim dignity",
+            "do not release names"
+          ]
+        }
+      }
+    ],
+    "Evacuation": [
+      {
+        "key": "total_evacuees",
+        "label": "Total Evacuees",
+        "type": "number",
+        "initial_value": 5000,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "evacuated_count",
+        "label": "People Evacuated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 50,
+          "cap_key": "total_evacuees",
+          "requires_flag": "flow_control_decided",
+          "robustness_affects": true,
+          "congestion_halves": true,
+          "impact_sensitive": true,
+          "rate_modifier_key": "evac_rate_modifier",
+          "marshal_boost_key": "marshals_deployed",
+          "marshal_boost_mult": 1.2
+        }
+      },
+      {
+        "key": "evac_rate_modifier",
+        "label": "Evacuation Rate Modifier",
+        "type": "number",
+        "initial_value": 1,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "flow_control_decided",
+        "label": "Flow Control Decided",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["flow", "bottleneck", "stagger", "egress", "congestion", "route"]
+        }
+      },
+      {
+        "key": "marshals_deployed",
+        "label": "Marshals / Stewards Deployed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["marshal", "steward", "guide", "warden", "usher"]
+        }
+      },
+      {
+        "key": "alternative_routes_opened",
+        "label": "Alternative Routes Opened",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["alternative", "secondary", "route", "service entrance", "back gate"]
+        }
+      }
     ]
   }
 }

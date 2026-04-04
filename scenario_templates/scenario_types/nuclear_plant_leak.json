@@ -774,6 +774,387 @@
           "keywords": ["30 min", "60 min", "next update", "regular updates", "update every"]
         }
       }
+    ],
+    "Pursuit & Investigation": [
+      {
+        "key": "exclusion_zone_enforced",
+        "label": "Exclusion Zone Enforced",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["exclusion", "cordon", "perimeter", "restrict", "zone", "enforce"]
+        }
+      },
+      {
+        "key": "traffic_management_active",
+        "label": "Traffic Management Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["traffic", "divert", "route", "roadblock", "contraflow", "junction"]
+        }
+      },
+      {
+        "key": "access_control_points",
+        "label": "Access Control Points",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "anti_looting_patrols",
+        "label": "Anti-Looting Patrols Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["looting", "patrol", "security", "vacant", "abandoned"]
+        }
+      }
+    ],
+    "Medical Triage": [
+      {
+        "key": "total_patients",
+        "label": "Total Patients",
+        "type": "number",
+        "initial_value": 200,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "contamination_screened",
+        "label": "Contamination Screened",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 10,
+          "cap_key": "total_patients",
+          "robustness_affects": true,
+          "requires_flag": "screening_active"
+        }
+      },
+      {
+        "key": "screening_active",
+        "label": "Screening Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["screen", "monitor", "geiger", "survey", "contamination check"]
+        }
+      },
+      {
+        "key": "triage_processed",
+        "label": "Patients Triaged",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "trainer_only",
+        "config": {
+          "base_rate_per_min": 5,
+          "cap_key": "total_patients",
+          "robustness_affects": true,
+          "robustness_low_mult": 0.4,
+          "robustness_high_mult": 1.2,
+          "impact_sensitive": true,
+          "rate_modifier_key": "treatment_rate_modifier"
+        }
+      },
+      {
+        "key": "treatment_rate_modifier",
+        "label": "Treatment Rate Modifier",
+        "type": "number",
+        "initial_value": 1,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "patients_being_treated",
+        "label": "Patients Being Treated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all",
+        "config": {
+          "source_pool_key": "total_patients",
+          "rate_key": "triage_processed",
+          "split_fractions": {
+            "deaths_on_site": 0.05,
+            "handed_over_to_hospital": 0.55
+          },
+          "split_fractions_low": {
+            "deaths_on_site": 0.15,
+            "handed_over_to_hospital": 0.25
+          },
+          "split_fractions_high": {
+            "deaths_on_site": 0.02,
+            "handed_over_to_hospital": 0.7
+          }
+        }
+      },
+      {
+        "key": "patients_waiting",
+        "label": "Patients Waiting",
+        "type": "number",
+        "initial_value": 200,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "handed_over_to_hospital",
+        "label": "Handed Over to Hospital",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "deaths_on_site",
+        "label": "Deaths on Site",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "ars_cases_identified",
+        "label": "ARS Cases Identified",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "internal_contamination_assessed",
+        "label": "Internal Contamination Assessed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["internal", "bioassay", "whole body", "thyroid scan", "ingestion"]
+        }
+      }
+    ],
+    "Media & Communications": [
+      {
+        "key": "public_sentiment",
+        "label": "Public Sentiment",
+        "type": "number",
+        "initial_value": 4,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "media_protocol_score",
+        "label": "Protocol Adherence",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "statements_issued",
+        "label": "Statements Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release", "advisory"]
+        }
+      },
+      {
+        "key": "misinformation_addressed_count",
+        "label": "Misinformation Addressed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["debunk", "counter", "correct", "misinformation"]
+        }
+      },
+      {
+        "key": "unaddressed_misinformation_count",
+        "label": "Unaddressed Misinformation",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release", "advisory"]
+        }
+      },
+      {
+        "key": "ines_level_declared",
+        "label": "INES Level Declared",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": [
+            "INES",
+            "level",
+            "declare",
+            "classification",
+            "nuclear scale",
+            "international"
+          ]
+        }
+      },
+      {
+        "key": "evacuation_advisory_issued",
+        "label": "Evacuation Advisory Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["evacuation advisory", "public warning", "leave area", "shelter advisory"]
+        }
+      },
+      {
+        "key": "victim_dignity_respected",
+        "label": "Victim Dignity Respected",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": [
+            "no names",
+            "family first",
+            "notify family",
+            "victim dignity",
+            "do not release names"
+          ]
+        }
+      },
+      {
+        "key": "regular_updates_planned",
+        "label": "Regular Updates Planned",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["30 min", "60 min", "next update", "regular updates", "update every"]
+        }
+      }
+    ],
+    "Evacuation": [
+      {
+        "key": "total_evacuees",
+        "label": "Total to Evacuate",
+        "type": "number",
+        "initial_value": 15000,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "evacuated_count",
+        "label": "People Evacuated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 80,
+          "cap_key": "total_evacuees",
+          "requires_flag": "evacuation_ordered",
+          "robustness_affects": true,
+          "congestion_halves": true,
+          "impact_sensitive": true,
+          "rate_modifier_key": "evac_rate_modifier",
+          "marshal_boost_key": "marshals_deployed",
+          "marshal_boost_mult": 1.15
+        }
+      },
+      {
+        "key": "evac_rate_modifier",
+        "label": "Evacuation Rate Modifier",
+        "type": "number",
+        "initial_value": 1,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "evacuation_ordered",
+        "label": "Evacuation Ordered",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["evacuate", "evacuation", "clear", "move out", "bus"]
+        }
+      },
+      {
+        "key": "shelter_in_place_ordered",
+        "label": "Shelter-in-Place Ordered",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["shelter", "stay indoors", "shelter in place", "seal windows"]
+        }
+      },
+      {
+        "key": "ki_distribution_ordered",
+        "label": "KI Distribution Ordered",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["iodine", "KI", "potassium iodide", "tablets", "thyroid"]
+        }
+      },
+      {
+        "key": "ki_tablets_distributed",
+        "label": "KI Tablets Distributed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 50,
+          "cap_key": "total_evacuees",
+          "requires_flag": "ki_distribution_ordered",
+          "robustness_affects": true
+        }
+      },
+      {
+        "key": "marshals_deployed",
+        "label": "Marshals / Traffic Wardens Deployed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["marshal", "warden", "guide", "traffic", "usher"]
+        }
+      }
     ]
   }
 }

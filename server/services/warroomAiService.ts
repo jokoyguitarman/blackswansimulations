@@ -6547,12 +6547,49 @@ export async function warroomGenerateScenario(
   // Attach counter definitions to teams (AI-generated or template fallback)
   const effectiveDefsMap = counterDefsMap ?? loadTemplateCounterDefs(input.scenario_type);
   if (effectiveDefsMap) {
+    // Fuzzy-match template keys (old names like "police","triage","media")
+    // to new canonical team names ("Pursuit & Investigation","Medical Triage",etc.)
+    const fuzzyMatchTemplateDefs = (
+      teamName: string,
+      defsMap: Record<string, CounterDefinition[]>,
+    ): CounterDefinition[] | undefined => {
+      const tn = teamName.toLowerCase();
+      // Exact match first
+      if (defsMap[teamName]?.length) return defsMap[teamName];
+      if (defsMap[tn]?.length) return defsMap[tn];
+      // Case-insensitive exact
+      const ciMatch = Object.entries(defsMap).find(([k]) => k.toLowerCase() === tn);
+      if (ciMatch?.[1]?.length) return ciMatch[1];
+      // Fuzzy: map canonical team names to likely template keys
+      const fuzzyMap: Array<{ pattern: RegExp; templateKeys: string[] }> = [
+        { pattern: /evacuation|evac/i, templateKeys: ['evacuation'] },
+        { pattern: /triage|medical/i, templateKeys: ['triage', 'medical', 'ems', 'ambulance'] },
+        { pattern: /media|communi/i, templateKeys: ['media', 'communications'] },
+        { pattern: /fire|hazmat/i, templateKeys: ['fire', 'hazmat', 'fire_safety'] },
+        {
+          pattern: /pursuit|investigation|police|intelligence/i,
+          templateKeys: ['police', 'pursuit', 'investigation', 'intelligence'],
+        },
+        {
+          pattern: /bomb|eod|explosive/i,
+          templateKeys: ['bomb_squad', 'bomb', 'eod', 'explosives'],
+        },
+      ];
+      for (const fm of fuzzyMap) {
+        if (fm.pattern.test(tn)) {
+          for (const tk of fm.templateKeys) {
+            if (defsMap[tk]?.length) return defsMap[tk];
+          }
+        }
+      }
+      // Substring match as last resort
+      return Object.entries(defsMap).find(
+        ([k]) => tn.includes(k.toLowerCase()) || k.toLowerCase().includes(tn),
+      )?.[1];
+    };
+
     for (const team of phase1.teams) {
-      const n = team.team_name.toLowerCase();
-      const defs =
-        effectiveDefsMap[team.team_name] ??
-        effectiveDefsMap[n] ??
-        Object.entries(effectiveDefsMap).find(([k]) => k.toLowerCase() === n)?.[1];
+      const defs = fuzzyMatchTemplateDefs(team.team_name, effectiveDefsMap);
       if (defs?.length) {
         team.counter_definitions = defs;
       }

@@ -462,6 +462,238 @@
         "behavior": "derived",
         "visible_to": "all"
       }
+    ],
+    "Pursuit & Investigation": [
+      {
+        "key": "perimeter_established",
+        "label": "Perimeter Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["perimeter", "cordon", "secure", "contain", "lockdown"]
+        }
+      },
+      {
+        "key": "tactical_team_ready",
+        "label": "Tactical Team Ready",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["tactical", "armed", "ready", "breach", "assault"]
+        }
+      },
+      {
+        "key": "armed_units",
+        "label": "Armed Units",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "route_blocked",
+        "label": "Route Blocked",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["route", "block", "divert", "intercept", "roadblock"]
+        }
+      }
+    ],
+    "Medical Triage": [
+      {
+        "key": "total_patients",
+        "label": "Total Patients",
+        "type": "number",
+        "initial_value": 160,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "triage_processed",
+        "label": "Patients Processed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "trainer_only",
+        "config": {
+          "base_rate_per_min": 8,
+          "cap_key": "total_patients",
+          "robustness_affects": true,
+          "robustness_low_mult": 0.5,
+          "robustness_high_mult": 1.25,
+          "impact_sensitive": true,
+          "rate_modifier_key": "treatment_rate_modifier"
+        }
+      },
+      {
+        "key": "treatment_rate_modifier",
+        "label": "Treatment Rate Modifier",
+        "type": "number",
+        "initial_value": 1,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "patients_being_treated",
+        "label": "Patients Being Treated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all",
+        "config": {
+          "source_pool_key": "total_patients",
+          "rate_key": "triage_processed",
+          "split_fractions": {
+            "deaths_on_site": 0.1,
+            "handed_over_to_hospital": 0.45
+          },
+          "split_fractions_low": {
+            "deaths_on_site": 0.2,
+            "handed_over_to_hospital": 0.25
+          },
+          "split_fractions_high": {
+            "deaths_on_site": 0.05,
+            "handed_over_to_hospital": 0.6
+          }
+        }
+      },
+      {
+        "key": "patients_waiting",
+        "label": "Patients Waiting",
+        "type": "number",
+        "initial_value": 160,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "handed_over_to_hospital",
+        "label": "Handed Over to Hospital",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "deaths_on_site",
+        "label": "Deaths on Site",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      },
+      {
+        "key": "medical_standby",
+        "label": "Medical Standby Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["standby", "medical", "ambulance", "triage", "prepare"]
+        }
+      },
+      {
+        "key": "casualties",
+        "label": "Casualties",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "derived",
+        "visible_to": "all"
+      }
+    ],
+    "Media & Communications": [
+      {
+        "key": "public_sentiment",
+        "label": "Public Sentiment",
+        "type": "number",
+        "initial_value": 5,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "media_protocol_score",
+        "label": "Protocol Adherence",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "statements_issued",
+        "label": "Statements Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "misinformation_addressed_count",
+        "label": "Misinformation Addressed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["debunk", "counter", "correct", "misinformation", "rumour"]
+        }
+      },
+      {
+        "key": "unaddressed_misinformation_count",
+        "label": "Unaddressed Misinformation",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "victim_dignity_respected",
+        "label": "Victim Dignity Respected",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": [
+            "no names",
+            "family first",
+            "notify family",
+            "victim dignity",
+            "do not release names"
+          ]
+        }
+      },
+      {
+        "key": "regular_updates_planned",
+        "label": "Regular Updates Planned",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["30 min", "60 min", "next update", "regular updates", "update every"]
+        }
+      }
     ]
   }
 }

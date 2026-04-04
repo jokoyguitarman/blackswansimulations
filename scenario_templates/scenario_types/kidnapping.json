@@ -439,6 +439,174 @@
           "keywords": ["medical plan", "hostage health", "condition assessment", "psychological"]
         }
       }
+    ],
+    "Pursuit & Investigation": [
+      {
+        "key": "perimeter_established",
+        "label": "Perimeter Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["perimeter", "cordon", "secure", "contain"]
+        }
+      },
+      {
+        "key": "tactical_team_ready",
+        "label": "Tactical Team Ready",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["tactical", "assault team", "ready", "standby"]
+        }
+      },
+      {
+        "key": "armed_units",
+        "label": "Armed Units Deployed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "pursuit_teams_deployed",
+        "label": "Pursuit Teams Deployed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["pursuit", "search team", "tracking", "deploy"]
+        }
+      }
+    ],
+    "Medical Triage": [
+      {
+        "key": "medical_standby_ready",
+        "label": "Medical Standby Ready",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["medical", "standby", "paramedic", "ambulance", "ready"]
+        }
+      },
+      {
+        "key": "hostage_medical_plan",
+        "label": "Hostage Medical Plan Prepared",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["medical plan", "hostage health", "condition assessment", "psychological"]
+        }
+      }
+    ],
+    "Media & Communications": [
+      {
+        "key": "public_sentiment",
+        "label": "Public Sentiment",
+        "type": "number",
+        "initial_value": 5,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "media_blackout_active",
+        "label": "Media Blackout Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["blackout", "suppress", "embargo", "no media", "media ban"]
+        }
+      },
+      {
+        "key": "family_liaison_appointed",
+        "label": "Family Liaison Appointed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["family", "liaison", "next of kin", "relative"]
+        }
+      },
+      {
+        "key": "statements_issued",
+        "label": "Statements Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "misinformation_addressed_count",
+        "label": "Misinformation Addressed",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["debunk", "counter", "correct", "misinformation", "rumour"]
+        }
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["statement", "press", "announce", "release"]
+        }
+      },
+      {
+        "key": "unaddressed_misinformation_count",
+        "label": "Unaddressed Misinformation",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "victim_dignity_respected",
+        "label": "Victim Dignity Respected",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": [
+            "no names",
+            "family first",
+            "notify family",
+            "victim dignity",
+            "do not release names"
+          ]
+        }
+      },
+      {
+        "key": "regular_updates_planned",
+        "label": "Regular Updates Planned",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["30 min", "60 min", "next update", "regular updates", "update every"]
+        }
+      }
     ]
   }
 }

@@ -353,6 +353,171 @@
           "keywords": ["assess", "damage", "inspect", "structural"]
         }
       }
+    ],
+    "Pursuit & Investigation": [
+      {
+        "key": "perimeter_established",
+        "label": "Perimeter Established",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["perimeter", "cordon", "secure", "lockdown"]
+        }
+      },
+      {
+        "key": "armed_units",
+        "label": "Armed Units",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      }
+    ],
+    "Media & Communications": [
+      {
+        "key": "public_sentiment",
+        "label": "Public Sentiment",
+        "type": "number",
+        "initial_value": 5,
+        "behavior": "state_effect",
+        "visible_to": "all"
+      },
+      {
+        "key": "media_protocol_score",
+        "label": "Protocol Adherence",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "statements_issued",
+        "label": "Statements Issued",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "decision_increment",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["statement", "press", "announce", "advisory"]
+        }
+      },
+      {
+        "key": "first_statement_issued",
+        "label": "First Statement Issued",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["statement", "press", "announce", "advisory"]
+        }
+      },
+      {
+        "key": "unaddressed_misinformation_count",
+        "label": "Unaddressed Misinformation",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "victim_dignity_respected",
+        "label": "Victim Dignity Respected",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": [
+            "no names",
+            "family first",
+            "notify family",
+            "victim dignity",
+            "do not release names"
+          ]
+        }
+      },
+      {
+        "key": "regular_updates_planned",
+        "label": "Regular Updates Planned",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "trainer_only",
+        "config": {
+          "keywords": ["30 min", "60 min", "next update", "regular updates", "update every"]
+        }
+      }
+    ],
+    "Evacuation": [
+      {
+        "key": "total_evacuees",
+        "label": "Total to Evacuate",
+        "type": "number",
+        "initial_value": 500,
+        "behavior": "static",
+        "visible_to": "all"
+      },
+      {
+        "key": "evacuated_count",
+        "label": "Evacuated",
+        "type": "number",
+        "initial_value": 0,
+        "behavior": "time_rate",
+        "visible_to": "all",
+        "config": {
+          "base_rate_per_min": 30,
+          "cap_key": "total_evacuees",
+          "requires_flag": "evacuation_ordered",
+          "robustness_affects": true,
+          "rate_modifier_key": "evac_rate_modifier",
+          "marshal_boost_key": "marshals_deployed",
+          "marshal_boost_mult": 1.15
+        }
+      },
+      {
+        "key": "evac_rate_modifier",
+        "label": "Evacuation Rate Modifier",
+        "type": "number",
+        "initial_value": 1,
+        "behavior": "state_effect",
+        "visible_to": "trainer_only"
+      },
+      {
+        "key": "evacuation_ordered",
+        "label": "Evacuation Ordered",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["evacuate", "evacuation", "clear", "move out"]
+        }
+      },
+      {
+        "key": "shelter_in_place",
+        "label": "Shelter-in-Place Active",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["shelter", "stay indoors", "shelter in place"]
+        }
+      },
+      {
+        "key": "marshals_deployed",
+        "label": "Marshals / Stewards Deployed",
+        "type": "boolean",
+        "initial_value": false,
+        "behavior": "decision_toggle",
+        "visible_to": "all",
+        "config": {
+          "keywords": ["marshal", "steward", "guide", "warden", "usher", "crowd marshal"]
+        }
+      }
     ]
   }
 }
