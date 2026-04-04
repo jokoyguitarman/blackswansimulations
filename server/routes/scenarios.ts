@@ -1256,11 +1256,9 @@ router.post('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) => 
     if (pin_type === 'location') {
       const locType = (data.location_type as string) || '';
       if (BLOCKED_LOCATION_TYPES.has(locType)) {
-        return res
-          .status(400)
-          .json({
-            error: `Location type "${locType}" is responder infrastructure and cannot be manually added`,
-          });
+        return res.status(400).json({
+          error: `Location type "${locType}" is responder infrastructure and cannot be manually added`,
+        });
       }
 
       const row = {
@@ -1318,9 +1316,9 @@ router.post('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) => 
         const lat = Number(data.lat);
         const lng = Number(data.lng);
         const blastRadii = [
-          { radius_m: 50, zone_type: 'blast_lethal', label: 'Lethal Blast Zone (50m)' },
-          { radius_m: 100, zone_type: 'blast_severe', label: 'Severe Injury Zone (100m)' },
-          { radius_m: 150, zone_type: 'blast_fragment', label: 'Shrapnel Zone (150m)' },
+          { radius_m: 50, zone_type: 'blast_lethal', label: 'Lethal Blast Zone (~164 ft)' },
+          { radius_m: 100, zone_type: 'blast_severe', label: 'Severe Injury Zone (~328 ft)' },
+          { radius_m: 150, zone_type: 'blast_fragment', label: 'Shrapnel Zone (~492 ft)' },
         ];
         for (const br of blastRadii) {
           await supabaseAdmin.from('scenario_locations').insert({

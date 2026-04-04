@@ -1107,6 +1107,494 @@ async function checkInfrastructureStatus(
   return { ready: missing.length === 0, placed, missing };
 }
 
+/** Meters-per-degree constant (approximate at equator; good enough for offsets). */
+const METERS_PER_DEG = 111_000;
+
+/**
+ * Generate a random coordinate within the specified zone ring around the incident center.
+ * - 'hot': within hotZoneRadius of center
+ * - 'warm': between hotZoneRadius and warmZoneRadius
+ * - 'cold': between warmZoneRadius and coldZoneRadius
+ * - 'boundary': near the hot/warm zone boundary
+ */
+function randomCoordInZone(
+  center: { lat: number; lng: number },
+  zone: string,
+  metrics: ScenarioMetrics,
+): { lat: number; lng: number } {
+  let minR: number;
+  let maxR: number;
+
+  switch (zone) {
+    case 'hot':
+      minR = 0;
+      maxR = metrics.hotZoneRadius;
+      break;
+    case 'warm':
+      minR = metrics.hotZoneRadius;
+      maxR = metrics.warmZoneRadius;
+      break;
+    case 'cold':
+      minR = metrics.warmZoneRadius;
+      maxR = metrics.coldZoneRadius;
+      break;
+    case 'boundary':
+      minR = Math.max(0, metrics.hotZoneRadius - 20);
+      maxR = metrics.hotZoneRadius + 20;
+      break;
+    default:
+      minR = metrics.warmZoneRadius;
+      maxR = metrics.coldZoneRadius;
+  }
+
+  const radiusM = minR + Math.random() * (maxR - minR);
+  const bearing = Math.random() * 2 * Math.PI;
+  const offsetDeg = radiusM / METERS_PER_DEG;
+
+  return {
+    lat: center.lat + offsetDeg * Math.cos(bearing),
+    lng: center.lng + offsetDeg * Math.sin(bearing),
+  };
+}
+
+/** Clamp a cordon radius_deg to 50m–100m range. */
+function clampCordonRadius(radiusDeg: number): number {
+  const minDeg = 50 / METERS_PER_DEG; // ~0.00045
+  const maxDeg = 100 / METERS_PER_DEG; // ~0.0009
+  return Math.max(minDeg, Math.min(maxDeg, radiusDeg));
+}
+
+/** Infrastructure patterns shared between placement extraction paths. */
+const INFRASTRUCTURE_PATTERNS: Array<{
+  pattern: RegExp;
+  asset_type: string;
+  geometry: 'point' | 'polygon';
+  zoneOffset: 'hot' | 'warm' | 'cold';
+  label: string;
+}> = [
+  {
+    pattern: /command\s*post/i,
+    asset_type: 'command_post',
+    geometry: 'point',
+    zoneOffset: 'cold',
+    label: 'Command Post',
+  },
+  {
+    pattern: /triage\s*(tent|point|area|station)/i,
+    asset_type: 'triage_point',
+    geometry: 'point',
+    zoneOffset: 'warm',
+    label: 'Triage Point',
+  },
+  {
+    pattern: /field\s*hospital/i,
+    asset_type: 'field_hospital',
+    geometry: 'point',
+    zoneOffset: 'cold',
+    label: 'Field Hospital',
+  },
+  {
+    pattern: /assembly\s*(point|area)/i,
+    asset_type: 'assembly_point',
+    geometry: 'point',
+    zoneOffset: 'cold',
+    label: 'Assembly Point',
+  },
+  {
+    pattern: /decon(tamination)?\s*(corridor|zone|area|station)/i,
+    asset_type: 'decontamination_zone',
+    geometry: 'point',
+    zoneOffset: 'warm',
+    label: 'Decon Zone',
+  },
+  {
+    pattern: /staging\s*(area|point|zone)/i,
+    asset_type: 'staging_area',
+    geometry: 'polygon',
+    zoneOffset: 'cold',
+    label: 'Staging Area',
+  },
+  {
+    pattern: /inner\s*cordon/i,
+    asset_type: 'inner_cordon',
+    geometry: 'polygon',
+    zoneOffset: 'hot',
+    label: 'Inner Cordon',
+  },
+  {
+    pattern: /outer\s*cordon/i,
+    asset_type: 'outer_cordon',
+    geometry: 'polygon',
+    zoneOffset: 'cold',
+    label: 'Outer Cordon',
+  },
+  {
+    pattern: /media\s*(staging|area|point|zone)/i,
+    asset_type: 'press_cordon',
+    geometry: 'polygon',
+    zoneOffset: 'cold',
+    label: 'Media Staging Area',
+  },
+  {
+    pattern: /hot\s*zone/i,
+    asset_type: 'hot_zone',
+    geometry: 'polygon',
+    zoneOffset: 'hot',
+    label: 'Hot Zone',
+  },
+  {
+    pattern: /warm\s*zone/i,
+    asset_type: 'warm_zone',
+    geometry: 'polygon',
+    zoneOffset: 'warm',
+    label: 'Warm Zone',
+  },
+  {
+    pattern: /cold\s*zone/i,
+    asset_type: 'cold_zone',
+    geometry: 'polygon',
+    zoneOffset: 'cold',
+    label: 'Cold Zone',
+  },
+  {
+    pattern: /(?<!inner\s)(?<!outer\s)cordon\b/i,
+    asset_type: 'outer_cordon',
+    geometry: 'polygon',
+    zoneOffset: 'cold',
+    label: 'Security Cordon',
+  },
+  {
+    pattern: /barricade|road\s*closure/i,
+    asset_type: 'roadblock',
+    geometry: 'point',
+    zoneOffset: 'cold',
+    label: 'Barricade',
+  },
+  {
+    pattern: /exclusion\s*zone|hazard\s*exclusion/i,
+    asset_type: 'hot_zone',
+    geometry: 'polygon',
+    zoneOffset: 'hot',
+    label: 'Exclusion Zone',
+  },
+  {
+    pattern: /evacuation\s*(holding|point|area|assembly)/i,
+    asset_type: 'assembly_point',
+    geometry: 'point',
+    zoneOffset: 'cold',
+    label: 'Evacuation Holding Area',
+  },
+  {
+    pattern: /casualty\s*collection/i,
+    asset_type: 'casualty_collection',
+    geometry: 'point',
+    zoneOffset: 'warm',
+    label: 'Casualty Collection Point',
+  },
+  {
+    pattern: /observation\s*(post|point)/i,
+    asset_type: 'observation_post',
+    geometry: 'point',
+    zoneOffset: 'cold',
+    label: 'Observation Post',
+  },
+  {
+    pattern: /ambulance\s*(staging|bay|point)/i,
+    asset_type: 'ambulance_staging',
+    geometry: 'point',
+    zoneOffset: 'cold',
+    label: 'Ambulance Staging',
+  },
+  {
+    pattern: /helicopter\s*(lz|landing)/i,
+    asset_type: 'helicopter_lz',
+    geometry: 'point',
+    zoneOffset: 'cold',
+    label: 'Helicopter LZ',
+  },
+  {
+    pattern: /roadblock/i,
+    asset_type: 'roadblock',
+    geometry: 'point',
+    zoneOffset: 'cold',
+    label: 'Roadblock',
+  },
+  {
+    pattern: /fire\s*(truck|engine|appliance)/i,
+    asset_type: 'fire_truck',
+    geometry: 'point',
+    zoneOffset: 'warm',
+    label: 'Fire Engine',
+  },
+  {
+    pattern: /forward\s*command/i,
+    asset_type: 'forward_command',
+    geometry: 'point',
+    zoneOffset: 'warm',
+    label: 'Forward Command',
+  },
+  {
+    pattern: /water\s*supply\s*(point)?/i,
+    asset_type: 'water_supply',
+    geometry: 'point',
+    zoneOffset: 'warm',
+    label: 'Water Supply Point',
+  },
+];
+
+/**
+ * Extract personnel mentions from decision text.
+ * Looks for patterns like "3x medics", "2 paramedics", "deploying 5 marshals", etc.
+ */
+function extractPersonnelFromText(text: string): string[] {
+  const personnel: string[] = [];
+  const patterns = [
+    /(\d+)\s*x?\s*(medic|paramedic|doctor|nurse|marshal|officer|guard|firefighter|responder|controller|specialist|technician|operator|coordinator|liaison|pio|spokesperson)s?/gi,
+    /deploy(?:ing)?\s+(\d+)\s+([\w\s]+?)(?:\s+(?:in|at|to|with|for)\b)/gi,
+    /staff(?:ed|ing)?\s+(?:with\s+)?(\d+)\s+([\w\s]+?)(?:\s+(?:in|at|to|with)\b)/gi,
+  ];
+  for (const p of patterns) {
+    let match: RegExpExecArray | null;
+    while ((match = p.exec(text)) !== null) {
+      personnel.push(`${match[1]}x ${match[2].trim()}`);
+    }
+  }
+  return personnel;
+}
+
+/**
+ * Extract equipment mentions from decision text.
+ * Looks for patterns like "barrier tape", "portable barriers", "stretchers", etc.
+ */
+function extractEquipmentFromText(text: string): string[] {
+  const equipment: string[] = [];
+  const knownEquipment = [
+    'barrier tape',
+    'portable barriers',
+    'barriers',
+    'barricades',
+    'stretcher',
+    'stretchers',
+    'defibrillator',
+    'first aid kit',
+    'oxygen',
+    'iv kit',
+    'iv access',
+    'splint',
+    'tourniquet',
+    'fire extinguisher',
+    'hose',
+    'breathing apparatus',
+    'scba',
+    'hazmat suit',
+    'ppe',
+    'helmet',
+    'safety vest',
+    'high-vis vest',
+    'radio',
+    'signage',
+    'access control',
+    'floodlights',
+    'generator',
+    'tent',
+    'shelter',
+    'blankets',
+    'water supply',
+    'megaphone',
+    'loudspeaker',
+    'cones',
+    'traffic cones',
+  ];
+  const lower = text.toLowerCase();
+  for (const eq of knownEquipment) {
+    if (lower.includes(eq)) equipment.push(eq);
+  }
+  return [...new Set(equipment)];
+}
+
+/**
+ * Extract "direct to" / transport intent from decision text.
+ * Returns destination descriptions like "warm zone", "triage point", "Exit D", etc.
+ */
+function extractDirectionIntent(text: string): {
+  action: string;
+  destination: string;
+} | null {
+  const patterns = [
+    /(?:transport|move|transfer|evacuate|extract|carry|direct)\s+(?:patient|casualt|victim|injured|crowd|evacuee|group)s?\s+(?:to|toward|towards)\s+(?:the\s+)?(.{5,80}?)(?:\.|,|$)/i,
+    /(?:direct|guide|send|escort)\s+(?:to|toward|towards)\s+(?:the\s+)?(.{5,80}?)(?:\.|,|$)/i,
+    /(?:hand\s*off|handover)\s+(?:to|at)\s+(?:the\s+)?(.{5,80}?)(?:\.|,|$)/i,
+  ];
+  for (const p of patterns) {
+    const match = p.exec(text);
+    if (match) {
+      const verb = text.slice(match.index, match.index + 15).toLowerCase();
+      const action = /transport|transfer|move/.test(verb)
+        ? 'transport'
+        : /extract|carry/.test(verb)
+          ? 'extract'
+          : /hand/i.test(verb)
+            ? 'handoff'
+            : 'direct_to';
+      return { action, destination: match[1].trim() };
+    }
+  }
+  return null;
+}
+
+/**
+ * Pre-evaluation extraction service: scans decision text for infrastructure placement,
+ * personnel/equipment details, and transport/direction intent BEFORE the evaluator runs.
+ *
+ * 1. Infrastructure: creates placed_assets with personnel/equipment in properties
+ * 2. Direction: records transport/handoff intent as a session_event for evaluator visibility
+ *
+ * Exported so both the demo dispatcher and human player decision route can call it.
+ */
+export async function extractAndPlaceInfrastructureFromText(
+  sessionId: string,
+  scenarioId: string,
+  teamName: string,
+  title: string,
+  description: string,
+  incidentCenter: { lat: number; lng: number } | null,
+): Promise<number> {
+  const rawText = `${title} ${description}`;
+  const fullText = rawText.toLowerCase();
+  const center = incidentCenter;
+  if (!center) return 0;
+
+  // --- Part 1: Extract and store personnel/equipment from decision text ---
+  const personnel = extractPersonnelFromText(rawText);
+  const equipment = extractEquipmentFromText(rawText);
+
+  // --- Part 2: Extract direction/transport intent and record it ---
+  const directionIntent = extractDirectionIntent(rawText);
+  if (directionIntent) {
+    try {
+      await supabaseAdmin.from('session_events').insert({
+        session_id: sessionId,
+        event_type: 'direction_intent',
+        metadata: {
+          team: teamName,
+          action: directionIntent.action,
+          destination: directionIntent.destination,
+          source_text: rawText.slice(0, 500),
+        },
+      });
+      logger.info(
+        {
+          sessionId,
+          teamName,
+          action: directionIntent.action,
+          destination: directionIntent.destination,
+        },
+        'Pre-eval extraction: recorded direction/transport intent',
+      );
+    } catch (err) {
+      logger.warn({ error: err }, 'Pre-eval extraction: failed to record direction intent');
+    }
+  }
+
+  // --- Part 3: Extract infrastructure placement intent ---
+  const establishPattern = /establish|set\s*up|deploy|place|create|designate|activate|position/i;
+  if (!establishPattern.test(fullText)) return 0;
+
+  const { data: existingAssets } = await supabaseAdmin
+    .from('placed_assets')
+    .select('asset_type, label')
+    .eq('session_id', sessionId)
+    .eq('status', 'active');
+  const existingTypes = new Set(
+    (existingAssets ?? []).map((a) => (a as Record<string, unknown>).asset_type as string),
+  );
+
+  const coordMatches = Array.from(
+    rawText.matchAll(/\[?\s*(-?\d+\.\d{3,})\s*[,\s]+\s*(-?\d+\.\d{3,})\s*\]?/g),
+  );
+
+  const metrics = await loadScenarioMetrics(sessionId, scenarioId, center);
+  let placedCount = 0;
+
+  for (const inf of INFRASTRUCTURE_PATTERNS) {
+    if (!inf.pattern.test(fullText)) continue;
+    if (existingTypes.has(inf.asset_type)) continue;
+    if (!isPlacementAllowedForTeam(teamName, inf.asset_type)) continue;
+    if (placedCount >= 2) break;
+
+    let pointLat: number;
+    let pointLng: number;
+
+    if (coordMatches.length > placedCount) {
+      const m = coordMatches[placedCount];
+      const a = parseFloat(m[1]);
+      const b = parseFloat(m[2]);
+      const distALat = Math.abs(a - center.lat) + Math.abs(b - center.lng);
+      const distBLat = Math.abs(b - center.lat) + Math.abs(a - center.lng);
+      if (distALat < distBLat) {
+        pointLat = a;
+        pointLng = b;
+      } else {
+        pointLat = b;
+        pointLng = a;
+      }
+      pointLat = Math.max(center.lat - 0.01, Math.min(center.lat + 0.01, pointLat));
+      pointLng = Math.max(center.lng - 0.01, Math.min(center.lng + 0.01, pointLng));
+    } else {
+      const zoneCoord = randomCoordInZone(center, inf.zoneOffset, metrics);
+      pointLat = zoneCoord.lat;
+      pointLng = zoneCoord.lng;
+    }
+
+    let geometry: { type: string; coordinates: unknown };
+    if (inf.geometry === 'point') {
+      geometry = { type: 'Point', coordinates: [pointLng, pointLat] };
+    } else {
+      const clampedR = clampCordonRadius(75 / METERS_PER_DEG);
+      const pts: [number, number][] = [];
+      for (let i = 0; i < 12; i++) {
+        const angle = (2 * Math.PI * i) / 12;
+        pts.push([pointLng + clampedR * Math.cos(angle), pointLat + clampedR * Math.sin(angle)]);
+      }
+      pts.push(pts[0]);
+      geometry = { type: 'Polygon', coordinates: [pts] };
+    }
+
+    const label = `${teamName} ${inf.label}`;
+    const properties: Record<string, unknown> = {};
+    if (personnel.length > 0) properties.personnel = personnel;
+    if (equipment.length > 0) properties.equipment = equipment;
+    if (directionIntent) properties.direction_intent = directionIntent;
+
+    logger.info(
+      { sessionId, teamName, assetType: inf.asset_type, label, personnel, equipment },
+      'Pre-eval placement: auto-creating infrastructure from decision text',
+    );
+
+    const { error } = await supabaseAdmin.from('placed_assets').insert({
+      session_id: sessionId,
+      team_name: teamName,
+      asset_type: inf.asset_type,
+      label,
+      geometry,
+      properties,
+      status: 'active',
+    });
+
+    if (error) {
+      logger.warn(
+        { error, sessionId, assetType: inf.asset_type },
+        'Pre-eval placement: insert failed',
+      );
+    } else {
+      existingTypes.add(inf.asset_type);
+      placedCount++;
+    }
+  }
+
+  return placedCount;
+}
+
 /**
  * Resolve the anchor point for a cordon/perimeter polygon.
  * Incident-level cordons (inner_cordon, outer_cordon) anchor to the incident center.
@@ -2301,6 +2789,7 @@ export class DemoAIAgentService {
     }
 
     // Load scenario metrics and generate operating area blueprint
+    const center = session.incidentCenter ?? { lat: 0, lng: 0 };
     const teamScopeKey = getTeamScopeKey(agent.persona.teamName);
     const scenarioMetrics = await loadScenarioMetrics(
       session.sessionId,
@@ -2334,6 +2823,19 @@ export class DemoAIAgentService {
         `Layout rationale: ${blueprint.layout_rationale}`,
         '',
         `Scene data: ${scenarioMetrics.totalCasualties} casualties across ${scenarioMetrics.casualtyClusters.length || 1} cluster(s), ${scenarioMetrics.totalCrowdSize} evacuees, ${scenarioMetrics.hazardCount} hazard(s), ${scenarioMetrics.exitCount} exits.`,
+        '',
+        '### 🗺️ ZONE BOUNDARIES (use these coordinates when placing assets):',
+        `Incident center: [${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}]`,
+        `HOT ZONE: radius ${scenarioMetrics.hotZoneRadius}m from center → any coordinate within ~${(scenarioMetrics.hotZoneRadius / METERS_PER_DEG).toFixed(6)}° of center`,
+        `WARM ZONE: radius ${scenarioMetrics.warmZoneRadius}m from center → any coordinate within ~${(scenarioMetrics.warmZoneRadius / METERS_PER_DEG).toFixed(6)}° of center`,
+        `COLD ZONE: radius ${scenarioMetrics.coldZoneRadius}m from center → any coordinate within ~${(scenarioMetrics.coldZoneRadius / METERS_PER_DEG).toFixed(6)}° of center`,
+        '',
+        'PLACEMENT COORDINATE RULES:',
+        `- When placing in the HOT zone: coordinates must be within ${scenarioMetrics.hotZoneRadius}m of [${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}]`,
+        `- When placing in the WARM zone: coordinates must be between ${scenarioMetrics.hotZoneRadius}m and ${scenarioMetrics.warmZoneRadius}m from center`,
+        `- When placing in the COLD zone: coordinates must be between ${scenarioMetrics.warmZoneRadius}m and ${scenarioMetrics.coldZoneRadius}m from center`,
+        '- Cordons and perimeters: radius MUST be 50m to 100m (0.00045 to 0.0009 degrees). NEVER larger.',
+        '- NEVER place assets randomly. Always use the incident center and zone radii to calculate valid coordinates.',
       );
 
       if (placed.length > 0) {
@@ -2355,7 +2857,7 @@ export class DemoAIAgentService {
 
           parts.push(
             `  ${isNext ? '→ NEXT' : `  ${i + 1}`}: ${item.label} (${item.asset_type}) — Priority ${item.priority}`,
-            `     Zone: ${item.zone} | Geometry: ${item.geometry_type}${item.radius_deg ? ` (radius ${item.radius_deg})` : ''}`,
+            `     Zone: ${item.zone} | Geometry: ${item.geometry_type}${item.radius_deg ? ` (radius ~${Math.round(item.radius_deg * METERS_PER_DEG)}m, must be 50-100m)` : ''}`,
             `     Location: ${item.placement_hint}`,
             `     Personnel: ${personnelStr}`,
             `     Equipment: ${equipStr}`,
@@ -2365,33 +2867,39 @@ export class DemoAIAgentService {
 
         parts.push(
           '',
-          '⛔ YOU ARE NOT FULLY OPERATIONAL.',
-          `⛔ Your NEXT action MUST be a "placement" for: ${pending[0].label} (${pending[0].asset_type})`,
-          '⛔ Do NOT write text-only decisions about infrastructure. ONLY a "placement" action with geometry creates assets on the map.',
-          '⛔ Do NOT respond to casualties, hazards, or injects until your operating area is built.',
+          '⚠️ YOUR OPERATING AREA IS INCOMPLETE — the following items still need to be placed:',
+          `   Next priority: ${pending[0].label} (${pending[0].asset_type})`,
           '',
-          `⚠️ Your decision description for this placement MUST mention the personnel and equipment you are deploying:`,
+          '💡 SMART PRIORITISATION:',
+          '- You SHOULD prioritize building your operating area — it is critical for effective operations.',
+          '- However, if an urgent inject, casualty, or hazard demands an immediate response, you may respond to it.',
+          '- If you respond to a pin or inject WITHOUT your operating area set up, expect the evaluator to flag you for missing infrastructure.',
+          '- After handling the urgent matter, your NEXT action should return to building your operational area.',
+          '- When placing infrastructure: use a "placement" action with geometry. Text-only "decisions" about infrastructure do NOT create map assets.',
+          '',
+          `⚠️ When you DO place your next item (${pending[0].label}), include:`,
           `   Personnel: ${pending[0].personnel.map((p) => `${p.count}x ${p.role}${p.ppe ? ` in ${p.ppe}` : ''}`).join(', ')}`,
           `   Equipment: ${pending[0].equipment.join(', ')}`,
           `   ${pending[0].capacity ? `Capacity: ${pending[0].capacity} persons` : ''}`,
         );
       } else {
-        parts.push(
-          '',
-          '✅ YOUR OPERATING AREA IS FULLY ESTABLISHED. You are operational.',
-          '✅ You may now respond to casualties, hazards, and injects with pin_response.',
-        );
+        parts.push('', '✅ YOUR OPERATING AREA IS FULLY ESTABLISHED. You are fully operational.');
       }
     }
 
     parts.push(
       '',
-      '## ⚠️ STRICT OPERATIONAL PHASES — you MUST follow this sequence',
+      '## ⚠️ RECOMMENDED OPERATIONAL SEQUENCE',
       'Phase 1 (CLAIMING): Claim exits/entries. Handled automatically — skip.',
       'Phase 2 (BUILDING OPERATING AREA): Follow the blueprint above. Place infrastructure one item at a time using "placement" actions with geometry.',
       '  → A "decision" that describes placing infrastructure does NOTHING. Only "placement" actions with geometry create map assets.',
       '  → Each placement decision MUST describe the personnel deployed and equipment provided — do not place empty structures.',
-      'Phase 3 (OPERATIONAL): Only after ALL blueprint items are placed, respond to casualties/hazards using "pin_response".',
+      'Phase 3 (OPERATIONAL): Once your area is built, respond to casualties/hazards/injects.',
+      '',
+      '⚠️ You may respond to URGENT events even if your operating area is not complete, but be aware:',
+      '- The evaluator WILL flag you for missing infrastructure (e.g., "no triage tent", "no cordon established").',
+      '- Those evaluator flags are realistic consequences — you should learn from them and build your area.',
+      '- If you are repeatedly flagged for the same missing infrastructure, STOP and place it before continuing.',
       '',
       '## ⚠️ ONE ACTION PER DECISION — CRITICAL RULE',
       '- Each decision must focus on ONE specific action. Do NOT combine multiple actions in one decision.',
@@ -3273,77 +3781,13 @@ export class DemoAIAgentService {
           .sort((a, b) => a.priority - b.priority)
       : [];
 
-    // Check 1: If operating area incomplete, block pin_response and casualty-flavored decisions
+    // Infrastructure awareness: log a warning but do NOT block pin responses or decisions
+    // The evaluator will flag missing infrastructure as consequences (same as human players)
     if (!isOperational && pendingItems.length > 0) {
-      const next = pendingItems[0];
-      const hasPinResponse = actions.some((a) => a.action === 'pin_response');
-      if (hasPinResponse) {
-        return {
-          valid: false,
-          reason: `Your operating area is incomplete. You still need to place: ${next.label} (${next.asset_type}). You CANNOT use pin_response until your operating area is fully built. Submit a "placement" action for ${next.asset_type} with ${next.geometry_type} geometry. Remember to staff it with: ${next.personnel.map((p) => `${p.count}x ${p.role}`).join(', ')} and equip it with: ${next.equipment.slice(0, 4).join(', ')}.`,
-        };
-      }
-
-      const decisionAction = actions.find((a) => a.action === 'decision' && a.decision);
-      if (decisionAction?.decision) {
-        const text =
-          `${decisionAction.decision.title} ${decisionAction.decision.description}`.toLowerCase();
-        const casualtyPattern =
-          /casualty response|initiate triage|triage tag|administer first aid|establish iv|treat.*patient|treating.*casualt/i;
-        if (casualtyPattern.test(text)) {
-          return {
-            valid: false,
-            reason: `Your operating area is incomplete (next: ${next.label}). You cannot perform casualty/triage operations yet. Submit a "placement" action for ${next.asset_type}. Your placement must include personnel (${next.personnel.map((p) => `${p.count}x ${p.role}`).join(', ')}) and equipment (${next.equipment.slice(0, 4).join(', ')}).`,
-          };
-        }
-      }
-
-      // Check 2: If blueprint incomplete, ensure there's at least one placement action
-      const hasPlacement = actions.some((a) => a.action === 'placement' && a.placement?.geometry);
-      if (!hasPlacement) {
-        const hasDecision = actions.some((a) => a.action === 'decision');
-        if (hasDecision) {
-          return {
-            valid: false,
-            reason: `Your operating area is incomplete. Next item: ${next.label} (${next.asset_type}, ${next.geometry_type}). You submitted a text-only "decision" which does NOT create assets on the map. Submit a "placement" action with geometry. Place it at: ${next.placement_hint}. Staff with: ${next.personnel.map((p) => `${p.count}x ${p.role}`).join(', ')}.`,
-          };
-        }
-      }
-    }
-
-    // Check 3: Cross-jurisdiction — fire/triage handling crowds, or triage entering hot zone
-    if (isOperational) {
-      const decisionAction = actions.find((a) => a.action === 'decision' && a.decision);
-      if (decisionAction?.decision) {
-        const text =
-          `${decisionAction.decision.title} ${decisionAction.decision.description}`.toLowerCase();
-
-        // Fire Safety should not triage, treat, or handle crowds
-        if (teamKey === 'fire') {
-          const triagePattern =
-            /initiate triage|triage tag|administer first aid|establish iv|triage.*patient|casualty response.*crowd|casualty response.*gathering|casualty response.*assembly|casualty response.*evacuee/i;
-          if (triagePattern.test(text)) {
-            return {
-              valid: false,
-              reason:
-                'Fire Safety team does NOT triage patients or handle crowds. You may only EXTRACT patients from the hot zone (basic DRABC, stretcher, carry to warm zone boundary). For crowds, request Evacuation team via chat. For patient treatment, hand off to Medical Triage.',
-            };
-          }
-        }
-
-        // Non-evacuation teams should not manage crowds
-        if (teamKey !== 'evacuation') {
-          const crowdPattern =
-            /crowd.*management|direct.*evacuees|marshal.*crowd|assembly.*area.*crowd|evacuat.*crowd|guide.*crowd/i;
-          if (crowdPattern.test(text)) {
-            return {
-              valid: false,
-              reason:
-                "Crowd management is the Evacuation team's jurisdiction. Request Evacuation team to handle crowds via chat. Your team should focus on its own specialty.",
-            };
-          }
-        }
-      }
+      logger.info(
+        { botUserId: agent.persona.botUserId, teamName, pending: pendingItems.length },
+        'AI agent: operating area incomplete but allowing action (evaluator will handle consequences)',
+      );
     }
 
     // Check 4: Media statement / public communication quality
@@ -3501,21 +3945,22 @@ export class DemoAIAgentService {
         placedLng = anchorAsset.lng;
       }
 
+      const clampedRadius = clampCordonRadius(next.radius_deg);
       const pts: [number, number][] = [];
       for (let i = 0; i < 12; i++) {
         const angle = (2 * Math.PI * i) / 12;
         pts.push([
-          placedLng + next.radius_deg * Math.cos(angle),
-          placedLat + next.radius_deg * Math.sin(angle),
+          placedLng + clampedRadius * Math.cos(angle),
+          placedLat + clampedRadius * Math.sin(angle),
         ]);
       }
       pts.push(pts[0]);
       geometry = { type: 'Polygon', coordinates: [pts] };
     } else {
-      const offset = 0.001 + Math.random() * 0.002;
-      const bearing = Math.random() * 2 * Math.PI;
-      placedLat = center.lat + offset * Math.cos(bearing);
-      placedLng = center.lng + offset * Math.sin(bearing);
+      // Place point assets within the correct zone based on blueprint zone designation
+      const zoneCoord = randomCoordInZone(center, next.zone, scenarioMetrics);
+      placedLat = zoneCoord.lat;
+      placedLng = zoneCoord.lng;
       geometry = {
         type: 'Point',
         coordinates: [placedLng, placedLat],
@@ -3527,7 +3972,10 @@ export class DemoAIAgentService {
       .join(', ');
     const equipDesc = next.equipment.join(', ');
     const coordsStr = `[${placedLat.toFixed(6)}, ${placedLng.toFixed(6)}]`;
-    const radiusStr = next.radius_deg ? ` Radius: ~${Math.round(next.radius_deg * 111000)}m.` : '';
+    const effectiveRadius = next.radius_deg ? clampCordonRadius(next.radius_deg) : null;
+    const radiusStr = effectiveRadius
+      ? ` Radius: ~${Math.round(effectiveRadius * METERS_PER_DEG)}m.`
+      : '';
 
     logger.info(
       { botUserId: agent.persona.botUserId, assetType: next.asset_type, label: next.label },
@@ -3583,6 +4031,12 @@ export class DemoAIAgentService {
     const mentionsInfra =
       /cordon|tent|point|post|area|zone|staging|barricade|roadblock|perimeter|fence|barrier|assembly|command|triage|hospital|decon/i;
     if (!mentionsInfra.test(fullText)) return;
+
+    const scenarioMetrics = await loadScenarioMetrics(
+      session.sessionId,
+      session.scenarioId,
+      center,
+    );
 
     // Build the allowed asset types for this team
     const teamKey = getTeamScopeKey(teamName);
@@ -3665,6 +4119,11 @@ export class DemoAIAgentService {
         `Decision text: ${description}`,
         `Incident center: [${center.lat}, ${center.lng}]`,
         '',
+        `Zone boundaries (meters from incident center):`,
+        `  HOT zone: 0–${scenarioMetrics.hotZoneRadius}m (${(scenarioMetrics.hotZoneRadius / METERS_PER_DEG).toFixed(6)}°)`,
+        `  WARM zone: ${scenarioMetrics.hotZoneRadius}–${scenarioMetrics.warmZoneRadius}m (${(scenarioMetrics.warmZoneRadius / METERS_PER_DEG).toFixed(6)}°)`,
+        `  COLD zone: ${scenarioMetrics.warmZoneRadius}–${scenarioMetrics.coldZoneRadius}m (${(scenarioMetrics.coldZoneRadius / METERS_PER_DEG).toFixed(6)}°)`,
+        '',
         'For each intended placement, return JSON array:',
         '[{ "asset_type": "...", "geometry_type": "point" or "polygon", "lat": number, "lng": number, "radius_deg": number_or_null, "label": "..." }]',
         '',
@@ -3673,8 +4132,20 @@ export class DemoAIAgentService {
         '- Prioritize the missing required infrastructure.',
         '- CRITICAL for cordons/perimeters (inner_cordon, outer_cordon, exclusion_zone): ALWAYS set lat/lng to the incident center coordinates. Cordons must be centered on the incident pin, never offset randomly.',
         '- For team-specific operating perimeters (triage cordon, press cordon, assembly perimeter): set lat/lng to the incident center — the system will auto-anchor them to the correct placed asset.',
-        '- For point types: if coordinates are in the text, use them. Otherwise generate coords near the incident center (offset 0.001-0.003).',
-        '- For polygon types: set radius_deg to 0.00045 (~50m) for inner/operating or 0.0009 (~100m) for outer.',
+        '- For point types in the HOT zone: coordinates within ' +
+          (scenarioMetrics.hotZoneRadius / METERS_PER_DEG).toFixed(6) +
+          '° of center.',
+        '- For point types in the WARM zone: coordinates between ' +
+          (scenarioMetrics.hotZoneRadius / METERS_PER_DEG).toFixed(6) +
+          '° and ' +
+          (scenarioMetrics.warmZoneRadius / METERS_PER_DEG).toFixed(6) +
+          '° of center.',
+        '- For point types in the COLD zone: coordinates between ' +
+          (scenarioMetrics.warmZoneRadius / METERS_PER_DEG).toFixed(6) +
+          '° and ' +
+          (scenarioMetrics.coldZoneRadius / METERS_PER_DEG).toFixed(6) +
+          '° of center.',
+        '- For polygon types: set radius_deg between 0.00045 (~50m) and 0.0009 (~100m). NEVER larger.',
         '- For point types: set radius_deg to null.',
         '- Return empty array [] if no infrastructure placement is intended.',
       ].join('\n');
@@ -3747,7 +4218,6 @@ export class DemoAIAgentService {
 
         const isCordonType = /cordon|perimeter|exclusion_zone/i.test(p.asset_type);
         if (isCordonType && p.geometry_type === 'polygon') {
-          // Anchor cordon polygons to incident center or relevant placed asset
           const anchor = await resolveCordonAnchor(
             p.asset_type,
             p.asset_type,
@@ -3761,21 +4231,27 @@ export class DemoAIAgentService {
           pLat = p.lat;
           pLng = p.lng;
         } else {
-          const offset = 0.001 + Math.random() * 0.002;
-          const bearing = Math.random() * 2 * Math.PI;
-          pLat = center.lat + offset * Math.cos(bearing);
-          pLng = center.lng + offset * Math.sin(bearing);
+          // Infer zone from asset type and place within that zone
+          const inferredZone = /hot_zone|exclusion/i.test(p.asset_type)
+            ? 'hot'
+            : /warm_zone|triage|forward_command|fire_truck|water_supply|decon|casualty_collection/i.test(
+                  p.asset_type,
+                )
+              ? 'warm'
+              : 'cold';
+          const metrics = await loadScenarioMetrics(session.sessionId, session.scenarioId, center);
+          const zoneCoord = randomCoordInZone(center, inferredZone, metrics);
+          pLat = zoneCoord.lat;
+          pLng = zoneCoord.lng;
         }
 
         let geometry: { type: string; coordinates: unknown };
         if (p.geometry_type === 'polygon' && p.radius_deg) {
+          const clampedR = clampCordonRadius(p.radius_deg);
           const pts: [number, number][] = [];
           for (let i = 0; i < 12; i++) {
             const angle = (2 * Math.PI * i) / 12;
-            pts.push([
-              pLng + p.radius_deg * Math.cos(angle),
-              pLat + p.radius_deg * Math.sin(angle),
-            ]);
+            pts.push([pLng + clampedR * Math.cos(angle), pLat + clampedR * Math.sin(angle)]);
           }
           pts.push(pts[0]);
           geometry = { type: 'Polygon', coordinates: [pts] };
@@ -3844,58 +4320,12 @@ export class DemoAIAgentService {
           triggerInjectText,
         );
         if (converted) {
-          // Look up casualty subtype for auto-converted pin_response
-          let convCasualtyType: string | undefined;
-          if (converted.target_type === 'casualty' && converted.target_id) {
-            const { data: convPin } = await supabaseAdmin
-              .from('scenario_casualties')
-              .select('casualty_type')
-              .eq('id', converted.target_id)
-              .single();
-            if (convPin)
-              convCasualtyType = (convPin as Record<string, unknown>).casualty_type as string;
-          }
-          // Block auto-conversion for teams without pin jurisdiction
-          if (
-            this.isTeamBlockedFromPinResponse(teamName, converted.target_type, convCasualtyType)
-          ) {
-            logger.info(
-              { botUserId, teamName, targetType: converted.target_type, convCasualtyType },
-              'AI agent: skipping auto-converted pin_response — team has no jurisdiction',
-            );
-          } else {
-            // Phase gate: block if team hasn't set up infrastructure yet
-            const convReqAssets = getRequiredInfrastructure(teamName);
-            let infraReady = true;
-            if (convReqAssets.length > 0) {
-              const { data: convExisting } = await supabaseAdmin
-                .from('placed_assets')
-                .select('asset_type')
-                .eq('session_id', sessionId)
-                .eq('team_name', teamName)
-                .eq('status', 'active')
-                .in('asset_type', convReqAssets);
-              const convPlaced = new Set(
-                (convExisting ?? []).map(
-                  (a) => (a as Record<string, unknown>).asset_type as string,
-                ),
-              );
-              infraReady = convReqAssets.every((r) => convPlaced.has(r));
-            }
-            if (!infraReady) {
-              logger.info(
-                { botUserId, teamName },
-                'AI agent: skipping auto-converted pin_response — infrastructure not established',
-              );
-            } else {
-              logger.info(
-                { botUserId, targetId: converted.target_id, targetType: converted.target_type },
-                'AI agent: auto-converted decision to pin_response (decision text referenced a pin)',
-              );
-              await this.dispatcher.respondToPin(sessionId, botUserId, teamName, converted);
-              break;
-            }
-          }
+          logger.info(
+            { botUserId, targetId: converted.target_id, targetType: converted.target_type },
+            'AI agent: auto-converted decision to pin_response (decision text referenced a pin)',
+          );
+          await this.dispatcher.respondToPin(sessionId, botUserId, teamName, converted);
+          break;
         }
 
         await this.dispatcher.proposeAndExecuteDecision(sessionId, botUserId, {
@@ -3950,28 +4380,6 @@ export class DemoAIAgentService {
             'AI agent: pin_response missing target_id, skipping',
           );
           break;
-        }
-        // Phase gate: block pin_response until team's required infrastructure is placed
-        const requiredAssets = getRequiredInfrastructure(teamName);
-        if (requiredAssets.length > 0) {
-          const { data: existingAssets } = await supabaseAdmin
-            .from('placed_assets')
-            .select('asset_type')
-            .eq('session_id', sessionId)
-            .eq('team_name', teamName)
-            .eq('status', 'active')
-            .in('asset_type', requiredAssets);
-          const placedTypes = new Set(
-            (existingAssets ?? []).map((a) => (a as Record<string, unknown>).asset_type as string),
-          );
-          const missing = requiredAssets.filter((r) => !placedTypes.has(r));
-          if (missing.length > 0) {
-            logger.info(
-              { botUserId, teamName, missing },
-              'AI agent: pin_response blocked — team must establish infrastructure first',
-            );
-            break;
-          }
         }
         // Look up the pin's casualty_type and zone for jurisdiction checks
         let pinCasualtyType: string | undefined;
@@ -4040,7 +4448,7 @@ export class DemoAIAgentService {
           }
         }
 
-        // Server-side jurisdiction guard: block based on team, target type, casualty subtype, and zone
+        // Log jurisdiction info — evaluator will handle consequences (same as human players)
         if (
           this.isTeamBlockedFromPinResponse(
             teamName,
@@ -4049,7 +4457,7 @@ export class DemoAIAgentService {
             pinZone,
           )
         ) {
-          logger.warn(
+          logger.info(
             {
               botUserId,
               teamName,
@@ -4057,9 +4465,8 @@ export class DemoAIAgentService {
               pinCasualtyType,
               pinZone,
             },
-            'AI agent: pin_response blocked — team has no jurisdiction over this pin',
+            'AI agent: pin_response outside jurisdiction — evaluator will handle consequences',
           );
-          break;
         }
         const pr = action.pin_response;
         logger.info(
@@ -4413,286 +4820,14 @@ export class DemoAIAgentService {
     title: string,
     description: string,
   ): Promise<void> {
-    const fullText = `${title} ${description}`.toLowerCase();
-    const center = session.incidentCenter;
-    if (!center) return;
-
-    // Known infrastructure patterns → asset_type + geometry type
-    const INFRASTRUCTURE_PATTERNS: Array<{
-      pattern: RegExp;
-      asset_type: string;
-      geometry: 'point' | 'polygon';
-      zoneOffset: 'hot' | 'warm' | 'cold';
-      label: string;
-    }> = [
-      {
-        pattern: /command\s*post/i,
-        asset_type: 'command_post',
-        geometry: 'point',
-        zoneOffset: 'cold',
-        label: 'Command Post',
-      },
-      {
-        pattern: /triage\s*(tent|point|area|station)/i,
-        asset_type: 'triage_point',
-        geometry: 'point',
-        zoneOffset: 'warm',
-        label: 'Triage Point',
-      },
-      {
-        pattern: /field\s*hospital/i,
-        asset_type: 'field_hospital',
-        geometry: 'point',
-        zoneOffset: 'cold',
-        label: 'Field Hospital',
-      },
-      {
-        pattern: /assembly\s*(point|area)/i,
-        asset_type: 'assembly_point',
-        geometry: 'point',
-        zoneOffset: 'cold',
-        label: 'Assembly Point',
-      },
-      {
-        pattern: /decon(tamination)?\s*(corridor|zone|area|station)/i,
-        asset_type: 'decontamination_zone',
-        geometry: 'point',
-        zoneOffset: 'warm',
-        label: 'Decon Zone',
-      },
-      {
-        pattern: /staging\s*(area|point|zone)/i,
-        asset_type: 'staging_area',
-        geometry: 'polygon',
-        zoneOffset: 'cold',
-        label: 'Staging Area',
-      },
-      {
-        pattern: /inner\s*cordon/i,
-        asset_type: 'inner_cordon',
-        geometry: 'polygon',
-        zoneOffset: 'hot',
-        label: 'Inner Cordon',
-      },
-      {
-        pattern: /outer\s*cordon/i,
-        asset_type: 'outer_cordon',
-        geometry: 'polygon',
-        zoneOffset: 'cold',
-        label: 'Outer Cordon',
-      },
-      {
-        pattern: /media\s*(staging|area|point|zone)/i,
-        asset_type: 'press_cordon',
-        geometry: 'polygon',
-        zoneOffset: 'cold',
-        label: 'Media Staging Area',
-      },
-      {
-        pattern: /hot\s*zone/i,
-        asset_type: 'hot_zone',
-        geometry: 'polygon',
-        zoneOffset: 'hot',
-        label: 'Hot Zone',
-      },
-      {
-        pattern: /warm\s*zone/i,
-        asset_type: 'warm_zone',
-        geometry: 'polygon',
-        zoneOffset: 'warm',
-        label: 'Warm Zone',
-      },
-      {
-        pattern: /cold\s*zone/i,
-        asset_type: 'cold_zone',
-        geometry: 'polygon',
-        zoneOffset: 'cold',
-        label: 'Cold Zone',
-      },
-      {
-        pattern: /(?<!inner\s)(?<!outer\s)cordon\b/i,
-        asset_type: 'outer_cordon',
-        geometry: 'polygon',
-        zoneOffset: 'cold',
-        label: 'Security Cordon',
-      },
-      {
-        pattern: /barricade|road\s*closure/i,
-        asset_type: 'roadblock',
-        geometry: 'point',
-        zoneOffset: 'cold',
-        label: 'Barricade',
-      },
-      {
-        pattern: /exclusion\s*zone|hazard\s*exclusion/i,
-        asset_type: 'hot_zone',
-        geometry: 'polygon',
-        zoneOffset: 'hot',
-        label: 'Exclusion Zone',
-      },
-      {
-        pattern: /evacuation\s*(holding|point|area|assembly)/i,
-        asset_type: 'assembly_point',
-        geometry: 'point',
-        zoneOffset: 'cold',
-        label: 'Evacuation Holding Area',
-      },
-      {
-        pattern: /casualty\s*collection/i,
-        asset_type: 'casualty_collection',
-        geometry: 'point',
-        zoneOffset: 'warm',
-        label: 'Casualty Collection Point',
-      },
-      {
-        pattern: /observation\s*(post|point)/i,
-        asset_type: 'observation_post',
-        geometry: 'point',
-        zoneOffset: 'cold',
-        label: 'Observation Post',
-      },
-      {
-        pattern: /ambulance\s*(staging|bay|point)/i,
-        asset_type: 'ambulance_staging',
-        geometry: 'point',
-        zoneOffset: 'cold',
-        label: 'Ambulance Staging',
-      },
-      {
-        pattern: /helicopter\s*(lz|landing)/i,
-        asset_type: 'helicopter_lz',
-        geometry: 'point',
-        zoneOffset: 'cold',
-        label: 'Helicopter LZ',
-      },
-      {
-        pattern: /roadblock/i,
-        asset_type: 'roadblock',
-        geometry: 'point',
-        zoneOffset: 'cold',
-        label: 'Roadblock',
-      },
-      {
-        pattern: /fire\s*(truck|engine|appliance)/i,
-        asset_type: 'fire_truck',
-        geometry: 'point',
-        zoneOffset: 'warm',
-        label: 'Fire Engine',
-      },
-      {
-        pattern: /forward\s*command/i,
-        asset_type: 'forward_command',
-        geometry: 'point',
-        zoneOffset: 'warm',
-        label: 'Forward Command',
-      },
-      {
-        pattern: /water\s*supply\s*(point)?/i,
-        asset_type: 'water_supply',
-        geometry: 'point',
-        zoneOffset: 'warm',
-        label: 'Water Supply Point',
-      },
-    ];
-
-    // Check which infrastructure already exists on the map
-    const { data: existingAssets } = await supabaseAdmin
-      .from('placed_assets')
-      .select('asset_type, label')
-      .eq('session_id', session.sessionId)
-      .eq('status', 'active');
-
-    const existingTypes = new Set(
-      (existingAssets ?? []).map((a) => (a as Record<string, unknown>).asset_type as string),
+    await extractAndPlaceInfrastructureFromText(
+      session.sessionId,
+      session.scenarioId,
+      agent.persona.teamName,
+      title,
+      description,
+      session.incidentCenter,
     );
-
-    // Zone offsets from center (degrees)
-    const ZONE_OFFSETS: Record<string, number> = {
-      hot: 0.001,
-      warm: 0.003,
-      cold: 0.005,
-    };
-
-    // Try to extract coordinates from text (e.g., "[1.3045, 103.8367]" or "lat 1.3045, lng 103.8367")
-    const coordMatches = Array.from(
-      `${title} ${description}`.matchAll(/\[?\s*(-?\d+\.\d{3,})\s*[,\s]+\s*(-?\d+\.\d{3,})\s*\]?/g),
-    );
-
-    let placedCount = 0;
-
-    for (const inf of INFRASTRUCTURE_PATTERNS) {
-      if (!inf.pattern.test(fullText)) continue;
-      if (existingTypes.has(inf.asset_type)) continue;
-      if (!isPlacementAllowedForTeam(agent.persona.teamName, inf.asset_type)) continue;
-      if (placedCount >= 2) break;
-
-      // Try to use coordinates from the text first, otherwise generate from zone offsets
-      let pointLat: number;
-      let pointLng: number;
-
-      if (coordMatches.length > placedCount) {
-        const m = coordMatches[placedCount];
-        const a = parseFloat(m[1]);
-        const b = parseFloat(m[2]);
-        // Heuristic: latitude is usually smaller than longitude for most locations,
-        // but we validate by checking proximity to the incident center
-        const distALat = Math.abs(a - center.lat) + Math.abs(b - center.lng);
-        const distBLat = Math.abs(b - center.lat) + Math.abs(a - center.lng);
-        if (distALat < distBLat) {
-          pointLat = a;
-          pointLng = b;
-        } else {
-          pointLat = b;
-          pointLng = a;
-        }
-        // Clamp to play area (within ~0.01 degrees of center)
-        pointLat = Math.max(center.lat - 0.01, Math.min(center.lat + 0.01, pointLat));
-        pointLng = Math.max(center.lng - 0.01, Math.min(center.lng + 0.01, pointLng));
-      } else {
-        const offset = ZONE_OFFSETS[inf.zoneOffset];
-        const bearing = (placedCount * 90 + Math.random() * 30) * (Math.PI / 180);
-        pointLat = center.lat + offset * Math.cos(bearing);
-        pointLng = center.lng + offset * Math.sin(bearing);
-      }
-
-      let geometry: { type: string; coordinates: unknown };
-
-      if (inf.geometry === 'point') {
-        geometry = { type: 'Point', coordinates: [pointLng, pointLat] };
-      } else {
-        const size = inf.zoneOffset === 'hot' ? 0.002 : inf.zoneOffset === 'warm' ? 0.003 : 0.005;
-        geometry = {
-          type: 'Polygon',
-          coordinates: [
-            [
-              [pointLng - size, pointLat - size],
-              [pointLng + size, pointLat - size],
-              [pointLng + size, pointLat + size],
-              [pointLng - size, pointLat + size],
-              [pointLng - size, pointLat - size],
-            ],
-          ],
-        };
-      }
-
-      const label = `${agent.persona.teamName} ${inf.label}`;
-
-      logger.info(
-        { botUserId: agent.persona.botUserId, assetType: inf.asset_type, label },
-        'AI agent: auto-creating placement from decision text (fallback)',
-      );
-
-      await this.dispatcher.createPlacement(session.sessionId, agent.persona.botUserId, {
-        team_name: agent.persona.teamName,
-        asset_type: inf.asset_type,
-        label,
-        geometry,
-        properties: {},
-      });
-
-      existingTypes.add(inf.asset_type);
-      placedCount++;
-    }
   }
 
   /**

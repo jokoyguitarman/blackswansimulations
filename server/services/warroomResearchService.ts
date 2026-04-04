@@ -540,7 +540,8 @@ export function similarCasesToPromptBlock(cases: SimilarCase[]): string {
       if (statsParts.length) lines.push(`  Casualties: ${statsParts.join(' | ')}`);
 
       if (c.weapon_forensics) lines.push(`  Weapon forensics: ${c.weapon_forensics}`);
-      if (c.damage_radius_m) lines.push(`  Damage radius: ${c.damage_radius_m}m`);
+      if (c.damage_radius_m)
+        lines.push(`  Damage radius: ${Math.round(c.damage_radius_m * 3.28084)} ft`);
       if (c.injury_breakdown) lines.push(`  Injury breakdown: ${c.injury_breakdown}`);
       if (c.hazards_triggered?.length)
         lines.push(`  Hazards triggered: ${c.hazards_triggered.join(', ')}`);

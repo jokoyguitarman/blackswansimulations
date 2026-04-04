@@ -28,6 +28,7 @@ import {
 } from '../services/heatMeterService.js';
 import { applyDecisionCasualtyEffects } from '../services/decisionCasualtyEffectsService.js';
 import { evaluateTransportOutcome } from '../services/transportOutcomeService.js';
+import { extractAndPlaceInfrastructureFromText } from '../services/demoAIAgentService.js';
 import { teamConsultedInsiderBefore } from '../services/incidentDecisionGradingService.js';
 import { publishInjectToSession } from './injects.js';
 import { evaluateDecisionBasedTriggers } from '../services/injectTriggerService.js';
@@ -886,6 +887,38 @@ async function processExecutedDecisionInBackground(
           title: (incidentForEnv as { title?: string }).title ?? '',
           description: (incidentForEnv as { description?: string }).description ?? '',
         };
+      }
+    }
+
+    // Pre-evaluation extraction: place infrastructure and record direction intent
+    // from the decision text BEFORE the evaluator runs, so it sees the updated ground truth.
+    const sessionScenarioIdForExtraction = (sessionRow as { scenario_id?: string } | null)
+      ?.scenario_id;
+    if (authorTeamNames.length > 0 && sessionScenarioIdForExtraction) {
+      try {
+        const { data: scenarioForCenter } = await supabaseAdmin
+          .from('scenarios')
+          .select('location_lat, location_lng')
+          .eq('id', sessionScenarioIdForExtraction)
+          .single();
+        const extractionCenter =
+          scenarioForCenter?.location_lat && scenarioForCenter?.location_lng
+            ? {
+                lat: Number(scenarioForCenter.location_lat),
+                lng: Number(scenarioForCenter.location_lng),
+              }
+            : null;
+
+        await extractAndPlaceInfrastructureFromText(
+          sessionId,
+          sessionScenarioIdForExtraction,
+          authorTeamNames[0],
+          decision.title as string,
+          decision.description as string,
+          extractionCenter,
+        );
+      } catch (extractErr) {
+        logger.warn({ error: extractErr }, 'Pre-eval extraction failed for human player decision');
       }
     }
 

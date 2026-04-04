@@ -103,7 +103,7 @@ async function buildInfrastructureContext(
   const [{ data: assets }, { data: scenarioEquipment }] = await Promise.all([
     supabaseAdmin
       .from('placed_assets')
-      .select('asset_type, label, team_name')
+      .select('asset_type, label, team_name, properties')
       .eq('session_id', sessionId)
       .eq('status', 'active'),
     session?.scenario_id
@@ -140,7 +140,13 @@ async function buildInfrastructureContext(
     return `TEAM INFRASTRUCTURE STATUS:\nNo facilities or assets have been deployed on the map by any team.\n\nAssets available to ${authorTeamName} team but NOT yet deployed:\n${catalog.map((a) => `- ${a.label} (${a.asset_type})`).join('\n')}\n\n`;
   }
 
-  const byTeam: Record<string, { asset_type: string; label: string | null; count: number }[]> = {};
+  type AssetEntry = {
+    asset_type: string;
+    label: string | null;
+    count: number;
+    properties?: Record<string, unknown>;
+  };
+  const byTeam: Record<string, AssetEntry[]> = {};
   for (const a of assets) {
     const team = a.team_name as string;
     if (!byTeam[team]) byTeam[team] = [];
@@ -152,6 +158,7 @@ async function buildInfrastructureContext(
         asset_type: a.asset_type as string,
         label: a.label as string | null,
         count: 1,
+        properties: (a.properties as Record<string, unknown>) ?? undefined,
       });
     }
   }
@@ -164,7 +171,20 @@ async function buildInfrastructureContext(
       lines.push(`\nAssets deployed by ${authorTeamName} team:`);
       for (const a of teamAssets) {
         const countStr = a.count > 1 ? `${a.count}x ` : '';
-        lines.push(`- ${countStr}${a.label || a.asset_type}`);
+        let detail = `- ${countStr}${a.label || a.asset_type}`;
+        if (a.properties && Object.keys(a.properties).length > 0) {
+          const props = a.properties;
+          if (props.personnel)
+            detail += ` | Personnel: ${Array.isArray(props.personnel) ? (props.personnel as string[]).join(', ') : props.personnel}`;
+          if (props.equipment)
+            detail += ` | Equipment: ${Array.isArray(props.equipment) ? (props.equipment as string[]).join(', ') : props.equipment}`;
+          if (props.capacity) detail += ` | Capacity: ${props.capacity}`;
+          if (props.direction_intent) {
+            const di = props.direction_intent as { action?: string; destination?: string };
+            detail += ` | Direction: ${di.action} → ${di.destination}`;
+          }
+        }
+        lines.push(detail);
       }
     } else {
       lines.push(`\n${authorTeamName} team has NOT deployed any assets on the map.`);
@@ -822,7 +842,7 @@ Specificity requirements by team role:
 
 Set "specific": false when the decision gives general/vague instructions without naming concrete details. Set "specific": true when the decision names enough specifics to be executed without further clarification.
 
-CRITICAL RULE: Do NOT tell the player what is missing or what they should do. Describe the IN-WORLD CONSEQUENCE of their vague orders.
+CRITICAL RULE: For vague operational decisions, describe the IN-WORLD CONSEQUENCE of unclear orders — do NOT tell the player what they should do. EXCEPTION: For infrastructure setup decisions (establishing command posts, triage areas, cordons, etc.), feedback can be constructive and acknowledge good intent when the decision includes coordinates, personnel, and equipment details.
 
 When "specific" is false, the "feedback" MUST be an in-world consequence narrative matching the ESCALATION LEVEL:
 - ESCALATION 0: minor friction from unclear orders. E.g. "Field teams are attempting to fight the fire with water from restroom buckets. The flames are intensifying — the improvised approach is having no effect and smoke is filling the corridor." Use the scenario's actual details.
@@ -837,10 +857,14 @@ When "specific" is false:
 === INFRASTRUCTURE READINESS ===
 When "TEAM INFRASTRUCTURE STATUS" is provided, evaluate whether the team has deployed the necessary facilities and assets on the map to support their decision. Consider:
 
-1. CRITICAL GAP: The decision requires operational infrastructure that has NOT been deployed on the map (e.g., ordering patient treatment/transport without a triage tent or field hospital, ordering decontamination without a decon zone, directing evacuees to an assembly point that doesn't exist, ordering fire suppression without water point or fire truck staging). Set consistent: false with mismatch_kind "infrastructure_gap".
+1. CRITICAL GAP: The decision requires operational infrastructure that has NOT been deployed on the map AND the decision is NOT about establishing that infrastructure (e.g., ordering patient treatment/transport without a triage tent or field hospital, ordering decontamination without a decon zone, directing evacuees to an assembly point that doesn't exist). Set consistent: false with mismatch_kind "infrastructure_gap".
 2. CROSS-TEAM GAP: The decision relies on infrastructure that another team should have deployed but hasn't (e.g., requesting casualty decontamination but no decon zone exists from any team). This is also an infrastructure_gap.
-3. PLANNING EXCEPTION: Decisions that ARE the infrastructure setup action (e.g., "establish a triage zone", "set up decon area", "deploy assembly point at location X") should NOT be penalized — they are creating the infrastructure. Only penalize decisions that ASSUME infrastructure already exists when it does not.
-4. SETUP INTENT WITHOUT MAP PLACEMENT: When the decision describes ESTABLISHING or SETTING UP infrastructure at a named location (e.g., "establish a triage point at Exit D", "set up decon zone at Lobby B") but no corresponding physical asset has been placed on the map yet, do NOT mark it as infrastructure_gap or contradiction. Instead, treat this as a SPECIFICITY issue: set consistent: true, specific: false, and provide constructive feedback guiding the player to physically place the asset on the map. Example feedback: "Your plan to establish a triage point at Exit D is sound. To activate this, place a triage tent marker on the map at Exit D." This shifts the response from punitive to instructive — the player's intent is correct, they just need to complete the action on the map.
+3. PLANNING / ESTABLISHMENT EXCEPTION (IMPORTANT — apply this BEFORE rules 1-2): When the decision text uses verbs like "establish", "set up", "deploy", "place", "create", "designate", or "activate" for infrastructure, the decision IS the act of creating that infrastructure. These decisions should be evaluated POSITIVELY — they are doing exactly what is expected. Do NOT penalize them for the infrastructure not yet existing on the map. The map pin may be placed moments after the decision is published.
+   - If the decision includes specific coordinates [lat, lng], zone designation, personnel counts, and equipment: set consistent: true, specific: true. This is a STRONG decision.
+   - If the decision includes some but not all details: set consistent: true, specific: true but provide constructive feedback on what additional details would strengthen the decision.
+   - Only set specific: false if the decision is extremely vague (e.g., "set up a triage area somewhere") with no location, no personnel, no equipment.
+4. SETUP INTENT WITH COORDINATES: When the decision describes establishing infrastructure AND includes explicit coordinates (e.g., "establishing Command Post at [1.4186, 103.8418]"), this is a HIGH-QUALITY decision. The coordinates prove the player knows exactly where to place the asset. Set consistent: true, specific: true. Do NOT flag this as lacking specificity or needing a map marker — the system places the marker automatically alongside the decision. Feedback should acknowledge the good decision-making.
+5. SETUP INTENT WITHOUT COORDINATES: When the decision describes establishing infrastructure at a named location but WITHOUT coordinates (e.g., "establish a triage point at Exit D") and no map pin exists yet, set consistent: true, specific: false, and provide constructive guidance: "Your plan is sound. To activate this, place the marker on the map at the designated location." Keep the tone instructive, not punitive.
 
 When mismatch_kind is "infrastructure_gap":
 - reason: in-world consequence of acting without proper infrastructure. Match the ESCALATION LEVEL.

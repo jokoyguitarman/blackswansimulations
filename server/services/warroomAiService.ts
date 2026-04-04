@@ -1526,7 +1526,8 @@ async function assessWeaponLethality(
           if (c.num_attackers != null) parts.push(`  Attackers: ${c.num_attackers}`);
           if (c.weapon_description) parts.push(`  Weapon: ${c.weapon_description}`);
           if (c.weapon_forensics) parts.push(`  Forensics: ${c.weapon_forensics}`);
-          if (c.damage_radius_m != null) parts.push(`  Damage radius: ${c.damage_radius_m}m`);
+          if (c.damage_radius_m != null)
+            parts.push(`  Damage radius: ${Math.round(c.damage_radius_m * 3.28084)} ft`);
           if (c.injury_breakdown) parts.push(`  Injury breakdown: ${c.injury_breakdown}`);
           if (c.response_time_minutes != null)
             parts.push(`  Response time: ${c.response_time_minutes} min`);
@@ -4010,11 +4011,11 @@ async function generateVictimProfiles(
 Do NOT generate trapped casualties or casualties behind fire/debris — a ${weaponDesc} cannot cause environmental hazards.`
     : isExplosive
       ? `Triage distribution for a major explosion (anchored to blast radii):
-- ~8% black (deceased) — within 0-50m of detonation point. Injuries: dismemberment, catastrophic blast overpressure, total body disruption, charred remains.
-- ~18% red (immediate/critical) — within 50-100m. Injuries: limb amputation, deep penetrating shrapnel, severe blast burns (>20% BSA), blast lung, open fractures, arterial hemorrhage.
-- ~30% yellow (delayed/serious) — within 100-150m. Injuries: deep shrapnel wounds, moderate burns, tympanic membrane rupture, closed fractures, concussion with LOC.
-- ~44% green (walking wounded) — within 100-200m. Injuries: minor shrapnel lacerations, superficial cuts from glass/debris, flash burns, psychological trauma, temporary hearing loss.
-Include some trapped casualties (under_debris, behind_fire) in the 0-100m band.`
+- ~8% black (deceased) — within 0-164 ft of detonation point. Injuries: dismemberment, catastrophic blast overpressure, total body disruption, charred remains.
+- ~18% red (immediate/critical) — within 164-328 ft. Injuries: limb amputation, deep penetrating shrapnel, severe blast burns (>20% BSA), blast lung, open fractures, arterial hemorrhage.
+- ~30% yellow (delayed/serious) — within 328-492 ft. Injuries: deep shrapnel wounds, moderate burns, tympanic membrane rupture, closed fractures, concussion with LOC.
+- ~44% green (walking wounded) — within 328-656 ft. Injuries: minor shrapnel lacerations, superficial cuts from glass/debris, flash burns, psychological trauma, temporary hearing loss.
+Include some trapped casualties (under_debris, behind_fire) in the 0-328 ft band.`
       : `Triage distribution appropriate for a ${scenarioType}. Generate a realistic mix of severity levels.`;
 
   const systemPrompt = `You are a pre-hospital emergency medicine expert creating victim profiles for a crisis training exercise.
@@ -4193,15 +4194,15 @@ async function placeVictimsOnMap(
     : isExplosive
       ? `EXPLOSION PLACEMENT LOGIC — STRICT RADIUS ANCHORING:
 The bomb detonated at the incident site coordinates. Place victims at distances matching their triage severity:
-- BLACK victims (fatalities): MUST be within 0-50m of the bomb center. They were at ground zero. Some are under debris or behind fire.
+- BLACK victims (fatalities): MUST be within 0-164 ft (~50m) of the bomb center. They were at ground zero. Some are under debris or behind fire.
   Accessibility: "under_debris", "behind_fire", or "in_smoke". These are the hardest to reach.
-- RED victims (critical): MUST be within 50-100m. Severe blast injuries, burns, amputations. 
+- RED victims (critical): MUST be within 164-328 ft (~50-100m). Severe blast injuries, burns, amputations. 
   Accessibility: mix of "under_debris", "behind_fire", and "open". Some crawled away but collapsed.
-- YELLOW victims (serious): MUST be within 100-150m. Shrapnel and blast wave injuries.
+- YELLOW victims (serious): MUST be within 328-492 ft (~100-150m). Shrapnel and blast wave injuries.
   Accessibility: mostly "open" or "in_smoke". They were knocked down or hit by flying debris.
-- GREEN victims (minor): Place within 100-200m. Minor cuts, psychological shock. 
+- GREEN victims (minor): Place within 328-656 ft (~100-200m). Minor cuts, psychological shock. 
   Accessibility: "open". They fled but sustained minor injuries from glass, stampede, or falls.
-- Delayed-discovery victims (appears_at > 0): Place in areas obscured by smoke or debris, within the 0-100m band.
+- Delayed-discovery victims (appears_at > 0): Place in areas obscured by smoke or debris, within the 0-328 ft band.
 - IMPORTANT: Use haversine distance from the bomb center to verify placement radius. Do NOT cluster all victims at the same point — spread them realistically within each band.`
       : `PLACEMENT LOGIC:
 - Most severely injured victims closest to the incident site.

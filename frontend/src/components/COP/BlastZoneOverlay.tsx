@@ -34,7 +34,7 @@ export const BlastZoneOverlay = ({
           <Popup>
             <div className="p-2 text-xs terminal-text">
               <p className="font-semibold text-purple-400">OUTER CORDON</p>
-              <p>Radius: {outerCordonRadius}m</p>
+              <p>Radius: {Math.round(outerCordonRadius * 3.28084)} ft</p>
             </div>
           </Popup>
         </Circle>
@@ -56,7 +56,7 @@ export const BlastZoneOverlay = ({
           <Popup>
             <div className="p-2 text-xs terminal-text">
               <p className="font-semibold text-orange-400">INNER CORDON</p>
-              <p>Radius: {innerCordonRadius}m</p>
+              <p>Radius: {Math.round(innerCordonRadius * 3.28084)} ft</p>
             </div>
           </Popup>
         </Circle>
@@ -76,7 +76,7 @@ export const BlastZoneOverlay = ({
         <Popup>
           <div className="p-2 text-xs terminal-text">
             <p className="font-semibold text-red-400">BLAST EXCLUSION ZONE</p>
-            <p>Radius: {blastRadius}m</p>
+            <p>Radius: {Math.round(blastRadius * 3.28084)} ft</p>
             {label && <p className="text-robotic-yellow/70 mt-1">{label}</p>}
             <p className="text-red-300 mt-1 font-semibold">NO ENTRY — Asset placement blocked</p>
           </div>

@@ -26,6 +26,7 @@ import {
 import { evaluateStateEffectManagementAndUpdateState } from './stateEffectManagementService.js';
 import { applyDecisionCasualtyEffects } from './decisionCasualtyEffectsService.js';
 import { evaluateTransportOutcome } from './transportOutcomeService.js';
+import { extractAndPlaceInfrastructureFromText } from './demoAIAgentService.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { env } from '../env.js';
 import { io } from '../index.js';
@@ -316,6 +317,40 @@ export class DemoActionDispatcher {
     const elapsedMinutes = startTime
       ? Math.floor((Date.now() - new Date(startTime).getTime()) / 60000)
       : 0;
+
+    // Phase 2.5: Pre-evaluation placement extraction
+    // Extract infrastructure intent from the decision text and create placements on the map
+    // BEFORE the evaluator runs, so the evaluator sees the just-placed assets in ground truth.
+    if (teamName && sessionScenarioId) {
+      try {
+        const { data: scenarioRow } = await supabaseAdmin
+          .from('scenarios')
+          .select('location_lat, location_lng')
+          .eq('id', sessionScenarioId)
+          .single();
+        const incidentCenter =
+          scenarioRow?.location_lat && scenarioRow?.location_lng
+            ? { lat: Number(scenarioRow.location_lat), lng: Number(scenarioRow.location_lng) }
+            : null;
+
+        const placedCount = await extractAndPlaceInfrastructureFromText(
+          sessionId,
+          sessionScenarioId,
+          teamName,
+          title,
+          description,
+          incidentCenter,
+        );
+        if (placedCount > 0) {
+          logger.info(
+            { decisionId, teamName, placedCount },
+            'Demo: pre-eval placement extraction placed assets before evaluation',
+          );
+        }
+      } catch (err) {
+        logger.warn({ error: err, decisionId }, 'Demo: pre-eval placement extraction failed');
+      }
+    }
 
     // Phase 3: Environmental consistency evaluation
     let envResult: Record<string, unknown> = { consistent: true };

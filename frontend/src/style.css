@@ -395,6 +395,21 @@ button:focus-visible {
   padding: 8px 10px;
 }
 
+/* Force Leaflet popups into light mode regardless of the app's dark color-scheme */
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  color-scheme: light;
+  background: #fff !important;
+  color: #222 !important;
+}
+.leaflet-popup-content-wrapper input,
+.leaflet-popup-content-wrapper select,
+.leaflet-popup-content-wrapper textarea {
+  color-scheme: light;
+  background: #f9f9f9;
+  color: #222;
+}
+
 /*
  * Drawing mode: disable pointer events on all interactive Leaflet layers
  * so click events pass through to the map for polygon vertex placement.

@@ -103,7 +103,7 @@ function scoreDistance(
     return {
       dimension: 'distance',
       score: 0,
-      reasoning: `Inside blast zone (${Math.round(dist)}m from incident, blast radius ${blastRadius}m)`,
+      reasoning: `Inside blast zone (${Math.round(dist * 3.28084)} ft from incident, blast radius ${Math.round(blastRadius * 3.28084)} ft)`,
     };
   }
   if (dist < optimalMin) {

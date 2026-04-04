@@ -1234,7 +1234,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                       )}
                       {rc.damage_radius_m != null && rc.damage_radius_m > 0 && (
                         <span className="px-2 py-0.5 text-[10px] terminal-text bg-yellow-900/40 border border-yellow-500/30 text-yellow-300">
-                          RADIUS: {rc.damage_radius_m}M
+                          RADIUS: {Math.round(rc.damage_radius_m * 3.28084)} FT
                         </span>
                       )}
                     </div>
@@ -2520,7 +2520,15 @@ const MapPinsTab = ({
                           {zoneType.toUpperCase()} zone ({radiusM}m) — drag center marker to move
                         </Tooltip>
                         <Popup>
-                          <div style={{ minWidth: 160 }}>
+                          <div
+                            style={{
+                              minWidth: 160,
+                              background: '#fff',
+                              color: '#222',
+                              padding: 8,
+                              borderRadius: 4,
+                            }}
+                          >
                             <div
                               style={{
                                 fontWeight: 700,
@@ -2538,7 +2546,7 @@ const MapPinsTab = ({
                                 fontSize: 11,
                                 display: 'block',
                                 marginBottom: 2,
-                                color: '#666',
+                                color: '#555',
                               }}
                             >
                               Radius (meters)
@@ -2565,15 +2573,17 @@ const MapPinsTab = ({
                                 border: `1px solid ${style.color}`,
                                 borderRadius: 4,
                                 outline: 'none',
+                                background: '#f9f9f9',
+                                color: '#222',
                               }}
                             />
                             {(conds.ppe_required as string[] | undefined)?.length ? (
-                              <div style={{ marginTop: 6, fontSize: 10, color: '#888' }}>
+                              <div style={{ marginTop: 6, fontSize: 10, color: '#666' }}>
                                 PPE: {(conds.ppe_required as string[]).join(', ')}
                               </div>
                             ) : null}
                             {(conds.allowed_teams as string[] | undefined)?.length ? (
-                              <div style={{ fontSize: 10, color: '#888' }}>
+                              <div style={{ fontSize: 10, color: '#666' }}>
                                 Teams: {(conds.allowed_teams as string[]).join(', ')}
                               </div>
                             ) : null}
@@ -2639,7 +2649,15 @@ const MapPinsTab = ({
                             {zone.zone_type.toUpperCase()} zone ({zone.radius_m}m)
                           </Tooltip>
                           <Popup>
-                            <div style={{ minWidth: 160 }}>
+                            <div
+                              style={{
+                                minWidth: 160,
+                                background: '#fff',
+                                color: '#222',
+                                padding: 8,
+                                borderRadius: 4,
+                              }}
+                            >
                               <div
                                 style={{
                                   fontWeight: 700,
@@ -2657,7 +2675,7 @@ const MapPinsTab = ({
                                   fontSize: 11,
                                   display: 'block',
                                   marginBottom: 2,
-                                  color: '#666',
+                                  color: '#555',
                                 }}
                               >
                                 Radius (meters)
@@ -2683,15 +2701,17 @@ const MapPinsTab = ({
                                   border: `1px solid ${style.color}`,
                                   borderRadius: 4,
                                   outline: 'none',
+                                  background: '#f9f9f9',
+                                  color: '#222',
                                 }}
                               />
                               {zone.ppe_required?.length ? (
-                                <div style={{ marginTop: 6, fontSize: 10, color: '#888' }}>
+                                <div style={{ marginTop: 6, fontSize: 10, color: '#666' }}>
                                   PPE: {zone.ppe_required.join(', ')}
                                 </div>
                               ) : null}
                               {zone.allowed_teams?.length ? (
-                                <div style={{ fontSize: 10, color: '#888' }}>
+                                <div style={{ fontSize: 10, color: '#666' }}>
                                   Teams: {zone.allowed_teams.join(', ')}
                                 </div>
                               ) : null}
@@ -2743,7 +2763,7 @@ const MapPinsTab = ({
                   }}
                 >
                   <Tooltip direction="center" permanent={false}>
-                    {bz.label} ({radiusM}m)
+                    {bz.label} ({Math.round(radiusM * 3.28084)} ft)
                   </Tooltip>
                 </Polygon>
               );

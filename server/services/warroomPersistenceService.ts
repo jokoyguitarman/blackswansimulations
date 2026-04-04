@@ -258,7 +258,8 @@ export async function persistWarroomScenario(
       const { error: objError } = await supabaseAdmin.from('scenario_objectives').insert(
         objectives.map((o) => ({
           scenario_id: scenarioId,
-          objective_id: o.objective_id || o.objective_name.toLowerCase().replace(/\s+/g, '_'),
+          objective_id:
+            o.objective_id || o.objective_name.toLowerCase().replace(new RegExp('\\s+', 'g'), '_'),
           objective_name: o.objective_name,
           description: o.description,
           weight: o.weight ?? 25,
@@ -340,9 +341,9 @@ export async function persistWarroomScenario(
 
         const blastZoneRows: Array<Record<string, unknown>> = [];
         const BLAST_BANDS = [
-          { radius_m: 50, label: 'Lethal Zone (0-50m)', zone_type: 'blast_lethal' },
-          { radius_m: 100, label: 'Severe Injury Zone (50-100m)', zone_type: 'blast_severe' },
-          { radius_m: 150, label: 'Fragment Zone (100-150m)', zone_type: 'blast_fragment' },
+          { radius_m: 50, label: 'Lethal Zone (0–164 ft)', zone_type: 'blast_lethal' },
+          { radius_m: 100, label: 'Severe Injury Zone (164–328 ft)', zone_type: 'blast_severe' },
+          { radius_m: 150, label: 'Fragment Zone (328–492 ft)', zone_type: 'blast_fragment' },
         ];
 
         for (const h of (insertedHazards ?? []) as Array<Record<string, unknown>>) {
