@@ -31,6 +31,7 @@ interface AgentState {
   lastActionTs: number;
   pendingCooldown: boolean;
   actedThisCycle: boolean;
+  lastActionWasPinResponse: boolean;
 }
 
 interface SessionAgents {
@@ -88,22 +89,212 @@ interface AgentMultiResponse {
 // Constants — tuned for realistic human-like pacing
 // ---------------------------------------------------------------------------
 
-const AGENT_THROTTLE_MS = 180_000; // 3 min cooldown per agent after acting
-const AGENT_THROTTLE_EARLY_MS = 90_000; // 90s cooldown during foundational phase (first 8 min)
-const FOUNDATIONAL_PHASE_MINUTES = 8; // first N minutes: reduced throttle, higher proactive rate
-const INTER_ACTION_BASE_MS = 5_000;
-const INTER_ACTION_RANGE_MS = 5_000;
+const AGENT_THROTTLE_MS = 120_000; // 2 min cooldown per agent after acting
+const AGENT_THROTTLE_PIN_MS = 45_000; // 45s cooldown after a pin_response (fast patient throughput)
+const AGENT_THROTTLE_EARLY_MS = 60_000; // 60s cooldown during foundational phase (first 5 min)
+const FOUNDATIONAL_PHASE_MINUTES = 5; // first N minutes: claiming exits and first infrastructure
+const INTER_ACTION_BASE_MS = 3_000;
+const INTER_ACTION_RANGE_MS = 3_000;
 const HYBRID_DEFER_WINDOW_MS = 10_000;
 const MAX_RECENT_ACTIONS = 15;
 const AI_MODEL = 'gpt-4o-mini';
-const MAX_VALIDATION_RETRIES = 3;
-const PROACTIVE_INTERVAL_MS = 180_000; // 3 min between proactive ticks
-const PROACTIVE_ACT_PROBABILITY = 0.2; // 20% chance per agent per tick
-const PROACTIVE_ACT_PROBABILITY_EARLY = 0.4; // 40% during foundational phase
-const KICKSTART_STAGGER_MS = 20_000; // 20s between kickstart agents
-const KICKSTART_INITIAL_DELAY_MS = 12_000;
-const INTER_AGENT_DELAY_MS = 8_000; // 8s stagger between sequential agent decisions
+const MAX_VALIDATION_RETRIES = 2;
+const PROACTIVE_INTERVAL_MS = 60_000; // 1 min between proactive ticks
+const PROACTIVE_ACT_PROBABILITY = 0.85; // 85% chance per agent per tick (high throughput)
+const PROACTIVE_ACT_PROBABILITY_EARLY = 0.95; // 95% during foundational phase
+const KICKSTART_STAGGER_MS = 15_000; // 15s between kickstart agents
+const KICKSTART_INITIAL_DELAY_MS = 8_000;
+const INTER_AGENT_DELAY_MS = 6_000; // 6s stagger between sequential agent decisions
 const INJECT_CYCLE_RESET_MS = 120_000; // auto-reset cycle budget after 2 min
+
+// ---------------------------------------------------------------------------
+// Action Classification — the "classify-first" step that determines what
+// format/template the bot should use, preventing infrastructure spam and
+// ensuring bots prioritise their core responsibilities.
+// ---------------------------------------------------------------------------
+
+type ActionClass =
+  | 'claim_exit'
+  | 'place_infrastructure'
+  | 'patient_response'
+  | 'hazard_response'
+  | 'crowd_response'
+  | 'inject_situational'
+  | 'inject_stakeholder'
+  | 'inject_media'
+  | 'proactive_pin'
+  | 'none';
+
+interface ClassificationResult {
+  actionClass: ActionClass;
+  reason: string;
+  targetPinId?: string;
+  targetPinLabel?: string;
+}
+
+async function classifyActionRequired(
+  teamKey: string,
+  triggerEvent: WebSocketEvent,
+  groundContext: {
+    unclaimedExits: number;
+    infrastructureComplete: boolean;
+    pendingPatients: Array<{ id: string; label: string; status: string }>;
+    pendingHazards: Array<{ id: string; label: string; status: string }>;
+    pendingCrowds: Array<{ id: string; label: string; status: string }>;
+    elapsedMinutes: number;
+    infrastructurePendingCount: number;
+  },
+): Promise<ClassificationResult> {
+  const isProactive =
+    triggerEvent.type === 'proactive.tick' || triggerEvent.type === 'session.started';
+  const injectText =
+    !isProactive && triggerEvent.data ? JSON.stringify(triggerEvent.data).slice(0, 600) : '';
+
+  // Phase 1: First 5 minutes — claim exits if any remain
+  if (
+    groundContext.elapsedMinutes < FOUNDATIONAL_PHASE_MINUTES &&
+    groundContext.unclaimedExits > 0
+  ) {
+    return { actionClass: 'claim_exit', reason: 'Unclaimed exits available during startup' };
+  }
+
+  // Phase 1b: During startup, allow one infrastructure placement if exits are done
+  if (
+    groundContext.elapsedMinutes < FOUNDATIONAL_PHASE_MINUTES &&
+    !groundContext.infrastructureComplete &&
+    groundContext.unclaimedExits === 0 &&
+    groundContext.infrastructurePendingCount > 0
+  ) {
+    return {
+      actionClass: 'place_infrastructure',
+      reason: 'First infrastructure item during startup phase',
+    };
+  }
+
+  // If an inject is pending (not proactive), classify it
+  if (!isProactive && injectText) {
+    const classification = await classifyInjectWithAI(teamKey, injectText);
+    return classification;
+  }
+
+  // Proactive: prioritise unaddressed pins based on team role
+  const allowedPinTypes = TEAM_ALLOWED_PIN_TYPES[teamKey];
+  if (allowedPinTypes) {
+    if (allowedPinTypes.has('casualty') && groundContext.pendingPatients.length > 0) {
+      const target = groundContext.pendingPatients[0];
+      return {
+        actionClass: 'patient_response',
+        reason: `Unaddressed patient: ${target.label}`,
+        targetPinId: target.id,
+        targetPinLabel: target.label,
+      };
+    }
+    if (allowedPinTypes.has('hazard') && groundContext.pendingHazards.length > 0) {
+      const target = groundContext.pendingHazards[0];
+      return {
+        actionClass: 'hazard_response',
+        reason: `Active hazard: ${target.label}`,
+        targetPinId: target.id,
+        targetPinLabel: target.label,
+      };
+    }
+    if (allowedPinTypes.has('crowd') && groundContext.pendingCrowds.length > 0) {
+      const target = groundContext.pendingCrowds[0];
+      return {
+        actionClass: 'crowd_response',
+        reason: `Crowd needing direction: ${target.label}`,
+        targetPinId: target.id,
+        targetPinLabel: target.label,
+      };
+    }
+  }
+
+  // If infrastructure is still pending and no urgent pins, allow building
+  if (!groundContext.infrastructureComplete && groundContext.infrastructurePendingCount > 0) {
+    return {
+      actionClass: 'place_infrastructure',
+      reason: 'No urgent pins — continue building operating area',
+    };
+  }
+
+  return { actionClass: 'none', reason: 'Nothing actionable for this team right now' };
+}
+
+async function classifyInjectWithAI(
+  teamKey: string,
+  injectText: string,
+): Promise<ClassificationResult> {
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0,
+        max_tokens: 200,
+        messages: [
+          {
+            role: 'system',
+            content: `You classify crisis-exercise injects for the "${teamKey}" team.
+Return JSON: { "actionClass": "<class>", "reason": "<one-line>" }
+
+Classes:
+- "patient_response" — inject describes an injured/sick person needing medical attention
+- "hazard_response" — inject describes a fire, spill, explosion, structural collapse, or other hazard
+- "crowd_response" — inject describes a crowd, evacuee group, or people needing direction
+- "inject_media" — inject is about media activity, press, public statement, or communications
+- "inject_stakeholder" — inject is about VIPs, diplomats, officials, government, families, religious leaders
+- "inject_situational" — inject is about weather, intelligence, resource updates, operational changes
+- "place_infrastructure" — inject explicitly says infrastructure is missing or needs establishment
+- "none" — inject does not require action from this team
+
+Rules:
+- Media/journalists approaching are NOT casualties — classify as "inject_media" or "inject_situational"
+- Bystanders filming/watching are NOT casualties — classify as "inject_situational"
+- Diplomatic demands are "inject_stakeholder" NOT "patient_response"
+- Only classify as "patient_response" if the inject describes actual physical injury or illness`,
+          },
+          { role: 'user', content: injectText },
+        ],
+      }),
+    });
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const raw = data.choices?.[0]?.message?.content ?? '';
+    const cleaned = raw
+      .replace(/```json\s*/g, '')
+      .replace(/```/g, '')
+      .trim();
+    const parsed = JSON.parse(cleaned) as { actionClass: string; reason: string };
+    const validClasses: ActionClass[] = [
+      'patient_response',
+      'hazard_response',
+      'crowd_response',
+      'inject_media',
+      'inject_stakeholder',
+      'inject_situational',
+      'place_infrastructure',
+      'none',
+    ];
+    if (validClasses.includes(parsed.actionClass as ActionClass)) {
+      return {
+        actionClass: parsed.actionClass as ActionClass,
+        reason: parsed.reason || 'AI classified',
+      };
+    }
+    return {
+      actionClass: 'inject_situational',
+      reason: parsed.reason || 'Fallback classification',
+    };
+  } catch (err) {
+    logger.warn({ err }, 'Inject classification AI call failed, falling back to situational');
+    return { actionClass: 'inject_situational', reason: 'Classification failed — default' };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Hardcoded team scope — what each team is allowed to place / respond to.
@@ -1724,6 +1915,7 @@ export class DemoAIAgentService {
         lastActionTs: 0,
         pendingCooldown: false,
         actedThisCycle: false,
+        lastActionWasPinResponse: false,
       });
     }
 
@@ -2135,7 +2327,98 @@ export class DemoAIAgentService {
   }
 
   // ---------------------------------------------------------------------------
-  // Core AI response generation (consolidated turns)
+  // Ground-context loader for the classifier (structured, not stringified)
+  // ---------------------------------------------------------------------------
+
+  private async loadGroundContextForClassifier(
+    session: SessionAgents,
+    teamScopeKey: string | null,
+  ): Promise<{
+    unclaimedExits: number;
+    infrastructureComplete: boolean;
+    infrastructurePendingCount: number;
+    pendingPatients: Array<{ id: string; label: string; status: string }>;
+    pendingHazards: Array<{ id: string; label: string; status: string }>;
+    pendingCrowds: Array<{ id: string; label: string; status: string }>;
+  }> {
+    const ground = await this.loadGroundSituation(
+      session.sessionId,
+      session.scenarioId,
+      teamScopeKey || undefined,
+    );
+
+    const unclaimedExits = ground.claimableExits.filter(
+      (e) => !e.claimStatus.startsWith('CLAIMED'),
+    ).length;
+
+    // Check infrastructure completeness
+    let infrastructureComplete = true;
+    let infrastructurePendingCount = 0;
+    if (teamScopeKey) {
+      const scenarioMetrics = await loadScenarioMetrics(
+        session.sessionId,
+        session.scenarioId,
+        session.incidentCenter,
+      );
+      const blueprint = generateTeamBlueprint(teamScopeKey, scenarioMetrics);
+      if (blueprint && blueprint.items.length > 0) {
+        const { data: placedRaw } = await supabaseAdmin
+          .from('placed_assets')
+          .select('asset_type')
+          .eq('session_id', session.sessionId)
+          .eq(
+            'team_name',
+            Array.from(session.agents.values()).find(
+              (a) => getTeamScopeKey(a.persona.teamName) === teamScopeKey,
+            )?.persona.teamName || '',
+          )
+          .eq('status', 'active');
+        const placedTypes = new Set(
+          (placedRaw ?? []).map((a) => (a as Record<string, unknown>).asset_type as string),
+        );
+        const pending = blueprint.items.filter((item) => !placedTypes.has(item.asset_type));
+        infrastructurePendingCount = pending.length;
+        infrastructureComplete = pending.length === 0;
+      }
+    }
+
+    // Parse structured pin data from the string lines
+    const extractId = (line: string): string => {
+      const m = line.match(/\[id:([^\]]+)\]/);
+      return m ? m[1] : '';
+    };
+    const extractStatus = (line: string): string => {
+      const m = line.match(/status:\s*(\S+)/);
+      return m ? m[1] : 'unknown';
+    };
+
+    return {
+      unclaimedExits,
+      infrastructureComplete,
+      infrastructurePendingCount,
+      pendingPatients: ground.patients.map((p) => ({
+        id: extractId(p),
+        label: p.slice(0, 100),
+        status: extractStatus(p),
+      })),
+      pendingHazards: ground.hazards.map((h) => ({
+        id: extractId(h),
+        label: h.slice(0, 100),
+        status: extractStatus(h),
+      })),
+      pendingCrowds: ground.crowds.map((c) => ({
+        id: extractId(c),
+        label: c.slice(0, 100),
+        status: extractStatus(c),
+      })),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Core AI response generation — CLASSIFY-FIRST architecture
+  // Step 1: classify what action is needed (fast AI or rules)
+  // Step 2: generate focused prompt with the right format for that class
+  // Step 3: execute the action
   // ---------------------------------------------------------------------------
 
   private async generateAndExecuteActions(
@@ -2150,10 +2433,40 @@ export class DemoAIAgentService {
     agent.pendingCooldown = true;
 
     try {
-      const systemPrompt = this.buildSystemPrompt(session, agent);
-      const userPrompt = await this.buildUserPrompt(session, agent, triggerEvent);
+      const teamScopeKey = getTeamScopeKey(agent.persona.teamName);
 
-      // --- Validation retry loop ---
+      // ── Step 1: CLASSIFY what action this agent should take ──
+      const groundCtx = await this.loadGroundContextForClassifier(session, teamScopeKey);
+      const classification = await classifyActionRequired(teamScopeKey || '', triggerEvent, {
+        ...groundCtx,
+        elapsedMinutes: this.getElapsedMinutes(session),
+      });
+
+      logger.info(
+        {
+          botUserId: agent.persona.botUserId,
+          team: agent.persona.teamName,
+          actionClass: classification.actionClass,
+          reason: classification.reason,
+        },
+        'AI agent: action classified',
+      );
+
+      if (classification.actionClass === 'none') {
+        agent.pendingCooldown = false;
+        return;
+      }
+
+      // ── Step 2: Build focused prompt based on classification ──
+      const systemPrompt = this.buildSystemPrompt(session, agent);
+      const userPrompt = await this.buildClassifiedUserPrompt(
+        session,
+        agent,
+        triggerEvent,
+        classification,
+      );
+
+      // ── Step 3: Generate + validate + execute ──
       let actions: SingleAction[] = [];
       let attempt = 0;
       let rejectionContext = '';
@@ -2177,7 +2490,6 @@ export class DemoAIAgentService {
           return;
         }
 
-        // Validate the proposed actions
         const validation = await this.validateActions(session, agent, actions, triggerEvent);
         if (validation.valid) {
           break;
@@ -2189,13 +2501,16 @@ export class DemoAIAgentService {
         );
         rejectionContext = validation.reason;
 
-        // On final failed attempt, use the fallback
         if (attempt >= MAX_VALIDATION_RETRIES) {
           logger.info(
             { botUserId: agent.persona.botUserId },
-            'AI agent: max retries reached, using programmatic fallback',
+            'AI agent: max retries reached, using context-aware fallback',
           );
-          const fallbackActions = await this.generateFallbackPlacement(session, agent);
+          const fallbackActions = await this.generateContextAwareFallback(
+            session,
+            agent,
+            classification,
+          );
           if (fallbackActions) {
             actions = fallbackActions;
           }
@@ -2235,6 +2550,7 @@ export class DemoAIAgentService {
       }
 
       agent.actedThisCycle = true;
+      agent.lastActionWasPinResponse = actions.some((a) => a.action === 'pin_response');
 
       // AI-based placement extraction: if a decision was published but no placement was
       // included, use AI to analyze the decision intent and auto-create placements.
@@ -2302,10 +2618,12 @@ export class DemoAIAgentService {
       '',
       '## How This Exercise Works',
       '',
-      'Each turn you return at most 3 actions in this order:',
-      '1. ONE DECISION (a single, focused tactical action)',
-      '2. ONE PLACEMENT or ONE CLAIM (map action matching your decision)',
-      '3. ONE short CHAT message (radio summary of what you just did)',
+      'Each turn you return 1-3 actions depending on the task. The user prompt will specify which actions are expected.',
+      'Possible action types:',
+      '1. DECISION — a single, focused tactical action',
+      '2. PLACEMENT or CLAIM — a map action (infrastructure or exit claim)',
+      '3. PIN_RESPONSE — interacting with a specific casualty, hazard, or crowd on the map',
+      '4. CHAT — a short radio summary of what you did',
       '',
       '### ⚠️ ONE ACTION PER DECISION — CRITICAL',
       'Your decision must describe EXACTLY ONE tactical action. Do NOT bundle multiple actions.',
@@ -2520,14 +2838,16 @@ export class DemoAIAgentService {
       '```',
       '',
       '## Tactical Phases',
-      '- Minutes 0-3: CLAIM exits relevant to your team. Initial situation assessment. First containment decision.',
-      '- Minutes 3-8: Deploy cordons/triage areas. Use PIN_RESPONSE to triage casualties one by one. Begin hazard containment.',
-      '- Minutes 8-15: Continue triaging remaining casualties. Extract patients to triage areas. Specialist deployments. Begin evacuations only AFTER exits are claimed and cordons placed.',
-      '- Minutes 15+: Treat patients at triage. Only transport AFTER treatment. Sustained ops, resource rotation. Resolve contained hazards.',
+      '- Minutes 0-3: CLAIM exits. Place your FIRST infrastructure item (cordon, triage tent, command post).',
+      '- Minutes 3+: REACT to injects and pins. The classified prompt tells you exactly what to do each turn.',
+      '  → If an inject arrives: respond to the inject.',
+      '  → If no inject: work through unaddressed pins (patients, hazards, crowds) one by one.',
+      '  → If no pins to address: continue building remaining infrastructure.',
+      '- The system classifier ensures you prioritise the right action at the right time.',
       '',
       '## CRITICAL Rules',
-      '- Every turn MUST have exactly 1 decision (or 1 pin_response) + 1 placement/claim + 1 chat.',
-      '- If your decision mentions establishing ANY infrastructure (cordon, triage, command post, staging, zone, decon, assembly point, roadblock, fire engine), you MUST ALSO include a placement action for it in the same turn.',
+      '- Each turn produces 1-3 actions. The classified prompt tells you what action types are expected.',
+      '- When placing infrastructure, you MUST include a placement action with geometry — text-only decisions do NOT create map assets.',
       '- Your decision description MUST ALWAYS include the coordinates [lat, lng] of where the action takes place — even when you also include a placement action. Example: "Establishing Triage Station at [-33.891234, 151.275678] in the warm zone."',
       '- If for some reason you cannot include a placement action, coordinates in the decision text are MANDATORY — without them the action has no effect on the map.',
       '- ALWAYS prefer pin_response over decision when there are casualties or hazards in your jurisdiction. A text decision CANNOT triage a patient or contain a hazard — only pin_response can.',
@@ -3054,6 +3374,368 @@ export class DemoAIAgentService {
     );
 
     return parts.join('\n');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Classification-aware user prompt — focused format per action class
+  // ---------------------------------------------------------------------------
+
+  private async buildClassifiedUserPrompt(
+    session: SessionAgents,
+    agent: AgentState,
+    event: WebSocketEvent,
+    classification: ClassificationResult,
+  ): Promise<string> {
+    const parts: string[] = [];
+    const elapsed = this.getElapsedMinutes(session);
+    const center = session.incidentCenter ?? { lat: 0, lng: 0 };
+    const teamScopeKey = getTeamScopeKey(agent.persona.teamName);
+
+    parts.push(`## Current Situation — ${Math.floor(elapsed)} minutes into exercise`);
+
+    const isProactive = event.type === 'proactive.tick' || event.type === 'session.started';
+    if (!isProactive) {
+      parts.push(`New event: ${event.type}`);
+      parts.push(JSON.stringify(event.data, null, 2).slice(0, 1200));
+    } else {
+      parts.push(`Trigger: ${event.data.message || 'Periodic situation reassessment'}`);
+    }
+
+    parts.push(
+      '',
+      `## ACTION CLASSIFICATION: **${classification.actionClass.toUpperCase()}**`,
+      `Reason: ${classification.reason}`,
+    );
+
+    // Load ground situation (always — all teams need situational awareness)
+    const ground = await this.loadGroundSituation(
+      session.sessionId,
+      session.scenarioId,
+      teamScopeKey || undefined,
+    );
+
+    // Load scenario metrics for zone/coordinate info
+    const scenarioMetrics = await loadScenarioMetrics(
+      session.sessionId,
+      session.scenarioId,
+      session.incidentCenter,
+    );
+
+    // Zone coordinate reference (always useful)
+    parts.push(
+      '',
+      '### ZONE COORDINATES:',
+      `Incident center: [${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}]`,
+      `HOT: ${scenarioMetrics.hotZoneRadius}m | WARM: ${scenarioMetrics.warmZoneRadius}m | COLD: ${scenarioMetrics.coldZoneRadius}m`,
+    );
+
+    // ------- Classification-specific instructions -------
+
+    switch (classification.actionClass) {
+      case 'claim_exit': {
+        const unclaimed = ground.claimableExits.filter((e) => !e.claimStatus.startsWith('CLAIMED'));
+        parts.push(
+          '',
+          '## YOUR TASK: Claim an exit/entry point',
+          'Pick ONE unclaimed exit and claim it for your team.',
+          '',
+          '### Unclaimed exits:',
+        );
+        for (const exit of unclaimed) {
+          parts.push(`- "${exit.label}" (${exit.location_type})`);
+        }
+        if (agent.recentActions.some((a) => a.includes('claim:'))) {
+          parts.push(
+            '',
+            '⚠️ You already claimed an exit earlier. Pick a DIFFERENT one if any remain.',
+          );
+        }
+        parts.push(
+          '',
+          'Return: 1 decision (describing why you claim this exit) + 1 claim + 1 chat.',
+        );
+        break;
+      }
+
+      case 'place_infrastructure': {
+        const blueprint = teamScopeKey
+          ? generateTeamBlueprint(teamScopeKey, scenarioMetrics)
+          : null;
+        const { data: placedRaw } = await supabaseAdmin
+          .from('placed_assets')
+          .select('asset_type')
+          .eq('session_id', session.sessionId)
+          .eq('team_name', agent.persona.teamName)
+          .eq('status', 'active');
+        const placedTypes = new Set(
+          (placedRaw ?? []).map((a) => (a as Record<string, unknown>).asset_type as string),
+        );
+
+        if (blueprint) {
+          const pending = blueprint.items
+            .filter((item) => !placedTypes.has(item.asset_type))
+            .sort((a, b) => a.priority - b.priority);
+
+          if (pending.length > 0) {
+            const next = pending[0];
+            const personnelStr = next.personnel
+              .map((p) => `${p.count}x ${p.role}${p.ppe ? ` (${p.ppe})` : ''}`)
+              .join(', ');
+            const equipStr = next.equipment.slice(0, 6).join(', ');
+
+            parts.push(
+              '',
+              '## YOUR TASK: Place your next infrastructure item',
+              `You must place: **${next.label}** (${next.asset_type})`,
+              `Zone: ${next.zone} | Geometry: ${next.geometry_type}`,
+              `Location hint: ${next.placement_hint}`,
+              `Personnel: ${personnelStr}`,
+              `Equipment: ${equipStr}`,
+              next.capacity ? `Capacity: ${next.capacity} persons` : '',
+              `Description: ${next.description}`,
+              '',
+              '⚠️ Your decision MUST include:',
+              '1. Exact coordinates in the correct zone',
+              '2. Personnel deployment with counts, roles, and PPE',
+              '3. Equipment being provided',
+              '',
+              'Return: 1 decision + 1 placement (with geometry) + 1 chat.',
+            );
+          }
+        }
+        break;
+      }
+
+      case 'patient_response': {
+        // Show ALL patients so the bot can pick intelligently
+        parts.push(
+          '',
+          '## YOUR TASK: Respond to a patient',
+          '⚠️ You MUST use a pin_response action (not a regular decision) to interact with this patient.',
+        );
+        if (classification.targetPinId) {
+          parts.push(
+            `Priority target: ${classification.targetPinLabel || 'patient'}`,
+            `Target ID: ${classification.targetPinId}`,
+          );
+        }
+        parts.push('', '### Patients in your jurisdiction:');
+        for (const p of ground.patients) parts.push(`- ${p}`);
+        parts.push(
+          '',
+          '### Required pin_response format:',
+          '- target_id: exact UUID from above',
+          '- target_type: "casualty"',
+          '- actions: what you are doing (e.g., ["Initiate Triage", "Administer First Aid"])',
+          '- resources: deployed personnel with counts',
+          '- triage_color: "green"/"yellow"/"red"/"black"',
+          '- description: detailed treatment plan with personnel ratio and transport destination',
+          '',
+          'Return: 1 pin_response + 1 chat. Do NOT include a placement action.',
+        );
+        break;
+      }
+
+      case 'hazard_response': {
+        parts.push(
+          '',
+          '## YOUR TASK: Respond to a hazard',
+          '⚠️ You MUST use a pin_response action (not a regular decision).',
+        );
+        if (classification.targetPinId) {
+          parts.push(
+            `Priority target: ${classification.targetPinLabel || 'hazard'}`,
+            `Target ID: ${classification.targetPinId}`,
+          );
+        }
+        parts.push('', '### Active hazards:');
+        for (const h of ground.hazards) parts.push(`- ${h}`);
+        parts.push(
+          '',
+          '### Required pin_response format:',
+          '- target_id: exact UUID from above',
+          '- target_type: "hazard"',
+          '- actions: containment/mitigation steps',
+          '- resources: deployed units with counts',
+          '- description: detailed response plan',
+          '',
+          'Return: 1 pin_response + 1 chat. Do NOT include a placement action.',
+        );
+        break;
+      }
+
+      case 'crowd_response': {
+        parts.push(
+          '',
+          '## YOUR TASK: Direct a crowd/evacuee group',
+          '⚠️ You MUST use a pin_response action.',
+          '→ Direct evacuees to a named exit/assembly area.',
+          '→ If you find INJURED people in the crowd, ENDORSE them to Medical Triage (describe in your chat).',
+        );
+        if (classification.targetPinId) {
+          parts.push(
+            `Priority target: ${classification.targetPinLabel || 'crowd'}`,
+            `Target ID: ${classification.targetPinId}`,
+          );
+        }
+        parts.push('', '### Crowds needing direction:');
+        for (const cr of ground.crowds) parts.push(`- ${cr}`);
+
+        const claimed = ground.claimableExits.filter((e) => e.claimStatus.startsWith('CLAIMED'));
+        if (claimed.length > 0) {
+          parts.push('', '### Claimed exits (direct crowds here):');
+          for (const ex of claimed) {
+            parts.push(`- "${ex.label}" — ${ex.claimStatus}`);
+          }
+        }
+        parts.push('', 'Return: 1 pin_response + 1 chat. Do NOT include a placement action.');
+        break;
+      }
+
+      case 'inject_media':
+      case 'inject_stakeholder':
+      case 'inject_situational': {
+        parts.push(
+          '',
+          `## YOUR TASK: Respond to this ${classification.actionClass.replace('inject_', '')} inject`,
+          '⚠️ Read the inject carefully. Your response must DIRECTLY address what the inject describes.',
+          '⚠️ Do NOT default to placing infrastructure or triaging patients unless the inject explicitly requires it.',
+          '',
+          'Match your response to the inject:',
+          '- Media inject → draft statement, manage press access, coordinate messaging',
+          '- Stakeholder inject → assign liaison, prepare briefing, compile status report',
+          '- Situational inject → adapt operations to new conditions',
+          '',
+          'Return: 1 decision + 1 chat. Include placement ONLY if the inject explicitly requires infrastructure.',
+        );
+        break;
+      }
+
+      case 'proactive_pin': {
+        // Same as patient/hazard/crowd but from proactive tick
+        parts.push('', '## YOUR TASK: Proactively address an unresolved situation on the ground');
+        if (ground.patients.length > 0 && teamScopeKey === 'triage') {
+          parts.push('', '### Patients awaiting triage/treatment:');
+          for (const p of ground.patients) parts.push(`- ${p}`);
+          parts.push('', 'Use pin_response for the most critical patient.');
+        }
+        if (
+          ground.hazards.length > 0 &&
+          (teamScopeKey === 'fire' || teamScopeKey === 'bomb_squad')
+        ) {
+          parts.push('', '### Active hazards:');
+          for (const h of ground.hazards) parts.push(`- ${h}`);
+          parts.push('', 'Use pin_response for the most critical hazard.');
+        }
+        if (ground.crowds.length > 0 && teamScopeKey === 'evacuation') {
+          parts.push('', '### Crowds needing direction:');
+          for (const cr of ground.crowds) parts.push(`- ${cr}`);
+          parts.push('', 'Use pin_response to direct the largest unmanaged crowd.');
+        }
+        parts.push('', 'Return: 1 pin_response + 1 chat.');
+        break;
+      }
+
+      default:
+        break;
+    }
+
+    // Previous actions (avoid repeats)
+    if (agent.recentActions.length > 0) {
+      parts.push('', '## Your previous actions (do not repeat):');
+      for (const action of agent.recentActions.slice(-6)) {
+        parts.push(`- ${action}`);
+      }
+    }
+
+    // Evaluator feedback
+    const ownFeedback = await this.loadOwnEvaluatorFeedback(
+      session.sessionId,
+      agent.persona.botUserId,
+    );
+    if (ownFeedback.length > 0) {
+      parts.push('', '## ⚠️ EVALUATOR FEEDBACK (fix these issues):');
+      for (const fb of ownFeedback) {
+        parts.push(`- ${fb}`);
+      }
+    }
+
+    // Recent session activity for context
+    const recentActivity = await this.loadRecentSessionActivity(session.sessionId);
+    if (recentActivity.length > 0) {
+      parts.push('', '## Recent actions by all teams:');
+      for (const act of recentActivity.slice(0, 8)) {
+        parts.push(`- ${act}`);
+      }
+    }
+
+    // Difficulty-dependent flaw directive
+    const flawDirective = this.maybeInjectFlawDirective(session, agent);
+    if (flawDirective) {
+      parts.push('', flawDirective);
+    }
+
+    return parts.join('\n');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Context-aware fallback — uses classification to determine fallback type
+  // ---------------------------------------------------------------------------
+
+  private async generateContextAwareFallback(
+    session: SessionAgents,
+    agent: AgentState,
+    classification: ClassificationResult,
+  ): Promise<SingleAction[] | null> {
+    // For pin-response classes, generate a targeted pin_response fallback
+    if (
+      ['patient_response', 'hazard_response', 'crowd_response', 'proactive_pin'].includes(
+        classification.actionClass,
+      ) &&
+      classification.targetPinId
+    ) {
+      const teamKey = getTeamScopeKey(agent.persona.teamName);
+      const isPinResponse =
+        classification.actionClass === 'patient_response' ||
+        classification.actionClass === 'crowd_response';
+      const targetType: 'casualty' | 'hazard' =
+        classification.actionClass === 'hazard_response' ? 'hazard' : 'casualty';
+
+      const triageColor = isPinResponse && teamKey === 'triage' ? 'yellow' : undefined;
+
+      return [
+        {
+          action: 'pin_response',
+          pin_response: {
+            target_id: classification.targetPinId,
+            target_type: targetType,
+            target_label: classification.targetPinLabel || 'Target',
+            actions:
+              targetType === 'casualty'
+                ? ['Initiate Triage', 'Assess Injuries', 'Administer First Aid']
+                : ['Assess Hazard', 'Deploy Containment'],
+            resources: [
+              {
+                type: teamKey || 'responder',
+                label: `${agent.persona.teamName} Team`,
+                quantity: 2,
+              },
+            ],
+            triage_color: triageColor,
+            description: `Deploying ${agent.persona.teamName} resources to address ${classification.targetPinLabel || 'this situation'}. Initiating standard response protocol.`,
+          },
+        },
+        {
+          action: 'chat',
+          chat: {
+            content: `${agent.persona.fullName}: Responding to ${classification.targetPinLabel || 'situation on the ground'}.`,
+          },
+        },
+      ];
+    }
+
+    // For infrastructure classes, fall back to blueprint placement
+    return this.generateFallbackPlacement(session, agent);
   }
 
   /**
@@ -4507,7 +5189,8 @@ export class DemoAIAgentService {
     if (agent.pendingCooldown) return false;
     const now = Date.now();
     const isEarly = this.getElapsedMinutes(session) < FOUNDATIONAL_PHASE_MINUTES;
-    const throttle = isEarly ? AGENT_THROTTLE_EARLY_MS : AGENT_THROTTLE_MS;
+    let throttle = isEarly ? AGENT_THROTTLE_EARLY_MS : AGENT_THROTTLE_MS;
+    if (agent.lastActionWasPinResponse) throttle = AGENT_THROTTLE_PIN_MS;
     if (now - agent.lastActionTs < throttle) return false;
     if (session.scriptAware && session.scriptNextEventTs > 0) {
       if (session.scriptNextEventTs - now < HYBRID_DEFER_WINDOW_MS) return false;

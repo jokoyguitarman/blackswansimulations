@@ -860,16 +860,26 @@ When "specific" is false:
 - "consequence_title": short (3-8 word) in-world field report headline.
 
 === INFRASTRUCTURE READINESS ===
-When "TEAM INFRASTRUCTURE STATUS" is provided, evaluate whether the team has deployed the necessary facilities and assets on the map to support their decision. Consider:
+When "TEAM INFRASTRUCTURE STATUS" is provided, evaluate infrastructure ONLY in these cases:
+A) The decision is about ESTABLISHING infrastructure → evaluate positively (rules 3-5 below).
+B) The decision involves TRANSPORT / TRANSFER / HANDOVER of a patient → check destination exists (TRANSPORT DESTINATION CHECK below).
 
-1. CRITICAL GAP: The decision requires operational infrastructure that has NOT been deployed on the map AND the decision is NOT about establishing that infrastructure (e.g., ordering patient treatment/transport without a triage tent or field hospital, ordering decontamination without a decon zone, directing evacuees to an assembly point that doesn't exist). Set consistent: false with mismatch_kind "infrastructure_gap".
-2. CROSS-TEAM GAP: The decision relies on infrastructure that another team should have deployed but hasn't (e.g., requesting casualty decontamination but no decon zone exists from any team). This is also an infrastructure_gap.
-3. PLANNING / ESTABLISHMENT EXCEPTION (IMPORTANT — apply this BEFORE rules 1-2): When the decision text uses verbs like "establish", "set up", "deploy", "place", "create", "designate", or "activate" for infrastructure, the decision IS the act of creating that infrastructure. These decisions should be evaluated POSITIVELY — they are doing exactly what is expected. Do NOT penalize them for the infrastructure not yet existing on the map. The map pin may be placed moments after the decision is published.
-   - If the decision includes specific coordinates [lat, lng], zone designation, personnel counts, and equipment: set consistent: true, specific: true. This is a STRONG decision.
-   - If the decision includes some but not all details: set consistent: true, specific: true but provide constructive feedback on what additional details would strengthen the decision.
-   - Only set specific: false if the decision is extremely vague (e.g., "set up a triage area somewhere") with no location, no personnel, no equipment.
-4. SETUP INTENT WITH COORDINATES: When the decision describes establishing infrastructure AND includes explicit coordinates (e.g., "establishing Command Post at [1.4186, 103.8418]"), this is a HIGH-QUALITY decision. The coordinates prove the player knows exactly where to place the asset. Set consistent: true, specific: true. Do NOT flag this as lacking specificity or needing a map marker — the system places the marker automatically alongside the decision. Feedback should acknowledge the good decision-making.
-5. SETUP INTENT WITHOUT COORDINATES: When the decision describes establishing infrastructure at a named location but WITHOUT coordinates (e.g., "establish a triage point at Exit D") and no map pin exists yet, set consistent: true, specific: false, and provide constructive guidance: "Your plan is sound. To activate this, place the marker on the map at the designated location." Keep the tone instructive, not punitive.
+⚠️ Do NOT flag infrastructure gaps when the decision is about on-scene rescue, triage assessment, treatment, or stabilization. A responder treating a patient in the field does NOT need a triage tent to administer first aid, initiate triage, or stabilize the patient. Infrastructure gaps ONLY matter when the decision says the patient will be MOVED to a facility.
+
+1. CRITICAL GAP (ONLY for TRANSPORT/HANDOVER decisions): The decision orders transport or handover to a facility NOT deployed on the map. Set consistent: false, mismatch_kind "infrastructure_gap".
+2. CROSS-TEAM GAP: Same, but another team's infrastructure is missing (e.g., decon zone).
+3. PLANNING / ESTABLISHMENT EXCEPTION (apply BEFORE rules 1-2): Decision uses verbs like "establish", "set up", "deploy", "place", "create" for infrastructure → decision IS creating the infrastructure. Evaluate POSITIVELY.
+   - With coordinates + personnel + equipment: consistent: true, specific: true.
+   - With partial details: consistent: true, specific: true, constructive feedback.
+   - Extremely vague (no location/personnel/equipment): specific: false.
+4. SETUP WITH COORDINATES: Infrastructure + explicit coordinates = HIGH-QUALITY. Set consistent: true, specific: true.
+5. SETUP WITHOUT COORDINATES: Infrastructure at named location but no coordinates → consistent: true, specific: false, constructive guidance.
+
+TRANSPORT DESTINATION CHECK (ONLY when decision describes transport/transfer/handover):
+- Names a facility that EXISTS in infrastructure list → consistent: true. Note capacity if listed.
+- Names a facility that does NOT exist → consistent: false, mismatch_kind: "infrastructure_gap", describe patient arriving at non-existent location.
+- Orders transport but does NOT name a destination AND facilities exist → consistent: true, feedback: "No specific destination was named in the transport order. The patient was routed to [closest facility from infrastructure list] by default. Naming a specific facility improves handover efficiency."
+- Orders transport but NO medical facilities exist at all → consistent: false, mismatch_kind: "infrastructure_gap", reason: "The patient has been packaged for transport but there is no triage tent, field hospital, or casualty collection point deployed on the map. The stretcher team is standing by with nowhere to deliver the patient."
 
 When mismatch_kind is "infrastructure_gap":
 - reason: in-world consequence of acting without proper infrastructure. Match the ESCALATION LEVEL.
@@ -877,25 +887,38 @@ When mismatch_kind is "infrastructure_gap":
 - severity: "medium" for partial gaps, "high" for critical missing infrastructure that endangers lives.
 
 === CASUALTY TREATMENT EVALUATION ===
-When "ACTIVE CASUALTIES IN SCENE" is provided, evaluate whether the decision provides adequate medical care for the patients it references. Apply professional pre-hospital care standards:
+When "ACTIVE CASUALTIES IN SCENE" is provided, evaluate the decision in this STRICT PRIORITY ORDER:
 
-1. INADEQUATE TREATMENT: The decision orders treatment or transport of a patient but skips critical interventions required by their injuries. Examples:
-   - Transporting a fracture patient without splinting first (risk of vascular/nerve damage)
-   - Moving a patient without controlling active bleeding (hemorrhagic shock risk)
-   - Failing to provide airway management for a patient with labored/absent breathing
-   - Transporting a potential spinal injury without immobilization
-   - Not providing burn dressings or fluid resuscitation for burn patients
-   Set consistent: false with mismatch_kind "below_standard". Severity based on risk to patient.
+STEP 1 — RESCUE QUALITY (evaluate FIRST — this determines if the patient can be helped):
+Did the responder deploy the RIGHT personnel and RIGHT equipment for the patient's condition?
+- Personnel qualified for the task? (paramedics for medical care, firefighters for extraction from debris/fire)
+- Equipment appropriate? (stretcher for immobile patient, burn dressings for burns, splint for fractures, tourniquet for hemorrhage)
+- Personnel count sufficient? (2 bearers minimum for stretcher carry, adequate medic-to-patient ratio)
+- PPE appropriate for the zone? (SCBA in hot zone, gloves for patient contact, face shields for fluid risk)
+If rescue quality is adequate → set consistent: true. The patient CAN be treated on-scene even without nearby infrastructure.
+If rescue quality is poor → set consistent: false, mismatch_kind "below_standard", describe the in-world consequence (e.g., "the single responder is struggling to move the patient without a stretcher").
 
-2. DANGEROUS TREATMENT: The decision does something contraindicated for a specific patient. Examples:
-   - Applying a tourniquet to a crush injury without medical oversight (reperfusion syndrome)
-   - Moving a spinal injury patient without immobilization
-   - Giving fluids to a patient with suspected internal injuries without medical authority
-   Set consistent: false with mismatch_kind "contradiction". Severity: "high".
+STEP 2 — TREATMENT ADEQUACY:
+1. INADEQUATE TREATMENT: Critical interventions skipped:
+   - Transporting a fracture without splinting (vascular/nerve damage risk)
+   - Moving a patient without controlling active bleeding (hemorrhagic shock)
+   - No airway management for labored/absent breathing
+   - No burn dressings or fluid resuscitation for burn patients
+   Set consistent: false, mismatch_kind "below_standard". Severity based on risk.
 
-3. ADEQUATE: The decision appropriately addresses the patient's injuries, or the decision does not involve specific patient care. No penalty.
+2. DANGEROUS TREATMENT: Contraindicated actions:
+   - Tourniquet on crush injury without medical oversight (reperfusion syndrome)
+   - Moving spinal injury without immobilization
+   - Giving fluids to suspected internal injuries without medical authority
+   Set consistent: false, mismatch_kind "contradiction", severity "high".
 
-4. RELEVANCE: Only evaluate casualty treatment when the decision DIRECTLY involves patient care, treatment, or transport. Generic command decisions, infrastructure setup, or communication orders should NOT be evaluated against casualty data.
+3. ADEQUATE: Appropriate care for the patient's injuries. No penalty.
+
+STEP 3 — TRANSPORT DESTINATION (evaluate ONLY IF the decision explicitly says "transport", "transfer", "handover", or "move patient to"):
+Apply the TRANSPORT DESTINATION CHECK rules from INFRASTRUCTURE READINESS above.
+⚠️ Do NOT check for infrastructure if the decision is about on-scene treatment, stabilization, or triage without mentioning transport. A medic triaging a patient in the warm zone does NOT need a triage tent to do their job.
+
+4. RELEVANCE: Only evaluate when the decision DIRECTLY involves patient care, treatment, or transport. Do not evaluate infrastructure setup, command, or communication decisions against casualty data.
 
 When treatment_requirements or transport_prerequisites are listed for a patient, use them as ground truth. When ideal_response_sequence is provided, use it as the benchmark for a perfect response — check if the player's actions follow the correct order and include all critical steps. When required_ppe is listed, the decision MUST mention appropriate PPE or it is a specificity failure. When required_equipment is listed, the decision MUST name the specific equipment or it is a specificity failure. When they are absent, infer required care from the injury data using standard pre-hospital protocols (PHTLS, ITLS, TCCC).
 
