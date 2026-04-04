@@ -2868,7 +2868,7 @@ export class DemoAIAgentService {
       '- description: brief description of what you are doing',
       '',
       'Example pin_response for a casualty (note personnel count, ratio, and destination):',
-      '{ "action": "pin_response", "pin_response": { "target_id": "a1b2c3d4-...", "target_type": "casualty", "target_label": "Burn victims near Gate B", "actions": ["Initiate Triage", "Administer IV Fluids", "Apply burn dressings"], "resources": [{ "type": "medic", "label": "Paramedic Team Alpha", "quantity": 2 }], "triage_color": "red", "description": "Deploying 2x Paramedics (1:1 medic-to-patient ratio for critical burn). Initiating triage, establishing IV access with saline, applying burn dressings. After stabilization, transport by ambulance to City General Hospital Burns Unit (est. 8 min)." } }',
+      '{ "action": "pin_response", "pin_response": { "target_id": "a1b2c3d4-...", "target_type": "casualty", "target_label": "Burn victims near Gate B", "actions": ["Initiate Triage", "Administer IV Fluids", "Apply burn dressings"], "resources": [{ "type": "medic", "label": "Paramedic Team Alpha", "quantity": 2 }], "triage_color": "red", "description": "Deploying 2x Paramedics (1:1 medic-to-patient ratio for critical burn). Initiating triage, establishing IV access with saline, applying burn dressings. After stabilization, transport by ambulance to [HOSPITAL FROM AVAILABLE FACILITIES LIST] (est. 8 min)." } }',
       '',
       'Example pin_response for extraction (note handover destination):',
       '{ "action": "pin_response", "pin_response": { "target_id": "b2c3d4e5-...", "target_type": "casualty", "target_label": "Trapped person under debris", "actions": ["DRABC Assessment", "Package on spine board", "Carry to warm zone"], "resources": [{ "type": "firefighter", "label": "Extraction Team Charlie", "quantity": 4 }], "description": "Deploying 4x Firefighters in full SCBA (2:1 bearer-to-patient ratio). DRABC assessment, packaging on spine board with cervical collar. Extracting to warm zone boundary for handover to Triage Station A." } }',
@@ -2988,7 +2988,7 @@ export class DemoAIAgentService {
       '- If the situation is stable and nothing new requires action, return { "actions": [{ "action": "none" }] }.',
       '- You are NOT expected to act every time. Real professionals wait, observe, and only act when there is something meaningful to address.',
       '- RESPECT THE STATUS CHAIN: check each casualty/hazard status before acting. Do NOT order transport for untreated patients, do NOT evacuate crowds that have not been given a direct movement order, do NOT resolve hazards that are not contained.',
-      '- When writing decisions, be EXPLICIT about what you are doing. Say "transport burn victim at Gate B to Singapore General Hospital" NOT just "manage casualties". Vague decisions without named targets or destinations have NO effect on the map.',
+      '- When writing decisions, be EXPLICIT about what you are doing. Say "transport burn victim at Gate B to [named hospital from AVAILABLE FACILITIES list]" NOT just "manage casualties". Vague decisions without named targets or destinations have NO effect on the map.',
       '',
       '## 📋 PERSONNEL DEPLOYMENT — MANDATORY FORMAT:',
       '- When deploying personnel in any decision or pin_response, ALWAYS state:',
@@ -3008,12 +3008,13 @@ export class DemoAIAgentService {
       '- If coordinating with media team via chat, provide them with EXACT figures to include in their release.',
       '',
       '## 🚑 TRANSPORT & HANDOVER — MANDATORY DESTINATION:',
-      '- When transporting or handing off a patient or crowd, ALWAYS specify the DESTINATION:',
+      '- When transporting or handing off a patient or crowd, ALWAYS specify the DESTINATION from the AVAILABLE FACILITIES list:',
       '  → Patient extraction: "Extracting to warm zone boundary for handover to Triage Station A at [lat, lng]"',
-      '  → Patient transport: "Transporting RED patient by ambulance to [Hospital Name] (estimated 12 min)"',
+      '  → Patient transport: "Transporting RED patient by ambulance to [hospital name from AVAILABLE FACILITIES] (estimated 12 min)"',
       '  → Crowd movement: "Directing crowd of ~50 via Exit B to Assembly Area A at [lat, lng]"',
       '  → Inter-team handoff: "Handing off decontaminated patient to Triage Station for START assessment"',
       '- NEVER say just "transport patient" or "evacuate crowd" without naming WHERE they are going.',
+      '- NEVER invent hospital or facility names. Use ONLY facilities from the AVAILABLE FACILITIES list provided in this prompt.',
       '- Reference placed assets by name if they exist (e.g., "Triage Station A", "Assembly Area B", "Ambulance Staging Point").',
     );
 
@@ -3107,9 +3108,9 @@ export class DemoAIAgentService {
           '6. SIXTH: Follow jurisdiction rules for patient movement:',
           '   - HOT ZONE extraction: ONLY Fire Safety team extracts patients from hot zone to warm zone boundary. They wear full PPE.',
           '   - WARM ZONE treatment: Medical Triage team receives patients at the warm zone boundary. They triage and treat.',
-          '   - COLD ZONE transport: Medical Triage team arranges transport from warm/cold zone to hospital.',
+          '   - COLD ZONE transport: Medical Triage team arranges transport from warm/cold zone to hospital (from AVAILABLE FACILITIES list).',
           '   - If you are NOT Fire Safety, do NOT enter the hot zone. Request Fire Safety to extract casualties to you.',
-          '7. SEVENTH: Transport treated patients to named hospital → only after treatment, with named vehicle.',
+          '7. SEVENTH: Transport treated patients to a hospital from the AVAILABLE FACILITIES list → only after treatment, with named vehicle.',
           '8. THROUGHOUT: Contain and mitigate hazards (fire/HAZMAT only). Other teams support from outside.',
           '',
           '### Responding to Injects (CRITICAL)',
@@ -3164,7 +3165,7 @@ export class DemoAIAgentService {
           '- Reference what other teams have done and build on their work.',
           '- Fire Safety clears the hot zone → then Medical Triage can operate at the warm zone boundary.',
           '- Evacuation secures cordons → then directs crowds through secured exits to assembly areas.',
-          '- Medical triages and treats → then transport arranges ambulance to hospital.',
+          '- Medical triages and treats → then transport arranges ambulance to hospital (from AVAILABLE FACILITIES list).',
           "- NEVER do another team's job. If you need something outside your jurisdiction, REQUEST it in chat.",
           '- Use proper radio protocol: state your team, your action, your location, your resource request.',
           '',
@@ -3435,6 +3436,25 @@ export class DemoAIAgentService {
       }
     }
 
+    // Available facilities — hospitals, placed operational assets (triage tents, field hospitals, etc.)
+    if (ground.availableFacilities.length > 0) {
+      parts.push(
+        '',
+        '## 🏥 AVAILABLE FACILITIES & DESTINATIONS (use ONLY these for transport/handover):',
+        'You may ONLY transport patients or direct crowds to facilities listed below.',
+        'Do NOT invent or assume hospital names — use ONLY what exists on the ground.',
+      );
+      for (const fac of ground.availableFacilities) parts.push(`- ${fac}`);
+    } else {
+      parts.push(
+        '',
+        '## 🏥 AVAILABLE FACILITIES: NONE YET',
+        'No hospitals or operational areas have been placed on the map.',
+        'If you need to transport a patient, you must FIRST establish a field hospital or triage tent.',
+        'Do NOT invent hospital names. State that transport is pending facility setup.',
+      );
+    }
+
     const recentActivity = await this.loadRecentSessionActivity(session.sessionId);
     if (recentActivity.length > 0) {
       parts.push('', '## Recent actions by all teams:');
@@ -3678,7 +3698,7 @@ export class DemoAIAgentService {
               '⚠️ WARM zone is for STABILIZATION, not definitive care.',
               '   Once stable, the patient should be transported to a cold zone facility.',
               '   In your description, include: triage color, stabilization steps performed,',
-              '   and destination facility for transport (name a specific triage tent or field hospital).',
+              '   and destination facility for transport (pick from the AVAILABLE FACILITIES list).',
             );
           } else if (patientZone === 'cold') {
             parts.push(
@@ -3690,7 +3710,7 @@ export class DemoAIAgentService {
               '  - Prepare for hospital transport (ambulance, helicopter)',
               '  - Monitor and maintain until transport arrives',
               '   In your description, include: treatment performed, updated triage status,',
-              '   and hospital transport plan if patient needs hospital-level care.',
+              '   and hospital transport plan (pick hospital from the AVAILABLE FACILITIES list).',
             );
           }
 
@@ -3779,7 +3799,7 @@ export class DemoAIAgentService {
           '- triage_color: "green"/"yellow"/"red"/"black" — assign based on injuries',
           patientZone === 'hot'
             ? '- description: describe your EXTRACTION plan — how you reach the patient, what life-saving interventions you apply, how you move them, and where in the warm zone you deliver them.'
-            : '- description: follow the ideal response sequence step by step. Include personnel ratio, equipment used, and transport destination.',
+            : '- description: follow the ideal response sequence step by step. Include personnel ratio, equipment used, and transport destination (MUST be from AVAILABLE FACILITIES list — do NOT invent names).',
           '',
           'Return: 1 pin_response + 1 chat. Do NOT include a placement action.',
         );
@@ -4440,7 +4460,7 @@ export class DemoAIAgentService {
         '   - Otherwise → YELLOW (delayed)',
         '4. After triage, TREAT patients based on color priority (RED first, then YELLOW):',
         '   - Each treatment must specify the exact intervention and equipment.',
-        '5. When a patient is TREATED and STABLE, arrange TRANSPORT to a named hospital with a specific vehicle.',
+        '5. When a patient is TREATED and STABLE, arrange TRANSPORT to a hospital from the AVAILABLE FACILITIES list with a specific vehicle.',
         '',
         '#### Equipment By Injury Type (MUST specify in pin_response):',
         '- Fracture (limb): rigid splint (SAM splint), elastic bandage, sling. If open fracture: sterile dressing first, then splint. Stretcher for non-ambulatory.',
@@ -4457,10 +4477,10 @@ export class DemoAIAgentService {
         '',
         '#### Transport Requirements (DESTINATION IS MANDATORY):',
         '- GREEN patients: walking or by bus to Assembly Area [name] at [coords]. State personnel ratio (e.g., "1 marshal per 20 walking wounded").',
-        '- YELLOW patients: ambulance transport within 1 hour to [Hospital Name] (e.g., "2 patients by ambulance to City General ED, est. 12 min"). State escort count.',
-        '- RED patients: immediate ambulance to [Hospital Name + Department] (e.g., "1 patient by ambulance to Singapore General Hospital Trauma Centre, est. 8 min"). If >20 min drive, request helicopter. State 1:1 paramedic escort.',
+        '- YELLOW patients: ambulance transport within 1 hour to a hospital from the AVAILABLE FACILITIES list (e.g., "2 patients by ambulance to [hospital name from list], est. 12 min"). State escort count.',
+        '- RED patients: immediate ambulance to a hospital from the AVAILABLE FACILITIES list with department (e.g., "1 patient by ambulance to [hospital name from list] Trauma Centre, est. 8 min"). If >20 min drive, request helicopter. State 1:1 paramedic escort.',
         '- BLACK patients: remain on scene, covered, with documentation. Coroner notification.',
-        '- ALWAYS specify: patient count per vehicle, escort personnel with ratio, receiving facility name, and estimated transit time.',
+        '- ALWAYS specify: patient count per vehicle, escort personnel with ratio, receiving facility name (from AVAILABLE FACILITIES), and estimated transit time.',
         '- For handoff between teams: name the receiving team and their asset (e.g., "Handover to Triage Station A for START assessment by Dr. [persona]").',
         '',
         '#### Critical Rules:',
@@ -4533,7 +4553,7 @@ export class DemoAIAgentService {
         '#### ⚠️ STATEMENT QUALITY — MANDATORY (enforced by validation):',
         '- Every public statement MUST contain SPECIFIC, ACCURATE information — generic phrases will be REJECTED.',
         '- BAD (too vague): "We are managing the situation and all necessary measures are being taken."',
-        '- GOOD (specific): "At 14:32, an incident was reported at Bondi Beach Festival grounds. Emergency services responded within 4 minutes. Currently, 12 casualties are being triaged at the warm zone triage station. 3 critical patients have been transported to St Vincent Hospital. Approximately 200 evacuees have been directed to Assembly Area A via Exit B. The inner perimeter is secured by police. We will provide updates every 30 minutes."',
+        '- GOOD (specific): "At 14:32, an incident was reported at [venue name]. Emergency services responded within 4 minutes. Currently, 12 casualties are being triaged at the warm zone triage station. 3 critical patients have been transported to [hospital name from AVAILABLE FACILITIES]. Approximately 200 evacuees have been directed to Assembly Area A via Exit B. The inner perimeter is secured by police. We will provide updates every 30 minutes."',
         '- Include: incident time, location by name, casualty count (verified by triage), evacuation count, hazard status, team deployments, next update time.',
         '- If exact numbers are not yet verified, say "approximately X" or "at least X confirmed" — but NEVER omit numbers entirely.',
         '- Reference the ground situation data provided to you for accurate figures.',
@@ -6291,6 +6311,7 @@ export class DemoAIAgentService {
       claimStatus: string;
     }>;
     pinZoneMap: Map<string, string>;
+    availableFacilities: string[];
   }> {
     const result = {
       patients: [] as string[],
@@ -6298,6 +6319,7 @@ export class DemoAIAgentService {
       hazards: [] as string[],
       claimableExits: [] as Array<{ label: string; location_type: string; claimStatus: string }>,
       pinZoneMap: new Map<string, string>(),
+      availableFacilities: [] as string[],
     };
 
     const CROWD_TYPES = new Set(['crowd', 'evacuee_group', 'convergent_crowd']);
@@ -6484,6 +6506,51 @@ export class DemoAIAgentService {
               : 'UNCLAIMED — available',
           });
         }
+      }
+
+      // Available facilities — hospitals (from scenario_locations) + placed operational assets
+      const { data: facilityPins } = await supabaseAdmin
+        .from('scenario_locations')
+        .select('label, location_type, coordinates, conditions')
+        .eq('scenario_id', scenarioId)
+        .in('location_type', ['hospital', 'police_station', 'fire_station']);
+
+      for (const f of (facilityPins ?? []) as Array<Record<string, unknown>>) {
+        const coords = f.coordinates as { lat: number; lng: number } | null;
+        const conds = f.conditions as Record<string, unknown> | null;
+        const beds = conds?.emergency_beds_available ?? conds?.capacity ?? '';
+        const dist = conds?.distance_from_incident_m ?? '';
+        let detail = `${(f.location_type as string).replace(/_/g, ' ')}: "${f.label}"`;
+        if (coords) detail += ` at [${coords.lat}, ${coords.lng}]`;
+        if (dist) detail += ` (${dist}m from incident)`;
+        if (beds) detail += ` — capacity: ${beds} beds`;
+        result.availableFacilities.push(detail);
+      }
+
+      const { data: placedOps } = await supabaseAdmin
+        .from('placed_assets')
+        .select('asset_type, label, geometry, team_name')
+        .eq('session_id', sessionId)
+        .in('asset_type', [
+          'triage_point',
+          'field_hospital',
+          'casualty_collection',
+          'assembly_point',
+          'decontamination_zone',
+          'ambulance_staging',
+          'staging_area',
+          'command_post',
+        ]);
+
+      for (const p of (placedOps ?? []) as Array<Record<string, unknown>>) {
+        const geom = p.geometry as { coordinates?: [number, number] } | null;
+        const coordStr = geom?.coordinates
+          ? ` at [${geom.coordinates[1]}, ${geom.coordinates[0]}]`
+          : '';
+        const team = p.team_name ? ` (${p.team_name})` : '';
+        result.availableFacilities.push(
+          `${(p.asset_type as string).replace(/_/g, ' ')}: "${p.label}"${coordStr}${team}`,
+        );
       }
     } catch (err) {
       logger.debug({ error: err, sessionId }, 'AI agent: failed to load ground situation');

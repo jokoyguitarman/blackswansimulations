@@ -341,9 +341,9 @@ export async function persistWarroomScenario(
 
         const blastZoneRows: Array<Record<string, unknown>> = [];
         const BLAST_BANDS = [
-          { radius_m: 50, label: 'Lethal Zone (0–164 ft)', zone_type: 'blast_lethal' },
-          { radius_m: 100, label: 'Severe Injury Zone (164–328 ft)', zone_type: 'blast_severe' },
-          { radius_m: 150, label: 'Fragment Zone (328–492 ft)', zone_type: 'blast_fragment' },
+          { radius_m: 15, label: 'Lethal Zone (0–49 ft)', zone_type: 'blast_lethal' },
+          { radius_m: 30, label: 'Severe Injury Zone (49–98 ft)', zone_type: 'blast_severe' },
+          { radius_m: 50, label: 'Fragment Zone (98–164 ft)', zone_type: 'blast_fragment' },
         ];
 
         for (const h of (insertedHazards ?? []) as Array<Record<string, unknown>>) {

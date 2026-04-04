@@ -1606,11 +1606,21 @@ const MapPinsTab = ({
     if (isExplosion && (oldLat !== 0 || oldLng !== 0)) {
       const deltaLat = lat - oldLat;
       const deltaLng = lng - oldLng;
-      const MAX_BLAST_RADIUS = 200;
+
+      // Find the max blast radius from linked blast zones (for casualty following)
+      let maxBlastRadius = 200;
 
       // Move blast zone location circles linked to this hazard
-      setLocations((prev) =>
-        prev.map((loc) => {
+      setLocations((prev) => {
+        // First pass: find max radius from linked zones
+        for (const loc of prev) {
+          const conds = (loc.conditions ?? {}) as Record<string, unknown>;
+          if (conds.linked_hazard_id !== id) continue;
+          const r = Number(conds.radius_m) || 0;
+          if (r > maxBlastRadius) maxBlastRadius = r;
+        }
+
+        return prev.map((loc) => {
           const conds = (loc.conditions ?? {}) as Record<string, unknown>;
           if (conds.linked_hazard_id !== id) return loc;
           const newLocLat = loc.coordinates.lat + deltaLat;
@@ -1628,14 +1638,14 @@ const MapPinsTab = ({
             coordinates: { lat: newLocLat, lng: newLocLng },
             conditions: updatedConditions,
           };
-        }),
-      );
+        });
+      });
 
       // Move casualties within the blast radius
       setCasualties((prev) =>
         prev.map((c) => {
           const dist = haversineM(oldLat, oldLng, c.location_lat, c.location_lng);
-          if (dist > MAX_BLAST_RADIUS) return c;
+          if (dist > maxBlastRadius) return c;
           const newCLat = c.location_lat + deltaLat;
           const newCLng = c.location_lng + deltaLng;
           changesRef.current.casualties.set(c.id, { lat: newCLat, lng: newCLng });
@@ -2750,6 +2760,12 @@ const MapPinsTab = ({
               };
               const positions = polygon.map((p) => [p[0], p[1]] as [number, number]);
 
+              const BLAST_LABELS: Record<string, string> = {
+                blast_lethal: 'Lethal Zone',
+                blast_severe: 'Severe Injury Zone',
+                blast_fragment: 'Fragment Zone',
+              };
+
               return (
                 <Polygon
                   key={`blast-${bz.id}`}
@@ -2765,6 +2781,58 @@ const MapPinsTab = ({
                   <Tooltip direction="center" permanent={false}>
                     {bz.label} ({Math.round(radiusM * 3.28084)} ft)
                   </Tooltip>
+                  <Popup>
+                    <div style={{ minWidth: 160, padding: 4 }}>
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 12,
+                          marginBottom: 6,
+                          color: style.color,
+                        }}
+                      >
+                        {BLAST_LABELS[blastType] || blastType.replace(/_/g, ' ')}
+                      </div>
+                      <label
+                        style={{
+                          fontSize: 11,
+                          display: 'block',
+                          marginBottom: 2,
+                          color: '#555',
+                        }}
+                      >
+                        Radius (meters)
+                      </label>
+                      <input
+                        type="number"
+                        min={5}
+                        max={500}
+                        step={5}
+                        defaultValue={radiusM}
+                        onBlur={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          if (!isNaN(val) && val >= 5 && val !== radiusM)
+                            onZoneLocationRadiusChange(bz.id, val);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '4px 6px',
+                          fontSize: 13,
+                          border: `1px solid ${style.color}`,
+                          borderRadius: 4,
+                          outline: 'none',
+                          background: '#f9f9f9',
+                          color: '#222',
+                        }}
+                      />
+                      <div style={{ marginTop: 4, fontSize: 10, color: '#888' }}>
+                        {Math.round(radiusM * 3.28084)} ft
+                      </div>
+                    </div>
+                  </Popup>
                 </Polygon>
               );
             })}
