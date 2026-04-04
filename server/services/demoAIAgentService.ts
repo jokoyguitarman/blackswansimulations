@@ -91,8 +91,6 @@ interface AgentMultiResponse {
 const AGENT_THROTTLE_MS = 180_000; // 3 min cooldown per agent after acting
 const AGENT_THROTTLE_EARLY_MS = 90_000; // 90s cooldown during foundational phase (first 8 min)
 const FOUNDATIONAL_PHASE_MINUTES = 8; // first N minutes: reduced throttle, higher proactive rate
-const AGENT_JITTER_BASE_MS = 15_000;
-const AGENT_JITTER_RANGE_MS = 20_000;
 const INTER_ACTION_BASE_MS = 5_000;
 const INTER_ACTION_RANGE_MS = 5_000;
 const HYBRID_DEFER_WINDOW_MS = 10_000;
@@ -104,7 +102,7 @@ const PROACTIVE_ACT_PROBABILITY = 0.2; // 20% chance per agent per tick
 const PROACTIVE_ACT_PROBABILITY_EARLY = 0.4; // 40% during foundational phase
 const KICKSTART_STAGGER_MS = 20_000; // 20s between kickstart agents
 const KICKSTART_INITIAL_DELAY_MS = 12_000;
-const MAX_DECISIONS_PER_INJECT_CYCLE = 5; // max decisions across ALL agents before waiting for next inject
+const INTER_AGENT_DELAY_MS = 8_000; // 8s stagger between sequential agent decisions
 const INJECT_CYCLE_RESET_MS = 120_000; // auto-reset cycle budget after 2 min
 
 // ---------------------------------------------------------------------------
@@ -1164,183 +1162,35 @@ function clampCordonRadius(radiusDeg: number): number {
   return Math.max(minDeg, Math.min(maxDeg, radiusDeg));
 }
 
-/** Infrastructure patterns shared between placement extraction paths. */
-const INFRASTRUCTURE_PATTERNS: Array<{
-  pattern: RegExp;
-  asset_type: string;
-  geometry: 'point' | 'polygon';
-  zoneOffset: 'hot' | 'warm' | 'cold';
-  label: string;
-}> = [
-  {
-    pattern: /command\s*post/i,
-    asset_type: 'command_post',
-    geometry: 'point',
-    zoneOffset: 'cold',
-    label: 'Command Post',
-  },
-  {
-    pattern: /triage\s*(tent|point|area|station)/i,
-    asset_type: 'triage_point',
-    geometry: 'point',
-    zoneOffset: 'warm',
-    label: 'Triage Point',
-  },
-  {
-    pattern: /field\s*hospital/i,
-    asset_type: 'field_hospital',
-    geometry: 'point',
-    zoneOffset: 'cold',
-    label: 'Field Hospital',
-  },
-  {
-    pattern: /assembly\s*(point|area)/i,
-    asset_type: 'assembly_point',
-    geometry: 'point',
-    zoneOffset: 'cold',
-    label: 'Assembly Point',
-  },
-  {
-    pattern: /decon(tamination)?\s*(corridor|zone|area|station)/i,
-    asset_type: 'decontamination_zone',
-    geometry: 'point',
-    zoneOffset: 'warm',
-    label: 'Decon Zone',
-  },
-  {
-    pattern: /staging\s*(area|point|zone)/i,
-    asset_type: 'staging_area',
-    geometry: 'polygon',
-    zoneOffset: 'cold',
-    label: 'Staging Area',
-  },
-  {
-    pattern: /inner\s*cordon/i,
-    asset_type: 'inner_cordon',
-    geometry: 'polygon',
-    zoneOffset: 'hot',
-    label: 'Inner Cordon',
-  },
-  {
-    pattern: /outer\s*cordon/i,
-    asset_type: 'outer_cordon',
-    geometry: 'polygon',
-    zoneOffset: 'cold',
-    label: 'Outer Cordon',
-  },
-  {
-    pattern: /media\s*(staging|area|point|zone)/i,
-    asset_type: 'press_cordon',
-    geometry: 'polygon',
-    zoneOffset: 'cold',
-    label: 'Media Staging Area',
-  },
-  {
-    pattern: /hot\s*zone/i,
-    asset_type: 'hot_zone',
-    geometry: 'polygon',
-    zoneOffset: 'hot',
-    label: 'Hot Zone',
-  },
-  {
-    pattern: /warm\s*zone/i,
-    asset_type: 'warm_zone',
-    geometry: 'polygon',
-    zoneOffset: 'warm',
-    label: 'Warm Zone',
-  },
-  {
-    pattern: /cold\s*zone/i,
-    asset_type: 'cold_zone',
-    geometry: 'polygon',
-    zoneOffset: 'cold',
-    label: 'Cold Zone',
-  },
-  {
-    pattern: /(?<!inner\s)(?<!outer\s)cordon\b/i,
-    asset_type: 'outer_cordon',
-    geometry: 'polygon',
-    zoneOffset: 'cold',
-    label: 'Security Cordon',
-  },
-  {
-    pattern: /barricade|road\s*closure/i,
-    asset_type: 'roadblock',
-    geometry: 'point',
-    zoneOffset: 'cold',
-    label: 'Barricade',
-  },
-  {
-    pattern: /exclusion\s*zone|hazard\s*exclusion/i,
-    asset_type: 'hot_zone',
-    geometry: 'polygon',
-    zoneOffset: 'hot',
-    label: 'Exclusion Zone',
-  },
-  {
-    pattern: /evacuation\s*(holding|point|area|assembly)/i,
-    asset_type: 'assembly_point',
-    geometry: 'point',
-    zoneOffset: 'cold',
-    label: 'Evacuation Holding Area',
-  },
-  {
-    pattern: /casualty\s*collection/i,
-    asset_type: 'casualty_collection',
-    geometry: 'point',
-    zoneOffset: 'warm',
-    label: 'Casualty Collection Point',
-  },
-  {
-    pattern: /observation\s*(post|point)/i,
-    asset_type: 'observation_post',
-    geometry: 'point',
-    zoneOffset: 'cold',
-    label: 'Observation Post',
-  },
-  {
-    pattern: /ambulance\s*(staging|bay|point)/i,
-    asset_type: 'ambulance_staging',
-    geometry: 'point',
-    zoneOffset: 'cold',
-    label: 'Ambulance Staging',
-  },
-  {
-    pattern: /helicopter\s*(lz|landing)/i,
-    asset_type: 'helicopter_lz',
-    geometry: 'point',
-    zoneOffset: 'cold',
-    label: 'Helicopter LZ',
-  },
-  {
-    pattern: /roadblock/i,
-    asset_type: 'roadblock',
-    geometry: 'point',
-    zoneOffset: 'cold',
-    label: 'Roadblock',
-  },
-  {
-    pattern: /fire\s*(truck|engine|appliance)/i,
-    asset_type: 'fire_truck',
-    geometry: 'point',
-    zoneOffset: 'warm',
-    label: 'Fire Engine',
-  },
-  {
-    pattern: /forward\s*command/i,
-    asset_type: 'forward_command',
-    geometry: 'point',
-    zoneOffset: 'warm',
-    label: 'Forward Command',
-  },
-  {
-    pattern: /water\s*supply\s*(point)?/i,
-    asset_type: 'water_supply',
-    geometry: 'point',
-    zoneOffset: 'warm',
-    label: 'Water Supply Point',
-  },
-];
+/** Full asset-type catalog: maps asset_type → geometry shape and default zone. */
+const ASSET_TYPE_CATALOG: Record<
+  string,
+  { geometry: 'point' | 'polygon'; defaultZone: 'hot' | 'warm' | 'cold' }
+> = {
+  command_post: { geometry: 'point', defaultZone: 'cold' },
+  triage_point: { geometry: 'point', defaultZone: 'warm' },
+  field_hospital: { geometry: 'point', defaultZone: 'cold' },
+  assembly_point: { geometry: 'point', defaultZone: 'cold' },
+  decontamination_zone: { geometry: 'point', defaultZone: 'warm' },
+  staging_area: { geometry: 'polygon', defaultZone: 'cold' },
+  inner_cordon: { geometry: 'polygon', defaultZone: 'hot' },
+  outer_cordon: { geometry: 'polygon', defaultZone: 'cold' },
+  press_cordon: { geometry: 'polygon', defaultZone: 'cold' },
+  media_staging: { geometry: 'polygon', defaultZone: 'cold' },
+  hot_zone: { geometry: 'polygon', defaultZone: 'hot' },
+  warm_zone: { geometry: 'polygon', defaultZone: 'warm' },
+  cold_zone: { geometry: 'polygon', defaultZone: 'cold' },
+  exclusion_zone: { geometry: 'polygon', defaultZone: 'hot' },
+  roadblock: { geometry: 'polygon', defaultZone: 'cold' },
+  casualty_collection: { geometry: 'point', defaultZone: 'warm' },
+  observation_post: { geometry: 'point', defaultZone: 'cold' },
+  ambulance_staging: { geometry: 'point', defaultZone: 'cold' },
+  helicopter_lz: { geometry: 'point', defaultZone: 'cold' },
+  fire_truck: { geometry: 'point', defaultZone: 'warm' },
+  forward_command: { geometry: 'point', defaultZone: 'warm' },
+  water_supply: { geometry: 'point', defaultZone: 'warm' },
+  marshal_post: { geometry: 'point', defaultZone: 'cold' },
+};
 
 /**
  * Extract personnel mentions from decision text.
@@ -1443,10 +1293,134 @@ function extractDirectionIntent(text: string): {
 }
 
 /**
- * Pre-evaluation extraction service: scans decision text for infrastructure placement,
- * personnel/equipment details, and transport/direction intent BEFORE the evaluator runs.
+ * Use AI to judge whether a decision text describes infrastructure placement intent.
+ * Returns an array of structured placements the team intends to create — or empty
+ * array if the text is not about establishing infrastructure.
  *
- * 1. Infrastructure: creates placed_assets with personnel/equipment in properties
+ * This replaces fragile regex matching: the LLM understands context, synonyms,
+ * implicit intent, and varied phrasings.
+ */
+async function aiExtractInfrastructureIntent(
+  teamName: string,
+  allowedAssetTypes: string[],
+  alreadyPlacedTypes: string[],
+  title: string,
+  description: string,
+  incidentCenter: { lat: number; lng: number },
+): Promise<Array<{ asset_type: string; label: string; lat: number | null; lng: number | null }>> {
+  try {
+    const catalogDesc = allowedAssetTypes
+      .map((t) => {
+        const c = ASSET_TYPE_CATALOG[t];
+        return c ? `  - ${t} (${c.geometry}, ${c.defaultZone} zone)` : `  - ${t}`;
+      })
+      .join('\n');
+
+    const prompt = [
+      'You are an intent-extraction engine for an emergency response simulation.',
+      'Analyze the decision text below and determine if the team intends to ESTABLISH, SET UP, DEPLOY, or CREATE any physical infrastructure on the map.',
+      '',
+      'Infrastructure includes: command posts, triage points, cordons, perimeters, barriers, staging areas, assembly points, field hospitals, decontamination zones, observation posts, roadblocks, exclusion zones, etc.',
+      '',
+      'Things that are NOT infrastructure placement:',
+      '- Treating/triaging a patient',
+      '- Responding to media or press inquiries',
+      '- Issuing statements or coordinating with other teams',
+      '- Requesting resources without establishing a physical location',
+      '- General situational awareness or assessment',
+      '',
+      `Team: ${teamName}`,
+      `Incident center: [${incidentCenter.lat}, ${incidentCenter.lng}]`,
+      '',
+      `Allowed asset types for this team:`,
+      catalogDesc,
+      '',
+      `Already placed by this team (do NOT duplicate): ${alreadyPlacedTypes.length > 0 ? alreadyPlacedTypes.join(', ') : 'none'}`,
+      '',
+      `Decision title: ${title}`,
+      `Decision description: ${description}`,
+      '',
+      'If the decision describes establishing infrastructure, return a JSON object:',
+      '{ "placements": [{ "asset_type": "...", "label": "Human-readable label", "lat": number_or_null, "lng": number_or_null }] }',
+      '',
+      'Rules:',
+      '- Only return asset_types from the allowed list above.',
+      '- Do NOT return asset_types already placed by this team.',
+      '- If coordinates [lat, lng] appear in the text, extract them. Otherwise set lat/lng to null.',
+      '- If the text does NOT describe infrastructure placement, return { "placements": [] }.',
+      '- Maximum 4 placements per decision.',
+      '- label should be descriptive (e.g. "Medical Triage Triage Station", "Evacuation Assembly Point near Gate B").',
+    ].join('\n');
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: AI_MODEL,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You extract infrastructure placement intents from emergency response decisions. Return valid JSON only. Be precise: only identify ESTABLISHMENT of physical structures/areas, not other operational actions.',
+          },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.1,
+        max_tokens: 400,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      logger.warn(
+        { status: response.status },
+        'AI infrastructure extraction: OpenAI request failed',
+      );
+      return [];
+    }
+
+    const json = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = json.choices?.[0]?.message?.content;
+    if (!content) return [];
+
+    const parsed = JSON.parse(content) as Record<string, unknown>;
+    const raw = Array.isArray(parsed.placements)
+      ? parsed.placements
+      : Array.isArray(parsed)
+        ? parsed
+        : [];
+
+    return (raw as Array<Record<string, unknown>>)
+      .filter(
+        (p) =>
+          typeof p.asset_type === 'string' &&
+          allowedAssetTypes.includes(p.asset_type) &&
+          !alreadyPlacedTypes.includes(p.asset_type),
+      )
+      .slice(0, 4)
+      .map((p) => ({
+        asset_type: p.asset_type as string,
+        label: (p.label as string) || `${teamName} ${(p.asset_type as string).replace(/_/g, ' ')}`,
+        lat: typeof p.lat === 'number' ? p.lat : null,
+        lng: typeof p.lng === 'number' ? p.lng : null,
+      }));
+  } catch (err) {
+    logger.warn({ error: err }, 'AI infrastructure extraction failed, returning empty');
+    return [];
+  }
+}
+
+/**
+ * Pre-evaluation extraction service: uses AI to analyze decision text for infrastructure
+ * placement, personnel/equipment details, and transport/direction intent BEFORE the
+ * evaluator runs.
+ *
+ * 1. Infrastructure: AI judges intent and creates placed_assets with personnel/equipment
  * 2. Direction: records transport/handoff intent as a session_event for evaluator visibility
  *
  * Exported so both the demo dispatcher and human player decision route can call it.
@@ -1460,7 +1434,6 @@ export async function extractAndPlaceInfrastructureFromText(
   incidentCenter: { lat: number; lng: number } | null,
 ): Promise<number> {
   const rawText = `${title} ${description}`;
-  const fullText = rawText.toLowerCase();
   const center = incidentCenter;
   if (!center) return 0;
 
@@ -1496,58 +1469,63 @@ export async function extractAndPlaceInfrastructureFromText(
     }
   }
 
-  // --- Part 3: Extract infrastructure placement intent ---
-  const establishPattern = /establish|set\s*up|deploy|place|create|designate|activate|position/i;
-  if (!establishPattern.test(fullText)) return 0;
-
+  // --- Part 3: AI-based infrastructure placement intent extraction ---
   const { data: existingAssets } = await supabaseAdmin
     .from('placed_assets')
-    .select('asset_type, label')
+    .select('asset_type, label, team_name')
     .eq('session_id', sessionId)
     .eq('status', 'active');
-  const existingTypes = new Set(
-    (existingAssets ?? []).map((a) => (a as Record<string, unknown>).asset_type as string),
+  const existingTeamAssets = new Set(
+    (existingAssets ?? []).map(
+      (a) =>
+        `${(a as Record<string, unknown>).team_name}::${(a as Record<string, unknown>).asset_type}`,
+    ),
   );
 
-  const coordMatches = Array.from(
-    rawText.matchAll(/\[?\s*(-?\d+\.\d{3,})\s*[,\s]+\s*(-?\d+\.\d{3,})\s*\]?/g),
+  const teamKey = getTeamScopeKey(teamName);
+  const allowedTypes = teamKey
+    ? Array.from(TEAM_ALLOWED_PLACEMENTS[teamKey] ?? [])
+    : Object.keys(ASSET_TYPE_CATALOG);
+  const alreadyPlaced = (existingAssets ?? [])
+    .filter((a) => (a as Record<string, unknown>).team_name === teamName)
+    .map((a) => (a as Record<string, unknown>).asset_type as string);
+
+  const aiPlacements = await aiExtractInfrastructureIntent(
+    teamName,
+    allowedTypes,
+    alreadyPlaced,
+    title,
+    description,
+    center,
   );
+
+  if (aiPlacements.length === 0) return 0;
 
   const metrics = await loadScenarioMetrics(sessionId, scenarioId, center);
   let placedCount = 0;
 
-  for (const inf of INFRASTRUCTURE_PATTERNS) {
-    if (!inf.pattern.test(fullText)) continue;
-    if (existingTypes.has(inf.asset_type)) continue;
-    if (!isPlacementAllowedForTeam(teamName, inf.asset_type)) continue;
-    if (placedCount >= 2) break;
+  for (const p of aiPlacements) {
+    if (placedCount >= 4) break;
+    if (!ASSET_TYPE_CATALOG[p.asset_type]) continue;
+    if (existingTeamAssets.has(`${teamName}::${p.asset_type}`)) continue;
+    if (!isPlacementAllowedForTeam(teamName, p.asset_type)) continue;
+
+    const catalog = ASSET_TYPE_CATALOG[p.asset_type];
 
     let pointLat: number;
     let pointLng: number;
 
-    if (coordMatches.length > placedCount) {
-      const m = coordMatches[placedCount];
-      const a = parseFloat(m[1]);
-      const b = parseFloat(m[2]);
-      const distALat = Math.abs(a - center.lat) + Math.abs(b - center.lng);
-      const distBLat = Math.abs(b - center.lat) + Math.abs(a - center.lng);
-      if (distALat < distBLat) {
-        pointLat = a;
-        pointLng = b;
-      } else {
-        pointLat = b;
-        pointLng = a;
-      }
-      pointLat = Math.max(center.lat - 0.01, Math.min(center.lat + 0.01, pointLat));
-      pointLng = Math.max(center.lng - 0.01, Math.min(center.lng + 0.01, pointLng));
+    if (p.lat != null && p.lng != null) {
+      pointLat = Math.max(center.lat - 0.01, Math.min(center.lat + 0.01, p.lat));
+      pointLng = Math.max(center.lng - 0.01, Math.min(center.lng + 0.01, p.lng));
     } else {
-      const zoneCoord = randomCoordInZone(center, inf.zoneOffset, metrics);
+      const zoneCoord = randomCoordInZone(center, catalog.defaultZone, metrics);
       pointLat = zoneCoord.lat;
       pointLng = zoneCoord.lng;
     }
 
     let geometry: { type: string; coordinates: unknown };
-    if (inf.geometry === 'point') {
+    if (catalog.geometry === 'point') {
       geometry = { type: 'Point', coordinates: [pointLng, pointLat] };
     } else {
       const clampedR = clampCordonRadius(75 / METERS_PER_DEG);
@@ -1560,35 +1538,49 @@ export async function extractAndPlaceInfrastructureFromText(
       geometry = { type: 'Polygon', coordinates: [pts] };
     }
 
-    const label = `${teamName} ${inf.label}`;
+    const label = p.label || `${teamName} ${p.asset_type.replace(/_/g, ' ')}`;
     const properties: Record<string, unknown> = {};
     if (personnel.length > 0) properties.personnel = personnel;
     if (equipment.length > 0) properties.equipment = equipment;
     if (directionIntent) properties.direction_intent = directionIntent;
 
     logger.info(
-      { sessionId, teamName, assetType: inf.asset_type, label, personnel, equipment },
-      'Pre-eval placement: auto-creating infrastructure from decision text',
+      { sessionId, teamName, assetType: p.asset_type, label, personnel, equipment },
+      'Pre-eval placement (AI): auto-creating infrastructure from decision text',
     );
 
-    const { error } = await supabaseAdmin.from('placed_assets').insert({
-      session_id: sessionId,
-      team_name: teamName,
-      asset_type: inf.asset_type,
-      label,
-      geometry,
-      properties,
-      status: 'active',
-    });
+    const { data: createdAsset, error } = await supabaseAdmin
+      .from('placed_assets')
+      .insert({
+        session_id: sessionId,
+        team_name: teamName,
+        asset_type: p.asset_type,
+        label,
+        geometry,
+        properties,
+        status: 'active',
+      })
+      .select()
+      .single();
 
-    if (error) {
+    if (error || !createdAsset) {
       logger.warn(
-        { error, sessionId, assetType: inf.asset_type },
-        'Pre-eval placement: insert failed',
+        { error, sessionId, assetType: p.asset_type },
+        'Pre-eval placement (AI): insert failed',
       );
     } else {
-      existingTypes.add(inf.asset_type);
+      existingTeamAssets.add(`${teamName}::${p.asset_type}`);
       placedCount++;
+
+      try {
+        getWebSocketService().broadcastToSession(sessionId, {
+          type: 'placement.created',
+          data: { placement: createdAsset, warnings: [] },
+          timestamp: new Date().toISOString(),
+        });
+      } catch {
+        /* non-blocking */
+      }
     }
   }
 
@@ -1848,7 +1840,7 @@ export class DemoAIAgentService {
   private async proactiveTick(session: SessionAgents): Promise<void> {
     if (session.stopped) return;
 
-    // Auto-reset cycle budget if enough time passed since last inject
+    // Auto-reset cycle flags periodically
     const now = Date.now();
     if (session.lastInjectTs > 0 && now - session.lastInjectTs > INJECT_CYCLE_RESET_MS) {
       session.cycleDecisionCount = 0;
@@ -1857,9 +1849,6 @@ export class DemoAIAgentService {
       }
       session.lastInjectTs = now;
     }
-
-    // If cycle budget already used up, skip entirely
-    if (session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE) return;
 
     const elapsed = this.getElapsedMinutes(session);
 
@@ -1872,7 +1861,7 @@ export class DemoAIAgentService {
       timestamp: new Date().toISOString(),
     };
 
-    // Pick at most ONE agent to act per proactive tick
+    // Let ALL eligible agents act, staggered with delays between each
     const eligible = Array.from(session.agents.values()).filter(
       (a) => this.canAct(a, session) && !a.actedThisCycle,
     );
@@ -1882,18 +1871,36 @@ export class DemoAIAgentService {
     const actProbability = isEarly ? PROACTIVE_ACT_PROBABILITY_EARLY : PROACTIVE_ACT_PROBABILITY;
     if (Math.random() > actProbability) return;
 
-    const agent = eligible[Math.floor(Math.random() * eligible.length)];
-    const jitter = AGENT_JITTER_BASE_MS + Math.random() * AGENT_JITTER_RANGE_MS;
-    setTimeout(() => {
-      if (session.stopped) return;
-      if (session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE) return;
-      this.generateAndExecuteActions(session, agent, proactiveEvent).catch((err) => {
-        logger.error(
-          { error: err, botUserId: agent.persona.botUserId },
-          'AI agent proactive action failed',
-        );
-      });
-    }, jitter);
+    // Shuffle for variety, then queue each with staggered delay
+    for (let i = eligible.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [eligible[i], eligible[j]] = [eligible[j], eligible[i]];
+    }
+
+    const runStaggered = async () => {
+      for (let i = 0; i < eligible.length; i++) {
+        if (session.stopped) return;
+        const agent = eligible[i];
+        if (!this.canAct(agent, session)) continue;
+
+        if (i > 0) {
+          await new Promise((resolve) => setTimeout(resolve, INTER_AGENT_DELAY_MS));
+        }
+        if (session.stopped) return;
+
+        try {
+          await this.generateAndExecuteActions(session, agent, proactiveEvent);
+        } catch (err) {
+          logger.error(
+            { error: err, botUserId: agent.persona.botUserId },
+            'AI agent proactive action failed',
+          );
+        }
+      }
+    };
+    runStaggered().catch((err) => {
+      logger.error({ error: err, sessionId: session.sessionId }, 'Staggered proactive run failed');
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -2052,16 +2059,15 @@ export class DemoAIAgentService {
     const injectScope = (injectData?.inject_scope as string) ?? 'universal';
     const isUniversal = injectScope === 'universal' || targetTeams.length === 0;
 
-    // Sequential agent responses: each agent waits for the previous to finish
-    // so it can see what was already done and avoid duplicating actions.
+    // Sequential agent responses with staggered delays: each agent waits for the
+    // previous to finish so it can see what was already done and avoid duplicating actions.
     const agentEntries = Array.from(session.agents.entries());
     const runSequentially = async () => {
+      let responded = 0;
       for (let i = 0; i < agentEntries.length; i++) {
         if (session.stopped) return;
-        if (session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE) return;
         const [, agentState] = agentEntries[i];
         if (!this.canAct(agentState, session)) continue;
-        if (agentState.actedThisCycle) continue;
 
         // Skip agents whose team is not targeted by this inject (unless universal)
         if (!isUniversal) {
@@ -2084,7 +2090,6 @@ export class DemoAIAgentService {
         }
 
         // Domain-relevance filter: only applies to universal/unscoped injects.
-        // If the inject explicitly targets this team (via target_teams), never filter it out.
         if (isUniversal) {
           const injectTitle = (injectData?.title as string) ?? '';
           const injectDesc = (injectData?.description as string) ?? '';
@@ -2101,15 +2106,16 @@ export class DemoAIAgentService {
           }
         }
 
-        // Human-like delay before this agent responds
-        const delay = AGENT_JITTER_BASE_MS + Math.random() * AGENT_JITTER_RANGE_MS;
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        // Staggered delay between agents to avoid overloading
+        if (responded > 0) {
+          await new Promise((resolve) => setTimeout(resolve, INTER_AGENT_DELAY_MS));
+        }
 
         if (session.stopped) return;
-        if (session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE) return;
 
         try {
           await this.generateAndExecuteActions(session, agentState, event);
+          responded++;
         } catch (err) {
           logger.error(
             { error: err, botUserId: agentState.persona.botUserId, eventType: event.type },
@@ -2139,8 +2145,6 @@ export class DemoAIAgentService {
   ): Promise<void> {
     if (session.stopped) return;
     if (!this.canAct(agent, session)) return;
-    if (agent.actedThisCycle && session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE)
-      return;
 
     agent.lastActionTs = Date.now();
     agent.pendingCooldown = true;
@@ -2199,19 +2203,8 @@ export class DemoAIAgentService {
         }
       }
 
-      // Limit to at most 3 actions (1 decision + 1 placement/claim + 1 chat)
       for (const action of actions.slice(0, 3)) {
         if (session.stopped) break;
-        if (
-          (action.action === 'decision' || action.action === 'pin_response') &&
-          session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE
-        ) {
-          logger.info(
-            { botUserId: agent.persona.botUserId },
-            'AI agent: cycle decision budget exhausted, skipping decision/pin_response',
-          );
-          continue;
-        }
 
         await this.executeSingleAction(session, agent, action, triggerEvent);
 
@@ -4206,7 +4199,7 @@ export class DemoAIAgentService {
 
       let placedCount = 0;
       for (const p of placements) {
-        if (placedCount >= 2) break;
+        if (placedCount >= 4) break;
         if (!TEAM_PLACEMENTS.includes(p.asset_type)) continue;
         if (existingTypes.has(p.asset_type)) continue;
         if (!isPlacementAllowedForTeam(teamName, p.asset_type)) continue;
@@ -4512,8 +4505,6 @@ export class DemoAIAgentService {
 
   private canAct(agent: AgentState, session: SessionAgents): boolean {
     if (agent.pendingCooldown) return false;
-    if (agent.actedThisCycle && session.cycleDecisionCount >= MAX_DECISIONS_PER_INJECT_CYCLE)
-      return false;
     const now = Date.now();
     const isEarly = this.getElapsedMinutes(session) < FOUNDATIONAL_PHASE_MINUTES;
     const throttle = isEarly ? AGENT_THROTTLE_EARLY_MS : AGENT_THROTTLE_MS;

@@ -659,9 +659,9 @@ export class DemoActionDispatcher {
           );
         }
 
-        // Public sentiment nudge (media team)
-        if (teamName === 'media') {
-          await nudgePublicSentiment(sessionId, mistakeType);
+        // Public sentiment nudge (media team) — includes AI tone evaluation
+        if (teamName && /media|communi/i.test(teamName)) {
+          await nudgePublicSentiment(sessionId, mistakeType, title, description);
         }
       } catch (err) {
         logger.error({ error: err, decisionId }, 'Demo: heat meter / pathway / sentiment failed');

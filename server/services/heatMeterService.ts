@@ -507,9 +507,109 @@ const SENTIMENT_DELTAS: Record<MistakeType, number> = {
   rejected: -2.0,
 };
 
+interface MediaToneScore {
+  delta: number;
+  label: string;
+  reason: string;
+}
+
+/**
+ * AI-based tone & reassurance evaluation for media decisions.
+ * Scores how calming, factual, empathetic, and confidence-building the
+ * media content is, and returns a sentiment delta (−2 to +2).
+ */
+async function evaluateMediaTone(
+  decisionTitle: string,
+  decisionDescription: string,
+  currentSentiment: number,
+  mistakeType: MistakeType,
+): Promise<MediaToneScore> {
+  const fallbackDelta = SENTIMENT_DELTAS[mistakeType];
+  const fallback: MediaToneScore = {
+    delta: fallbackDelta,
+    label: mistakeType === 'good' ? 'Adequate' : 'Issues detected',
+    reason:
+      mistakeType === 'good' ? 'Statement meets basic standards' : `Evaluation: ${mistakeType}`,
+  };
+
+  try {
+    const prompt = [
+      'You are a crisis communications evaluator for an emergency response simulation.',
+      'Evaluate the media decision below on how well it serves the public during a crisis.',
+      '',
+      'Score the following dimensions (each 1-5):',
+      '1. REASSURANCE: Does it calm the public? Does it project competence and control?',
+      '2. FACTUAL ACCURACY: Does it cite specific numbers, locations, actions, timelines?',
+      '3. EMPATHY: Does it acknowledge victims, express concern, show human compassion?',
+      '4. ACTIONABLE GUIDANCE: Does it tell the public what to do (stay away, evacuate, shelter)?',
+      '5. TRANSPARENCY: Is it honest about unknowns without creating panic?',
+      '',
+      `Current public sentiment: ${currentSentiment}/10`,
+      `Evaluator assessment: ${mistakeType === 'good' ? 'passes basic quality checks' : `flagged as "${mistakeType}"`}`,
+      '',
+      `Decision title: ${decisionTitle}`,
+      `Decision content: ${decisionDescription}`,
+      '',
+      'Based on the scores, compute a sentiment delta between -2.0 and +2.0:',
+      '- Excellent across all dimensions (avg 4+): +1.0 to +2.0',
+      '- Good content but missing some dimensions (avg 3-4): +0.3 to +1.0',
+      '- Adequate but generic/vague (avg 2-3): -0.3 to +0.3',
+      '- Poor — panicky, contradictory, or dismissive (avg 1-2): -0.5 to -1.5',
+      '- Actively harmful — spreading fear, blaming victims, lying (avg <2): -1.5 to -2.0',
+      '',
+      'A decision that is NOT a public-facing statement (e.g. internal coordination, setting up media area) should get delta 0 to +0.3.',
+      '',
+      'Return ONLY valid JSON:',
+      '{ "reassurance": number, "factual": number, "empathy": number, "guidance": number, "transparency": number, "delta": number, "label": "1-3 word summary", "reason": "1 sentence explanation" }',
+    ].join('\n');
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You evaluate crisis communications quality. Return valid JSON only.',
+          },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 300,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) return fallback;
+
+    const json = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = json.choices?.[0]?.message?.content;
+    if (!content) return fallback;
+
+    const parsed = JSON.parse(content) as Record<string, unknown>;
+    const delta =
+      typeof parsed.delta === 'number' ? Math.min(2, Math.max(-2, parsed.delta)) : fallbackDelta;
+    const label = typeof parsed.label === 'string' ? parsed.label : fallback.label;
+    const reason = typeof parsed.reason === 'string' ? parsed.reason : fallback.reason;
+
+    return { delta, label, reason };
+  } catch (err) {
+    logger.warn({ err }, 'evaluateMediaTone AI call failed, using fallback');
+    return fallback;
+  }
+}
+
 export async function nudgePublicSentiment(
   sessionId: string,
   mistakeType: MistakeType,
+  decisionTitle?: string,
+  decisionDescription?: string,
 ): Promise<void> {
   try {
     const { data: session } = await supabaseAdmin
@@ -525,12 +625,34 @@ export async function nudgePublicSentiment(
     const current =
       typeof mediaState.public_sentiment === 'number' ? mediaState.public_sentiment : 5;
 
-    const delta = SENTIMENT_DELTAS[mistakeType];
+    let delta: number;
+    let sentimentLabel: string | undefined;
+    let sentimentReason: string | undefined;
+
+    if (decisionTitle && decisionDescription) {
+      const toneScore = await evaluateMediaTone(
+        decisionTitle,
+        decisionDescription,
+        current,
+        mistakeType,
+      );
+      delta = toneScore.delta;
+      sentimentLabel = toneScore.label;
+      sentimentReason = toneScore.reason;
+    } else {
+      delta = SENTIMENT_DELTAS[mistakeType];
+    }
+
     const nudged = Math.min(10, Math.max(1, Math.round((current + delta) * 10) / 10));
 
     const nextState = {
       ...currentState,
-      media_state: { ...mediaState, public_sentiment: nudged },
+      media_state: {
+        ...mediaState,
+        public_sentiment: nudged,
+        ...(sentimentLabel && { sentiment_label: sentimentLabel }),
+        ...(sentimentReason && { sentiment_reason: sentimentReason }),
+      },
     };
 
     await supabaseAdmin.from('sessions').update({ current_state: nextState }).eq('id', sessionId);
@@ -545,7 +667,7 @@ export async function nudgePublicSentiment(
     }
 
     // Positive inject when sentiment crosses thresholds upward
-    if (mistakeType === 'good' && nudged > current) {
+    if (delta > 0 && nudged > current) {
       const scenarioId = (session as { scenario_id?: string }).scenario_id;
       const thresholds = [6, 8];
       for (const t of thresholds) {
@@ -570,8 +692,34 @@ export async function nudgePublicSentiment(
       }
     }
 
+    // Negative inject when sentiment drops below thresholds
+    if (delta < 0 && nudged < current) {
+      const scenarioId = (session as { scenario_id?: string }).scenario_id;
+      const thresholds = [4, 2];
+      for (const t of thresholds) {
+        if (current > t && nudged <= t && scenarioId) {
+          await supabaseAdmin.from('scenario_injects').insert({
+            scenario_id: scenarioId,
+            session_id: sessionId,
+            title: t <= 2 ? 'Public confidence crisis' : 'Growing public unease',
+            body:
+              t <= 2
+                ? `Public confidence has collapsed. ${sentimentReason || 'Communications have failed to reassure the public.'} Social media is flooded with criticism and panic is spreading. Immediate corrective action is needed.`
+                : `Public sentiment is declining. ${sentimentReason || 'Recent communications have not adequately addressed public concerns.'} Media outlets are beginning to question the response effort. Consider issuing a more reassuring and factual update.`,
+            inject_type: 'field_update',
+            trigger_type: 'time_based',
+            trigger_minutes: 0,
+            target_team: 'media',
+            generation_source: 'sentiment_negative',
+          });
+          logger.info({ sessionId, threshold: t, nudged }, 'Negative sentiment inject created');
+          break;
+        }
+      }
+    }
+
     logger.info(
-      { sessionId, mistakeType, previous: current, nudged, delta },
+      { sessionId, mistakeType, previous: current, nudged, delta, sentimentLabel },
       'Public sentiment nudged (media decision)',
     );
   } catch (err) {

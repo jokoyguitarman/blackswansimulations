@@ -1255,8 +1255,13 @@ async function processExecutedDecisionInBackground(
           );
         }
 
-        if (authorTeamNames[0] === 'media') {
-          await nudgePublicSentiment(sessionId, mistakeType);
+        if (authorTeamNames[0] && /media|communi/i.test(authorTeamNames[0])) {
+          await nudgePublicSentiment(
+            sessionId,
+            mistakeType,
+            (decision.title as string) ?? '',
+            (decision.description as string) ?? '',
+          );
         }
       } catch (heatErr) {
         logger.warn(
