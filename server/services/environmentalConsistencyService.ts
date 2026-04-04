@@ -816,8 +816,8 @@ Evaluate whether the decision is OPERATIONALLY SPECIFIC enough to be executed on
 
 Specificity requirements by team role:
 - Evacuation: specific exit names/IDs, flow control method, marshal-to-evacuee ratios, staging/assembly areas, ground zero perimeter distance, phased evacuation order if applicable
-- Triage: named triage zones/areas, triage protocol (e.g. START, SALT, Triage Sieve), staff-to-patient ratios, casualty categorisation zones (Red/Yellow/Green), transport priorities and destination hospitals
-- Media: named spokesperson, statement content or key messages, press conference location or channel, information update frequency, misinformation rebuttal points
+- Medical Triage: named triage zones/areas, triage protocol (e.g. START, SALT, Triage Sieve), staff-to-patient ratios, casualty categorisation zones (Red/Yellow/Green), transport priorities and destination hospitals
+- Media & Communications: named spokesperson, statement content or key messages, press conference location or channel, information update frequency, misinformation rebuttal points
 - Hazard Response: specific equipment type and class (e.g. "ABC dry chemical extinguisher" not just "water"), trained personnel to deploy it, approach method (upwind, from safe distance, etc.), safety perimeter, containment procedure, whether external services (fire brigade, HAZMAT) need to be called
 
 Set "specific": false when the decision gives general/vague instructions without naming concrete details. Set "specific": true when the decision names enough specifics to be executed without further clarification.

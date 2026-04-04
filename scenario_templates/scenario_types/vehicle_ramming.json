@@ -4,28 +4,29 @@
   "category": "terrorism",
   "required_teams": [
     {
-      "team_name": "evacuation",
-      "team_description": "Clear the vehicle path, manage crowd flow away from danger zone",
+      "team_name": "Evacuation",
+      "team_description": "Clear the vehicle path, crowd flow management away from danger zone, assembly coordination",
       "min_participants": 2,
       "max_participants": 8
     },
     {
-      "team_name": "triage",
-      "team_description": "Mass casualty triage for blunt trauma and crush injuries, ambulance coordination",
+      "team_name": "Medical Triage",
+      "team_description": "Mass casualty triage for blunt trauma and crush injuries, field stabilization, ambulance coordination",
       "min_participants": 2,
       "max_participants": 8
     },
     {
-      "team_name": "police",
-      "team_description": "Vehicle immobilisation, driver neutralisation, perimeter, secondary threat assessment",
-      "min_participants": 2,
-      "max_participants": 10
-    },
-    {
-      "team_name": "media",
-      "team_description": "Public communication, counter misinformation, community tensions management",
+      "team_name": "Media & Communications",
+      "team_description": "Public communication, counter-misinformation, community tensions management, press coordination",
       "min_participants": 2,
       "max_participants": 6
+    },
+    {
+      "team_name": "Pursuit & Investigation",
+      "team_description": "Driver pursuit and neutralization, vehicle immobilization, perimeter establishment, secondary threat assessment, evidence preservation",
+      "min_participants": 2,
+      "max_participants": 10,
+      "is_investigative": true
     }
   ],
   "environmental_factors": [

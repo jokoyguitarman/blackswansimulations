@@ -4,40 +4,22 @@
   "category": "civil_unrest",
   "required_teams": [
     {
-      "team_name": "crowd_management",
-      "team_description": "Crowd flow control, barrier management, crush prevention, ingress/egress coordination",
+      "team_name": "Evacuation",
+      "team_description": "Crowd flow control, barrier management, crush prevention, emergency evacuation route coordination, gate control",
       "min_participants": 2,
       "max_participants": 10
     },
     {
-      "team_name": "evacuation",
-      "team_description": "Emergency evacuation coordination, route management, assembly point operation",
-      "min_participants": 2,
-      "max_participants": 10
-    },
-    {
-      "team_name": "triage",
-      "team_description": "Crush injury triage, compressive asphyxia response, field medical treatment",
+      "team_name": "Medical Triage",
+      "team_description": "Crush injury triage, compressive asphyxia response, field medical treatment, hospital coordination",
       "min_participants": 2,
       "max_participants": 8
     },
     {
-      "team_name": "media",
-      "team_description": "Public communication, crowd guidance via PA and social media, counter misinformation",
+      "team_name": "Media & Communications",
+      "team_description": "Public communication, crowd guidance via PA and social media, counter-misinformation, event status updates",
       "min_participants": 2,
       "max_participants": 6
-    },
-    {
-      "team_name": "event_security",
-      "team_description": "Gate control, barrier removal, CCTV monitoring, steward coordination",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "police",
-      "team_description": "Crowd control assistance, perimeter management, public order, traffic control",
-      "min_participants": 2,
-      "max_participants": 8
     }
   ],
   "environmental_factors": [

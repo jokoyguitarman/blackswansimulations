@@ -4,42 +4,29 @@
   "category": "terrorism",
   "required_teams": [
     {
-      "team_name": "police",
-      "team_description": "Lead response, perimeter, tactical options",
+      "team_name": "Evacuation",
+      "team_description": "Perimeter lockdown, non-target evacuation, access control around the crisis site",
       "min_participants": 2,
-      "max_participants": 8,
+      "max_participants": 8
+    },
+    {
+      "team_name": "Medical Triage",
+      "team_description": "Medical standby, hostage medical assessment post-recovery, psychological first aid",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "Media & Communications",
+      "team_description": "Media blackout coordination, family liaison, controlled public communication, counter-misinformation",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "Pursuit & Investigation",
+      "team_description": "Suspect tracking, hostage negotiation, intel analysis, tactical options assessment, containment decisions",
+      "min_participants": 2,
+      "max_participants": 10,
       "is_investigative": true
-    },
-    {
-      "team_name": "negotiation",
-      "team_description": "Hostage negotiation, ransom communication",
-      "min_participants": 1,
-      "max_participants": 4
-    },
-    {
-      "team_name": "intelligence",
-      "team_description": "Intelligence gathering, ingress/egress assessment",
-      "min_participants": 2,
-      "max_participants": 6,
-      "is_investigative": true
-    },
-    {
-      "team_name": "resort_security",
-      "team_description": "Resort security, perimeter, local knowledge",
-      "min_participants": 2,
-      "max_participants": 6
-    },
-    {
-      "team_name": "media",
-      "team_description": "Media blackout coordination, family liaison, public communication",
-      "min_participants": 2,
-      "max_participants": 6
-    },
-    {
-      "team_name": "triage",
-      "team_description": "Standby medical support, hostage medical assessment post-recovery",
-      "min_participants": 2,
-      "max_participants": 6
     }
   ],
   "environmental_factors": [

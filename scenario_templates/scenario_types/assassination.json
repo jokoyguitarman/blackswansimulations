@@ -4,41 +4,28 @@
   "category": "terrorism",
   "required_teams": [
     {
-      "team_name": "close_protection",
-      "team_description": "VIP extraction, safe room establishment, protection detail coordination",
+      "team_name": "Evacuation",
+      "team_description": "VIP extraction, venue lockdown, crowd flow management, gate control, perimeter establishment",
+      "min_participants": 2,
+      "max_participants": 10
+    },
+    {
+      "team_name": "Medical Triage",
+      "team_description": "Casualty triage, gunshot/blast wound treatment, warm-zone medical response, casualty stabilization",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "Media & Communications",
+      "team_description": "Public communication, political messaging coordination, counter misinformation, diplomatic liaison",
       "min_participants": 2,
       "max_participants": 6
     },
     {
-      "team_name": "police",
-      "team_description": "Perimeter control, suspect pursuit, tactical response, crime scene preservation",
+      "team_name": "Pursuit & Investigation",
+      "team_description": "Suspect pursuit, threat intelligence, crime scene preservation, tactical response, real-time surveillance",
       "min_participants": 2,
       "max_participants": 10,
-      "is_investigative": true
-    },
-    {
-      "team_name": "triage",
-      "team_description": "Casualty triage, gunshot/blast wound treatment, warm-zone medical response",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "media",
-      "team_description": "Public communication, political messaging coordination, counter misinformation",
-      "min_participants": 2,
-      "max_participants": 6
-    },
-    {
-      "team_name": "event_security",
-      "team_description": "Venue lockdown, CCTV coordination, steward deployment, gate control",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "intelligence",
-      "team_description": "Threat intelligence, suspect identification, prior-warning analysis, real-time surveillance",
-      "min_participants": 2,
-      "max_participants": 6,
       "is_investigative": true
     }
   ],

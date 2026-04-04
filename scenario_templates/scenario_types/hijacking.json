@@ -4,36 +4,29 @@
   "category": "terrorism",
   "required_teams": [
     {
-      "team_name": "police",
-      "team_description": "Tactical response, perimeter, interception, armed intervention options",
+      "team_name": "Evacuation",
+      "team_description": "Perimeter establishment, area lockdown, passenger evacuation post-resolution, crowd management",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "Medical Triage",
+      "team_description": "Standby medical support, hostage medical assessment post-resolution, casualty stabilization",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "Media & Communications",
+      "team_description": "Public communication, media management, misinformation control, press management",
+      "min_participants": 2,
+      "max_participants": 6
+    },
+    {
+      "team_name": "Pursuit & Investigation",
+      "team_description": "Tactical response, hijacker negotiation, perpetrator identification, real-time surveillance, interception planning",
       "min_participants": 2,
       "max_participants": 10,
       "is_investigative": true
-    },
-    {
-      "team_name": "negotiation",
-      "team_description": "Hostage/hijacker negotiation, communication relay, demand assessment",
-      "min_participants": 1,
-      "max_participants": 4
-    },
-    {
-      "team_name": "intelligence",
-      "team_description": "Perpetrator identification, real-time surveillance, threat assessment",
-      "min_participants": 2,
-      "max_participants": 6,
-      "is_investigative": true
-    },
-    {
-      "team_name": "media",
-      "team_description": "Public communication, media management, misinformation control",
-      "min_participants": 2,
-      "max_participants": 6
-    },
-    {
-      "team_name": "triage",
-      "team_description": "Standby medical support, hostage medical assessment post-resolution",
-      "min_participants": 2,
-      "max_participants": 6
     }
   ],
   "environmental_factors": [

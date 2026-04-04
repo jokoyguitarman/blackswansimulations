@@ -1710,8 +1710,11 @@ export const SessionView = () => {
               ? scenarioTeams
               : [
                   { team_name: 'Evacuation' },
+                  { team_name: 'Fire Safety' },
                   { team_name: 'Medical Triage' },
-                  { team_name: 'Media' },
+                  { team_name: 'Media & Communications' },
+                  { team_name: 'Pursuit & Investigation' },
+                  { team_name: 'Bomb Squad / EOD' },
                 ];
 
           const blocks: React.ReactNode[] = [];

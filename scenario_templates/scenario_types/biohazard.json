@@ -4,38 +4,26 @@
   "category": "terrorism",
   "required_teams": [
     {
-      "team_name": "fire_hazmat",
-      "team_description": "BSL containment, biological agent identification, decontamination stations, hot/warm/cold zone management",
+      "team_name": "Evacuation",
+      "team_description": "Controlled evacuation from contaminated zones, shelter-in-place coordination, perimeter cordon, crowd flow management",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "Fire Safety",
+      "team_description": "BSL containment, biological agent identification, decontamination stations, hot/warm/cold zone management, hazmat response",
       "min_participants": 2,
       "max_participants": 10
     },
     {
-      "team_name": "public_health",
-      "team_description": "Epidemiological investigation, contact tracing, quarantine enforcement, hospital surge coordination",
+      "team_name": "Medical Triage",
+      "team_description": "Mass casualty triage, symptom-based prioritization, quarantine enforcement, contact tracing, hospital surge coordination",
       "min_participants": 2,
       "max_participants": 8
     },
     {
-      "team_name": "triage",
-      "team_description": "Mass casualty triage of exposed persons, symptom-based prioritization, decontamination coordination",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "evacuation",
-      "team_description": "Controlled evacuation from contaminated zones, shelter-in-place coordination, crowd flow management",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "police",
-      "team_description": "Perimeter and cordon control, evidence preservation, suspect identification, access control",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "media",
-      "team_description": "Public health advisory communications, counter misinformation, government liaison",
+      "team_name": "Media & Communications",
+      "team_description": "Public health advisory communications, counter misinformation, government liaison, press management",
       "min_participants": 2,
       "max_participants": 6
     }

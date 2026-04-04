@@ -4,44 +4,32 @@
   "category": "terrorism",
   "required_teams": [
     {
-      "team_name": "evacuation",
-      "team_description": "Vertical and horizontal evacuation, stairwell bottlenecks, floor-by-floor priority",
+      "team_name": "Evacuation",
+      "team_description": "Vertical and horizontal evacuation, stairwell flow control, store lockdown, PA announcements, perimeter control",
       "min_participants": 2,
       "max_participants": 10
     },
     {
-      "team_name": "triage",
-      "team_description": "Establish triage, coordinate with Fire for smoke-free sites",
+      "team_name": "Fire Safety",
+      "team_description": "Fire containment, smoke control, structural assessment, search and rescue, debris clearance",
       "min_participants": 2,
       "max_participants": 8
     },
     {
-      "team_name": "media",
-      "team_description": "Manage media, counter misinformation",
+      "team_name": "Medical Triage",
+      "team_description": "Blast injury triage, casualty prioritization, smoke-free triage site coordination, casualty stabilization",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "Media & Communications",
+      "team_description": "Public communication, counter misinformation, press management, family reunification info",
       "min_participants": 2,
       "max_participants": 6
     },
     {
-      "team_name": "fire",
-      "team_description": "Fire containment, smoke control, structural assessment, search and rescue",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "police",
-      "team_description": "Cordon, secondary device sweep, evidence preservation, suspect identification",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "mall_security",
-      "team_description": "Store lockdown, CCTV tracking, PA announcements, patron sweep, access control",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "bomb_squad",
-      "team_description": "Secondary device sweep, render safe procedures, forensic IED analysis",
+      "team_name": "Bomb Squad / EOD",
+      "team_description": "Secondary device sweep, render safe procedures, forensic IED analysis, blast cordon assessment",
       "min_participants": 2,
       "max_participants": 6
     }

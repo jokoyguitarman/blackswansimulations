@@ -117,22 +117,22 @@ const CONDITION_KEYS: Array<{ key: string; meaning: string; team?: string }> = [
   {
     key: 'evacuation_no_flow_control_decision',
     meaning: 'No decision matches flow/bottleneck/exit capacity keywords',
-    team: 'Evac',
+    team: 'Evacuation',
   },
   {
     key: 'evacuation_flow_control_decided',
     meaning: 'evacuation_state.flow_control_decided === true',
-    team: 'Evac',
+    team: 'Evacuation',
   },
   {
     key: 'evacuation_exit_bottleneck_active',
     meaning: 'exits_congested non-empty (unmanaged)',
-    team: 'Evac',
+    team: 'Evacuation',
   },
   {
     key: 'evacuation_coordination_established',
     meaning: 'evacuation_state.coordination_with_triage === true',
-    team: 'Evac',
+    team: 'Evacuation',
   },
   {
     key: 'triage_zone_established_as_incident_location',
@@ -167,27 +167,27 @@ const CONDITION_KEYS: Array<{ key: string; meaning: string; team?: string }> = [
   {
     key: 'media_statement_issued',
     meaning: 'media_state.first_statement_issued === true',
-    team: 'Media',
+    team: 'Media & Communications',
   },
   {
     key: 'media_no_statement_by_T12',
     meaning: 'elapsedMinutes >= 12 and no statement',
-    team: 'Media',
+    team: 'Media & Communications',
   },
   {
     key: 'media_misinformation_addressed',
     meaning: 'media_state.misinformation_addressed === true',
-    team: 'Media',
+    team: 'Media & Communications',
   },
   {
     key: 'media_spokesperson_designated',
     meaning: 'media_state.spokesperson_designated === true',
-    team: 'Media',
+    team: 'Media & Communications',
   },
   {
     key: 'media_no_spokesperson_designated',
     meaning: 'media_state.spokesperson_designated !== true',
-    team: 'Media',
+    team: 'Media & Communications',
   },
 ];
 

@@ -1557,7 +1557,7 @@ export const computePublicSentiment = async (
         messages: [
           {
             role: 'system',
-            content: `You evaluate public sentiment changes in a crisis simulation based on the current game state and media team actions.
+            content: `You evaluate public sentiment changes in a crisis simulation based on the current game state and Media & Communications team actions.
 
 The PREVIOUS public sentiment score was ${prevScore}/10. You must decide whether sentiment should move UP, DOWN, or stay the SAME, and by how much (max ±2 per evaluation).
 Sentiment should shift gradually — large jumps are unrealistic unless something dramatic happened.
@@ -1790,7 +1790,7 @@ export interface ThemeUsageEntry {
   keywords: string[];
 }
 
-/** Per-scope: universal, or team name (e.g. triage, evacuation, media) */
+/** Per-scope: universal, or team name (e.g. Medical Triage, Evacuation, Media & Communications) */
 export interface ThemeUsageByScope {
   universal?: Record<string, ThemeUsageEntry>;
   [teamName: string]: Record<string, ThemeUsageEntry> | undefined;

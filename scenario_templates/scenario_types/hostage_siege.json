@@ -4,34 +4,29 @@
   "category": "terrorism",
   "required_teams": [
     {
-      "team_name": "police",
-      "team_description": "Tactical response, perimeter, sniper positions, entry planning",
+      "team_name": "Evacuation",
+      "team_description": "Perimeter establishment, area lockdown, crowd management, bystander evacuation",
       "min_participants": 2,
-      "max_participants": 10
+      "max_participants": 8
     },
     {
-      "team_name": "negotiation",
-      "team_description": "Hostage negotiation, psychological profiling, demand management",
-      "min_participants": 1,
-      "max_participants": 4
-    },
-    {
-      "team_name": "intelligence",
-      "team_description": "Real-time surveillance, building layout intel, hostage status tracking",
+      "team_name": "Medical Triage",
+      "team_description": "Standby medical support, hostage medical assessment, stress casualty support, casualty stabilization",
       "min_participants": 2,
       "max_participants": 6
     },
     {
-      "team_name": "triage",
-      "team_description": "Standby medical, hostage medical assessment, stress casualty support",
+      "team_name": "Media & Communications",
+      "team_description": "Media blackout coordination, family liaison, public communication, press management",
       "min_participants": 2,
       "max_participants": 6
     },
     {
-      "team_name": "media",
-      "team_description": "Media blackout coordination, family liaison, public communication",
+      "team_name": "Pursuit & Investigation",
+      "team_description": "Tactical response, hostage negotiation, real-time surveillance, building intel, entry planning, suspect profiling",
       "min_participants": 2,
-      "max_participants": 6
+      "max_participants": 10,
+      "is_investigative": true
     }
   ],
   "environmental_factors": [

@@ -4,34 +4,28 @@
   "category": "terrorism",
   "required_teams": [
     {
-      "team_name": "evacuation",
-      "team_description": "Evacuate affected area, manage decontamination flow",
+      "team_name": "Evacuation",
+      "team_description": "Contaminated area evacuation, decontamination flow management, perimeter cordon, shelter-in-place coordination",
       "min_participants": 2,
       "max_participants": 10
     },
     {
-      "team_name": "triage",
-      "team_description": "Triage respiratory injuries, coordinate decon",
+      "team_name": "Fire Safety",
+      "team_description": "Hazmat response, substance identification, ventilation management, hot zone control, decontamination stations",
       "min_participants": 2,
       "max_participants": 8
     },
     {
-      "team_name": "media",
-      "team_description": "Manage media, prevent panic",
+      "team_name": "Medical Triage",
+      "team_description": "Respiratory injury triage, antidote coordination, decontamination support, hospital surge management",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "Media & Communications",
+      "team_description": "Public safety advisories, counter misinformation, press management, panic prevention",
       "min_participants": 2,
       "max_participants": 6
-    },
-    {
-      "team_name": "fire_hazmat",
-      "team_description": "Hazmat response, ventilation, substance identification",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "police",
-      "team_description": "Crime scene management, suspect identification, cordon, public order",
-      "min_participants": 2,
-      "max_participants": 8
     }
   ],
   "environmental_factors": ["enclosed_space", "ventilation", "station_vs_tunnel", "decon_site"],

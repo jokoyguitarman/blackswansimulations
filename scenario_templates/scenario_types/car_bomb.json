@@ -4,38 +4,32 @@
   "category": "terrorism",
   "required_teams": [
     {
-      "team_name": "evacuation",
-      "team_description": "Evacuate participants, manage bottlenecks, prevent discriminatory segregation",
+      "team_name": "Evacuation",
+      "team_description": "Blast zone evacuation, crowd flow management, perimeter cordon, assembly points, access control",
       "min_participants": 2,
       "max_participants": 10
     },
     {
-      "team_name": "triage",
-      "team_description": "Establish triage, prioritize injuries",
+      "team_name": "Fire Safety",
+      "team_description": "Vehicle fire containment, structural assessment, debris clearance, search and rescue",
       "min_participants": 2,
       "max_participants": 8
     },
     {
-      "team_name": "media",
-      "team_description": "Manage media, counter misinformation",
+      "team_name": "Medical Triage",
+      "team_description": "Blast and burn injury triage, casualty prioritization, ambulance coordination, casualty stabilization",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "Media & Communications",
+      "team_description": "Public communication, counter misinformation, press management, community liaison",
       "min_participants": 2,
       "max_participants": 6
     },
     {
-      "team_name": "fire",
-      "team_description": "Fire containment, structural assessment",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "police",
-      "team_description": "Cordon, EOD coordination, security",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "bomb_squad",
-      "team_description": "VBIED assessment, secondary device sweep, render safe, controlled detonation",
+      "team_name": "Bomb Squad / EOD",
+      "team_description": "VBIED assessment, secondary device sweep, render safe procedures, controlled detonation, forensic analysis",
       "min_participants": 2,
       "max_participants": 6
     }

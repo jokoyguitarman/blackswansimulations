@@ -113,7 +113,7 @@ const INJECT_CYCLE_RESET_MS = 120_000; // auto-reset cycle budget after 2 min
 // ---------------------------------------------------------------------------
 
 const TEAM_ALLOWED_PLACEMENTS: Record<string, Set<string>> = {
-  police: new Set([
+  evacuation: new Set([
     'command_post',
     'inner_cordon',
     'outer_cordon',
@@ -124,30 +124,10 @@ const TEAM_ALLOWED_PLACEMENTS: Record<string, Set<string>> = {
     'cold_zone',
     'staging_area',
     'forward_command',
-  ]),
-  security: new Set([
-    'command_post',
-    'inner_cordon',
-    'outer_cordon',
-    'roadblock',
-    'observation_post',
-    'hot_zone',
-    'warm_zone',
-    'cold_zone',
-    'staging_area',
+    'assembly_point',
+    'marshal_post',
   ]),
   fire: new Set([
-    'fire_truck',
-    'water_supply',
-    'forward_command',
-    'hot_zone',
-    'warm_zone',
-    'decontamination_zone',
-    'staging_area',
-    'command_post',
-    'inner_cordon',
-  ]),
-  hazmat: new Set([
     'fire_truck',
     'water_supply',
     'forward_command',
@@ -168,44 +148,18 @@ const TEAM_ALLOWED_PLACEMENTS: Record<string, Set<string>> = {
     'command_post',
     'inner_cordon',
   ]),
-  medical: new Set([
-    'triage_point',
-    'field_hospital',
-    'casualty_collection',
-    'ambulance_staging',
-    'helicopter_lz',
-    'command_post',
-    'inner_cordon',
-  ]),
-  ems: new Set([
-    'triage_point',
-    'field_hospital',
-    'casualty_collection',
-    'ambulance_staging',
-    'helicopter_lz',
-    'inner_cordon',
-  ]),
-  evacuation: new Set([
-    'assembly_point',
-    'staging_area',
-    'marshal_post',
-    'command_post',
-    'inner_cordon',
-  ]),
   media: new Set(['press_cordon', 'media_staging']),
+  pursuit: new Set(['observation_post', 'command_post', 'staging_area']),
+  bomb_squad: new Set(['exclusion_zone', 'staging_area', 'command_post']),
 };
 
 const TEAM_ALLOWED_PIN_TYPES: Record<string, Set<string>> = {
   triage: new Set(['casualty']),
-  medical: new Set(['casualty']),
-  ems: new Set(['casualty']),
-  ambulance: new Set(['casualty']),
   fire: new Set(['hazard', 'casualty']),
-  hazmat: new Set(['hazard', 'casualty']),
   evacuation: new Set(['crowd']),
 };
 
-const EXTRACT_ONLY_TEAMS = new Set(['fire', 'hazmat']);
+const EXTRACT_ONLY_TEAMS = new Set(['fire']);
 
 // ---------------------------------------------------------------------------
 // Operating Area Blueprint — standards-compliant site layout with capacity,
@@ -251,101 +205,7 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
   const items: BlueprintItem[] = [];
 
   switch (teamKey) {
-    case 'police':
-    case 'security': {
-      const roadblockCount = Math.max(2, Math.min(metrics.exitCount, 4));
-
-      items.push({
-        id: 'outer_cordon',
-        asset_type: 'outer_cordon',
-        label: 'Outer Security Cordon',
-        geometry_type: 'polygon',
-        zone: 'cold',
-        radius_deg: 0.0009,
-        placement_hint: `Circle centered on incident [${c.lat}, ${c.lng}], radius ~100m, enclosing all operational zones`,
-        personnel: [
-          {
-            role: 'Cordon Officer',
-            count: Math.max(4, roadblockCount * 2),
-            ppe: 'high-vis vest, helmet',
-          },
-          { role: 'Cordon Supervisor', count: 1, ppe: 'high-vis vest, radio' },
-        ],
-        equipment: ['barrier tape', 'traffic cones', 'portable barriers', 'radios', 'flashlights'],
-        description:
-          'Establishing outer security cordon to control all access. All personnel and vehicles must pass through controlled entry points.',
-        priority: 1,
-      });
-
-      for (let i = 0; i < roadblockCount; i++) {
-        const exitLabel = metrics.exitLocations[i]?.label || `Access Point ${i + 1}`;
-        items.push({
-          id: `roadblock_${i + 1}`,
-          asset_type: 'roadblock',
-          label: `Roadblock at ${exitLabel}`,
-          geometry_type: 'point',
-          zone: 'cold',
-          placement_hint: metrics.exitLocations[i]
-            ? `Near exit "${exitLabel}" at [${metrics.exitLocations[i].lat}, ${metrics.exitLocations[i].lng}]`
-            : `At access point ${i + 1} on the outer cordon perimeter`,
-          personnel: [{ role: 'Checkpoint Officer', count: 2, ppe: 'high-vis vest, body armor' }],
-          equipment: ['vehicle barrier', 'ID check station', 'radio', 'stop sign'],
-          description: `Blocking vehicular and unauthorized pedestrian access at ${exitLabel}. Checkpoint officers verifying credentials for all inbound traffic.`,
-          priority: 2,
-        });
-      }
-
-      items.push({
-        id: 'command_post',
-        asset_type: 'command_post',
-        label: 'Police Forward Command Post',
-        geometry_type: 'point',
-        zone: 'cold',
-        placement_hint: `Cold zone, offset ~150m from incident center in safe direction`,
-        personnel: [
-          { role: 'Incident Commander', count: 1, ppe: 'command vest' },
-          { role: 'Communications Officer', count: 1, ppe: 'radio headset' },
-          { role: 'Scribe/Logger', count: 1 },
-        ],
-        equipment: [
-          'command table',
-          'situation board',
-          'multi-channel radio',
-          'maps',
-          'laptop with CAD access',
-        ],
-        description:
-          'Central command post for coordinating all police operations, maintaining situational awareness, and inter-agency liaison.',
-        priority: 2,
-      });
-
-      if (metrics.totalCasualties > 0) {
-        items.push({
-          id: 'inner_cordon',
-          asset_type: 'inner_cordon',
-          label: 'Inner Cordon (Crime Scene / Hot Zone)',
-          geometry_type: 'polygon',
-          zone: 'hot',
-          radius_deg: 0.00045,
-          placement_hint: `Tight circle around incident center [${c.lat}, ${c.lng}], radius ~50m, containing the hot zone`,
-          personnel: [
-            {
-              role: 'Inner Cordon Guard',
-              count: Math.max(2, Math.ceil(metrics.hazardCount * 2)),
-              ppe: 'body armor, helmet, radio',
-            },
-          ],
-          equipment: ['barrier tape', 'scene logs', 'body-worn cameras'],
-          description:
-            'Inner cordon securing the hot zone / crime scene. Only authorized emergency responders in appropriate PPE may enter.',
-          priority: 1,
-        });
-      }
-      break;
-    }
-
-    case 'triage':
-    case 'medical': {
+    case 'triage': {
       const triagePointCount = Math.max(1, Math.ceil(metrics.totalCasualties / 15));
       const nursesPer = Math.max(2, Math.ceil(metrics.totalCasualties / triagePointCount / 5));
       const clusters =
@@ -534,92 +394,17 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
       break;
     }
 
-    case 'ems': {
-      const patientsServed = Math.max(5, metrics.totalCasualties);
-      const nurseCount = Math.max(2, Math.ceil(patientsServed / 5));
-
-      items.push({
-        id: 'triage_point',
-        asset_type: 'triage_point',
-        label: 'EMS Triage Station',
-        geometry_type: 'point',
-        zone: 'warm',
-        placement_hint: `Warm zone, accessible from extraction routes, offset ~80m from incident center`,
-        personnel: [
-          {
-            role: 'Triage Officer (START-certified)',
-            count: 1,
-            ppe: 'gloves, safety vest, N95 mask',
-          },
-          { role: 'EMT / Paramedic', count: nurseCount, ppe: 'gloves, safety vest, N95 mask' },
-        ],
-        equipment: [
-          `${patientsServed * 2} triage tags`,
-          'trauma kits',
-          'AED units',
-          'stretchers',
-          'patient tracking board',
-          'radio',
-        ],
-        capacity: patientsServed,
-        description: `EMS triage station using START protocol. Capacity for ~${patientsServed} patients. Full triage and stabilization capability.`,
-        priority: 1,
-      });
-
-      items.push({
-        id: 'ems_operating_perimeter',
-        asset_type: 'inner_cordon',
-        label: 'EMS Operating Perimeter',
-        geometry_type: 'polygon',
-        zone: 'warm',
-        radius_deg: 0.00045,
-        placement_hint: `Circle around the EMS triage station, radius ~50m, securing the medical operating area`,
-        personnel: [{ role: 'Access Controller', count: 2, ppe: 'high-vis vest' }],
-        equipment: ['portable barriers', 'barrier tape', 'access control signage'],
-        description:
-          'Controlled perimeter around EMS operating area. Only authorized medical personnel permitted inside. Barriers prevent unauthorized access.',
-        priority: 2,
-      });
-
-      items.push({
-        id: 'ambulance_staging',
-        asset_type: 'ambulance_staging',
-        label: 'Ambulance Staging Area',
-        geometry_type: 'point',
-        zone: 'cold',
-        placement_hint: `Cold zone near road access for rapid ambulance loading`,
-        personnel: [
-          { role: 'Transport Coordinator', count: 1, ppe: 'high-vis vest' },
-          {
-            role: 'Ambulance Crew',
-            count: Math.max(2, Math.ceil(patientsServed / 5)) * 2,
-            ppe: 'standard EMS PPE',
-          },
-        ],
-        equipment: [
-          `${Math.max(2, Math.ceil(patientsServed / 5))} ambulances`,
-          'hospital capacity board',
-          'patient manifest',
-        ],
-        capacity: Math.max(2, Math.ceil(patientsServed / 5)),
-        description: `Ambulance staging with ${Math.max(2, Math.ceil(patientsServed / 5))} units. Transport coordinator tracks hospital capacity and rotates units.`,
-        priority: 3,
-      });
-      break;
-    }
-
-    case 'fire':
-    case 'hazmat': {
+    case 'fire': {
       items.push({
         id: 'forward_command',
         asset_type: 'forward_command',
-        label: `${teamKey === 'hazmat' ? 'HAZMAT' : 'Fire'} Forward Command Post`,
+        label: 'Fire Safety Forward Command Post',
         geometry_type: 'point',
         zone: 'warm',
         placement_hint: `Warm zone, upwind from hazards, ~80m from incident center with clear line of sight`,
         personnel: [
           {
-            role: `${teamKey === 'hazmat' ? 'HAZMAT' : 'Fire'} Sector Commander`,
+            role: 'Fire Safety Sector Commander',
             count: 1,
             ppe: 'command vest, radio, helmet',
           },
@@ -634,14 +419,15 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
           'wind direction indicator',
           'maps',
         ],
-        description: `Forward command post for ${teamKey === 'hazmat' ? 'HAZMAT' : 'fire'} operations. Upwind position with accountability tracking for all personnel entering hot zone.`,
+        description:
+          'Forward command post for Fire Safety operations. Upwind position with accountability tracking for all personnel entering hot zone.',
         priority: 1,
       });
 
       items.push({
         id: 'staging_area',
         asset_type: 'staging_area',
-        label: `${teamKey === 'hazmat' ? 'HAZMAT' : 'Fire'} Equipment Staging Area`,
+        label: 'Fire Safety Equipment Staging Area',
         geometry_type: 'polygon',
         zone: 'warm',
         radius_deg: 0.00027,
@@ -657,10 +443,9 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         equipment: [
           `${Math.max(2, metrics.hazardCount)} SCBA sets with spare cylinders`,
           'hose lines and nozzles',
-          teamKey === 'hazmat'
-            ? 'chemical identification kits (HazCat, pH strips, RAD monitors)'
-            : 'thermal imaging cameras',
-          teamKey === 'hazmat' ? 'absorbent booms and pads' : 'forcible entry tools',
+          'thermal imaging cameras',
+          'chemical identification kits (HazCat, pH strips, RAD monitors)',
+          'forcible entry tools',
           'portable lighting',
           'RIT (Rapid Intervention Team) pack',
           'rehabilitation supplies (water, electrolytes)',
@@ -670,23 +455,23 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         priority: 1,
       });
 
-      // Operating perimeter around fire/hazmat staging and command area
+      // Operating perimeter around Fire Safety staging and command area
       items.push({
         id: 'fire_operating_perimeter',
         asset_type: 'inner_cordon',
-        label: `${teamKey === 'hazmat' ? 'HAZMAT' : 'Fire'} Operations Perimeter`,
+        label: 'Fire Safety Operations Perimeter',
         geometry_type: 'polygon',
         zone: 'warm',
         radius_deg: 0.00054,
-        placement_hint: `Circle around forward command post and staging area, radius ~60m, securing fire/hazmat operations zone`,
+        placement_hint: `Circle around forward command post and staging area, radius ~60m, securing Fire Safety operations zone`,
         personnel: [{ role: 'Perimeter Guard', count: 2, ppe: 'high-vis vest, helmet' }],
         equipment: ['portable barriers', 'barrier tape', 'hazard signage', 'access log'],
         description:
-          'Controlled perimeter around fire/hazmat operations. Only personnel with appropriate PPE and accountability check-in may enter. Barriers prevent unauthorized access to hazardous area.',
+          'Controlled perimeter around Fire Safety operations. Only personnel with appropriate PPE and accountability check-in may enter. Barriers prevent unauthorized access to hazardous area.',
         priority: 2,
       });
 
-      if (teamKey === 'hazmat' || metrics.hazardCount > 0) {
+      if (metrics.hazardCount > 0) {
         const deconCapacity = Math.max(
           4,
           Math.ceil((metrics.totalCasualties + metrics.hazardCount * 3) / 3),
@@ -750,7 +535,97 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
     }
 
     case 'evacuation': {
-      // Number of assembly points based on crowd size and exit count
+      // Cordon and perimeter control (merged from former police/security role)
+      const roadblockCount = Math.max(2, Math.min(metrics.exitCount, 4));
+
+      items.push({
+        id: 'outer_cordon',
+        asset_type: 'outer_cordon',
+        label: 'Outer Security Cordon',
+        geometry_type: 'polygon',
+        zone: 'cold',
+        radius_deg: 0.0009,
+        placement_hint: `Circle centered on incident [${c.lat}, ${c.lng}], radius ~100m, enclosing all operational zones`,
+        personnel: [
+          {
+            role: 'Cordon Officer',
+            count: Math.max(4, roadblockCount * 2),
+            ppe: 'high-vis vest, helmet',
+          },
+          { role: 'Cordon Supervisor', count: 1, ppe: 'high-vis vest, radio' },
+        ],
+        equipment: ['barrier tape', 'traffic cones', 'portable barriers', 'radios', 'flashlights'],
+        description:
+          'Outer security cordon controlling all access. All personnel and vehicles must pass through controlled entry points.',
+        priority: 1,
+      });
+
+      for (let i = 0; i < roadblockCount; i++) {
+        const exitLabel = metrics.exitLocations[i]?.label || `Access Point ${i + 1}`;
+        items.push({
+          id: `roadblock_${i + 1}`,
+          asset_type: 'roadblock',
+          label: `Checkpoint at ${exitLabel}`,
+          geometry_type: 'point',
+          zone: 'cold',
+          placement_hint: metrics.exitLocations[i]
+            ? `Near exit "${exitLabel}" at [${metrics.exitLocations[i].lat}, ${metrics.exitLocations[i].lng}]`
+            : `At access point ${i + 1} on the outer cordon perimeter`,
+          personnel: [{ role: 'Checkpoint Officer', count: 2, ppe: 'high-vis vest' }],
+          equipment: ['vehicle barrier', 'ID check station', 'radio', 'stop sign'],
+          description: `Checkpoint controlling access at ${exitLabel}. Officers verifying credentials for all inbound traffic.`,
+          priority: 2,
+        });
+      }
+
+      items.push({
+        id: 'command_post',
+        asset_type: 'command_post',
+        label: 'Forward Command Post',
+        geometry_type: 'point',
+        zone: 'cold',
+        placement_hint: `Cold zone, offset ~150m from incident center in safe direction`,
+        personnel: [
+          { role: 'Incident Commander', count: 1, ppe: 'command vest' },
+          { role: 'Communications Officer', count: 1, ppe: 'radio headset' },
+          { role: 'Scribe/Logger', count: 1 },
+        ],
+        equipment: [
+          'command table',
+          'situation board',
+          'multi-channel radio',
+          'maps',
+          'laptop with CAD access',
+        ],
+        description:
+          'Central command post for coordinating all operations, maintaining situational awareness, and inter-agency liaison.',
+        priority: 2,
+      });
+
+      if (metrics.totalCasualties > 0) {
+        items.push({
+          id: 'inner_cordon',
+          asset_type: 'inner_cordon',
+          label: 'Inner Cordon (Hot Zone)',
+          geometry_type: 'polygon',
+          zone: 'hot',
+          radius_deg: 0.00045,
+          placement_hint: `Tight circle around incident center [${c.lat}, ${c.lng}], radius ~50m, containing the hot zone`,
+          personnel: [
+            {
+              role: 'Inner Cordon Guard',
+              count: Math.max(2, Math.ceil(metrics.hazardCount * 2)),
+              ppe: 'helmet, radio',
+            },
+          ],
+          equipment: ['barrier tape', 'scene logs'],
+          description:
+            'Inner cordon securing the hot zone. Only authorized emergency responders in appropriate PPE may enter.',
+          priority: 1,
+        });
+      }
+
+      // Assembly points and evacuation
       const assemblyCount = Math.max(
         1,
         Math.min(Math.ceil(metrics.totalCrowdSize / 100), metrics.exitCount, 3),
@@ -942,15 +817,12 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
   }
 
   const teamLabels: Record<string, string> = {
-    police: 'Police / Security',
-    security: 'Police / Security',
-    triage: 'Medical Triage',
-    medical: 'Medical Triage',
-    ems: 'EMS',
-    fire: 'Fire',
-    hazmat: 'HAZMAT',
     evacuation: 'Evacuation',
-    media: 'Media / PIO',
+    fire: 'Fire Safety',
+    triage: 'Medical Triage',
+    media: 'Media & Communications',
+    pursuit: 'Pursuit & Investigation',
+    bomb_squad: 'Bomb Squad / EOD',
   };
 
   return {
@@ -963,15 +835,10 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
 function buildLayoutRationale(teamKey: string, m: ScenarioMetrics): string {
   switch (teamKey) {
     case 'triage':
-    case 'medical':
       return `${m.totalCasualties} casualties across ${m.casualtyClusters.length || 1} cluster(s) → ${Math.max(1, Math.ceil(m.totalCasualties / 15))} triage station(s) needed. Build order: Triage Station (tent) FIRST → CCP at hot/warm boundary → Cordon around triage → T1/T2 Treatment zones → Ambulance Staging (cold zone). Patient flow: CCP → Triage → T1/T2 → Ambulance → Hospital.`;
-    case 'police':
-    case 'security':
-      return `${m.exitCount} access points → ${Math.max(2, Math.min(m.exitCount, 4))} roadblocks needed. Outer cordon encloses all zones. Inner cordon secures crime scene/hot zone.`;
     case 'evacuation':
-      return `${m.totalCrowdSize} people to evacuate → ${Math.max(1, Math.min(Math.ceil(m.totalCrowdSize / 100), m.exitCount, 3))} assembly areas (1 marshal per 25 evacuees). Crowd flow: incident area → exits → assembly areas → reunification.`;
+      return `${m.exitCount} access points → ${Math.max(2, Math.min(m.exitCount, 4))} checkpoints needed. Outer cordon encloses all zones. Inner cordon secures hot zone. ${m.totalCrowdSize} people to evacuate → ${Math.max(1, Math.min(Math.ceil(m.totalCrowdSize / 100), m.exitCount, 3))} assembly areas (1 marshal per 25 evacuees). Crowd flow: incident area → exits → assembly areas → reunification.`;
     case 'fire':
-    case 'hazmat':
       return `${m.hazardCount} active hazard(s) → staging for ${Math.max(4, m.hazardCount * 3)} responders with SCBA rotation. Decon corridor required between hot and warm zones. 2-in/2-out protocol.`;
     case 'media':
       return `Media cordon positioned in cold zone with line-of-sight. PIO conducts regular briefings to control narrative and prevent unauthorized access.`;
@@ -1008,33 +875,69 @@ const INJECT_DOMAIN_KEYWORDS: Array<{ patterns: RegExp; teams: string[] }> = [
   },
   {
     patterns: /casualt|patient|injur|wound|bleed|triage|medical|ambulance|stretcher/i,
-    teams: ['triage', 'medical', 'ems', 'fire', 'hazmat'],
+    teams: ['triage', 'fire'],
   },
   {
     patterns: /fire|blaze|smoke|flame|burn|hazmat|chemical|spill|toxic|gas|explosion/i,
-    teams: ['fire', 'hazmat'],
+    teams: ['fire'],
   },
   {
     patterns: /crowd|panic|stampede|evacuat|assembly|shelter|civilian/i,
-    teams: ['evacuation', 'police', 'security'],
+    teams: ['evacuation'],
   },
   {
     patterns: /cordon|perimete|barricade|roadblock|checkpoint|secur|breach|intrud/i,
-    teams: ['police', 'security'],
+    teams: ['evacuation'],
   },
   {
     patterns: /sighting|suspect|adversary|pursuit|fugitive|shooter|armed|weapon/i,
-    teams: ['police', 'security', 'intelligence'],
+    teams: ['pursuit'],
   },
-  { patterns: /negotiate|hostage|demand|surrender/i, teams: ['negotiation', 'police'] },
+  { patterns: /negotiate|hostage|demand|surrender/i, teams: ['pursuit'] },
+  {
+    patterns: /bomb|explosive|device|detonate|ied|secondary/i,
+    teams: ['bomb_squad'],
+  },
 ];
 
 function getTeamScopeKey(teamName: string): string | null {
   const t = teamName.toLowerCase();
-  const keys = Object.keys(TEAM_ALLOWED_PLACEMENTS);
-  for (const k of keys) {
-    if (t.includes(k)) return k;
-  }
+
+  // Canonical team name → slug mapping (handles display names and old legacy names)
+  if (
+    t.includes('pursuit') ||
+    t.includes('investigat') ||
+    t.includes('intelligence') ||
+    t.includes('negotiat')
+  )
+    return 'pursuit';
+  if (t.includes('bomb') || t.includes('eod') || t.includes('explosive ordnance'))
+    return 'bomb_squad';
+  if (
+    t.includes('triage') ||
+    t.includes('medical') ||
+    t.includes('ems') ||
+    t.includes('ambulance') ||
+    t.includes('paramedic')
+  )
+    return 'triage';
+  if (t.includes('fire') || t.includes('hazmat') || t.includes('hazard')) return 'fire';
+  if (
+    t.includes('media') ||
+    t.includes('press') ||
+    t.includes('pio') ||
+    t.includes('communication')
+  )
+    return 'media';
+  if (
+    t.includes('evacu') ||
+    t.includes('police') ||
+    t.includes('security') ||
+    t.includes('cordon') ||
+    t.includes('crowd')
+  )
+    return 'evacuation';
+
   return null;
 }
 
@@ -1973,8 +1876,10 @@ export class DemoAIAgentService {
       '- EVACUATION teams → pin_response on CROWDS only (direct evacuation, not medical treatment)',
       '',
       'Teams that must NEVER use pin_response:',
-      '- POLICE / SECURITY → Do NOT triage patients or mitigate hazards. Your job is cordons, exits, containment, pursuit. If you find casualties, radio Medical Triage team in chat.',
-      '- MEDIA / PRESS / PIO → Do NOT interact with any pins. Your job is public communication and media management only.',
+      '- EVACUATION → Do NOT triage patients or mitigate hazards. Your job is cordons, exits, crowd movement, assembly areas. If you find casualties, radio Medical Triage team in chat.',
+      '- MEDIA & COMMUNICATIONS → Do NOT interact with any pins. Your job is public communication and media management only.',
+      '- PURSUIT & INVESTIGATION → Do NOT interact with any pins. Your job is suspect tracking, intelligence, and negotiation.',
+      '- BOMB SQUAD / EOD → Do NOT interact with casualty or crowd pins. Your job is secondary device sweeps and IED render-safe.',
       '- INTELLIGENCE / COMMAND → Do NOT interact with pins directly. Coordinate through other teams via chat.',
       '',
       'If a casualty or hazard appears and it is NOT your jurisdiction, send a CHAT message alerting the responsible team instead of using pin_response.',
@@ -2051,7 +1956,7 @@ export class DemoAIAgentService {
       '  ❌ WRONG: Inject says "diplomatic pressure from ally government" → You run an evacuation protocol (not what was asked)',
       '',
       '  ✅ RIGHT: Inject says "ambassador demands safety updates" → Decision: "Compile attendee safety status report for Israeli consulate liaison"',
-      '  ✅ RIGHT: Inject says "media approaching triage area" → Decision: "Request police to redirect press away from triage perimeter"',
+      '  ✅ RIGHT: Inject says "media approaching triage area" → Decision: "Request Evacuation team to redirect press away from triage perimeter"',
       '  ✅ RIGHT: Inject says "diplomatic pressure from ally government" → Decision: "Assign senior officer as diplomatic liaison, prepare official briefing"',
       '  ✅ RIGHT: Inject says "civilians crowding exits" → Evacuation: "Deploy marshals to manage crowd flow at Gate B"',
       '',
@@ -2085,17 +1990,17 @@ export class DemoAIAgentService {
       '- Bundle ALL your tactical moves into ONE decision with a rich description.',
       '- NEVER place an inner_cordon or outer_cordon if one already exists.',
       '- READ "Recent actions" and "Ground situation" carefully. Address SPECIFIC casualties and hazards by name/location.',
-      "- Focus EXCLUSIVELY on YOUR team specialty. Fire/HAZMAT handles fires and hot zone extraction. Medical Triage handles patient triage and treatment (warm/cold zone). Police handles security and cordons. Evacuation handles crowd movement and assembly areas. NEVER make decisions about another team's domain.",
+      "- Focus EXCLUSIVELY on YOUR team specialty. Fire Safety handles fires, hazmat, and hot zone extraction. Medical Triage handles patient triage and treatment (warm/cold zone). Evacuation handles cordons, crowd movement, and assembly areas. Media & Communications handles press and public statements. Pursuit & Investigation handles suspect tracking. NEVER make decisions about another team's domain.",
       '',
       '## 🚫 ZONE ACCESS RULES (STRICTLY ENFORCED):',
-      '- HOT ZONE: ONLY Fire/HAZMAT teams may enter. They extract patients to the warm zone boundary using DRABC, stretcher, and full PPE. They do NOT triage — they hand off to Medical Triage.',
-      '- WARM ZONE: Medical Triage teams triage and stabilize patients here. Fire/HAZMAT may pass through during extraction.',
+      '- HOT ZONE: ONLY Fire Safety teams may enter. They extract patients to the warm zone boundary using DRABC, stretcher, and full PPE. They do NOT triage — they hand off to Medical Triage.',
+      '- WARM ZONE: Medical Triage teams triage and stabilize patients here. Fire Safety may pass through during extraction.',
       '- COLD ZONE: All teams operate here. Command posts, staging areas, media zones go in the cold zone.',
-      '- Medical Triage/EMS: You CANNOT enter the hot zone. If patients are in the hot zone, request Fire/HAZMAT to extract them first.',
+      '- Medical Triage: You CANNOT enter the hot zone. If patients are in the hot zone, request Fire Safety to extract them first.',
       '',
       '## 🚫 CROWD vs PATIENT JURISDICTION (STRICTLY ENFORCED):',
-      '- CROWD pins (type: crowd, evacuee_group, convergent_crowd): ONLY Evacuation team handles these. Police may assist with order.',
-      '- PATIENT pins (type: patient, casualty): Medical Triage triages and treats. Fire/HAZMAT extracts from hot zone only.',
+      '- CROWD pins (type: crowd, evacuee_group, convergent_crowd): ONLY Evacuation team handles these.',
+      '- PATIENT pins (type: patient, casualty): Medical Triage triages and treats. Fire Safety extracts from hot zone only.',
       '- If you see a crowd pin and you are NOT the Evacuation team — DO NOT interact with it. Return { "actions": [{ "action": "none" }] }.',
       '- If a pin has NO injury information and describes a group of people — it is a CROWD, not a patient. Do NOT triage crowds.',
       '- READ "Recent actions by all teams" CAREFULLY. If another team already addressed a fire, casualty, or hazard — DO NOT address the same one. Find something DIFFERENT to do.',
@@ -2160,16 +2065,16 @@ export class DemoAIAgentService {
           '',
           '### Zone Architecture (ownership rules)',
           'The scene requires 3 concentric zone polygons: HOT ZONE (innermost), WARM ZONE (buffer/staging), COLD ZONE (outermost).',
-          "- ONLY the Police/Security team OR Fire/HAZMAT team draws these zone polygons. They are the Incident Commander's responsibility.",
-          '- If you are Police/Security or Fire/HAZMAT: draw the zone polygons early as one of your first placements.',
-          '- If you are ANY OTHER TEAM: do NOT draw zone polygons. Instead, REFERENCE the zones already drawn by police/fire when describing where you are operating.',
+          "- ONLY the Evacuation team OR Fire Safety team draws these zone polygons. They are the Incident Commander's responsibility.",
+          '- If you are Evacuation or Fire Safety: draw the zone polygons early as one of your first placements.',
+          '- If you are ANY OTHER TEAM: do NOT draw zone polygons. Instead, REFERENCE the zones already drawn by Evacuation/Fire Safety when describing where you are operating.',
           '- If you see in "Deployed Infrastructure" that zone polygons already exist, do NOT redraw them. Work within what is already established.',
           '- The HOT zone tightly surrounds the incident and hazards. The WARM zone is larger (triage, decon). The COLD zone is outermost (command, media, assembly).',
           '',
-          '### Cordon & Security Layers (Police/Security responsibility)',
-          '- INNER CORDON and OUTER CORDON are drawn EXCLUSIVELY by the Police/Security team.',
-          '- Other teams do NOT draw cordons. They request police to secure an area if needed.',
-          '- Police must place outer cordon BEFORE other teams begin operations.',
+          '### Cordon & Security Layers (Evacuation team responsibility)',
+          '- INNER CORDON and OUTER CORDON are drawn EXCLUSIVELY by the Evacuation team.',
+          '- Other teams do NOT draw cordons. They request Evacuation team to secure an area if needed.',
+          '- Evacuation team must place outer cordon BEFORE other teams begin operations.',
           '- Every operational area should be placed INSIDE the appropriate zone polygon.',
           '',
           '### Equipment & Resource Specificity',
@@ -2195,9 +2100,9 @@ export class DemoAIAgentService {
           'You MUST place the following infrastructure on the map BEFORE engaging with any pins:',
           '- COMMAND POST (Point asset in cold zone): every team must have a command post. Place it first. Label it clearly (e.g., "Police Command Post", "Medical Command Post").',
           '- TEAM STAGING AREA (Point or Polygon in cold/warm zone): where your team assembles equipment and personnel before deployment.',
-          '- For Police: command post + outer cordon BEFORE any security operations.',
-          '- For Fire/HAZMAT: command post + staging area + decon corridor BEFORE entering hot zone.',
-          '- For Medical/Triage: command post + triage tent (inside warm zone) BEFORE any patient contact.',
+          '- For Evacuation: command post + outer cordon BEFORE any crowd or security operations.',
+          '- For Fire Safety: command post + staging area + decon corridor BEFORE entering hot zone.',
+          '- For Medical Triage: command post + triage tent (inside warm zone) BEFORE any patient contact.',
           '- For Evacuation: command post + assembly points BEFORE issuing any evacuation orders.',
           '- For Media: command post + media staging area BEFORE issuing any statements.',
           '- If your command post and team structures are NOT placed, your first action MUST be to place them. No exceptions.',
@@ -2215,15 +2120,15 @@ export class DemoAIAgentService {
           '',
           '### Operational Sequencing (expert knows the correct order)',
           '1. FIRST: Place COMMAND POST for your team in the cold zone → this is your base.',
-          '2. SECOND (Police/Security ONLY): Establish outer cordon, claim exits, draw hot/warm/cold zone polygons.',
-          "3. THIRD (Fire/HAZMAT ONLY): If police hasn't drawn zones yet, draw them. Place decon corridor. Assess hazards.",
+          '2. SECOND (Evacuation ONLY): Establish outer cordon, claim exits, draw hot/warm/cold zone polygons.',
+          "3. THIRD (Fire Safety ONLY): If Evacuation hasn't drawn zones yet, draw them. Place decon corridor. Assess hazards.",
           '4. FOURTH: Place team-specific infrastructure INSIDE the appropriate zone (triage tent in warm zone, assembly point in cold zone, etc.).',
           '5. FIFTH: Begin pin_response interactions — one casualty/hazard at a time. Specify all equipment AND PPE.',
           '6. SIXTH: Follow jurisdiction rules for patient movement:',
-          '   - HOT ZONE extraction: ONLY Fire/HAZMAT or trained HAZMAT paramedics extract patients from hot zone to warm zone boundary. They wear full PPE.',
+          '   - HOT ZONE extraction: ONLY Fire Safety team extracts patients from hot zone to warm zone boundary. They wear full PPE.',
           '   - WARM ZONE treatment: Medical Triage team receives patients at the warm zone boundary. They triage and treat.',
-          '   - COLD ZONE transport: Medical team arranges transport from warm/cold zone to hospital.',
-          '   - If you are NOT Fire/HAZMAT, do NOT enter the hot zone. Request fire team to extract casualties to you.',
+          '   - COLD ZONE transport: Medical Triage team arranges transport from warm/cold zone to hospital.',
+          '   - If you are NOT Fire Safety, do NOT enter the hot zone. Request Fire Safety to extract casualties to you.',
           '7. SEVENTH: Transport treated patients to named hospital → only after treatment, with named vehicle.',
           '8. THROUGHOUT: Contain and mitigate hazards (fire/HAZMAT only). Other teams support from outside.',
           '',
@@ -2273,8 +2178,8 @@ export class DemoAIAgentService {
           '',
           '### Coordination & Jurisdiction',
           '- Reference what other teams have done and build on their work.',
-          '- Fire/HAZMAT clears the hot zone → then medical can operate at the warm zone boundary.',
-          '- Police secures cordons → then evacuation can direct crowds through secured exits.',
+          '- Fire Safety clears the hot zone → then Medical Triage can operate at the warm zone boundary.',
+          '- Evacuation secures cordons → then directs crowds through secured exits to assembly areas.',
           '- Medical triages and treats → then transport arranges ambulance to hospital.',
           "- NEVER do another team's job. If you need something outside your jurisdiction, REQUEST it in chat.",
           '- Use proper radio protocol: state your team, your action, your location, your resource request.',
@@ -2468,13 +2373,11 @@ export class DemoAIAgentService {
     if (isOperational) {
       // Team-filtered pin visibility based on jurisdiction and zone
       const tk = teamScopeKey || '';
-      const isFireHazmat = tk === 'fire' || tk === 'hazmat';
-      const isTriageMedical =
-        tk === 'triage' || tk === 'medical' || tk === 'ems' || tk === 'ambulance';
+      const isFireHazmat = tk === 'fire';
+      const isTriageMedical = tk === 'triage';
       const isEvacuation = tk === 'evacuation';
-      const isPolice = tk === 'police' || tk === 'security';
 
-      // Patients: show to Medical Triage (all zones), fire/hazmat (hot zone only for extraction)
+      // Patients: show to Medical Triage (all zones), Fire Safety (hot zone only for extraction)
       if (ground.patients.length > 0 && (isTriageMedical || isFireHazmat)) {
         if (isFireHazmat) {
           const hotZonePatients = ground.patients.filter((p) => p.includes('ZONE: HOT'));
@@ -2508,7 +2411,7 @@ export class DemoAIAgentService {
             parts.push(
               '',
               `## ⛔ ${hotZonePatients.length} patient(s) in HOT ZONE — you CANNOT enter.`,
-              '→ Request Fire/HAZMAT to extract them to the warm zone first via chat.',
+              '→ Request Fire Safety to extract them to the warm zone first via chat.',
               '→ Do NOT use pin_response on hot zone patients. You will receive them after extraction.',
             );
           }
@@ -2521,17 +2424,11 @@ export class DemoAIAgentService {
         );
       }
 
-      // Crowds: show ONLY to evacuation (and police for crowd control)
+      // Crowds: show ONLY to evacuation
       if (ground.crowds.length > 0) {
         if (isEvacuation) {
           parts.push('', '## 👥 Crowds & Evacuee Groups (YOUR jurisdiction):');
           for (const cr of ground.crowds) parts.push(`- ${cr}`);
-        } else if (isPolice) {
-          parts.push('', '## 👥 Crowds requiring management (coordinate with Evacuation):');
-          for (const cr of ground.crowds) parts.push(`- ${cr}`);
-          parts.push(
-            '→ Your role: maintain order, secure routes. Evacuation team handles the actual movement.',
-          );
         } else {
           parts.push(
             '',
@@ -2541,7 +2438,7 @@ export class DemoAIAgentService {
         }
       }
 
-      // Hazards: show to fire/hazmat (all), others just summary
+      // Hazards: show to Fire Safety (all), others just summary
       if (ground.hazards.length > 0) {
         if (isFireHazmat) {
           parts.push('', '## 🔥 Active Hazards (YOUR jurisdiction):');
@@ -2549,8 +2446,8 @@ export class DemoAIAgentService {
         } else {
           parts.push(
             '',
-            `## ⚠️ ${ground.hazards.length} active hazard(s) — handled by Fire/HAZMAT team.`,
-            '→ Not your jurisdiction. Stay clear and request Fire/HAZMAT via chat if needed.',
+            `## ⚠️ ${ground.hazards.length} active hazard(s) — handled by Fire Safety team.`,
+            '→ Not your jurisdiction. Stay clear and request Fire Safety via chat if needed.',
           );
         }
       }
@@ -2930,12 +2827,12 @@ export class DemoAIAgentService {
    * what a perfect response looks like.
    */
   private appendTeamExpertPlaybook(parts: string[], teamName: string): void {
-    const t = teamName.toLowerCase();
+    const tk = getTeamScopeKey(teamName);
 
-    if (t.includes('police') || t.includes('security') || t.includes('law')) {
+    if (tk === 'evacuation') {
       parts.push(
         '',
-        '### EXPERT PLAYBOOK: POLICE / SECURITY',
+        '### EXPERT PLAYBOOK: EVACUATION',
         '',
         '#### Your Perfect Response Sequence:',
         '1. Deploy OUTER CORDON polygon immediately — this is your #1 priority. Size it wide enough to keep ALL civilians, media, and bystanders away from the scene.',
@@ -2963,10 +2860,10 @@ export class DemoAIAgentService {
       );
     }
 
-    if (t.includes('fire') || t.includes('hazmat') || t.includes('scdf')) {
+    if (tk === 'fire') {
       parts.push(
         '',
-        '### EXPERT PLAYBOOK: FIRE / HAZMAT',
+        '### EXPERT PLAYBOOK: FIRE SAFETY',
         '',
         '#### Your Perfect Response Sequence:',
         '1. Assess the hazard type FIRST — read the hazard pin properties. Is it fire, chemical, gas, structural? This determines your equipment.',
@@ -2993,7 +2890,7 @@ export class DemoAIAgentService {
         '- Personnel: specify crew size ("Engine Company Alpha, 4 firefighters" not just "a fire team")',
         '',
         '#### Critical Rules:',
-        '- YOU are the ONLY team authorized to enter the hot zone. No medical, police, or evacuation team enters until you declare it safe.',
+        '- YOU are the ONLY team authorized to enter the hot zone. No Medical Triage or Evacuation team enters until you declare it safe.',
         '- Hot zone casualty extraction is YOUR exclusive job: locate casualties, stabilize with basic DRABC, carry them on stretcher with full PPE to the warm zone boundary. Then radio medical to take over.',
         '- Check wind direction before positioning (upwind approach for HAZMAT)',
         '- Structural assessment before entry — if building is compromised, request structural engineer before sending crews in',
@@ -3002,16 +2899,10 @@ export class DemoAIAgentService {
       );
     }
 
-    if (
-      t.includes('triage') ||
-      t.includes('medical') ||
-      t.includes('health') ||
-      t.includes('ems') ||
-      t.includes('ambulance')
-    ) {
+    if (tk === 'triage') {
       parts.push(
         '',
-        '### EXPERT PLAYBOOK: TRIAGE / MEDICAL / EMS',
+        '### EXPERT PLAYBOOK: MEDICAL TRIAGE',
         '',
         '#### Your Perfect Response Sequence:',
         '1. Place a TRIAGE TENT inside the warm zone, near an exit — this is your base of operations. It must be a placed asset on the map.',
@@ -3058,12 +2949,11 @@ export class DemoAIAgentService {
       );
     }
 
-    if (t.includes('evac') || t.includes('civil') || t.includes('crowd') || t.includes('shelter')) {
+    // Evacuation-specific crowd management guidance (appended to the evacuation playbook above)
+    if (tk === 'evacuation') {
       parts.push(
         '',
-        '### EXPERT PLAYBOOK: EVACUATION / CIVIL DEFENSE',
-        '',
-        '#### Your Perfect Response Sequence:',
+        '#### Crowd Evacuation Operations:',
         '1. CLAIM exits early — decide which exits your team will manage. Specify exclusive or shared.',
         '2. Place ASSEMBLY POINTS as placed assets in the cold zone — one for each major exit route. Name them clearly.',
         '3. Draw EVACUATION ROUTES as LineString assets — from the incident area through your claimed exits to assembly points.',
@@ -3071,43 +2961,31 @@ export class DemoAIAgentService {
         '5. Issue EVACUATION ORDERS via decision — name the specific crowd, the exit they should use, and the EXACT assembly point destination by name and coordinates.',
         '   Example: "Directing ~80 evacuees near Main Hall via Exit B to Assembly Area A at [-33.889, 151.274]. Deploying 4x Marshals (1:20 marshal-to-evacuee ratio)."',
         '6. Deploy MARSHALS along routes — specify headcount AND ratio: "4 marshals at Exit B corridor (1:20 ratio for 80 evacuees), 2 at assembly point entrance".',
-        '7. Conduct HEADCOUNT at assembly point — verify expected vs actual evacuees. Report discrepancies. State personnel: "2x Registration Officers processing arrivals (1:50 ratio)".',
+        '7. Conduct HEADCOUNT at assembly point — verify expected vs actual evacuees. Report discrepancies.',
         '',
-        '#### Equipment You Must Specify:',
+        '#### Crowd Equipment:',
         '- Megaphones / PA system for crowd direction',
         '- High-visibility vests for marshals (specify count)',
         '- Barrier tape for route channeling',
-        '- Wheelchairs / evacuation chairs for mobility-impaired (specify count based on building type)',
+        '- Wheelchairs / evacuation chairs for mobility-impaired',
         '- Signage / directional arrows for route marking',
         '- Headcount clickers / registration sheets at assembly points',
-        '- Buses for mass transport from assembly point if needed (specify capacity and count)',
         '',
         '#### Crowd Management Expertise:',
-        '- Calculate EXIT FLOW RATE: ~60 people/min through a standard door. If 500 people need evacuating through 2 exits = ~4 minutes minimum.',
+        '- Calculate EXIT FLOW RATE: ~60 people/min through a standard door.',
         '- PANICKING crowds need calming BEFORE orderly evacuation. Deploy trained marshals with PA first.',
-        '- Do NOT send a panicking crowd toward a narrow exit — they will crush. Open additional exits or calm first.',
-        '- VULNERABLE POPULATIONS: identify elderly, disabled, children. These need assisted evacuation with specific equipment (evac chairs, guides).',
+        '- VULNERABLE POPULATIONS: identify elderly, disabled, children. These need assisted evacuation.',
         '- If stampede risk detected, STOP evacuation and stabilize before resuming.',
-        '- Separate walking wounded (GREEN tag patients) from crowd evacuees — they go to different assembly points.',
-        '',
-        '#### Critical Rules:',
-        '- Do NOT begin evacuation until police confirms the exit route is SECURE (outer cordon in place)',
-        '- If a hazard is between the crowd and the exit, DO NOT use that exit — reroute through a safe alternative',
-        '- Assembly points must be UPWIND of any fire/chemical hazard',
-        '- Communicate with medical team about mixed wounded in crowds — some evacuees may collapse en route',
+        '- Separate walking wounded (GREEN tag patients) from crowd evacuees.',
+        '- Assembly points must be UPWIND of any fire/chemical hazard.',
         '- Track numbers: "Evacuated 350 of estimated 500 through Exit B. 150 remaining in Level 2."',
       );
     }
 
-    if (
-      t.includes('media') ||
-      t.includes('comms') ||
-      t.includes('communication') ||
-      t.includes('public')
-    ) {
+    if (tk === 'media') {
       parts.push(
         '',
-        '### EXPERT PLAYBOOK: MEDIA / COMMUNICATIONS',
+        '### EXPERT PLAYBOOK: MEDIA & COMMUNICATIONS',
         '',
         '#### Your Perfect Response Sequence:',
         '1. Establish MEDIA STAGING AREA as a placed asset in the cold zone — away from operations but with line of sight.',
@@ -3140,15 +3018,10 @@ export class DemoAIAgentService {
       );
     }
 
-    if (
-      t.includes('intel') ||
-      t.includes('investigation') ||
-      t.includes('negotiat') ||
-      t.includes('detective')
-    ) {
+    if (tk === 'pursuit') {
       parts.push(
         '',
-        '### EXPERT PLAYBOOK: INTELLIGENCE / INVESTIGATION / NEGOTIATION',
+        '### EXPERT PLAYBOOK: PURSUIT & INVESTIGATION',
         '',
         '#### Your Perfect Response Sequence:',
         '1. Gather situation reports from all teams — build a COMMON OPERATING PICTURE.',
@@ -3174,31 +3047,7 @@ export class DemoAIAgentService {
     }
 
     // Fallback for teams that don't match any specific playbook
-    if (
-      !t.includes('police') &&
-      !t.includes('security') &&
-      !t.includes('law') &&
-      !t.includes('fire') &&
-      !t.includes('hazmat') &&
-      !t.includes('scdf') &&
-      !t.includes('triage') &&
-      !t.includes('medical') &&
-      !t.includes('health') &&
-      !t.includes('ems') &&
-      !t.includes('ambulance') &&
-      !t.includes('evac') &&
-      !t.includes('civil') &&
-      !t.includes('crowd') &&
-      !t.includes('shelter') &&
-      !t.includes('media') &&
-      !t.includes('comms') &&
-      !t.includes('communication') &&
-      !t.includes('public') &&
-      !t.includes('intel') &&
-      !t.includes('investigation') &&
-      !t.includes('negotiat') &&
-      !t.includes('detective')
-    ) {
+    if (!tk) {
       parts.push(
         '',
         `### EXPERT PLAYBOOK: ${teamName.toUpperCase()}`,
@@ -3416,21 +3265,21 @@ export class DemoAIAgentService {
         const text =
           `${decisionAction.decision.title} ${decisionAction.decision.description}`.toLowerCase();
 
-        // Fire/hazmat should not triage, treat, or handle crowds
-        if (teamKey === 'fire' || teamKey === 'hazmat') {
+        // Fire Safety should not triage, treat, or handle crowds
+        if (teamKey === 'fire') {
           const triagePattern =
             /initiate triage|triage tag|administer first aid|establish iv|triage.*patient|casualty response.*crowd|casualty response.*gathering|casualty response.*assembly|casualty response.*evacuee/i;
           if (triagePattern.test(text)) {
             return {
               valid: false,
               reason:
-                'Fire/HAZMAT teams do NOT triage patients or handle crowds. You may only EXTRACT patients from the hot zone (basic DRABC, stretcher, carry to warm zone boundary). For crowds, request Evacuation team via chat. For patient treatment, hand off to Medical Triage.',
+                'Fire Safety team does NOT triage patients or handle crowds. You may only EXTRACT patients from the hot zone (basic DRABC, stretcher, carry to warm zone boundary). For crowds, request Evacuation team via chat. For patient treatment, hand off to Medical Triage.',
             };
           }
         }
 
         // Non-evacuation teams should not manage crowds
-        if (teamKey !== 'evacuation' && teamKey !== 'police' && teamKey !== 'security') {
+        if (teamKey !== 'evacuation') {
           const crowdPattern =
             /crowd.*management|direct.*evacuees|marshal.*crowd|assembly.*area.*crowd|evacuat.*crowd|guide.*crowd/i;
           if (crowdPattern.test(text)) {
@@ -4778,21 +4627,12 @@ export class DemoAIAgentService {
     }
 
     const teamClaimPurpose = (teamName: string): string => {
-      const t = teamName.toLowerCase();
-      if (t.includes('police') || t.includes('security') || t.includes('law'))
-        return 'security_checkpoint';
-      if (t.includes('evacuation') || t.includes('crowd') || t.includes('marshal'))
-        return 'evacuation_exit';
-      if (
-        t.includes('medical') ||
-        t.includes('ems') ||
-        t.includes('triage') ||
-        t.includes('ambulance')
-      )
-        return 'casualty_entry';
-      if (t.includes('fire') || t.includes('hazmat') || t.includes('rescue'))
-        return 'emergency_access';
-      if (t.includes('media') || t.includes('press') || t.includes('pio')) return 'media_access';
+      const tk = getTeamScopeKey(teamName);
+      if (tk === 'evacuation') return 'evacuation_checkpoint';
+      if (tk === 'triage') return 'casualty_entry';
+      if (tk === 'fire') return 'emergency_access';
+      if (tk === 'pursuit') return 'security_checkpoint';
+      if (tk === 'media') return 'media_access';
       return 'operational_use';
     };
 
@@ -4952,57 +4792,41 @@ export class DemoAIAgentService {
     pinZone?: string,
   ): boolean {
     if (!targetType) return false;
-    const t = teamName.toLowerCase();
     const tk = getTeamScopeKey(teamName);
 
     // These teams never interact with any pins directly
-    if (
-      t.includes('media') ||
-      t.includes('press') ||
-      t.includes('pio') ||
-      t.includes('public information') ||
-      t.includes('intelligence') ||
-      t.includes('command') ||
-      t.includes('coordinator')
-    ) {
+    // These teams never interact with any pins directly
+    if (tk === 'media' || tk === 'pursuit' || tk === 'bomb_squad') {
       return true;
     }
 
-    // Crowd pins: ONLY evacuation (and police for crowd control) may interact
+    // Crowd pins: ONLY evacuation may interact
     if (
       casualtyType === 'crowd' ||
       casualtyType === 'evacuee_group' ||
       casualtyType === 'convergent_crowd'
     ) {
       if (tk === 'evacuation') return false;
-      if (tk === 'police' || tk === 'security') return false;
       return true;
     }
 
     // Zone-based access control for patients
     if (targetType === 'casualty' && pinZone === 'hot') {
-      // Hot zone: ONLY fire/hazmat may extract — Medical Triage/ems/evac CANNOT enter
-      if (tk === 'fire' || tk === 'hazmat') return false;
+      // Hot zone: ONLY Fire Safety may extract — Medical Triage/evacuation CANNOT enter
+      if (tk === 'fire') return false;
       return true;
     }
 
-    // Fire/hazmat can only interact with patients for extraction (not in warm/cold zone)
-    if (targetType === 'casualty' && (tk === 'fire' || tk === 'hazmat')) {
+    // Fire Safety can only interact with patients for extraction (not in warm/cold zone)
+    if (targetType === 'casualty' && tk === 'fire') {
       if (pinZone && pinZone !== 'hot' && pinZone !== 'unknown' && pinZone !== 'outside') {
         return true;
       }
     }
 
     // Check against the hardcoded allowed pin types
-    for (const [key, allowedTypes] of Object.entries(TEAM_ALLOWED_PIN_TYPES)) {
-      if (t.includes(key)) {
-        return !allowedTypes.has(targetType);
-      }
-    }
-
-    // Police/Security: no pin responses on casualties or hazards
-    if (t.includes('police') || t.includes('security') || t.includes('law enforcement')) {
-      return targetType === 'casualty' || targetType === 'hazard';
+    if (tk && TEAM_ALLOWED_PIN_TYPES[tk]) {
+      return !TEAM_ALLOWED_PIN_TYPES[tk].has(targetType);
     }
 
     return false;

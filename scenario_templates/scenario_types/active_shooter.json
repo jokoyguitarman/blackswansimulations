@@ -4,35 +4,29 @@
   "category": "terrorism",
   "required_teams": [
     {
-      "team_name": "police",
-      "team_description": "Active shooter response, room clearance, neutralisation, perimeter",
+      "team_name": "Evacuation",
+      "team_description": "Run-Hide-Fight coordination, floor-by-floor evacuation, lockdown management, perimeter control, crowd flow",
       "min_participants": 2,
-      "max_participants": 10,
-      "is_investigative": true
+      "max_participants": 10
     },
     {
-      "team_name": "evacuation",
-      "team_description": "Run-Hide-Fight coordination, floor-by-floor evacuation, lockdown management",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "triage",
-      "team_description": "Gunshot wound triage, tourniquet distribution, warm-zone medical response",
+      "team_name": "Medical Triage",
+      "team_description": "Gunshot wound triage, tourniquet distribution, warm-zone medical response, casualty stabilization",
       "min_participants": 2,
       "max_participants": 8
     },
     {
-      "team_name": "media",
-      "team_description": "Public communication, family reunification info, counter misinformation",
+      "team_name": "Media & Communications",
+      "team_description": "Public communication, family reunification info, counter misinformation, press management",
       "min_participants": 2,
       "max_participants": 6
     },
     {
-      "team_name": "mall_security",
-      "team_description": "Store lockdown enforcement, CCTV tracking, PA shelter-in-place, access control",
+      "team_name": "Pursuit & Investigation",
+      "team_description": "Active shooter tracking, room clearance, neutralisation, intelligence gathering, suspect containment",
       "min_participants": 2,
-      "max_participants": 8
+      "max_participants": 10,
+      "is_investigative": true
     }
   ],
   "environmental_factors": [

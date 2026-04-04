@@ -4,28 +4,29 @@
   "category": "terrorism",
   "required_teams": [
     {
-      "team_name": "evacuation",
-      "team_description": "Safely evacuate participants, manage bottlenecks, prevent stampede",
+      "team_name": "Evacuation",
+      "team_description": "Crowd evacuation from open field, safe corridor establishment, bottleneck management, stampede prevention",
       "min_participants": 2,
       "max_participants": 10
     },
     {
-      "team_name": "triage",
-      "team_description": "Establish medical triage, prioritize injuries, manage casualty zones",
+      "team_name": "Medical Triage",
+      "team_description": "Mass casualty triage for gunshot wounds, field stabilization, casualty collection point management",
       "min_participants": 2,
       "max_participants": 8
     },
     {
-      "team_name": "media",
-      "team_description": "Manage media relations, counter misinformation, handle communications",
+      "team_name": "Media & Communications",
+      "team_description": "Public statements, counter-misinformation, community reassurance, press coordination",
       "min_participants": 2,
       "max_participants": 6
     },
     {
-      "team_name": "police",
-      "team_description": "Security response, threat assessment, coordinate with evacuation",
+      "team_name": "Pursuit & Investigation",
+      "team_description": "Active shooter tracking, perimeter establishment, threat neutralization, tactical response coordination",
       "min_participants": 2,
-      "max_participants": 8
+      "max_participants": 8,
+      "is_investigative": true
     }
   ],
   "environmental_factors": ["crowd_density", "limited_cover", "water_boundary", "exit_capacity"],

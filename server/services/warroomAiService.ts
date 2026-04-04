@@ -2348,27 +2348,20 @@ export function buildTeamStateSchemaHint(
         statements_issued: 0,
         misinformation_addressed_count: 0,
       };
-    } else if (/police|law/.test(n)) {
-      schema['police_state'] = {
+    } else if (/pursuit|investigat|intel|negotiat|police|security/.test(n)) {
+      schema['pursuit_state'] = {
         perimeter_established: false,
-        tactical_team_ready: false,
-        armed_units: 0,
-        inner_cordon_radius_m: 200,
-      };
-    } else if (/negotiat/.test(n)) {
-      schema['negotiation_state'] = {
+        suspect_localised: false,
         contact_established: false,
-        demands_received: false,
-        active_session: false,
-        sessions_count: 0,
-        last_contact_minutes_ago: null,
-      };
-    } else if (/intel/.test(n)) {
-      schema['intelligence_state'] = {
-        hostage_count_confirmed: null,
         threat_level: 'high',
         perpetrator_count_known: false,
         inside_intel: false,
+      };
+    } else if (/bomb|eod/.test(n)) {
+      schema['bomb_squad_state'] = {
+        secondary_sweep_complete: false,
+        devices_found: 0,
+        devices_rendered_safe: 0,
       };
     } else if (/fire/.test(n)) {
       schema['fire_state'] = {
@@ -2607,10 +2600,28 @@ const STANDARD_DECISION_INTENT_KEYS: Record<string, CounterDefinition[]> = {
       visible_to: 'trainer_only',
     },
   ],
-  police_state: [
+  pursuit_state: [
+    {
+      key: 'suspect_localised',
+      label: 'Suspect Localised',
+      type: 'boolean',
+      initial_value: false,
+      behavior: 'decision_toggle',
+      visible_to: 'trainer_only',
+    },
     {
       key: 'perimeter_established',
-      label: 'Perimeter Established',
+      label: 'Containment Perimeter Established',
+      type: 'boolean',
+      initial_value: false,
+      behavior: 'decision_toggle',
+      visible_to: 'trainer_only',
+    },
+  ],
+  bomb_squad_state: [
+    {
+      key: 'secondary_sweep_complete',
+      label: 'Secondary Device Sweep Complete',
       type: 'boolean',
       initial_value: false,
       behavior: 'decision_toggle',
@@ -2621,20 +2632,13 @@ const STANDARD_DECISION_INTENT_KEYS: Record<string, CounterDefinition[]> = {
 
 function teamNameToStateKey(teamName: string): string {
   const lower = teamName.toLowerCase();
-  if (lower.includes('evacuation') || lower.includes('evac')) return 'evacuation_state';
-  if (lower.includes('triage') || lower.includes('medical') || lower.includes('medic'))
-    return 'triage_state';
-  if (
-    lower.includes('media') ||
-    lower.includes('comms') ||
-    lower.includes('communication') ||
-    lower.includes('public')
-  )
-    return 'media_state';
-  if (lower.includes('police') || lower.includes('security') || lower.includes('law'))
-    return 'police_state';
-  if (lower.includes('fire') || lower.includes('hazard') || lower.includes('hazmat'))
+  if (lower.includes('evacu')) return 'evacuation_state';
+  if (lower.includes('triage') || lower.includes('medical')) return 'triage_state';
+  if (lower.includes('media') || lower.includes('communication')) return 'media_state';
+  if (lower.includes('fire') || lower.includes('hazmat') || lower.includes('hazard'))
     return 'fire_state';
+  if (lower.includes('pursuit') || lower.includes('investigat')) return 'pursuit_state';
+  if (lower.includes('bomb') || lower.includes('eod')) return 'bomb_squad_state';
   return lower.replaceAll(' ', '_').replaceAll('-', '_') + '_state';
 }
 
@@ -3560,8 +3564,8 @@ IMPORTANT:
 - ideal_response_sequence: the COMPLETE ordered playbook a perfect team follows from first alarm to resolution. Each step must name the responsible team. Include PPE donning, zone setup, approach, containment, mitigation, monitoring, and stand-down.
 - required_ppe: list ALL PPE items that each role must wear when approaching this hazard. Be specific (e.g. "Level B HAZMAT suit" not just "PPE").
 - applicable_teams: assign each equipment item ONLY to the team(s) trained to use it. Use the EXACT team names from "Teams available" above. Rules:
-  - Fire-fighting gear (turnout gear, hose, foam units, fire extinguishers) → fire/hazmat team only
-  - HAZMAT PPE (hazmat_suit, breathing_apparatus, chemical_gloves) → fire/hazmat team only
+  - Fire-fighting gear (turnout gear, hose, foam units, fire extinguishers) → Fire Safety team only
+  - HAZMAT PPE (hazmat_suit, breathing_apparatus, chemical_gloves) → Fire Safety team only
   - Medical equipment (defibrillator, iv_kit, burn_kit, splint, oxygen) → Medical Triage team only
   - Medical PPE (ppe_medical, surgical gloves, face_shield for patient care) → Medical Triage team only
   - Rescue/extrication tools (cutting_tools, hydraulic_jack, stretcher, spinal_board) → evacuation team AND Medical Triage team
@@ -3796,7 +3800,7 @@ Return ONLY valid JSON:
       "ppe_required": ["equipment_ids"],
       "allowed_teams": ["team_names"],
       "activities": ["rapid_extrication", "suppression", "containment", "reconnaissance"],
-      "pin_guidance": "What belongs here: trapped casualties, active hazards, structural damage. Only specialized rescue teams (fire/hazmat) with full PPE. NO prolonged treatment — extract and move to warm zone."
+      "pin_guidance": "What belongs here: trapped casualties, active hazards, structural damage. Only Fire Safety team with full PPE. NO prolonged treatment — extract and move to warm zone."
     },
     {
       "zone_type": "warm",
@@ -3819,7 +3823,7 @@ Return ONLY valid JSON:
 
 RULES:
 - ppe_required: use equipment IDs like scba, hazmat_suit, fire_protective_gear, respirator, safety_vest, helmet, ppe_medical, chemical_gloves, face_shield, turnout_gear
-- allowed_teams: use EXACT team names from above. Hot zone = only fire/hazmat specialists. Warm zone = add Medical Triage. Cold zone = "all".
+- allowed_teams: use EXACT team names from above. Hot zone = only Fire Safety team. Warm zone = add Medical Triage. Cold zone = "all".
 - Each zone radius MUST be larger than the previous (hot < warm < cold)
 - The hot zone MUST be large enough to contain ALL hazard locations`;
 
@@ -4087,7 +4091,7 @@ CRITICAL: You MUST return ${minCasualties}-${maxCasualties} victims. Do NOT retu
 
     const batchSystemPrompt =
       systemPrompt.replace(
-        /You MUST generate EXACTLY \d+ to \d+ individual victim profiles/,
+        new RegExp('You MUST generate EXACTLY \\d+ to \\d+ individual victim profiles'),
         `You MUST generate EXACTLY ${batchMin} to ${batchMax} individual victim profiles`,
       ) + `\n\nStart victim IDs at ${startId}. ${batchTriageHint}`;
     const batchUserPrompt = `Generate ${batchMin}-${batchMax} victim profiles (IDs starting at ${startId}) for a ${scenarioType} involving ${weaponDesc} with ${threatProfile?.adversary_count ?? 1} attacker(s) at ${venue}.`;
@@ -4453,7 +4457,7 @@ ${isMeleeAttack ? '- Most groups should be calm or anxious — only groups withi
   const batchPromises = crowdZones.map(async (zone) => {
     const batchPrompt =
       systemPrompt.replace(
-        /Generate \d+-\d+ crowd\/evacuee group pins/,
+        new RegExp('Generate \\d+-\\d+ crowd/evacuee group pins'),
         `Generate ${zone.count} crowd/evacuee group pins`,
       ) + `\n\nFOCUS ON: ${zone.label}. ${zone.focus}`;
     const batchUserPrompt = `Generate ${zone.count} ${zone.label} for "${narrative?.title || scenario_type}" at ${venue}.`;
@@ -4555,9 +4559,9 @@ Generate 4-8 convergent crowd groups that arrive at different entry points at st
 For EACH crowd group, also generate a paired ALERT INJECT that fires at the same time the crowd appears. The alert inject notifies the relevant team that a crowd is building up.
 
 Target team mapping by crowd type:
-- onlooker -> police/security team (perimeter concern)
-- media -> media/communications team
-- family -> evacuation or Medical Triage team
+- onlooker -> Evacuation team (perimeter concern)
+- media -> Media & Communications team
+- family -> Evacuation or Medical Triage team
 - helper -> whichever team is most affected
 
 Return ONLY valid JSON:
@@ -4765,12 +4769,12 @@ async function generateScenarioEquipment(
       cutting_tools: {
         label: 'Cutting Tools',
         icon: 'wrench',
-        defaultTeams: ['fire_hazmat', 'evacuation'],
+        defaultTeams: ['fire', 'evacuation'],
       },
       breathing_apparatus: {
         label: 'Breathing Apparatus',
         icon: 'wind',
-        defaultTeams: ['fire_hazmat'],
+        defaultTeams: ['fire'],
       },
     };
 
@@ -5879,22 +5883,18 @@ export async function generateAdversaryPursuitTree(
   const pursuitTeams = teamNames.filter((t) => {
     const lower = t.toLowerCase();
     return (
-      lower.includes('police') ||
-      lower.includes('armed') ||
-      lower.includes('swat') ||
-      lower.includes('soc') ||
-      lower.includes('tactical') ||
+      lower.includes('pursuit') ||
+      lower.includes('investigat') ||
       lower.includes('intelligence') ||
-      lower.includes('intel') ||
+      lower.includes('police') ||
       lower.includes('security') ||
-      lower.includes('close_protection') ||
-      lower.includes('investigation')
+      lower.includes('tactical')
     );
   });
   const primaryPursuitTeam =
-    pursuitTeams[0] || teamNames.find((t) => /police/i.test(t)) || teamNames[0];
-  const intelTeam = teamNames.find((t) => /intel/i.test(t)) || primaryPursuitTeam;
-  const triageTeam = teamNames.find((t) => /triage|medical|ems/i.test(t));
+    pursuitTeams[0] || teamNames.find((t) => /pursuit|investigat/i.test(t)) || teamNames[0];
+  const intelTeam = primaryPursuitTeam;
+  const triageTeam = teamNames.find((t) => /triage|medical/i.test(t));
 
   const locationList = locations
     .filter((l) => l.pin_category !== 'route')
@@ -5981,7 +5981,7 @@ WHAT TO GENERATE:
 5. RESOURCE-GATED INJECTS (2-3 injects within pursuit_time_injects): These are higher-quality intel that should narratively explain WHY better intel is available — e.g. an operator reviewing the camera network, a specialist tracking team deployed, or an aerial asset on station. The content should hint that deploying a specific player asset improves intel quality.
    Mark these with "resource_hint" in the adversary_sighting — use a descriptive string matching the resource type (e.g. "cctv_operator", "tracking_team", "aerial_unit", "forensic_team").
 
-6. WITNESS INJECTS (1-3 injects): Reports from injured civilians that go to the Medical Triage team ONLY. These contain pursuit-relevant intel that the Medical Triage team must relay to the police team via a decision.
+6. WITNESS INJECTS (1-3 injects): Reports from injured civilians that go to the Medical Triage team ONLY. These contain pursuit-relevant intel that the Medical Triage team must relay to the Pursuit & Investigation team via a decision.
 
 7. CONTAINMENT TEST INJECTS (1-2 injects within pursuit_time_injects): These describe the suspect approaching or testing a perimeter/cordon area. The content should say something like "Suspect seen approaching the intersection of X and Y" — a location where players SHOULD have placed a cordon. Mark with "tests_containment": true in the adversary_sighting. If players have cordons there, the system will auto-generate a "suspect turned back" follow-up. If not, the suspect breaks through.
 

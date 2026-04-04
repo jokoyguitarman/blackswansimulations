@@ -4,37 +4,31 @@
   "category": "terrorism",
   "required_teams": [
     {
-      "team_name": "evacuation",
-      "team_description": "Evacuate casualties and bystanders from the blast zone, manage crowd flow and assembly points",
+      "team_name": "Evacuation",
+      "team_description": "Blast zone evacuation, crowd flow management, assembly points, perimeter cordon, access control",
       "min_participants": 2,
       "max_participants": 10
     },
     {
-      "team_name": "triage",
-      "team_description": "Establish triage near the blast site, prioritize injuries, coordinate ambulance handover",
+      "team_name": "Fire Safety",
+      "team_description": "Fire containment, debris clearance, search and rescue in rubble, structural assessment",
       "min_participants": 2,
       "max_participants": 8
     },
     {
-      "team_name": "media",
-      "team_description": "Manage media, counter misinformation, issue public statements",
+      "team_name": "Medical Triage",
+      "team_description": "Blast injury triage, casualty prioritization, ambulance coordination, casualty stabilization",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "Media & Communications",
+      "team_description": "Public communication, counter misinformation, press management, community liaison",
       "min_participants": 2,
       "max_participants": 6
     },
     {
-      "team_name": "fire",
-      "team_description": "Fire containment, debris clearance, search and rescue in rubble",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "police",
-      "team_description": "Cordon, crowd control, EOD sweep for secondary devices, evidence preservation",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "bomb_squad",
+      "team_name": "Bomb Squad / EOD",
       "team_description": "Secondary device sweep, render safe procedures, controlled detonation, forensic IED analysis",
       "min_participants": 2,
       "max_participants": 6

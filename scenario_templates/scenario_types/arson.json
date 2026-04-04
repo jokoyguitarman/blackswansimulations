@@ -4,32 +4,26 @@
   "category": "terrorism",
   "required_teams": [
     {
-      "team_name": "fire",
-      "team_description": "Fire suppression, structural assessment, search and rescue, arson investigation",
+      "team_name": "Evacuation",
+      "team_description": "Building evacuation, smoke-free routing, floor-by-floor sweep, perimeter control, assembly points",
+      "min_participants": 2,
+      "max_participants": 8
+    },
+    {
+      "team_name": "Fire Safety",
+      "team_description": "Fire suppression, structural assessment, search and rescue, arson evidence recovery, debris clearance",
       "min_participants": 2,
       "max_participants": 10
     },
     {
-      "team_name": "evacuation",
-      "team_description": "Building evacuation, smoke-free routing, floor-by-floor sweep",
+      "team_name": "Medical Triage",
+      "team_description": "Burns and smoke inhalation triage, oxygen supply, hospital coordination, casualty stabilization",
       "min_participants": 2,
       "max_participants": 8
     },
     {
-      "team_name": "triage",
-      "team_description": "Burns and smoke inhalation triage, oxygen supply, hospital coordination",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "police",
-      "team_description": "Arson investigation, witness management, suspect identification, scene preservation",
-      "min_participants": 2,
-      "max_participants": 6
-    },
-    {
-      "team_name": "media",
-      "team_description": "Public communication, safety advisories, counter speculation",
+      "team_name": "Media & Communications",
+      "team_description": "Public communication, safety advisories, counter speculation, press management",
       "min_participants": 2,
       "max_participants": 6
     }

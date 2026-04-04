@@ -4,44 +4,26 @@
   "category": "industrial_disaster",
   "required_teams": [
     {
-      "team_name": "radiation_safety",
-      "team_description": "Radiation monitoring, dosimetry, zone classification (hot/warm/cold by mSv/hr), source term assessment, environmental sampling, plume tracking",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "plant_operations",
-      "team_description": "Reactor SCRAM verification, coolant system management, containment integrity assessment, backup power coordination, controlled venting decisions",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "fire_hazmat",
-      "team_description": "Radiological decontamination stations, HAZMAT containment, water runoff management, PPE management, hot zone entry",
+      "team_name": "Evacuation",
+      "team_description": "Multi-ring evacuation (2km/10km/30km progressive), shelter-in-place coordination, KI distribution, exclusion zone enforcement, traffic management",
       "min_participants": 2,
       "max_participants": 10
     },
     {
-      "team_name": "evacuation",
-      "team_description": "Multi-ring evacuation (2km/10km/30km progressive), shelter-in-place coordination, KI (potassium iodide) distribution, livestock and agriculture advisories",
+      "team_name": "Fire Safety",
+      "team_description": "Radiological decontamination, HAZMAT containment, hot zone management, reactor systems support, water runoff control, radiation monitoring",
       "min_participants": 2,
       "max_participants": 10
     },
     {
-      "team_name": "triage",
-      "team_description": "Contamination screening, acute radiation syndrome (ARS) triage, internal contamination assessment, dose estimation, radiation-specific treatment protocols",
+      "team_name": "Medical Triage",
+      "team_description": "Contamination screening, acute radiation syndrome triage, internal contamination assessment, dose estimation, radiation-specific treatment protocols",
       "min_participants": 2,
       "max_participants": 8
     },
     {
-      "team_name": "police",
-      "team_description": "Exclusion zone enforcement, traffic management for mass evacuation routes, access control to restricted areas, anti-looting patrols in evacuated zones",
-      "min_participants": 2,
-      "max_participants": 8
-    },
-    {
-      "team_name": "media",
-      "team_description": "INES level declaration communications, public advisory (shelter/evacuate/iodine), counter-misinformation, regulatory liaison (IAEA, national nuclear authority)",
+      "team_name": "Media & Communications",
+      "team_description": "INES level declaration, public advisory (shelter/evacuate/iodine), counter-misinformation, regulatory liaison (IAEA, national nuclear authority)",
       "min_participants": 2,
       "max_participants": 6
     }

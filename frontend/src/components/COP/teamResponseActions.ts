@@ -319,6 +319,29 @@ const EVACUATION_ACTIONS: TeamAction[] = [
     icon: 'medical',
     keywords: ['coordinate', 'triage', 'handover', 'medical'],
   },
+  {
+    id: 'coordinate_fire_safety',
+    label: 'Coordinate with Fire Safety',
+    description:
+      'Liaise with fire safety team on hazard zones, ventilation, and safe evacuation corridors.',
+    icon: 'firefighter',
+    keywords: ['coordinate', 'fire', 'hazmat', 'fire safety', 'hazard'],
+  },
+  {
+    id: 'coordinate_pursuit',
+    label: 'Coordinate with Pursuit & Investigation',
+    description:
+      'Share situational intelligence and coordinate perimeter handover with pursuit team.',
+    icon: 'intel_hub',
+    keywords: ['coordinate', 'pursuit', 'investigation', 'intelligence', 'handover'],
+  },
+  {
+    id: 'coordinate_bomb_squad',
+    label: 'Coordinate with Bomb Squad / EOD',
+    description: 'Coordinate blast cordon and safe evacuation routes with EOD team.',
+    icon: 'bomb',
+    keywords: ['coordinate', 'bomb squad', 'eod', 'blast', 'cordon'],
+  },
 ];
 
 const TRIAGE_ACTIONS: TeamAction[] = [
@@ -690,6 +713,10 @@ const TEAM_ACTION_REGISTRY: Record<string, TeamAction[]> = {
   fire_hazmat: FIRE_HAZMAT_ACTIONS,
   fire: FIRE_ACTIONS,
   bomb_squad: BOMB_SQUAD_ACTIONS,
+  fire_safety: FIRE_ACTIONS,
+  pursuit: INTELLIGENCE_ACTIONS,
+  'pursuit_&_investigation': INTELLIGENCE_ACTIONS,
+  'media_&_communications': MEDIA_ACTIONS,
   mall_security: MALL_SECURITY_ACTIONS,
   resort_security: RESORT_SECURITY_ACTIONS,
   public_health: PUBLIC_HEALTH_ACTIONS,
