@@ -325,6 +325,33 @@ export const api = {
         }),
       );
     },
+    createPin: async (
+      scenarioId: string,
+      pinType: 'location' | 'hazard' | 'casualty',
+      data: Record<string, unknown>,
+    ) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ ok: boolean; pin: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/scenarios/${scenarioId}/pins`), {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin_type: pinType, data }),
+        }),
+      );
+    },
+    deletePin: async (
+      scenarioId: string,
+      pinId: string,
+      pinType: 'location' | 'hazard' | 'casualty',
+    ) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ ok: boolean }>(
+        await fetch(apiUrl(`/api/scenarios/${scenarioId}/pins/${pinId}?pin_type=${pinType}`), {
+          method: 'DELETE',
+          headers,
+        }),
+      );
+    },
     retryRoutes: async (id: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{

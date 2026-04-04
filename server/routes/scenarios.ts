@@ -1212,6 +1212,234 @@ router.post('/:id/retry-routes', requireAuth, async (req: AuthenticatedRequest, 
   }
 });
 
+// ── Create a single pin (trainer/admin — scenario preview editing) ──
+router.post('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const { id: scenarioId } = req.params;
+    const { pin_type, data } = req.body as {
+      pin_type: 'location' | 'hazard' | 'casualty';
+      data: Record<string, unknown>;
+    };
+
+    if (!pin_type || !data) {
+      return res.status(400).json({ error: 'pin_type and data are required' });
+    }
+
+    const BLOCKED_LOCATION_TYPES = new Set([
+      'triage_point',
+      'field_hospital',
+      'casualty_collection',
+      'ambulance_staging',
+      'helicopter_lz',
+      'command_post',
+      'forward_command',
+      'staging_area',
+      'marshal_post',
+      'assembly_point',
+      'reunification_point',
+      'inner_cordon',
+      'outer_cordon',
+      'press_cordon',
+      'media_staging',
+      'decontamination_zone',
+      'exclusion_zone',
+      'fire_truck',
+      'water_supply',
+      'roadblock',
+      'observation_post',
+    ]);
+
+    if (pin_type === 'location') {
+      const locType = (data.location_type as string) || '';
+      if (BLOCKED_LOCATION_TYPES.has(locType)) {
+        return res
+          .status(400)
+          .json({
+            error: `Location type "${locType}" is responder infrastructure and cannot be manually added`,
+          });
+      }
+
+      const row = {
+        scenario_id: scenarioId,
+        label: data.label || 'Unnamed Pin',
+        location_type: data.location_type || 'poi',
+        coordinates: { lat: data.lat, lng: data.lng },
+        pin_category: data.pin_category || null,
+        conditions: data.conditions || {},
+        claimable_by: data.location_type === 'entry_exit' ? ['all'] : null,
+      };
+
+      const { data: inserted, error } = await supabaseAdmin
+        .from('scenario_locations')
+        .insert(row)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error({ error, scenarioId }, 'Failed to create location pin');
+        return res.status(500).json({ error: 'Failed to create pin' });
+      }
+      return res.json({ ok: true, pin: inserted });
+    }
+
+    if (pin_type === 'hazard') {
+      const row = {
+        scenario_id: scenarioId,
+        session_id: null,
+        hazard_type: data.hazard_type || 'unknown',
+        location_lat: data.lat,
+        location_lng: data.lng,
+        floor_level: (data.floor_level as string) || 'G',
+        properties: data.properties || { severity: 'medium', description: data.label || '' },
+        status: 'active',
+        appears_at_minutes: 0,
+        enriched_description: (data.label as string) || '',
+        zones: [],
+      };
+
+      const { data: inserted, error } = await supabaseAdmin
+        .from('scenario_hazards')
+        .insert(row)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error({ error, scenarioId }, 'Failed to create hazard pin');
+        return res.status(500).json({ error: 'Failed to create pin' });
+      }
+
+      // For explosion-type hazards, auto-create blast zone locations
+      const explosionRe = /explosion|bomb|blast|detonat|ied/i;
+      if (explosionRe.test(String(row.hazard_type))) {
+        const lat = Number(data.lat);
+        const lng = Number(data.lng);
+        const blastRadii = [
+          { radius_m: 50, zone_type: 'blast_lethal', label: 'Lethal Blast Zone (50m)' },
+          { radius_m: 100, zone_type: 'blast_severe', label: 'Severe Injury Zone (100m)' },
+          { radius_m: 150, zone_type: 'blast_fragment', label: 'Shrapnel Zone (150m)' },
+        ];
+        for (const br of blastRadii) {
+          await supabaseAdmin.from('scenario_locations').insert({
+            scenario_id: scenarioId,
+            label: br.label,
+            location_type: 'blast_radius',
+            coordinates: { lat, lng },
+            pin_category: 'blast_zone',
+            conditions: {
+              zone_type: br.zone_type,
+              radius_m: br.radius_m,
+              polygon: circleToPolygon(lat, lng, br.radius_m),
+              linked_hazard_id: (inserted as Record<string, unknown>).id,
+            },
+          });
+        }
+      }
+
+      return res.json({ ok: true, pin: inserted });
+    }
+
+    if (pin_type === 'casualty') {
+      const row = {
+        scenario_id: scenarioId,
+        session_id: null,
+        casualty_type: data.casualty_type || 'individual',
+        location_lat: data.lat,
+        location_lng: data.lng,
+        floor_level: (data.floor_level as string) || 'G',
+        headcount: Number(data.headcount) || 1,
+        conditions: data.conditions || {},
+        status: 'undiscovered',
+        appears_at_minutes: 0,
+      };
+
+      const { data: inserted, error } = await supabaseAdmin
+        .from('scenario_casualties')
+        .insert(row)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error({ error, scenarioId }, 'Failed to create casualty pin');
+        return res.status(500).json({ error: 'Failed to create pin' });
+      }
+      return res.json({ ok: true, pin: inserted });
+    }
+
+    return res.status(400).json({ error: `Unknown pin_type: ${pin_type}` });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in POST /scenarios/:id/pins');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Delete a single pin (trainer/admin — scenario preview editing) ──
+router.delete('/:id/pins/:pinId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const { id: scenarioId, pinId } = req.params;
+    const pinType = (req.query.pin_type as string) || '';
+
+    if (!['location', 'hazard', 'casualty'].includes(pinType)) {
+      return res
+        .status(400)
+        .json({ error: 'pin_type query param must be location, hazard, or casualty' });
+    }
+
+    if (pinType === 'location') {
+      const { error } = await supabaseAdmin
+        .from('scenario_locations')
+        .delete()
+        .eq('id', pinId)
+        .eq('scenario_id', scenarioId);
+      if (error) {
+        logger.error({ error, scenarioId, pinId }, 'Failed to delete location pin');
+        return res.status(500).json({ error: 'Failed to delete pin' });
+      }
+    } else if (pinType === 'hazard') {
+      // Also delete linked blast_zone locations
+      await supabaseAdmin
+        .from('scenario_locations')
+        .delete()
+        .eq('scenario_id', scenarioId)
+        .eq('pin_category', 'blast_zone')
+        .filter('conditions->>linked_hazard_id', 'eq', pinId);
+
+      const { error } = await supabaseAdmin
+        .from('scenario_hazards')
+        .delete()
+        .eq('id', pinId)
+        .eq('scenario_id', scenarioId);
+      if (error) {
+        logger.error({ error, scenarioId, pinId }, 'Failed to delete hazard pin');
+        return res.status(500).json({ error: 'Failed to delete pin' });
+      }
+    } else if (pinType === 'casualty') {
+      const { error } = await supabaseAdmin
+        .from('scenario_casualties')
+        .delete()
+        .eq('id', pinId)
+        .eq('scenario_id', scenarioId);
+      if (error) {
+        logger.error({ error, scenarioId, pinId }, 'Failed to delete casualty pin');
+        return res.status(500).json({ error: 'Failed to delete pin' });
+      }
+    }
+
+    logger.info({ scenarioId, pinId, pinType, userId: user.id }, 'Pin deleted');
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in DELETE /scenarios/:id/pins/:pinId');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Delete scenario (creator or admin only)
 router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {

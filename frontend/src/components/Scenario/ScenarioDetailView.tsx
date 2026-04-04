@@ -1,5 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Tooltip, Popup, Polygon } from 'react-leaflet';
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Tooltip,
+  Popup,
+  Polygon,
+  useMapEvents,
+} from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import { api } from '../../lib/api';
 import { ScenarioLocationMarker, type ScenarioLocationPin } from '../COP/ScenarioLocationMarker';
@@ -1467,6 +1475,47 @@ function generateCirclePolygon(
   return ring;
 }
 
+type AddPinMode =
+  | 'entry_exit'
+  | 'hazard'
+  | 'casualty'
+  | 'crowd'
+  | 'poi'
+  | 'incident_site'
+  | 'sighting_area'
+  | null;
+
+const ADD_PIN_OPTIONS: { mode: NonNullable<AddPinMode>; label: string; color: string }[] = [
+  {
+    mode: 'entry_exit',
+    label: 'Entry / Exit',
+    color: 'bg-emerald-700 hover:bg-emerald-600 border-emerald-500',
+  },
+  { mode: 'hazard', label: 'Hazard', color: 'bg-red-800 hover:bg-red-700 border-red-600' },
+  { mode: 'casualty', label: 'Patient', color: 'bg-amber-800 hover:bg-amber-700 border-amber-600' },
+  { mode: 'crowd', label: 'Crowd', color: 'bg-violet-800 hover:bg-violet-700 border-violet-600' },
+  { mode: 'poi', label: 'POI', color: 'bg-cyan-800 hover:bg-cyan-700 border-cyan-600' },
+  {
+    mode: 'incident_site',
+    label: 'Incident Site',
+    color: 'bg-orange-800 hover:bg-orange-700 border-orange-600',
+  },
+  {
+    mode: 'sighting_area',
+    label: 'Sighting',
+    color: 'bg-pink-800 hover:bg-pink-700 border-pink-600',
+  },
+];
+
+const MapClickHandler = ({ onClick }: { onClick: (lat: number, lng: number) => void }) => {
+  useMapEvents({
+    click(e) {
+      onClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+};
+
 const MapPinsTab = ({
   scenarioId,
   locations: locationsProp,
@@ -1494,6 +1543,13 @@ const MapPinsTab = ({
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [activeFloor, setActiveFloor] = useState('G');
+
+  // Add-pin mode state
+  const [addPinMode, setAddPinMode] = useState<AddPinMode>(null);
+  const [pendingPin, setPendingPin] = useState<{ lat: number; lng: number } | null>(null);
+  const [addPinForm, setAddPinForm] = useState<Record<string, string>>({});
+  const [addingPin, setAddingPin] = useState(false);
+  const [deletingPin, setDeletingPin] = useState<string | null>(null);
   const changesRef = useRef<{
     locations: Map<string, { lat: number; lng: number; conditions?: Record<string, unknown> }>;
     hazards: Map<string, { lat: number; lng: number }>;
@@ -1736,6 +1792,211 @@ const MapPinsTab = ({
     }
   }, [scenarioId]);
 
+  const handleMapClick = useCallback(
+    (lat: number, lng: number) => {
+      if (!addPinMode) return;
+      setPendingPin({ lat, lng });
+      setAddPinForm({});
+    },
+    [addPinMode],
+  );
+
+  const handleAddPinSubmit = useCallback(async () => {
+    if (!pendingPin || !addPinMode) return;
+    setAddingPin(true);
+    try {
+      const { lat, lng } = pendingPin;
+      const f = addPinForm;
+
+      if (addPinMode === 'entry_exit') {
+        const res = await api.scenarios.createPin(scenarioId, 'location', {
+          label: f.label || 'Entry / Exit',
+          location_type: 'entry_exit',
+          lat,
+          lng,
+          pin_category: 'entry_exit',
+          conditions: { entry_exit: true },
+        });
+        if (res.pin) {
+          const p = res.pin;
+          setLocations((prev) => [
+            ...prev,
+            {
+              id: p.id as string,
+              location_type: (p.location_type as string) || 'entry_exit',
+              pin_category: (p.pin_category as string) || undefined,
+              label: (p.label as string) || '',
+              coordinates: (p.coordinates as { lat: number; lng: number }) || { lat, lng },
+              conditions: (p.conditions as Record<string, unknown>) || {},
+              display_order: 999,
+            },
+          ]);
+        }
+      } else if (addPinMode === 'hazard') {
+        const res = await api.scenarios.createPin(scenarioId, 'hazard', {
+          hazard_type: f.hazard_type || 'fire',
+          label: f.label || 'Hazard',
+          lat,
+          lng,
+          properties: { severity: f.severity || 'medium', description: f.label || '' },
+        });
+        if (res.pin) {
+          const p = res.pin;
+          setHazards((prev) => [
+            ...prev,
+            {
+              id: p.id as string,
+              hazard_type: (p.hazard_type as string) || 'unknown',
+              location_lat: Number(p.location_lat) || lat,
+              location_lng: Number(p.location_lng) || lng,
+              floor_level: (p.floor_level as string) || 'G',
+              properties: (p.properties as Record<string, unknown>) || {},
+              status: 'active',
+              enriched_description: (p.enriched_description as string) || '',
+              appears_at_minutes: 0,
+              zones: (p.zones as HazardPin['zones']) || [],
+            },
+          ]);
+        }
+      } else if (addPinMode === 'casualty') {
+        const res = await api.scenarios.createPin(scenarioId, 'casualty', {
+          casualty_type: 'patient',
+          lat,
+          lng,
+          headcount: 1,
+          conditions: {
+            triage_color: f.triage_color || 'yellow',
+            injury_description: f.injury || 'Unspecified injury',
+            injury_type: f.injury_type || 'unknown',
+          },
+        });
+        if (res.pin) {
+          const p = res.pin;
+          setCasualties((prev) => [
+            ...prev,
+            {
+              id: p.id as string,
+              casualty_type: 'patient',
+              location_lat: Number(p.location_lat) || lat,
+              location_lng: Number(p.location_lng) || lng,
+              floor_level: (p.floor_level as string) || 'G',
+              headcount: Number(p.headcount) || 1,
+              conditions: (p.conditions as Record<string, unknown>) || {},
+              status: 'undiscovered',
+              appears_at_minutes: 0,
+            },
+          ]);
+        }
+      } else if (addPinMode === 'crowd') {
+        const hc = parseInt(f.headcount || '20', 10) || 20;
+        const res = await api.scenarios.createPin(scenarioId, 'casualty', {
+          casualty_type: f.crowd_type || 'crowd',
+          lat,
+          lng,
+          headcount: hc,
+          conditions: {
+            behavior: f.behavior || 'calm',
+            description: f.description || `Group of ~${hc} people`,
+          },
+        });
+        if (res.pin) {
+          const p = res.pin;
+          setCasualties((prev) => [
+            ...prev,
+            {
+              id: p.id as string,
+              casualty_type: (p.casualty_type as string) || 'crowd',
+              location_lat: Number(p.location_lat) || lat,
+              location_lng: Number(p.location_lng) || lng,
+              floor_level: (p.floor_level as string) || 'G',
+              headcount: Number(p.headcount) || hc,
+              conditions: (p.conditions as Record<string, unknown>) || {},
+              status: 'undiscovered',
+              appears_at_minutes: 0,
+            },
+          ]);
+        }
+      } else if (
+        addPinMode === 'poi' ||
+        addPinMode === 'incident_site' ||
+        addPinMode === 'sighting_area'
+      ) {
+        const locType =
+          addPinMode === 'incident_site'
+            ? 'incident_site'
+            : addPinMode === 'sighting_area'
+              ? 'sighting_area'
+              : 'poi';
+        const pinCat = addPinMode === 'sighting_area' ? 'adversary_sighting' : undefined;
+        const res = await api.scenarios.createPin(scenarioId, 'location', {
+          label:
+            f.label ||
+            (addPinMode === 'incident_site'
+              ? 'Incident Site'
+              : addPinMode === 'sighting_area'
+                ? 'Sighting Area'
+                : 'Point of Interest'),
+          location_type: locType,
+          lat,
+          lng,
+          pin_category: pinCat,
+        });
+        if (res.pin) {
+          const p = res.pin;
+          setLocations((prev) => [
+            ...prev,
+            {
+              id: p.id as string,
+              location_type: (p.location_type as string) || locType,
+              pin_category: (p.pin_category as string) || undefined,
+              label: (p.label as string) || '',
+              coordinates: (p.coordinates as { lat: number; lng: number }) || { lat, lng },
+              conditions: (p.conditions as Record<string, unknown>) || {},
+              display_order: 999,
+            },
+          ]);
+        }
+      }
+
+      setPendingPin(null);
+      setAddPinMode(null);
+      setAddPinForm({});
+    } catch (err) {
+      console.error('Failed to create pin:', err);
+    } finally {
+      setAddingPin(false);
+    }
+  }, [scenarioId, addPinMode, pendingPin, addPinForm]);
+
+  const handleDeletePin = useCallback(
+    async (pinId: string, pinType: 'location' | 'hazard' | 'casualty') => {
+      if (!confirm('Delete this pin? This cannot be undone.')) return;
+      setDeletingPin(pinId);
+      try {
+        await api.scenarios.deletePin(scenarioId, pinId, pinType);
+        if (pinType === 'location') {
+          setLocations((prev) => prev.filter((l) => l.id !== pinId));
+        } else if (pinType === 'hazard') {
+          setHazards((prev) => prev.filter((h) => h.id !== pinId));
+          // Also remove linked blast zone locations
+          setLocations((prev) =>
+            prev.filter((l) => {
+              const linked = l.conditions?.linked_hazard_id;
+              return linked !== pinId;
+            }),
+          );
+        } else {
+          setCasualties((prev) => prev.filter((c) => c.id !== pinId));
+        }
+      } catch (err) {
+        console.error('Failed to delete pin:', err);
+      } finally {
+        setDeletingPin(null);
+      }
+    },
+    [scenarioId],
+  );
+
   const totalPins = locations.length + hazards.length + casualties.length;
   if (totalPins === 0 && equipment.length === 0) {
     return <p className="text-sm terminal-text text-robotic-yellow/50">[NO MAP DATA]</p>;
@@ -1808,6 +2069,46 @@ const MapPinsTab = ({
         <span className="ml-auto text-robotic-yellow/40">drag pins to reposition</span>
       </div>
 
+      {/* Add Pin toolbar */}
+      <div className="flex flex-wrap items-center gap-2 p-2 military-border bg-black/30">
+        <span className="text-xs terminal-text text-robotic-yellow/60 mr-1">ADD PIN:</span>
+        {ADD_PIN_OPTIONS.map((opt) => (
+          <button
+            key={opt.mode}
+            onClick={() => {
+              setAddPinMode(addPinMode === opt.mode ? null : opt.mode);
+              setPendingPin(null);
+              setAddPinForm({});
+            }}
+            className={`px-2.5 py-1 text-[10px] terminal-text rounded border transition-all ${
+              addPinMode === opt.mode
+                ? `${opt.color} text-white ring-1 ring-white/40`
+                : 'bg-gray-800 hover:bg-gray-700 border-gray-600 text-gray-300'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+        {addPinMode && (
+          <button
+            onClick={() => {
+              setAddPinMode(null);
+              setPendingPin(null);
+              setAddPinForm({});
+            }}
+            className="px-2 py-1 text-[10px] terminal-text bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-400 rounded ml-auto"
+          >
+            CANCEL
+          </button>
+        )}
+      </div>
+      {addPinMode && !pendingPin && (
+        <div className="text-xs terminal-text text-robotic-yellow animate-pulse p-1.5 bg-robotic-yellow/5 military-border">
+          Click on the map to place a{' '}
+          {ADD_PIN_OPTIONS.find((o) => o.mode === addPinMode)?.label || 'pin'}
+        </div>
+      )}
+
       {dirty && (
         <div className="flex items-center gap-3 p-2 military-border bg-robotic-yellow/5">
           <span className="text-xs terminal-text text-robotic-yellow animate-pulse">
@@ -1841,6 +2142,338 @@ const MapPinsTab = ({
             maxNativeZoom={19}
             maxZoom={22}
           />
+          {/* Map click handler for add-pin mode */}
+          {addPinMode && <MapClickHandler onClick={handleMapClick} />}
+
+          {/* Pending pin marker with form popup */}
+          {pendingPin && addPinMode && (
+            <Marker
+              position={[pendingPin.lat, pendingPin.lng]}
+              icon={
+                new DivIcon({
+                  className: '',
+                  html: '<div style="width:20px;height:20px;background:rgba(255,220,0,0.9);border:2px solid #fff;border-radius:50%;box-shadow:0 0 8px rgba(255,220,0,0.6);"></div>',
+                  iconSize: [20, 20],
+                  iconAnchor: [10, 10],
+                })
+              }
+            >
+              <Popup autoPan={true} closeOnClick={false} minWidth={240} maxWidth={300}>
+                <div className="space-y-2" style={{ minWidth: 220 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#222', marginBottom: 6 }}>
+                    New {ADD_PIN_OPTIONS.find((o) => o.mode === addPinMode)?.label || 'Pin'}
+                  </div>
+
+                  {/* Entry/Exit form */}
+                  {addPinMode === 'entry_exit' && (
+                    <div>
+                      <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                        Label
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Main Gate, Exit B"
+                        value={addPinForm.label || ''}
+                        onChange={(e) => setAddPinForm((f) => ({ ...f, label: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '4px 6px',
+                          fontSize: 12,
+                          border: '1px solid #ccc',
+                          borderRadius: 3,
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Hazard form */}
+                  {addPinMode === 'hazard' && (
+                    <>
+                      <div>
+                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                          Type
+                        </label>
+                        <select
+                          value={addPinForm.hazard_type || 'fire'}
+                          onChange={(e) =>
+                            setAddPinForm((f) => ({ ...f, hazard_type: e.target.value }))
+                          }
+                          style={{
+                            width: '100%',
+                            padding: '4px 6px',
+                            fontSize: 12,
+                            border: '1px solid #ccc',
+                            borderRadius: 3,
+                          }}
+                        >
+                          <option value="fire">Fire</option>
+                          <option value="chemical_spill">Chemical Spill</option>
+                          <option value="structural_collapse">Structural Collapse</option>
+                          <option value="gas_leak">Gas Leak</option>
+                          <option value="explosion">Explosion / Bomb</option>
+                          <option value="flooding">Flooding</option>
+                          <option value="electrical">Electrical Hazard</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                          Description
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Vehicle fire near entrance"
+                          value={addPinForm.label || ''}
+                          onChange={(e) => setAddPinForm((f) => ({ ...f, label: e.target.value }))}
+                          style={{
+                            width: '100%',
+                            padding: '4px 6px',
+                            fontSize: 12,
+                            border: '1px solid #ccc',
+                            borderRadius: 3,
+                          }}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Casualty (patient) form */}
+                  {addPinMode === 'casualty' && (
+                    <>
+                      <div>
+                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                          Triage Color
+                        </label>
+                        <select
+                          value={addPinForm.triage_color || 'yellow'}
+                          onChange={(e) =>
+                            setAddPinForm((f) => ({ ...f, triage_color: e.target.value }))
+                          }
+                          style={{
+                            width: '100%',
+                            padding: '4px 6px',
+                            fontSize: 12,
+                            border: '1px solid #ccc',
+                            borderRadius: 3,
+                          }}
+                        >
+                          <option value="green">GREEN (minor)</option>
+                          <option value="yellow">YELLOW (delayed)</option>
+                          <option value="red">RED (immediate)</option>
+                          <option value="black">BLACK (deceased)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                          Injury Type
+                        </label>
+                        <select
+                          value={addPinForm.injury_type || 'blunt_trauma'}
+                          onChange={(e) =>
+                            setAddPinForm((f) => ({ ...f, injury_type: e.target.value }))
+                          }
+                          style={{
+                            width: '100%',
+                            padding: '4px 6px',
+                            fontSize: 12,
+                            border: '1px solid #ccc',
+                            borderRadius: 3,
+                          }}
+                        >
+                          <option value="blunt_trauma">Blunt Trauma</option>
+                          <option value="gunshot">Gunshot Wound</option>
+                          <option value="laceration">Laceration</option>
+                          <option value="burn">Burn</option>
+                          <option value="fracture">Fracture</option>
+                          <option value="crush_injury">Crush Injury</option>
+                          <option value="smoke_inhalation">Smoke Inhalation</option>
+                          <option value="chemical_exposure">Chemical Exposure</option>
+                          <option value="blast_injury">Blast Injury</option>
+                          <option value="psychological">Psychological Trauma</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                          Description
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Person with leg fracture"
+                          value={addPinForm.injury || ''}
+                          onChange={(e) => setAddPinForm((f) => ({ ...f, injury: e.target.value }))}
+                          style={{
+                            width: '100%',
+                            padding: '4px 6px',
+                            fontSize: 12,
+                            border: '1px solid #ccc',
+                            borderRadius: 3,
+                          }}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Crowd form */}
+                  {addPinMode === 'crowd' && (
+                    <>
+                      <div>
+                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                          Crowd Type
+                        </label>
+                        <select
+                          value={addPinForm.crowd_type || 'crowd'}
+                          onChange={(e) =>
+                            setAddPinForm((f) => ({ ...f, crowd_type: e.target.value }))
+                          }
+                          style={{
+                            width: '100%',
+                            padding: '4px 6px',
+                            fontSize: 12,
+                            border: '1px solid #ccc',
+                            borderRadius: 3,
+                          }}
+                        >
+                          <option value="crowd">Crowd</option>
+                          <option value="evacuee_group">Evacuee Group</option>
+                          <option value="convergent_crowd">Convergent Crowd</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                          Headcount
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={5000}
+                          value={addPinForm.headcount || '20'}
+                          onChange={(e) =>
+                            setAddPinForm((f) => ({ ...f, headcount: e.target.value }))
+                          }
+                          style={{
+                            width: '100%',
+                            padding: '4px 6px',
+                            fontSize: 12,
+                            border: '1px solid #ccc',
+                            borderRadius: 3,
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                          Behavior
+                        </label>
+                        <select
+                          value={addPinForm.behavior || 'calm'}
+                          onChange={(e) =>
+                            setAddPinForm((f) => ({ ...f, behavior: e.target.value }))
+                          }
+                          style={{
+                            width: '100%',
+                            padding: '4px 6px',
+                            fontSize: 12,
+                            border: '1px solid #ccc',
+                            borderRadius: 3,
+                          }}
+                        >
+                          <option value="calm">Calm</option>
+                          <option value="anxious">Anxious</option>
+                          <option value="panicking">Panicking</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                          Description
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Group sheltering near exit"
+                          value={addPinForm.description || ''}
+                          onChange={(e) =>
+                            setAddPinForm((f) => ({ ...f, description: e.target.value }))
+                          }
+                          style={{
+                            width: '100%',
+                            padding: '4px 6px',
+                            fontSize: 12,
+                            border: '1px solid #ccc',
+                            borderRadius: 3,
+                          }}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* POI / Incident Site / Sighting form */}
+                  {(addPinMode === 'poi' ||
+                    addPinMode === 'incident_site' ||
+                    addPinMode === 'sighting_area') && (
+                    <div>
+                      <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                        Label
+                      </label>
+                      <input
+                        type="text"
+                        placeholder={
+                          addPinMode === 'incident_site'
+                            ? 'e.g. Bomb Detonation Site'
+                            : addPinMode === 'sighting_area'
+                              ? 'e.g. Suspect last seen here'
+                              : 'e.g. Main Lobby'
+                        }
+                        value={addPinForm.label || ''}
+                        onChange={(e) => setAddPinForm((f) => ({ ...f, label: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '4px 6px',
+                          fontSize: 12,
+                          border: '1px solid #ccc',
+                          borderRadius: 3,
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                    <button
+                      onClick={handleAddPinSubmit}
+                      disabled={addingPin}
+                      style={{
+                        flex: 1,
+                        padding: '5px 10px',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        background: addingPin ? '#555' : '#16a34a',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 3,
+                        cursor: addingPin ? 'wait' : 'pointer',
+                      }}
+                    >
+                      {addingPin ? 'ADDING...' : 'ADD PIN'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingPin(null);
+                        setAddPinForm({});
+                      }}
+                      style={{
+                        padding: '5px 10px',
+                        fontSize: 11,
+                        background: '#374151',
+                        color: '#d1d5db',
+                        border: '1px solid #4b5563',
+                        borderRadius: 3,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          )}
+
           {/* Floor plan overlay for active floor */}
           {floorPlans
             .filter((f) => f.floor_level === activeFloor)
@@ -2268,8 +2901,21 @@ const MapPinsTab = ({
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm terminal-text text-robotic-yellow font-medium">
-                        {loc.label}
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm terminal-text text-robotic-yellow font-medium flex-1">
+                          {loc.label}
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeletePin(loc.id, 'location');
+                          }}
+                          disabled={deletingPin === loc.id}
+                          className="shrink-0 w-5 h-5 flex items-center justify-center text-red-500/60 hover:text-red-400 hover:bg-red-900/30 rounded transition-colors text-xs"
+                          title="Delete pin"
+                        >
+                          {deletingPin === loc.id ? '...' : '✕'}
+                        </button>
                       </div>
                       {narrativeDesc && (
                         <p className="text-xs terminal-text text-robotic-yellow/70 mt-0.5">
@@ -2346,11 +2992,26 @@ const MapPinsTab = ({
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      {h.enriched_description && (
-                        <p className="text-xs terminal-text text-robotic-yellow/80">
-                          {h.enriched_description}
-                        </p>
-                      )}
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1">
+                          {h.enriched_description && (
+                            <p className="text-xs terminal-text text-robotic-yellow/80">
+                              {h.enriched_description}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeletePin(h.id, 'hazard');
+                          }}
+                          disabled={deletingPin === h.id}
+                          className="shrink-0 w-5 h-5 flex items-center justify-center text-red-500/60 hover:text-red-400 hover:bg-red-900/30 rounded transition-colors text-xs"
+                          title="Delete hazard"
+                        >
+                          {deletingPin === h.id ? '...' : '✕'}
+                        </button>
+                      </div>
                       <div className="flex gap-2 flex-wrap mt-1">
                         {h.fire_class && (
                           <span className="text-xs terminal-text bg-red-900/30 text-red-400 px-1 py-0.5 rounded border border-red-400/30">
@@ -2581,9 +3242,22 @@ const MapPinsTab = ({
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs terminal-text text-robotic-yellow/80">
-                        {(conds.visible_description as string) || 'Patient'}
-                      </p>
+                      <div className="flex items-start gap-2">
+                        <p className="text-xs terminal-text text-robotic-yellow/80 flex-1">
+                          {(conds.visible_description as string) || 'Patient'}
+                        </p>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeletePin(c.id, 'casualty');
+                          }}
+                          disabled={deletingPin === c.id}
+                          className="shrink-0 w-5 h-5 flex items-center justify-center text-red-500/60 hover:text-red-400 hover:bg-red-900/30 rounded transition-colors text-xs"
+                          title="Delete casualty"
+                        >
+                          {deletingPin === c.id ? '...' : '✕'}
+                        </button>
+                      </div>
                       <div className="flex gap-2 flex-wrap mt-1">
                         <span className="text-xs terminal-text text-robotic-yellow/50">
                           {(conds.mobility as string)?.replace(/_/g, ' ') ?? '?'}
@@ -2808,9 +3482,22 @@ const MapPinsTab = ({
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs terminal-text text-robotic-yellow/80">
-                        {(conds.visible_description as string) || `Group of ${c.headcount}`}
-                      </p>
+                      <div className="flex items-start gap-2">
+                        <p className="text-xs terminal-text text-robotic-yellow/80 flex-1">
+                          {(conds.visible_description as string) || `Group of ${c.headcount}`}
+                        </p>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeletePin(c.id, 'casualty');
+                          }}
+                          disabled={deletingPin === c.id}
+                          className="shrink-0 w-5 h-5 flex items-center justify-center text-red-500/60 hover:text-red-400 hover:bg-red-900/30 rounded transition-colors text-xs"
+                          title="Delete crowd"
+                        >
+                          {deletingPin === c.id ? '...' : '✕'}
+                        </button>
+                      </div>
                       <div className="flex gap-2 flex-wrap mt-1">
                         <span className="text-xs terminal-text text-violet-400/70">
                           {(conds.behavior as string) ?? 'unknown'}
