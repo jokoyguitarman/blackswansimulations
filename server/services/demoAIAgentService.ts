@@ -3512,11 +3512,72 @@ export class DemoAIAgentService {
           '## YOUR TASK: Respond to a patient',
           '⚠️ You MUST use a pin_response action (not a regular decision) to interact with this patient.',
         );
+
+        // Determine patient zone for zone-appropriate action restrictions
+        const patientZone = classification.targetPinId
+          ? ground.pinZoneMap.get(classification.targetPinId) || 'unknown'
+          : 'unknown';
+
         if (classification.targetPinId) {
           parts.push(
             `Priority target: ${classification.targetPinLabel || 'patient'}`,
             `Target ID: ${classification.targetPinId}`,
+            `Patient zone: ${patientZone.toUpperCase()}`,
           );
+
+          // Zone-appropriate action restrictions
+          if (patientZone === 'hot') {
+            parts.push(
+              '',
+              '### 🔴 HOT ZONE PATIENT — EXTRACTION ONLY',
+              '⛔ This patient is in the HOT ZONE. You CANNOT perform full triage or definitive treatment here.',
+              '✅ ALLOWED actions in the HOT zone:',
+              '  - DRABC (Danger-Response-Airway-Breathing-Circulation) rapid assessment',
+              '  - Control life-threatening bleeding (tourniquet, direct pressure)',
+              '  - Airway management (recovery position, jaw thrust)',
+              '  - Rapid extrication / extraction from debris or danger',
+              '  - Package patient onto stretcher / drag / carry',
+              '  - Transport patient to WARM ZONE boundary for handoff to Medical Triage',
+              '⛔ NOT ALLOWED in the HOT zone:',
+              '  - Full triage assessment (START/SALT/JumpSTART)',
+              '  - IV access / fluid resuscitation',
+              '  - Detailed wound care / splinting / burn dressings (beyond immediate life-threat)',
+              '  - Monitoring vitals over time',
+              '  - Assigning triage tags (beyond initial "this patient needs immediate extraction")',
+              '',
+              '🎯 Your goal: GET THIS PATIENT OUT of the hot zone to the warm zone as fast as possible.',
+              '   In your description, state: what you are extracting them from, how you are moving them,',
+              '   where you are delivering them (warm zone coordinates or nearest triage point), and what',
+              '   immediate life-saving interventions you applied during extraction.',
+            );
+          } else if (patientZone === 'warm') {
+            parts.push(
+              '',
+              '### 🟡 WARM ZONE PATIENT — TRIAGE & STABILIZATION',
+              '✅ ALLOWED actions in the WARM zone:',
+              '  - Full triage assessment (START/SALT) and triage tag assignment',
+              '  - Stabilization: IV access, fluid resuscitation, wound packing, splinting',
+              '  - Monitoring vitals, pain management',
+              '  - Decontamination (if chemical/HAZMAT scenario)',
+              '  - Package for transport to COLD ZONE facility (triage tent, field hospital)',
+              '⚠️ WARM zone is for STABILIZATION, not definitive care.',
+              '   Once stable, the patient should be transported to a cold zone facility.',
+              '   In your description, include: triage color, stabilization steps performed,',
+              '   and destination facility for transport (name a specific triage tent or field hospital).',
+            );
+          } else if (patientZone === 'cold') {
+            parts.push(
+              '',
+              '### 🟢 COLD ZONE PATIENT — FULL TREATMENT & TRANSPORT',
+              '✅ ALLOWED actions in the COLD zone:',
+              '  - Definitive medical care, advanced treatment',
+              '  - Re-triage / upgrade or downgrade triage status',
+              '  - Prepare for hospital transport (ambulance, helicopter)',
+              '  - Monitor and maintain until transport arrives',
+              '   In your description, include: treatment performed, updated triage status,',
+              '   and hospital transport plan if patient needs hospital-level care.',
+            );
+          }
 
           // Load structured patient data for the target pin
           const patientDetail = await this.loadPatientDetail(
@@ -3547,9 +3608,23 @@ export class DemoAIAgentService {
               for (const step of patientDetail.idealSequence) {
                 parts.push(`  ${step.step}. ${step.action}: ${step.detail}`);
               }
+              if (patientZone === 'hot') {
+                parts.push(
+                  '',
+                  '⚠️ Because this patient is in the HOT ZONE, perform ONLY the extraction-related',
+                  '   steps from the sequence above. Skip triage/treatment steps — those happen in the warm zone.',
+                );
+              }
             }
             if (patientDetail.treatmentReqs.length > 0) {
-              parts.push('', '### 💊 REQUIRED TREATMENT:');
+              if (patientZone === 'hot') {
+                parts.push(
+                  '',
+                  '### 💊 TREATMENT (to be performed AFTER extraction to warm/cold zone):',
+                );
+              } else {
+                parts.push('', '### 💊 REQUIRED TREATMENT:');
+              }
               for (const t of patientDetail.treatmentReqs) {
                 parts.push(`  - [${t.priority}] ${t.intervention} — ${t.reason}`);
               }
@@ -3587,7 +3662,9 @@ export class DemoAIAgentService {
           '- actions: list the SPECIFIC actions from the ideal response sequence above',
           '- resources: deployed personnel with counts and PPE from the requirements above',
           '- triage_color: "green"/"yellow"/"red"/"black" — assign based on injuries',
-          '- description: follow the ideal response sequence step by step. Include personnel ratio, equipment used, and transport destination.',
+          patientZone === 'hot'
+            ? '- description: describe your EXTRACTION plan — how you reach the patient, what life-saving interventions you apply, how you move them, and where in the warm zone you deliver them.'
+            : '- description: follow the ideal response sequence step by step. Include personnel ratio, equipment used, and transport destination.',
           '',
           'Return: 1 pin_response + 1 chat. Do NOT include a placement action.',
         );

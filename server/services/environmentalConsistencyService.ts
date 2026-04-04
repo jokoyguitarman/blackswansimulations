@@ -942,10 +942,27 @@ C. PPE FOR ZONE:
 - COLD ZONE: no special PPE required beyond standard medical PPE.
 - When zone PPE requirements are listed, use them as ground truth. When absent, infer from hazard type (fire → SCBA + turnout gear; chemical → hazmat suit + respirator; structural → helmet + safety gear; smoke → breathing apparatus).
 
-D. PATIENT HANDOFF CHAIN:
-- Treating/triaging a patient inside the HOT zone instead of extrication-first: below_standard — "patients in the hot zone should be rapidly extricated to the warm/cold zone before treatment begins."
-- Moving a patient from hot zone directly to cold zone, skipping decontamination in a chemical/HAZMAT scenario: below_standard — "patient requires decontamination in the warm zone before transfer to treatment."
-- Proper chain followed (extricate from hot → stabilize in warm → treat in cold): no penalty.
+D. PATIENT HANDOFF CHAIN (CRITICAL — check for EVERY casualty decision):
+Look at the ZONE where the patient is located (shown in ACTIVE CASUALTIES as "ZONE: HOT/WARM/COLD").
+
+HOT ZONE patients — EXTRACTION ONLY:
+- If the decision describes full triage (START/SALT assessment, triage tagging), IV access, fluid resuscitation, wound care, splinting, monitoring vitals, or any treatment beyond immediate life-saving: set consistent: false, mismatch_kind "below_standard", severity "high".
+  Consequence: "The responder is attempting to perform [specific treatment] on a patient still inside the hot zone. This delays extraction, exposes the responder to prolonged hazard contact, and the patient's condition continues to deteriorate from environmental threats. The patient must be extracted to the warm zone before treatment can begin."
+- ALLOWED in hot zone: DRABC rapid assessment, tourniquet/direct pressure for life-threatening hemorrhage, basic airway management, rapid extrication, packaging onto stretcher, and transport to warm zone. These are acceptable and should NOT be penalized.
+- If the decision says "transport to warm zone" or "extract to warm zone" — this is CORRECT. No penalty.
+
+WARM ZONE patients — TRIAGE & STABILIZATION:
+- Full triage, IV access, splinting, wound packing, monitoring, and stabilization are all ALLOWED.
+- Definitive surgical care or prolonged hospital-level treatment should be flagged as below_standard — the patient should be moved to a cold zone facility.
+- If the decision says "transport to triage tent / field hospital / cold zone" — CORRECT. Check destination exists (TRANSPORT DESTINATION CHECK).
+
+COLD ZONE patients — FULL TREATMENT:
+- All treatment levels allowed. Check for treatment quality and transport to hospital when needed.
+
+SKIPPING ZONES:
+- Moving a patient from hot zone directly to cold zone, skipping warm zone stabilization/decon: below_standard — "patient requires stabilization in the warm zone before transfer to definitive care."
+- Moving a patient from hot zone directly to hospital, skipping all field treatment: below_standard — "patient has not been stabilized or triaged before hospital transport."
+- Proper chain followed (extricate from hot → stabilize in warm → treat in cold → hospital): no penalty.
 
 ESCALATING CONSEQUENCES (no hard blocks):
 - Wrong zone + wrong team + no PPE = "contradiction" + severe narrative (injuries, team member down)
