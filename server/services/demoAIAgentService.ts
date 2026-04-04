@@ -1107,6 +1107,58 @@ async function checkInfrastructureStatus(
   return { ready: missing.length === 0, placed, missing };
 }
 
+/**
+ * Resolve the anchor point for a cordon/perimeter polygon.
+ * Incident-level cordons (inner_cordon, outer_cordon) anchor to the incident center.
+ * Team-specific perimeters anchor to the team's already-placed point asset they enclose.
+ */
+const CORDON_ANCHOR_MAP: Record<string, { anchorTo: 'incident' | string[] }> = {
+  inner_cordon: { anchorTo: 'incident' },
+  outer_cordon: { anchorTo: 'incident' },
+  triage_inner_cordon: { anchorTo: ['triage_point', 'field_hospital', 'casualty_collection'] },
+  fire_operating_perimeter: { anchorTo: ['forward_command', 'command_post', 'staging_area'] },
+  assembly_perimeter: { anchorTo: ['assembly_point', 'marshal_post'] },
+  press_cordon: { anchorTo: ['media_staging'] },
+  exclusion_zone: { anchorTo: 'incident' },
+};
+
+async function resolveCordonAnchor(
+  assetType: string,
+  blueprintId: string,
+  sessionId: string,
+  teamName: string,
+  incidentCenter: { lat: number; lng: number },
+): Promise<{ lat: number; lng: number } | null> {
+  const mapping = CORDON_ANCHOR_MAP[blueprintId] ?? CORDON_ANCHOR_MAP[assetType];
+
+  if (!mapping) return null;
+
+  if (mapping.anchorTo === 'incident') {
+    return incidentCenter;
+  }
+
+  // Look up the team's already-placed point assets to find the anchor
+  const anchorTypes = mapping.anchorTo as string[];
+  const { data } = await supabaseAdmin
+    .from('placed_assets')
+    .select('asset_type, geometry')
+    .eq('session_id', sessionId)
+    .eq('team_name', teamName)
+    .eq('status', 'active')
+    .in('asset_type', anchorTypes);
+
+  if (data && data.length > 0) {
+    const asset = data[0] as Record<string, unknown>;
+    const geo = asset.geometry as { type?: string; coordinates?: number[] } | null;
+    if (geo?.type === 'Point' && Array.isArray(geo.coordinates) && geo.coordinates.length >= 2) {
+      return { lat: geo.coordinates[1], lng: geo.coordinates[0] };
+    }
+  }
+
+  // No anchor asset found — fall back to incident center
+  return incidentCenter;
+}
+
 function isInjectRelevantToTeam(
   teamName: string,
   injectTitle: string,
@@ -3430,10 +3482,21 @@ export class DemoAIAgentService {
     let geometry: { type: string; coordinates: unknown };
 
     if (next.geometry_type === 'polygon' && next.radius_deg) {
-      const offset = 0.001 + Math.random() * 0.001;
-      const bearing = Math.random() * 2 * Math.PI;
-      const cLat = center.lat + offset * Math.cos(bearing);
-      const cLng = center.lng + offset * Math.sin(bearing);
+      // Anchor cordon center to a meaningful pin instead of random offset
+      let cLat = center.lat;
+      let cLng = center.lng;
+
+      const anchorAsset = await resolveCordonAnchor(
+        next.asset_type,
+        next.id,
+        session.sessionId,
+        agent.persona.teamName,
+        center,
+      );
+      if (anchorAsset) {
+        cLat = anchorAsset.lat;
+        cLng = anchorAsset.lng;
+      }
 
       const pts: [number, number][] = [];
       for (let i = 0; i < 12; i++) {
@@ -3604,8 +3667,10 @@ export class DemoAIAgentService {
         'Rules:',
         '- Only return placements from the allowed asset types list.',
         '- Prioritize the missing required infrastructure.',
-        '- If coordinates are in the text, use them. Otherwise generate coords near the incident center (offset 0.001-0.003).',
-        '- For polygon types (cordon, staging_area, press_cordon): set radius_deg to 0.00045 (~50m) for inner/operating or 0.0009 (~100m) for outer.',
+        '- CRITICAL for cordons/perimeters (inner_cordon, outer_cordon, exclusion_zone): ALWAYS set lat/lng to the incident center coordinates. Cordons must be centered on the incident pin, never offset randomly.',
+        '- For team-specific operating perimeters (triage cordon, press cordon, assembly perimeter): set lat/lng to the incident center — the system will auto-anchor them to the correct placed asset.',
+        '- For point types: if coordinates are in the text, use them. Otherwise generate coords near the incident center (offset 0.001-0.003).',
+        '- For polygon types: set radius_deg to 0.00045 (~50m) for inner/operating or 0.0009 (~100m) for outer.',
         '- For point types: set radius_deg to null.',
         '- Return empty array [] if no infrastructure placement is intended.',
       ].join('\n');
@@ -3673,10 +3738,30 @@ export class DemoAIAgentService {
         if (existingTypes.has(p.asset_type)) continue;
         if (!isPlacementAllowedForTeam(teamName, p.asset_type)) continue;
 
-        const pLat =
-          p.lat ?? center.lat + (0.001 + Math.random() * 0.002) * (Math.random() > 0.5 ? 1 : -1);
-        const pLng =
-          p.lng ?? center.lng + (0.001 + Math.random() * 0.002) * (Math.random() > 0.5 ? 1 : -1);
+        let pLat: number;
+        let pLng: number;
+
+        const isCordonType = /cordon|perimeter|exclusion_zone/i.test(p.asset_type);
+        if (isCordonType && p.geometry_type === 'polygon') {
+          // Anchor cordon polygons to incident center or relevant placed asset
+          const anchor = await resolveCordonAnchor(
+            p.asset_type,
+            p.asset_type,
+            session.sessionId,
+            teamName,
+            center,
+          );
+          pLat = anchor?.lat ?? center.lat;
+          pLng = anchor?.lng ?? center.lng;
+        } else if (p.lat != null && p.lng != null) {
+          pLat = p.lat;
+          pLng = p.lng;
+        } else {
+          const offset = 0.001 + Math.random() * 0.002;
+          const bearing = Math.random() * 2 * Math.PI;
+          pLat = center.lat + offset * Math.cos(bearing);
+          pLng = center.lng + offset * Math.sin(bearing);
+        }
 
         let geometry: { type: string; coordinates: unknown };
         if (p.geometry_type === 'polygon' && p.radius_deg) {
