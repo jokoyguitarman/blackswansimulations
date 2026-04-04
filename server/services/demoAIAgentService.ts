@@ -1299,6 +1299,121 @@ async function checkInfrastructureStatus(
 /** Meters-per-degree constant (approximate at equator; good enough for offsets). */
 const METERS_PER_DEG = 111_000;
 
+/** Minimum distance (meters) between any two bot-placed pins to prevent stacking. */
+const MIN_PIN_DISTANCE_M = 100;
+
+/**
+ * Load all occupied coordinates in a session (placed assets, casualties, hazards, locations)
+ * for coordinate deconfliction.
+ */
+async function loadOccupiedCoordinates(
+  sessionId: string,
+): Promise<Array<{ lat: number; lng: number }>> {
+  const coords: Array<{ lat: number; lng: number }> = [];
+
+  const [assetsRes, casualtiesRes, hazardsRes, locationsRes] = await Promise.all([
+    supabaseAdmin
+      .from('placed_assets')
+      .select('geometry')
+      .eq('session_id', sessionId)
+      .eq('status', 'active'),
+    supabaseAdmin
+      .from('scenario_casualties')
+      .select('location_lat, location_lng')
+      .eq('session_id', sessionId),
+    supabaseAdmin
+      .from('scenario_hazards')
+      .select('location_lat, location_lng')
+      .eq('session_id', sessionId),
+    supabaseAdmin.from('scenario_locations').select('coordinates').eq('session_id', sessionId),
+  ]);
+
+  for (const a of assetsRes.data ?? []) {
+    const geo = (a as Record<string, unknown>).geometry as
+      | { type?: string; coordinates?: unknown }
+      | undefined;
+    if (!geo?.coordinates) continue;
+    if (geo.type === 'Point') {
+      const [lng, lat] = geo.coordinates as [number, number];
+      if (lat && lng) coords.push({ lat, lng });
+    } else if (geo.type === 'Polygon') {
+      const ring = (geo.coordinates as number[][][])?.[0];
+      if (ring?.length > 0) {
+        const avgLat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+        const avgLng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+        coords.push({ lat: avgLat, lng: avgLng });
+      }
+    }
+  }
+
+  for (const c of casualtiesRes.data ?? []) {
+    const r = c as Record<string, unknown>;
+    const lat = Number(r.location_lat);
+    const lng = Number(r.location_lng);
+    if (lat && lng) coords.push({ lat, lng });
+  }
+
+  for (const h of hazardsRes.data ?? []) {
+    const r = h as Record<string, unknown>;
+    const lat = Number(r.location_lat);
+    const lng = Number(r.location_lng);
+    if (lat && lng) coords.push({ lat, lng });
+  }
+
+  for (const l of locationsRes.data ?? []) {
+    const r = l as Record<string, unknown>;
+    const coordsArr = r.coordinates as { lat?: number; lng?: number } | null;
+    if (coordsArr?.lat && coordsArr?.lng) coords.push({ lat: coordsArr.lat, lng: coordsArr.lng });
+  }
+
+  return coords;
+}
+
+/**
+ * Nudge a coordinate so it's at least `minDistM` meters from all occupied positions.
+ * Uses a spiral outward search: each attempt moves the point further away in a
+ * rotating direction until a clear spot is found (max 12 attempts).
+ */
+function deconflictCoordinate(
+  lat: number,
+  lng: number,
+  occupied: Array<{ lat: number; lng: number }>,
+  minDistM: number,
+): { lat: number; lng: number } {
+  const isClear = (pLat: number, pLng: number): boolean =>
+    occupied.every((o) => haversineM(pLat, pLng, o.lat, o.lng) >= minDistM);
+
+  if (isClear(lat, lng)) return { lat, lng };
+
+  const offsetDeg = minDistM / METERS_PER_DEG;
+  for (let attempt = 1; attempt <= 12; attempt++) {
+    const angle = (2 * Math.PI * attempt) / 12 + Math.random() * 0.3;
+    const dist = offsetDeg * (1 + attempt * 0.3);
+    const newLat = lat + dist * Math.cos(angle);
+    const newLng = lng + dist * Math.sin(angle);
+    if (isClear(newLat, newLng)) return { lat: newLat, lng: newLng };
+  }
+
+  // Last resort: push directly away from the nearest occupied point
+  let nearest = occupied[0];
+  let nearestDist = Infinity;
+  for (const o of occupied) {
+    const d = haversineM(lat, lng, o.lat, o.lng);
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearest = o;
+    }
+  }
+  const dLat = lat - nearest.lat;
+  const dLng = lng - nearest.lng;
+  const mag = Math.sqrt(dLat * dLat + dLng * dLng) || 0.0001;
+  const pushDeg = (minDistM * 1.2) / METERS_PER_DEG;
+  return {
+    lat: nearest.lat + (dLat / mag) * pushDeg,
+    lng: nearest.lng + (dLng / mag) * pushDeg,
+  };
+}
+
 /**
  * Generate a random coordinate within the specified zone ring around the incident center.
  * - 'hot': within hotZoneRadius of center
@@ -5039,7 +5154,7 @@ export class DemoAIAgentService {
       // Check what already exists to avoid duplicates
       const { data: existingAssets } = await supabaseAdmin
         .from('placed_assets')
-        .select('asset_type')
+        .select('asset_type, geometry')
         .eq('session_id', session.sessionId)
         .eq('team_name', teamName)
         .eq('status', 'active');
@@ -5047,6 +5162,9 @@ export class DemoAIAgentService {
       const existingTypes = new Set(
         (existingAssets ?? []).map((a) => (a as Record<string, unknown>).asset_type as string),
       );
+
+      // Load all existing pin positions for coordinate deconfliction
+      const occupiedCoords = await loadOccupiedCoordinates(session.sessionId);
 
       let placedCount = 0;
       for (const p of placements) {
@@ -5087,6 +5205,13 @@ export class DemoAIAgentService {
           pLng = zoneCoord.lng;
         }
 
+        // Deconflict: ensure minimum 100m from all existing pins (skip for cordons anchored to incident center)
+        if (!isCordonType) {
+          const nudged = deconflictCoordinate(pLat, pLng, occupiedCoords, MIN_PIN_DISTANCE_M);
+          pLat = nudged.lat;
+          pLng = nudged.lng;
+        }
+
         let geometry: { type: string; coordinates: unknown };
         if (p.geometry_type === 'polygon' && p.radius_deg) {
           const clampedR = clampCordonRadius(p.radius_deg);
@@ -5116,6 +5241,8 @@ export class DemoAIAgentService {
           properties: {},
         });
 
+        // Track newly placed coordinate to avoid stacking within the same batch
+        occupiedCoords.push({ lat: pLat, lng: pLng });
         existingTypes.add(p.asset_type);
         placedCount++;
       }
