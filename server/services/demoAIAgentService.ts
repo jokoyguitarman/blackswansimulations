@@ -2036,7 +2036,8 @@ export class DemoAIAgentService {
       '## CRITICAL Rules',
       '- Every turn MUST have exactly 1 decision (or 1 pin_response) + 1 placement/claim + 1 chat.',
       '- If your decision mentions establishing ANY infrastructure (cordon, triage, command post, staging, zone, decon, assembly point, roadblock, fire engine), you MUST ALSO include a placement action for it in the same turn.',
-      '- If for some reason you cannot include a placement action, your decision text MUST include the exact coordinates [lat, lng] where the structure should be placed. This is a FALLBACK only — always prefer the placement action.',
+      '- Your decision description MUST ALWAYS include the coordinates [lat, lng] of where the action takes place — even when you also include a placement action. Example: "Establishing Triage Station at [-33.891234, 151.275678] in the warm zone."',
+      '- If for some reason you cannot include a placement action, coordinates in the decision text are MANDATORY — without them the action has no effect on the map.',
       '- ALWAYS prefer pin_response over decision when there are casualties or hazards in your jurisdiction. A text decision CANNOT triage a patient or contain a hazard — only pin_response can.',
       '- Only use a regular decision when there are NO actionable casualties/hazards for your team, or for general operational actions (establishing cordons, requesting resources, coordinating).',
       '- Bundle ALL your tactical moves into ONE decision with a rich description.',
@@ -3480,11 +3481,13 @@ export class DemoAIAgentService {
 
     const next = pending[0];
     let geometry: { type: string; coordinates: unknown };
+    let placedLat: number;
+    let placedLng: number;
 
     if (next.geometry_type === 'polygon' && next.radius_deg) {
       // Anchor cordon center to a meaningful pin instead of random offset
-      let cLat = center.lat;
-      let cLng = center.lng;
+      placedLat = center.lat;
+      placedLng = center.lng;
 
       const anchorAsset = await resolveCordonAnchor(
         next.asset_type,
@@ -3494,16 +3497,16 @@ export class DemoAIAgentService {
         center,
       );
       if (anchorAsset) {
-        cLat = anchorAsset.lat;
-        cLng = anchorAsset.lng;
+        placedLat = anchorAsset.lat;
+        placedLng = anchorAsset.lng;
       }
 
       const pts: [number, number][] = [];
       for (let i = 0; i < 12; i++) {
         const angle = (2 * Math.PI * i) / 12;
         pts.push([
-          cLng + next.radius_deg * Math.cos(angle),
-          cLat + next.radius_deg * Math.sin(angle),
+          placedLng + next.radius_deg * Math.cos(angle),
+          placedLat + next.radius_deg * Math.sin(angle),
         ]);
       }
       pts.push(pts[0]);
@@ -3511,12 +3514,11 @@ export class DemoAIAgentService {
     } else {
       const offset = 0.001 + Math.random() * 0.002;
       const bearing = Math.random() * 2 * Math.PI;
+      placedLat = center.lat + offset * Math.cos(bearing);
+      placedLng = center.lng + offset * Math.sin(bearing);
       geometry = {
         type: 'Point',
-        coordinates: [
-          center.lng + offset * Math.sin(bearing),
-          center.lat + offset * Math.cos(bearing),
-        ],
+        coordinates: [placedLng, placedLat],
       };
     }
 
@@ -3524,6 +3526,8 @@ export class DemoAIAgentService {
       .map((p) => `${p.count}x ${p.role}${p.ppe ? ` (${p.ppe})` : ''}`)
       .join(', ');
     const equipDesc = next.equipment.join(', ');
+    const coordsStr = `[${placedLat.toFixed(6)}, ${placedLng.toFixed(6)}]`;
+    const radiusStr = next.radius_deg ? ` Radius: ~${Math.round(next.radius_deg * 111000)}m.` : '';
 
     logger.info(
       { botUserId: agent.persona.botUserId, assetType: next.asset_type, label: next.label },
@@ -3548,7 +3552,7 @@ export class DemoAIAgentService {
         action: 'decision',
         decision: {
           title: `Establish ${next.label}`,
-          description: `${next.description} Deploying ${personnelDesc}. Equipment: ${equipDesc}.`,
+          description: `${next.description} Location: ${coordsStr} in the ${next.zone} zone.${radiusStr} Deploying ${personnelDesc}. Equipment: ${equipDesc}.`,
         },
       },
     ];
