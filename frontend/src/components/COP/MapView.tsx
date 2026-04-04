@@ -1111,7 +1111,7 @@ export const MapView = ({
     };
   }, [sessionId, isMapDisabled]);
 
-  // Periodically refresh hazards and casualties (new ones may appear over time)
+  // Periodically refresh hazards, casualties, and placements (safety net for missed WS events)
   useEffect(() => {
     if (!sessionId || isMapDisabled) return;
     const interval = setInterval(() => {
@@ -1140,6 +1140,16 @@ export const MapView = ({
             );
             setCasualties(patients);
             setCrowds(crowdItems);
+          }
+        })
+        .catch(() => {
+          /* ignore */
+        });
+      api.placements
+        .list(sessionId)
+        .then((res) => {
+          if (Array.isArray(res.data)) {
+            setPlacedAssets(res.data as unknown as PlacedAsset[]);
           }
         })
         .catch(() => {

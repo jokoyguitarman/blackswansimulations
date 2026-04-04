@@ -19,6 +19,8 @@ class WebSocketClient {
   private socket: Socket | null = null;
   private eventHandlers: Map<string, Set<EventHandler>> = new Map();
   private connectionPromise: Promise<Socket> | null = null;
+  private currentSessionId: string | null = null;
+  private currentChannelId: string | null = null;
 
   /**
    * Connect to WebSocket server
@@ -59,6 +61,15 @@ class WebSocketClient {
       this.socket.on('connect', () => {
         console.log('[WEBSOCKET] Connected');
         this.connectionPromise = null;
+        // Re-join rooms after reconnection
+        if (this.currentSessionId) {
+          console.log('[WEBSOCKET] Re-joining session room:', this.currentSessionId);
+          this.socket?.emit('join_session', this.currentSessionId);
+        }
+        if (this.currentChannelId) {
+          console.log('[WEBSOCKET] Re-joining channel room:', this.currentChannelId);
+          this.socket?.emit('join_channel', this.currentChannelId);
+        }
       });
 
       this.socket.on('disconnect', (reason: string) => {
@@ -100,12 +111,15 @@ class WebSocketClient {
     }
     this.eventHandlers.clear();
     this.connectionPromise = null;
+    this.currentSessionId = null;
+    this.currentChannelId = null;
   }
 
   /**
    * Join a session room
    */
   async joinSession(sessionId: string): Promise<void> {
+    this.currentSessionId = sessionId;
     const socket = await this.connect();
     socket.emit('join_session', sessionId);
   }
@@ -114,6 +128,9 @@ class WebSocketClient {
    * Leave a session room
    */
   leaveSession(sessionId: string): void {
+    if (this.currentSessionId === sessionId) {
+      this.currentSessionId = null;
+    }
     if (this.socket) {
       this.socket.emit('leave_session', sessionId);
     }
@@ -127,6 +144,7 @@ class WebSocketClient {
       console.warn('[WEBSOCKET] Cannot join channel: channelId is empty');
       return;
     }
+    this.currentChannelId = channelId;
     const socket = await this.connect();
     socket.emit('join_channel', channelId);
   }
