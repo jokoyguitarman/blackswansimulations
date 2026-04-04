@@ -944,8 +944,8 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
   const teamLabels: Record<string, string> = {
     police: 'Police / Security',
     security: 'Police / Security',
-    triage: 'Triage / Medical',
-    medical: 'Triage / Medical',
+    triage: 'Medical Triage',
+    medical: 'Medical Triage',
     ems: 'EMS',
     fire: 'Fire',
     hazmat: 'HAZMAT',
@@ -1969,11 +1969,11 @@ export class DemoAIAgentService {
       '- FIRE / HAZMAT teams → pin_response on HAZARDS (contain, mitigate, suppress).',
       '  FIRE / HAZMAT may ALSO respond to CASUALTIES but ONLY for extraction — NOT triage or treatment.',
       '  Fire/Hazmat extraction actions: basic first aid, apply safety equipment (SCBA, blanket, splint), package patient on stretcher/backboard, carry patient out of hot zone to warm zone or decon zone.',
-      '  Fire/Hazmat MUST NOT assign triage_color (the server strips it). After extraction, hand off to Triage/Medical via chat.',
+      '  Fire/Hazmat MUST NOT assign triage_color (the server strips it). After extraction, hand off to Medical Triage via chat.',
       '- EVACUATION teams → pin_response on CROWDS only (direct evacuation, not medical treatment)',
       '',
       'Teams that must NEVER use pin_response:',
-      '- POLICE / SECURITY → Do NOT triage patients or mitigate hazards. Your job is cordons, exits, containment, pursuit. If you find casualties, radio medical/triage team in chat.',
+      '- POLICE / SECURITY → Do NOT triage patients or mitigate hazards. Your job is cordons, exits, containment, pursuit. If you find casualties, radio Medical Triage team in chat.',
       '- MEDIA / PRESS / PIO → Do NOT interact with any pins. Your job is public communication and media management only.',
       '- INTELLIGENCE / COMMAND → Do NOT interact with pins directly. Coordinate through other teams via chat.',
       '',
@@ -2085,17 +2085,17 @@ export class DemoAIAgentService {
       '- Bundle ALL your tactical moves into ONE decision with a rich description.',
       '- NEVER place an inner_cordon or outer_cordon if one already exists.',
       '- READ "Recent actions" and "Ground situation" carefully. Address SPECIFIC casualties and hazards by name/location.',
-      "- Focus EXCLUSIVELY on YOUR team specialty. Fire/HAZMAT handles fires and hot zone extraction. Triage/Medical handles patient triage and treatment (warm/cold zone). Police handles security and cordons. Evacuation handles crowd movement and assembly areas. NEVER make decisions about another team's domain.",
+      "- Focus EXCLUSIVELY on YOUR team specialty. Fire/HAZMAT handles fires and hot zone extraction. Medical Triage handles patient triage and treatment (warm/cold zone). Police handles security and cordons. Evacuation handles crowd movement and assembly areas. NEVER make decisions about another team's domain.",
       '',
       '## 🚫 ZONE ACCESS RULES (STRICTLY ENFORCED):',
-      '- HOT ZONE: ONLY Fire/HAZMAT teams may enter. They extract patients to the warm zone boundary using DRABC, stretcher, and full PPE. They do NOT triage — they hand off to Triage/Medical.',
-      '- WARM ZONE: Triage/Medical teams triage and stabilize patients here. Fire/HAZMAT may pass through during extraction.',
+      '- HOT ZONE: ONLY Fire/HAZMAT teams may enter. They extract patients to the warm zone boundary using DRABC, stretcher, and full PPE. They do NOT triage — they hand off to Medical Triage.',
+      '- WARM ZONE: Medical Triage teams triage and stabilize patients here. Fire/HAZMAT may pass through during extraction.',
       '- COLD ZONE: All teams operate here. Command posts, staging areas, media zones go in the cold zone.',
-      '- Triage/Medical/EMS: You CANNOT enter the hot zone. If patients are in the hot zone, request Fire/HAZMAT to extract them first.',
+      '- Medical Triage/EMS: You CANNOT enter the hot zone. If patients are in the hot zone, request Fire/HAZMAT to extract them first.',
       '',
       '## 🚫 CROWD vs PATIENT JURISDICTION (STRICTLY ENFORCED):',
       '- CROWD pins (type: crowd, evacuee_group, convergent_crowd): ONLY Evacuation team handles these. Police may assist with order.',
-      '- PATIENT pins (type: patient, casualty): Triage/Medical triages and treats. Fire/HAZMAT extracts from hot zone only.',
+      '- PATIENT pins (type: patient, casualty): Medical Triage triages and treats. Fire/HAZMAT extracts from hot zone only.',
       '- If you see a crowd pin and you are NOT the Evacuation team — DO NOT interact with it. Return { "actions": [{ "action": "none" }] }.',
       '- If a pin has NO injury information and describes a group of people — it is a CROWD, not a patient. Do NOT triage crowds.',
       '- READ "Recent actions by all teams" CAREFULLY. If another team already addressed a fire, casualty, or hazard — DO NOT address the same one. Find something DIFFERENT to do.',
@@ -2140,7 +2140,7 @@ export class DemoAIAgentService {
           'You are a NOVICE responder. You make realistic beginner mistakes:',
           '- Your decisions are often VAGUE — missing specific locations, headcounts, or procedures.',
           '- You sometimes forget to place a physical pin on the map when establishing infrastructure.',
-          '- You occasionally overstep your team jurisdiction (e.g. triage team trying to do police work).',
+          '- You occasionally overstep your team jurisdiction (e.g. Medical Triage team trying to do police work).',
           '- You rarely use proper professional terminology or reference standard operating procedures.',
           '- You may ignore active hazards or not check environmental conditions before deploying.',
           '- Your polygons for cordons are often too small or poorly positioned.',
@@ -2221,7 +2221,7 @@ export class DemoAIAgentService {
           '5. FIFTH: Begin pin_response interactions — one casualty/hazard at a time. Specify all equipment AND PPE.',
           '6. SIXTH: Follow jurisdiction rules for patient movement:',
           '   - HOT ZONE extraction: ONLY Fire/HAZMAT or trained HAZMAT paramedics extract patients from hot zone to warm zone boundary. They wear full PPE.',
-          '   - WARM ZONE treatment: Medical/Triage team receives patients at the warm zone boundary. They triage and treat.',
+          '   - WARM ZONE treatment: Medical Triage team receives patients at the warm zone boundary. They triage and treat.',
           '   - COLD ZONE transport: Medical team arranges transport from warm/cold zone to hospital.',
           '   - If you are NOT Fire/HAZMAT, do NOT enter the hot zone. Request fire team to extract casualties to you.',
           '7. SEVENTH: Transport treated patients to named hospital → only after treatment, with named vehicle.',
@@ -2474,7 +2474,7 @@ export class DemoAIAgentService {
       const isEvacuation = tk === 'evacuation';
       const isPolice = tk === 'police' || tk === 'security';
 
-      // Patients: show to triage/medical (all zones), fire/hazmat (hot zone only for extraction)
+      // Patients: show to Medical Triage (all zones), fire/hazmat (hot zone only for extraction)
       if (ground.patients.length > 0 && (isTriageMedical || isFireHazmat)) {
         if (isFireHazmat) {
           const hotZonePatients = ground.patients.filter((p) => p.includes('ZONE: HOT'));
@@ -2484,7 +2484,7 @@ export class DemoAIAgentService {
               '',
               '## 🔥 HOT ZONE Patients (YOUR jurisdiction — extraction only):',
               '→ Extract these patients to the warm zone boundary. Basic DRABC, stretcher, full PPE.',
-              '→ Do NOT triage or treat — hand off to medical/triage team after extraction.',
+              '→ Do NOT triage or treat — hand off to Medical Triage team after extraction.',
             );
             for (const p of hotZonePatients) parts.push(`- ${p}`);
           }
@@ -2492,11 +2492,11 @@ export class DemoAIAgentService {
             parts.push(
               '',
               `## ℹ️ ${otherPatients.length} patient(s) in warm/cold zones — NOT your jurisdiction.`,
-              '→ These patients are handled by Triage/Medical teams. Do NOT interact with them.',
+              '→ These patients are handled by Medical Triage teams. Do NOT interact with them.',
             );
           }
         } else {
-          // Triage/Medical: show warm/cold zone patients, flag hot zone ones as needing extraction first
+          // Medical Triage: show warm/cold zone patients, flag hot zone ones as needing extraction first
           const hotZonePatients = ground.patients.filter((p) => p.includes('ZONE: HOT'));
           const accessiblePatients = ground.patients.filter((p) => !p.includes('ZONE: HOT'));
 
@@ -2516,7 +2516,7 @@ export class DemoAIAgentService {
       } else if (ground.patients.length > 0) {
         parts.push(
           '',
-          `## ℹ️ ${ground.patients.length} patient(s) on the ground — handled by Triage/Medical teams.`,
+          `## ℹ️ ${ground.patients.length} patient(s) on the ground — handled by Medical Triage teams.`,
           '→ Not your jurisdiction. If you encounter a patient, radio the medical team via chat.',
         );
       }
@@ -3424,7 +3424,7 @@ export class DemoAIAgentService {
             return {
               valid: false,
               reason:
-                'Fire/HAZMAT teams do NOT triage patients or handle crowds. You may only EXTRACT patients from the hot zone (basic DRABC, stretcher, carry to warm zone boundary). For crowds, request Evacuation team via chat. For patient treatment, hand off to Triage/Medical.',
+                'Fire/HAZMAT teams do NOT triage patients or handle crowds. You may only EXTRACT patients from the hot zone (basic DRABC, stretcher, carry to warm zone boundary). For crowds, request Evacuation team via chat. For patient treatment, hand off to Medical Triage.',
             };
           }
         }
@@ -4981,7 +4981,7 @@ export class DemoAIAgentService {
 
     // Zone-based access control for patients
     if (targetType === 'casualty' && pinZone === 'hot') {
-      // Hot zone: ONLY fire/hazmat may extract — triage/medical/ems/evac CANNOT enter
+      // Hot zone: ONLY fire/hazmat may extract — Medical Triage/ems/evac CANNOT enter
       if (tk === 'fire' || tk === 'hazmat') return false;
       return true;
     }

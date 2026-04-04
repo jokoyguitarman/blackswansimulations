@@ -137,29 +137,33 @@ const CONDITION_KEYS: Array<{ key: string; meaning: string; team?: string }> = [
   {
     key: 'triage_zone_established_as_incident_location',
     meaning: 'Decision mentions triage zone',
-    team: 'Triage',
+    team: 'Medical Triage',
   },
   {
     key: 'triage_no_supply_management_decision',
     meaning: 'No decision matches supply/equipment keywords',
-    team: 'Triage',
+    team: 'Medical Triage',
   },
   {
     key: 'triage_supply_request_made',
     meaning: 'triage_state.supply_request_made === true',
-    team: 'Triage',
+    team: 'Medical Triage',
   },
   {
     key: 'triage_no_prioritisation_decision',
     meaning: 'No decision matches prioritisation keywords',
-    team: 'Triage',
+    team: 'Medical Triage',
   },
   {
     key: 'triage_prioritisation_decided',
     meaning: 'triage_state.prioritisation_decided === true',
-    team: 'Triage',
+    team: 'Medical Triage',
   },
-  { key: 'triage_surge_active', meaning: 'triage_state.surge_active === true', team: 'Triage' },
+  {
+    key: 'triage_surge_active',
+    meaning: 'triage_state.surge_active === true',
+    team: 'Medical Triage',
+  },
   {
     key: 'media_statement_issued',
     meaning: 'media_state.first_statement_issued === true',
@@ -490,7 +494,9 @@ export const TrainerEnvironmentalTruths = ({
         )}
         {triageLocs.length > 0 && (
           <div className="mb-2">
-            <div className="text-robotic-yellow/70 text-xs mb-0.5">Triage zone candidates</div>
+            <div className="text-robotic-yellow/70 text-xs mb-0.5">
+              Medical Triage zone candidates
+            </div>
             {triageLocs.map((loc, i) => {
               const sa = siteAreas[i];
               const cap = sa

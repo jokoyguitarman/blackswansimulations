@@ -244,7 +244,7 @@ async function loadClaimableLocations(
     const candidateKey = `claim:${label}`;
     const domainLabel =
       stateKey === 'triage_state'
-        ? `Select ${label} as triage zone`
+        ? `Select ${label} as Medical Triage zone`
         : `Activate ${label} as evacuation holding area`;
 
     candidates.push({

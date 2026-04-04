@@ -314,7 +314,7 @@ const EVACUATION_ACTIONS: TeamAction[] = [
   },
   {
     id: 'coordinate_triage',
-    label: 'Coordinate with Triage',
+    label: 'Coordinate with Medical Triage',
     description: 'Establish handover point between evacuation and medical teams.',
     icon: 'medical',
     keywords: ['coordinate', 'triage', 'handover', 'medical'],

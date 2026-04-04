@@ -1333,7 +1333,7 @@ export const computeInterTeamImpactMatrix = async (
 
     const outcomesInstruction =
       recentInjects && recentInjects.length > 0
-        ? ` When recent outcomes/injects are provided below, use them as the PRIMARY evidence for impact and robustness. Negative or critical injects that name or implicate a team (e.g. "No triage situation report received from the Triage Team") indicate that team had negative impact on others — assign negative scores (e.g. -1 or -2) from that team to affected teams and lower robustness for that team's decisions. Positive or improving outcomes indicate positive impact. Do not rely only on decision text when outcomes contradict it.`
+        ? ` When recent outcomes/injects are provided below, use them as the PRIMARY evidence for impact and robustness. Negative or critical injects that name or implicate a team (e.g. "No triage situation report received from the Medical Triage Team") indicate that team had negative impact on others — assign negative scores (e.g. -1 or -2) from that team to affected teams and lower robustness for that team's decisions. Positive or improving outcomes indicate positive impact. Do not rely only on decision text when outcomes contradict it.`
         : '';
 
     /* REVERT: stricter robustness calibration – see docs/REVERT_STRICTER_ROBUSTNESS_SCORING.md */

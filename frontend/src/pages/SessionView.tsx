@@ -1708,7 +1708,11 @@ export const SessionView = () => {
           const teamsToShow =
             scenarioTeams.length > 0
               ? scenarioTeams
-              : [{ team_name: 'Evacuation' }, { team_name: 'Triage' }, { team_name: 'Media' }];
+              : [
+                  { team_name: 'Evacuation' },
+                  { team_name: 'Medical Triage' },
+                  { team_name: 'Media' },
+                ];
 
           const blocks: React.ReactNode[] = [];
           for (const team of teamsToShow) {

@@ -1379,7 +1379,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
 const PIN_LEGEND: Array<{ color: string; label: string }> = [
   { color: '#b91c1c', label: 'Incident site' },
   { color: '#7c3aed', label: 'Cordon' },
-  { color: '#d97706', label: 'Triage' },
+  { color: '#d97706', label: 'Medical Triage' },
   { color: '#059669', label: 'Access / route' },
   { color: '#0284c7', label: 'Command' },
   { color: '#0891b2', label: 'Staging' },

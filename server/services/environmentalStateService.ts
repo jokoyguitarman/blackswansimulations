@@ -190,7 +190,7 @@ export async function loadAndApplyEnvironmentalState(sessionId: string): Promise
         ? teamRows
         : [
             { team_name: 'Evacuation', counter_definitions: null },
-            { team_name: 'Triage', counter_definitions: null },
+            { team_name: 'Medical Triage', counter_definitions: null },
             { team_name: 'Media', counter_definitions: null },
           ];
 

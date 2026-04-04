@@ -294,7 +294,7 @@ export const INJECT_PRESSURE_TYPES: InjectPressureType[] = [
       "A non-English-speaking family has been detained as suspects because they couldn't explain why they were running",
       'A critical eyewitness can only speak a rare dialect — no interpreter is available and their account is time-sensitive',
       'Evacuation instructions are not reaching a large group of foreign workers who speak neither English nor the local language',
-      "Medical consent cannot be obtained for an unconscious child because the parents don't speak the triage team's language",
+      "Medical consent cannot be obtained for an unconscious child because the parents don't speak the Medical Triage team's language",
       'A mistranslated radio message has sent a team to the wrong building',
       'A deaf evacuee is unable to understand verbal commands and is being forcibly restrained by officers who misinterpret resistance',
       'Sign language interpreters are unavailable, leaving 15 hearing-impaired evacuees unable to receive safety briefings',
@@ -387,7 +387,7 @@ export const INJECT_PRESSURE_TYPES: InjectPressureType[] = [
     description: 'Moral choices in triage, treatment refusal, evidence vs lives',
     examples: [
       'A patient is refusing life-saving treatment on religious grounds, but their family is begging the team to override the refusal',
-      'The triage team must choose between treating a critical child and a responder who can return to duty if stabilized',
+      'The Medical Triage team must choose between treating a critical child and a responder who can return to duty if stabilized',
       'Forensic evidence critical to identifying the perpetrator is in a zone where casualties are still trapped — collecting evidence would delay rescue',
       'A DNR-carrying patient is in cardiac arrest but their distressed family is demanding full resuscitation',
       'Two casualties need the last unit of O-negative blood — one is a child, the other is a pregnant woman',
@@ -2550,7 +2550,7 @@ const STANDARD_DECISION_INTENT_KEYS: Record<string, CounterDefinition[]> = {
   triage_state: [
     {
       key: 'prioritisation_decided',
-      label: 'Triage Prioritisation Set',
+      label: 'Medical Triage Prioritisation Set',
       type: 'boolean',
       initial_value: false,
       behavior: 'decision_toggle',
@@ -2574,7 +2574,7 @@ const STANDARD_DECISION_INTENT_KEYS: Record<string, CounterDefinition[]> = {
     },
     {
       key: 'perimeter_security_decided',
-      label: 'Triage Perimeter Security',
+      label: 'Medical Triage Perimeter Security',
       type: 'boolean',
       initial_value: false,
       behavior: 'decision_toggle',
@@ -2582,7 +2582,7 @@ const STANDARD_DECISION_INTENT_KEYS: Record<string, CounterDefinition[]> = {
     },
     {
       key: 'triage_zone_established',
-      label: 'Triage Zone Established',
+      label: 'Medical Triage Zone Established',
       type: 'boolean',
       initial_value: false,
       behavior: 'decision_toggle',
@@ -3562,9 +3562,9 @@ IMPORTANT:
 - applicable_teams: assign each equipment item ONLY to the team(s) trained to use it. Use the EXACT team names from "Teams available" above. Rules:
   - Fire-fighting gear (turnout gear, hose, foam units, fire extinguishers) → fire/hazmat team only
   - HAZMAT PPE (hazmat_suit, breathing_apparatus, chemical_gloves) → fire/hazmat team only
-  - Medical equipment (defibrillator, iv_kit, burn_kit, splint, oxygen) → triage/medical team only
-  - Medical PPE (ppe_medical, surgical gloves, face_shield for patient care) → triage/medical team only
-  - Rescue/extrication tools (cutting_tools, hydraulic_jack, stretcher, spinal_board) → evacuation team AND triage team
+  - Medical equipment (defibrillator, iv_kit, burn_kit, splint, oxygen) → Medical Triage team only
+  - Medical PPE (ppe_medical, surgical gloves, face_shield for patient care) → Medical Triage team only
+  - Rescue/extrication tools (cutting_tools, hydraulic_jack, stretcher, spinal_board) → evacuation team AND Medical Triage team
   - General safety items (safety_vest, helmet) → any team that operates in the hazard zone
   - If unsure, assign to the team whose real-world role would use that equipment`;
 
@@ -3804,7 +3804,7 @@ Return ONLY valid JSON:
       "ppe_required": ["equipment_ids"],
       "allowed_teams": ["team_names"],
       "activities": ["triage", "decontamination", "stabilization", "handoff"],
-      "pin_guidance": "What belongs here: triage points, decontamination stations, casualty collection points. Extracted casualties move here for initial assessment. Medical/triage teams operate here with respiratory protection."
+      "pin_guidance": "What belongs here: triage points, decontamination stations, casualty collection points. Extracted casualties move here for initial assessment. Medical Triage teams operate here with respiratory protection."
     },
     {
       "zone_type": "cold",
@@ -3819,7 +3819,7 @@ Return ONLY valid JSON:
 
 RULES:
 - ppe_required: use equipment IDs like scba, hazmat_suit, fire_protective_gear, respirator, safety_vest, helmet, ppe_medical, chemical_gloves, face_shield, turnout_gear
-- allowed_teams: use EXACT team names from above. Hot zone = only fire/hazmat specialists. Warm zone = add triage/medical. Cold zone = "all".
+- allowed_teams: use EXACT team names from above. Hot zone = only fire/hazmat specialists. Warm zone = add Medical Triage. Cold zone = "all".
 - Each zone radius MUST be larger than the previous (hot < warm < cold)
 - The hot zone MUST be large enough to contain ALL hazard locations`;
 
@@ -4557,7 +4557,7 @@ For EACH crowd group, also generate a paired ALERT INJECT that fires at the same
 Target team mapping by crowd type:
 - onlooker -> police/security team (perimeter concern)
 - media -> media/communications team
-- family -> evacuation or triage team
+- family -> evacuation or Medical Triage team
 - helper -> whichever team is most affected
 
 Return ONLY valid JSON:
@@ -5919,7 +5919,7 @@ Setting: ${setting} | Terrain: ${terrain}
 Teams: ${teamNames.join(', ')}
 Primary pursuit team: ${primaryPursuitTeam}
 Intelligence team: ${intelTeam}
-${triageTeam ? `Triage team: ${triageTeam}` : ''}
+${triageTeam ? `Medical Triage team: ${triageTeam}` : ''}
 Game duration: ${durationMinutes} minutes
 Adversary behaviors: ${adversaryBehaviors.join(', ')}
 Weapon: ${weaponType}
@@ -5981,7 +5981,7 @@ WHAT TO GENERATE:
 5. RESOURCE-GATED INJECTS (2-3 injects within pursuit_time_injects): These are higher-quality intel that should narratively explain WHY better intel is available — e.g. an operator reviewing the camera network, a specialist tracking team deployed, or an aerial asset on station. The content should hint that deploying a specific player asset improves intel quality.
    Mark these with "resource_hint" in the adversary_sighting — use a descriptive string matching the resource type (e.g. "cctv_operator", "tracking_team", "aerial_unit", "forensic_team").
 
-6. WITNESS INJECTS (1-3 injects): Reports from injured civilians that go to the triage team ONLY. These contain pursuit-relevant intel that the triage team must relay to the police team via a decision.
+6. WITNESS INJECTS (1-3 injects): Reports from injured civilians that go to the Medical Triage team ONLY. These contain pursuit-relevant intel that the Medical Triage team must relay to the police team via a decision.
 
 7. CONTAINMENT TEST INJECTS (1-2 injects within pursuit_time_injects): These describe the suspect approaching or testing a perimeter/cordon area. The content should say something like "Suspect seen approaching the intersection of X and Y" — a location where players SHOULD have placed a cordon. Mark with "tests_containment": true in the adversary_sighting. If players have cordons there, the system will auto-generate a "suspect turned back" follow-up. If not, the suspect breaks through.
 
@@ -6124,7 +6124,7 @@ RULES:
 - All coordinates MUST come from the AVAILABLE LOCATIONS list. Do NOT invent coordinates.
 - Pursuit injects must create genuine decision tension — each option should have real tradeoffs.
 - At least 2 pursuit decisions must impact OTHER teams (e.g. pulling resources, weakening cordons).
-- Witness injects go to the triage team. They contain intel that is ONLY useful if relayed.
+- Witness injects go to the Medical Triage team. They contain intel that is ONLY useful if relayed.
 - Casualty-spawning injects simulate the adversary continuing to cause harm while not neutralised.
 - The pursuit arc should follow: initial sighting → localisation decisions → containment → intercept/resolution.
 - Gate content_hints should match likely decision keywords (e.g. "camera", "cordon", "sweep", "breach", "apprehend").
