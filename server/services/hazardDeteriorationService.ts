@@ -14,14 +14,17 @@ import { logger } from '../lib/logger.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { placeInsideZoneType } from './zonePlacementService.js';
 
+const DEMO_TRAINER_ID = 'a0000000-de00-b000-0001-000000000099';
+
 export async function runHazardDeterioration(sessionId: string): Promise<void> {
   const { data: session } = await supabaseAdmin
     .from('sessions')
-    .select('scenario_id, start_time')
+    .select('scenario_id, start_time, trainer_id')
     .eq('id', sessionId)
     .single();
   if (!session?.start_time) return;
 
+  const isDemo = (session as { trainer_id?: string }).trainer_id === DEMO_TRAINER_ID;
   const elapsedMinutes = Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000);
 
   const { data: hazards } = await supabaseAdmin
@@ -41,16 +44,21 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
     const minutesSinceAppeared = elapsedMinutes - (hazard.appears_at_minutes ?? 0);
 
     // Determine which stage we're at (pick the highest applicable)
+    // Demo sessions use compressed timings: 4/8/12 min instead of 10/20/30
+    const t1 = isDemo ? 4 : 10;
+    const t2 = isDemo ? 8 : 20;
+    const t3 = isDemo ? 12 : 30;
+
     let stageLevel = 0;
     let deteriorationStage: string | null = null;
 
-    if (minutesSinceAppeared >= 30 && timeline.at_30min) {
+    if (minutesSinceAppeared >= t3 && timeline.at_30min) {
       stageLevel = 30;
       deteriorationStage = timeline.at_30min as string;
-    } else if (minutesSinceAppeared >= 20 && timeline.at_20min) {
+    } else if (minutesSinceAppeared >= t2 && timeline.at_20min) {
       stageLevel = 20;
       deteriorationStage = timeline.at_20min as string;
-    } else if (minutesSinceAppeared >= 10 && timeline.at_10min) {
+    } else if (minutesSinceAppeared >= t1 && timeline.at_10min) {
       stageLevel = 10;
       deteriorationStage = timeline.at_10min as string;
     }

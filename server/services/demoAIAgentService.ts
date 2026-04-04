@@ -2326,6 +2326,15 @@ export class DemoAIAgentService {
       '- title: Concise and specific to the SINGLE action (e.g. "Establish Inner Cordon" or "Triage Burn Victim")',
       '- description: 2-3 sentences about the ONE action. Reference location, resources, procedure.',
       '',
+      '### ⚠️ PERSONNEL DEPLOYMENT — MANDATORY FOR EVERY OPERATIONAL AREA',
+      'Every decision that establishes an operational area MUST include personnel deployment details:',
+      '- WHO: specify role and count (e.g. "2x Paramedics", "4x Cordon Officers", "1x Triage Officer")',
+      '- RATIO: if dealing with patients/evacuees, state the personnel-to-patient ratio (e.g. "1:3 medic-to-patient")',
+      '- PPE: specify protective gear for the deployed personnel (e.g. "in full Level B PPE", "wearing high-vis vests")',
+      '- EQUIPMENT: name the equipment they bring (e.g. "with stretchers, IV kits, and pulse oximeters")',
+      'An operational area with NO personnel deployed is an EMPTY area and will be flagged as incomplete.',
+      'Example: "Establishing Triage Point at [1.299, 103.845] in the warm zone. Deploying 2x Paramedics and 1x Triage Officer (1:5 medic-to-patient ratio) equipped with triage tags, IV access kits, stretchers, and trauma packs. Personnel wearing disposable gloves and face shields."',
+      '',
       '### PLACEMENTS (visualize ONE key map action per decision)',
       '⚠️ CRITICAL: If your decision mentions establishing any infrastructure (cordon, triage tent, command post, assembly point, staging area, decon zone), you MUST include a placement action with it.',
       'A decision that says "establish inner cordon" WITHOUT a placement polygon is INCOMPLETE — the cordon will NOT appear on the map.',
@@ -2460,6 +2469,8 @@ export class DemoAIAgentService {
       '  - You can EVACUATE (direct_to) crowds that are: identified, undiscovered',
       '  - A crowd MUST have an explicit evacuation order with a named exit/destination before it moves.',
       '  - Crowds do NOT automatically evacuate just because an exit is claimed.',
+      '  - If injured people are found in a crowd, the Evacuation team ENDORSES them to Medical Triage.',
+      '  - ONLY Medical Triage treats patients. Evacuation team manages crowd movement, not medical care.',
       '',
       '### Hazard lifecycle:',
       '  active → escalating → contained → resolved',
@@ -2678,8 +2689,12 @@ export class DemoAIAgentService {
           '- You MUST read and respond to the inject that triggered your current turn.',
           '- If the inject describes a new threat, casualty, or situation change — address it directly in your decision.',
           '- If the inject is a consequence of a previous failure (e.g., "fire has spread", "suspect escaped"), acknowledge it and take corrective action.',
-          '- If the inject is a specificity failure or environmental inconsistency feedback — fix the issue in your next decision (e.g., place the missing equipment, correct the approach).',
+          '- If the inject is a specificity failure or environmental inconsistency feedback — fix the issue in your next decision by providing the EXACT details that were missing.',
+          '  → "Lacks Specificity" = your description was vague. Respond with precise counts, coordinates, equipment names, and personnel roles.',
+          '  → "Infrastructure missing" = your area was set up without essentials. Respond with the missing items: personnel, barriers, equipment.',
+          '  → "Issue detected" = something you did conflicted with ground conditions. Read what went wrong and submit a corrective decision.',
           '- ⚠️ IMPORTANT: If the inject says infrastructure is MISSING (e.g., "no triage tent", "no cordon", "no command post"), your response MUST include a PLACEMENT action to create it. Writing about it in text is NOT enough — the physical asset must appear on the map.',
+          '- ⚠️ EQUALLY IMPORTANT: Infrastructure without PERSONNEL is useless. If feedback says "setup fails to materialize" or "operational chaos", it means you placed the structure but forgot to deploy staff. Re-submit with personnel details: role, count, PPE, equipment.',
           '- Do NOT ignore injects. Every inject requires acknowledgment and a team-appropriate response.',
           '- If the inject is not relevant to your team (e.g., fire update for evacuation team), acknowledge in chat but do not take action outside your jurisdiction.',
           '',
@@ -2908,7 +2923,11 @@ export class DemoAIAgentService {
     );
 
     // Ground situation: patients, crowds, hazards, claimable exits — zone-tagged and team-filtered
-    const ground = await this.loadGroundSituation(session.sessionId, session.scenarioId);
+    const ground = await this.loadGroundSituation(
+      session.sessionId,
+      session.scenarioId,
+      teamScopeKey || undefined,
+    );
 
     if (ground.claimableExits.length > 0) {
       const unclaimed = ground.claimableExits.filter((e) => !e.claimStatus.startsWith('CLAIMED'));
@@ -2932,85 +2951,49 @@ export class DemoAIAgentService {
       !blueprint || blueprint.items.every((item) => placedAssetTypes.has(item.asset_type));
 
     if (isOperational) {
-      // Team-filtered pin visibility based on jurisdiction and zone
       const tk = teamScopeKey || '';
-      const isFireHazmat = tk === 'fire';
-      const isTriageMedical = tk === 'triage';
-      const isEvacuation = tk === 'evacuation';
 
-      // Patients: show to Medical Triage (all zones), Fire Safety (hot zone only for extraction)
-      if (ground.patients.length > 0 && (isTriageMedical || isFireHazmat)) {
-        if (isFireHazmat) {
-          const hotZonePatients = ground.patients.filter((p) => p.includes('ZONE: HOT'));
-          const otherPatients = ground.patients.filter((p) => !p.includes('ZONE: HOT'));
-          if (hotZonePatients.length > 0) {
-            parts.push(
-              '',
-              '## 🔥 HOT ZONE Patients (YOUR jurisdiction — extraction only):',
-              '→ Extract these patients to the warm zone boundary. Basic DRABC, stretcher, full PPE.',
-              '→ Do NOT triage or treat — hand off to Medical Triage team after extraction.',
-            );
-            for (const p of hotZonePatients) parts.push(`- ${p}`);
-          }
-          if (otherPatients.length > 0) {
-            parts.push(
-              '',
-              `## ℹ️ ${otherPatients.length} patient(s) in warm/cold zones — NOT your jurisdiction.`,
-              '→ These patients are handled by Medical Triage teams. Do NOT interact with them.',
-            );
-          }
+      // Patients — already filtered by loadGroundSituation to only include team-relevant pins
+      if (ground.patients.length > 0) {
+        if (tk === 'fire') {
+          parts.push(
+            '',
+            '## 🔥 HOT ZONE Patients (YOUR jurisdiction — extraction only):',
+            '→ Extract these patients to the warm zone boundary. Basic DRABC, stretcher, full PPE.',
+            '→ Do NOT triage or treat — hand off to Medical Triage team after extraction.',
+          );
+        } else if (tk === 'triage') {
+          parts.push('', '## Patients awaiting triage/treatment (YOUR jurisdiction):');
         } else {
-          // Medical Triage: show warm/cold zone patients, flag hot zone ones as needing extraction first
-          const hotZonePatients = ground.patients.filter((p) => p.includes('ZONE: HOT'));
-          const accessiblePatients = ground.patients.filter((p) => !p.includes('ZONE: HOT'));
-
-          if (accessiblePatients.length > 0) {
-            parts.push('', '## Patients awaiting triage/treatment (YOUR jurisdiction):');
-            for (const p of accessiblePatients) parts.push(`- ${p}`);
-          }
-          if (hotZonePatients.length > 0) {
-            parts.push(
-              '',
-              `## ⛔ ${hotZonePatients.length} patient(s) in HOT ZONE — you CANNOT enter.`,
-              '→ Request Fire Safety to extract them to the warm zone first via chat.',
-              '→ Do NOT use pin_response on hot zone patients. You will receive them after extraction.',
-            );
-          }
+          parts.push('', '## Patients on scene:');
         }
-      } else if (ground.patients.length > 0) {
+        for (const p of ground.patients) parts.push(`- ${p}`);
+      }
+
+      // Crowds — only evacuation receives these from loadGroundSituation
+      if (ground.crowds.length > 0) {
         parts.push(
           '',
-          `## ℹ️ ${ground.patients.length} patient(s) on the ground — handled by Medical Triage teams.`,
-          '→ Not your jurisdiction. If you encounter a patient, radio the medical team via chat.',
+          '## 👥 Crowds & Evacuee Groups (YOUR jurisdiction):',
+          '→ Manage crowd movement, direct evacuees to assembly areas via claimed exits.',
+          '→ If you discover INJURED individuals in a crowd, ENDORSE them to Medical Triage.',
+          '  To endorse: submit a decision describing the injured person(s) and state you are',
+          '  "endorsing to Medical Triage for assessment." This changes their status so the',
+          '  Medical Triage team can see and treat them. Do NOT triage them yourself.',
         );
+        for (const cr of ground.crowds) parts.push(`- ${cr}`);
       }
 
-      // Crowds: show ONLY to evacuation
-      if (ground.crowds.length > 0) {
-        if (isEvacuation) {
-          parts.push('', '## 👥 Crowds & Evacuee Groups (YOUR jurisdiction):');
-          for (const cr of ground.crowds) parts.push(`- ${cr}`);
-        } else {
-          parts.push(
-            '',
-            `## ℹ️ ${ground.crowds.length} crowd/evacuee group(s) on scene — handled by Evacuation team.`,
-            '→ Not your jurisdiction. Do NOT interact with crowd pins.',
-          );
-        }
-      }
-
-      // Hazards: show to Fire Safety (all), others just summary
+      // Hazards — already filtered by team in loadGroundSituation
       if (ground.hazards.length > 0) {
-        if (isFireHazmat) {
+        if (tk === 'fire') {
           parts.push('', '## 🔥 Active Hazards (YOUR jurisdiction):');
-          for (const h of ground.hazards) parts.push(`- ${h}`);
+        } else if (tk === 'bomb_squad') {
+          parts.push('', '## 💣 Explosive Hazards (YOUR jurisdiction):');
         } else {
-          parts.push(
-            '',
-            `## ⚠️ ${ground.hazards.length} active hazard(s) — handled by Fire Safety team.`,
-            '→ Not your jurisdiction. Stay clear and request Fire Safety via chat if needed.',
-          );
+          parts.push('', '## Active Hazards:');
         }
+        for (const h of ground.hazards) parts.push(`- ${h}`);
       }
     } else {
       const totalPins = ground.patients.length + ground.crowds.length + ground.hazards.length;
@@ -3037,6 +3020,27 @@ export class DemoAIAgentService {
       for (const action of agent.recentActions.slice(-8)) {
         parts.push(`- ${action}`);
       }
+    }
+
+    // Show evaluator feedback on this bot's recent decisions so it can self-correct
+    const ownFeedback = await this.loadOwnEvaluatorFeedback(
+      session.sessionId,
+      agent.persona.botUserId,
+    );
+    if (ownFeedback.length > 0) {
+      parts.push(
+        '',
+        '## ⚠️ EVALUATOR FEEDBACK ON YOUR RECENT DECISIONS — READ AND FIX:',
+        'The evaluator flagged issues with your previous decisions. You MUST address these in your next action:',
+      );
+      for (const fb of ownFeedback) {
+        parts.push(`- ${fb}`);
+      }
+      parts.push(
+        '→ If feedback says "setup fails to materialize": you forgot to deploy PERSONNEL. Re-submit with staff counts, roles, PPE, and equipment.',
+        '→ If feedback says "lacks specificity": include exact coordinates, personnel counts, equipment names, and PPE.',
+        '→ If feedback says an area is missing infrastructure: submit a PLACEMENT action to create it.',
+      );
     }
 
     // Advanced mode: feed environmental truths, insider knowledge, placed assets
@@ -3540,6 +3544,17 @@ export class DemoAIAgentService {
         '- Separate walking wounded (GREEN tag patients) from crowd evacuees.',
         '- Assembly points must be UPWIND of any fire/chemical hazard.',
         '- Track numbers: "Evacuated 350 of estimated 500 through Exit B. 150 remaining in Level 2."',
+        '',
+        '#### 🩺 Injured in a Crowd — ENDORSEMENT PROTOCOL:',
+        'You manage crowds, you do NOT treat patients. If you discover injured individuals in a crowd:',
+        '1. STABILIZE the scene — clear space around the injured, control crowd movement.',
+        '2. ENDORSE the injured to Medical Triage by submitting a decision:',
+        '   Title: "Endorse [N] injured civilians from [crowd location] to Medical Triage"',
+        '   Description: Describe the injuries observed and state you are endorsing them for medical assessment.',
+        '   This updates their status to "endorsed_to_triage" so the Medical Triage team can see and treat them.',
+        "3. Do NOT triage, apply tourniquets, administer first aid, or assign triage colors. That is Medical Triage's job.",
+        '4. If a crowd contains people with minor walking injuries (GREEN), you may still direct them to an assembly point.',
+        '   But anyone who needs treatment (bleeding, fractures, burns) must be endorsed to Medical Triage.',
       );
     }
 
@@ -3791,6 +3806,9 @@ export class DemoAIAgentService {
     }
 
     // Check 4: Media statement / public communication quality
+    // Only reject statements that are ENTIRELY generic fluff with no substance.
+    // Statements with specific numbers, locations, or actions pass — the AI evaluator
+    // handles nuanced feedback (missing rebuttal, missing spokesperson, etc.) via consequences.
     const decisionForMedia = actions.find((a) => a.action === 'decision' && a.decision);
     if (decisionForMedia?.decision) {
       const fullText = `${decisionForMedia.decision.title} ${decisionForMedia.decision.description}`;
@@ -3823,32 +3841,12 @@ export class DemoAIAgentService {
             textLower,
           );
 
-        const issues: string[] = [];
-        if (!hasSpecificNumbers) {
-          issues.push(
-            `Include SPECIFIC numbers: e.g., "${scenarioMetrics.totalCasualties} casualties being treated", "${scenarioMetrics.totalCrowdSize} evacuees directed to assembly areas", "${scenarioMetrics.hazardCount} active hazard(s) being contained"`,
-          );
-        }
-        if (!hasSpecificLocation) {
-          issues.push(
-            'Include SPECIFIC locations: name the incident site, zones, exits, or assembly areas by name',
-          );
-        }
-        if (!hasSpecificAction) {
-          issues.push(
-            'Include SPECIFIC actions taken: what teams are doing (triaging, evacuating, cordoning, transporting) — not just "responding"',
-          );
-        }
-        if (isGenericFluff && !hasSpecificNumbers) {
-          issues.push(
-            'Your statement is too GENERIC. Replace vague phrases like "managing the situation" with concrete facts: casualty counts, hazard status, evacuation progress, team deployments',
-          );
-        }
-
-        if (issues.length >= 2) {
+        // Only reject if the statement is pure generic fluff with NO substance at all
+        const hasAnySubstance = hasSpecificNumbers || hasSpecificLocation || hasSpecificAction;
+        if (isGenericFluff && !hasAnySubstance) {
           return {
             valid: false,
-            reason: `Media statements and public communications MUST contain accurate, specific information — not generic reassurances. Fix these issues:\n${issues.map((i) => `• ${i}`).join('\n')}\n\nUse the ground truth: ${scenarioMetrics.totalCasualties} casualties, ${scenarioMetrics.totalCrowdSize} crowd members, ${scenarioMetrics.hazardCount} hazard(s), ${scenarioMetrics.exitCount} exits.`,
+            reason: `Media statements MUST contain specific, verifiable information — not generic reassurances like "the situation is under control". Include concrete facts from the ground truth: ${scenarioMetrics.totalCasualties} casualties, ${scenarioMetrics.totalCrowdSize} crowd members, ${scenarioMetrics.hazardCount} hazard(s), ${scenarioMetrics.exitCount} exits.`,
           };
         }
       }
@@ -4310,6 +4308,15 @@ export class DemoAIAgentService {
       case 'decision': {
         if (!action.decision) break;
 
+        // Always extract and place any infrastructure mentioned in the decision text,
+        // regardless of whether it gets auto-converted to a pin_response below.
+        await this.tryExtractPlacementsFromDecision(
+          session,
+          agent,
+          action.decision.title,
+          action.decision.description,
+        );
+
         // Fallback: if the decision text mentions a casualty/hazard UUID,
         // auto-convert to a pin_response so the pin actually gets updated
         const converted = await this.tryConvertDecisionToPinResponse(
@@ -4666,16 +4673,37 @@ export class DemoAIAgentService {
         .maybeSingle();
 
       if (casualty) {
+        const cType = casualty.casualty_type as string;
+        const isCrowdPin =
+          cType === 'crowd' || cType === 'evacuee_group' || cType === 'convergent_crowd';
+        const tk = getTeamScopeKey(agent.persona.teamName);
+
+        // Block cross-team pin interactions
+        if (isCrowdPin && tk !== 'evacuation') {
+          logger.debug(
+            { team: agent.persona.teamName, casualtyType: cType },
+            "AI agent: skipping auto-convert — crowd pin is not this team's jurisdiction",
+          );
+          return null;
+        }
+        if (!isCrowdPin && tk === 'evacuation') {
+          logger.debug(
+            { team: agent.persona.teamName, casualtyType: cType },
+            "AI agent: skipping auto-convert — patient pin is not evacuation's jurisdiction",
+          );
+          return null;
+        }
+
         const conds = (casualty.conditions as Record<string, unknown>) ?? {};
         const vis = (conds.visible_description as string) || (conds.injury_type as string) || '';
         const triageColor = this.inferTriageColor(fullText, conds);
         return {
           target_id: casualty.id as string,
           target_type: 'casualty',
-          target_label: vis || `${casualty.casualty_type} (${casualty.status})`,
+          target_label: vis || `${cType} (${casualty.status})`,
           actions: this.inferActionsFromText(fullText, 'casualty'),
           resources: [{ type: 'responder', label: `${agent.persona.teamName} Team`, quantity: 1 }],
-          triage_color: triageColor,
+          triage_color: isCrowdPin ? undefined : triageColor,
           description: description.slice(0, 300),
         };
       }
@@ -4722,53 +4750,100 @@ export class DemoAIAgentService {
       return null;
     }
 
+    const teamKey = getTeamScopeKey(agent.persona.teamName);
+    const CROWD_TYPES = new Set(['crowd', 'evacuee_group', 'convergent_crowd']);
+
     const casualtyKeywords =
       /triage|treat|first aid|tourniquet|administer|assess (patient|casualt|victim|injur)/i;
     const hazardKeywords =
       /contain (fire|spill|leak|chemical)|suppress fire|extinguish|deploy foam|hazmat/i;
+    const crowdKeywords =
+      /evacuate|direct.*crowd|marshal|assembly|shelter.*in.*place|crowd.*manage/i;
 
-    if (casualtyKeywords.test(fullText) || hazardKeywords.test(fullText)) {
-      const isCasualty = casualtyKeywords.test(fullText);
-      const table = isCasualty ? 'scenario_casualties' : 'scenario_hazards';
-      const statusFilter = isCasualty
-        ? ['undiscovered', 'identified', 'endorsed_to_triage', 'at_assembly']
-        : ['active', 'escalating'];
+    // Determine what type of pin this team should interact with
+    const wantsCasualty =
+      casualtyKeywords.test(fullText) && (teamKey === 'triage' || teamKey === 'fire');
+    const wantsCrowd = crowdKeywords.test(fullText) && teamKey === 'evacuation';
+    const wantsHazard =
+      hazardKeywords.test(fullText) && (teamKey === 'fire' || teamKey === 'bomb_squad');
 
+    if (wantsCasualty) {
+      const statusFilter = ['undiscovered', 'identified', 'endorsed_to_triage', 'at_assembly'];
       const { data: targets } = await supabaseAdmin
-        .from(table)
-        .select('id, status, ' + (isCasualty ? 'casualty_type, conditions' : 'hazard_type'))
+        .from('scenario_casualties')
+        .select('id, status, casualty_type, conditions')
         .eq('session_id', session.sessionId)
         .in('status', statusFilter)
+        .limit(5);
+
+      // Filter out crowd-type pins — triage only gets individual patients
+      const filtered = (targets ?? []).filter((t) => {
+        const ct = (t as Record<string, unknown>).casualty_type as string;
+        return !CROWD_TYPES.has(ct);
+      });
+
+      if (filtered.length > 0) {
+        const target = filtered[0] as unknown as Record<string, unknown>;
+        const conds = (target.conditions as Record<string, unknown>) ?? {};
+        const vis = (conds.visible_description as string) || '';
+        return {
+          target_id: target.id as string,
+          target_type: 'casualty',
+          target_label: vis || `${target.casualty_type} (${target.status})`,
+          actions: this.inferActionsFromText(fullText, 'casualty'),
+          resources: [{ type: 'responder', label: `${agent.persona.teamName} Team`, quantity: 1 }],
+          triage_color: this.inferTriageColor(fullText, conds),
+          description: description.slice(0, 300),
+        };
+      }
+    }
+
+    if (wantsCrowd) {
+      const { data: targets } = await supabaseAdmin
+        .from('scenario_casualties')
+        .select('id, status, casualty_type, conditions')
+        .eq('session_id', session.sessionId)
+        .in('status', ['undiscovered', 'identified', 'being_evacuated', 'at_assembly'])
+        .limit(5);
+
+      const filtered = (targets ?? []).filter((t) => {
+        const ct = (t as Record<string, unknown>).casualty_type as string;
+        return CROWD_TYPES.has(ct);
+      });
+
+      if (filtered.length > 0) {
+        const target = filtered[0] as unknown as Record<string, unknown>;
+        const conds = (target.conditions as Record<string, unknown>) ?? {};
+        const vis = (conds.visible_description as string) || '';
+        return {
+          target_id: target.id as string,
+          target_type: 'casualty',
+          target_label: vis || `${target.casualty_type} (${target.status})`,
+          actions: this.inferActionsFromText(fullText, 'casualty'),
+          resources: [{ type: 'responder', label: `${agent.persona.teamName} Team`, quantity: 1 }],
+          description: description.slice(0, 300),
+        };
+      }
+    }
+
+    if (wantsHazard) {
+      const { data: targets } = await supabaseAdmin
+        .from('scenario_hazards')
+        .select('id, status, hazard_type')
+        .eq('session_id', session.sessionId)
+        .in('status', ['active', 'escalating'])
         .limit(1);
 
       if (targets?.length) {
         const target = targets[0] as unknown as Record<string, unknown>;
-        if (isCasualty) {
-          const conds = (target.conditions as Record<string, unknown>) ?? {};
-          const vis = (conds.visible_description as string) || '';
-          return {
-            target_id: target.id as string,
-            target_type: 'casualty',
-            target_label: vis || `${target.casualty_type} (${target.status})`,
-            actions: this.inferActionsFromText(fullText, 'casualty'),
-            resources: [
-              { type: 'responder', label: `${agent.persona.teamName} Team`, quantity: 1 },
-            ],
-            triage_color: this.inferTriageColor(fullText, conds),
-            description: description.slice(0, 300),
-          };
-        } else {
-          return {
-            target_id: target.id as string,
-            target_type: 'hazard',
-            target_label: `${target.hazard_type} (${target.status})`,
-            actions: this.inferActionsFromText(fullText, 'hazard'),
-            resources: [
-              { type: 'responder', label: `${agent.persona.teamName} Team`, quantity: 1 },
-            ],
-            description: description.slice(0, 300),
-          };
-        }
+        return {
+          target_id: target.id as string,
+          target_type: 'hazard',
+          target_label: `${target.hazard_type} (${target.status})`,
+          actions: this.inferActionsFromText(fullText, 'hazard'),
+          resources: [{ type: 'responder', label: `${agent.persona.teamName} Team`, quantity: 1 }],
+          description: description.slice(0, 300),
+        };
       }
     }
 
@@ -5113,6 +5188,7 @@ export class DemoAIAgentService {
   private async loadGroundSituation(
     sessionId: string,
     scenarioId: string,
+    teamScopeKey?: string,
   ): Promise<{
     patients: string[];
     crowds: string[];
@@ -5131,6 +5207,8 @@ export class DemoAIAgentService {
       claimableExits: [] as Array<{ label: string; location_type: string; claimStatus: string }>,
       pinZoneMap: new Map<string, string>(),
     };
+
+    const CROWD_TYPES = new Set(['crowd', 'evacuee_group', 'convergent_crowd']);
 
     try {
       // Load zone ground truth polygons for zone classification
@@ -5205,15 +5283,34 @@ export class DemoAIAgentService {
         const zoneLabel =
           zone !== 'unknown' && zone !== 'outside' ? `, ZONE: ${zone.toUpperCase()}` : '';
         const pinId = c.id as string;
+        const isCrowd = CROWD_TYPES.has(cType);
+        const status = c.status as string;
 
         result.pinZoneMap.set(pinId, zone);
 
-        const line = `[id:${pinId}] ${cType} (${c.headcount} people) at [${lat}, ${lng}] — status: ${c.status}${zoneLabel}${triageTag}${assigned}${condSummary ? `, ${condSummary}` : ''}`;
+        const line = `[id:${pinId}] ${cType} (${c.headcount} people) at [${lat}, ${lng}] — status: ${status}${zoneLabel}${triageTag}${assigned}${condSummary ? `, ${condSummary}` : ''}`;
 
-        if (cType === 'crowd' || cType === 'evacuee_group' || cType === 'convergent_crowd') {
-          result.crowds.push(line);
+        if (isCrowd) {
+          // Crowds: only visible to evacuation team
+          if (!teamScopeKey || teamScopeKey === 'evacuation') {
+            result.crowds.push(line);
+          }
         } else {
-          result.patients.push(line);
+          // Individual patients: filter by team role and zone
+          if (!teamScopeKey) {
+            result.patients.push(line);
+          } else if (teamScopeKey === 'triage') {
+            // Triage only sees patients that are endorsed to them or in warm/cold zones (not hot)
+            if (zone !== 'hot') {
+              result.patients.push(line);
+            }
+          } else if (teamScopeKey === 'fire') {
+            // Fire only sees hot zone patients (for extraction)
+            if (zone === 'hot' || zone === 'unknown') {
+              result.patients.push(line);
+            }
+          }
+          // Other teams (media, pursuit, bomb_squad) don't see patient pins
         }
       }
 
@@ -5234,10 +5331,31 @@ export class DemoAIAgentService {
         const zoneLabel =
           zone !== 'unknown' && zone !== 'outside' ? `, ZONE: ${zone.toUpperCase()}` : '';
         const pinId = h.id as string;
+        const hazardType = (h.hazard_type as string) || '';
         result.pinZoneMap.set(pinId, zone);
-        result.hazards.push(
-          `[id:${pinId}] ${h.hazard_type} at [${lat}, ${lng}] — ${h.status}${zoneLabel}${propSummary ? `, ${propSummary}` : ''}`,
+
+        // Filter hazards by team scope
+        const isExplosiveHazard = /bomb|explosive|ied|detonat|suspicious.*package/i.test(
+          hazardType,
         );
+        if (teamScopeKey === 'bomb_squad') {
+          if (isExplosiveHazard) {
+            result.hazards.push(
+              `[id:${pinId}] ${hazardType} at [${lat}, ${lng}] — ${h.status}${zoneLabel}${propSummary ? `, ${propSummary}` : ''}`,
+            );
+          }
+        } else if (teamScopeKey === 'fire') {
+          if (!isExplosiveHazard) {
+            result.hazards.push(
+              `[id:${pinId}] ${hazardType} at [${lat}, ${lng}] — ${h.status}${zoneLabel}${propSummary ? `, ${propSummary}` : ''}`,
+            );
+          }
+        } else if (!teamScopeKey) {
+          result.hazards.push(
+            `[id:${pinId}] ${hazardType} at [${lat}, ${lng}] — ${h.status}${zoneLabel}${propSummary ? `, ${propSummary}` : ''}`,
+          );
+        }
+        // Other teams (triage, evacuation, media, pursuit) don't interact with hazard pins
       }
 
       // Claimable exits
@@ -5288,7 +5406,7 @@ export class DemoAIAgentService {
       const { data: decisions } = await supabaseAdmin
         .from('decisions')
         .select(
-          'title, type, status, created_at, creator:user_profiles!decisions_proposed_by_fkey(full_name)',
+          'title, type, status, created_at, ai_evaluation, creator:user_profiles!decisions_proposed_by_fkey(full_name)',
         )
         .eq('session_id', sessionId)
         .order('created_at', { ascending: false })
@@ -5297,7 +5415,17 @@ export class DemoAIAgentService {
       for (const d of (decisions ?? []) as Array<Record<string, unknown>>) {
         const creator = d.creator as Record<string, unknown> | null;
         const name = (creator?.full_name as string) || 'Unknown';
-        lines.push(`${name} — ${d.status}: "${d.title}"`);
+        let line = `${name} — ${d.status}: "${d.title}"`;
+        const evalData = d.ai_evaluation as Record<string, unknown> | null;
+        if (evalData) {
+          const consistent = evalData.consistent as boolean | undefined;
+          const kind = (evalData.mismatch_kind as string) || '';
+          const feedback = (evalData.feedback_summary as string) || '';
+          if (consistent === false && feedback) {
+            line += ` [EVALUATOR: ${kind ? kind.toUpperCase() + ' — ' : ''}${feedback.slice(0, 120)}]`;
+          }
+        }
+        lines.push(line);
       }
 
       const { data: placements } = await supabaseAdmin
@@ -5330,6 +5458,36 @@ export class DemoAIAgentService {
       }
     } catch (err) {
       logger.debug({ error: err, sessionId }, 'AI agent: failed to load recent activity');
+    }
+    return lines;
+  }
+
+  private async loadOwnEvaluatorFeedback(sessionId: string, botUserId: string): Promise<string[]> {
+    const lines: string[] = [];
+    try {
+      const { data: decisions } = await supabaseAdmin
+        .from('decisions')
+        .select('title, ai_evaluation')
+        .eq('session_id', sessionId)
+        .eq('proposed_by', botUserId)
+        .order('created_at', { ascending: false })
+        .limit(4);
+
+      for (const d of (decisions ?? []) as Array<Record<string, unknown>>) {
+        const evalData = d.ai_evaluation as Record<string, unknown> | null;
+        if (!evalData) continue;
+        const consistent = evalData.consistent as boolean | undefined;
+        if (consistent !== false) continue;
+        const kind = (evalData.mismatch_kind as string) || '';
+        const feedback = (evalData.feedback_summary as string) || '';
+        if (feedback) {
+          lines.push(
+            `"${(d.title as string)?.slice(0, 60)}" → ${kind ? kind.toUpperCase() + ': ' : ''}${feedback.slice(0, 200)}`,
+          );
+        }
+      }
+    } catch (err) {
+      logger.debug({ error: err }, 'AI agent: failed to load own evaluator feedback');
     }
     return lines;
   }

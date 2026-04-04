@@ -29,12 +29,17 @@ const BEHAVIOR_ESCALATION: Record<string, string> = {
   anxious: 'panicking',
 };
 
+const DEMO_TRAINER_ID = 'a0000000-de00-b000-0001-000000000099';
+
 /** Minutes between each triage color escalation step for untreated patients */
 const ESCALATION_INTERVAL_MIN = 10;
+const DEMO_ESCALATION_INTERVAL_MIN = 4;
 /** Minutes a critical (red) patient can remain in treatment/endorsed_to_transport before dying */
 const CRITICAL_TRANSPORT_WINDOW_MIN = 20;
+const DEMO_CRITICAL_TRANSPORT_WINDOW_MIN = 8;
 /** Warning issued this many minutes before the critical transport deadline */
 const CRITICAL_TRANSPORT_WARNING_BEFORE_MIN = 5;
+const DEMO_CRITICAL_TRANSPORT_WARNING_BEFORE_MIN = 2;
 
 const UNTREATED_STATUSES = [
   'undiscovered',
@@ -64,10 +69,19 @@ function minutesSinceLastDeterioration(
 export async function runPeopleDeterioration(sessionId: string): Promise<void> {
   const { data: session } = await supabaseAdmin
     .from('sessions')
-    .select('scenario_id, start_time')
+    .select('scenario_id, start_time, trainer_id')
     .eq('id', sessionId)
     .single();
   if (!session?.start_time) return;
+
+  const isDemo = (session as { trainer_id?: string }).trainer_id === DEMO_TRAINER_ID;
+  const escalationMin = isDemo ? DEMO_ESCALATION_INTERVAL_MIN : ESCALATION_INTERVAL_MIN;
+  const transportWindowMin = isDemo
+    ? DEMO_CRITICAL_TRANSPORT_WINDOW_MIN
+    : CRITICAL_TRANSPORT_WINDOW_MIN;
+  const transportWarningBeforeMin = isDemo
+    ? DEMO_CRITICAL_TRANSPORT_WARNING_BEFORE_MIN
+    : CRITICAL_TRANSPORT_WARNING_BEFORE_MIN;
 
   const sessionStartMs = new Date(session.start_time).getTime();
   const elapsedMinutes = Math.floor((Date.now() - sessionStartMs) / 60000);
@@ -97,8 +111,8 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
         cas.appears_at_minutes ?? 0,
       );
 
-      // --- Untreated patients: escalate triage color every ESCALATION_INTERVAL_MIN ---
-      if (UNTREATED_STATUSES.includes(cas.status) && sinceLastDet >= ESCALATION_INTERVAL_MIN) {
+      // --- Untreated patients: escalate triage color every escalationMin ---
+      if (UNTREATED_STATUSES.includes(cas.status) && sinceLastDet >= escalationMin) {
         const newTriage = TRIAGE_ESCALATION[currentTriage];
 
         if (newTriage) {
@@ -139,7 +153,7 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
       if (
         cas.status === 'endorsed_to_triage' &&
         !statusChange &&
-        sinceLastDet >= ESCALATION_INTERVAL_MIN &&
+        sinceLastDet >= escalationMin &&
         !conds.waiting_warned
       ) {
         conds.waiting_warned = true;
@@ -170,7 +184,7 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
           const clockStartMs = new Date(conds.critical_clock_started_at as string).getTime();
           const minutesInCritical = Math.floor((Date.now() - clockStartMs) / 60000);
 
-          if (minutesInCritical >= CRITICAL_TRANSPORT_WINDOW_MIN) {
+          if (minutesInCritical >= transportWindowMin) {
             conds.triage_color = 'black';
             statusChange = 'deceased';
             updated = true;
@@ -191,14 +205,13 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
               generation_source: 'deterioration_cycle',
             });
           } else if (
-            minutesInCritical >=
-              CRITICAL_TRANSPORT_WINDOW_MIN - CRITICAL_TRANSPORT_WARNING_BEFORE_MIN &&
+            minutesInCritical >= transportWindowMin - transportWarningBeforeMin &&
             !conds.critical_transport_warned
           ) {
             conds.critical_transport_warned = true;
             updated = true;
 
-            const remainingMin = CRITICAL_TRANSPORT_WINDOW_MIN - minutesInCritical;
+            const remainingMin = transportWindowMin - minutesInCritical;
             injectsToCreate.push({
               scenario_id: session.scenario_id,
               session_id: sessionId,
@@ -220,7 +233,7 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
         cas.appears_at_minutes ?? 0,
       );
 
-      if (['identified'].includes(cas.status) && sinceLastDet >= ESCALATION_INTERVAL_MIN) {
+      if (['identified'].includes(cas.status) && sinceLastDet >= escalationMin) {
         const currentBehavior = (conds.behavior as string) ?? 'calm';
         const newBehavior = BEHAVIOR_ESCALATION[currentBehavior];
 

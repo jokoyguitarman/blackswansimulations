@@ -768,6 +768,8 @@ export const SessionView = () => {
       };
       computed_band?: 'low' | 'medium' | 'high';
       managed_effect_keys?: string[];
+      trigger_inject_title?: string;
+      target_team?: string;
       factors?: Array<{ id: string; name: string; description: string; severity: string }>;
       de_escalation_factors?: Array<{ id: string; name: string; description: string }>;
       pathways?: Array<{
@@ -2524,6 +2526,23 @@ export const SessionView = () => {
                             <span className="text-robotic-gold">
                               Escalation factors computed ({a.summary ?? '—'})
                             </span>
+                            {(a.trigger_inject_title || a.target_team) && (
+                              <div className="text-robotic-yellow/70 text-xs mt-1">
+                                {a.trigger_inject_title && (
+                                  <>
+                                    Triggered by:{' '}
+                                    <span className="text-robotic-green/90 font-semibold">
+                                      {a.trigger_inject_title}
+                                    </span>
+                                  </>
+                                )}
+                                {a.target_team && (
+                                  <span className="ml-2 px-1.5 py-0.5 bg-robotic-yellow/20 text-robotic-yellow rounded text-[10px] uppercase">
+                                    {a.target_team}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                             {a.factors && a.factors.length > 0 && (
                               <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
                                 <div className="text-robotic-yellow/80 mb-1">
@@ -2565,6 +2584,23 @@ export const SessionView = () => {
                             <span className="text-robotic-gold">
                               Escalation pathways computed ({a.summary ?? '—'})
                             </span>
+                            {(a.trigger_inject_title || a.target_team) && (
+                              <div className="text-robotic-yellow/70 text-xs mt-1">
+                                {a.trigger_inject_title && (
+                                  <>
+                                    Triggered by:{' '}
+                                    <span className="text-robotic-green/90 font-semibold">
+                                      {a.trigger_inject_title}
+                                    </span>
+                                  </>
+                                )}
+                                {a.target_team && (
+                                  <span className="ml-2 px-1.5 py-0.5 bg-robotic-yellow/20 text-robotic-yellow rounded text-[10px] uppercase">
+                                    {a.target_team}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                             {a.pathways && a.pathways.length > 0 && (
                               <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
                                 <div className="text-robotic-yellow/80 mb-1">[PATHWAYS]</div>

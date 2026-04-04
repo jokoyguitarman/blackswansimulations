@@ -12,6 +12,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from './websocketService.js';
 import { publishInjectToSession } from '../routes/injects.js';
+import { env } from '../env.js';
 import type { Server as IoServer } from 'socket.io';
 import type { PathwayOutcome } from './aiService.js';
 
@@ -240,6 +241,34 @@ export async function selectAndPublishPathwayOutcome(
     const toPublish =
       matching.length > 0 ? matching[0] : outcomes[Math.floor(Math.random() * outcomes.length)];
 
+    // Contextual rewrite: if the team provided a decision, rewrite the pre-generated
+    // pathway inject so its narrative matches what the team actually did.
+    let finalTitle = toPublish.inject_payload.title;
+    let finalContent = toPublish.inject_payload.content;
+
+    if (decisionText) {
+      let triggerInjectTitle: string | undefined;
+      if (chosenRow.trigger_inject_id) {
+        const { data: trigInject } = await supabaseAdmin
+          .from('scenario_injects')
+          .select('title')
+          .eq('id', chosenRow.trigger_inject_id)
+          .maybeSingle();
+        triggerInjectTitle = (trigInject?.title as string) ?? undefined;
+      }
+
+      const rewritten = await rewritePathwayInjectForContext(
+        finalTitle,
+        finalContent,
+        decisionText,
+        teamName,
+        band,
+        triggerInjectTitle,
+      );
+      finalTitle = rewritten.title;
+      finalContent = rewritten.content;
+    }
+
     const requiresResponse = band !== 'high';
 
     const { data: createdInject, error: createError } = await supabaseAdmin
@@ -250,8 +279,8 @@ export async function selectAndPublishPathwayOutcome(
         trigger_time_minutes: null,
         trigger_condition: null,
         type: toPublish.inject_payload.type,
-        title: toPublish.inject_payload.title,
-        content: toPublish.inject_payload.content,
+        title: finalTitle,
+        content: finalContent,
         severity: toPublish.inject_payload.severity,
         affected_roles: toPublish.inject_payload.affected_roles ?? [],
         inject_scope: toPublish.inject_payload.inject_scope ?? 'universal',
@@ -341,6 +370,96 @@ const INJECT_TOPIC_SIGNATURES: Array<{
     topic: 'public concern management',
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Contextual Pathway Inject Rewrite
+// Rewrites a pre-generated pathway inject so its narrative matches the team's
+// actual decision while preserving the robustness band's tone.
+// ---------------------------------------------------------------------------
+
+async function rewritePathwayInjectForContext(
+  originalTitle: string,
+  originalContent: string,
+  decisionText: string,
+  teamName: string,
+  band: 'low' | 'medium' | 'high',
+  triggerInjectTitle?: string,
+): Promise<{ title: string; content: string }> {
+  const apiKey = env.openAiApiKey;
+  if (!apiKey) return { title: originalTitle, content: originalContent };
+
+  const toneGuide =
+    band === 'high'
+      ? 'POSITIVE: The team acted well. Describe a favourable outcome that flows logically from their specific action.'
+      : band === 'medium'
+        ? 'MIXED: The team made a reasonable effort but gaps remain. Describe a partial improvement with lingering challenges.'
+        : 'NEGATIVE: The team failed to act adequately. Describe a worsening situation that flows from their inadequate action or inaction.';
+
+  const systemPrompt = `You rewrite crisis exercise pathway injects so they accurately reflect what the team actually did.
+
+RULES:
+1. The rewritten inject must describe an outcome that LOGICALLY FOLLOWS from the team's actual decision — not from an imagined action they never took.
+2. Preserve the robustness tone: ${toneGuide}
+3. Keep the same length and style as the original (1-3 sentences, present tense, describing what is happening now as a consequence).
+4. Do NOT invent actions the team did not mention. Only reference what they actually decided.
+5. Return ONLY a JSON object: { "title": "...", "content": "..." }`;
+
+  const userPrompt = `TEAM: ${teamName}
+${triggerInjectTitle ? `TRIGGER INJECT: ${triggerInjectTitle}` : ''}
+TEAM'S ACTUAL DECISION: ${decisionText.slice(0, 500)}
+
+PRE-GENERATED PATHWAY INJECT (does NOT match the decision — rewrite it):
+Title: ${originalTitle}
+Content: ${originalContent}
+
+Rewrite the inject so it describes an outcome that follows from the team's ACTUAL decision. Return JSON only.`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 300,
+      }),
+    });
+
+    if (!response.ok) {
+      logger.warn({ status: response.status }, 'Pathway rewrite: OpenAI API error');
+      return { title: originalTitle, content: originalContent };
+    }
+
+    const json = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const raw = json.choices?.[0]?.message?.content?.trim() ?? '';
+    const cleaned = raw
+      .replace(/```json\s*/g, '')
+      .replace(/```/g, '')
+      .trim();
+    const parsed = JSON.parse(cleaned) as { title?: string; content?: string };
+
+    if (parsed.title && parsed.content) {
+      logger.info(
+        { teamName, band, originalTitle, rewrittenTitle: parsed.title },
+        'Pathway inject rewritten to match team decision context',
+      );
+      return { title: parsed.title, content: parsed.content };
+    }
+    return { title: originalTitle, content: originalContent };
+  } catch (err) {
+    logger.warn({ err }, 'Pathway rewrite failed — using original');
+    return { title: originalTitle, content: originalContent };
+  }
+}
 
 async function checkDecisionRelevance(
   sessionId: string,

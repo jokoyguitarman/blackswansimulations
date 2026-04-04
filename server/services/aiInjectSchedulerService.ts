@@ -223,9 +223,14 @@ async function teamsWithActionableIncidents(
   for (const inj of injects ?? []) {
     const tt = (inj as { target_teams?: string[] | null }).target_teams;
     if (!Array.isArray(tt) || tt.length === 0) {
-      teams.add('evacuation');
-      teams.add('triage');
-      teams.add('media');
+      // Universal inject — all teams in the session are considered actionable
+      const { data: sessionTeams } = await supabaseAdmin
+        .from('session_teams')
+        .select('team_name')
+        .eq('session_id', sessionId);
+      for (const st of sessionTeams ?? []) {
+        teams.add((st as { team_name: string }).team_name);
+      }
     } else {
       for (const t of tt) teams.add(t);
     }
@@ -242,15 +247,19 @@ async function teamsWithActionableIncidents(
 export class AIInjectSchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
-  private readonly checkIntervalMs = 10 * 60 * 1000; // 10 minutes
+  private readonly checkIntervalMs = 2 * 60 * 1000; // 2 minutes (fast enough for demo; regular sessions use a per-session lookback)
   private io: SocketServer | null = null;
+
+  private static readonly DEMO_TRAINER_ID = 'a0000000-de00-b000-0001-000000000099';
+  private static readonly DEMO_LOOKBACK_MS = 2 * 60 * 1000; // 2 minutes for demo
+  private static readonly REGULAR_LOOKBACK_MS = 10 * 60 * 1000; // 10 minutes for regular
 
   constructor(io?: SocketServer) {
     this.io = io || null;
     logger.info(
       {
         intervalMs: this.checkIntervalMs,
-        intervalMinutes: 10,
+        intervalMinutes: 2,
       },
       'AIInjectSchedulerService initialized',
     );
@@ -271,13 +280,12 @@ export class AIInjectSchedulerService {
     }
 
     this.isRunning = true;
-    // First evaluation after 10 minutes so teams have time to act before being judged
     this.intervalId = setInterval(() => {
       this.checkAndGenerateInjects();
     }, this.checkIntervalMs);
 
     logger.info(
-      'AIInjectSchedulerService started (first run in 10 minutes, then every 10 minutes)',
+      'AIInjectSchedulerService started (every 2 minutes; demo sessions use 2-min lookback, regular sessions use 10-min lookback)',
     );
   }
 
@@ -350,9 +358,13 @@ export class AIInjectSchedulerService {
     status: string;
     current_state: Record<string, unknown> | null;
   }): Promise<void> {
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const isDemo = session.trainer_id === AIInjectSchedulerService.DEMO_TRAINER_ID;
+    const lookbackMs = isDemo
+      ? AIInjectSchedulerService.DEMO_LOOKBACK_MS
+      : AIInjectSchedulerService.REGULAR_LOOKBACK_MS;
+    const lookbackIso = new Date(Date.now() - lookbackMs).toISOString();
 
-    // Get all decisions made in the last 10 minutes
+    // Get all decisions made in the lookback window
     const { data: recentDecisions, error: decisionsError } = await supabaseAdmin
       .from('decisions')
       .select(
@@ -360,7 +372,7 @@ export class AIInjectSchedulerService {
       )
       .eq('session_id', session.id)
       .eq('status', 'executed')
-      .gte('executed_at', tenMinutesAgo)
+      .gte('executed_at', lookbackIso)
       .order('executed_at', { ascending: false });
 
     if (decisionsError) {
@@ -391,7 +403,7 @@ export class AIInjectSchedulerService {
       .select('metadata, created_at')
       .eq('session_id', session.id)
       .eq('event_type', 'inject')
-      .gte('created_at', tenMinutesAgo)
+      .gte('created_at', lookbackIso)
       .order('created_at', { ascending: false });
 
     if (injectsError) {
@@ -945,15 +957,15 @@ export class AIInjectSchedulerService {
       .limit(1);
     const hasNotMetGates = (notMetGates?.length ?? 0) > 0;
 
-    // Teams that had actionable incidents (requires_response: true) in last 10 min – avoid penalizing when they had nothing to respond to
-    const teamsWithActionable = await teamsWithActionableIncidents(session.id, tenMinutesAgo);
+    // Teams that had actionable incidents (requires_response: true) in the lookback window
+    const teamsWithActionable = await teamsWithActionableIncidents(session.id, lookbackIso);
 
-    // Load unconsumed pathway outcome rows from the last 10 minutes (consumed rows were already published per-decision)
+    // Load unconsumed pathway outcome rows from the lookback window
     const { data: pathwayOutcomesRows } = await supabaseAdmin
       .from('session_pathway_outcomes')
       .select('id, outcomes, trigger_inject_id, evaluated_at')
       .eq('session_id', session.id)
-      .gte('evaluated_at', tenMinutesAgo)
+      .gte('evaluated_at', lookbackIso)
       .is('consumed_at', null)
       .order('evaluated_at', { ascending: true });
 

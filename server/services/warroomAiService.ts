@@ -5467,7 +5467,7 @@ VARIETY IS CRITICAL:
       content: inj.content || '',
       severity: inj.severity || 'high',
       inject_scope: 'universal',
-      target_teams: [] as string[],
+      target_teams: teamNames.length > 0 ? [...teamNames] : ([] as string[]),
       requires_response: inj.requires_response ?? true,
       requires_coordination: inj.requires_coordination ?? false,
     }));
@@ -6228,7 +6228,7 @@ RULES:
       content: (inj.content as string) || '',
       severity: (inj.severity as string) || 'critical',
       inject_scope: 'universal' as const,
-      target_teams: [] as string[],
+      target_teams: teamNames.length > 0 ? [...teamNames] : ([] as string[]),
       requires_response: true,
       requires_coordination: false,
       conditions_to_cancel: (inj.conditions_to_cancel as string[]) || [
@@ -6400,7 +6400,7 @@ export async function warroomGenerateScenario(
       `A ${input.scenario_type} has been reported at ${venue}. All teams respond immediately.`,
     severity: 'critical',
     inject_scope: 'universal',
-    target_teams: [],
+    target_teams: teamNames.length > 0 ? [...teamNames] : [],
     requires_response: true,
     requires_coordination: false,
   };

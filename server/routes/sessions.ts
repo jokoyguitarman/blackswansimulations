@@ -460,13 +460,17 @@ router.get(
           .limit(50),
         supabaseAdmin
           .from('session_escalation_factors')
-          .select('id, evaluated_at, factors, de_escalation_factors')
+          .select(
+            'id, evaluated_at, factors, de_escalation_factors, trigger_inject_id, target_team',
+          )
           .eq('session_id', sessionId)
           .order('evaluated_at', { ascending: false })
           .limit(50),
         supabaseAdmin
           .from('session_escalation_pathways')
-          .select('id, evaluated_at, pathways, de_escalation_pathways')
+          .select(
+            'id, evaluated_at, pathways, de_escalation_pathways, trigger_inject_id, target_team',
+          )
           .eq('session_id', sessionId)
           .order('evaluated_at', { ascending: false })
           .limit(50),
@@ -485,6 +489,8 @@ router.get(
         injectId?: string;
         summary?: string;
         step?: string;
+        trigger_inject_title?: string;
+        target_team?: string;
         matrix?: Record<string, Record<string, number>>;
         robustness_by_decision?: Record<string, number>;
         response_taxonomy?: Record<string, string>;
@@ -636,6 +642,29 @@ router.get(
       );
 
       const factorsList = factorsRes.data || [];
+      const pathwaysList = pathwaysRes.data || [];
+
+      // Batch-fetch trigger inject titles for factors & pathways rows
+      const triggerInjectIds = new Set<string>();
+      for (const f of factorsList) {
+        const tid = (f as { trigger_inject_id?: string | null }).trigger_inject_id;
+        if (tid) triggerInjectIds.add(tid);
+      }
+      for (const p of pathwaysList) {
+        const tid = (p as { trigger_inject_id?: string | null }).trigger_inject_id;
+        if (tid) triggerInjectIds.add(tid);
+      }
+      const injectTitleMap = new Map<string, string>();
+      if (triggerInjectIds.size > 0) {
+        const { data: injectRows } = await supabaseAdmin
+          .from('scenario_injects')
+          .select('id, title')
+          .in('id', [...triggerInjectIds]);
+        for (const row of injectRows || []) {
+          injectTitleMap.set(row.id, (row.title as string) || 'Untitled inject');
+        }
+      }
+
       for (const f of factorsList) {
         const factors =
           (f.factors as Array<{
@@ -651,16 +680,19 @@ router.get(
             name: string;
             description: string;
           }>) || [];
+        const tid = (f as { trigger_inject_id?: string | null }).trigger_inject_id;
+        const fTeam = (f as { target_team?: string | null }).target_team;
         activities.push({
           type: 'escalation_factors_computed',
           at: f.evaluated_at,
           summary: `${factors.length} escalation factors identified`,
           factors,
           ...(deEscFactors.length > 0 && { de_escalation_factors: deEscFactors }),
+          ...(tid && { trigger_inject_title: injectTitleMap.get(tid) ?? 'Unknown inject' }),
+          ...(fTeam && { target_team: fTeam }),
         });
       }
 
-      const pathwaysList = pathwaysRes.data || [];
       for (const p of pathwaysList) {
         const pathways =
           (p.pathways as Array<{
@@ -676,12 +708,16 @@ router.get(
             mitigating_behaviours: string[];
             emerging_challenges?: string[];
           }>) || [];
+        const tid = (p as { trigger_inject_id?: string | null }).trigger_inject_id;
+        const pTeam = (p as { target_team?: string | null }).target_team;
         activities.push({
           type: 'escalation_pathways_computed',
           at: p.evaluated_at,
           summary: `${pathways.length} escalation pathways generated`,
           pathways,
           ...(deEscPathways.length > 0 && { de_escalation_pathways: deEscPathways }),
+          ...(tid && { trigger_inject_title: injectTitleMap.get(tid) ?? 'Unknown inject' }),
+          ...(pTeam && { target_team: pTeam }),
         });
       }
 

@@ -285,6 +285,8 @@ export async function runPathwayOutcomesOnInjectPublished(
       await supabaseAdmin.from('session_escalation_factors').insert({
         session_id: sessionId,
         evaluated_at: new Date().toISOString(),
+        trigger_inject_id: injectId,
+        target_team: isSingleTeamFallback ? null : teamName,
         factors: mergedFactors,
         de_escalation_factors: deEscalationFactors,
       });
@@ -292,6 +294,8 @@ export async function runPathwayOutcomesOnInjectPublished(
       await supabaseAdmin.from('session_escalation_pathways').insert({
         session_id: sessionId,
         evaluated_at: new Date().toISOString(),
+        trigger_inject_id: injectId,
+        target_team: isSingleTeamFallback ? null : teamName,
         pathways: pathwaysResult.pathways,
         de_escalation_pathways: deEscalationPathways,
       });
