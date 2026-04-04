@@ -7,7 +7,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { refreshOsmVicinityForScenario } from './osmVicinityService.js';
 import type { WarroomScenarioPayload } from './warroomAiService.js';
-import { haversineM } from './geoUtils.js';
+import { haversineM, circleToPolygon } from './geoUtils.js';
 
 const VALID_INJECT_TYPES = [
   'media_report',
@@ -322,6 +322,64 @@ export async function persistWarroomScenario(
       );
       if (hazError) {
         logger.warn({ error: hazError }, 'scenario_hazards insert failed (non-blocking)');
+      }
+
+      // Auto-generate blast radius guide circles for explosion/bomb hazards
+      const EXPLOSION_TYPES = /explosion|bomb|blast|detonat|ied|improvised_explosive/i;
+      const explosionHazards = hazards.filter((h) => EXPLOSION_TYPES.test(h.hazard_type));
+      if (explosionHazards.length > 0) {
+        // Look up inserted hazard IDs so we can link blast zones
+        const { data: insertedHazards } = await supabaseAdmin
+          .from('scenario_hazards')
+          .select('id, hazard_type, location_lat, location_lng')
+          .eq('scenario_id', scenarioId)
+          .in(
+            'hazard_type',
+            explosionHazards.map((h) => h.hazard_type),
+          );
+
+        const blastZoneRows: Array<Record<string, unknown>> = [];
+        const BLAST_BANDS = [
+          { radius_m: 50, label: 'Lethal Zone (0-50m)', zone_type: 'blast_lethal' },
+          { radius_m: 100, label: 'Severe Injury Zone (50-100m)', zone_type: 'blast_severe' },
+          { radius_m: 150, label: 'Fragment Zone (100-150m)', zone_type: 'blast_fragment' },
+        ];
+
+        for (const h of (insertedHazards ?? []) as Array<Record<string, unknown>>) {
+          const lat = Number(h.location_lat);
+          const lng = Number(h.location_lng);
+          const hazardId = h.id as string;
+
+          for (const band of BLAST_BANDS) {
+            blastZoneRows.push({
+              scenario_id: scenarioId,
+              location_type: 'blast_radius',
+              label: band.label,
+              coordinates: { lat, lng },
+              pin_category: 'blast_zone',
+              conditions: {
+                zone_type: band.zone_type,
+                radius_m: band.radius_m,
+                polygon: circleToPolygon(lat, lng, band.radius_m),
+                linked_hazard_id: hazardId,
+              },
+            });
+          }
+        }
+
+        if (blastZoneRows.length > 0) {
+          const { error: bzError } = await supabaseAdmin
+            .from('scenario_locations')
+            .insert(blastZoneRows);
+          if (bzError) {
+            logger.warn({ error: bzError }, 'blast_zone locations insert failed (non-blocking)');
+          } else {
+            logger.info(
+              { scenarioId, count: blastZoneRows.length },
+              'Auto-generated blast radius guide circles for explosion hazard(s)',
+            );
+          }
+        }
       }
     }
 

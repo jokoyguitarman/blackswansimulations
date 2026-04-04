@@ -448,7 +448,10 @@ router.patch('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) =>
             .eq('scenario_id', scenarioId)
             .single();
 
-          if (existingLoc?.pin_category === 'incident_zone') {
+          if (
+            existingLoc?.pin_category === 'incident_zone' ||
+            existingLoc?.pin_category === 'blast_zone'
+          ) {
             const conds = (existingLoc.conditions ?? {}) as Record<string, unknown>;
             const radiusM = Number(conds.radius_m) || 100;
             const newPolygon = circleToPolygon(loc.lat, loc.lng, radiusM);

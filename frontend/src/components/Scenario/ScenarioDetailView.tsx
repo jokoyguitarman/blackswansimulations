@@ -1513,11 +1513,31 @@ const MapPinsTab = ({
     setDirty(true);
   }, []);
 
+  const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+    const R = 6371000;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLng = ((lng2 - lng1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
+  const EXPLOSION_HAZARD_RE = /explosion|bomb|blast|detonat|ied/i;
+
   const onHazardDrag = useCallback((id: string, lat: number, lng: number) => {
     changesRef.current.hazards.set(id, { lat, lng });
+
+    let oldLat = 0;
+    let oldLng = 0;
+    let isExplosion = false;
+
     setHazards((prev) =>
       prev.map((h) => {
         if (h.id !== id) return h;
+        oldLat = h.location_lat;
+        oldLng = h.location_lng;
+        isExplosion = EXPLOSION_HAZARD_RE.test(h.hazard_type);
         const updatedZones = (h.zones ?? []).map((z) => ({
           ...z,
           polygon: generateCirclePolygon(lat, lng, z.radius_m),
@@ -1525,6 +1545,49 @@ const MapPinsTab = ({
         return { ...h, location_lat: lat, location_lng: lng, zones: updatedZones };
       }),
     );
+
+    // For explosion hazards: move linked blast zone circles and nearby casualties
+    if (isExplosion && (oldLat !== 0 || oldLng !== 0)) {
+      const deltaLat = lat - oldLat;
+      const deltaLng = lng - oldLng;
+      const MAX_BLAST_RADIUS = 200;
+
+      // Move blast zone location circles linked to this hazard
+      setLocations((prev) =>
+        prev.map((loc) => {
+          const conds = (loc.conditions ?? {}) as Record<string, unknown>;
+          if (conds.linked_hazard_id !== id) return loc;
+          const newLocLat = loc.coordinates.lat + deltaLat;
+          const newLocLng = loc.coordinates.lng + deltaLng;
+          const radiusM = Number(conds.radius_m) || 100;
+          const newPolygon = generateCirclePolygon(newLocLat, newLocLng, radiusM);
+          const updatedConditions = { ...conds, polygon: newPolygon };
+          changesRef.current.locations.set(loc.id, {
+            lat: newLocLat,
+            lng: newLocLng,
+            conditions: updatedConditions,
+          });
+          return {
+            ...loc,
+            coordinates: { lat: newLocLat, lng: newLocLng },
+            conditions: updatedConditions,
+          };
+        }),
+      );
+
+      // Move casualties within the blast radius
+      setCasualties((prev) =>
+        prev.map((c) => {
+          const dist = haversineM(oldLat, oldLng, c.location_lat, c.location_lng);
+          if (dist > MAX_BLAST_RADIUS) return c;
+          const newCLat = c.location_lat + deltaLat;
+          const newCLng = c.location_lng + deltaLng;
+          changesRef.current.casualties.set(c.id, { lat: newCLat, lng: newCLng });
+          return { ...c, location_lat: newCLat, location_lng: newCLng };
+        }),
+      );
+    }
+
     setDirty(true);
   }, []);
 
@@ -1678,12 +1741,19 @@ const MapPinsTab = ({
     return <p className="text-sm terminal-text text-robotic-yellow/50">[NO MAP DATA]</p>;
   }
 
-  // Separate zone locations from regular pins
+  // Separate zone locations and blast zone locations from regular pins
   const zoneLocations = locations.filter(
     (loc) => loc.location_type === 'incident_zone' || loc.pin_category === 'incident_zone',
   );
+  const blastZoneLocations = locations.filter(
+    (loc) => loc.pin_category === 'blast_zone' || loc.location_type === 'blast_radius',
+  );
   const nonZoneLocations = locations.filter(
-    (loc) => loc.location_type !== 'incident_zone' && loc.pin_category !== 'incident_zone',
+    (loc) =>
+      loc.location_type !== 'incident_zone' &&
+      loc.pin_category !== 'incident_zone' &&
+      loc.pin_category !== 'blast_zone' &&
+      loc.location_type !== 'blast_radius',
   );
 
   const validPins: ScenarioLocationPin[] = nonZoneLocations
@@ -1998,6 +2068,53 @@ const MapPinsTab = ({
                       );
                     }),
                 )}
+          {/* Blast radius guide circles */}
+          {[...blastZoneLocations]
+            .sort((a, b) => {
+              const rA = Number((a.conditions as Record<string, unknown>)?.radius_m) || 0;
+              const rB = Number((b.conditions as Record<string, unknown>)?.radius_m) || 0;
+              return rB - rA;
+            })
+            .map((bz) => {
+              const conds = (bz.conditions ?? {}) as Record<string, unknown>;
+              const blastType = (conds.zone_type as string) || '';
+              const radiusM = Number(conds.radius_m) || 100;
+              const polygon = conds.polygon as number[][] | undefined;
+              if (!polygon || polygon.length < 3) return null;
+
+              const BLAST_COLORS: Record<
+                string,
+                { color: string; fillColor: string; opacity: number }
+              > = {
+                blast_lethal: { color: '#991b1b', fillColor: '#dc2626', opacity: 0.25 },
+                blast_severe: { color: '#c2410c', fillColor: '#ea580c', opacity: 0.18 },
+                blast_fragment: { color: '#ca8a04', fillColor: '#eab308', opacity: 0.12 },
+              };
+              const style = BLAST_COLORS[blastType] ?? {
+                color: '#6b7280',
+                fillColor: '#6b7280',
+                opacity: 0.15,
+              };
+              const positions = polygon.map((p) => [p[0], p[1]] as [number, number]);
+
+              return (
+                <Polygon
+                  key={`blast-${bz.id}`}
+                  positions={positions}
+                  pathOptions={{
+                    color: style.color,
+                    fillColor: style.fillColor,
+                    fillOpacity: style.opacity,
+                    weight: 2,
+                    dashArray: '4 6',
+                  }}
+                >
+                  <Tooltip direction="center" permanent={false}>
+                    {bz.label} ({radiusM}m)
+                  </Tooltip>
+                </Polygon>
+              );
+            })}
           {validPins.map((pin) => (
             <ScenarioLocationMarker
               key={pin.id}

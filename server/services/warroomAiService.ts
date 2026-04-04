@@ -4005,12 +4005,12 @@ async function generateVictimProfiles(
 - ~50% green (minor injuries, bruises from stampede/falls, psychological trauma)
 Do NOT generate trapped casualties or casualties behind fire/debris — a ${weaponDesc} cannot cause environmental hazards.`
     : isExplosive
-      ? `Triage distribution for a major explosion:
-- ~8% black (deceased)
-- ~18% red (immediate/critical — blast injuries, burns, crush injuries)
-- ~30% yellow (delayed/serious — shrapnel, moderate burns, fractures)
-- ~44% green (walking wounded, minor lacerations, psychological)
-Include some trapped casualties and casualties behind environmental barriers.`
+      ? `Triage distribution for a major explosion (anchored to blast radii):
+- ~8% black (deceased) — within 0-50m of detonation point. Injuries: dismemberment, catastrophic blast overpressure, total body disruption, charred remains.
+- ~18% red (immediate/critical) — within 50-100m. Injuries: limb amputation, deep penetrating shrapnel, severe blast burns (>20% BSA), blast lung, open fractures, arterial hemorrhage.
+- ~30% yellow (delayed/serious) — within 100-150m. Injuries: deep shrapnel wounds, moderate burns, tympanic membrane rupture, closed fractures, concussion with LOC.
+- ~44% green (walking wounded) — within 100-200m. Injuries: minor shrapnel lacerations, superficial cuts from glass/debris, flash burns, psychological trauma, temporary hearing loss.
+Include some trapped casualties (under_debris, behind_fire) in the 0-100m band.`
       : `Triage distribution appropriate for a ${scenarioType}. Generate a realistic mix of severity levels.`;
 
   const systemPrompt = `You are a pre-hospital emergency medicine expert creating victim profiles for a crisis training exercise.
@@ -4187,12 +4187,18 @@ async function placeVictimsOnMap(
 - Accessibility should be "open" for all or nearly all — a ${weaponDesc} does not create environmental barriers.
 - Spread victims across realistic paths of flight from the incident site toward exits.`
     : isExplosive
-      ? `EXPLOSION PLACEMENT LOGIC:
-- BLACK/RED victims: Place within the blast radius near the incident site. Some may be trapped under debris or behind fire.
-- YELLOW victims: Place in the warm/transition zone around the blast area. Shrapnel and blast wave injuries.
-- GREEN victims: Place further out — near exits, in corridors, outside the building.
-- Include accessibility values: "behind_fire", "under_debris", "in_smoke" for victims near the blast center.
-- Delayed-discovery victims should be in areas obscured by smoke or debris.`
+      ? `EXPLOSION PLACEMENT LOGIC — STRICT RADIUS ANCHORING:
+The bomb detonated at the incident site coordinates. Place victims at distances matching their triage severity:
+- BLACK victims (fatalities): MUST be within 0-50m of the bomb center. They were at ground zero. Some are under debris or behind fire.
+  Accessibility: "under_debris", "behind_fire", or "in_smoke". These are the hardest to reach.
+- RED victims (critical): MUST be within 50-100m. Severe blast injuries, burns, amputations. 
+  Accessibility: mix of "under_debris", "behind_fire", and "open". Some crawled away but collapsed.
+- YELLOW victims (serious): MUST be within 100-150m. Shrapnel and blast wave injuries.
+  Accessibility: mostly "open" or "in_smoke". They were knocked down or hit by flying debris.
+- GREEN victims (minor): Place within 100-200m. Minor cuts, psychological shock. 
+  Accessibility: "open". They fled but sustained minor injuries from glass, stampede, or falls.
+- Delayed-discovery victims (appears_at > 0): Place in areas obscured by smoke or debris, within the 0-100m band.
+- IMPORTANT: Use haversine distance from the bomb center to verify placement radius. Do NOT cluster all victims at the same point — spread them realistically within each band.`
       : `PLACEMENT LOGIC:
 - Most severely injured victims closest to the incident site.
 - Moderately injured further away.
