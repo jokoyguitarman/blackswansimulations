@@ -3507,7 +3507,6 @@ export class DemoAIAgentService {
       }
 
       case 'patient_response': {
-        // Show ALL patients so the bot can pick intelligently
         parts.push(
           '',
           '## YOUR TASK: Respond to a patient',
@@ -3518,6 +3517,65 @@ export class DemoAIAgentService {
             `Priority target: ${classification.targetPinLabel || 'patient'}`,
             `Target ID: ${classification.targetPinId}`,
           );
+
+          // Load structured patient data for the target pin
+          const patientDetail = await this.loadPatientDetail(
+            session.sessionId,
+            classification.targetPinId,
+          );
+          if (patientDetail) {
+            parts.push('', '### 📋 PATIENT ASSESSMENT (follow this exactly):');
+            parts.push(`Status: ${patientDetail.status}`);
+            parts.push(`Mobility: ${patientDetail.mobility}`);
+            parts.push(`Consciousness: ${patientDetail.consciousness}`);
+            parts.push(`Breathing: ${patientDetail.breathing}`);
+            if (patientDetail.accessibility && patientDetail.accessibility !== 'open') {
+              parts.push(
+                `⚠️ Access: ${patientDetail.accessibility} — clear obstruction before treatment`,
+              );
+            }
+            if (patientDetail.visibleDescription) {
+              parts.push(`What you see: ${patientDetail.visibleDescription}`);
+            }
+            if (patientDetail.injuries.length > 0) {
+              parts.push(
+                `Injuries: ${patientDetail.injuries.map((i) => `${i.severity} ${i.type} (${i.body_part})`).join('; ')}`,
+              );
+            }
+            if (patientDetail.idealSequence.length > 0) {
+              parts.push('', '### 🔢 IDEAL RESPONSE SEQUENCE (follow this order):');
+              for (const step of patientDetail.idealSequence) {
+                parts.push(`  ${step.step}. ${step.action}: ${step.detail}`);
+              }
+            }
+            if (patientDetail.treatmentReqs.length > 0) {
+              parts.push('', '### 💊 REQUIRED TREATMENT:');
+              for (const t of patientDetail.treatmentReqs) {
+                parts.push(`  - [${t.priority}] ${t.intervention} — ${t.reason}`);
+              }
+            }
+            if (patientDetail.transportPrereqs.length > 0) {
+              parts.push(
+                '',
+                '### 🚑 BEFORE TRANSPORT (must complete all):',
+                ...patientDetail.transportPrereqs.map((p) => `  - ${p}`),
+              );
+            }
+            if (patientDetail.requiredPpe.length > 0) {
+              parts.push(`PPE required: ${patientDetail.requiredPpe.join(', ')}`);
+            }
+            if (patientDetail.requiredEquipment.length > 0) {
+              parts.push(
+                `Equipment needed: ${patientDetail.requiredEquipment.map((e) => `${e.item} x${e.quantity} (${e.purpose})`).join('; ')}`,
+              );
+            }
+            if (patientDetail.contraindications.length > 0) {
+              parts.push(`⛔ DO NOT: ${patientDetail.contraindications.join('; ')}`);
+            }
+            if (patientDetail.expectedMinutes) {
+              parts.push(`Expected treatment time: ~${patientDetail.expectedMinutes} min`);
+            }
+          }
         }
         parts.push('', '### Patients in your jurisdiction:');
         for (const p of ground.patients) parts.push(`- ${p}`);
@@ -3526,10 +3584,10 @@ export class DemoAIAgentService {
           '### Required pin_response format:',
           '- target_id: exact UUID from above',
           '- target_type: "casualty"',
-          '- actions: what you are doing (e.g., ["Initiate Triage", "Administer First Aid"])',
-          '- resources: deployed personnel with counts',
-          '- triage_color: "green"/"yellow"/"red"/"black"',
-          '- description: detailed treatment plan with personnel ratio and transport destination',
+          '- actions: list the SPECIFIC actions from the ideal response sequence above',
+          '- resources: deployed personnel with counts and PPE from the requirements above',
+          '- triage_color: "green"/"yellow"/"red"/"black" — assign based on injuries',
+          '- description: follow the ideal response sequence step by step. Include personnel ratio, equipment used, and transport destination.',
           '',
           'Return: 1 pin_response + 1 chat. Do NOT include a placement action.',
         );
@@ -3547,6 +3605,40 @@ export class DemoAIAgentService {
             `Priority target: ${classification.targetPinLabel || 'hazard'}`,
             `Target ID: ${classification.targetPinId}`,
           );
+
+          const hazardDetail = await this.loadHazardDetail(
+            session.sessionId,
+            classification.targetPinId,
+          );
+          if (hazardDetail) {
+            parts.push('', '### 📋 HAZARD ASSESSMENT:');
+            parts.push(`Type: ${hazardDetail.hazardType}`);
+            parts.push(`Status: ${hazardDetail.status}`);
+            if (hazardDetail.description) {
+              parts.push(`Description: ${hazardDetail.description}`);
+            }
+            if (hazardDetail.idealSequence.length > 0) {
+              parts.push('', '### 🔢 IDEAL RESPONSE SEQUENCE (follow this order):');
+              for (const step of hazardDetail.idealSequence) {
+                parts.push(
+                  `  ${step.step}. ${step.action}: ${step.detail}${step.responsible_team ? ` [${step.responsible_team}]` : ''}`,
+                );
+              }
+            }
+            if (hazardDetail.equipmentReqs.length > 0) {
+              parts.push('', '### 🔧 REQUIRED EQUIPMENT:');
+              for (const e of hazardDetail.equipmentReqs) {
+                parts.push(
+                  `  - ${e.label || e.equipment_type} x${e.quantity}${e.critical ? ' (CRITICAL)' : ''}`,
+                );
+              }
+            }
+            if (hazardDetail.requiredPpe.length > 0) {
+              parts.push(
+                `PPE required: ${hazardDetail.requiredPpe.map((p) => `${p.item}${p.mandatory ? ' (mandatory)' : ''}`).join(', ')}`,
+              );
+            }
+          }
         }
         parts.push('', '### Active hazards:');
         for (const h of ground.hazards) parts.push(`- ${h}`);
@@ -3555,9 +3647,9 @@ export class DemoAIAgentService {
           '### Required pin_response format:',
           '- target_id: exact UUID from above',
           '- target_type: "hazard"',
-          '- actions: containment/mitigation steps',
-          '- resources: deployed units with counts',
-          '- description: detailed response plan',
+          '- actions: list the SPECIFIC containment/mitigation steps from the sequence above',
+          '- resources: deployed units with counts and PPE from the requirements above',
+          '- description: follow the ideal response sequence. Include equipment, approach, and safety measures.',
           '',
           'Return: 1 pin_response + 1 chat. Do NOT include a placement action.',
         );
@@ -5856,6 +5948,128 @@ export class DemoAIAgentService {
   }
 
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Structured detail loaders for classified prompts
+  // ---------------------------------------------------------------------------
+
+  private async loadPatientDetail(
+    sessionId: string,
+    patientId: string,
+  ): Promise<{
+    status: string;
+    mobility: string;
+    consciousness: string;
+    breathing: string;
+    accessibility: string;
+    visibleDescription: string;
+    injuries: Array<{ type: string; severity: string; body_part: string }>;
+    treatmentReqs: Array<{ intervention: string; priority: string; reason: string }>;
+    transportPrereqs: string[];
+    contraindications: string[];
+    idealSequence: Array<{ step: number; action: string; detail: string }>;
+    requiredPpe: string[];
+    requiredEquipment: Array<{ item: string; quantity: number; purpose: string }>;
+    expectedMinutes: number | null;
+  } | null> {
+    try {
+      const { data } = await supabaseAdmin
+        .from('scenario_casualties')
+        .select('status, conditions')
+        .eq('id', patientId)
+        .eq('session_id', sessionId)
+        .single();
+      if (!data) return null;
+      const c = (data.conditions ?? {}) as Record<string, unknown>;
+      return {
+        status: data.status as string,
+        mobility: (c.mobility as string) || 'unknown',
+        consciousness: (c.consciousness as string) || 'unknown',
+        breathing: (c.breathing as string) || 'unknown',
+        accessibility: (c.accessibility as string) || 'open',
+        visibleDescription: (c.visible_description as string) || '',
+        injuries:
+          (c.injuries as Array<{ type: string; severity: string; body_part: string }>) || [],
+        treatmentReqs:
+          (c.treatment_requirements as Array<{
+            intervention: string;
+            priority: string;
+            reason: string;
+          }>) || [],
+        transportPrereqs: (c.transport_prerequisites as string[]) || [],
+        contraindications: (c.contraindications as string[]) || [],
+        idealSequence:
+          (c.ideal_response_sequence as Array<{
+            step: number;
+            action: string;
+            detail: string;
+          }>) || [],
+        requiredPpe: (c.required_ppe as string[]) || [],
+        requiredEquipment:
+          (c.required_equipment as Array<{ item: string; quantity: number; purpose: string }>) ||
+          [],
+        expectedMinutes: (c.expected_time_to_treat_minutes as number) || null,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async loadHazardDetail(
+    sessionId: string,
+    hazardId: string,
+  ): Promise<{
+    hazardType: string;
+    status: string;
+    description: string;
+    idealSequence: Array<{
+      step: number;
+      action: string;
+      detail: string;
+      responsible_team?: string;
+    }>;
+    equipmentReqs: Array<{
+      equipment_type: string;
+      label?: string;
+      quantity: number;
+      critical: boolean;
+    }>;
+    requiredPpe: Array<{ item: string; mandatory: boolean }>;
+  } | null> {
+    try {
+      const { data } = await supabaseAdmin
+        .from('scenario_hazards')
+        .select('hazard_type, status, properties')
+        .eq('id', hazardId)
+        .eq('session_id', sessionId)
+        .single();
+      if (!data) return null;
+      const p = (data.properties ?? {}) as Record<string, unknown>;
+      const resReqs = (p.resolution_requirements ?? {}) as Record<string, unknown>;
+      return {
+        hazardType: (data.hazard_type as string) || 'unknown',
+        status: (data.status as string) || 'unknown',
+        description: (p.enriched_description as string) || (p.description as string) || '',
+        idealSequence:
+          (resReqs.ideal_response_sequence as Array<{
+            step: number;
+            action: string;
+            detail: string;
+            responsible_team?: string;
+          }>) || [],
+        equipmentReqs:
+          (p.equipment_requirements as Array<{
+            equipment_type: string;
+            label?: string;
+            quantity: number;
+            critical: boolean;
+          }>) || [],
+        requiredPpe: (resReqs.required_ppe as Array<{ item: string; mandatory: boolean }>) || [],
+      };
+    } catch {
+      return null;
+    }
+  }
+
   // Ground situation loader — separated by type with zone tagging
   // ---------------------------------------------------------------------------
 
