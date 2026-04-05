@@ -576,13 +576,6 @@ interface Session {
   scenario_id: string;
   start_time?: string | null;
   current_state?: {
-    evacuation_zones?: Array<{
-      id: string;
-      center_lat: number;
-      center_lng: number;
-      radius_meters: number;
-      title: string;
-    }>;
     [key: string]: unknown;
   };
   inject_state_effects?: Record<string, unknown>;

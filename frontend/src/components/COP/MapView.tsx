@@ -4,7 +4,6 @@ import { Icon, Marker as LeafletMarker } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { IncidentMarker } from './IncidentMarker';
 import { ResourceMarker } from './ResourceMarker';
-import { EvacuationZone } from './EvacuationZone';
 import { ScenarioLocationMarker, type ScenarioLocationPin } from './ScenarioLocationMarker';
 import { RoutePolyline, type RouteData } from './RoutePolyline';
 import { WindIndicator, type WindData } from './WindIndicator';
@@ -70,14 +69,6 @@ interface Resource {
   agency_name: string;
 }
 
-interface EvacuationZoneData {
-  id: string;
-  center_lat: number;
-  center_lng: number;
-  radius_meters: number;
-  title: string;
-}
-
 /**
  * pin_category values that are always visible to all players.
  * Legacy location_type keywords are also checked for backward compatibility.
@@ -128,7 +119,6 @@ interface MapViewProps {
   sessionId: string;
   incidents?: Incident[];
   resources?: Resource[];
-  evacuationZones?: EvacuationZoneData[];
   onIncidentClick?: (incident: Incident) => void;
   onResourceClick?: (resource: Resource) => void;
   selectedIncidentId?: string | null;
@@ -474,7 +464,6 @@ export const MapView = ({
   sessionId,
   incidents = [],
   resources = [],
-  evacuationZones: initialEvacuationZones = [],
   onIncidentClick,
   onResourceClick,
   selectedIncidentId,
@@ -505,7 +494,6 @@ export const MapView = ({
   const mapDisabledByEnv = import.meta.env.VITE_DISABLE_MAP === 'true';
   const isMapDisabled = disabled || mapDisabledByEnv;
 
-  const [evacuationZones, setEvacuationZones] = useState(initialEvacuationZones);
   const [scenarioLocations, setScenarioLocations] = useState<ScenarioLocationPin[]>([]);
   const [mapRevealedCategories, setMapRevealedCategories] = useState<string[]>([]);
   const [environmentalState, setEnvironmentalState] = useState<{
@@ -750,9 +738,6 @@ export const MapView = ({
     onEvent: (event: WebSocketEvent) => {
       if (event.type === 'state.updated') {
         const state = (event.data as { state?: Record<string, unknown> })?.state;
-        if (state?.evacuation_zones) {
-          setEvacuationZones(state.evacuation_zones as EvacuationZoneData[]);
-        }
         if (
           state &&
           typeof state.environmental_state === 'object' &&
@@ -1609,16 +1594,6 @@ export const MapView = ({
 
           {/* Wind Direction Indicator */}
           {environmentalState?.wind && <WindIndicator wind={environmentalState.wind} />}
-
-          {/* Evacuation Zones */}
-          {evacuationZones.map((zone) => (
-            <EvacuationZone
-              key={zone.id}
-              center={[zone.center_lat, zone.center_lng] as LatLngExpression}
-              radius={zone.radius_meters}
-              title={zone.title}
-            />
-          ))}
 
           {/* Adversary sighting breadcrumb trails */}
           {(() => {

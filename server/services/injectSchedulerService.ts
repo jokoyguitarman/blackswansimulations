@@ -19,6 +19,7 @@ import {
 import { runAreaMonitors } from './areaMonitorService.js';
 import { runMovementTick } from './movementService.js';
 import { computeLiveCounters } from './liveCounterService.js';
+import { performSweep } from './bombSquadSweepService.js';
 import {
   evaluateInjectConditions,
   type EvaluationContext,
@@ -880,6 +881,102 @@ export class InjectSchedulerService {
     } catch (detErr) {
       logger.warn({ err: detErr, sessionId: session.id }, 'Detonation timer check error');
     }
+
+    // --- Bomb squad auto-sweep: deterministically sweep one un-swept asset per tick ---
+    try {
+      await this.checkSweepQueue(session.id, elapsedMinutes);
+    } catch (sweepErr) {
+      logger.warn({ err: sweepErr, sessionId: session.id }, 'Bomb squad sweep queue error');
+    }
+  }
+
+  /**
+   * Deterministic bomb squad sweep: every tick (after a grace period), sweep
+   * the next un-swept placed asset.  No LLM involved — just call performSweep().
+   * One asset per tick to pace the sweep cadence naturally.
+   */
+  private async checkSweepQueue(sessionId: string, elapsedMinutes: number): Promise<void> {
+    const SWEEP_START_MINUTE = 3;
+    if (elapsedMinutes < SWEEP_START_MINUTE) return;
+
+    // Check if a bomb squad team exists in this scenario
+    const { data: sessionRow } = await supabaseAdmin
+      .from('sessions')
+      .select('scenario_id, hidden_devices')
+      .eq('id', sessionId)
+      .single();
+    if (!sessionRow) return;
+
+    const { data: bombTeam } = await supabaseAdmin
+      .from('scenario_teams')
+      .select('team_name')
+      .eq('scenario_id', sessionRow.scenario_id)
+      .ilike('team_name', '%bomb%')
+      .limit(1);
+    if (!bombTeam || bombTeam.length === 0) return;
+
+    // Get all placed assets NOT belonging to the bomb squad
+    const { data: allAssets } = await supabaseAdmin
+      .from('placed_assets')
+      .select('id, label, asset_type, team_name')
+      .eq('session_id', sessionId)
+      .eq('status', 'active');
+    if (!allAssets || allAssets.length === 0) return;
+
+    const bombTeamName = (bombTeam[0] as Record<string, unknown>).team_name as string;
+    const nonBombAssets = allAssets.filter(
+      (a) => (a as Record<string, unknown>).team_name !== bombTeamName,
+    );
+    if (nonBombAssets.length === 0) return;
+
+    // Find which assets have already been swept
+    const { data: sweepEvents } = await supabaseAdmin
+      .from('session_events')
+      .select('metadata')
+      .eq('session_id', sessionId)
+      .eq('event_type', 'bomb_squad_sweep');
+    const sweptAssetIds = new Set<string>();
+    for (const ev of sweepEvents ?? []) {
+      const meta = ev.metadata as Record<string, unknown> | null;
+      if (meta?.asset_id) sweptAssetIds.add(meta.asset_id as string);
+    }
+
+    // Pick the first un-swept asset
+    const nextAsset = nonBombAssets.find((a) => !sweptAssetIds.has(a.id));
+    if (!nextAsset) return;
+
+    const assetLabel =
+      (nextAsset as Record<string, unknown>).label ||
+      (nextAsset as Record<string, unknown>).asset_type ||
+      'asset';
+    logger.info(
+      { sessionId, assetId: nextAsset.id, label: assetLabel },
+      'Auto-sweeping placed asset for bomb squad',
+    );
+
+    const result = await performSweep(sessionId, nextAsset.id);
+
+    // Broadcast a chat-style message so the sweep appears in the session feed
+    const ws = getWebSocketService();
+    const chatMsg = result.found
+      ? `🚨 Bomb Squad sweep of "${assetLabel}": DEVICE FOUND — ${result.device_description || result.container_type || 'suspicious item'} discovered. ${result.is_live ? '⚠️ LIVE DEVICE — 2 minute render-safe window.' : 'Device appears inert.'}`
+      : `✅ Bomb Squad sweep of "${assetLabel}": CLEAR — no suspicious items found.`;
+
+    ws.broadcastToSession(sessionId, {
+      type: 'bomb_squad_sweep_result',
+      data: {
+        asset_id: nextAsset.id,
+        asset_label: assetLabel,
+        ...result,
+        chat_message: chatMsg,
+      },
+      timestamp: new Date().toISOString(),
+    });
+
+    logger.info(
+      { sessionId, assetId: nextAsset.id, found: result.found, hazardId: result.hazard_id },
+      'Bomb squad auto-sweep completed',
+    );
   }
 
   /**

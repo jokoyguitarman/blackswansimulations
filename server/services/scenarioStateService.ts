@@ -14,14 +14,6 @@ import { env } from '../env.js';
  */
 
 interface ScenarioState {
-  evacuation_zones?: Array<{
-    id: string;
-    center_lat: number;
-    center_lng: number;
-    radius_meters: number;
-    title: string;
-    created_at: string;
-  }>;
   resource_allocations?: Record<string, unknown>;
   public_sentiment?: number; // 0-100 scale
   active_incidents?: number;
