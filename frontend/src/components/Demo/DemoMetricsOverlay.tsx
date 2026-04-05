@@ -13,66 +13,152 @@ interface DemoMetricsOverlayProps {
   currentState: Record<string, unknown>;
 }
 
-// Merge duplicate state keys (e.g. fire_state + fire_rescue_state → Fire / Rescue)
-const STATE_KEY_MERGE: Record<string, string> = {
-  fire_state: 'FIRE / RESCUE',
-  fire_rescue_state: 'FIRE / RESCUE',
-  triage_state: 'TRIAGE',
-  evacuation_state: 'EVACUATION',
-  media_state: 'MEDIA',
-  bomb_squad_state: 'BOMB SQUAD',
-};
+interface CounterEntry {
+  key: string;
+  label: string;
+  color?: string;
+  alert?: boolean;
+}
 
-// Only show numeric counters that are actually useful to spectators
-const COUNTER_DENYLIST = new Set([
-  'evacuated_count', // duplicate of total_evacuated
-  'patients_being_treated', // duplicate of in_treatment
-  'handed_over_to_hospital', // duplicate of transported
-  'casualties', // duplicate of deaths_on_site
-  'patients_waiting', // duplicate of awaiting_triage
-]);
+interface FlagEntry {
+  key: string;
+  label: string;
+}
 
-function extractTeamCounters(
-  cs: Record<string, unknown>,
-): Array<{ teamName: string; counters: Array<{ label: string; value: string; alert?: boolean }> }> {
-  const grouped = new Map<string, Map<string, { label: string; value: string; alert?: boolean }>>();
+interface PanelDef {
+  title: string;
+  stateKey: string;
+  alts?: string[];
+  counters: CounterEntry[];
+  flags?: FlagEntry[];
+}
 
-  for (const [key, val] of Object.entries(cs)) {
-    if (!key.endsWith('_state') || typeof val !== 'object' || val === null) continue;
-    if (key === 'heat_meter' || key === 'environmental_state') continue;
+const PANEL_DEFS: PanelDef[] = [
+  {
+    title: 'MEDICAL TRIAGE',
+    stateKey: 'triage_state',
+    counters: [
+      { key: 'total_patients', label: 'Total Patients' },
+      { key: 'red_immediate', label: 'RED (Immediate)', color: 'text-red-400' },
+      { key: 'yellow_delayed', label: 'YELLOW (Delayed)', color: 'text-yellow-400' },
+      { key: 'green_minor', label: 'GREEN (Minor)', color: 'text-green-400' },
+      { key: 'black_deceased', label: 'BLACK (Deceased)', color: 'text-gray-400' },
+      { key: 'awaiting_triage', label: 'Awaiting Triage' },
+      { key: 'in_treatment', label: 'In Treatment' },
+      { key: 'ready_for_transport', label: 'Ready for Transport' },
+      { key: 'transported', label: 'Transported' },
+      { key: 'deaths_on_site', label: 'Deaths On Site', alert: true },
+    ],
+    flags: [
+      { key: 'prioritisation_decided', label: 'Prioritisation Set' },
+      { key: 'triage_zone_established', label: 'Triage Zone Set' },
+      { key: 'supply_request_made', label: 'Supplies Requested' },
+      { key: 'mass_casualty_declared', label: 'MCI Declared' },
+      { key: 'hospital_coordination', label: 'Hospital Coord.' },
+    ],
+  },
+  {
+    title: 'FIRE / RESCUE',
+    stateKey: 'fire_rescue_state',
+    alts: ['fire_state'],
+    counters: [
+      { key: 'hazards_active', label: 'Hazards Active', alert: true },
+      { key: 'hazards_resolved', label: 'Hazards Resolved' },
+      { key: 'active_fires', label: 'Active Fires', alert: true },
+      { key: 'fires_contained', label: 'Fires Contained' },
+      { key: 'fires_resolved', label: 'Fires Resolved' },
+      { key: 'casualties_in_hot_zone', label: 'Casualties in Hot Zone', alert: true },
+      { key: 'extracted_to_warm', label: 'Extracted to Warm' },
+      { key: 'debris_cleared', label: 'Debris Cleared' },
+    ],
+    flags: [
+      { key: 'hot_zone_declared', label: 'Hot Zone Declared' },
+      { key: 'warm_zone_established', label: 'Warm Zone Set' },
+      { key: 'cold_zone_established', label: 'Cold Zone Set' },
+      { key: 'sar_initiated', label: 'SAR Initiated' },
+    ],
+  },
+  {
+    title: 'EVACUATION',
+    stateKey: 'evacuation_state',
+    counters: [
+      { key: 'total_evacuated', label: 'Total Evacuated' },
+      { key: 'civilians_at_assembly', label: 'At Assembly Point' },
+      { key: 'still_inside', label: 'Still Inside', alert: true },
+      { key: 'in_transit', label: 'In Transit' },
+      { key: 'convergent_crowds_count', label: 'Convergent Crowds' },
+    ],
+    flags: [
+      { key: 'flow_control_decided', label: 'Flow Control' },
+      { key: 'marshals_deployed', label: 'Marshals Deployed' },
+      { key: 'assembly_point_established', label: 'Assembly Point' },
+      { key: 'evacuation_routes_announced', label: 'Routes Announced' },
+      { key: 'coordination_with_triage', label: 'Triage Coord.' },
+    ],
+  },
+  {
+    title: 'BOMB SQUAD',
+    stateKey: 'bomb_squad_state',
+    counters: [
+      { key: 'active_threats', label: 'Active Threats', alert: true },
+      { key: 'tips_received', label: 'Tips Received' },
+      { key: 'devices_found', label: 'Devices Found' },
+      { key: 'devices_rendered_safe', label: 'Rendered Safe' },
+      { key: 'false_alarms_cleared', label: 'False Alarms' },
+      { key: 'sweeps_completed', label: 'Sweeps Completed' },
+      { key: 'detonations', label: 'Detonations', alert: true },
+      { key: 'exclusion_zones_active', label: 'Exclusion Zones' },
+    ],
+    flags: [
+      { key: 'exclusion_zone_established', label: 'Exclusion Zone Set' },
+      { key: 'secondary_sweep_complete', label: 'Secondary Sweep' },
+      { key: 'render_safe_started', label: 'Render-Safe Started' },
+    ],
+  },
+  {
+    title: 'MEDIA & COMMS',
+    stateKey: 'media_state',
+    counters: [
+      { key: 'statements_issued', label: 'Statements Issued' },
+      { key: 'misinformation_addressed_count', label: 'Misinfo Addressed' },
+      { key: 'content_drafts_submitted', label: 'Content Drafts' },
+    ],
+    flags: [
+      { key: 'first_statement_issued', label: 'First Statement' },
+      { key: 'spokesperson_designated', label: 'Spokesperson' },
+      { key: 'press_conference_held', label: 'Press Conference' },
+      { key: 'camera_placement_decided', label: 'Camera Placement' },
+      { key: 'media_holding_area_established', label: 'Media Holding Area' },
+      { key: 'regular_updates_planned', label: 'Regular Updates' },
+      { key: 'social_media_monitoring', label: 'Social Monitoring' },
+      { key: 'victim_dignity_respected', label: 'Victim Dignity' },
+    ],
+  },
+  {
+    title: 'PURSUIT / INTEL',
+    stateKey: 'pursuit_state',
+    counters: [],
+    flags: [
+      { key: 'suspect_localised', label: 'Suspect Localised' },
+      { key: 'perimeter_established', label: 'Perimeter Set' },
+      { key: 'cctv_reviewed', label: 'CCTV Reviewed' },
+      { key: 'witness_statements_collected', label: 'Witness Statements' },
+      { key: 'intel_shared_with_teams', label: 'Intel Shared' },
+    ],
+  },
+];
 
-    const state = val as Record<string, unknown>;
-    const displayName =
-      STATE_KEY_MERGE[key] ??
-      key
-        .replace(/_state$/, '')
-        .replace(/_/g, ' ')
-        .toUpperCase();
-
-    if (!grouped.has(displayName)) grouped.set(displayName, new Map());
-    const bucket = grouped.get(displayName)!;
-
-    for (const [k, v] of Object.entries(state)) {
-      if (COUNTER_DENYLIST.has(k)) continue;
-      if (typeof v === 'number') {
-        const label = k.replace(/_/g, ' ');
-        const alert = k.includes('death') || k.includes('breach') || k.includes('unanswered');
-        bucket.set(k, { label, value: String(v), alert: alert && v > 0 });
-      }
-    }
+function resolveState(
+  state: Record<string, unknown>,
+  panel: PanelDef,
+): Record<string, unknown> | null {
+  const primary = state[panel.stateKey] as Record<string, unknown> | undefined;
+  if (primary && typeof primary === 'object') return primary;
+  for (const alt of panel.alts ?? []) {
+    const s = state[alt] as Record<string, unknown> | undefined;
+    if (s && typeof s === 'object') return s;
   }
-
-  const results: Array<{
-    teamName: string;
-    counters: Array<{ label: string; value: string; alert?: boolean }>;
-  }> = [];
-
-  for (const [teamName, bucket] of grouped) {
-    const counters = [...bucket.values()].slice(0, 5);
-    if (counters.length > 0) results.push({ teamName, counters });
-  }
-
-  return results;
+  return null;
 }
 
 export function DemoMetricsOverlay({ sessionId, currentState }: DemoMetricsOverlayProps) {
@@ -101,7 +187,6 @@ export function DemoMetricsOverlay({ sessionId, currentState }: DemoMetricsOverl
 
   const heatMeter = (state.heat_meter ?? {}) as Record<string, TeamHeatState>;
   const heatTeams = Object.entries(heatMeter).filter(([, v]) => v?.heat_percentage !== undefined);
-  const teamCounters = extractTeamCounters(state);
 
   return (
     <div className="absolute top-16 left-4 z-[999] flex flex-col gap-1.5 w-[200px] max-h-[calc(100vh-280px)] overflow-y-auto scrollbar-thin scrollbar-thumb-robotic-yellow/30">
@@ -166,60 +251,72 @@ export function DemoMetricsOverlay({ sessionId, currentState }: DemoMetricsOverl
             )}
           </div>
 
-          {/* Team Counters */}
-          {teamCounters.length === 0 ? (
-            <div className="bg-robotic-gray-300/90 border border-robotic-yellow/30 rounded p-2.5 backdrop-blur-sm">
-              <div className="text-[10px] terminal-text uppercase text-robotic-yellow/60 mb-1 tracking-wider">
-                COUNTERS
-              </div>
-              <div className="space-y-0.5">
-                <div className="flex justify-between text-[11px] terminal-text text-robotic-gray-50/80">
-                  <span>debris cleared</span>
-                  <span className="font-mono">0</span>
-                </div>
-                <div className="flex justify-between text-[11px] terminal-text text-robotic-gray-50/80">
-                  <span>fires resolved</span>
-                  <span className="font-mono">0</span>
-                </div>
-                <div className="flex justify-between text-[11px] terminal-text text-robotic-gray-50/80">
-                  <span>fires contained</span>
-                  <span className="font-mono">0</span>
-                </div>
-                <div className="flex justify-between text-[11px] terminal-text text-robotic-gray-50/80">
-                  <span>extracted to warm</span>
-                  <span className="font-mono">0</span>
-                </div>
-                <div className="flex justify-between text-[11px] terminal-text text-robotic-gray-50/80">
-                  <span>casualties in hot zone</span>
-                  <span className="font-mono">0</span>
-                </div>
-              </div>
-            </div>
-          ) : (
-            teamCounters.map(({ teamName, counters }) => (
+          {/* Curated Team Panels */}
+          {PANEL_DEFS.map((panel) => {
+            const teamState = resolveState(state, panel);
+            if (!teamState) return null;
+
+            const rows = panel.counters
+              .map((c) => {
+                const raw = teamState[c.key];
+                if (typeof raw !== 'number') return null;
+                return { ...c, value: raw };
+              })
+              .filter(Boolean) as (CounterEntry & { value: number })[];
+
+            const flagRows = (panel.flags ?? [])
+              .map((f) => ({ ...f, done: !!teamState[f.key] }))
+              .filter(Boolean);
+
+            if (rows.length === 0 && flagRows.length === 0) return null;
+
+            return (
               <div
-                key={teamName}
+                key={panel.stateKey}
                 className="bg-robotic-gray-300/90 border border-robotic-yellow/30 rounded p-2.5 backdrop-blur-sm"
               >
                 <div className="text-[10px] terminal-text uppercase text-robotic-yellow/60 mb-1 tracking-wider">
-                  {teamName}
+                  {panel.title}
                 </div>
-                <div className="space-y-0.5">
-                  {counters.map(({ label, value, alert }) => (
-                    <div
-                      key={label}
-                      className={`flex justify-between text-[11px] terminal-text ${
-                        alert ? 'text-red-400' : 'text-robotic-gray-50/80'
-                      }`}
-                    >
-                      <span className="truncate mr-2">{label}</span>
-                      <span className="font-mono shrink-0">{value}</span>
+                {rows.length > 0 && (
+                  <div className="space-y-0.5">
+                    {rows.map(({ key, label, value, color, alert }) => {
+                      const isAlert = alert && value > 0;
+                      const textClass =
+                        color ?? (isAlert ? 'text-red-400' : 'text-robotic-gray-50/80');
+                      return (
+                        <div
+                          key={key}
+                          className={`flex justify-between text-[11px] terminal-text ${textClass}`}
+                        >
+                          <span className="truncate mr-2">{label}</span>
+                          <span className="font-mono shrink-0">{value}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {flagRows.length > 0 && (
+                  <>
+                    {rows.length > 0 && <div className="border-t border-robotic-yellow/10 my-1" />}
+                    <div className="space-y-0.5">
+                      {flagRows.map(({ key, label, done }) => (
+                        <div
+                          key={key}
+                          className={`flex items-center gap-1.5 text-[10px] terminal-text ${done ? 'text-green-400' : 'text-robotic-gray-50/30'}`}
+                        >
+                          <span className="shrink-0 w-3 text-center">
+                            {done ? '\u2713' : '\u2022'}
+                          </span>
+                          <span className="truncate">{label}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </>
+                )}
               </div>
-            ))
-          )}
+            );
+          })}
         </>
       )}
     </div>

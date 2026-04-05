@@ -364,7 +364,6 @@ export class InjectSchedulerService {
       const evacState = (nextState.evacuation_state as Record<string, unknown>) ?? {};
       (nextState.evacuation_state as Record<string, unknown>) = {
         ...evacState,
-        evacuated_count: liveCounters.evacuation.total_evacuated,
         total_evacuated: liveCounters.evacuation.total_evacuated,
         civilians_at_assembly: liveCounters.evacuation.civilians_at_assembly,
         still_inside: liveCounters.evacuation.still_inside,
@@ -376,18 +375,16 @@ export class InjectSchedulerService {
       const triageState = (nextState.triage_state as Record<string, unknown>) ?? {};
       (nextState.triage_state as Record<string, unknown>) = {
         ...triageState,
+        total_patients: liveCounters.triage.total_patients,
         awaiting_triage: liveCounters.triage.awaiting_triage,
         in_treatment: liveCounters.triage.in_treatment,
-        patients_being_treated: liveCounters.triage.in_treatment,
         red_immediate: liveCounters.triage.red_immediate,
         yellow_delayed: liveCounters.triage.yellow_delayed,
         green_minor: liveCounters.triage.green_minor,
+        black_deceased: liveCounters.triage.black_deceased,
         ready_for_transport: liveCounters.triage.ready_for_transport,
         transported: liveCounters.triage.transported,
-        handed_over_to_hospital: liveCounters.triage.transported,
         deaths_on_site: liveCounters.triage.deaths_on_site,
-        casualties: liveCounters.triage.deaths_on_site,
-        patients_waiting: liveCounters.triage.awaiting_triage,
       };
 
       // Merge fire/rescue counters
@@ -397,9 +394,25 @@ export class InjectSchedulerService {
         active_fires: liveCounters.fire_rescue.active_fires,
         fires_contained: liveCounters.fire_rescue.fires_contained,
         fires_resolved: liveCounters.fire_rescue.fires_resolved,
+        hazards_active: liveCounters.fire_rescue.hazards_active,
+        hazards_resolved: liveCounters.fire_rescue.hazards_resolved,
         casualties_in_hot_zone: liveCounters.fire_rescue.casualties_in_hot_zone,
         extracted_to_warm: liveCounters.fire_rescue.extracted_to_warm,
         debris_cleared: liveCounters.fire_rescue.debris_cleared,
+      };
+
+      // Merge bomb squad counters
+      const bombState = (nextState.bomb_squad_state as Record<string, unknown>) ?? {};
+      (nextState.bomb_squad_state as Record<string, unknown>) = {
+        ...bombState,
+        active_threats: liveCounters.bomb_squad.active_threats,
+        tips_received: liveCounters.bomb_squad.tips_received,
+        devices_found: liveCounters.bomb_squad.devices_found,
+        devices_rendered_safe: liveCounters.bomb_squad.devices_rendered_safe,
+        false_alarms_cleared: liveCounters.bomb_squad.false_alarms_cleared,
+        sweeps_completed: liveCounters.bomb_squad.sweeps_completed,
+        detonations: liveCounters.bomb_squad.detonations,
+        exclusion_zones_active: liveCounters.bomb_squad.exclusion_zones_active,
       };
 
       // Merge area occupancy breakdown

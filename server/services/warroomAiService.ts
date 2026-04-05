@@ -2421,7 +2421,9 @@ const COUNTER_BEHAVIOR_CATALOG = `BEHAVIOR TYPES (you MUST pick from this list �
 /**
  * Generate scenario-appropriate CounterDefinition[] for each team using AI.
  * For minimal complexity, returns undefined (template-based fallback used instead).
+ * Currently disabled — the hardcoded counterCatalog.ts replaces this.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function generateCounterDefinitions(
   input: WarroomGenerateInput,
   teamNames: string[],
@@ -5674,6 +5676,13 @@ AVAILABLE CONDITION KEYS (use these in conditions_to_appear):
 - "no_media_management_decision" — no media statement has been issued
 - "crowd_density_above_0.6" — crowd density is dangerously high
 - "objective_evacuation_not_completed" — evacuation objective is still active
+- "media_press_conference_held" — media team has held a press conference
+- "media_press_conference_or_statement" — media team has held press conference OR issued first statement
+- "media_statement_issued" — media team has issued at least one public statement
+- "media_spokesperson_designated" — a spokesperson has been designated
+- "media_no_camera_placement" — camera/filming positions not yet decided
+- "media_no_holding_area" — media holding area not yet established
+- "deaths_on_site_above_0" — at least one patient has died on site
 
 AVAILABLE STATE EFFECT KEYS (mechanical disruptions the inject causes):
 - evacuation_state.flow_rate_modifier — multiplier on exit flow rate (e.g. 0.5 = halved, 0.3 = severe)
@@ -5762,6 +5771,126 @@ VARIETY IS CRITICAL:
     }));
   } catch (err) {
     logger.warn({ err, teamName }, 'Chaos injects failed; continuing without');
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2d — Reporter Questions (condition-driven media pressure injects)
+// ---------------------------------------------------------------------------
+
+/**
+ * Generates a pool of reporter-question injects that fire once the media team
+ * has held a press conference or issued a public statement.  Each inject is a
+ * tough question from a named reporter at a specific outlet.  The questions
+ * escalate in difficulty and overlap with the scenario's ongoing situation so
+ * the media team's answers can be AI-evaluated for accuracy and tone.
+ */
+async function generateReporterQuestionInjects(
+  input: WarroomGenerateInput,
+  mediaTeamName: string,
+  allTeamNames: string[],
+  openAiApiKey: string,
+  questionCount: number,
+  narrative?: { title?: string; description?: string; briefing?: string },
+): Promise<NonNullable<WarroomScenarioPayload['condition_driven_injects']>> {
+  if (questionCount <= 0) return [];
+
+  const { scenario_type, setting, venue_name, location, researchContext } = input;
+  const venue = venue_name || location || setting;
+  const durationMinutes = input.duration_minutes ?? 60;
+
+  const narrativeBlock = narrative
+    ? `\nNARRATIVE: ${narrative.title || ''} — ${narrative.description || ''}`
+    : '';
+  const researchBlock = buildResearchContextBlock(researchContext, venue);
+
+  const systemPrompt = `You are an expert crisis-communications scenario designer creating REPORTER QUESTIONS that the ${mediaTeamName} team must field during a press conference or after issuing a public statement.
+
+Scenario: ${scenario_type} at ${venue}
+Setting: ${setting}
+All teams: ${allTeamNames.join(', ')}
+Media team: ${mediaTeamName}
+Game duration: ${durationMinutes} minutes
+${narrativeBlock}
+${researchBlock}
+
+WHAT TO GENERATE — tough, realistic reporter questions:
+- Each question is from a NAMED reporter at a specific news outlet (mix local, national, international, tabloid, social-media influencer).
+- Questions must challenge the media team on: casualty numbers, operational failures, victim identity, rumours, government accountability, community tensions, delays, public safety, and optics.
+- Escalate difficulty: early questions are factual ("How many injured?"), later ones are adversarial ("Why was there no perimeter 20 minutes in?"), and the final ones are ethical traps ("Can you confirm the suspect's ethnicity?").
+- At least one question should reference social media footage or viral content.
+- At least one question should probe camera/media access restrictions.
+- At least one question should ask about a specific casualty or identifiable victim (testing victim dignity).
+
+CONDITIONS: Each inject fires when the press conference has been held OR a public statement was issued, AND the game is past a certain time.
+
+Return ONLY valid JSON:
+{
+  "reporter_questions": [
+    {
+      "type": "media_report",
+      "title": "string — e.g. 'Question from Sarah Chen, Channel 5 News'",
+      "content": "string — The full reporter question, 2-3 sentences. Include the reporter's outlet and tone (aggressive, sympathetic, probing, accusatory). End with the actual question.",
+      "severity": "high|medium|critical",
+      "inject_scope": "team_specific",
+      "target_teams": ["${mediaTeamName}"],
+      "requires_response": true,
+      "conditions_to_appear": {
+        "threshold": 1,
+        "conditions": ["media_press_conference_or_statement"]
+      },
+      "eligible_after_minutes": <number — stagger across the game>,
+      "reporter_profile": "Include the reporter name, outlet, and tone directly in the title and content — no separate field needed"
+    }
+  ]
+}
+
+RULES:
+- Exactly ${questionCount} reporter questions.
+- Stagger eligible_after_minutes: first at ~${Math.round(durationMinutes * 0.2)}, last around ~${Math.round(durationMinutes * 0.8)}. Spread them out.
+- All conditions_to_appear must use "media_press_conference_or_statement" as primary condition.
+- Some questions should add a second condition like "active_fires_above_0" or "deaths_on_site_above_0" for questions that reference those ongoing situations.
+- inject_scope always "team_specific". target_teams always ["${mediaTeamName}"].
+- requires_response always true — the media team MUST answer each question.
+- Make reporters feel like distinct characters: different names, outlets, styles, agendas.`;
+
+  const userPrompt = `Generate ${questionCount} reporter questions for "${narrative?.title || scenario_type}" at ${venue}. These should feel like a real press conference where reporters are grilling the spokesperson. Mix factual, adversarial, and ethically tricky questions.`;
+
+  try {
+    const parsed = await callOpenAi<{
+      reporter_questions?: Array<{
+        type?: string;
+        title?: string;
+        content?: string;
+        severity?: string;
+        inject_scope?: string;
+        target_teams?: string[];
+        requires_response?: boolean;
+        conditions_to_appear?: { threshold?: number; conditions?: string[] } | { all: string[] };
+        eligible_after_minutes?: number;
+      }>;
+    }>(systemPrompt, userPrompt, openAiApiKey, 5000, 0.9);
+
+    const raw = parsed.reporter_questions || [];
+    return raw.map((inj, idx) => ({
+      type: normalizeInjectType(inj.type || 'media_report'),
+      title: inj.title || `Reporter Question #${idx + 1}`,
+      content: inj.content || '',
+      severity: inj.severity || 'high',
+      inject_scope: 'team_specific' as const,
+      target_teams: [mediaTeamName],
+      requires_response: true,
+      conditions_to_appear: inj.conditions_to_appear ?? {
+        threshold: 1,
+        conditions: ['media_press_conference_or_statement'],
+      },
+      conditions_to_cancel: undefined,
+      eligible_after_minutes:
+        inj.eligible_after_minutes ?? Math.round(durationMinutes * 0.2) + idx * 3,
+    }));
+  } catch (err) {
+    logger.warn({ err }, 'Reporter question injects failed; continuing without');
     return [];
   }
 }
@@ -6810,6 +6939,29 @@ export async function warroomGenerateScenario(
     allThemes.push(...result.map((i) => `${i.title}: ${(i.content || '').slice(0, 80)}`));
   }
 
+  // Phase 2d — Reporter questions (condition-driven media pressure)
+  const mediaTeam = teamNames.find((t) => /media|communi/i.test(t));
+  if (mediaTeam) {
+    onProgress?.('Generating reporter questions...');
+    const reporterCount =
+      input.complexity_tier === 'minimal' ? 0 : input.complexity_tier === 'standard' ? 4 : 6;
+    const reporterQuestions = await generateReporterQuestionInjects(
+      input,
+      mediaTeam,
+      teamNames,
+      openAiApiKey,
+      reporterCount,
+      narrative,
+    );
+    if (reporterQuestions.length > 0) {
+      perTeamChaosResults.push(reporterQuestions);
+      allThemes.push(
+        ...reporterQuestions.map((i) => `${i.title}: ${(i.content || '').slice(0, 80)}`),
+      );
+      logger.info({ count: reporterQuestions.length }, 'Reporter question injects generated');
+    }
+  }
+
   // Merge all time injects: deterministic T+0 first, then AI-generated
   const rawTimeInjects: WarroomScenarioPayload['time_injects'] = [
     t0Inject,
@@ -6857,14 +7009,17 @@ export async function warroomGenerateScenario(
     logger.info({ poiCount: poiPins.length }, 'POI pins generated from OSM');
   }
 
-  // Counter definitions first, then environmental seeds (seeds reference counter keys)
-  const counterDefsMap = await generateCounterDefinitions(
-    input,
-    teamNames,
-    openAiApiKey,
-    onProgress,
-    narrative,
-  );
+  // Counter definitions are now driven by the hardcoded catalog in counterCatalog.ts.
+  // GPT-generated definitions are disabled; the catalog provides deterministic flags
+  // that the AI evaluator checks every decision against.
+  // const counterDefsMap = await generateCounterDefinitions(
+  //   input,
+  //   teamNames,
+  //   openAiApiKey,
+  //   onProgress,
+  //   narrative,
+  // );
+  const counterDefsMap: Record<string, CounterDefinition[]> | undefined = undefined;
 
   // Route network: compute corridors from OSM data, then AI-enrich with conditions
   if (input.osmRouteGeometries?.length && locations?.length) {

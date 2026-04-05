@@ -5,7 +5,7 @@ import {
   getConditionConfigForScenario,
   type KeywordPatternDef,
 } from './scenarioConditionConfigService.js';
-import type { CounterDefinition } from '../counterDefinitions.js';
+import { getFlagsForTeams, catalogFlagsToCandidates } from '../counterCatalog.js';
 import { env } from '../env.js';
 
 /**
@@ -361,6 +361,25 @@ Which keys should be flipped? Be strict — only flip keys where the decision sp
 }
 
 /**
+ * Resolve the scenario_type string from a scenario ID (reads initial_state.scenario_type).
+ */
+async function getScenarioType(scenarioId: string | null): Promise<string | null> {
+  if (!scenarioId) return null;
+  try {
+    const { data } = await supabaseAdmin
+      .from('scenarios')
+      .select('initial_state')
+      .eq('id', scenarioId)
+      .single();
+    if (!data) return null;
+    const state = data.initial_state as Record<string, unknown> | null;
+    return (state?.scenario_type as string) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Phase 3: Update team state (evacuation_state, triage_state, media_state) from an executed decision
  * using AI classification and author team. Called after classifyDecision and storing ai_classification.
  * Also tracks claimed_locations (AI-evaluated from scenario_locations) and second_device_zone_cleared.
@@ -369,7 +388,7 @@ export async function updateTeamStateFromDecision(
   sessionId: string,
   _decisionId: string,
   authorTeamNames: string[],
-  classification: { categories?: string[]; keywords?: string[]; primary_category?: string },
+  _classification: { categories?: string[]; keywords?: string[]; primary_category?: string },
   elapsedMinutes: number,
   options?: {
     decisionTitle?: string;
@@ -378,13 +397,6 @@ export async function updateTeamStateFromDecision(
   },
 ): Promise<void> {
   if (!authorTeamNames?.length) return;
-  const categories = classification?.categories ?? [];
-  const primary = (classification?.primary_category ?? '').toLowerCase();
-  const keywords = (classification?.keywords ?? []).map((k) => String(k).toLowerCase());
-
-  const hasCategory = (c: string) => categories.includes(c) || primary === c.toLowerCase();
-  const hasKeyword = (...kws: string[]) =>
-    kws.some((kw) => keywords.some((k) => k.includes(kw) || kw.includes(k)));
 
   try {
     const { data: session } = await supabaseAdmin
@@ -400,308 +412,105 @@ export async function updateTeamStateFromDecision(
 
     const title = options?.decisionTitle ?? '';
     const description = options?.decisionDescription ?? '';
-    const decisionText = `${title} ${description}`.toLowerCase();
 
-    const isEvacuation = authorTeamNames.some((t) => /evacuation/i.test(t));
-    const isTriage = authorTeamNames.some((t) => /triage/i.test(t));
-    const isMedia = authorTeamNames.some((t) => /media/i.test(t));
+    // --- Catalog-driven flag evaluation (always uses AI path) ---
+    const scenarioType = await getScenarioType(scenarioId);
+    const catalogEntries = getFlagsForTeams(authorTeamNames, scenarioType);
+    const allCandidates: StateKeyCandidate[] = catalogFlagsToCandidates(catalogEntries);
 
-    // --- Data-driven counter updates from counter_definitions ---
-    const counterDefsMap = (currentState._counter_definitions ?? {}) as Record<
-      string,
-      CounterDefinition[]
-    >;
-    const hasCounterDefs = Object.keys(counterDefsMap).length > 0;
-
-    if (hasCounterDefs) {
-      const teamToStateKey = (name: string): string => {
-        const n = (name ?? '').toLowerCase();
-        if (/evacuation|evac/.test(n)) return 'evacuation_state';
-        if (/triage|medical/.test(n)) return 'triage_state';
-        if (/media|communi/.test(n)) return 'media_state';
-        if (/fire|hazmat|hazard|rescue/.test(n)) return 'fire_state';
-        if (/pursuit|investigation|police|intelligence/.test(n)) return 'pursuit_state';
-        if (/bomb|eod|explosive/.test(n)) return 'bomb_squad_state';
-        return `${n.replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}_state`;
-      };
-
-      // Collect all candidate keys across all author teams for a single AI call
-      const allCandidates: StateKeyCandidate[] = [];
-      const teamStateKeyMap = new Map<string, string>();
-
-      for (const teamName of authorTeamNames) {
-        const stateKey = teamToStateKey(teamName);
-        teamStateKeyMap.set(teamName, stateKey);
-        const defs = counterDefsMap[stateKey];
-        if (!defs?.length) continue;
-
-        for (const def of defs) {
-          if (
-            (def.behavior === 'decision_toggle' && def.type === 'boolean') ||
-            (def.behavior === 'decision_increment' && def.type === 'number')
-          ) {
-            allCandidates.push({
-              key: def.key,
-              label: def.label,
-              behavior: def.behavior,
-              type: def.type,
-              keywords: def.config?.keywords,
-              categories: def.config?.categories,
-              stateKey,
-            });
-          }
+    // Also gather config-driven keyword patterns as candidates
+    if (scenarioId) {
+      try {
+        const config = await getConditionConfigForScenario(scenarioId);
+        for (const pattern of config.keyword_patterns as KeywordPatternDef[]) {
+          if (!pattern.state_key || !pattern.keywords?.length) continue;
+          const [parent, child] = pattern.state_key.split('.');
+          if (!parent || !child) continue;
+          allCandidates.push({
+            key: child,
+            label: child.replace(/_/g, ' '),
+            behavior: 'decision_toggle',
+            type: 'boolean',
+            keywords: pattern.keywords,
+            stateKey: parent,
+          });
         }
+      } catch (configErr) {
+        logger.debug({ scenarioId, err: configErr }, 'Condition config fetch failed');
       }
+    }
 
-      // Also gather config-driven keyword patterns as candidates
-      if (scenarioId) {
-        try {
-          const config = await getConditionConfigForScenario(scenarioId);
-          for (const pattern of config.keyword_patterns as KeywordPatternDef[]) {
-            if (!pattern.state_key || !pattern.keywords?.length) continue;
-            const [parent, child] = pattern.state_key.split('.');
-            if (!parent || !child) continue;
-            allCandidates.push({
-              key: child,
-              label: child.replace(/_/g, ' '),
-              behavior: 'decision_toggle',
-              type: 'boolean',
-              keywords: pattern.keywords,
-              stateKey: parent,
-            });
-          }
-        } catch (configErr) {
-          logger.debug({ scenarioId, err: configErr }, 'Condition config fetch failed');
-        }
-      }
+    // Load claimable locations as additional AI candidates
+    let locationMap = new Map<string, ClaimableLocation>();
+    if (scenarioId) {
+      const catalogStateKeys = catalogEntries.map((e) => e.stateKey);
+      const locResult = await loadClaimableLocations(scenarioId, catalogStateKeys);
+      allCandidates.push(...locResult.candidates);
+      locationMap = locResult.locationMap;
+    }
 
-      // Load claimable locations as additional AI candidates
-      let locationMap = new Map<string, ClaimableLocation>();
-      if (scenarioId) {
-        const teamStateKeys = [...new Set(authorTeamNames.map((n) => teamToStateKey(n)))];
-        const locResult = await loadClaimableLocations(scenarioId, teamStateKeys);
-        allCandidates.push(...locResult.candidates);
-        locationMap = locResult.locationMap;
-      }
+    const apiKey = env.openAiApiKey;
+    if (allCandidates.length > 0 && apiKey) {
+      const result = await evaluateStateKeysWithAI(title, description, allCandidates, apiKey);
 
-      const apiKey = env.openAiApiKey;
-      if (allCandidates.length > 0 && apiKey) {
-        const result = await evaluateStateKeysWithAI(title, description, allCandidates, apiKey);
-
-        for (const flip of result.keys_to_flip) {
-          // Handle location claims separately
-          if (flip.key.startsWith('claim:')) {
-            const locInfo = locationMap.get(flip.key);
-            if (locInfo) {
-              let target = currentState[locInfo.stateKey] as Record<string, unknown>;
-              if (typeof target !== 'object' || target === null) {
-                target = {};
-                currentState[locInfo.stateKey] = target;
-              }
-              const existing = (target.claimed_locations as Record<string, unknown>) || {};
-              existing[locInfo.label] = {
-                ...locInfo.properties,
-                assigned_at_min: elapsedMinutes,
-              };
-              target.claimed_locations = existing;
-              logger.info(
-                { sessionId, location: locInfo.label, stateKey: locInfo.stateKey },
-                'Location claimed via AI evaluation',
-              );
+      for (const flip of result.keys_to_flip) {
+        if (flip.key.startsWith('claim:')) {
+          const locInfo = locationMap.get(flip.key);
+          if (locInfo) {
+            let target = currentState[locInfo.stateKey] as Record<string, unknown>;
+            if (typeof target !== 'object' || target === null) {
+              target = {};
+              currentState[locInfo.stateKey] = target;
             }
-            continue;
+            const existing = (target.claimed_locations as Record<string, unknown>) || {};
+            existing[locInfo.label] = {
+              ...locInfo.properties,
+              assigned_at_min: elapsedMinutes,
+            };
+            target.claimed_locations = existing;
+            logger.info(
+              { sessionId, location: locInfo.label, stateKey: locInfo.stateKey },
+              'Location claimed via AI evaluation',
+            );
           }
-
-          let target = currentState[flip.stateKey] as Record<string, unknown>;
-          if (typeof target !== 'object' || target === null) {
-            target = {};
-            currentState[flip.stateKey] = target;
-          }
-          const candidate = allCandidates.find(
-            (c) => c.key === flip.key && c.stateKey === flip.stateKey,
-          );
-          if (candidate?.behavior === 'decision_increment') {
-            target[flip.key] = Math.max(0, Number(target[flip.key]) || 0) + 1;
-          } else {
-            target[flip.key] = true;
-          }
-
-          // When misinformation is addressed, decrement unaddressed count
-          if (flip.key === 'misinformation_addressed_count' && flip.stateKey === 'media_state') {
-            const cur = Math.max(0, Number(target.unaddressed_misinformation_count) || 0);
-            target.unaddressed_misinformation_count = Math.max(0, cur - 1);
-          }
+          continue;
         }
 
-        logger.info(
-          {
-            sessionId,
-            authorTeamNames,
-            candidateCount: allCandidates.length,
-            flippedKeys: result.keys_to_flip.map((f) => `${f.stateKey}.${f.key}`),
-          },
-          'AI-evaluated state key flips from decision',
+        let target = currentState[flip.stateKey] as Record<string, unknown>;
+        if (typeof target !== 'object' || target === null) {
+          target = {};
+          currentState[flip.stateKey] = target;
+        }
+        const candidate = allCandidates.find(
+          (c) => c.key === flip.key && c.stateKey === flip.stateKey,
         );
-      } else if (allCandidates.length > 0) {
-        logger.warn(
-          { sessionId },
-          'OpenAI API key not configured; skipping AI state-key evaluation',
-        );
-      }
-    } else {
-      // Legacy hardcoded decision handling (backward compatibility)
-      const evacuationState = (currentState.evacuation_state as Record<string, unknown>) || {};
-      const triageState = (currentState.triage_state as Record<string, unknown>) || {};
-      const mediaState = (currentState.media_state as Record<string, unknown>) || {};
+        if (candidate?.behavior === 'decision_increment') {
+          target[flip.key] = Math.max(0, Number(target[flip.key]) || 0) + 1;
+        } else {
+          target[flip.key] = true;
+        }
 
-      if (isEvacuation) {
-        if (
-          hasCategory('flow_control') ||
-          hasCategory('evacuation_flow_control') ||
-          hasKeyword(
-            'flow',
-            'bottleneck',
-            'stagger',
-            'egress',
-            'congestion',
-            'exit capacity',
-            'exit width',
-            'flow rate',
-            'people per minute',
-            'capacity per exit',
-          )
-        ) {
-          evacuationState.flow_control_decided = true;
+        if (flip.key === 'misinformation_addressed_count' && flip.stateKey === 'media_state') {
+          const cur = Math.max(0, Number(target.unaddressed_misinformation_count) || 0);
+          target.unaddressed_misinformation_count = Math.max(0, cur - 1);
         }
-        if (
-          hasCategory('coordination_order') ||
-          hasCategory('coordination') ||
-          hasCategory('evacuation_coordination') ||
-          hasKeyword('coordinate', 'triage')
-        ) {
-          evacuationState.coordination_with_triage = true;
-        }
-      }
-      if (isTriage) {
-        if (
-          hasCategory('supply_management') ||
-          hasKeyword(
-            'supply',
-            'request',
-            'ration',
-            'equipment',
-            'shortage',
-            'tourniquet',
-            'stretcher',
-            'triage tag',
-            'airway kit',
-            'oxygen',
-            'iv fluid',
-            'trauma kit',
-            'gauze',
-            'bandage',
-            'first aid kit',
-            'medical kit',
-          )
-        ) {
-          triageState.supply_request_made = true;
-        }
-        if (
-          hasCategory('prioritisation') ||
-          hasCategory('triage_protocol') ||
-          hasKeyword('prioritise', 'critical first', 'severity', 'triage protocol')
-        ) {
-          triageState.prioritisation_decided = true;
-        }
-      }
-      if (scenarioId) {
-        try {
-          const config = await getConditionConfigForScenario(scenarioId);
-          for (const pattern of config.keyword_patterns as KeywordPatternDef[]) {
-            if (!pattern.state_key || !pattern.keywords?.length) continue;
-            const matches = pattern.keywords.some((kw) => decisionText.includes(kw.toLowerCase()));
-            if (!matches) continue;
-            const [parent, child] = pattern.state_key.split('.');
-            if (!parent || !child) continue;
-            if (parent === 'evacuation_state') {
-              (evacuationState as Record<string, unknown>)[child] = true;
-            } else if (parent === 'triage_state') {
-              (triageState as Record<string, unknown>)[child] = true;
-            } else if (parent === 'media_state') {
-              (mediaState as Record<string, unknown>)[child] = true;
-            } else {
-              let target = currentState[parent] as Record<string, unknown>;
-              if (typeof target !== 'object' || target === null) {
-                target = {};
-                currentState[parent] = target;
-              }
-              (target as Record<string, unknown>)[child] = true;
-            }
-          }
-        } catch (configErr) {
-          logger.debug(
-            { scenarioId, err: configErr },
-            'Condition config fetch failed; using defaults',
-          );
-        }
-      }
-      if (isMedia) {
-        if (
-          hasCategory('public_statement') ||
-          hasKeyword('statement', 'press', 'announce', 'release')
-        ) {
-          mediaState.first_statement_issued = true;
-          mediaState.statement_issued_at_minute = elapsedMinutes;
-          mediaState.statements_issued = Math.max(0, Number(mediaState.statements_issued) || 0) + 1;
-        }
-        if (
-          hasCategory('misinformation_management') ||
-          hasCategory('misinformation_response') ||
-          hasKeyword('debunk', 'counter', 'correct', 'misinformation', 'rumour', 'narrative')
-        ) {
-          mediaState.misinformation_addressed = true;
-          mediaState.misinformation_addressed_count =
-            Math.max(0, Number(mediaState.misinformation_addressed_count) || 0) + 1;
-          const curUnaddressed = Math.max(
-            0,
-            Number(mediaState.unaddressed_misinformation_count) || 0,
-          );
-          mediaState.unaddressed_misinformation_count = Math.max(0, curUnaddressed - 1);
-        }
-        if (
-          hasKeyword('spokesperson', 'one voice', 'single spokesperson', 'designated spokesperson')
-        ) {
-          mediaState.spokesperson_designated = true;
-        }
-        if (
-          hasKeyword(
-            'no names',
-            'family first',
-            'notify family',
-            'victim dignity',
-            'do not release names',
-          )
-        ) {
-          mediaState.victim_dignity_respected = true;
-        }
-        if (
-          hasKeyword(
-            '30 min',
-            '60 min',
-            '30 minutes',
-            '60 minutes',
-            'next update',
-            'regular updates',
-            'update every',
-          )
-        ) {
-          mediaState.regular_updates_planned = true;
+
+        if (flip.key === 'first_statement_issued' && flip.stateKey === 'media_state') {
+          target.statement_issued_at_minute = elapsedMinutes;
         }
       }
 
-      currentState.evacuation_state = evacuationState;
-      currentState.triage_state = triageState;
-      currentState.media_state = mediaState;
+      logger.info(
+        {
+          sessionId,
+          authorTeamNames,
+          candidateCount: allCandidates.length,
+          flippedKeys: result.keys_to_flip.map((f) => `${f.stateKey}.${f.key}`),
+        },
+        'AI-evaluated state key flips from decision (catalog)',
+      );
+    } else if (allCandidates.length > 0) {
+      logger.warn({ sessionId }, 'OpenAI API key not configured; skipping AI state-key evaluation');
     }
 
     const nextState = { ...currentState };

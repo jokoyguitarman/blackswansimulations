@@ -19,6 +19,8 @@ export interface LiveCounters {
     active_fires: number;
     fires_contained: number;
     fires_resolved: number;
+    hazards_active: number;
+    hazards_resolved: number;
     casualties_in_hot_zone: number;
     extracted_to_warm: number;
     debris_cleared: number;
@@ -37,9 +39,11 @@ export interface LiveCounters {
     red_immediate: number;
     yellow_delayed: number;
     green_minor: number;
+    black_deceased: number;
     ready_for_transport: number;
     transported: number;
     deaths_on_site: number;
+    total_patients: number;
   };
   bomb_squad: {
     tips_received: number;
@@ -99,6 +103,15 @@ export async function computeLiveCounters(
   const firesContained = fireHazards.filter((h) => h.status === 'contained').length;
   const firesResolved = fireHazards.filter((h) => h.status === 'resolved').length;
   const debrisCleared = debrisHazards.filter((h) => h.status === 'resolved').length;
+
+  // Broad hazard counters: all non-explosive hazards handled by fire/rescue
+  const nonExplosiveHazards = hazards.filter(
+    (h) => !/suspicious|secondary_device|explosive|bomb|ied/i.test(h.hazard_type ?? ''),
+  );
+  const hazardsActive = nonExplosiveHazards.filter(
+    (h) => h.status === 'active' || h.status === 'escalating' || h.status === 'contained',
+  ).length;
+  const hazardsResolved = nonExplosiveHazards.filter((h) => h.status === 'resolved').length;
 
   // Count casualties in hot zones (ground truth)
   let casualtiesInHotZone = 0;
@@ -183,14 +196,16 @@ export async function computeLiveCounters(
   const transported = patients.filter((c) => c.status === 'transported').length;
   const deathsOnSite = patients.filter((c) => c.status === 'deceased').length;
 
-  const inTreatmentPatients = patients.filter((c) => c.status === 'in_treatment');
   const triageColor = (c: CasualtyRow) => {
     const conds = (c.conditions ?? {}) as Record<string, unknown>;
     return (conds.player_triage_color ?? conds.triage_color ?? '') as string;
   };
-  const redImmediate = inTreatmentPatients.filter((c) => triageColor(c) === 'red').length;
-  const yellowDelayed = inTreatmentPatients.filter((c) => triageColor(c) === 'yellow').length;
-  const greenMinor = inTreatmentPatients.filter((c) => triageColor(c) === 'green').length;
+  const redImmediate = patients.filter((c) => triageColor(c) === 'red').length;
+  const yellowDelayed = patients.filter((c) => triageColor(c) === 'yellow').length;
+  const greenMinor = patients.filter((c) => triageColor(c) === 'green').length;
+  const blackDeceased = patients.filter(
+    (c) => triageColor(c) === 'black' || c.status === 'deceased',
+  ).length;
 
   // --- Bomb squad counters ---
   const suspiciousPackages = hazards.filter(
@@ -252,6 +267,8 @@ export async function computeLiveCounters(
       active_fires: activeFires,
       fires_contained: firesContained,
       fires_resolved: firesResolved,
+      hazards_active: hazardsActive,
+      hazards_resolved: hazardsResolved,
       casualties_in_hot_zone: casualtiesInHotZone,
       extracted_to_warm: extractedToWarm,
       debris_cleared: debrisCleared,
@@ -270,9 +287,11 @@ export async function computeLiveCounters(
       red_immediate: redImmediate,
       yellow_delayed: yellowDelayed,
       green_minor: greenMinor,
+      black_deceased: blackDeceased,
       ready_for_transport: readyForTransport,
       transported,
       deaths_on_site: deathsOnSite,
+      total_patients: patients.length,
     },
     bomb_squad: {
       tips_received: tipsCount ?? 0,

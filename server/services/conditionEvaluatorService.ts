@@ -301,6 +301,26 @@ conditionRegistry.media_regular_updates_planned = (ctx) =>
 conditionRegistry.media_no_regular_updates_decision = (ctx) =>
   getMediaState(ctx).regular_updates_planned !== true;
 
+// Press conference / reporter-question triggers
+conditionRegistry.media_press_conference_held = (ctx) =>
+  getMediaState(ctx).press_conference_held === true;
+
+conditionRegistry.media_press_conference_or_statement = (ctx) =>
+  getMediaState(ctx).press_conference_held === true ||
+  getMediaState(ctx).first_statement_issued === true;
+
+conditionRegistry.media_camera_placement_decided = (ctx) =>
+  getMediaState(ctx).camera_placement_decided === true;
+
+conditionRegistry.media_no_camera_placement = (ctx) =>
+  getMediaState(ctx).camera_placement_decided !== true;
+
+conditionRegistry.media_holding_area_established = (ctx) =>
+  getMediaState(ctx).media_holding_area_established === true;
+
+conditionRegistry.media_no_holding_area = (ctx) =>
+  getMediaState(ctx).media_holding_area_established !== true;
+
 // ---------------------------------------------------------------------------
 // Chaos-relevant condition keys (pin-driven counters from liveCounterService)
 // ---------------------------------------------------------------------------
