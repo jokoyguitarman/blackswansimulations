@@ -6939,7 +6939,7 @@ export async function warroomGenerateScenario(
     allThemes.push(...result.map((i) => `${i.title}: ${(i.content || '').slice(0, 80)}`));
   }
 
-  // Phase 2d — Reporter questions (condition-driven media pressure)
+  // Phase 2d — Reporter questions + hardcoded media operational injects
   const mediaTeam = teamNames.find((t) => /media|communi/i.test(t));
   if (mediaTeam) {
     onProgress?.('Generating reporter questions...');
@@ -6960,6 +6960,75 @@ export async function warroomGenerateScenario(
       );
       logger.info({ count: reporterQuestions.length }, 'Reporter question injects generated');
     }
+
+    // Hardcoded media operational injects (always present for media teams)
+    const durationMin = input.duration_minutes ?? 60;
+    const mediaOperationalInjects: NonNullable<WarroomScenarioPayload['condition_driven_injects']> =
+      [
+        {
+          type: 'political_pressure',
+          title: 'SPOKESPERSON ASSIGNMENT REQUIRED',
+          content:
+            `Reporters are arriving and cameras are being set up. Before the press briefing can proceed, you must designate a spokesperson.\n\n` +
+            `Describe the person you are appointing as spokesperson — their role, rank, demeanor, and communication style. ` +
+            `Explain WHY this person is the best candidate for addressing the public in this specific situation. ` +
+            `Consider: Does their authority match the severity? Will they project calm and competence? ` +
+            `Are they trained in crisis communications? How will the public perceive them?`,
+          severity: 'high',
+          inject_scope: 'team_specific',
+          target_teams: [mediaTeam],
+          requires_response: true,
+          conditions_to_appear: {
+            threshold: 2,
+            conditions: ['media_no_spokesperson_designated', 'media_press_conference_or_statement'],
+          },
+          eligible_after_minutes: Math.round(durationMin * 0.15),
+        },
+        {
+          type: 'field_update',
+          title: 'CAMERA POSITIONING FOR LIVE BROADCAST',
+          content:
+            `A TV crew is ready to go live from the scene. They need your direction on where to position the camera for the broadcast.\n\n` +
+            `Consider the visual backdrop carefully: What should the public SEE behind the spokesperson? ` +
+            `Showing active response efforts can build confidence, but capturing the triage area violates victim dignity. ` +
+            `Revealing tactical positions compromises operational security. A chaotic background undermines the message of control.\n\n` +
+            `Describe where the cameras should be placed, what angle to use, and what should be visible (and NOT visible) in frame.`,
+          severity: 'medium',
+          inject_scope: 'team_specific',
+          target_teams: [mediaTeam],
+          requires_response: true,
+          conditions_to_appear: {
+            threshold: 1,
+            conditions: ['media_no_camera_placement'],
+          },
+          eligible_after_minutes: Math.round(durationMin * 0.2),
+        },
+        {
+          type: 'field_update',
+          title: 'MEDIA STAGING AREA NEEDED',
+          content:
+            `Multiple news crews, photographers, and social media journalists are converging on the scene. ` +
+            `They are currently wandering into operational areas and interfering with response efforts.\n\n` +
+            `You need to establish a designated media holding area. Where should it be located? ` +
+            `It must be close enough for reporters to feel they have access, but far enough to avoid compromising operations, victim dignity, or security. ` +
+            `Describe the location, any access rules, and how you will manage press movement.`,
+          severity: 'medium',
+          inject_scope: 'team_specific',
+          target_teams: [mediaTeam],
+          requires_response: true,
+          conditions_to_appear: {
+            threshold: 1,
+            conditions: ['media_no_holding_area'],
+          },
+          eligible_after_minutes: Math.round(durationMin * 0.1),
+        },
+      ];
+
+    perTeamChaosResults.push(mediaOperationalInjects);
+    logger.info(
+      { count: mediaOperationalInjects.length },
+      'Hardcoded media operational injects added',
+    );
   }
 
   // Merge all time injects: deterministic T+0 first, then AI-generated
