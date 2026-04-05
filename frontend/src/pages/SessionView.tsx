@@ -2263,7 +2263,12 @@ export const SessionView = () => {
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
-                <DecisionWorkflow sessionId={id} filterTeam={filterTeam} hideCreateButton />
+                <DecisionWorkflow
+                  sessionId={id}
+                  filterTeam={filterTeam}
+                  hideCreateButton
+                  showEvaluation={isTrainer}
+                />
               </div>
             </div>
           )}

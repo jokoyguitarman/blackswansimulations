@@ -64,12 +64,14 @@ interface DecisionWorkflowProps {
   sessionId: string;
   filterTeam?: string;
   hideCreateButton?: boolean;
+  showEvaluation?: boolean;
 }
 
 export const DecisionWorkflow = ({
   sessionId,
   filterTeam = 'none',
   hideCreateButton = false,
+  showEvaluation = true,
 }: DecisionWorkflowProps) => {
   const { user } = useAuth();
   const [decisions, setDecisions] = useState<Decision[]>([]);
@@ -293,8 +295,9 @@ export const DecisionWorkflow = ({
                   <p>{decision.description}</p>
                 )}
               </div>
-              {/* AI Evaluation Feedback */}
-              {decision.status === 'executed' &&
+              {/* AI Evaluation Feedback — trainer only */}
+              {showEvaluation &&
+                decision.status === 'executed' &&
                 decision.environmental_consistency &&
                 (() => {
                   const ec = decision.environmental_consistency;
@@ -335,7 +338,8 @@ export const DecisionWorkflow = ({
                     </div>
                   );
                 })()}
-              {decision.status === 'executed' &&
+              {showEvaluation &&
+                decision.status === 'executed' &&
                 !decision.environmental_consistency &&
                 decision.executed_at && (
                   <div className="mt-2 p-2 rounded border border-robotic-yellow/20 bg-robotic-yellow/5 text-xs terminal-text text-robotic-yellow/50">
@@ -488,8 +492,9 @@ export const DecisionWorkflow = ({
                   </div>
                 </div>
               )}
-              {/* AI Evaluation Detail */}
-              {selectedDecision.status === 'executed' &&
+              {/* AI Evaluation Detail — trainer only */}
+              {showEvaluation &&
+                selectedDecision.status === 'executed' &&
                 selectedDecision.environmental_consistency &&
                 (() => {
                   const ec = selectedDecision.environmental_consistency;
@@ -551,7 +556,8 @@ export const DecisionWorkflow = ({
                     </div>
                   );
                 })()}
-              {selectedDecision.status === 'executed' &&
+              {showEvaluation &&
+                selectedDecision.status === 'executed' &&
                 !selectedDecision.environmental_consistency &&
                 selectedDecision.executed_at && (
                   <div className="p-3 rounded border border-robotic-yellow/20 bg-robotic-yellow/5">
