@@ -125,6 +125,7 @@ type ActionClass =
   | 'patient_response'
   | 'hazard_response'
   | 'crowd_response'
+  | 'sweep_asset'
   | 'inject_situational'
   | 'inject_stakeholder'
   | 'inject_media'
@@ -149,6 +150,8 @@ async function classifyActionRequired(
     pendingCrowds: Array<{ id: string; label: string; status: string }>;
     elapsedMinutes: number;
     infrastructurePendingCount: number;
+    unsweptAssetCount: number;
+    sweepableAssets: string[];
   },
 ): Promise<ClassificationResult> {
   const isProactive =
@@ -220,6 +223,14 @@ async function classifyActionRequired(
     return {
       actionClass: 'place_infrastructure',
       reason: 'No urgent pins — continue building operating area',
+    };
+  }
+
+  // Bomb squad: sweep other teams' placed assets for hidden devices
+  if (teamKey === 'bomb_squad' && groundContext.unsweptAssetCount > 0) {
+    return {
+      actionClass: 'sweep_asset',
+      reason: `${groundContext.unsweptAssetCount} placed asset(s) not yet swept for hidden devices`,
     };
   }
 
@@ -2492,6 +2503,8 @@ export class DemoAIAgentService {
     pendingPatients: Array<{ id: string; label: string; status: string }>;
     pendingHazards: Array<{ id: string; label: string; status: string }>;
     pendingCrowds: Array<{ id: string; label: string; status: string }>;
+    unsweptAssetCount: number;
+    sweepableAssets: string[];
   }> {
     const ground = await this.loadGroundSituation(
       session.sessionId,
@@ -2544,6 +2557,9 @@ export class DemoAIAgentService {
       return m ? m[1] : 'unknown';
     };
 
+    // Count un-swept assets for bomb squad classifier
+    const unsweptAssets = ground.sweepableAssets.filter((s) => s.includes('[NOT SWEPT]'));
+
     return {
       unclaimedExits,
       infrastructureComplete,
@@ -2563,6 +2579,8 @@ export class DemoAIAgentService {
         label: c.slice(0, 100),
         status: extractStatus(c),
       })),
+      unsweptAssetCount: unsweptAssets.length,
+      sweepableAssets: ground.sweepableAssets,
     };
   }
 
@@ -2688,9 +2706,11 @@ export class DemoAIAgentService {
                 ? `claim: ${action.claim?.location_label} as ${action.claim?.claimed_as}`
                 : action.action === 'pin_response'
                   ? `pin_response: ${action.pin_response?.target_type} "${action.pin_response?.target_label}" triage=${action.pin_response?.triage_color || 'none'}`
-                  : action.action === 'chat'
-                    ? `chat: ${action.chat?.content?.slice(0, 80) || ''}`
-                    : action.action;
+                  : action.action === 'sweep_asset'
+                    ? `sweep_asset: "${action.sweep_asset?.asset_label}" (${action.sweep_asset?.asset_id?.slice(0, 8)})`
+                    : action.action === 'chat'
+                      ? `chat: ${action.chat?.content?.slice(0, 80) || ''}`
+                      : action.action;
 
         agent.recentActions.push(`[${new Date().toISOString()}] ${label}`.slice(0, 200));
 
@@ -3940,6 +3960,29 @@ export class DemoAIAgentService {
           }
         }
         parts.push('', 'Return: 1 pin_response + 1 chat. Do NOT include a placement action.');
+        break;
+      }
+
+      case 'sweep_asset': {
+        parts.push(
+          '',
+          '## YOUR TASK: Sweep a placed asset for hidden explosive devices',
+          '⚠️ You MUST use the "sweep_asset" action to sweep ONE un-swept asset.',
+          '⚠️ Pick the asset marked [NOT SWEPT] that is highest priority (command posts, staging areas first).',
+          '',
+          '### SWEEPABLE ASSETS:',
+        );
+        for (const sa of ground.sweepableAssets) parts.push(`- ${sa}`);
+        parts.push(
+          '',
+          '### FORMAT:',
+          '{ "action": "sweep_asset", "sweep_asset": { "asset_id": "<exact UUID from list above>", "asset_label": "<label>" } }',
+          '',
+          'After sweeping, if a device is found it will appear as a hazard pin on the map.',
+          'Respond to discovered devices with pin_response on your next cycle.',
+          '',
+          'Return: 1 sweep_asset + 1 chat (announce what you are sweeping and why).',
+        );
         break;
       }
 

@@ -7,7 +7,6 @@ import {
 } from './scenarioConditionConfigService.js';
 import type { CounterDefinition } from '../counterDefinitions.js';
 import { env } from '../env.js';
-import { resolveScenarioCenter } from './scenarioCenterService.js';
 
 /**
  * Scenario State Service - Server-side only
@@ -61,45 +60,8 @@ export const updateStateOnDecisionExecution = async (
     // Update state based on decision type
     switch (decision.decision_type) {
       case 'operational_action': {
-        // Check if it's an evacuation order
-        if (
-          decision.title.toLowerCase().includes('evacuation') ||
-          decision.description.toLowerCase().includes('evacuation')
-        ) {
-          // Extract radius from description, clamp to 50–200m to prevent oversized zones
-          const radiusMatch = decision.description.match(/(\d+)\s*m(?:eter)?s?/i);
-          let radius = radiusMatch ? parseInt(radiusMatch[1], 10) : 100;
-          radius = Math.max(50, Math.min(200, radius));
-
-          const center = await resolveScenarioCenter(session.scenario_id as string);
-          if (!center) {
-            logger.warn(
-              { sessionId, decisionId: decision.id },
-              'Evacuation zone skipped — no valid coordinates found',
-            );
-            break;
-          }
-          const { lat, lng } = center;
-
-          const evacuationZone = {
-            id: `evac-${Date.now()}`,
-            center_lat: lat,
-            center_lng: lng,
-            radius_meters: radius,
-            title: decision.title,
-            created_at: new Date().toISOString(),
-          };
-
-          if (!currentState.evacuation_zones) {
-            currentState.evacuation_zones = [];
-          }
-          currentState.evacuation_zones.push(evacuationZone);
-
-          logger.info(
-            { sessionId, decisionId: decision.id, zone: evacuationZone },
-            'Evacuation zone added to state',
-          );
-        }
+        // Evacuation zones are rendered by BlastZoneOverlay (from scenario_locations)
+        // and placed_asset cordon polygons. No separate keyword-triggered circle needed.
         break;
       }
 
