@@ -234,8 +234,16 @@ export const PlacedAssetMarker = ({
     const canDrag = isDraggable && isOwnTeam && !drawingActive && !!onGeometryDragEnd;
     const color = getTeamColor(asset.team_name);
 
-    if (asset.asset_type === 'hazard_zone') {
-      const classification = asset.properties?.zone_classification as string | undefined;
+    const ZONE_TYPES: Record<string, string> = {
+      hazard_zone: '',
+      hot_zone: 'hot',
+      warm_zone: 'warm',
+      cold_zone: 'cold',
+    };
+    if (asset.asset_type in ZONE_TYPES) {
+      const classification =
+        (asset.properties?.zone_classification as string | undefined) ||
+        ZONE_TYPES[asset.asset_type];
       const zoneColors: Record<string, { fill: string; border: string; label: string }> = {
         hot: { fill: '#dc2626', border: '#dc2626', label: 'HOT ZONE' },
         warm: { fill: '#f59e0b', border: '#f59e0b', label: 'WARM ZONE' },

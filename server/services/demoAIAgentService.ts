@@ -2052,6 +2052,20 @@ const CORDON_ANCHOR_MAP: Record<string, { anchorTo: 'incident' | string[] }> = {
   exclusion_zone: { anchorTo: 'incident' },
 };
 
+// Team-scoped overrides: when the same asset_type (e.g. inner_cordon) has different
+// anchor requirements per team, the team-specific key takes priority.
+const TEAM_CORDON_ANCHOR: Record<string, Record<string, { anchorTo: 'incident' | string[] }>> = {
+  triage: {
+    inner_cordon: { anchorTo: ['triage_point', 'field_hospital', 'casualty_collection'] },
+  },
+  fire: {
+    inner_cordon: { anchorTo: ['forward_command', 'command_post', 'staging_area'] },
+  },
+  evacuation: {
+    inner_cordon: { anchorTo: 'incident' },
+  },
+};
+
 async function resolveCordonAnchor(
   assetType: string,
   blueprintId: string,
@@ -2059,7 +2073,10 @@ async function resolveCordonAnchor(
   teamName: string,
   incidentCenter: { lat: number; lng: number },
 ): Promise<{ lat: number; lng: number } | null> {
-  const mapping = CORDON_ANCHOR_MAP[blueprintId] ?? CORDON_ANCHOR_MAP[assetType];
+  // Check team-scoped overrides first, then blueprint id, then asset type
+  const teamKey = getTeamScopeKey(teamName);
+  const teamOverride = teamKey ? TEAM_CORDON_ANCHOR[teamKey]?.[assetType] : undefined;
+  const mapping = teamOverride ?? CORDON_ANCHOR_MAP[blueprintId] ?? CORDON_ANCHOR_MAP[assetType];
 
   if (!mapping) return null;
 
@@ -5083,107 +5100,140 @@ export class DemoAIAgentService {
       (placedRaw ?? []).map((a) => (a as Record<string, unknown>).asset_type as string),
     );
 
+    // Use blueprint id to track completion (asset_type can be shared across items)
+    const placedIds = new Set<string>();
+    for (const item of blueprint.items) {
+      if (placedTypes.has(item.asset_type)) placedIds.add(item.id);
+    }
+
     const pending = blueprint.items
-      .filter((item) => !placedTypes.has(item.asset_type))
+      .filter((item) => !placedIds.has(item.id))
       .sort((a, b) => a.priority - b.priority);
 
     if (pending.length === 0) return null;
 
-    const next = pending[0];
-    let geometry: { type: string; coordinates: unknown };
-    let placedLat: number;
-    let placedLng: number;
+    // Collect items to place this cycle: the next item, plus any polygon that
+    // anchors to it (so point + surrounding perimeter are placed atomically).
+    const itemsToPlace: BlueprintItem[] = [pending[0]];
 
-    if (next.geometry_type === 'polygon' && next.radius_deg) {
-      placedLat = center.lat;
-      placedLng = center.lng;
-
-      // Zone declarations are always centered on the incident; other polygons anchor to a team asset
-      if (!ZONE_DECLARATION_TYPES.has(next.asset_type)) {
-        const anchorAsset = await resolveCordonAnchor(
-          next.asset_type,
-          next.id,
-          session.sessionId,
-          agent.persona.teamName,
-          center,
-        );
-        if (anchorAsset) {
-          placedLat = anchorAsset.lat;
-          placedLng = anchorAsset.lng;
+    if (pending[0].geometry_type === 'point') {
+      // Look for a subsequent polygon that anchors to this point's asset_type
+      const pointType = pending[0].asset_type;
+      for (let i = 1; i < pending.length; i++) {
+        const candidate = pending[i];
+        if (candidate.geometry_type !== 'polygon' || !candidate.radius_deg) continue;
+        const mapping = CORDON_ANCHOR_MAP[candidate.id] ?? CORDON_ANCHOR_MAP[candidate.asset_type];
+        if (mapping && Array.isArray(mapping.anchorTo) && mapping.anchorTo.includes(pointType)) {
+          itemsToPlace.push(candidate);
+          break;
         }
       }
+    }
 
-      const clampedRadius = clampCordonRadius(next.radius_deg, next.asset_type);
-      const pts: [number, number][] = [];
-      for (let i = 0; i < 12; i++) {
-        const angle = (2 * Math.PI * i) / 12;
-        pts.push([
-          placedLng + clampedRadius * Math.cos(angle),
-          placedLat + clampedRadius * Math.sin(angle),
-        ]);
+    const actions: SingleAction[] = [];
+    let primaryLat = center.lat;
+    let primaryLng = center.lng;
+
+    for (const item of itemsToPlace) {
+      let geometry: { type: string; coordinates: unknown };
+      let placedLat: number;
+      let placedLng: number;
+
+      if (item.geometry_type === 'polygon' && item.radius_deg) {
+        // Polygons: center on the point asset just placed, or incident center
+        placedLat = primaryLat;
+        placedLng = primaryLng;
+
+        if (!ZONE_DECLARATION_TYPES.has(item.asset_type)) {
+          const anchorAsset = await resolveCordonAnchor(
+            item.asset_type,
+            item.id,
+            session.sessionId,
+            agent.persona.teamName,
+            center,
+          );
+          if (anchorAsset) {
+            placedLat = anchorAsset.lat;
+            placedLng = anchorAsset.lng;
+          }
+        }
+
+        const clampedRadius = clampCordonRadius(item.radius_deg, item.asset_type);
+        const pts: [number, number][] = [];
+        for (let i = 0; i < 12; i++) {
+          const angle = (2 * Math.PI * i) / 12;
+          pts.push([
+            placedLng + clampedRadius * Math.cos(angle),
+            placedLat + clampedRadius * Math.sin(angle),
+          ]);
+        }
+        pts.push(pts[0]);
+        geometry = { type: 'Polygon', coordinates: [pts] };
+      } else {
+        const effectiveZone = resolveEffectiveZone(item.zone, teamKey, zonesDrawn);
+        const zoneCoord = randomCoordInZone(center, effectiveZone, scenarioMetrics);
+        placedLat = zoneCoord.lat;
+        placedLng = zoneCoord.lng;
+        primaryLat = placedLat;
+        primaryLng = placedLng;
+        geometry = {
+          type: 'Point',
+          coordinates: [placedLng, placedLat],
+        };
       }
-      pts.push(pts[0]);
-      geometry = { type: 'Polygon', coordinates: [pts] };
-    } else {
-      const effectiveZone = resolveEffectiveZone(next.zone, teamKey, zonesDrawn);
-      const zoneCoord = randomCoordInZone(center, effectiveZone, scenarioMetrics);
-      placedLat = zoneCoord.lat;
-      placedLng = zoneCoord.lng;
-      geometry = {
-        type: 'Point',
-        coordinates: [placedLng, placedLat],
+
+      const personnelDesc = item.personnel
+        .map((p) => `${p.count}x ${p.role}${p.ppe ? ` (${p.ppe})` : ''}`)
+        .join(', ');
+      const equipDesc = item.equipment.join(', ');
+      const coordsStr = `[${placedLat.toFixed(6)}, ${placedLng.toFixed(6)}]`;
+      const effectiveRadius = item.radius_deg
+        ? clampCordonRadius(item.radius_deg, item.asset_type)
+        : null;
+      const radiusStr = effectiveRadius
+        ? ` Radius: ~${Math.round(effectiveRadius * METERS_PER_DEG)}m.`
+        : '';
+
+      logger.info(
+        { botUserId: agent.persona.botUserId, assetType: item.asset_type, label: item.label },
+        'AI agent: generating fallback placement from blueprint after failed retries',
+      );
+
+      const FALLBACK_ZONE_MAP: Record<string, string> = {
+        hot_zone: 'hot',
+        warm_zone: 'warm',
+        cold_zone: 'cold',
       };
-    }
+      const zoneProps: Record<string, unknown> = {
+        personnel: personnelDesc,
+        equipment: equipDesc,
+        capacity: item.capacity,
+      };
+      if (item.asset_type in FALLBACK_ZONE_MAP) {
+        zoneProps.zone_classification = FALLBACK_ZONE_MAP[item.asset_type];
+      }
 
-    const personnelDesc = next.personnel
-      .map((p) => `${p.count}x ${p.role}${p.ppe ? ` (${p.ppe})` : ''}`)
-      .join(', ');
-    const equipDesc = next.equipment.join(', ');
-    const coordsStr = `[${placedLat.toFixed(6)}, ${placedLng.toFixed(6)}]`;
-    const effectiveRadius = next.radius_deg
-      ? clampCordonRadius(next.radius_deg, next.asset_type)
-      : null;
-    const radiusStr = effectiveRadius
-      ? ` Radius: ~${Math.round(effectiveRadius * METERS_PER_DEG)}m.`
-      : '';
-
-    logger.info(
-      { botUserId: agent.persona.botUserId, assetType: next.asset_type, label: next.label },
-      'AI agent: generating fallback placement from blueprint after failed retries',
-    );
-
-    const FALLBACK_ZONE_MAP: Record<string, string> = {
-      hot_zone: 'hot',
-      warm_zone: 'warm',
-      cold_zone: 'cold',
-    };
-    const zoneProps: Record<string, unknown> = {
-      personnel: personnelDesc,
-      equipment: equipDesc,
-      capacity: next.capacity,
-    };
-    if (next.asset_type in FALLBACK_ZONE_MAP) {
-      zoneProps.zone_classification = FALLBACK_ZONE_MAP[next.asset_type];
-    }
-
-    return [
-      {
+      actions.push({
         action: 'placement',
         placement: {
-          asset_type: next.asset_type,
-          label: next.label,
+          asset_type: item.asset_type,
+          label: item.label,
           geometry,
           properties: zoneProps,
         },
-      },
-      {
+      });
+
+      // Decision for each item
+      actions.push({
         action: 'decision',
         decision: {
-          title: `Establish ${next.label}`,
-          description: `${next.description} Location: ${coordsStr} in the ${next.zone} zone.${radiusStr} Deploying ${personnelDesc}. Equipment: ${equipDesc}.`,
+          title: `Establish ${item.label}`,
+          description: `${item.description} Location: ${coordsStr} in the ${item.zone} zone.${radiusStr} Deploying ${personnelDesc}. Equipment: ${equipDesc}.`,
         },
-      },
-    ];
+      });
+    }
+
+    return actions;
   }
 
   /**
@@ -5555,16 +5605,19 @@ export class DemoAIAgentService {
         const assetType = action.placement.asset_type;
         const isCordonLike = /cordon|perimeter|exclusion_zone/i.test(assetType);
 
-        // Block cordon placement until the team has at least one point asset as anchor
-        if (isCordonLike) {
-          const { count } = await supabaseAdmin
+        // Block cordon/perimeter placement until the team has at least one point asset
+        if (isCordonLike && !ZONE_DECLARATION_TYPES.has(assetType)) {
+          const { data: teamAssets } = await supabaseAdmin
             .from('placed_assets')
-            .select('id', { count: 'exact', head: true })
+            .select('asset_type')
             .eq('session_id', sessionId)
             .eq('team_name', teamName)
-            .eq('status', 'active')
-            .not('asset_type', 'ilike', '%cordon%');
-          if (!count || count === 0) {
+            .eq('status', 'active');
+          const hasPointAsset = (teamAssets ?? []).some((a) => {
+            const t = (a as Record<string, unknown>).asset_type as string;
+            return !/cordon|perimeter|exclusion_zone|_zone$/i.test(t);
+          });
+          if (!hasPointAsset) {
             logger.info(
               { botUserId, teamName, assetType },
               'AI agent: cordon blocked — team has no point assets yet to anchor around',
@@ -5585,14 +5638,14 @@ export class DemoAIAgentService {
             session.incidentCenter,
           );
           const center = anchor ?? session.incidentCenter;
-          const RADIUS_DEG = 0.00015; // ~15m radius → ~30m diameter
+          const radiusDeg = clampCordonRadius(0.00045, assetType); // ~50m radius
           const SEGMENTS = 16;
           const ring: number[][] = [];
           for (let i = 0; i <= SEGMENTS; i++) {
             const angle = (2 * Math.PI * i) / SEGMENTS;
             ring.push([
-              center.lng + RADIUS_DEG * Math.cos(angle),
-              center.lat + RADIUS_DEG * Math.sin(angle),
+              center.lng + radiusDeg * Math.cos(angle),
+              center.lat + radiusDeg * Math.sin(angle),
             ]);
           }
           geometry = { type: 'Polygon', coordinates: [ring] };
