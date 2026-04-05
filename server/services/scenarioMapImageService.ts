@@ -6,6 +6,7 @@
 import Sharp from 'sharp';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { resolveScenarioCenter } from './scenarioCenterService.js';
 
 const OSM_TILE_BASE = 'https://tile.openstreetmap.org';
 const TILE_SIZE = 256;
@@ -440,11 +441,17 @@ export async function generateScenarioMaps(scenarioId: string): Promise<Generate
 
   const { scenario, locations } = data;
   if (scenario.center_lat == null || scenario.center_lng == null) {
-    return {
-      vicinityPng: null,
-      layoutPng: null,
-      error: 'Scenario has no center_lat/center_lng',
-    };
+    const resolved = await resolveScenarioCenter(scenarioId);
+    if (resolved) {
+      scenario.center_lat = resolved.lat;
+      scenario.center_lng = resolved.lng;
+    } else {
+      return {
+        vicinityPng: null,
+        layoutPng: null,
+        error: 'Scenario has no center_lat/center_lng',
+      };
+    }
   }
 
   const [vicinityPng, layoutPng] = await Promise.all([

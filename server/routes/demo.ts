@@ -13,6 +13,7 @@ import { getWebSocketService } from '../services/websocketService.js';
 import { snapshotFinalStateOnCompletion } from '../services/scenarioStateService.js';
 import { resolveBotUserId, resolveBotRole } from '../services/demoActionDispatcher.js';
 import { getDemoPlaybackService, listDemoScripts } from '../services/demoScriptPlaybackService.js';
+import { resolveScenarioCenter } from '../services/scenarioCenterService.js';
 import { getDemoAIAgentService } from '../services/demoAIAgentService.js';
 import { generateDemoScript } from '../services/demoScriptGeneratorService.js';
 
@@ -66,7 +67,7 @@ router.post(
       // 1. Load scenario
       const { data: scenario, error: scenarioErr } = await supabaseAdmin
         .from('scenarios')
-        .select('id, title, initial_state, center_lat, center_lng')
+        .select('id, title, initial_state')
         .eq('id', scenarioId)
         .single();
 
@@ -190,10 +191,7 @@ router.post(
         const chosenScript = scriptId || listDemoScripts()[0]?.id;
 
         if (chosenScript) {
-          const incidentCenter =
-            scenario.center_lat != null && scenario.center_lng != null
-              ? { lat: scenario.center_lat, lng: scenario.center_lng }
-              : undefined;
+          const incidentCenter = (await resolveScenarioCenter(scenarioId)) ?? undefined;
 
           const { DemoActionDispatcher } = await import('../services/demoActionDispatcher.js');
           const channelId = await new DemoActionDispatcher().getSessionChannelId(sessionId);

@@ -8,6 +8,7 @@ import {
 } from './websocketService.js';
 import { DemoActionDispatcher, resolveBotUserId } from './demoActionDispatcher.js';
 import { performSweep } from './bombSquadSweepService.js';
+import { resolveScenarioCenter } from './scenarioCenterService.js';
 import { haversineM, pointInPolygon } from './geoUtils.js';
 
 // ---------------------------------------------------------------------------
@@ -2291,7 +2292,7 @@ export class DemoAIAgentService {
     try {
       const { data: scenario } = await supabaseAdmin
         .from('scenarios')
-        .select('id, title, description, category, center_lat, center_lng, insider_knowledge')
+        .select('id, title, description, category, insider_knowledge')
         .eq('id', scenarioId)
         .single();
 
@@ -2316,39 +2317,7 @@ export class DemoAIAgentService {
         .eq('scenario_id', scenarioId)
         .limit(15);
 
-      let incidentCenter: { lat: number; lng: number } | null =
-        scenario.center_lat != null && scenario.center_lng != null
-          ? { lat: scenario.center_lat as number, lng: scenario.center_lng as number }
-          : null;
-
-      // Fallback: derive center from incident_site pin or first location with coords
-      if (!incidentCenter && locations?.length) {
-        const incidentPin = (locations as Array<Record<string, unknown>>).find((l) =>
-          (l.location_type as string)?.includes('incident_site'),
-        );
-        const targetPin = incidentPin ?? (locations as Array<Record<string, unknown>>)[0];
-        const coords = targetPin?.coordinates as { lat?: number; lng?: number } | null;
-        if (coords?.lat != null && coords?.lng != null) {
-          incidentCenter = { lat: coords.lat, lng: coords.lng };
-          logger.info(
-            { lat: coords.lat, lng: coords.lng, scenarioId },
-            'AI agent: derived incident center from scenario_locations (center_lat/lng were null)',
-          );
-          // Backfill the scenario record so future loads are faster
-          supabaseAdmin
-            .from('scenarios')
-            .update({ center_lat: coords.lat, center_lng: coords.lng })
-            .eq('id', scenarioId)
-            .then(({ error: backfillErr }) => {
-              if (backfillErr) {
-                logger.warn(
-                  { error: backfillErr, scenarioId },
-                  'Failed to backfill scenario center coords',
-                );
-              }
-            });
-        }
-      }
+      const incidentCenter = await resolveScenarioCenter(scenarioId);
 
       const locationSummary = (locations ?? [])
         .map((l: Record<string, unknown>) => {
@@ -5485,7 +5454,22 @@ export class DemoAIAgentService {
           );
           break;
         }
-        const geometry = this.translateGeometry(action.placement.geometry, session.incidentCenter);
+        let geometry = this.translateGeometry(action.placement.geometry, session.incidentCenter);
+
+        // For cordon/perimeter polygons, snap the center to the correct anchor
+        // instead of trusting the LLM's coordinates
+        const assetType = action.placement.asset_type;
+        const isCordonLike = /cordon|perimeter|exclusion_zone/i.test(assetType);
+        if (isCordonLike && geometry.type === 'Polygon' && session.incidentCenter) {
+          geometry = await this.snapCordonToAnchor(
+            geometry,
+            assetType,
+            sessionId,
+            teamName,
+            session.incidentCenter,
+          );
+        }
+
         await this.dispatcher.createPlacement(sessionId, botUserId, {
           team_name: teamName,
           asset_type: action.placement.asset_type,
@@ -5789,6 +5773,69 @@ export class DemoAIAgentService {
       );
 
       return { type: 'Polygon', coordinates: scaled };
+    } catch {
+      return geometry;
+    }
+  }
+
+  /**
+   * Re-center a cordon/perimeter polygon on the correct anchor point.
+   * Computes the LLM polygon's centroid, then shifts all vertices so the
+   * centroid lands on the resolved anchor (incident center or team asset).
+   */
+  private async snapCordonToAnchor(
+    geometry: { type: string; coordinates: unknown },
+    assetType: string,
+    sessionId: string,
+    teamName: string,
+    incidentCenter: { lat: number; lng: number },
+  ): Promise<{ type: string; coordinates: unknown }> {
+    try {
+      const anchor = await resolveCordonAnchor(
+        assetType,
+        assetType,
+        sessionId,
+        teamName,
+        incidentCenter,
+      );
+      if (!anchor) return geometry;
+
+      const rings = geometry.coordinates as number[][][];
+      if (!Array.isArray(rings) || rings.length === 0 || rings[0].length < 4) return geometry;
+
+      const ring = rings[0];
+      let cLng = 0;
+      let cLat = 0;
+      const n =
+        ring[ring.length - 1][0] === ring[0][0] && ring[ring.length - 1][1] === ring[0][1]
+          ? ring.length - 1
+          : ring.length;
+      for (let i = 0; i < n; i++) {
+        cLng += ring[i][0];
+        cLat += ring[i][1];
+      }
+      cLng /= n;
+      cLat /= n;
+
+      const dLng = anchor.lng - cLng;
+      const dLat = anchor.lat - cLat;
+
+      // Only snap if the centroid is off by more than ~10m
+      if (Math.abs(dLat) < 0.0001 && Math.abs(dLng) < 0.0001) return geometry;
+
+      const shifted = rings.map((r) => r.map((coord) => [coord[0] + dLng, coord[1] + dLat]));
+
+      logger.info(
+        {
+          assetType,
+          shiftLat: dLat.toFixed(6),
+          shiftLng: dLng.toFixed(6),
+          anchor: `[${anchor.lat.toFixed(6)}, ${anchor.lng.toFixed(6)}]`,
+        },
+        'AI agent: snapped cordon polygon to correct anchor point',
+      );
+
+      return { type: 'Polygon', coordinates: shifted };
     } catch {
       return geometry;
     }

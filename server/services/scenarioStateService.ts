@@ -7,6 +7,7 @@ import {
 } from './scenarioConditionConfigService.js';
 import type { CounterDefinition } from '../counterDefinitions.js';
 import { env } from '../env.js';
+import { resolveScenarioCenter } from './scenarioCenterService.js';
 
 /**
  * Scenario State Service - Server-side only
@@ -65,13 +66,20 @@ export const updateStateOnDecisionExecution = async (
           decision.title.toLowerCase().includes('evacuation') ||
           decision.description.toLowerCase().includes('evacuation')
         ) {
-          // Extract evacuation zone details from decision
+          // Extract radius from description, clamp to 50–200m to prevent oversized zones
           const radiusMatch = decision.description.match(/(\d+)\s*m(?:eter)?s?/i);
-          const radius = radiusMatch ? parseInt(radiusMatch[1], 10) : 500; // Default 500m
+          let radius = radiusMatch ? parseInt(radiusMatch[1], 10) : 100;
+          radius = Math.max(50, Math.min(200, radius));
 
-          // Try to extract location from decision or use default (Suntec City)
-          const lat = 1.2931; // Suntec City default
-          const lng = 103.8558;
+          const center = await resolveScenarioCenter(session.scenario_id as string);
+          if (!center) {
+            logger.warn(
+              { sessionId, decisionId: decision.id },
+              'Evacuation zone skipped — no valid coordinates found',
+            );
+            break;
+          }
+          const { lat, lng } = center;
 
           const evacuationZone = {
             id: `evac-${Date.now()}`,

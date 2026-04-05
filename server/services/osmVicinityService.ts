@@ -6,6 +6,7 @@
 
 import { logger } from '../lib/logger.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { resolveScenarioCenter } from './scenarioCenterService.js';
 
 const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
@@ -596,9 +597,17 @@ export async function refreshOsmVicinityForScenario(scenarioId: string): Promise
     throw new Error(`Scenario not found: ${scenarioId}`);
   }
 
-  const lat = scenario.center_lat as number | null;
-  const lng = scenario.center_lng as number | null;
+  let lat = scenario.center_lat as number | null;
+  let lng = scenario.center_lng as number | null;
   const radius = scenario.vicinity_radius_meters as number | null;
+
+  if (lat == null || lng == null) {
+    const resolved = await resolveScenarioCenter(scenarioId);
+    if (resolved) {
+      lat = resolved.lat;
+      lng = resolved.lng;
+    }
+  }
 
   if (lat == null || lng == null || radius == null || radius <= 0) {
     throw new Error('Scenario must have center_lat, center_lng, and vicinity_radius_meters set');
