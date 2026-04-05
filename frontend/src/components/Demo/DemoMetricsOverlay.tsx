@@ -13,44 +13,63 @@ interface DemoMetricsOverlayProps {
   currentState: Record<string, unknown>;
 }
 
+// Merge duplicate state keys (e.g. fire_state + fire_rescue_state → Fire / Rescue)
+const STATE_KEY_MERGE: Record<string, string> = {
+  fire_state: 'FIRE / RESCUE',
+  fire_rescue_state: 'FIRE / RESCUE',
+  triage_state: 'TRIAGE',
+  evacuation_state: 'EVACUATION',
+  media_state: 'MEDIA',
+  bomb_squad_state: 'BOMB SQUAD',
+};
+
+// Only show numeric counters that are actually useful to spectators
+const COUNTER_DENYLIST = new Set([
+  'evacuated_count', // duplicate of total_evacuated
+  'patients_being_treated', // duplicate of in_treatment
+  'handed_over_to_hospital', // duplicate of transported
+  'casualties', // duplicate of deaths_on_site
+  'patients_waiting', // duplicate of awaiting_triage
+]);
+
 function extractTeamCounters(
   cs: Record<string, unknown>,
 ): Array<{ teamName: string; counters: Array<{ label: string; value: string; alert?: boolean }> }> {
+  const grouped = new Map<string, Map<string, { label: string; value: string; alert?: boolean }>>();
+
+  for (const [key, val] of Object.entries(cs)) {
+    if (!key.endsWith('_state') || typeof val !== 'object' || val === null) continue;
+    if (key === 'heat_meter' || key === 'environmental_state') continue;
+
+    const state = val as Record<string, unknown>;
+    const displayName =
+      STATE_KEY_MERGE[key] ??
+      key
+        .replace(/_state$/, '')
+        .replace(/_/g, ' ')
+        .toUpperCase();
+
+    if (!grouped.has(displayName)) grouped.set(displayName, new Map());
+    const bucket = grouped.get(displayName)!;
+
+    for (const [k, v] of Object.entries(state)) {
+      if (COUNTER_DENYLIST.has(k)) continue;
+      if (typeof v === 'number') {
+        const label = k.replace(/_/g, ' ');
+        const alert = k.includes('death') || k.includes('breach') || k.includes('unanswered');
+        bucket.set(k, { label, value: String(v), alert: alert && v > 0 });
+      }
+    }
+  }
+
   const results: Array<{
     teamName: string;
     counters: Array<{ label: string; value: string; alert?: boolean }>;
   }> = [];
 
-  for (const [key, val] of Object.entries(cs)) {
-    if (!key.endsWith('_state') || typeof val !== 'object' || val === null) continue;
-    if (key === 'heat_meter') continue;
-
-    const state = val as Record<string, unknown>;
-    const displayName = key
-      .replace(/_state$/, '')
-      .replace(/_/g, ' ')
-      .replace(/\b\w/g, (c) => c.toUpperCase());
-
-    const counters: Array<{ label: string; value: string; alert?: boolean }> = [];
-
-    for (const [k, v] of Object.entries(state)) {
-      if (typeof v === 'number') {
-        const label = k.replace(/_/g, ' ');
-        const alert = k.includes('death') || k.includes('breach') || k.includes('unanswered');
-        counters.push({ label, value: String(v), alert: alert && v > 0 });
-      } else if (
-        typeof v === 'string' &&
-        v.length < 30 &&
-        !k.includes('label') &&
-        !k.includes('reason')
-      ) {
-        counters.push({ label: k.replace(/_/g, ' '), value: v });
-      }
-    }
-
-    if (counters.length > 0) {
-      results.push({ teamName: displayName, counters: counters.slice(0, 6) });
-    }
+  for (const [teamName, bucket] of grouped) {
+    const counters = [...bucket.values()].slice(0, 5);
+    if (counters.length > 0) results.push({ teamName, counters });
   }
 
   return results;

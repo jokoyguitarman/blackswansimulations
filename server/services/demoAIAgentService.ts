@@ -489,8 +489,8 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         label: 'Triage Operating Perimeter',
         geometry_type: 'polygon',
         zone: 'warm',
-        radius_deg: 0.00045,
-        placement_hint: `Circle around the triage station(s), radius ~50m, securing the medical operating area`,
+        radius_deg: 0.00015,
+        placement_hint: `Circle around the triage station(s), radius ~15m, securing the medical operating area`,
         personnel: [{ role: 'Access Controller', count: 2, ppe: 'high-vis vest' }],
         equipment: ['barrier tape', 'portable barriers', 'access control signage'],
         description:
@@ -744,8 +744,8 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         label: 'Outer Security Cordon',
         geometry_type: 'polygon',
         zone: 'cold',
-        radius_deg: 0.0009,
-        placement_hint: `Circle centered on incident [${c.lat}, ${c.lng}], radius ~100m, enclosing all operational zones`,
+        radius_deg: 0.000225,
+        placement_hint: `Circle centered on incident [${c.lat}, ${c.lng}], radius ~25m, enclosing operational zones`,
         personnel: [
           {
             role: 'Cordon Officer',
@@ -809,8 +809,8 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
           label: 'Inner Cordon (Hot Zone)',
           geometry_type: 'polygon',
           zone: 'hot',
-          radius_deg: 0.00045,
-          placement_hint: `Tight circle around incident center [${c.lat}, ${c.lng}], radius ~50m, containing the hot zone`,
+          radius_deg: 0.00015,
+          placement_hint: `Tight circle around incident center [${c.lat}, ${c.lng}], radius ~15m, containing the hot zone`,
           personnel: [
             {
               role: 'Inner Cordon Guard',
@@ -5463,20 +5463,53 @@ export class DemoAIAgentService {
           );
           break;
         }
-        let geometry = this.translateGeometry(action.placement.geometry, session.incidentCenter);
 
-        // For cordon/perimeter polygons, snap the center to the correct anchor
-        // instead of trusting the LLM's coordinates
         const assetType = action.placement.asset_type;
         const isCordonLike = /cordon|perimeter|exclusion_zone/i.test(assetType);
-        if (isCordonLike && geometry.type === 'Polygon' && session.incidentCenter) {
-          geometry = await this.snapCordonToAnchor(
-            geometry,
+
+        // Block cordon placement until the team has at least one point asset as anchor
+        if (isCordonLike) {
+          const { count } = await supabaseAdmin
+            .from('placed_assets')
+            .select('id', { count: 'exact', head: true })
+            .eq('session_id', sessionId)
+            .eq('team_name', teamName)
+            .eq('status', 'active')
+            .not('asset_type', 'ilike', '%cordon%');
+          if (!count || count === 0) {
+            logger.info(
+              { botUserId, teamName, assetType },
+              'AI agent: cordon blocked — team has no point assets yet to anchor around',
+            );
+            break;
+          }
+        }
+
+        let geometry: { type: string; coordinates: unknown };
+
+        // For cordons, generate a deterministic circle polygon instead of trusting the LLM
+        if (isCordonLike && session.incidentCenter) {
+          const anchor = await resolveCordonAnchor(
+            assetType,
             assetType,
             sessionId,
             teamName,
             session.incidentCenter,
           );
+          const center = anchor ?? session.incidentCenter;
+          const RADIUS_DEG = 0.00015; // ~15m radius → ~30m diameter
+          const SEGMENTS = 16;
+          const ring: number[][] = [];
+          for (let i = 0; i <= SEGMENTS; i++) {
+            const angle = (2 * Math.PI * i) / SEGMENTS;
+            ring.push([
+              center.lng + RADIUS_DEG * Math.cos(angle),
+              center.lat + RADIUS_DEG * Math.sin(angle),
+            ]);
+          }
+          geometry = { type: 'Polygon', coordinates: [ring] };
+        } else {
+          geometry = this.translateGeometry(action.placement.geometry, session.incidentCenter);
         }
 
         await this.dispatcher.createPlacement(sessionId, botUserId, {
@@ -5729,14 +5762,14 @@ export class DemoAIAgentService {
 
   /**
    * Shrink oversized polygons so they don't span unrealistically large areas.
-   * Max allowed span: ~0.004° (~440m). If larger, scale coordinates toward centroid.
+   * Max allowed span: ~0.00045° (~50m diameter).
    */
   private clampPolygonSize(
     geometry: { type: string; coordinates: unknown },
     center: { lat: number; lng: number } | null,
   ): { type: string; coordinates: unknown } {
     if (geometry.type !== 'Polygon') return geometry;
-    const MAX_SPAN = 0.002; // ~220m diameter — fits 100m radius circles
+    const MAX_SPAN = 0.00045; // ~50m diameter
 
     try {
       const rings = geometry.coordinates as number[][][];
