@@ -21,6 +21,7 @@ import { runMovementTick } from './movementService.js';
 import { computeLiveCounters } from './liveCounterService.js';
 import { performSweep } from './bombSquadSweepService.js';
 import { DemoActionDispatcher, resolveBotUserId } from './demoActionDispatcher.js';
+import { determineZone, type ZoneRadii, type PlacedZoneArea } from './geoUtils.js';
 import {
   evaluateInjectConditions,
   type EvaluationContext,
@@ -889,6 +890,20 @@ export class InjectSchedulerService {
     } catch (sweepErr) {
       logger.warn({ err: sweepErr, sessionId: session.id }, 'Bomb squad sweep queue error');
     }
+
+    // --- Patient queue: deterministically process casualties (fire extraction + triage) ---
+    try {
+      await this.checkPatientQueue(session.id, session.scenario_id, elapsedMinutes);
+    } catch (patientErr) {
+      logger.warn({ err: patientErr, sessionId: session.id }, 'Patient queue processing error');
+    }
+
+    // --- Hazard queue: deterministically respond to active hazards ---
+    try {
+      await this.checkHazardQueue(session.id, session.scenario_id, elapsedMinutes);
+    } catch (hazardErr) {
+      logger.warn({ err: hazardErr, sessionId: session.id }, 'Hazard queue processing error');
+    }
   }
 
   /**
@@ -1102,6 +1117,515 @@ export class InjectSchedulerService {
       summary:
         '3-person team with explosive detection dog (EDD), visual search, and electronic countermeasures sweep',
     };
+  }
+
+  // =========================================================================
+  // Deterministic patient processing queue
+  // =========================================================================
+
+  /**
+   * Process up to PATIENTS_PER_TICK casualties each scheduler tick.
+   * Fire/Rescue handles HOT zone patients (extraction + basic first aid).
+   * Triage/Medical handles WARM/COLD zone patients (triage, treat, transport).
+   * No LLM involved — actions are derived from zone + status deterministically.
+   */
+  private async checkPatientQueue(
+    sessionId: string,
+    scenarioId: string,
+    elapsedMinutes: number,
+  ): Promise<void> {
+    const PATIENT_START_MINUTE = 6;
+    const PATIENTS_PER_TICK = 3;
+    if (elapsedMinutes < PATIENT_START_MINUTE) return;
+
+    const { data: allTeams } = await supabaseAdmin
+      .from('scenario_teams')
+      .select('team_name')
+      .eq('scenario_id', scenarioId);
+    if (!allTeams?.length) return;
+
+    const teamNames = allTeams.map((t) => (t as Record<string, unknown>).team_name as string);
+    const fireTeam = teamNames.find((n) => /fire|hazard|rescue/i.test(n) && !/bomb/i.test(n));
+    const triageTeam = teamNames.find((n) => /triage|medical|health|ems|ambulance/i.test(n));
+    if (!fireTeam && !triageTeam) return;
+
+    const { data: casualties } = await supabaseAdmin
+      .from('scenario_casualties')
+      .select(
+        'id, casualty_type, headcount, status, location_lat, location_lng, conditions, player_triage_color, assigned_team',
+      )
+      .eq('session_id', sessionId)
+      .in('status', [
+        'undiscovered',
+        'identified',
+        'awaiting_triage',
+        'endorsed_to_triage',
+        'at_assembly',
+        'in_treatment',
+      ])
+      .not('casualty_type', 'in', '("crowd","evacuee_group","convergent_crowd")')
+      .order('created_at', { ascending: true })
+      .limit(40);
+    if (!casualties?.length) return;
+
+    const zoneCtx = await this.loadZoneContext(sessionId);
+
+    const classifyZone = (lat: number, lng: number) =>
+      determineZone(
+        lat,
+        lng,
+        zoneCtx.playerZones as unknown as PlacedZoneArea[],
+        zoneCtx.warRoomZones,
+        zoneCtx.incidentLat,
+        zoneCtx.incidentLng,
+      );
+
+    // Skip patients that already have active decisions this tick (avoid double-processing)
+    const { data: recentPinEvents } = await supabaseAdmin
+      .from('session_events')
+      .select('metadata')
+      .eq('session_id', sessionId)
+      .eq('event_type', 'patient_queue_processed')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    const recentlyProcessed = new Set<string>();
+    for (const ev of recentPinEvents ?? []) {
+      const meta = ev.metadata as Record<string, unknown> | null;
+      if (meta?.casualty_id) recentlyProcessed.add(meta.casualty_id as string);
+    }
+
+    let processed = 0;
+    const dispatcher = new DemoActionDispatcher();
+    const channelId = await dispatcher.getSessionChannelId(sessionId);
+
+    for (const cas of casualties as Array<Record<string, unknown>>) {
+      if (processed >= PATIENTS_PER_TICK) break;
+
+      const casId = cas.id as string;
+      if (recentlyProcessed.has(casId)) continue;
+
+      const lat = Number(cas.location_lat);
+      const lng = Number(cas.location_lng);
+      const zone = classifyZone(lat, lng);
+      const status = cas.status as string;
+      const conds = (cas.conditions ?? {}) as Record<string, unknown>;
+      const triageColor =
+        (cas.player_triage_color as string) || (conds.triage_category as string) || null;
+      const visDesc =
+        (conds.visible_description as string) || (conds.injury_type as string) || 'casualty';
+
+      // Determine which team handles this patient and what action to take
+      let handlingTeam: string | null = null;
+      let actions: string[] = [];
+      let description = '';
+      let assignedTriageColor: string | undefined;
+      const targetType = 'casualty' as const;
+
+      if (zone === 'hot' && fireTeam) {
+        // HOT zone: Fire/Rescue extracts to warm zone
+        if (status === 'undiscovered' || status === 'identified') {
+          handlingTeam = fireTeam;
+          const mobility = conds.mobility as string | undefined;
+          const isTrapped = mobility === 'trapped' || mobility === 'non_ambulatory';
+          actions = isTrapped
+            ? [
+                'DRABC Assessment',
+                'Extrication from debris',
+                'Package on stretcher',
+                'Extract to WARM zone',
+              ]
+            : ['DRABC Assessment', 'Apply basic first aid', 'Escort to WARM zone'];
+          description = [
+            `Hazards / Fire / Rescue responding to ${visDesc} in HOT ZONE.`,
+            isTrapped
+              ? 'Patient is trapped/non-ambulatory — deploying extrication team with stretcher carry.'
+              : 'Patient is ambulatory — escorting with basic first aid.',
+            `Extracting to warm zone for triage handoff to ${triageTeam || 'Medical'}.`,
+            `Personnel: 2x Firefighters (1:1 ratio for extraction).`,
+          ].join(' ');
+        }
+      } else if ((zone === 'warm' || zone === 'unknown') && triageTeam) {
+        // WARM zone: Triage team handles triage + treatment
+        // 'identified' patients must be triaged first (extract moved them here)
+        if (
+          status === 'awaiting_triage' ||
+          status === 'endorsed_to_triage' ||
+          status === 'at_assembly' ||
+          status === 'identified'
+        ) {
+          handlingTeam = triageTeam;
+          const inferColor = this.inferTriageColor(conds);
+          assignedTriageColor = inferColor;
+          actions = [
+            'START Triage Protocol',
+            `Assign triage tag: ${inferColor.toUpperCase()}`,
+            'Administer first aid',
+            'Stabilize for treatment',
+          ];
+          description = [
+            `Medical Triage responding to ${visDesc} in ${zone.toUpperCase()} ZONE.`,
+            `START assessment: assigning ${inferColor.toUpperCase()} triage tag.`,
+            inferColor === 'red'
+              ? 'IMMEDIATE priority — establishing IV access, applying haemostatic dressing, preparing for urgent treatment.'
+              : inferColor === 'yellow'
+                ? 'DELAYED priority — wound dressing applied, vital signs stable, queued for treatment within 1 hour.'
+                : inferColor === 'black'
+                  ? 'EXPECTANT — no signs of life after airway check. Tagged and documented. Coroner notification pending.'
+                  : 'MINOR — walking wounded, self-aid with supervision. Directed to assembly area.',
+            `Personnel: 1x Triage Nurse (1:1 assessment ratio).`,
+          ].join(' ');
+        } else if (status === 'in_treatment') {
+          // Ready for transport out of warm zone into cold
+          handlingTeam = triageTeam;
+          actions = [
+            'Prepare for transport',
+            'Package patient',
+            'Arrange ambulance to cold zone facility',
+          ];
+          const destLabel = 'cold zone facility';
+          description = [
+            `Medical Triage preparing ${visDesc} for transport from ${zone.toUpperCase()} ZONE.`,
+            `Patient stabilized (triage: ${triageColor?.toUpperCase() || 'ASSESSED'}).`,
+            `Arranging ambulance transport to ${destLabel}.`,
+            `Personnel: 1x Paramedic escort (1:1 for ${triageColor === 'red' ? 'critical' : 'stable'} transport).`,
+          ].join(' ');
+        }
+      } else if (zone === 'cold' && triageTeam) {
+        // COLD zone: transport to hospital
+        if (status === 'in_treatment') {
+          handlingTeam = triageTeam;
+          actions = ['Final assessment', 'Prepare for hospital transport', 'Ambulance dispatch'];
+          description = [
+            `Medical Triage arranging definitive transport for ${visDesc} from COLD ZONE.`,
+            `Patient treated (triage: ${triageColor?.toUpperCase() || 'ASSESSED'}).`,
+            `Dispatching ambulance to nearest appropriate hospital.`,
+            `Personnel: 1x Paramedic + 1x EMT for transport escort.`,
+          ].join(' ');
+        } else if (
+          status === 'awaiting_triage' ||
+          status === 'endorsed_to_triage' ||
+          status === 'identified'
+        ) {
+          handlingTeam = triageTeam;
+          const inferColor = this.inferTriageColor(conds);
+          assignedTriageColor = inferColor;
+          actions = [
+            'START Triage Protocol',
+            `Assign triage tag: ${inferColor.toUpperCase()}`,
+            'Begin definitive treatment',
+          ];
+          description = [
+            `Medical Triage responding to ${visDesc} in COLD ZONE.`,
+            `START assessment: assigning ${inferColor.toUpperCase()} triage tag.`,
+            `Beginning definitive treatment at cold zone facility.`,
+            `Personnel: 1x Triage Nurse + 1x Paramedic.`,
+          ].join(' ');
+        }
+      }
+
+      if (!handlingTeam || actions.length === 0) continue;
+
+      const botUserId = resolveBotUserId(handlingTeam);
+
+      const pinPayload = {
+        target_id: casId,
+        target_type: targetType,
+        target_label: `${visDesc} (${casId.slice(0, 8)})`,
+        actions,
+        resources: [{ type: 'medic', label: `${handlingTeam} personnel`, quantity: 2 }],
+        triage_color: assignedTriageColor as 'green' | 'yellow' | 'red' | 'black' | undefined,
+        description,
+      };
+
+      await dispatcher.respondToPin(sessionId, botUserId, handlingTeam, pinPayload);
+
+      // Log so we don't double-process next tick
+      await supabaseAdmin.from('session_events').insert({
+        session_id: sessionId,
+        event_type: 'patient_queue_processed',
+        description: `Patient queue: ${handlingTeam} → ${visDesc} (${zone} zone, ${status})`,
+        actor_id: botUserId,
+        metadata: {
+          casualty_id: casId,
+          team: handlingTeam,
+          zone,
+          action: actions[0],
+          status_before: status,
+        },
+      });
+
+      if (channelId) {
+        const emoji = zone === 'hot' ? '🔴' : zone === 'warm' ? '🟡' : '🔵';
+        await dispatcher.sendChatMessage(
+          channelId,
+          sessionId,
+          botUserId,
+          `${emoji} ${handlingTeam}: Responding to ${visDesc} in ${zone.toUpperCase()} zone — ${actions.slice(0, 2).join(', ')}. ${assignedTriageColor ? `Triage: ${assignedTriageColor.toUpperCase()}.` : ''}`,
+        );
+      }
+
+      processed++;
+
+      // Small delay between patients to prevent API flooding
+      if (processed < PATIENTS_PER_TICK) {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+
+    if (processed > 0) {
+      logger.info(
+        { sessionId, processed, elapsed: elapsedMinutes },
+        'Patient queue: processed patients this tick',
+      );
+    }
+  }
+
+  /**
+   * Infer triage color from casualty conditions when no player triage tag exists.
+   */
+  private inferTriageColor(conds: Record<string, unknown>): string {
+    const cat = (conds.triage_category as string)?.toLowerCase();
+    if (cat === 'red' || cat === 'immediate') return 'red';
+    if (cat === 'yellow' || cat === 'delayed') return 'yellow';
+    if (cat === 'black' || cat === 'expectant' || cat === 'deceased') return 'black';
+    if (cat === 'green' || cat === 'minor') return 'green';
+
+    // Infer from severity/injury description
+    const desc = ((conds.visible_description as string) ?? '').toLowerCase();
+    const injury = ((conds.injury_type as string) ?? '').toLowerCase();
+    const combined = `${desc} ${injury}`;
+    if (/cardiac|arrest|unresponsive|critical|severe.*bleed|amputation|crush/i.test(combined))
+      return 'red';
+    if (/fracture|burn|moderate|laceration|concussion|blunt.*trauma/i.test(combined))
+      return 'yellow';
+    if (/deceased|dead|no.*pulse|expectant/i.test(combined)) return 'black';
+    return 'green';
+  }
+
+  // =========================================================================
+  // Deterministic hazard processing queue
+  // =========================================================================
+
+  /**
+   * Process active hazards each tick. Fire team responds to non-explosive hazards,
+   * bomb squad responds to explosive hazards. One hazard per tick per team.
+   */
+  private async checkHazardQueue(
+    sessionId: string,
+    scenarioId: string,
+    elapsedMinutes: number,
+  ): Promise<void> {
+    const HAZARD_START_MINUTE = 5;
+    if (elapsedMinutes < HAZARD_START_MINUTE) return;
+
+    const { data: hazards } = await supabaseAdmin
+      .from('scenario_hazards')
+      .select('id, hazard_type, status, location_lat, location_lng, properties')
+      .eq('session_id', sessionId)
+      .in('status', ['active', 'escalating'])
+      .order('created_at', { ascending: true })
+      .limit(10);
+    if (!hazards?.length) return;
+
+    // Check which hazards already have decisions this session
+    const { data: hazardEvents } = await supabaseAdmin
+      .from('session_events')
+      .select('metadata')
+      .eq('session_id', sessionId)
+      .eq('event_type', 'hazard_queue_processed');
+    const processedHazards = new Set<string>();
+    for (const ev of hazardEvents ?? []) {
+      const meta = ev.metadata as Record<string, unknown> | null;
+      if (meta?.hazard_id) processedHazards.add(meta.hazard_id as string);
+    }
+
+    const { data: allTeams } = await supabaseAdmin
+      .from('scenario_teams')
+      .select('team_name')
+      .eq('scenario_id', scenarioId);
+    const teamNames = (allTeams ?? []).map(
+      (t) => (t as Record<string, unknown>).team_name as string,
+    );
+    const fireTeam = teamNames.find((n) => /fire|hazard|rescue/i.test(n) && !/bomb/i.test(n));
+    const bombTeam = teamNames.find((n) => /bomb|eod/i.test(n));
+
+    const dispatcher = new DemoActionDispatcher();
+    const channelId = await dispatcher.getSessionChannelId(sessionId);
+
+    let fireProcessed = false;
+    let bombProcessed = false;
+
+    for (const haz of hazards as Array<Record<string, unknown>>) {
+      const hazId = haz.id as string;
+      if (processedHazards.has(hazId)) continue;
+
+      const hazardType = (haz.hazard_type as string) || '';
+      const isExplosive = /bomb|explosive|ied|detonat|suspicious.*package/i.test(hazardType);
+      const props = (haz.properties ?? {}) as Record<string, unknown>;
+      const propDesc = (props.description as string) || '';
+      const lat = Number(haz.location_lat);
+      const lng = Number(haz.location_lng);
+
+      let handlingTeam: string | null = null;
+      let actions: string[] = [];
+      let description = '';
+
+      if (isExplosive && bombTeam && !bombProcessed) {
+        handlingTeam = bombTeam;
+        bombProcessed = true;
+        actions = [
+          'Establish exclusion zone',
+          'Deploy EOD robot for examination',
+          'Initiate render safe procedure',
+        ];
+        description = [
+          `Bomb Squad responding to ${hazardType.replace(/_/g, ' ')} at [${lat.toFixed(5)}, ${lng.toFixed(5)}].`,
+          propDesc ? `Assessment: ${propDesc}.` : '',
+          `Establishing 100m exclusion zone. Deploying remote-operated vehicle for initial examination.`,
+          `Personnel: 4x EOD operators, 1x EDD handler.`,
+        ]
+          .filter(Boolean)
+          .join(' ');
+      } else if (!isExplosive && fireTeam && !fireProcessed) {
+        handlingTeam = fireTeam;
+        fireProcessed = true;
+
+        const isFireHazard = /fire|blaze|smoke|flame/i.test(hazardType);
+        const isHazmat = /hazmat|chemical|spill|gas|toxic/i.test(hazardType);
+        const isCollapse = /collapse|structural|debris/i.test(hazardType);
+
+        if (isFireHazard) {
+          actions = ['Deploy fire suppression', 'Establish water supply', 'Search & rescue sweep'];
+          description = [
+            `Hazards / Fire / Rescue responding to ${hazardType.replace(/_/g, ' ')} at [${lat.toFixed(5)}, ${lng.toFixed(5)}].`,
+            propDesc ? `Assessment: ${propDesc}.` : '',
+            `Deploying 2x BA crews for interior attack. Establishing water relay from nearest hydrant.`,
+            `Personnel: 6x Firefighters, 1x Incident Commander.`,
+          ]
+            .filter(Boolean)
+            .join(' ');
+        } else if (isHazmat) {
+          actions = ['Identify substance', 'Establish decon corridor', 'Contain spill'];
+          description = [
+            `Hazards / Fire / Rescue responding to HAZMAT incident: ${hazardType.replace(/_/g, ' ')} at [${lat.toFixed(5)}, ${lng.toFixed(5)}].`,
+            propDesc ? `Assessment: ${propDesc}.` : '',
+            `Deploying HAZMAT crew in Level B PPE. Establishing decontamination corridor downwind.`,
+            `Personnel: 4x HAZMAT technicians, 2x Decon specialists.`,
+          ]
+            .filter(Boolean)
+            .join(' ');
+        } else if (isCollapse) {
+          actions = ['Structural assessment', 'Deploy USAR team', 'Establish shoring'];
+          description = [
+            `Hazards / Fire / Rescue responding to structural hazard: ${hazardType.replace(/_/g, ' ')} at [${lat.toFixed(5)}, ${lng.toFixed(5)}].`,
+            propDesc ? `Assessment: ${propDesc}.` : '',
+            `Deploying Urban Search and Rescue team. Structural engineer requested for assessment.`,
+            `Personnel: 4x USAR technicians, 2x Heavy rescue operators.`,
+          ]
+            .filter(Boolean)
+            .join(' ');
+        } else {
+          actions = ['Assess hazard', 'Establish safety perimeter', 'Initiate mitigation'];
+          description = [
+            `Hazards / Fire / Rescue responding to ${hazardType.replace(/_/g, ' ')} at [${lat.toFixed(5)}, ${lng.toFixed(5)}].`,
+            propDesc ? `Assessment: ${propDesc}.` : '',
+            `Establishing safety perimeter and initiating hazard mitigation protocol.`,
+            `Personnel: 4x Firefighters.`,
+          ]
+            .filter(Boolean)
+            .join(' ');
+        }
+      }
+
+      if (!handlingTeam || actions.length === 0) continue;
+
+      const botUserId = resolveBotUserId(handlingTeam);
+
+      await dispatcher.respondToPin(sessionId, botUserId, handlingTeam, {
+        target_id: hazId,
+        target_type: 'hazard',
+        target_label: `${hazardType.replace(/_/g, ' ')} (${hazId.slice(0, 8)})`,
+        actions,
+        resources: [{ type: 'crew', label: `${handlingTeam} crew`, quantity: 4 }],
+        description,
+      });
+
+      await supabaseAdmin.from('session_events').insert({
+        session_id: sessionId,
+        event_type: 'hazard_queue_processed',
+        description: `Hazard queue: ${handlingTeam} → ${hazardType} (${haz.status})`,
+        actor_id: botUserId,
+        metadata: {
+          hazard_id: hazId,
+          team: handlingTeam,
+          hazard_type: hazardType,
+        },
+      });
+
+      if (channelId) {
+        await dispatcher.sendChatMessage(
+          channelId,
+          sessionId,
+          botUserId,
+          `🔥 ${handlingTeam}: Responding to ${hazardType.replace(/_/g, ' ')} — ${actions.slice(0, 2).join(', ')}.`,
+        );
+      }
+
+      if (fireProcessed && bombProcessed) break;
+    }
+  }
+
+  /**
+   * Load zone context (war room zones, player zones, incident center) for zone classification.
+   */
+  private async loadZoneContext(sessionId: string): Promise<{
+    warRoomZones: ZoneRadii[];
+    playerZones: Array<{
+      asset_type: string;
+      properties: Record<string, unknown> | null;
+      geometry: Record<string, unknown>;
+    }>;
+    incidentLat: number;
+    incidentLng: number;
+  }> {
+    const [hazResult, areaResult] = await Promise.all([
+      supabaseAdmin
+        .from('scenario_hazards')
+        .select('location_lat, location_lng, zones')
+        .eq('session_id', sessionId)
+        .in('status', ['active', 'escalating', 'contained'])
+        .limit(5),
+      supabaseAdmin
+        .from('placed_assets')
+        .select('asset_type, label, geometry, properties')
+        .eq('session_id', sessionId)
+        .eq('status', 'active')
+        .in('asset_type', ['hazard_zone', 'hot_zone', 'warm_zone', 'cold_zone']),
+    ]);
+
+    const hazards = hazResult.data ?? [];
+    let incidentLat = 0,
+      incidentLng = 0;
+    let warRoomZones: ZoneRadii[] = [];
+
+    if (hazards.length > 0) {
+      for (const h of hazards) {
+        incidentLat += Number(h.location_lat);
+        incidentLng += Number(h.location_lng);
+      }
+      incidentLat /= hazards.length;
+      incidentLng /= hazards.length;
+      warRoomZones =
+        hazards.map((h) => (h.zones ?? []) as ZoneRadii[]).find((z) => z.length > 0) ?? [];
+    }
+
+    const playerZones = (areaResult.data ?? []).map((a) => ({
+      asset_type: a.asset_type as string,
+      properties: a.properties as Record<string, unknown> | null,
+      geometry: a.geometry as Record<string, unknown>,
+    }));
+
+    return { warRoomZones, playerZones, incidentLat, incidentLng };
   }
 
   /**

@@ -275,19 +275,81 @@ export async function resolveAndApply(
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Zone-aware validation: detect patient zone and enforce zone-action rules
+  // ---------------------------------------------------------------------------
+  const patientZone = await detectPatientZone(sessionId, scenarioId, targetCasualty, placedAreas);
+  const zoneNames: Record<string, string> = { hot: 'RED', warm: 'YELLOW', cold: 'BLUE' };
+  const patientDesc =
+    (targetCasualty.conditions as Record<string, unknown>)?.visible_description ||
+    `patient (${targetCasualty.id.slice(0, 8)})`;
+
+  // Zone-action matrix: which actions are allowed in which zones
+  const ZONE_ACTION_RULES: Record<string, { allowed: string[]; reason: string }> = {
+    hot: {
+      allowed: ['extract', 'direct_to'],
+      reason:
+        'In the RED (hot) zone, only extraction and basic first aid are permitted. ' +
+        'Triage, definitive treatment, and transport require the patient to be moved to the YELLOW (warm) zone first.',
+    },
+    warm: {
+      allowed: ['treat', 'direct_to', 'extract'],
+      reason:
+        'In the YELLOW (warm) zone, triage and stabilization are the primary actions. ' +
+        'Transport to hospital requires the patient to be treated first and moved to the BLUE (cold) zone.',
+    },
+    cold: {
+      allowed: ['treat', 'transport', 'direct_to'],
+      reason:
+        'In the BLUE (cold) zone, definitive treatment and hospital transport are the primary actions. ' +
+        'Extraction is not applicable — the patient is already in a safe zone.',
+    },
+  };
+
+  if (patientZone && ZONE_ACTION_RULES[patientZone]) {
+    const rule = ZONE_ACTION_RULES[patientZone];
+    if (!rule.allowed.includes(effect.action)) {
+      const zoneLabel = zoneNames[patientZone] ?? patientZone.toUpperCase();
+      logger.info(
+        {
+          casualtyId: targetCasualty.id,
+          zone: patientZone,
+          action: effect.action,
+          allowed: rule.allowed,
+        },
+        'Zone-action rejected: action not permitted in this zone',
+      );
+      await fireActionRejectionFeedback(
+        sessionId,
+        scenarioId,
+        targetCasualty,
+        effect.action,
+        'zone_mismatch',
+        `Action "${effect.action}" is not permitted for ${patientDesc} in the ${zoneLabel} zone. ${rule.reason}`,
+      );
+      return;
+    }
+  }
+
   // Status chain prerequisites — each action can only proceed from valid prior statuses
   const DIRECT_TO_ALLOWED = ['identified', 'undiscovered'];
   const EXTRACT_ALLOWED = ['identified', 'undiscovered'];
   const TRANSPORT_ALLOWED = ['in_treatment', 'endorsed_to_transport'];
-  const TREAT_ALLOWED = ['awaiting_triage', 'endorsed_to_triage', 'identified', 'at_assembly'];
+  const TREAT_ALLOWED = ['awaiting_triage', 'endorsed_to_triage', 'at_assembly', 'identified'];
 
   switch (effect.action) {
     case 'direct_to': {
       if (!exitWaypoint && !destination) return;
       if (!DIRECT_TO_ALLOWED.includes(targetCasualty.status)) {
-        logger.info(
-          { casualtyId: targetCasualty.id, status: targetCasualty.status, action: 'direct_to' },
-          'Status chain rejected: casualty already past initial movement phase',
+        await fireActionRejectionFeedback(
+          sessionId,
+          scenarioId,
+          targetCasualty,
+          effect.action,
+          'status_chain',
+          `Cannot direct ${patientDesc} — patient status is "${targetCasualty.status}". ` +
+            `Directing is only valid for patients that are "identified" or "undiscovered". ` +
+            `This patient has already progressed past the initial movement phase.`,
         );
         return;
       }
@@ -303,6 +365,7 @@ export async function resolveAndApply(
             label: destination.label,
           };
         }
+        updatedConds.phase_entered_at = new Date().toISOString();
         await supabaseAdmin
           .from('scenario_casualties')
           .update({ conditions: updatedConds })
@@ -317,6 +380,7 @@ export async function resolveAndApply(
           status: 'being_moved',
         });
       } else {
+        await stampPhaseEntry(targetCasualty.id);
         await setCasualtyMovement(sessionId, targetCasualty, {
           destination_lat: destination!.lat,
           destination_lng: destination!.lng,
@@ -331,18 +395,40 @@ export async function resolveAndApply(
     case 'extract': {
       if (!destination) return;
       if (!EXTRACT_ALLOWED.includes(targetCasualty.status)) {
-        logger.info(
-          { casualtyId: targetCasualty.id, status: targetCasualty.status, action: 'extract' },
-          'Status chain rejected: patient already past extraction phase',
+        await fireActionRejectionFeedback(
+          sessionId,
+          scenarioId,
+          targetCasualty,
+          effect.action,
+          'status_chain',
+          `Cannot extract ${patientDesc} — patient status is "${targetCasualty.status}". ` +
+            `Extraction is only valid for patients that are "identified" or "undiscovered". ` +
+            `This patient has already been extracted or is further along in the care chain.`,
         );
         return;
       }
+
+      if (patientZone && patientZone !== 'hot' && patientZone !== 'unknown') {
+        await fireActionRejectionFeedback(
+          sessionId,
+          scenarioId,
+          targetCasualty,
+          effect.action,
+          'zone_mismatch',
+          `Extraction of ${patientDesc} is unnecessary — patient is already in the ${zoneNames[patientZone] ?? patientZone.toUpperCase()} zone. ` +
+            `Extraction is for patients in the RED (hot) zone who need to be moved to safety. ` +
+            `Consider triage or treatment instead.`,
+        );
+        return;
+      }
+
       const conds = targetCasualty.conditions ?? {};
       const mobility = conds.mobility as string | undefined;
       const speed =
         mobility === 'trapped' || mobility === 'non_ambulatory'
           ? STRETCHER_CARRY_MPM
           : AMBULATORY_PATIENT_MPM;
+      await stampPhaseEntry(targetCasualty.id);
       await setCasualtyMovement(sessionId, targetCasualty, {
         destination_lat: destination.lat,
         destination_lng: destination.lng,
@@ -356,12 +442,38 @@ export async function resolveAndApply(
     case 'transport': {
       if (!destination) return;
       if (!TRANSPORT_ALLOWED.includes(targetCasualty.status)) {
-        logger.info(
-          { casualtyId: targetCasualty.id, status: targetCasualty.status, action: 'transport' },
-          'Status chain rejected: patient must be in_treatment before transport',
+        const hint =
+          targetCasualty.status === 'identified' || targetCasualty.status === 'undiscovered'
+            ? 'The patient must first be extracted, triaged, and treated before transport is possible.'
+            : targetCasualty.status === 'awaiting_triage' ||
+                targetCasualty.status === 'endorsed_to_triage'
+              ? 'The patient must be triaged and treated before transport. Complete assessment and stabilization first.'
+              : 'The patient must reach "in_treatment" or "endorsed_to_transport" status before transport.';
+        await fireActionRejectionFeedback(
+          sessionId,
+          scenarioId,
+          targetCasualty,
+          effect.action,
+          'status_chain',
+          `Cannot transport ${patientDesc} — patient status is "${targetCasualty.status}". ${hint}`,
         );
         return;
       }
+
+      if (patientZone === 'hot') {
+        await fireActionRejectionFeedback(
+          sessionId,
+          scenarioId,
+          targetCasualty,
+          effect.action,
+          'zone_mismatch',
+          `Cannot transport ${patientDesc} from the RED (hot) zone directly to hospital. ` +
+            `The patient must first be extracted to the YELLOW zone, triaged, treated, then transported from the BLUE zone.`,
+        );
+        return;
+      }
+
+      await stampPhaseEntry(targetCasualty.id);
       await setCasualtyMovement(sessionId, targetCasualty, {
         destination_lat: destination.lat,
         destination_lng: destination.lng,
@@ -374,17 +486,43 @@ export async function resolveAndApply(
     }
     case 'treat': {
       if (!TREAT_ALLOWED.includes(targetCasualty.status)) {
-        logger.info(
-          { casualtyId: targetCasualty.id, status: targetCasualty.status, action: 'treat' },
-          'Status chain rejected: patient not in a treatable status',
+        const hint =
+          targetCasualty.status === 'identified' || targetCasualty.status === 'undiscovered'
+            ? 'The patient must first be extracted from the danger zone and triaged before treatment can begin.'
+            : targetCasualty.status === 'in_treatment'
+              ? 'The patient is already being treated. Consider transport to the next zone instead.'
+              : 'The patient is not in a treatable status. Check the care chain for the correct next step.';
+        await fireActionRejectionFeedback(
+          sessionId,
+          scenarioId,
+          targetCasualty,
+          effect.action,
+          'status_chain',
+          `Cannot treat ${patientDesc} — patient status is "${targetCasualty.status}". ${hint}`,
         );
         return;
       }
+
+      if (patientZone === 'hot') {
+        await fireActionRejectionFeedback(
+          sessionId,
+          scenarioId,
+          targetCasualty,
+          effect.action,
+          'zone_mismatch',
+          `Cannot perform definitive treatment on ${patientDesc} in the RED (hot) zone. ` +
+            `Only extraction and basic life-saving interventions (DRABC, tourniquet, airway management) are permitted in the hot zone. ` +
+            `Extract the patient to the YELLOW (warm) zone first.`,
+        );
+        return;
+      }
+
       const treatConds = { ...(targetCasualty.conditions ?? {}) };
       const triageColor = (treatConds.triage_color as string) ?? 'green';
       if (triageColor === 'red') {
         treatConds.critical_clock_started_at = new Date().toISOString();
       }
+      treatConds.phase_entered_at = new Date().toISOString();
 
       await supabaseAdmin
         .from('scenario_casualties')
@@ -545,6 +683,101 @@ async function fireZoneSkipFriction(
     );
   } catch (err) {
     logger.warn({ err }, 'Failed to fire zone-skip friction inject');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Action rejection feedback: fires a visible inject when a guard blocks an action
+// ---------------------------------------------------------------------------
+
+type RejectionType = 'zone_mismatch' | 'status_chain' | 'over_delivery';
+
+async function fireActionRejectionFeedback(
+  sessionId: string,
+  scenarioId: string,
+  casualty: CasualtyRow,
+  attemptedAction: string,
+  rejectionType: RejectionType,
+  explanation: string,
+): Promise<void> {
+  const TITLES: Record<RejectionType, string> = {
+    zone_mismatch: 'Protocol Violation: Wrong Zone for Action',
+    status_chain: 'Protocol Violation: Patient Not Ready for This Step',
+    over_delivery: 'Protocol Violation: Action Exceeds Current Requirements',
+  };
+
+  const title = TITLES[rejectionType];
+
+  try {
+    await supabaseAdmin.from('scenario_injects').insert({
+      scenario_id: scenarioId,
+      session_id: sessionId,
+      title,
+      content: explanation,
+      inject_type: 'friction',
+      severity: rejectionType === 'zone_mismatch' ? 'high' : 'medium',
+      target_teams: [],
+      trigger_type: 'condition_based',
+      status_override: 'published',
+      appears_at_minutes: 0,
+    });
+
+    await supabaseAdmin.from('session_events').insert({
+      session_id: sessionId,
+      event_type: 'status_update',
+      description: `Action rejected (${rejectionType}): ${attemptedAction} on patient ${casualty.id.slice(0, 8)} — ${explanation.slice(0, 200)}`,
+      metadata: {
+        casualty_id: casualty.id,
+        attempted_action: attemptedAction,
+        rejection_type: rejectionType,
+        patient_status: casualty.status,
+      },
+    });
+
+    try {
+      getWebSocketService().broadcastToSession(sessionId, {
+        type: 'inject.published',
+        data: {
+          title,
+          content: explanation,
+          inject_type: 'friction',
+          severity: rejectionType === 'zone_mismatch' ? 'high' : 'medium',
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      /* ws not initialized */
+    }
+
+    logger.info(
+      { sessionId, casualtyId: casualty.id, attemptedAction, rejectionType },
+      'Action rejection feedback fired',
+    );
+  } catch (err) {
+    logger.warn({ err }, 'Failed to fire action rejection feedback');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase timestamp: record when a patient entered their current care phase
+// ---------------------------------------------------------------------------
+
+async function stampPhaseEntry(casualtyId: string): Promise<void> {
+  try {
+    const { data: row } = await supabaseAdmin
+      .from('scenario_casualties')
+      .select('conditions')
+      .eq('id', casualtyId)
+      .single();
+    if (!row) return;
+    const conds = { ...((row.conditions ?? {}) as Record<string, unknown>) };
+    conds.phase_entered_at = new Date().toISOString();
+    await supabaseAdmin
+      .from('scenario_casualties')
+      .update({ conditions: conds, updated_at: new Date().toISOString() })
+      .eq('id', casualtyId);
+  } catch (err) {
+    logger.warn({ err, casualtyId }, 'Failed to stamp phase entry');
   }
 }
 

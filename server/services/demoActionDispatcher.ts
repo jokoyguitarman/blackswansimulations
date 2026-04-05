@@ -867,14 +867,25 @@ export class DemoActionDispatcher {
     },
   ): Promise<string | null> {
     try {
-      const { team_name, asset_type, label, geometry, properties } = payload;
+      const { team_name, asset_type, label, geometry } = payload;
+      const properties = { ...(payload.properties ?? {}) };
+
+      // Auto-set zone_classification for zone declaration asset types
+      const ZONE_TYPE_MAP: Record<string, string> = {
+        hot_zone: 'hot',
+        warm_zone: 'warm',
+        cold_zone: 'cold',
+      };
+      if (asset_type in ZONE_TYPE_MAP && !properties.zone_classification) {
+        properties.zone_classification = ZONE_TYPE_MAP[asset_type];
+      }
 
       const validation = await validatePlacement(
         sessionId,
         team_name,
         asset_type,
         geometry as Record<string, unknown>,
-        properties ?? {},
+        properties,
       );
 
       if (!validation.valid) {

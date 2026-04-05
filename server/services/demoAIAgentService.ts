@@ -184,27 +184,11 @@ async function classifyActionRequired(
     return classification;
   }
 
-  // Proactive: prioritise unaddressed pins based on team role
+  // Patient and hazard pins are now handled deterministically by
+  // injectSchedulerService.checkPatientQueue() and checkHazardQueue() —
+  // no LLM classification needed for those. Only crowd pins remain here.
   const allowedPinTypes = TEAM_ALLOWED_PIN_TYPES[teamKey];
   if (allowedPinTypes) {
-    if (allowedPinTypes.has('casualty') && groundContext.pendingPatients.length > 0) {
-      const target = groundContext.pendingPatients[0];
-      return {
-        actionClass: 'patient_response',
-        reason: `Unaddressed patient: ${target.label}`,
-        targetPinId: target.id,
-        targetPinLabel: target.label,
-      };
-    }
-    if (allowedPinTypes.has('hazard') && groundContext.pendingHazards.length > 0) {
-      const target = groundContext.pendingHazards[0];
-      return {
-        actionClass: 'hazard_response',
-        reason: `Active hazard: ${target.label}`,
-        targetPinId: target.id,
-        targetPinLabel: target.label,
-      };
-    }
     if (allowedPinTypes.has('crowd') && groundContext.pendingCrowds.length > 0) {
       const target = groundContext.pendingCrowds[0];
       return {
@@ -332,6 +316,7 @@ const TEAM_ALLOWED_PLACEMENTS: Record<string, Set<string>> = {
     'forward_command',
     'hot_zone',
     'warm_zone',
+    'cold_zone',
     'decontamination_zone',
     'staging_area',
     'command_post',
@@ -595,6 +580,56 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
     }
 
     case 'fire': {
+      // Zone declarations — fire team draws hot/warm/cold zone boundaries first
+      const hotR = metrics.hotZoneRadius / METERS_PER_DEG;
+      const warmR = metrics.warmZoneRadius / METERS_PER_DEG;
+      const coldR = metrics.coldZoneRadius / METERS_PER_DEG;
+
+      items.push({
+        id: 'zone_hot',
+        asset_type: 'hot_zone',
+        label: 'HOT ZONE (Exclusion)',
+        geometry_type: 'polygon',
+        zone: 'hot',
+        radius_deg: hotR,
+        placement_hint: `Concentric circle centered on incident [${c.lat}, ${c.lng}], radius ${metrics.hotZoneRadius}m — immediate danger area`,
+        personnel: [{ role: 'Inner Cordon Guard', count: 2, ppe: 'full turnout gear' }],
+        equipment: ['barrier tape', 'hazard signage'],
+        description:
+          'Hot zone boundary — immediate danger area. Only personnel in full PPE with buddy system. 2-in/2-out protocol enforced.',
+        priority: 0,
+      });
+
+      items.push({
+        id: 'zone_warm',
+        asset_type: 'warm_zone',
+        label: 'WARM ZONE (Buffer)',
+        geometry_type: 'polygon',
+        zone: 'warm',
+        radius_deg: warmR,
+        placement_hint: `Concentric circle centered on incident [${c.lat}, ${c.lng}], radius ${metrics.warmZoneRadius}m — decontamination and triage buffer`,
+        personnel: [{ role: 'Access Controller', count: 2, ppe: 'high-vis vest' }],
+        equipment: ['barrier tape', 'access control signage'],
+        description:
+          'Warm zone boundary — buffer area for decontamination, casualty collection, and triage operations. Controlled access only.',
+        priority: 0,
+      });
+
+      items.push({
+        id: 'zone_cold',
+        asset_type: 'cold_zone',
+        label: 'COLD ZONE (Support)',
+        geometry_type: 'polygon',
+        zone: 'cold',
+        radius_deg: coldR,
+        placement_hint: `Concentric circle centered on incident [${c.lat}, ${c.lng}], radius ${metrics.coldZoneRadius}m — safe support area for command posts and staging`,
+        personnel: [{ role: 'Perimeter Marshal', count: 2, ppe: 'high-vis vest' }],
+        equipment: ['barrier tape', 'perimeter signage'],
+        description:
+          'Cold zone boundary — safe area for all command posts, staging areas, assembly points, and logistics. All non-fire teams operate within this zone.',
+        priority: 0,
+      });
+
       items.push({
         id: 'forward_command',
         asset_type: 'forward_command',
@@ -662,8 +697,8 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         label: 'Hazards / Fire / Rescue Operations Perimeter',
         geometry_type: 'polygon',
         zone: 'warm',
-        radius_deg: 0.00054,
-        placement_hint: `Circle around forward command post and staging area, radius ~60m, securing Hazards / Fire / Rescue operations zone`,
+        radius_deg: 0.00045,
+        placement_hint: `Circle around forward command post and staging area, radius ~50m, securing Hazards / Fire / Rescue operations zone`,
         personnel: [{ role: 'Perimeter Guard', count: 2, ppe: 'high-vis vest, helmet' }],
         equipment: ['portable barriers', 'barrier tape', 'hazard signage', 'access log'],
         description:
@@ -878,8 +913,8 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         label: 'Assembly Area Perimeter',
         geometry_type: 'polygon',
         zone: 'cold',
-        radius_deg: 0.00063,
-        placement_hint: `Circle encompassing all assembly areas, radius ~70m, preventing evacuees from wandering back toward danger zones`,
+        radius_deg: 0.00045,
+        placement_hint: `Circle encompassing assembly areas, radius ~50m, preventing evacuees from wandering back toward danger zones`,
         personnel: [
           {
             role: 'Perimeter Marshal',
@@ -1049,8 +1084,8 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         label: 'Exclusion Zone (template)',
         geometry_type: 'polygon',
         zone: 'cold',
-        radius_deg: 0.001,
-        placement_hint: `Deployed around each suspicious device. Radius varies by container type (45m-320m).`,
+        radius_deg: 0.00045,
+        placement_hint: `Deployed around each suspicious device. Max 50m radius exclusion zone.`,
         personnel: [{ role: 'Perimeter Guard', count: 4, ppe: 'high-vis vest, radio' }],
         equipment: ['barrier tape', 'portable barriers', 'megaphone'],
         description:
@@ -1524,11 +1559,37 @@ function randomCoordInZone(
   };
 }
 
-/** Clamp a cordon radius_deg to 50m–100m range. */
-function clampCordonRadius(radiusDeg: number): number {
-  const minDeg = 50 / METERS_PER_DEG; // ~0.00045
-  const maxDeg = 100 / METERS_PER_DEG; // ~0.0009
-  return Math.max(minDeg, Math.min(maxDeg, radiusDeg));
+const ZONE_DECLARATION_TYPES = new Set(['hot_zone', 'warm_zone', 'cold_zone', 'hazard_zone']);
+
+const ZONE_EXEMPT_TEAMS = new Set(['fire', 'bomb_squad']);
+
+/** Check if drawn zone polygons exist for this session. */
+async function hasDrawnZones(sessionId: string): Promise<boolean> {
+  const { count } = await supabaseAdmin
+    .from('placed_assets')
+    .select('id', { count: 'exact', head: true })
+    .eq('session_id', sessionId)
+    .eq('status', 'active')
+    .in('asset_type', ['hot_zone', 'warm_zone', 'cold_zone']);
+  return (count ?? 0) > 0;
+}
+
+/**
+ * Resolve the effective zone for a team's asset placement.
+ * If zone polygons have been drawn and the team is not fire/bomb_squad,
+ * the zone is forced to 'cold' so all assets land outside the warm zone.
+ */
+function resolveEffectiveZone(zone: string, teamKey: string | null, zonesDrawn: boolean): string {
+  if (!zonesDrawn) return zone;
+  if (teamKey && ZONE_EXEMPT_TEAMS.has(teamKey)) return zone;
+  return 'cold';
+}
+
+/** Clamp a cordon radius_deg to max 50m radius. Zone declaration types are exempt. */
+function clampCordonRadius(radiusDeg: number, assetType?: string): number {
+  if (assetType && ZONE_DECLARATION_TYPES.has(assetType)) return radiusDeg;
+  const maxDeg = 50 / METERS_PER_DEG; // ~0.00045
+  return Math.min(maxDeg, radiusDeg);
 }
 
 /** Full asset-type catalog: maps asset_type → geometry shape and default zone. */
@@ -1872,6 +1933,7 @@ export async function extractAndPlaceInfrastructureFromText(
   if (aiPlacements.length === 0) return 0;
 
   const metrics = await loadScenarioMetrics(sessionId, scenarioId, center);
+  const zonesDrawn = await hasDrawnZones(sessionId);
   let placedCount = 0;
 
   for (const p of aiPlacements) {
@@ -1889,7 +1951,8 @@ export async function extractAndPlaceInfrastructureFromText(
       pointLat = Math.max(center.lat - 0.01, Math.min(center.lat + 0.01, p.lat));
       pointLng = Math.max(center.lng - 0.01, Math.min(center.lng + 0.01, p.lng));
     } else {
-      const zoneCoord = randomCoordInZone(center, catalog.defaultZone, metrics);
+      const effectiveZone = resolveEffectiveZone(catalog.defaultZone, teamKey, zonesDrawn);
+      const zoneCoord = randomCoordInZone(center, effectiveZone, metrics);
       pointLat = zoneCoord.lat;
       pointLng = zoneCoord.lng;
     }
@@ -1898,7 +1961,7 @@ export async function extractAndPlaceInfrastructureFromText(
     if (catalog.geometry === 'point') {
       geometry = { type: 'Point', coordinates: [pointLng, pointLat] };
     } else {
-      const clampedR = clampCordonRadius(75 / METERS_PER_DEG);
+      const clampedR = clampCordonRadius(75 / METERS_PER_DEG, p.asset_type);
       const pts: [number, number][] = [];
       for (let i = 0; i < 12; i++) {
         const angle = (2 * Math.PI * i) / 12;
@@ -1913,6 +1976,14 @@ export async function extractAndPlaceInfrastructureFromText(
     if (personnel.length > 0) properties.personnel = personnel;
     if (equipment.length > 0) properties.equipment = equipment;
     if (directionIntent) properties.direction_intent = directionIntent;
+
+    const ZONE_CLASS_MAP: Record<string, string> = {
+      hot_zone: 'hot',
+      warm_zone: 'warm',
+      cold_zone: 'cold',
+    };
+    if (p.asset_type in ZONE_CLASS_MAP)
+      properties.zone_classification = ZONE_CLASS_MAP[p.asset_type];
 
     logger.info(
       { sessionId, teamName, assetType: p.asset_type, label, personnel, equipment },
@@ -2846,7 +2917,7 @@ export class DemoAIAgentService {
 
       parts.push(
         '',
-        '⚠️ COORDINATE SIZING — CRITICAL (polygons MUST be CIRCLES, 50m-100m radius):',
+        '⚠️ COORDINATE SIZING — CRITICAL (polygons MUST be CIRCLES, max 50m radius):',
         `- Incident center: [${lat}, ${lng}]. All coordinates MUST be near this center.`,
         '- 0.001° ≈ 111 meters. Keep this scale in mind for ALL placements.',
         `- For POINTS: offset from center by ± 0.0002 to 0.0005 (22m to 55m).`,
@@ -3321,7 +3392,7 @@ export class DemoAIAgentService {
         `- When placing in the HOT zone: coordinates must be within ${scenarioMetrics.hotZoneRadius}m of [${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}]`,
         `- When placing in the WARM zone: coordinates must be between ${scenarioMetrics.hotZoneRadius}m and ${scenarioMetrics.warmZoneRadius}m from center`,
         `- When placing in the COLD zone: coordinates must be between ${scenarioMetrics.warmZoneRadius}m and ${scenarioMetrics.coldZoneRadius}m from center`,
-        '- Cordons and perimeters: radius MUST be 50m to 100m (0.00045 to 0.0009 degrees). NEVER larger.',
+        '- Cordons and perimeters: radius MUST be max 50m (0.00045 degrees). NEVER larger.',
         '- NEVER place assets randomly. Always use the incident center and zone radii to calculate valid coordinates.',
       );
 
@@ -3344,7 +3415,7 @@ export class DemoAIAgentService {
 
           parts.push(
             `  ${isNext ? '→ NEXT' : `  ${i + 1}`}: ${item.label} (${item.asset_type}) — Priority ${item.priority}`,
-            `     Zone: ${item.zone} | Geometry: ${item.geometry_type}${item.radius_deg ? ` (radius ~${Math.round(item.radius_deg * METERS_PER_DEG)}m, must be 50-100m)` : ''}`,
+            `     Zone: ${item.zone} | Geometry: ${item.geometry_type}${item.radius_deg ? ` (radius ~${Math.round(item.radius_deg * METERS_PER_DEG)}m, max 50m)` : ''}`,
             `     Location: ${item.placement_hint}`,
             `     Personnel: ${personnelStr}`,
             `     Equipment: ${equipStr}`,
@@ -4993,6 +5064,8 @@ export class DemoAIAgentService {
     const teamKey = getTeamScopeKey(agent.persona.teamName);
     if (!teamKey) return null;
 
+    const zonesDrawn = await hasDrawnZones(session.sessionId);
+
     const scenarioMetrics = await loadScenarioMetrics(
       session.sessionId,
       session.scenarioId,
@@ -5022,23 +5095,25 @@ export class DemoAIAgentService {
     let placedLng: number;
 
     if (next.geometry_type === 'polygon' && next.radius_deg) {
-      // Anchor cordon center to a meaningful pin instead of random offset
       placedLat = center.lat;
       placedLng = center.lng;
 
-      const anchorAsset = await resolveCordonAnchor(
-        next.asset_type,
-        next.id,
-        session.sessionId,
-        agent.persona.teamName,
-        center,
-      );
-      if (anchorAsset) {
-        placedLat = anchorAsset.lat;
-        placedLng = anchorAsset.lng;
+      // Zone declarations are always centered on the incident; other polygons anchor to a team asset
+      if (!ZONE_DECLARATION_TYPES.has(next.asset_type)) {
+        const anchorAsset = await resolveCordonAnchor(
+          next.asset_type,
+          next.id,
+          session.sessionId,
+          agent.persona.teamName,
+          center,
+        );
+        if (anchorAsset) {
+          placedLat = anchorAsset.lat;
+          placedLng = anchorAsset.lng;
+        }
       }
 
-      const clampedRadius = clampCordonRadius(next.radius_deg);
+      const clampedRadius = clampCordonRadius(next.radius_deg, next.asset_type);
       const pts: [number, number][] = [];
       for (let i = 0; i < 12; i++) {
         const angle = (2 * Math.PI * i) / 12;
@@ -5050,8 +5125,8 @@ export class DemoAIAgentService {
       pts.push(pts[0]);
       geometry = { type: 'Polygon', coordinates: [pts] };
     } else {
-      // Place point assets within the correct zone based on blueprint zone designation
-      const zoneCoord = randomCoordInZone(center, next.zone, scenarioMetrics);
+      const effectiveZone = resolveEffectiveZone(next.zone, teamKey, zonesDrawn);
+      const zoneCoord = randomCoordInZone(center, effectiveZone, scenarioMetrics);
       placedLat = zoneCoord.lat;
       placedLng = zoneCoord.lng;
       geometry = {
@@ -5065,7 +5140,9 @@ export class DemoAIAgentService {
       .join(', ');
     const equipDesc = next.equipment.join(', ');
     const coordsStr = `[${placedLat.toFixed(6)}, ${placedLng.toFixed(6)}]`;
-    const effectiveRadius = next.radius_deg ? clampCordonRadius(next.radius_deg) : null;
+    const effectiveRadius = next.radius_deg
+      ? clampCordonRadius(next.radius_deg, next.asset_type)
+      : null;
     const radiusStr = effectiveRadius
       ? ` Radius: ~${Math.round(effectiveRadius * METERS_PER_DEG)}m.`
       : '';
@@ -5075,6 +5152,20 @@ export class DemoAIAgentService {
       'AI agent: generating fallback placement from blueprint after failed retries',
     );
 
+    const FALLBACK_ZONE_MAP: Record<string, string> = {
+      hot_zone: 'hot',
+      warm_zone: 'warm',
+      cold_zone: 'cold',
+    };
+    const zoneProps: Record<string, unknown> = {
+      personnel: personnelDesc,
+      equipment: equipDesc,
+      capacity: next.capacity,
+    };
+    if (next.asset_type in FALLBACK_ZONE_MAP) {
+      zoneProps.zone_classification = FALLBACK_ZONE_MAP[next.asset_type];
+    }
+
     return [
       {
         action: 'placement',
@@ -5082,11 +5173,7 @@ export class DemoAIAgentService {
           asset_type: next.asset_type,
           label: next.label,
           geometry,
-          properties: {
-            personnel: personnelDesc,
-            equipment: equipDesc,
-            capacity: next.capacity,
-          },
+          properties: zoneProps,
         },
       },
       {
@@ -5238,7 +5325,7 @@ export class DemoAIAgentService {
           '° and ' +
           (scenarioMetrics.coldZoneRadius / METERS_PER_DEG).toFixed(6) +
           '° of center.',
-        '- For polygon types: set radius_deg between 0.00045 (~50m) and 0.0009 (~100m). NEVER larger.',
+        '- For polygon types: set radius_deg to max 0.00045 (~50m radius). NEVER larger.',
         '- For point types: set radius_deg to null.',
         '- Return empty array [] if no infrastructure placement is intended.',
       ].join('\n');
@@ -5327,7 +5414,6 @@ export class DemoAIAgentService {
           pLat = p.lat;
           pLng = p.lng;
         } else {
-          // Infer zone from asset type and place within that zone
           const inferredZone = /hot_zone|exclusion/i.test(p.asset_type)
             ? 'hot'
             : /warm_zone|triage|forward_command|fire_truck|water_supply|decon|casualty_collection/i.test(
@@ -5335,8 +5421,10 @@ export class DemoAIAgentService {
                 )
               ? 'warm'
               : 'cold';
+          const zonesExist = await hasDrawnZones(session.sessionId);
+          const effectiveZone = resolveEffectiveZone(inferredZone, teamKey, zonesExist);
           const metrics = await loadScenarioMetrics(session.sessionId, session.scenarioId, center);
-          const zoneCoord = randomCoordInZone(center, inferredZone, metrics);
+          const zoneCoord = randomCoordInZone(center, effectiveZone, metrics);
           pLat = zoneCoord.lat;
           pLng = zoneCoord.lng;
         }
@@ -5354,8 +5442,8 @@ export class DemoAIAgentService {
           p.geometry_type === 'polygon' || catalogEntry?.geometry === 'polygon';
 
         if (shouldBePolygon) {
-          const radiusDeg = p.radius_deg || 75 / METERS_PER_DEG;
-          const clampedR = clampCordonRadius(radiusDeg);
+          const radiusDeg = p.radius_deg || 30 / METERS_PER_DEG;
+          const clampedR = clampCordonRadius(radiusDeg, p.asset_type);
           const pts: [number, number][] = [];
           for (let i = 0; i < 12; i++) {
             const angle = (2 * Math.PI * i) / 12;
@@ -5509,7 +5597,11 @@ export class DemoAIAgentService {
           }
           geometry = { type: 'Polygon', coordinates: [ring] };
         } else {
-          geometry = this.translateGeometry(action.placement.geometry, session.incidentCenter);
+          geometry = this.translateGeometry(
+            action.placement.geometry,
+            session.incidentCenter,
+            action.placement.asset_type,
+          );
         }
 
         await this.dispatcher.createPlacement(sessionId, botUserId, {
@@ -5725,8 +5817,9 @@ export class DemoAIAgentService {
   private translateGeometry(
     geometry: { type: string; coordinates: unknown },
     center: { lat: number; lng: number } | null,
+    assetType?: string,
   ): { type: string; coordinates: unknown } {
-    if (!center) return this.clampPolygonSize(geometry, center);
+    if (!center) return this.clampPolygonSize(geometry, center, assetType);
 
     const isNearOrigin = (coord: number[]): boolean =>
       Math.abs(coord[0]) < 1 && Math.abs(coord[1]) < 1;
@@ -5757,19 +5850,22 @@ export class DemoAIAgentService {
     } catch {
       // geometry already absolute or malformed
     }
-    return this.clampPolygonSize(geometry, center);
+    return this.clampPolygonSize(geometry, center, assetType);
   }
 
   /**
    * Shrink oversized polygons so they don't span unrealistically large areas.
-   * Max allowed span: ~0.00045° (~50m diameter).
+   * Max allowed span: ~0.0009° (~100m diameter / 50m radius).
+   * Zone declaration types (hot_zone, warm_zone, cold_zone, hazard_zone) are exempt.
    */
   private clampPolygonSize(
     geometry: { type: string; coordinates: unknown },
     center: { lat: number; lng: number } | null,
+    assetType?: string,
   ): { type: string; coordinates: unknown } {
+    if (assetType && ZONE_DECLARATION_TYPES.has(assetType)) return geometry;
     if (geometry.type !== 'Polygon') return geometry;
-    const MAX_SPAN = 0.00045; // ~50m diameter
+    const MAX_SPAN = 0.0009; // ~100m diameter = 50m radius
 
     try {
       const rings = geometry.coordinates as number[][][];

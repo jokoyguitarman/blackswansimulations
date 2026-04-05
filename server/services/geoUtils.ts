@@ -245,10 +245,18 @@ export function determineZone(
   incidentLat: number,
   incidentLng: number,
 ): string {
-  // 1. Player-drawn hazard_zone polygons (most authoritative)
+  // 1. Player/bot-drawn zone polygons (most authoritative)
+  const ZONE_ASSET_TYPES: Record<string, string> = {
+    hazard_zone: '',
+    hot_zone: 'hot',
+    warm_zone: 'warm',
+    cold_zone: 'cold',
+  };
   for (const zone of playerZones) {
-    if (zone.asset_type !== 'hazard_zone') continue;
-    const classification = zone.properties?.zone_classification as string | undefined;
+    if (!(zone.asset_type in ZONE_ASSET_TYPES)) continue;
+    const classification =
+      (zone.properties?.zone_classification as string | undefined) ||
+      ZONE_ASSET_TYPES[zone.asset_type];
     if (!classification) continue;
     const geom = zone.geometry;
     if (geom.type === 'Polygon') {
