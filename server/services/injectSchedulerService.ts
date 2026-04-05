@@ -20,6 +20,7 @@ import { runAreaMonitors } from './areaMonitorService.js';
 import { runMovementTick } from './movementService.js';
 import { computeLiveCounters } from './liveCounterService.js';
 import { performSweep } from './bombSquadSweepService.js';
+import { DemoActionDispatcher, resolveBotUserId } from './demoActionDispatcher.js';
 import {
   evaluateInjectConditions,
   type EvaluationContext,
@@ -894,12 +895,12 @@ export class InjectSchedulerService {
    * Deterministic bomb squad sweep: every tick (after a grace period), sweep
    * the next un-swept placed asset.  No LLM involved — just call performSweep().
    * One asset per tick to pace the sweep cadence naturally.
+   * Creates proper decisions & chat messages so sweeps are visible in the UI.
    */
   private async checkSweepQueue(sessionId: string, elapsedMinutes: number): Promise<void> {
     const SWEEP_START_MINUTE = 3;
     if (elapsedMinutes < SWEEP_START_MINUTE) return;
 
-    // Check if a bomb squad team exists in this scenario
     const { data: sessionRow } = await supabaseAdmin
       .from('sessions')
       .select('scenario_id, hidden_devices')
@@ -915,7 +916,6 @@ export class InjectSchedulerService {
       .limit(1);
     if (!bombTeam || bombTeam.length === 0) return;
 
-    // Get all placed assets NOT belonging to the bomb squad
     const { data: allAssets } = await supabaseAdmin
       .from('placed_assets')
       .select('id, label, asset_type, team_name')
@@ -929,7 +929,6 @@ export class InjectSchedulerService {
     );
     if (nonBombAssets.length === 0) return;
 
-    // Find which assets have already been swept
     const { data: sweepEvents } = await supabaseAdmin
       .from('session_events')
       .select('metadata')
@@ -941,42 +940,168 @@ export class InjectSchedulerService {
       if (meta?.asset_id) sweptAssetIds.add(meta.asset_id as string);
     }
 
-    // Pick the first un-swept asset
     const nextAsset = nonBombAssets.find((a) => !sweptAssetIds.has(a.id));
     if (!nextAsset) return;
 
     const assetLabel =
-      (nextAsset as Record<string, unknown>).label ||
-      (nextAsset as Record<string, unknown>).asset_type ||
+      ((nextAsset as Record<string, unknown>).label as string) ||
+      ((nextAsset as Record<string, unknown>).asset_type as string) ||
       'asset';
+    const assetTeam = (nextAsset as Record<string, unknown>).team_name as string;
+    const assetType = ((nextAsset as Record<string, unknown>).asset_type as string).replace(
+      /_/g,
+      ' ',
+    );
+    const sweepNumber = sweptAssetIds.size + 1;
+    const totalToSweep = nonBombAssets.length;
+
     logger.info(
-      { sessionId, assetId: nextAsset.id, label: assetLabel },
+      {
+        sessionId,
+        assetId: nextAsset.id,
+        label: assetLabel,
+        sweep: `${sweepNumber}/${totalToSweep}`,
+      },
       'Auto-sweeping placed asset for bomb squad',
     );
 
-    const result = await performSweep(sessionId, nextAsset.id);
+    // Pick detection equipment based on asset type
+    const equipment = this.pickSweepEquipment(assetType);
 
-    // Broadcast a chat-style message so the sweep appears in the session feed
-    const ws = getWebSocketService();
-    const chatMsg = result.found
-      ? `🚨 Bomb Squad sweep of "${assetLabel}": DEVICE FOUND — ${result.device_description || result.container_type || 'suspicious item'} discovered. ${result.is_live ? '⚠️ LIVE DEVICE — 2 minute render-safe window.' : 'Device appears inert.'}`
-      : `✅ Bomb Squad sweep of "${assetLabel}": CLEAR — no suspicious items found.`;
-
-    ws.broadcastToSession(sessionId, {
-      type: 'bomb_squad_sweep_result',
-      data: {
-        asset_id: nextAsset.id,
-        asset_label: assetLabel,
-        ...result,
-        chat_message: chatMsg,
-      },
-      timestamp: new Date().toISOString(),
+    const result = await performSweep(sessionId, nextAsset.id, {
+      personnel: equipment.personnel,
+      k9: equipment.k9,
+      robot: equipment.robot,
     });
 
+    // Create decision and chat via the dispatcher (same as other bot actions)
+    const botUserId = resolveBotUserId(bombTeamName);
+    const dispatcher = new DemoActionDispatcher();
+    const channelId = await dispatcher.getSessionChannelId(sessionId);
+
+    if (result.found) {
+      const containerDesc = result.container_type?.replace(/_/g, ' ') ?? 'suspicious item';
+      const liveWarning = result.is_live
+        ? 'Device is assessed as LIVE — 2-minute render-safe window activated. Requesting immediate RSP (Render Safe Procedure).'
+        : 'Device appears INERT — maintaining exclusion zone pending full examination.';
+
+      await dispatcher.proposeAndExecuteDecision(sessionId, botUserId, {
+        title: `EOD Sweep ${sweepNumber}/${totalToSweep}: DEVICE FOUND at ${assetLabel}`,
+        description: [
+          `Bomb Squad conducted systematic sweep of ${assetTeam}'s ${assetType} ("${assetLabel}") — sweep ${sweepNumber} of ${totalToSweep}.`,
+          `Detection method: ${equipment.summary}.`,
+          `Result: ${containerDesc} DISCOVERED. ${liveWarning}`,
+          result.is_live
+            ? 'Immediate actions: deploying remote-operated vehicle (ROV) for closer examination, establishing 100m exclusion zone, all personnel to withdraw behind hard cover.'
+            : 'Maintaining 50m cordon. EOD team conducting manual approach with protective equipment for controlled disruption.',
+        ].join(' '),
+      });
+
+      if (channelId) {
+        await dispatcher.sendChatMessage(
+          channelId,
+          sessionId,
+          botUserId,
+          `🚨 SWEEP ${sweepNumber}/${totalToSweep} — DEVICE FOUND at "${assetLabel}" (${assetTeam}'s ${assetType}). ${equipment.summary}. ${containerDesc} located. ${result.is_live ? '⚠️ LIVE DEVICE — RSP initiated, 2-min window.' : 'Inert device — controlled disruption planned.'}`,
+        );
+      }
+    } else {
+      await dispatcher.proposeAndExecuteDecision(sessionId, botUserId, {
+        title: `EOD Sweep ${sweepNumber}/${totalToSweep}: ${assetLabel} — CLEAR`,
+        description: [
+          `Bomb Squad conducted systematic sweep of ${assetTeam}'s ${assetType} ("${assetLabel}") — sweep ${sweepNumber} of ${totalToSweep}.`,
+          `Detection method: ${equipment.summary}.`,
+          `Result: Area CLEAR — no suspicious items detected. Asset cleared for continued operations.`,
+          sweepNumber < totalToSweep
+            ? `${totalToSweep - sweepNumber} asset(s) remaining in sweep queue.`
+            : 'All operational assets have been swept. Perimeter sweep complete.',
+        ].join(' '),
+      });
+
+      if (channelId) {
+        await dispatcher.sendChatMessage(
+          channelId,
+          sessionId,
+          botUserId,
+          `✅ SWEEP ${sweepNumber}/${totalToSweep} — "${assetLabel}" (${assetTeam}'s ${assetType}) is CLEAR. ${equipment.summary}. ${sweepNumber < totalToSweep ? `${totalToSweep - sweepNumber} remaining.` : 'All assets swept.'}`,
+        );
+      }
+    }
+
     logger.info(
-      { sessionId, assetId: nextAsset.id, found: result.found, hazardId: result.hazard_id },
+      {
+        sessionId,
+        assetId: nextAsset.id,
+        found: result.found,
+        hazardId: result.hazard_id,
+        sweep: `${sweepNumber}/${totalToSweep}`,
+      },
       'Bomb squad auto-sweep completed',
     );
+  }
+
+  /**
+   * Select realistic detection equipment based on asset type.
+   * Returns a personnel count, K9/robot flags, and a human-readable summary.
+   */
+  private pickSweepEquipment(assetType: string): {
+    personnel: number;
+    k9: boolean;
+    robot: boolean;
+    summary: string;
+  } {
+    const t = assetType.toLowerCase();
+
+    if (t.includes('command') || t.includes('post') || t.includes('hq')) {
+      return {
+        personnel: 4,
+        k9: true,
+        robot: false,
+        summary:
+          '4-person team with explosive detection dog (EDD), portable X-ray, and vapour trace detector',
+      };
+    }
+    if (t.includes('triage') || t.includes('medical') || t.includes('treatment')) {
+      return {
+        personnel: 3,
+        k9: true,
+        robot: false,
+        summary: '3-person team with explosive detection dog (EDD) and handheld vapour analyser',
+      };
+    }
+    if (t.includes('staging') || t.includes('marshalling') || t.includes('assembly')) {
+      return {
+        personnel: 3,
+        k9: false,
+        robot: true,
+        summary: '3-person team with remote-operated vehicle (ROV) and ground-penetrating radar',
+      };
+    }
+    if (t.includes('cordon') || t.includes('perimeter') || t.includes('barrier')) {
+      return {
+        personnel: 2,
+        k9: false,
+        robot: false,
+        summary: '2-person team with visual inspection and portable X-ray scanner',
+      };
+    }
+    if (t.includes('vehicle') || t.includes('ambulance') || t.includes('transport')) {
+      return {
+        personnel: 2,
+        k9: false,
+        robot: true,
+        summary:
+          '2-person team with under-vehicle inspection mirror (UVIM) and remote-operated vehicle',
+      };
+    }
+    // Default for any other asset
+    return {
+      personnel: 3,
+      k9: true,
+      robot: false,
+      summary:
+        '3-person team with explosive detection dog (EDD), visual search, and electronic countermeasures sweep',
+    };
   }
 
   /**
