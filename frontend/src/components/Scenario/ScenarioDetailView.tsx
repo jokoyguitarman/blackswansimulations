@@ -1413,6 +1413,8 @@ const HAZARD_SVG_KEYS: Record<string, string> = {
   explosion: 'explosion',
   biological: 'biohazard',
   biohazard: 'biohazard',
+  suspicious_package: 'hazard_generic',
+  secondary_explosion: 'explosion',
 };
 
 const HAZARD_COLORS: Record<string, string> = {
@@ -1429,6 +1431,8 @@ const HAZARD_COLORS: Record<string, string> = {
   explosion: '#ef4444',
   biological: '#65a30d',
   biohazard: '#65a30d',
+  suspicious_package: '#d946ef',
+  secondary_explosion: '#dc2626',
 };
 
 const TRIAGE_COLORS: Record<string, string> = {

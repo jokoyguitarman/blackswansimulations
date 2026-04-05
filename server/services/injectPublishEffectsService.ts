@@ -896,59 +896,85 @@ async function spawnSecondaryDevice(
   const profile = deviceDef.device_profile as Record<string, unknown>;
   if (!profile) return;
 
-  const nearTypes = (deviceDef.near_asset_types as string[]) ?? [];
-
-  const { data: assets } = await supabaseAdmin
-    .from('placed_assets')
-    .select('id, geometry, asset_type, team_name')
-    .eq('session_id', sessionId);
-
-  if (!assets || assets.length === 0) {
-    logger.warn({ sessionId, injectId }, 'No placed assets to attach device near');
-    return;
-  }
-
-  const candidates =
-    nearTypes.length > 0
-      ? assets.filter((a) => {
-          const at = ((a as Record<string, unknown>).asset_type as string) ?? '';
-          return nearTypes.some((t) => at.toLowerCase().includes(t.toLowerCase()));
-        })
-      : assets;
-  const pool = candidates.length > 0 ? candidates : assets;
-  const target = pool[Math.floor(Math.random() * pool.length)];
-
-  const geom = (target as Record<string, unknown>).geometry as Record<string, unknown> | undefined;
-  let baseLat = 0;
-  let baseLng = 0;
-  if (geom?.type === 'Point' && Array.isArray(geom.coordinates)) {
-    baseLng = (geom.coordinates as number[])[0];
-    baseLat = (geom.coordinates as number[])[1];
-  } else if (geom?.type === 'Polygon' && Array.isArray(geom.coordinates)) {
-    const ring = (geom.coordinates as number[][][])[0] ?? [];
-    if (ring.length > 0) {
-      baseLng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
-      baseLat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
-    }
-  }
-  if (baseLat === 0 && baseLng === 0) {
-    logger.warn({ sessionId, injectId }, 'Cannot determine coords for device spawn');
-    return;
-  }
-
-  const METER_TO_DEG = 1 / 111_320;
-  const angle = Math.random() * 2 * Math.PI;
-  const dist = 15 + Math.random() * 15;
-  const lat = baseLat + Math.cos(angle) * dist * METER_TO_DEG;
-  const lng =
-    baseLng + Math.sin(angle) * dist * METER_TO_DEG * (1 / Math.cos((baseLat * Math.PI) / 180));
-
+  const deviceKey = deviceDef.device_key as string | undefined;
   const isLive = profile.is_live === true;
   const detonationDeadline = isLive ? new Date(Date.now() + 2 * 60 * 1000).toISOString() : null;
 
-  const nearAssetName =
-    ((target as Record<string, unknown>).team_name as string) ?? 'operational area';
+  // Try to find a pre-created template hazard by device_key (set during scenario generation)
+  let templateHazard: Record<string, unknown> | null = null;
+  if (deviceKey) {
+    const { data: templates } = await supabaseAdmin
+      .from('scenario_hazards')
+      .select('*')
+      .eq('scenario_id', session.scenario_id)
+      .is('session_id', null)
+      .eq('hazard_type', 'suspicious_package')
+      .eq('status', 'delayed');
 
+    templateHazard = (templates ?? []).find((t) => {
+      const props = (t as Record<string, unknown>).properties as Record<string, unknown>;
+      return props?.device_key === deviceKey;
+    }) as Record<string, unknown> | null;
+  }
+
+  let lat: number;
+  let lng: number;
+
+  if (templateHazard) {
+    lat = templateHazard.location_lat as number;
+    lng = templateHazard.location_lng as number;
+  } else {
+    const nearTypes = (deviceDef.near_asset_types as string[]) ?? [];
+    const { data: assets } = await supabaseAdmin
+      .from('placed_assets')
+      .select('id, geometry, asset_type, team_name')
+      .eq('session_id', sessionId);
+
+    if (!assets || assets.length === 0) {
+      logger.warn({ sessionId, injectId }, 'No placed assets to attach device near');
+      return;
+    }
+
+    const candidates =
+      nearTypes.length > 0
+        ? assets.filter((a) => {
+            const at = ((a as Record<string, unknown>).asset_type as string) ?? '';
+            return nearTypes.some((t) => at.toLowerCase().includes(t.toLowerCase()));
+          })
+        : assets;
+    const pool = candidates.length > 0 ? candidates : assets;
+    const target = pool[Math.floor(Math.random() * pool.length)];
+
+    const geom = (target as Record<string, unknown>).geometry as
+      | Record<string, unknown>
+      | undefined;
+    let baseLat = 0;
+    let baseLng = 0;
+    if (geom?.type === 'Point' && Array.isArray(geom.coordinates)) {
+      baseLng = (geom.coordinates as number[])[0];
+      baseLat = (geom.coordinates as number[])[1];
+    } else if (geom?.type === 'Polygon' && Array.isArray(geom.coordinates)) {
+      const ring = (geom.coordinates as number[][][])[0] ?? [];
+      if (ring.length > 0) {
+        baseLng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+        baseLat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+      }
+    }
+    if (baseLat === 0 && baseLng === 0) {
+      logger.warn({ sessionId, injectId }, 'Cannot determine coords for device spawn');
+      return;
+    }
+
+    const METER_TO_DEG = 1 / 111_320;
+    const angle = Math.random() * 2 * Math.PI;
+    const dist = 15 + Math.random() * 15;
+    lat = baseLat + Math.cos(angle) * dist * METER_TO_DEG;
+    lng =
+      baseLng + Math.sin(angle) * dist * METER_TO_DEG * (1 / Math.cos((baseLat * Math.PI) / 180));
+  }
+
+  // Clone into the session as an active hazard
+  const cloneSource = templateHazard ?? {};
   const { data: inserted, error } = await supabaseAdmin
     .from('scenario_hazards')
     .insert({
@@ -957,13 +983,12 @@ async function spawnSecondaryDevice(
       hazard_type: 'suspicious_package',
       location_lat: lat,
       location_lng: lng,
-      floor_level: 'G',
+      floor_level: (cloneSource.floor_level as string) ?? 'G',
       properties: {
-        ...profile,
-        near_asset: nearAssetName,
+        ...((cloneSource.properties as Record<string, unknown>) ?? profile),
         spawned_by_inject: injectId,
       },
-      assessment_criteria: [
+      assessment_criteria: (cloneSource.assessment_criteria as unknown[]) ?? [
         'identify_container',
         'establish_exclusion',
         'deploy_robot',

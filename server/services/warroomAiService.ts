@@ -6552,11 +6552,14 @@ function generateSecondaryDevices(
   realBombs: number,
   durationMinutes: number,
   teamNames: string[],
+  centerLat: number,
+  centerLng: number,
 ): {
   tipInjects: WarroomScenarioPayload['time_injects'];
+  tipHazards: NonNullable<WarroomScenarioPayload['hazards']>;
   sweepPool: Array<Record<string, unknown>>;
 } {
-  if (totalDevices <= 0) return { tipInjects: [], sweepPool: [] };
+  if (totalDevices <= 0) return { tipInjects: [], tipHazards: [], sweepPool: [] };
 
   const tipCount = Math.ceil(totalDevices / 2);
   const sweepCount = totalDevices - tipCount;
@@ -6598,6 +6601,8 @@ function generateSecondaryDevices(
     const staggerJitter = Math.floor(Math.random() * 4);
     const triggerMinutes = Math.min(staggerBase + staggerJitter, durationMinutes - 5);
 
+    const deviceKey = `tip_device_${i}`;
+
     tipInjects.push({
       trigger_time_minutes: triggerMinutes,
       type: 'field_update',
@@ -6620,12 +6625,49 @@ function generateSecondaryDevices(
       eligible_after_minutes: Math.max(0, triggerMinutes - 2),
       state_effect: {
         spawn_secondary_device: {
+          device_key: deviceKey,
           device_profile: profile,
           near_asset_types: [nearAsset],
         },
       },
     });
   }
+
+  // Pre-create hazard pins for tip devices so trainers can see and reposition them in preview
+  const METER_TO_DEG = 1 / 111_320;
+  const tipHazards: NonNullable<WarroomScenarioPayload['hazards']> = tipInjects.map((inj, i) => {
+    const se = inj.state_effect as Record<string, unknown>;
+    const sd = se.spawn_secondary_device as Record<string, unknown>;
+    const profile = sd.device_profile as Record<string, unknown>;
+    const angle = ((2 * Math.PI) / tipCount) * i + Math.random() * 0.3;
+    const dist = 40 + Math.random() * 60;
+    const lat = centerLat + Math.cos(angle) * dist * METER_TO_DEG;
+    const lng =
+      centerLng +
+      Math.sin(angle) * dist * METER_TO_DEG * (1 / Math.cos((centerLat * Math.PI) / 180));
+
+    return {
+      hazard_type: 'suspicious_package',
+      location_lat: lat,
+      location_lng: lng,
+      floor_level: 'G',
+      properties: {
+        ...profile,
+        device_key: sd.device_key,
+        near_asset_types: sd.near_asset_types,
+      },
+      assessment_criteria: [
+        'identify_container',
+        'establish_exclusion',
+        'deploy_robot',
+        'xray',
+        'rsp',
+      ],
+      status: 'delayed',
+      appears_at_minutes: inj.trigger_time_minutes ?? 0,
+      enriched_description: inj.content,
+    } as NonNullable<WarroomScenarioPayload['hazards']>[number];
+  });
 
   // Channel B: Sweep pool (hidden in assets)
   const sweepPool: Array<Record<string, unknown>> = [];
@@ -6655,7 +6697,7 @@ function generateSecondaryDevices(
     'Secondary devices generated for bomb squad challenge',
   );
 
-  return { tipInjects, sweepPool };
+  return { tipInjects, tipHazards, sweepPool };
 }
 
 /**
@@ -7120,18 +7162,25 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
 
   // Secondary device generation for bomb squad challenge
   let sweepDevicePool: Array<Record<string, unknown>> | undefined;
+  let finalHazards = scenarioHazards;
   const deviceCount = input.secondary_devices_count ?? 0;
   const realCount = Math.min(input.real_bombs_count ?? 0, deviceCount);
   if (deviceCount > 0) {
     onProgress?.('Generating secondary device challenge for bomb squad...');
+    const scenarioCenter = input.geocode ?? { lat: 0, lng: 0 };
     const deviceResult = generateSecondaryDevices(
       deviceCount,
       realCount,
       durationMinutes,
       teamNames,
+      scenarioCenter.lat,
+      scenarioCenter.lng,
     );
     if (deviceResult.tipInjects.length > 0) {
       finalTimeInjects.push(...deviceResult.tipInjects);
+    }
+    if (deviceResult.tipHazards.length > 0) {
+      finalHazards = [...(scenarioHazards ?? []), ...deviceResult.tipHazards];
     }
     if (deviceResult.sweepPool.length > 0) {
       sweepDevicePool = deviceResult.sweepPool;
@@ -7145,7 +7194,7 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
     time_injects: finalTimeInjects,
     condition_driven_injects,
     locations: finalLocations,
-    hazards: scenarioHazards,
+    hazards: finalHazards,
     casualties,
     equipment: scenarioEquipment,
     floor_plans: floorPlansResult,

@@ -152,14 +152,16 @@ export async function cloneScenarioPinsForSession(
       .is('session_id', null);
 
     if (templateHazards && templateHazards.length > 0) {
-      const cloned = templateHazards.map((h) => {
-        const row = { ...(h as Record<string, unknown>) };
-        delete row.id;
-        delete row.created_at;
-        delete row.updated_at;
-        row.session_id = sessionId;
-        return row;
-      });
+      const cloned = templateHazards
+        .filter((h) => (h as Record<string, unknown>).status !== 'delayed')
+        .map((h) => {
+          const row = { ...(h as Record<string, unknown>) };
+          delete row.id;
+          delete row.created_at;
+          delete row.updated_at;
+          row.session_id = sessionId;
+          return row;
+        });
 
       const { error } = await supabaseAdmin.from('scenario_hazards').insert(cloned);
       if (error) {
