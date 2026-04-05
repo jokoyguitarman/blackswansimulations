@@ -7,6 +7,7 @@ import {
   type InternalEventHandler,
 } from './websocketService.js';
 import { DemoActionDispatcher, resolveBotUserId } from './demoActionDispatcher.js';
+import { performSweep } from './bombSquadSweepService.js';
 import { haversineM, pointInPolygon } from './geoUtils.js';
 
 // ---------------------------------------------------------------------------
@@ -55,7 +56,7 @@ interface SessionAgents {
 }
 
 interface SingleAction {
-  action: 'decision' | 'placement' | 'chat' | 'claim' | 'pin_response' | 'none';
+  action: 'decision' | 'placement' | 'chat' | 'claim' | 'pin_response' | 'sweep_asset' | 'none';
   decision?: { title: string; description: string };
   placement?: {
     asset_type: string;
@@ -77,6 +78,10 @@ interface SingleAction {
     resources: Array<{ type: string; label: string; quantity: number }>;
     triage_color?: 'green' | 'yellow' | 'red' | 'black';
     description: string;
+  };
+  sweep_asset?: {
+    asset_id: string;
+    asset_label: string;
   };
 }
 
@@ -3499,6 +3504,16 @@ export class DemoAIAgentService {
       }
     }
 
+    // Sweepable assets — bomb squad only
+    if (ground.sweepableAssets.length > 0) {
+      parts.push(
+        '',
+        '## 🔍 SWEEPABLE ASSETS (use sweep_asset action to check for hidden devices):',
+        "These are other teams' placed assets you can sweep. Un-swept assets may contain hidden bombs.",
+      );
+      for (const sa of ground.sweepableAssets) parts.push(`- ${sa}`);
+    }
+
     // Available facilities — hospitals, placed operational assets (triage tents, field hospitals, etc.)
     if (ground.availableFacilities.length > 0) {
       parts.push(
@@ -4715,6 +4730,12 @@ export class DemoAIAgentService {
         '- Metallic: do NOT use standard water cannon (fragmentation risk)',
         '- Unstable: do NOT move manually, do NOT transport without TCV',
         '- Unknown: treat as worst-case (metallic + unstable) until X-ray confirms',
+        '',
+        '#### SWEEP ACTION (Bomb Squad exclusive):',
+        'Use the "sweep_asset" action to sweep other teams\' placed assets for hidden devices.',
+        'Format: { "action": "sweep_asset", "sweep_asset": { "asset_id": "<exact UUID from SWEEPABLE ASSETS list>", "asset_label": "<label>" } }',
+        'You MUST sweep at least 1 asset per cycle when there are un-swept assets available.',
+        'If a device is found, it will appear as a hazard pin — respond to it with pin_response.',
       );
     }
 
@@ -5611,6 +5632,30 @@ export class DemoAIAgentService {
         break;
       }
 
+      case 'sweep_asset': {
+        if (!action.sweep_asset?.asset_id) break;
+        const sa = action.sweep_asset;
+        logger.info(
+          { botUserId, assetId: sa.asset_id, assetLabel: sa.asset_label },
+          'AI agent: executing sweep_asset',
+        );
+        try {
+          const sweepResult = await performSweep(sessionId, sa.asset_id);
+          logger.info(
+            {
+              botUserId,
+              assetId: sa.asset_id,
+              found: sweepResult.found,
+              isLive: sweepResult.is_live,
+            },
+            'AI agent: sweep completed',
+          );
+        } catch (sweepErr) {
+          logger.warn({ error: sweepErr, botUserId, assetId: sa.asset_id }, 'Sweep failed');
+        }
+        break;
+      }
+
       case 'chat': {
         if (!action.chat?.content || !channelId) break;
         await this.dispatcher.sendChatMessage(channelId, sessionId, botUserId, action.chat.content);
@@ -6445,6 +6490,7 @@ export class DemoAIAgentService {
     }>;
     pinZoneMap: Map<string, string>;
     availableFacilities: string[];
+    sweepableAssets: string[];
   }> {
     const result = {
       patients: [] as string[],
@@ -6453,6 +6499,7 @@ export class DemoAIAgentService {
       claimableExits: [] as Array<{ label: string; location_type: string; claimStatus: string }>,
       pinZoneMap: new Map<string, string>(),
       availableFacilities: [] as string[],
+      sweepableAssets: [] as string[],
     };
 
     const CROWD_TYPES = new Set(['crowd', 'evacuee_group', 'convergent_crowd']);
@@ -6689,6 +6736,58 @@ export class DemoAIAgentService {
       }
     } catch (err) {
       logger.debug({ error: err, sessionId }, 'AI agent: failed to load ground situation');
+    }
+
+    // Sweepable assets for bomb squad — all other teams' placed assets that haven't been swept yet
+    if (teamScopeKey === 'bomb_squad') {
+      try {
+        const { data: allAssets } = await supabaseAdmin
+          .from('placed_assets')
+          .select('id, asset_type, label, team_name, geometry')
+          .eq('session_id', sessionId)
+          .eq('status', 'active');
+
+        const { data: sessionRow } = await supabaseAdmin
+          .from('sessions')
+          .select('hidden_devices')
+          .eq('id', sessionId)
+          .single();
+
+        const hiddenDevices = (sessionRow?.hidden_devices as Array<Record<string, unknown>>) ?? [];
+        const sweptAssetIds = new Set(
+          hiddenDevices.filter((d) => d.discovered === true).map((d) => d.asset_id as string),
+        );
+
+        const { count: sweepCount } = await supabaseAdmin
+          .from('session_events')
+          .select('id', { count: 'exact', head: true })
+          .eq('session_id', sessionId)
+          .eq('event_type', 'bomb_squad_sweep');
+        const totalSwept = sweepCount ?? 0;
+
+        for (const a of (allAssets ?? []) as Array<Record<string, unknown>>) {
+          const aTeam = a.team_name as string;
+          if (/bomb|eod/i.test(aTeam)) continue;
+          const aid = a.id as string;
+          const alreadySwept = sweptAssetIds.has(aid);
+          const geom = a.geometry as { coordinates?: [number, number] } | null;
+          const coordStr = geom?.coordinates
+            ? ` at [${geom.coordinates[1]}, ${geom.coordinates[0]}]`
+            : '';
+          const status = alreadySwept ? ' [SWEPT ✓]' : ' [NOT SWEPT]';
+          result.sweepableAssets.push(
+            `[id:${aid}] ${(a.asset_type as string).replace(/_/g, ' ')}: "${a.label}"${coordStr} (${aTeam})${status}`,
+          );
+        }
+
+        if (totalSwept === 0 && result.sweepableAssets.length > 0) {
+          result.sweepableAssets.unshift(
+            '⚠️ NO SWEEPS PERFORMED YET — prioritize sweeping high-value assets immediately',
+          );
+        }
+      } catch (sweepErr) {
+        logger.debug({ error: sweepErr, sessionId }, 'Failed to load sweepable assets');
+      }
     }
 
     return result;
