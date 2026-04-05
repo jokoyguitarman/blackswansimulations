@@ -948,7 +948,14 @@ STEP 3 — TRANSPORT DESTINATION (evaluate ONLY IF the decision explicitly says 
 Apply the TRANSPORT DESTINATION CHECK rules from INFRASTRUCTURE READINESS above.
 ⚠️ Do NOT check for infrastructure if the decision is about on-scene treatment, stabilization, or triage without mentioning transport. A medic triaging a patient in the warm zone does NOT need a triage tent to do their job.
 
-4. RELEVANCE: Only evaluate when the decision DIRECTLY involves patient care, treatment, or transport. Do not evaluate infrastructure setup, command, or communication decisions against casualty data.
+4. RESOURCE MISALLOCATION — BLACK PATIENTS:
+   If the decision allocates treatment resources (ambulances, stretchers, medical personnel, ongoing treatment) to a BLACK-tagged patient while ANY RED or YELLOW patients remain untreated/awaiting care:
+   - Set consistent: false, mismatch_kind "below_standard", severity "high".
+   - Message: "Resources allocated to deceased patient while [count] surviving patients with [RED/YELLOW] priority still await care. Triage protocol requires prioritizing the living."
+   BLACK patients should only receive: tag confirmation, cover, location documentation, coroner notification. Any action beyond that is flagged when survivors remain.
+   Exception: If ALL RED and YELLOW patients have been treated/transported, extended care for BLACK patients is acceptable.
+
+5. RELEVANCE: Only evaluate when the decision DIRECTLY involves patient care, treatment, or transport. Do not evaluate infrastructure setup, command, or communication decisions against casualty data.
 
 When treatment_requirements or transport_prerequisites are listed for a patient, use them as ground truth. When ideal_response_sequence is provided, use it as the benchmark for a perfect response — check if the player's actions follow the correct order and include all critical steps. When required_ppe is listed, the decision MUST mention appropriate PPE or it is a specificity failure. When required_equipment is listed, the decision MUST name the specific equipment or it is a specificity failure. When they are absent, infer required care from the injury data using standard pre-hospital protocols (PHTLS, ITLS, TCCC).
 

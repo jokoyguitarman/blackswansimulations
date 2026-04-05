@@ -1168,6 +1168,29 @@ export class InjectSchedulerService {
       .limit(40);
     if (!casualties?.length) return;
 
+    // Sort by triage priority: RED → YELLOW → GREEN → undetermined → BLACK
+    const TRIAGE_PRIORITY: Record<string, number> = {
+      red: 0,
+      immediate: 0,
+      yellow: 1,
+      delayed: 1,
+      green: 2,
+      minor: 2,
+      black: 4,
+      expectant: 4,
+      deceased: 4,
+    };
+    const triagePriority = (cas: Record<string, unknown>): number => {
+      const color =
+        (cas.player_triage_color as string) ||
+        ((cas.conditions as Record<string, unknown> | null)?.triage_category as string) ||
+        '';
+      return TRIAGE_PRIORITY[color.toLowerCase()] ?? 3;
+    };
+    (casualties as Array<Record<string, unknown>>).sort(
+      (a, b) => triagePriority(a) - triagePriority(b),
+    );
+
     const zoneCtx = await this.loadZoneContext(sessionId);
 
     const classifyZone = (lat: number, lng: number) =>
@@ -1214,7 +1237,17 @@ export class InjectSchedulerService {
       const visDesc =
         (conds.visible_description as string) || (conds.injury_type as string) || 'casualty';
 
-      // Determine which team handles this patient and what action to take
+      // Skip BLACK/deceased patients — tag only, don't spend resources
+      const isBlack =
+        triageColor === 'black' ||
+        triageColor === 'expectant' ||
+        triageColor === 'deceased' ||
+        this.inferTriageColor(conds) === 'black';
+      if (isBlack && status !== 'undiscovered') {
+        // Already discovered/tagged — skip entirely, survivors take priority
+        continue;
+      }
+
       let handlingTeam: string | null = null;
       let actions: string[] = [];
       let description = '';
@@ -1256,24 +1289,32 @@ export class InjectSchedulerService {
           handlingTeam = triageTeam;
           const inferColor = this.inferTriageColor(conds);
           assignedTriageColor = inferColor;
-          actions = [
-            'START Triage Protocol',
-            `Assign triage tag: ${inferColor.toUpperCase()}`,
-            'Administer first aid',
-            'Stabilize for treatment',
-          ];
-          description = [
-            `Medical Triage responding to ${visDesc} in ${zone.toUpperCase()} ZONE.`,
-            `START assessment: assigning ${inferColor.toUpperCase()} triage tag.`,
-            inferColor === 'red'
-              ? 'IMMEDIATE priority — establishing IV access, applying haemostatic dressing, preparing for urgent treatment.'
-              : inferColor === 'yellow'
-                ? 'DELAYED priority — wound dressing applied, vital signs stable, queued for treatment within 1 hour.'
-                : inferColor === 'black'
-                  ? 'EXPECTANT — no signs of life after airway check. Tagged and documented. Coroner notification pending.'
+
+          if (inferColor === 'black') {
+            actions = ['Confirm no signs of life', 'Assign BLACK tag', 'Cover and document'];
+            description = [
+              `Medical Triage confirming ${visDesc} in ${zone.toUpperCase()} ZONE as EXPECTANT.`,
+              'No signs of life after airway check. BLACK tag assigned, body covered and documented.',
+              'Moving on to next surviving patient. Coroner notification pending.',
+            ].join(' ');
+          } else {
+            actions = [
+              'START Triage Protocol',
+              `Assign triage tag: ${inferColor.toUpperCase()}`,
+              'Administer first aid',
+              'Stabilize for treatment',
+            ];
+            description = [
+              `Medical Triage responding to ${visDesc} in ${zone.toUpperCase()} ZONE.`,
+              `START assessment: assigning ${inferColor.toUpperCase()} triage tag.`,
+              inferColor === 'red'
+                ? 'IMMEDIATE priority — establishing IV access, applying haemostatic dressing, preparing for urgent treatment.'
+                : inferColor === 'yellow'
+                  ? 'DELAYED priority — wound dressing applied, vital signs stable, queued for treatment within 1 hour.'
                   : 'MINOR — walking wounded, self-aid with supervision. Directed to assembly area.',
-            `Personnel: 1x Triage Nurse (1:1 assessment ratio).`,
-          ].join(' ');
+              `Personnel: 1x Triage Nurse (1:1 assessment ratio).`,
+            ].join(' ');
+          }
         } else if (status === 'in_treatment') {
           // Ready for transport out of warm zone into cold
           handlingTeam = triageTeam;
@@ -1309,17 +1350,27 @@ export class InjectSchedulerService {
           handlingTeam = triageTeam;
           const inferColor = this.inferTriageColor(conds);
           assignedTriageColor = inferColor;
-          actions = [
-            'START Triage Protocol',
-            `Assign triage tag: ${inferColor.toUpperCase()}`,
-            'Begin definitive treatment',
-          ];
-          description = [
-            `Medical Triage responding to ${visDesc} in COLD ZONE.`,
-            `START assessment: assigning ${inferColor.toUpperCase()} triage tag.`,
-            `Beginning definitive treatment at cold zone facility.`,
-            `Personnel: 1x Triage Nurse + 1x Paramedic.`,
-          ].join(' ');
+
+          if (inferColor === 'black') {
+            actions = ['Confirm no signs of life', 'Assign BLACK tag', 'Cover and document'];
+            description = [
+              `Medical Triage confirming ${visDesc} in COLD ZONE as EXPECTANT.`,
+              'No signs of life after airway check. BLACK tag assigned, body covered and documented.',
+              'Moving on to next surviving patient. Coroner notification pending.',
+            ].join(' ');
+          } else {
+            actions = [
+              'START Triage Protocol',
+              `Assign triage tag: ${inferColor.toUpperCase()}`,
+              'Begin definitive treatment',
+            ];
+            description = [
+              `Medical Triage responding to ${visDesc} in COLD ZONE.`,
+              `START assessment: assigning ${inferColor.toUpperCase()} triage tag.`,
+              `Beginning definitive treatment at cold zone facility.`,
+              `Personnel: 1x Triage Nurse + 1x Paramedic.`,
+            ].join(' ');
+          }
         }
       }
 
