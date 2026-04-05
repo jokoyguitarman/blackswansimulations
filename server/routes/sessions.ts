@@ -2510,4 +2510,163 @@ router.get(
   },
 );
 
+// ─── Bomb Squad Sweep Endpoint ────────────────────────────────────────────────
+const sweepSchema = z.object({
+  body: z.object({
+    asset_id: z.string().uuid(),
+    resources: z
+      .object({
+        personnel: z.number().int().min(0).max(20).optional(),
+        k9: z.boolean().optional(),
+        robot: z.boolean().optional(),
+      })
+      .optional(),
+  }),
+});
+
+router.post(
+  '/:id/sweep',
+  requireAuth,
+  validate(sweepSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const sessionId = req.params.id;
+      const { asset_id, resources } = req.body;
+
+      const { data: sessionRow } = await supabaseAdmin
+        .from('sessions')
+        .select('id, scenario_id, hidden_devices')
+        .eq('id', sessionId)
+        .single();
+      if (!sessionRow) return res.status(404).json({ error: 'Session not found' });
+
+      const hiddenDevices = (sessionRow.hidden_devices as Array<Record<string, unknown>>) ?? [];
+      const matchIdx = hiddenDevices.findIndex(
+        (d) => d.asset_id === asset_id && d.discovered !== true,
+      );
+
+      // Record sweep event for AAR
+      await supabaseAdmin.from('session_events').insert({
+        session_id: sessionId,
+        event_type: 'bomb_squad_sweep',
+        description: `Bomb Squad sweep on asset ${asset_id}`,
+        metadata: {
+          asset_id,
+          resources: resources ?? {},
+          found: matchIdx >= 0,
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      if (matchIdx < 0) {
+        return res.json({
+          found: false,
+          message: 'Area clear — no suspicious items found',
+        });
+      }
+
+      // Mark as discovered
+      const device = hiddenDevices[matchIdx];
+      const updatedDevices = [...hiddenDevices];
+      updatedDevices[matchIdx] = { ...device, discovered: true };
+      await supabaseAdmin
+        .from('sessions')
+        .update({ hidden_devices: updatedDevices })
+        .eq('id', sessionId);
+
+      const profile = (device.device_profile as Record<string, unknown>) ?? {};
+      const isLive = profile.is_live === true;
+      const detonationDeadline = isLive ? new Date(Date.now() + 2 * 60 * 1000).toISOString() : null;
+
+      // Look up the asset coordinates
+      const { data: asset } = await supabaseAdmin
+        .from('placed_assets')
+        .select('geometry')
+        .eq('id', asset_id)
+        .single();
+      let lat = 0;
+      let lng = 0;
+      if (asset) {
+        const geom = (asset as Record<string, unknown>).geometry as
+          | Record<string, unknown>
+          | undefined;
+        if (geom?.type === 'Point' && Array.isArray(geom.coordinates)) {
+          lng = (geom.coordinates as number[])[0];
+          lat = (geom.coordinates as number[])[1];
+        } else if (geom?.type === 'Polygon' && Array.isArray(geom.coordinates)) {
+          const ring = (geom.coordinates as number[][][])[0] ?? [];
+          if (ring.length > 0) {
+            lng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+            lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+          }
+        }
+      }
+
+      // Spawn visible hazard pin
+      const { data: hazard, error: hazErr } = await supabaseAdmin
+        .from('scenario_hazards')
+        .insert({
+          scenario_id: sessionRow.scenario_id,
+          session_id: sessionId,
+          hazard_type: 'suspicious_package',
+          location_lat: lat,
+          location_lng: lng,
+          floor_level: 'G',
+          properties: {
+            ...profile,
+            discovered_via: 'sweep',
+            swept_asset_id: asset_id,
+          },
+          assessment_criteria: [
+            'identify_container',
+            'establish_exclusion',
+            'deploy_robot',
+            'xray',
+            'rsp',
+          ],
+          status: 'active',
+          appears_at_minutes: 0,
+          detonation_deadline: detonationDeadline,
+        })
+        .select('id')
+        .single();
+
+      if (hazErr) {
+        logger.error({ error: hazErr, sessionId, asset_id }, 'Failed to spawn hazard from sweep');
+        return res.status(500).json({ error: 'Failed to spawn device' });
+      }
+
+      const ws = getWebSocketService();
+      ws.broadcastToSession(sessionId, {
+        type: 'secondary_device_spawned',
+        data: {
+          hazard_id: hazard?.id,
+          lat,
+          lng,
+          is_live: isLive,
+          container_type: profile.container_type,
+          detonation_deadline: detonationDeadline,
+          discovered_via: 'sweep',
+        },
+        timestamp: new Date().toISOString(),
+      });
+
+      const desc =
+        (profile.description as string) ||
+        `Suspicious ${profile.container_type ?? 'item'} found during sweep`;
+      return res.json({
+        found: true,
+        hazard_id: hazard?.id,
+        is_live: isLive,
+        container_type: profile.container_type,
+        detonation_deadline: detonationDeadline,
+        device_description: desc,
+      });
+    } catch (err) {
+      logger.error({ err, sessionId: req.params.id }, 'Sweep endpoint error');
+      return res.status(500).json({ error: 'Sweep failed' });
+    }
+  },
+);
+
 export { router as sessionsRouter };

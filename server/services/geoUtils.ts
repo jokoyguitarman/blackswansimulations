@@ -201,3 +201,79 @@ function isTooClose(
   }
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// Zone determination — reusable across services
+// ---------------------------------------------------------------------------
+
+export interface ZoneRadii {
+  zone_type: string;
+  radius_m: number;
+  polygon?: [number, number][];
+}
+
+export interface PlacedZoneArea {
+  asset_type: string;
+  properties?: Record<string, unknown> | null;
+  geometry: { type: string; coordinates: unknown };
+}
+
+export const ZONE_ORDER = ['hot', 'warm', 'cold'] as const;
+
+export function nextZoneOutward(current: string): string | null {
+  const idx = ZONE_ORDER.indexOf(current as (typeof ZONE_ORDER)[number]);
+  if (idx < 0 || idx >= ZONE_ORDER.length - 1) return null;
+  return ZONE_ORDER[idx + 1];
+}
+
+export function zoneDistance(from: string, to: string): number {
+  const fi = ZONE_ORDER.indexOf(from as (typeof ZONE_ORDER)[number]);
+  const ti = ZONE_ORDER.indexOf(to as (typeof ZONE_ORDER)[number]);
+  if (fi < 0 || ti < 0) return 0;
+  return ti - fi;
+}
+
+/**
+ * Determine which zone a point falls in, checking player-drawn zones first,
+ * then war-room ground-truth zones, then falling back to radius-based defaults.
+ */
+export function determineZone(
+  lat: number,
+  lng: number,
+  playerZones: PlacedZoneArea[],
+  warRoomZones: ZoneRadii[],
+  incidentLat: number,
+  incidentLng: number,
+): string {
+  // 1. Player-drawn hazard_zone polygons (most authoritative)
+  for (const zone of playerZones) {
+    if (zone.asset_type !== 'hazard_zone') continue;
+    const classification = zone.properties?.zone_classification as string | undefined;
+    if (!classification) continue;
+    const geom = zone.geometry;
+    if (geom.type === 'Polygon') {
+      const ring = (geom.coordinates as number[][][])[0];
+      if (pointInGeoJSONPolygon(lat, lng, ring)) return classification;
+    }
+  }
+
+  // 2. War room ground-truth zones (sorted inner → outer)
+  if (warRoomZones.length > 0) {
+    const sorted = [...warRoomZones].sort((a, b) => a.radius_m - b.radius_m);
+    for (const z of sorted) {
+      if (z.polygon && z.polygon.length > 0) {
+        if (pointInPolygon(lat, lng, z.polygon)) return z.zone_type;
+      } else {
+        const dist = haversineM(lat, lng, incidentLat, incidentLng);
+        if (dist <= z.radius_m) return z.zone_type;
+      }
+    }
+  }
+
+  // 3. Fallback: radius-based defaults
+  const dist = haversineM(lat, lng, incidentLat, incidentLng);
+  if (dist <= 50) return 'hot';
+  if (dist <= 150) return 'warm';
+  if (dist <= 300) return 'cold';
+  return 'outside';
+}

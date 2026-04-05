@@ -20,11 +20,14 @@ import {
 import {
   randomPointInGeoJSONPolygon,
   randomPointInPolygon,
-  pointInPolygon,
-  pointInGeoJSONPolygon,
   haversineM,
+  determineZone,
+  zoneDistance,
+  nextZoneOutward,
+  type ZoneRadii,
+  type PlacedZoneArea,
 } from './geoUtils.js';
-interface CasualtyEffect {
+export interface CasualtyEffect {
   target_type: 'crowd' | 'patient';
   target_description: string;
   action: 'direct_to' | 'extract' | 'treat' | 'transport';
@@ -117,7 +120,7 @@ export async function applyDecisionCasualtyEffects(
   }
 }
 
-interface CasualtyRow {
+export interface CasualtyRow {
   id: string;
   casualty_type: string;
   location_lat: number;
@@ -127,7 +130,7 @@ interface CasualtyRow {
   headcount: number;
 }
 
-interface LocationRow {
+export interface LocationRow {
   id: string;
   label: string;
   coordinates: { lat?: number; lng?: number } | null;
@@ -136,7 +139,7 @@ interface LocationRow {
   claimed_as: string | null;
 }
 
-interface PlacedAreaRow {
+export interface PlacedAreaRow {
   id: string;
   asset_type: string;
   label: string | null;
@@ -210,7 +213,7 @@ When in doubt, return {"casualty_effects": []}. It is better to miss an effect t
   }
 }
 
-async function resolveAndApply(
+export async function resolveAndApply(
   sessionId: string,
   scenarioId: string,
   effect: CasualtyEffect,
@@ -241,6 +244,35 @@ async function resolveAndApply(
   let exitWaypoint: { lat: number; lng: number; label: string } | null = null;
   if (effect.via_exit && effect.action === 'direct_to') {
     exitWaypoint = resolveExitLocation(effect.via_exit, locations);
+  }
+
+  // Zone-skip detection: if destination is more than 1 zone away, allow but fire friction
+  if (destination && (effect.action === 'extract' || effect.action === 'direct_to')) {
+    const patientZone = await detectPatientZone(sessionId, scenarioId, targetCasualty, placedAreas);
+    const destZone = await detectPointZone(
+      sessionId,
+      scenarioId,
+      destination.lat,
+      destination.lng,
+      placedAreas,
+    );
+    if (patientZone && destZone) {
+      const skip = zoneDistance(patientZone, destZone);
+      if (skip > 1) {
+        logger.info(
+          { casualtyId: targetCasualty.id, from: patientZone, to: destZone, skip },
+          'Zone-skip detected: patient moved more than 1 zone — firing friction inject',
+        );
+        await fireZoneSkipFriction(
+          sessionId,
+          scenarioId,
+          targetCasualty,
+          patientZone,
+          destZone,
+          destination.label,
+        );
+      }
+    }
   }
 
   // Status chain prerequisites — each action can only proceed from valid prior statuses
@@ -282,7 +314,7 @@ async function resolveAndApply(
           destination_label: exitWaypoint.label,
           movement_speed_mpm: speed,
           destination_reached_status: 'at_exit',
-          status: 'being_evacuated',
+          status: 'being_moved',
         });
       } else {
         await setCasualtyMovement(sessionId, targetCasualty, {
@@ -290,8 +322,8 @@ async function resolveAndApply(
           destination_lng: destination!.lng,
           destination_label: destination!.label,
           movement_speed_mpm: speed,
-          destination_reached_status: 'being_evacuated',
-          status: 'being_evacuated',
+          destination_reached_status: 'being_moved',
+          status: 'being_moved',
         });
       }
       break;
@@ -317,7 +349,7 @@ async function resolveAndApply(
         destination_label: destination.label,
         movement_speed_mpm: speed,
         destination_reached_status: 'awaiting_triage',
-        status: 'being_evacuated',
+        status: 'being_moved',
       });
       break;
     }
@@ -374,6 +406,145 @@ async function resolveAndApply(
       }
       break;
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Zone-skip friction: fires a consequence inject when zones are skipped
+// ---------------------------------------------------------------------------
+
+async function detectPatientZone(
+  sessionId: string,
+  scenarioId: string,
+  casualty: CasualtyRow,
+  placedAreas: PlacedAreaRow[],
+): Promise<string | null> {
+  const zoneData = await loadZoneData(sessionId, scenarioId);
+  const playerZones = placedAreas.filter((a) => a.asset_type === 'hazard_zone');
+  return (
+    determineZone(
+      casualty.location_lat,
+      casualty.location_lng,
+      playerZones as unknown as PlacedZoneArea[],
+      zoneData.warRoomZones,
+      zoneData.incidentLat,
+      zoneData.incidentLng,
+    ) || null
+  );
+}
+
+async function detectPointZone(
+  sessionId: string,
+  scenarioId: string,
+  lat: number,
+  lng: number,
+  placedAreas: PlacedAreaRow[],
+): Promise<string | null> {
+  const zoneData = await loadZoneData(sessionId, scenarioId);
+  const playerZones = placedAreas.filter((a) => a.asset_type === 'hazard_zone');
+  return (
+    determineZone(
+      lat,
+      lng,
+      playerZones as unknown as PlacedZoneArea[],
+      zoneData.warRoomZones,
+      zoneData.incidentLat,
+      zoneData.incidentLng,
+    ) || null
+  );
+}
+
+async function loadZoneData(
+  sessionId: string,
+  scenarioId: string,
+): Promise<{ warRoomZones: ZoneRadii[]; incidentLat: number; incidentLng: number }> {
+  const { data: hazards } = await supabaseAdmin
+    .from('scenario_hazards')
+    .select('location_lat, location_lng, zones')
+    .eq('scenario_id', scenarioId)
+    .eq('session_id', sessionId);
+
+  if (!hazards?.length) {
+    return { warRoomZones: [], incidentLat: 0, incidentLng: 0 };
+  }
+
+  let cLat = 0,
+    cLng = 0;
+  for (const h of hazards) {
+    cLat += Number(h.location_lat);
+    cLng += Number(h.location_lng);
+  }
+  cLat /= hazards.length;
+  cLng /= hazards.length;
+
+  const warRoomZones: ZoneRadii[] =
+    hazards.map((h) => (h.zones ?? []) as ZoneRadii[]).find((z) => z.length > 0) ?? [];
+
+  return { warRoomZones, incidentLat: cLat, incidentLng: cLng };
+}
+
+async function fireZoneSkipFriction(
+  sessionId: string,
+  scenarioId: string,
+  casualty: CasualtyRow,
+  fromZone: string,
+  toZone: string,
+  destinationLabel: string,
+): Promise<void> {
+  const zoneNames: Record<string, string> = { hot: 'RED', warm: 'YELLOW', cold: 'BLUE' };
+  const fromLabel = zoneNames[fromZone] ?? fromZone.toUpperCase();
+  const toLabel = zoneNames[toZone] ?? toZone.toUpperCase();
+  const desc =
+    (casualty.conditions as Record<string, unknown>)?.visible_description || 'a casualty';
+
+  const title = `Protocol Violation: Zone Handover Skipped`;
+  const content =
+    `A patient (${desc}) was moved directly from the ${fromLabel} zone to ${destinationLabel} in the ${toLabel} zone, bypassing the required ${zoneNames['warm'] ?? 'YELLOW'} zone handover. ` +
+    `Standard protocol requires patients to pass through each zone sequentially for proper assessment, stabilization, and handoff between teams. ` +
+    `This breach increases the risk of missed injuries, inadequate stabilization, and accountability gaps in patient tracking.`;
+
+  try {
+    await supabaseAdmin.from('scenario_injects').insert({
+      scenario_id: scenarioId,
+      session_id: sessionId,
+      title,
+      content,
+      inject_type: 'friction',
+      severity: 'medium',
+      target_teams: [],
+      trigger_type: 'condition_based',
+      status_override: 'published',
+      appears_at_minutes: 0,
+    });
+
+    await supabaseAdmin.from('session_events').insert({
+      session_id: sessionId,
+      event_type: 'zone_skip_violation',
+      metadata: {
+        casualty_id: casualty.id,
+        from_zone: fromZone,
+        to_zone: toZone,
+        destination: destinationLabel,
+        title,
+      },
+    });
+
+    try {
+      getWebSocketService().broadcastToSession(sessionId, {
+        type: 'inject.published',
+        data: { title, content, inject_type: 'friction', severity: 'medium' },
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      /* ws not initialized */
+    }
+
+    logger.info(
+      { sessionId, casualtyId: casualty.id, fromZone, toZone },
+      'Zone-skip friction inject fired',
+    );
+  } catch (err) {
+    logger.warn({ err }, 'Failed to fire zone-skip friction inject');
   }
 }
 
@@ -584,19 +755,7 @@ function resolveExitLocation(
 // Zone-step fallback: move casualty one zone outward when no destination given
 // ---------------------------------------------------------------------------
 
-const ZONE_ORDER = ['hot', 'warm', 'cold'] as const;
-
-function nextZoneOutward(current: string): string | null {
-  const idx = ZONE_ORDER.indexOf(current as (typeof ZONE_ORDER)[number]);
-  if (idx < 0 || idx >= ZONE_ORDER.length - 1) return null;
-  return ZONE_ORDER[idx + 1];
-}
-
-interface WarRoomZone {
-  zone_type: string;
-  radius_m: number;
-  polygon?: [number, number][];
-}
+type WarRoomZone = ZoneRadii;
 
 function detectCurrentZone(
   lat: number,
@@ -606,30 +765,15 @@ function detectCurrentZone(
   incidentLat: number,
   incidentLng: number,
 ): string | null {
-  // 1. Check player-drawn zones (most authoritative)
-  for (const zone of playerZones) {
-    if (zone.asset_type !== 'hazard_zone') continue;
-    const classification = zone.properties?.zone_classification as string | undefined;
-    if (!classification) continue;
-    const geom = zone.geometry;
-    if (geom.type === 'Polygon') {
-      const ring = (geom.coordinates as number[][][])[0];
-      if (pointInGeoJSONPolygon(lat, lng, ring)) return classification;
-    }
-  }
-
-  // 2. Check war room ground-truth zones (sorted inner→outer)
-  const sorted = [...warRoomZones].sort((a, b) => a.radius_m - b.radius_m);
-  for (const z of sorted) {
-    if (z.polygon?.length) {
-      if (pointInPolygon(lat, lng, z.polygon)) return z.zone_type;
-    } else {
-      const dist = haversineM(lat, lng, incidentLat, incidentLng);
-      if (dist <= z.radius_m) return z.zone_type;
-    }
-  }
-
-  return null;
+  const zone = determineZone(
+    lat,
+    lng,
+    playerZones as unknown as PlacedZoneArea[],
+    warRoomZones,
+    incidentLat,
+    incidentLng,
+  );
+  return zone === 'outside' ? null : zone;
 }
 
 function findPlayerZoneByClassification(

@@ -32,6 +32,7 @@ export interface LiveCounters {
   };
   triage: {
     awaiting_triage: number;
+    being_moved: number;
     in_treatment: number;
     red_immediate: number;
     yellow_delayed: number;
@@ -39,6 +40,16 @@ export interface LiveCounters {
     ready_for_transport: number;
     transported: number;
     deaths_on_site: number;
+  };
+  bomb_squad: {
+    tips_received: number;
+    devices_found: number;
+    false_alarms_cleared: number;
+    devices_rendered_safe: number;
+    active_threats: number;
+    detonations: number;
+    sweeps_completed: number;
+    exclusion_zones_active: number;
   };
   area_occupancy: AreaOccupancy[];
 }
@@ -60,7 +71,7 @@ export async function computeLiveCounters(
       .eq('session_id', sessionId),
     supabaseAdmin
       .from('scenario_hazards')
-      .select('id, hazard_type, status, location_lat, location_lng, zones')
+      .select('id, hazard_type, status, location_lat, location_lng, zones, properties')
       .eq('scenario_id', scenarioId)
       .eq('session_id', sessionId),
   ]);
@@ -141,11 +152,16 @@ export async function computeLiveCounters(
     .reduce((sum, c) => sum + c.headcount, 0);
 
   const stillInside = crowds
-    .filter((c) => ['identified', 'being_evacuated', 'undiscovered'].includes(c.status))
+    .filter((c) =>
+      ['identified', 'being_evacuated', 'being_moved', 'undiscovered'].includes(c.status),
+    )
     .reduce((sum, c) => sum + c.headcount, 0);
 
   const inTransit = crowds
-    .filter((c) => c.status === 'being_evacuated' && c.destination_lat != null)
+    .filter(
+      (c) =>
+        (c.status === 'being_evacuated' || c.status === 'being_moved') && c.destination_lat != null,
+    )
     .reduce((sum, c) => sum + c.headcount, 0);
 
   const convergentCrowds = casualties.filter(
@@ -158,6 +174,9 @@ export async function computeLiveCounters(
 
   const awaitingTriage = patients.filter(
     (c) => c.status === 'awaiting_triage' || c.status === 'endorsed_to_triage',
+  ).length;
+  const beingMoved = patients.filter(
+    (c) => c.status === 'being_moved' || c.status === 'being_evacuated',
   ).length;
   const inTreatment = patients.filter((c) => c.status === 'in_treatment').length;
   const readyForTransport = patients.filter((c) => c.status === 'endorsed_to_transport').length;
@@ -172,6 +191,48 @@ export async function computeLiveCounters(
   const redImmediate = inTreatmentPatients.filter((c) => triageColor(c) === 'red').length;
   const yellowDelayed = inTreatmentPatients.filter((c) => triageColor(c) === 'yellow').length;
   const greenMinor = inTreatmentPatients.filter((c) => triageColor(c) === 'green').length;
+
+  // --- Bomb squad counters ---
+  const suspiciousPackages = hazards.filter(
+    (h) =>
+      h.hazard_type?.toLowerCase().includes('suspicious') ||
+      h.hazard_type?.toLowerCase().includes('secondary_device'),
+  );
+  const deviceActive = suspiciousPackages.filter((h) => h.status === 'active').length;
+  const deviceResolved = suspiciousPackages.filter((h) => h.status === 'resolved');
+  const deviceFalseAlarms = deviceResolved.filter((h) => {
+    const props = (h.properties ?? {}) as Record<string, unknown>;
+    return props.is_live === false;
+  }).length;
+  const deviceRenderedSafe = deviceResolved.filter((h) => {
+    const props = (h.properties ?? {}) as Record<string, unknown>;
+    return props.is_live === true;
+  }).length;
+  const deviceDetonations = hazards.filter((h) =>
+    h.hazard_type?.toLowerCase().includes('secondary_explosion'),
+  ).length;
+
+  // Sweep count from session_events (async fetch — run in parallel with area occupancy)
+  const { count: sweepsCount } = await supabaseAdmin
+    .from('session_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('session_id', sessionId)
+    .eq('event_type', 'bomb_squad_sweep');
+
+  // Exclusion zones from placed_assets
+  const { count: exclusionCount } = await supabaseAdmin
+    .from('placed_assets')
+    .select('id', { count: 'exact', head: true })
+    .eq('session_id', sessionId)
+    .ilike('asset_type', '%exclusion%');
+
+  // Tips received: count published inject events whose title contains 'Suspicious Package'
+  const { count: tipsCount } = await supabaseAdmin
+    .from('session_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('session_id', sessionId)
+    .eq('event_type', 'inject')
+    .ilike('metadata->>title', '%Suspicious Package%');
 
   // --- Area occupancy: aggregate headcounts by current_area label ---
   const areaMap = new Map<string, number>();
@@ -204,6 +265,7 @@ export async function computeLiveCounters(
     },
     triage: {
       awaiting_triage: awaitingTriage,
+      being_moved: beingMoved,
       in_treatment: inTreatment,
       red_immediate: redImmediate,
       yellow_delayed: yellowDelayed,
@@ -211,6 +273,16 @@ export async function computeLiveCounters(
       ready_for_transport: readyForTransport,
       transported,
       deaths_on_site: deathsOnSite,
+    },
+    bomb_squad: {
+      tips_received: tipsCount ?? 0,
+      devices_found: suspiciousPackages.length,
+      false_alarms_cleared: deviceFalseAlarms,
+      devices_rendered_safe: deviceRenderedSafe,
+      active_threats: deviceActive,
+      detonations: deviceDetonations,
+      sweeps_completed: sweepsCount ?? 0,
+      exclusion_zones_active: exclusionCount ?? 0,
     },
     area_occupancy: areaOccupancy,
   };
@@ -237,6 +309,7 @@ interface HazardRow {
   location_lat: number;
   location_lng: number;
   zones: unknown;
+  properties?: Record<string, unknown>;
 }
 
 interface ZoneRow {

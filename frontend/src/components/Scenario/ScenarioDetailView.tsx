@@ -2227,13 +2227,32 @@ const MapPinsTab = ({
                       </div>
                       <div>
                         <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
-                          Description
+                          Description (optional — AI generates full profile)
                         </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Vehicle fire near entrance"
+                        <textarea
+                          placeholder="e.g. Vehicle fire near entrance with fuel leaking — leave blank for auto-generated details"
                           value={addPinForm.label || ''}
                           onChange={(e) => setAddPinForm((f) => ({ ...f, label: e.target.value }))}
+                          rows={2}
+                          style={{
+                            width: '100%',
+                            padding: '4px 6px',
+                            fontSize: 12,
+                            border: '1px solid #ccc',
+                            borderRadius: 3,
+                            resize: 'vertical',
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                          Severity
+                        </label>
+                        <select
+                          value={addPinForm.severity || 'medium'}
+                          onChange={(e) =>
+                            setAddPinForm((f) => ({ ...f, severity: e.target.value }))
+                          }
                           style={{
                             width: '100%',
                             padding: '4px 6px',
@@ -2241,7 +2260,12 @@ const MapPinsTab = ({
                             border: '1px solid #ccc',
                             borderRadius: 3,
                           }}
-                        />
+                        >
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                          <option value="critical">Critical</option>
+                        </select>
                       </div>
                     </>
                   )}
@@ -2303,19 +2327,20 @@ const MapPinsTab = ({
                       </div>
                       <div>
                         <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
-                          Description
+                          Description (optional — AI generates full profile)
                         </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Person with leg fracture"
+                        <textarea
+                          placeholder="e.g. Severe burn on face with blistering, shrapnel in arms — leave blank for auto-generated profile"
                           value={addPinForm.injury || ''}
                           onChange={(e) => setAddPinForm((f) => ({ ...f, injury: e.target.value }))}
+                          rows={2}
                           style={{
                             width: '100%',
                             padding: '4px 6px',
                             fontSize: 12,
                             border: '1px solid #ccc',
                             borderRadius: 3,
+                            resize: 'vertical',
                           }}
                         />
                       </div>
@@ -2392,21 +2417,22 @@ const MapPinsTab = ({
                       </div>
                       <div>
                         <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
-                          Description
+                          Description (optional — AI generates full profile)
                         </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Group sheltering near exit"
+                        <textarea
+                          placeholder="e.g. Families with children sheltering near exit, some elderly — leave blank for auto-generated profile"
                           value={addPinForm.description || ''}
                           onChange={(e) =>
                             setAddPinForm((f) => ({ ...f, description: e.target.value }))
                           }
+                          rows={2}
                           style={{
                             width: '100%',
                             padding: '4px 6px',
                             fontSize: 12,
                             border: '1px solid #ccc',
                             borderRadius: 3,
+                            resize: 'vertical',
                           }}
                         />
                       </div>
@@ -2459,7 +2485,7 @@ const MapPinsTab = ({
                         cursor: addingPin ? 'wait' : 'pointer',
                       }}
                     >
-                      {addingPin ? 'ADDING...' : 'ADD PIN'}
+                      {addingPin ? 'GENERATING PROFILE...' : 'ADD PIN'}
                     </button>
                     <button
                       onClick={() => {

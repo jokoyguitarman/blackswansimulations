@@ -731,6 +731,11 @@ export class InjectSchedulerService {
           if (meta?.tags) publishedKeysOrTags.push(...meta.tags);
         }
 
+        const { count: placedAssetsCount } = await supabaseAdmin
+          .from('placed_assets')
+          .select('id', { count: 'exact', head: true })
+          .eq('session_id', session.id);
+
         const evalContext: EvaluationContext = {
           sessionId: session.id,
           scenarioId: session.scenario_id,
@@ -745,6 +750,7 @@ export class InjectSchedulerService {
           publishedScenarioInjectIds: [...publishedInjectIds],
           publishedInjectKeysOrTags: publishedKeysOrTags,
           gateStatusByGateId,
+          placedAssetsCount: placedAssetsCount ?? 0,
         };
 
         for (const condInject of condInjects) {
@@ -866,6 +872,156 @@ export class InjectSchedulerService {
       await runAreaMonitors(session.id, session.scenario_id, elapsedMinutes, ioForMonitors);
     } catch (monErr) {
       logger.warn({ err: monErr, sessionId: session.id }, 'Area monitor evaluation error');
+    }
+
+    // --- Detonation timer: check for expired live bombs ---
+    try {
+      await this.checkDetonationTimers(session.id, session.scenario_id, session.trainer_id);
+    } catch (detErr) {
+      logger.warn({ err: detErr, sessionId: session.id }, 'Detonation timer check error');
+    }
+  }
+
+  /**
+   * Check for live suspicious_package hazards whose detonation deadline has passed.
+   * When timer expires: mark as escalating, spawn explosion effects, fire friction inject.
+   */
+  private async checkDetonationTimers(
+    sessionId: string,
+    scenarioId: string,
+    trainerId: string,
+  ): Promise<void> {
+    const now = new Date();
+    const { data: expiredDevices } = await supabaseAdmin
+      .from('scenario_hazards')
+      .select('id, location_lat, location_lng, properties, detonation_deadline')
+      .eq('session_id', sessionId)
+      .eq('hazard_type', 'suspicious_package')
+      .eq('status', 'active')
+      .not('detonation_deadline', 'is', null);
+
+    if (!expiredDevices || expiredDevices.length === 0) return;
+
+    for (const device of expiredDevices) {
+      const deadline = new Date((device as Record<string, unknown>).detonation_deadline as string);
+      if (deadline > now) continue;
+
+      const props = (device as Record<string, unknown>).properties as Record<string, unknown>;
+      if (props?.is_live !== true) continue;
+
+      const lat = (device as Record<string, unknown>).location_lat as number;
+      const lng = (device as Record<string, unknown>).location_lng as number;
+      const containerType = (props.container_type as string) ?? 'unknown';
+
+      // Mark the device as escalated
+      await supabaseAdmin
+        .from('scenario_hazards')
+        .update({ status: 'escalating', detonation_deadline: null })
+        .eq('id', device.id);
+
+      // Spawn explosion hazard at same location
+      await supabaseAdmin.from('scenario_hazards').insert({
+        scenario_id: scenarioId,
+        session_id: sessionId,
+        hazard_type: 'secondary_explosion',
+        location_lat: lat,
+        location_lng: lng,
+        floor_level: 'G',
+        properties: {
+          source_device_id: device.id,
+          container_type: containerType,
+          estimated_yield: props.estimated_yield ?? 'medium',
+        },
+        assessment_criteria: ['assess_damage', 'search_rescue', 'fire_suppression'],
+        status: 'active',
+        appears_at_minutes: 0,
+      });
+
+      // Spawn blast casualties (3-5 victims within 50m)
+      const METER_TO_DEG = 1 / 111_320;
+      const casualtyCount = 3 + Math.floor(Math.random() * 3);
+      const newCasualties = [];
+      for (let i = 0; i < casualtyCount; i++) {
+        const angle = Math.random() * 2 * Math.PI;
+        const dist = 5 + Math.random() * 45;
+        const cLat = lat + Math.cos(angle) * dist * METER_TO_DEG;
+        const cLng =
+          lng + Math.sin(angle) * dist * METER_TO_DEG * (1 / Math.cos((lat * Math.PI) / 180));
+        const severity = i < 1 ? 'red' : i < 3 ? 'yellow' : 'green';
+        newCasualties.push({
+          scenario_id: scenarioId,
+          session_id: sessionId,
+          casualty_type: 'patient',
+          location_lat: cLat,
+          location_lng: cLng,
+          floor_level: 'G',
+          headcount: 1,
+          conditions: {
+            triage_category: severity,
+            mechanism_of_injury: 'secondary_explosion',
+            spawned_by_detonation: device.id,
+          },
+          status: 'undiscovered',
+          appears_at_minutes: 0,
+        });
+      }
+      await supabaseAdmin.from('scenario_casualties').insert(newCasualties);
+
+      // Broadcast detonation event
+      const ws = getWebSocketService();
+      ws.broadcastToSession(sessionId, {
+        type: 'device_detonated',
+        data: {
+          device_id: device.id,
+          lat,
+          lng,
+          container_type: containerType,
+          casualties_spawned: casualtyCount,
+        },
+        timestamp: now.toISOString(),
+      });
+
+      // Fire universal inject — a detonation affects all teams
+      const { data: allTeams } = await supabaseAdmin
+        .from('scenario_teams')
+        .select('team_name')
+        .eq('scenario_id', scenarioId);
+      const allTeamNames = (allTeams ?? []).map(
+        (t) => (t as Record<string, unknown>).team_name as string,
+      );
+
+      const { data: detonationInject } = await supabaseAdmin
+        .from('scenario_injects')
+        .insert({
+          scenario_id: scenarioId,
+          session_id: sessionId,
+          title: `DEVICE DETONATED — Secondary explosion`,
+          content: `A ${containerType.replace(/_/g, ' ')} device has detonated, causing ${casualtyCount} additional casualties and significant structural damage. The bomb squad failed to render the device safe in time. All teams must reassess their operational areas immediately. Expect mass casualty surge, structural collapse risk, and secondary hazards.`,
+          type: 'field_update',
+          severity: 'critical',
+          inject_scope: 'universal',
+          target_teams: allTeamNames,
+          trigger_time_minutes: null,
+          ai_generated: true,
+          generation_source: 'deterioration_cycle',
+        })
+        .select('id')
+        .single();
+
+      if (detonationInject) {
+        if (!this.io) {
+          const { io } = await import('../index.js');
+          this.io = io;
+        }
+        if (this.io) {
+          await publishInjectToSession(detonationInject.id, sessionId, trainerId, this.io);
+        }
+      }
+
+      logger.warn(
+        { sessionId, deviceId: device.id, containerType, casualties: casualtyCount },
+        'Live device detonated — timer expired',
+      );
     }
   }
 }

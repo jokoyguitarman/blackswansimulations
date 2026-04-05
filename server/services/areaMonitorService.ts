@@ -392,7 +392,7 @@ export async function runAreaMonitors(
         let queueCount = 0;
         for (const cas of (casualties ?? []) as CasualtyRow[]) {
           if (
-            ['being_evacuated', 'identified'].includes(cas.status) &&
+            ['being_evacuated', 'being_moved', 'identified'].includes(cas.status) &&
             haversineMeters(cas.location_lat, cas.location_lng, eLat, eLng) < 50
           ) {
             queueCount += cas.headcount;

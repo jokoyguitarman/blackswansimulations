@@ -1198,6 +1198,7 @@ export interface WarroomScenarioPayload {
       }
     >;
   };
+  sweep_device_pool?: Array<Record<string, unknown>>;
 }
 
 export interface WarroomResearchContext {
@@ -1279,6 +1280,10 @@ export interface WarroomGenerateInput {
   inject_profiles?: string[];
   /** Weapon/threat profile extracted from the prompt — drives proportional hazard/casualty generation. */
   threat_profile?: ThreatProfile;
+  /** Number of suspicious device instances (tips + hidden in assets) for bomb squad challenge. */
+  secondary_devices_count?: number;
+  /** How many of the secondary devices are real live bombs (rest are false alarms). */
+  real_bombs_count?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -3565,8 +3570,8 @@ IMPORTANT:
 - ideal_response_sequence: the COMPLETE ordered playbook a perfect team follows from first alarm to resolution. Each step must name the responsible team. Include PPE donning, zone setup, approach, containment, mitigation, monitoring, and stand-down.
 - required_ppe: list ALL PPE items that each role must wear when approaching this hazard. Be specific (e.g. "Level B HAZMAT suit" not just "PPE").
 - applicable_teams: assign each equipment item ONLY to the team(s) trained to use it. Use the EXACT team names from "Teams available" above. Rules:
-  - Fire-fighting gear (turnout gear, hose, foam units, fire extinguishers) → Fire Safety team only
-  - HAZMAT PPE (hazmat_suit, breathing_apparatus, chemical_gloves) → Fire Safety team only
+  - Fire-fighting gear (turnout gear, hose, foam units, fire extinguishers) → Hazards / Fire / Rescue team only
+  - HAZMAT PPE (hazmat_suit, breathing_apparatus, chemical_gloves) → Hazards / Fire / Rescue team only
   - Medical equipment (defibrillator, iv_kit, burn_kit, splint, oxygen) → Medical Triage team only
   - Medical PPE (ppe_medical, surgical gloves, face_shield for patient care) → Medical Triage team only
   - Rescue/extrication tools (cutting_tools, hydraulic_jack, stretcher, spinal_board) → evacuation team AND Medical Triage team
@@ -3801,7 +3806,7 @@ Return ONLY valid JSON:
       "ppe_required": ["equipment_ids"],
       "allowed_teams": ["team_names"],
       "activities": ["rapid_extrication", "suppression", "containment", "reconnaissance"],
-      "pin_guidance": "What belongs here: trapped casualties, active hazards, structural damage. Only Fire Safety team with full PPE. NO prolonged treatment — extract and move to warm zone."
+      "pin_guidance": "What belongs here: trapped casualties, active hazards, structural damage. Only Hazards / Fire / Rescue team with full PPE. NO prolonged treatment — extract and move to warm zone."
     },
     {
       "zone_type": "warm",
@@ -3824,7 +3829,7 @@ Return ONLY valid JSON:
 
 RULES:
 - ppe_required: use equipment IDs like scba, hazmat_suit, fire_protective_gear, respirator, safety_vest, helmet, ppe_medical, chemical_gloves, face_shield, turnout_gear
-- allowed_teams: use EXACT team names from above. Hot zone = only Fire Safety team. Warm zone = add Medical Triage. Cold zone = "all".
+- allowed_teams: use EXACT team names from above. Hot zone = only Hazards / Fire / Rescue team. Warm zone = add Medical Triage. Cold zone = "all".
 - Each zone radius MUST be larger than the previous (hot < warm < cold)
 - The hot zone MUST be large enough to contain ALL hazard locations`;
 
@@ -6343,6 +6348,316 @@ RULES:
  */
 export const generateTeamsAndCoreForResearch = generateTeamsAndCore;
 
+// ---------------------------------------------------------------------------
+// Secondary Device Generation — Bomb Squad Challenge
+// ---------------------------------------------------------------------------
+
+const DEVICE_CONTAINER_MATRIX = [
+  {
+    container_type: 'backpack',
+    container_material: 'soft',
+    x_ray_difficulty: 'easy',
+    fragmentation_risk: 'low',
+    correct_disruptor: 'standard_water_cannon',
+    standoff_m: 45,
+    standoff_ft: 150,
+    weight_range: [5, 15],
+  },
+  {
+    container_type: 'cardboard_box',
+    container_material: 'soft',
+    x_ray_difficulty: 'easy',
+    fragmentation_risk: 'low',
+    correct_disruptor: 'standard_water_cannon',
+    standoff_m: 21,
+    standoff_ft: 70,
+    weight_range: [2, 20],
+  },
+  {
+    container_type: 'plastic_cooler',
+    container_material: 'semi_rigid',
+    x_ray_difficulty: 'medium',
+    fragmentation_risk: 'low',
+    correct_disruptor: 'standard_water_cannon',
+    standoff_m: 45,
+    standoff_ft: 150,
+    weight_range: [5, 25],
+  },
+  {
+    container_type: 'metal_briefcase',
+    container_material: 'metallic',
+    x_ray_difficulty: 'hard',
+    fragmentation_risk: 'high',
+    correct_disruptor: 'hard_target_disruptor',
+    standoff_m: 110,
+    standoff_ft: 360,
+    weight_range: [10, 30],
+  },
+  {
+    container_type: 'metal_pipe',
+    container_material: 'metallic',
+    x_ray_difficulty: 'hard',
+    fragmentation_risk: 'very_high',
+    correct_disruptor: 'controlled_detonation',
+    standoff_m: 110,
+    standoff_ft: 360,
+    weight_range: [3, 15],
+  },
+  {
+    container_type: 'pressure_cooker',
+    container_material: 'metallic_sealed',
+    x_ray_difficulty: 'hard',
+    fragmentation_risk: 'very_high',
+    correct_disruptor: 'hard_target_disruptor',
+    standoff_m: 150,
+    standoff_ft: 500,
+    weight_range: [10, 40],
+  },
+  {
+    container_type: 'suspicious_vehicle',
+    container_material: 'steel_glass',
+    x_ray_difficulty: 'very_hard',
+    fragmentation_risk: 'extreme',
+    correct_disruptor: 'vehicle_rated_disruptor',
+    standoff_m: 320,
+    standoff_ft: 1050,
+    weight_range: [50, 500],
+  },
+  {
+    container_type: 'sealed_toolbox',
+    container_material: 'metallic',
+    x_ray_difficulty: 'hard',
+    fragmentation_risk: 'high',
+    correct_disruptor: 'hard_target_disruptor',
+    standoff_m: 90,
+    standoff_ft: 300,
+    weight_range: [10, 35],
+  },
+] as const;
+
+const VISIBILITY_OPTIONS = [
+  'partially_visible_wires',
+  'fully_concealed',
+  'visible_tape_and_wires',
+  'slight_bulge_in_container',
+  'ticking_sound_reported',
+  'chemical_smell_detected',
+] as const;
+
+const STABILITY_OPTIONS = ['stable', 'unstable', 'unknown'] as const;
+
+const NEAR_ASSET_TYPES = [
+  'triage_point',
+  'command_post',
+  'staging_area',
+  'assembly_point',
+  'field_hospital',
+  'ambulance_staging',
+  'media_staging',
+] as const;
+
+function buildDeviceProfile(
+  container: (typeof DEVICE_CONTAINER_MATRIX)[number],
+  isLive: boolean,
+): Record<string, unknown> {
+  const weight =
+    container.weight_range[0] +
+    Math.floor(Math.random() * (container.weight_range[1] - container.weight_range[0]));
+  const visibility = VISIBILITY_OPTIONS[Math.floor(Math.random() * VISIBILITY_OPTIONS.length)];
+  const stability = STABILITY_OPTIONS[Math.floor(Math.random() * STABILITY_OPTIONS.length)];
+  const yieldLevel = weight < 10 ? 'small' : weight < 30 ? 'medium' : 'large';
+
+  const rspMap: Record<string, string> = {
+    standard_water_cannon: 'water_disruption',
+    hard_target_disruptor: 'hard_target_disruption',
+    controlled_detonation: 'blow_in_place',
+    vehicle_rated_disruptor: 'vehicle_standoff_disruption',
+  };
+
+  const equipNeeded: string[] = ['eod_robot', 'blast_shield'];
+  if (container.x_ray_difficulty !== 'very_hard') equipNeeded.push('portable_xray');
+  equipNeeded.push(container.correct_disruptor);
+  if (container.container_material.includes('metal')) equipNeeded.push('electronic_countermeasure');
+
+  const contraindications: string[] = ['manual_approach'];
+  if (container.container_material.includes('metal'))
+    contraindications.push('standard_water_disruptor');
+  if (stability === 'unstable') contraindications.push('move_device');
+
+  const sequence: string[] = [
+    `1. Establish exclusion zone (${container.standoff_m}m / ${container.standoff_ft}ft radius)`,
+    '2. Order comms blackout within exclusion zone',
+    '3. Coordinate with nearby teams to evacuate/relocate operations',
+    '4. Deploy EOD robot for visual assessment',
+  ];
+  if (container.x_ray_difficulty !== 'very_hard') {
+    sequence.push(
+      `5. Deploy portable X-ray — ${container.x_ray_difficulty === 'hard' ? 'multiple angles needed (metallic container)' : 'standard imaging'}`,
+    );
+    sequence.push('6. Assess X-ray results — identify trigger mechanism');
+  }
+  sequence.push(
+    `${sequence.length + 1}. Select RSP: ${container.correct_disruptor.replace(/_/g, ' ')}`,
+  );
+  sequence.push(`${sequence.length + 1}. Execute render safe procedure via robot`);
+  sequence.push(`${sequence.length + 1}. Technician approach in bomb suit for confirmation`);
+  sequence.push(`${sequence.length + 1}. Collect evidence for forensics`);
+  sequence.push(`${sequence.length + 1}. Shrink exclusion zone, restore comms`);
+  sequence.push(`${sequence.length + 1}. Declare all-clear to unified command`);
+
+  return {
+    is_live: isLive,
+    ...(isLive ? { detonation_timer_minutes: 2 } : {}),
+    container_type: container.container_type,
+    container_material: container.container_material,
+    estimated_yield: yieldLevel,
+    estimated_weight_lbs: weight,
+    visibility,
+    stability,
+    location_sensitivity: 'high',
+    x_ray_difficulty: container.x_ray_difficulty,
+    fragmentation_risk: container.fragmentation_risk,
+    anti_tamper_suspected: Math.random() > 0.5,
+    correct_standoff_m: container.standoff_m,
+    correct_standoff_ft: container.standoff_ft,
+    correct_rsp: rspMap[container.correct_disruptor] ?? container.correct_disruptor,
+    required_equipment: equipNeeded,
+    required_actions: [
+      'establish_exclusion_zone',
+      'comms_blackout',
+      'evacuate_nearby_area',
+      'deploy_robot',
+      'xray_device',
+      container.correct_disruptor,
+      'render_safe',
+      'collect_evidence',
+      'declare_all_clear',
+    ],
+    contraindications,
+    ideal_response_sequence: sequence,
+  };
+}
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function generateSecondaryDevices(
+  totalDevices: number,
+  realBombs: number,
+  durationMinutes: number,
+  teamNames: string[],
+): {
+  tipInjects: WarroomScenarioPayload['time_injects'];
+  sweepPool: Array<Record<string, unknown>>;
+} {
+  if (totalDevices <= 0) return { tipInjects: [], sweepPool: [] };
+
+  const tipCount = Math.ceil(totalDevices / 2);
+  const sweepCount = totalDevices - tipCount;
+
+  // Distribute real bombs across both channels
+  const isLiveFlags = [
+    ...Array(realBombs).fill(true),
+    ...Array(totalDevices - realBombs).fill(false),
+  ];
+  const shuffledFlags = shuffleArray(isLiveFlags);
+  const tipFlags = shuffledFlags.slice(0, tipCount);
+  const sweepFlags = shuffledFlags.slice(tipCount);
+
+  // Pick containers (no repeats if possible)
+  const shuffledContainers = shuffleArray([...DEVICE_CONTAINER_MATRIX]);
+  const pickContainer = (idx: number) => shuffledContainers[idx % shuffledContainers.length];
+
+  const containerLabels: Record<string, string> = {
+    backpack: 'an unattended backpack',
+    cardboard_box: 'a suspicious cardboard box',
+    plastic_cooler: 'an abandoned plastic cooler',
+    metal_briefcase: 'a metallic briefcase left under a bench',
+    metal_pipe: 'a suspicious metal pipe with wires',
+    pressure_cooker: 'an abandoned pressure cooker',
+    suspicious_vehicle: 'a vehicle with unusual modifications',
+    sealed_toolbox: 'a sealed metal toolbox left unattended',
+  };
+
+  const bombSquadTeam = teamNames.find((n) => /bomb|eod/i.test(n)) ?? 'Bomb Squad / EOD';
+
+  // Channel A: Tip-based injects
+  const tipInjects: WarroomScenarioPayload['time_injects'] = [];
+  for (let i = 0; i < tipCount; i++) {
+    const container = pickContainer(i);
+    const profile = buildDeviceProfile(container, tipFlags[i]);
+    const nearAsset = NEAR_ASSET_TYPES[Math.floor(Math.random() * NEAR_ASSET_TYPES.length)];
+    const label = containerLabels[container.container_type] ?? 'a suspicious item';
+    const staggerBase = 8 + i * 7;
+    const staggerJitter = Math.floor(Math.random() * 4);
+    const triggerMinutes = Math.min(staggerBase + staggerJitter, durationMinutes - 5);
+
+    tipInjects.push({
+      trigger_time_minutes: triggerMinutes,
+      type: 'field_update',
+      title: `Suspicious Package Report #${i + 1}`,
+      content: `Security personnel report ${label} has been found approximately 15-30 meters from an operational area. ${
+        profile.visibility === 'ticking_sound_reported'
+          ? 'A ticking sound has been reported.'
+          : profile.visibility === 'chemical_smell_detected'
+            ? 'An unusual chemical smell has been detected nearby.'
+            : profile.visibility === 'partially_visible_wires'
+              ? 'Partially visible wires have been spotted protruding from the container.'
+              : 'The item appears to have been deliberately placed.'
+      } All personnel in the area are becoming visibly anxious. Bomb Squad / EOD response is required immediately.`,
+      severity: 'critical',
+      inject_scope: 'team_specific',
+      target_teams: [bombSquadTeam],
+      requires_response: true,
+      requires_coordination: true,
+      conditions_to_appear: { threshold: 1, conditions: ['placed_asset_exists'] },
+      eligible_after_minutes: Math.max(0, triggerMinutes - 2),
+      state_effect: {
+        spawn_secondary_device: {
+          device_profile: profile,
+          near_asset_types: [nearAsset],
+        },
+      },
+    });
+  }
+
+  // Channel B: Sweep pool (hidden in assets)
+  const sweepPool: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < sweepCount; i++) {
+    const container = pickContainer(tipCount + i);
+    const profile = buildDeviceProfile(container, sweepFlags[i]);
+    const label = containerLabels[container.container_type] ?? 'a suspicious item';
+    sweepPool.push({
+      ...profile,
+      description: `Upon sweeping the area, your team discovers ${label} concealed near equipment. ${
+        (profile.visibility as string).includes('wire')
+          ? 'Wires are partially visible.'
+          : 'The item requires further investigation.'
+      }`,
+    });
+  }
+
+  logger.info(
+    {
+      totalDevices,
+      tipCount,
+      sweepCount,
+      realBombs,
+      tipReal: tipFlags.filter(Boolean).length,
+      sweepReal: sweepFlags.filter(Boolean).length,
+    },
+    'Secondary devices generated for bomb squad challenge',
+  );
+
+  return { tipInjects, sweepPool };
+}
+
 /**
  * Generate full scenario payload using multi-phase AI.
  *
@@ -6565,7 +6880,10 @@ export async function warroomGenerateScenario(
         { pattern: /evacuation|evac/i, templateKeys: ['evacuation'] },
         { pattern: /triage|medical/i, templateKeys: ['triage', 'medical', 'ems', 'ambulance'] },
         { pattern: /media|communi/i, templateKeys: ['media', 'communications'] },
-        { pattern: /fire|hazmat/i, templateKeys: ['fire', 'hazmat', 'fire_safety'] },
+        {
+          pattern: /fire|hazmat|hazard|rescue/i,
+          templateKeys: ['fire', 'hazmat', 'fire_safety', 'hazards_fire_rescue'],
+        },
         {
           pattern: /pursuit|investigation|police|intelligence/i,
           templateKeys: ['police', 'pursuit', 'investigation', 'intelligence'],
@@ -6800,6 +7118,26 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
     finalLocations = [...(locations ?? []), ...zoneLocations];
   }
 
+  // Secondary device generation for bomb squad challenge
+  let sweepDevicePool: Array<Record<string, unknown>> | undefined;
+  const deviceCount = input.secondary_devices_count ?? 0;
+  const realCount = Math.min(input.real_bombs_count ?? 0, deviceCount);
+  if (deviceCount > 0) {
+    onProgress?.('Generating secondary device challenge for bomb squad...');
+    const deviceResult = generateSecondaryDevices(
+      deviceCount,
+      realCount,
+      durationMinutes,
+      teamNames,
+    );
+    if (deviceResult.tipInjects.length > 0) {
+      finalTimeInjects.push(...deviceResult.tipInjects);
+    }
+    if (deviceResult.sweepPool.length > 0) {
+      sweepDevicePool = deviceResult.sweepPool;
+    }
+  }
+
   return {
     scenario: scenarioWithType,
     teams: phase1.teams,
@@ -6812,5 +7150,6 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
     equipment: scenarioEquipment,
     floor_plans: floorPlansResult,
     insider_knowledge: hasInsiderKnowledge ? insiderKnowledge : undefined,
+    sweep_device_pool: sweepDevicePool,
   };
 }

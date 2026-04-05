@@ -62,6 +62,7 @@ export async function persistWarroomScenario(
     casualties,
     equipment,
     insider_knowledge,
+    sweep_device_pool,
   } = payload;
 
   const { data: scenarioRow, error: scenarioError } = await supabaseAdmin
@@ -81,6 +82,7 @@ export async function persistWarroomScenario(
       center_lat: options.center_lat ?? null,
       center_lng: options.center_lng ?? null,
       vicinity_radius_meters: options.vicinity_radius_meters ?? null,
+      sweep_device_pool: sweep_device_pool ?? [],
     })
     .select('id')
     .single();

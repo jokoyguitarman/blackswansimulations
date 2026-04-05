@@ -300,7 +300,7 @@ export async function evaluateCasualtyResolution(sessionId: string): Promise<voi
       continue;
     }
 
-    // --- identified → being_evacuated (original logic) ---
+    // --- identified → being_moved (in transit; being_evacuated is legacy alias) ---
     if (accessibility && accessibility !== 'open') continue;
 
     const nearbyAssets = assetList.filter((a) => {
@@ -326,17 +326,17 @@ export async function evaluateCasualtyResolution(sessionId: string): Promise<voi
           a.asset_type.toLowerCase().includes('rescue'),
       );
       if (hasExtractionEquipment && hasMedical) {
-        newStatus = 'being_evacuated';
+        newStatus = 'being_moved';
       }
     } else if (cas.status === 'identified' && mobility === 'non_ambulatory') {
       const hasStretcher = nearbyAssets.some((a) =>
         a.asset_type.toLowerCase().includes('stretcher'),
       );
       if (hasStretcher || hasMedical) {
-        newStatus = 'being_evacuated';
+        newStatus = 'being_moved';
       }
     } else if (cas.status === 'identified' && hasMedical) {
-      newStatus = 'being_evacuated';
+      newStatus = 'being_moved';
     }
 
     if (newStatus && newStatus !== cas.status) {

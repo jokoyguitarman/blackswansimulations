@@ -41,6 +41,8 @@ export interface EvaluationContext {
   gateStatusByGateId?: Record<string, 'pending' | 'met' | 'not_met'>;
   /** Keys with state_path for generic resolution from currentState (e.g. police_state.perimeter_established). */
   scenarioConditionKeyDefs?: Array<{ key: string; state_path?: string; negate?: boolean }>;
+  /** Number of placed assets in the session (used by placed_asset_exists condition). */
+  placedAssetsCount?: number;
 }
 
 export type EvaluatorResult =
@@ -133,6 +135,9 @@ conditionRegistry.objective_evacuation_not_completed = (ctx) => {
   );
   return evac ? evac.status !== 'completed' : false;
 };
+
+// Placed asset exists — fires once any team has placed at least one asset
+conditionRegistry.placed_asset_exists = (ctx) => (ctx.placedAssetsCount ?? 0) > 0;
 
 // Gate (optional)
 conditionRegistry.evacuation_gate_not_met = (ctx) => {

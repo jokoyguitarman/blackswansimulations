@@ -339,6 +339,8 @@ export const WarRoom = () => {
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [resolvedScenarioType, setResolvedScenarioType] = useState<string | null>(null);
   const [resolvedWeaponClass, setResolvedWeaponClass] = useState<string | null>(null);
+  const [secondaryDevicesCount, setSecondaryDevicesCount] = useState(0);
+  const [realBombsCount, setRealBombsCount] = useState(0);
 
   if (!isTrainer) {
     return (
@@ -360,6 +362,10 @@ export const WarRoom = () => {
       include_adversary_pursuit: includeAdversaryPursuit,
     };
     if (injectProfiles.length >= 2) opts.inject_profiles = injectProfiles;
+    if (secondaryDevicesCount > 0) {
+      opts.secondary_devices_count = secondaryDevicesCount;
+      opts.real_bombs_count = realBombsCount;
+    }
     if (useStructured && scenarioType) {
       opts.scenario_type = scenarioType;
       opts.setting = setting || undefined;
@@ -764,6 +770,53 @@ export const WarRoom = () => {
                       {t.is_investigative ? '⬟ INVESTIGATIVE' : '○ INVESTIGATIVE'}
                     </button>
                   </div>
+                  {/bomb|eod/i.test(t.team_name) && (
+                    <div className="border-t border-robotic-yellow/20 pt-2 mt-1">
+                      <p className="text-[10px] terminal-text text-robotic-orange/80 uppercase mb-2">
+                        [SECONDARY DEVICE CHALLENGE]
+                      </p>
+                      <div className="flex gap-4 items-center flex-wrap">
+                        <label className="flex items-center gap-2 text-xs terminal-text text-robotic-yellow/70">
+                          Suspicious Devices:
+                          <select
+                            value={secondaryDevicesCount}
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value, 10);
+                              setSecondaryDevicesCount(v);
+                              if (realBombsCount > v) setRealBombsCount(v);
+                            }}
+                            className="w-16 px-2 py-1 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow text-sm"
+                            disabled={loading}
+                          >
+                            {Array.from({ length: 11 }, (_, n) => (
+                              <option key={n} value={n}>
+                                {n}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs terminal-text text-robotic-yellow/70">
+                          Real Bombs:
+                          <select
+                            value={realBombsCount}
+                            onChange={(e) => setRealBombsCount(parseInt(e.target.value, 10))}
+                            className="w-16 px-2 py-1 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow text-sm"
+                            disabled={loading || secondaryDevicesCount === 0}
+                          >
+                            {Array.from({ length: secondaryDevicesCount + 1 }, (_, n) => (
+                              <option key={n} value={n}>
+                                {n}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <p className="text-[9px] terminal-text text-robotic-yellow/40 mt-1">
+                        Devices are split between tip-based injects and hidden inside placed assets.
+                        Real bombs detonate after 2 min if not rendered safe.
+                      </p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

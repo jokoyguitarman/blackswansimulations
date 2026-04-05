@@ -12,6 +12,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from './websocketService.js';
 import { publishInjectToSession } from '../routes/injects.js';
+import { shouldCancelScheduledInject } from './aiService.js';
 import { env } from '../env.js';
 import type { Server as IoServer } from 'socket.io';
 // PathwayOutcome type import removed — pathway system replaced by dynamic consequences
@@ -300,6 +301,111 @@ Generate a consequence inject that describes what happens IN THE WORLD as a resu
         'Decision consequence inject insert failed',
       );
       return;
+    }
+
+    // AI cancellation gate: check whether team's recent actions already address this consequence
+    try {
+      const { data: recentDecisions } = await supabaseAdmin
+        .from('decisions')
+        .select('title, description, type')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: false })
+        .limit(15);
+
+      const decisionsForAi = (recentDecisions ?? []).map((d) => ({
+        title: (d.title as string) || '',
+        description: (d.description as string) || '',
+        type: (d.type as string) || null,
+      }));
+
+      await supabaseAdmin.from('session_events').insert({
+        session_id: sessionId,
+        event_type: 'ai_step_start',
+        description: `AI: Evaluating whether to cancel consequence inject: ${parsed.title}`,
+        actor_id: null,
+        metadata: {
+          step: 'evaluating_consequence_cancellation',
+          inject_title: parsed.title,
+          team: teamName,
+          robustness_band: band,
+        },
+      });
+
+      const cancelResult = await shouldCancelScheduledInject(
+        { title: parsed.title, content: parsed.content },
+        decisionsForAi,
+        apiKey,
+      );
+
+      if (cancelResult.cancel) {
+        await supabaseAdmin.from('session_events').insert({
+          session_id: sessionId,
+          event_type: 'inject_cancelled',
+          description: `Consequence inject cancelled: ${parsed.title} — ${cancelResult.cancel_reason ?? 'Team actions addressed the concern'}`,
+          actor_id: null,
+          metadata: {
+            inject_id: createdInject.id,
+            cancel_reason: cancelResult.cancel_reason ?? null,
+            team: teamName,
+            robustness_band: band,
+          },
+        });
+
+        logger.info(
+          {
+            sessionId,
+            team: teamName,
+            injectId: createdInject.id,
+            reason: cancelResult.cancel_reason,
+          },
+          'Decision consequence inject cancelled by AI gate',
+        );
+
+        // If the adversary adapted the inject, create and publish the adapted version
+        if (cancelResult.adversary_inject?.title && cancelResult.adversary_inject?.content) {
+          const { data: adaptedInject } = await supabaseAdmin
+            .from('scenario_injects')
+            .insert({
+              scenario_id: scenarioId,
+              session_id: sessionId,
+              trigger_time_minutes: null,
+              trigger_condition: null,
+              type: band === 'high' ? 'pathway' : 'warroom',
+              title: cancelResult.adversary_inject.title,
+              content: cancelResult.adversary_inject.content,
+              severity,
+              affected_roles: [],
+              inject_scope: 'team_specific',
+              target_teams: [teamName],
+              requires_response: requiresResponse,
+              requires_coordination: false,
+              ai_generated: true,
+              triggered_by_user_id: null,
+              generation_source: 'adversary_adaptation',
+            })
+            .select()
+            .single();
+
+          if (adaptedInject) {
+            await publishInjectToSession(adaptedInject.id, sessionId, trainerId, io);
+            logger.info(
+              {
+                sessionId,
+                team: teamName,
+                injectId: adaptedInject.id,
+                title: cancelResult.adversary_inject.title,
+              },
+              'Adversary-adapted consequence inject published',
+            );
+          }
+        }
+        return;
+      }
+    } catch (gateErr) {
+      logger.warn(
+        { error: gateErr, sessionId, team: teamName },
+        'Consequence cancellation gate failed, publishing inject anyway',
+      );
     }
 
     await publishInjectToSession(createdInject.id, sessionId, trainerId, io);

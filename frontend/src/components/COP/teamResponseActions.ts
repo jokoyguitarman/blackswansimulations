@@ -321,9 +321,9 @@ const EVACUATION_ACTIONS: TeamAction[] = [
   },
   {
     id: 'coordinate_fire_safety',
-    label: 'Coordinate with Fire Safety',
+    label: 'Coordinate with Hazards / Fire / Rescue',
     description:
-      'Liaise with fire safety team on hazard zones, ventilation, and safe evacuation corridors.',
+      'Liaise with Hazards / Fire / Rescue team on hazard zones, ventilation, and safe evacuation corridors.',
     icon: 'firefighter',
     keywords: ['coordinate', 'fire', 'hazmat', 'fire safety', 'hazard'],
   },

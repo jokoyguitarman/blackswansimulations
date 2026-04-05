@@ -139,7 +139,7 @@ export async function processExitFlow(sessionId: string): Promise<void> {
     .eq('scenario_id', session.scenario_id)
     .eq('session_id', sessionId)
     .eq('casualty_type', 'crowd')
-    .in('status', ['being_evacuated', 'at_exit']);
+    .in('status', ['being_evacuated', 'being_moved', 'at_exit']);
 
   if (!crowdPins?.length) return;
 
@@ -236,7 +236,7 @@ export async function processExitFlow(sessionId: string): Promise<void> {
           .from('scenario_casualties')
           .update({
             headcount: remaining,
-            status: 'being_evacuated',
+            status: 'being_moved',
             updated_at: new Date().toISOString(),
           })
           .eq('id', crowd.id);
@@ -287,7 +287,7 @@ export async function processExitFlow(sessionId: string): Promise<void> {
         floor_level: 'G',
         headcount: processed,
         conditions: evacueeConditions,
-        status: finalDest ? 'being_evacuated' : 'at_assembly',
+        status: finalDest ? 'being_moved' : 'at_assembly',
         appears_at_minutes: 0,
       };
 
@@ -324,7 +324,7 @@ export async function processExitFlow(sessionId: string): Promise<void> {
           data: {
             casualty_id: crowd.id,
             headcount: remaining,
-            status: remaining > 0 ? 'being_evacuated' : 'at_assembly',
+            status: remaining > 0 ? 'being_moved' : 'at_assembly',
           },
           timestamp: new Date().toISOString(),
         });
@@ -416,7 +416,7 @@ export async function processNonAmbulatoryExtraction(sessionId: string): Promise
     .eq('scenario_id', session.scenario_id)
     .eq('session_id', sessionId)
     .eq('casualty_type', 'patient')
-    .eq('status', 'being_evacuated');
+    .in('status', ['being_evacuated', 'being_moved']);
 
   if (!trappedPatients?.length) return;
 

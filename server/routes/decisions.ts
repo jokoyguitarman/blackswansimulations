@@ -916,6 +916,7 @@ async function processExecutedDecisionInBackground(
           decision.title as string,
           decision.description as string,
           extractionCenter,
+          decision.proposed_by as string,
         );
       } catch (extractErr) {
         logger.warn({ error: extractErr }, 'Pre-eval extraction failed for human player decision');

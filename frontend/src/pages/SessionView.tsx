@@ -1703,6 +1703,7 @@ export const SessionView = () => {
             if (/triage/.test(n)) return 'triage_state';
             if (/media/.test(n)) return 'media_state';
             if (/fire|rescue|scdf/.test(n)) return 'fire_rescue_state';
+            if (/bomb|eod|explosive.ordnance/i.test(n)) return 'bomb_squad_state';
             return `${n.replace(/\s+/g, '_')}_state`;
           };
 
@@ -1712,7 +1713,7 @@ export const SessionView = () => {
               ? scenarioTeams
               : [
                   { team_name: 'Evacuation' },
-                  { team_name: 'Fire Safety' },
+                  { team_name: 'Hazards / Fire / Rescue' },
                   { team_name: 'Medical Triage' },
                   { team_name: 'Media & Communications' },
                   { team_name: 'Pursuit & Investigation' },
@@ -1918,6 +1919,38 @@ export const SessionView = () => {
                       Extracted to warm zone: {Math.max(0, Number(state.extracted_to_warm) || 0)}
                     </div>
                     <div>Debris cleared: {Math.max(0, Number(state.debris_cleared) || 0)}</div>
+                  </div>
+                </div>,
+              );
+            } else if (stateKey === 'bomb_squad_state') {
+              const activeThreats = Math.max(0, Number(state.active_threats) || 0);
+              const detonations = Math.max(0, Number(state.detonations) || 0);
+              blocks.push(
+                <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
+                  <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                    {displayName}
+                  </div>
+                  <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
+                    <div
+                      className={activeThreats > 0 ? 'text-red-400 font-bold animate-pulse' : ''}
+                    >
+                      Active Threats: {activeThreats}
+                    </div>
+                    <div>Tips Received: {Math.max(0, Number(state.tips_received) || 0)}</div>
+                    <div>Devices Found: {Math.max(0, Number(state.devices_found) || 0)}</div>
+                    <div>
+                      Rendered Safe: {Math.max(0, Number(state.devices_rendered_safe) || 0)}
+                    </div>
+                    <div>
+                      False Alarms Cleared: {Math.max(0, Number(state.false_alarms_cleared) || 0)}
+                    </div>
+                    <div className={detonations > 0 ? 'text-red-500 font-bold' : ''}>
+                      Detonations: {detonations}
+                    </div>
+                    <div>Sweeps Completed: {Math.max(0, Number(state.sweeps_completed) || 0)}</div>
+                    <div>
+                      Exclusion Zones: {Math.max(0, Number(state.exclusion_zones_active) || 0)}
+                    </div>
                   </div>
                 </div>,
               );

@@ -205,6 +205,16 @@ export async function applyInjectPublishEffects(
         logger.error({ err: casErr, sessionId, injectId }, 'Failed to spawn adversary casualties');
       }
     }
+
+    // Secondary device: spawn a suspicious_package hazard pin near a placed asset
+    const spawnDevice = stateEffect.spawn_secondary_device as Record<string, unknown> | undefined;
+    if (spawnDevice && spawnDevice.device_profile) {
+      try {
+        await spawnSecondaryDevice(sessionId, injectId, spawnDevice);
+      } catch (devErr) {
+        logger.error({ err: devErr, sessionId, injectId }, 'Failed to spawn secondary device');
+      }
+    }
   }
 }
 
@@ -865,4 +875,128 @@ async function spawnAdversaryCasualties(
     timestamp: new Date().toISOString(),
   });
   logger.info({ sessionId, injectId, count, zoneLabel }, 'Adversary casualties spawned');
+}
+
+/**
+ * Spawn a suspicious_package hazard pin near a placed asset when a tip inject fires.
+ * If the device is live, set a detonation deadline 2 minutes from now.
+ */
+async function spawnSecondaryDevice(
+  sessionId: string,
+  injectId: string,
+  deviceDef: Record<string, unknown>,
+): Promise<void> {
+  const { data: session } = await supabaseAdmin
+    .from('sessions')
+    .select('scenario_id')
+    .eq('id', sessionId)
+    .single();
+  if (!session?.scenario_id) return;
+
+  const profile = deviceDef.device_profile as Record<string, unknown>;
+  if (!profile) return;
+
+  const nearTypes = (deviceDef.near_asset_types as string[]) ?? [];
+
+  const { data: assets } = await supabaseAdmin
+    .from('placed_assets')
+    .select('id, geometry, asset_type, team_name')
+    .eq('session_id', sessionId);
+
+  if (!assets || assets.length === 0) {
+    logger.warn({ sessionId, injectId }, 'No placed assets to attach device near');
+    return;
+  }
+
+  const candidates =
+    nearTypes.length > 0
+      ? assets.filter((a) => {
+          const at = ((a as Record<string, unknown>).asset_type as string) ?? '';
+          return nearTypes.some((t) => at.toLowerCase().includes(t.toLowerCase()));
+        })
+      : assets;
+  const pool = candidates.length > 0 ? candidates : assets;
+  const target = pool[Math.floor(Math.random() * pool.length)];
+
+  const geom = (target as Record<string, unknown>).geometry as Record<string, unknown> | undefined;
+  let baseLat = 0;
+  let baseLng = 0;
+  if (geom?.type === 'Point' && Array.isArray(geom.coordinates)) {
+    baseLng = (geom.coordinates as number[])[0];
+    baseLat = (geom.coordinates as number[])[1];
+  } else if (geom?.type === 'Polygon' && Array.isArray(geom.coordinates)) {
+    const ring = (geom.coordinates as number[][][])[0] ?? [];
+    if (ring.length > 0) {
+      baseLng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+      baseLat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+    }
+  }
+  if (baseLat === 0 && baseLng === 0) {
+    logger.warn({ sessionId, injectId }, 'Cannot determine coords for device spawn');
+    return;
+  }
+
+  const METER_TO_DEG = 1 / 111_320;
+  const angle = Math.random() * 2 * Math.PI;
+  const dist = 15 + Math.random() * 15;
+  const lat = baseLat + Math.cos(angle) * dist * METER_TO_DEG;
+  const lng =
+    baseLng + Math.sin(angle) * dist * METER_TO_DEG * (1 / Math.cos((baseLat * Math.PI) / 180));
+
+  const isLive = profile.is_live === true;
+  const detonationDeadline = isLive ? new Date(Date.now() + 2 * 60 * 1000).toISOString() : null;
+
+  const nearAssetName =
+    ((target as Record<string, unknown>).team_name as string) ?? 'operational area';
+
+  const { data: inserted, error } = await supabaseAdmin
+    .from('scenario_hazards')
+    .insert({
+      scenario_id: session.scenario_id,
+      session_id: sessionId,
+      hazard_type: 'suspicious_package',
+      location_lat: lat,
+      location_lng: lng,
+      floor_level: 'G',
+      properties: {
+        ...profile,
+        near_asset: nearAssetName,
+        spawned_by_inject: injectId,
+      },
+      assessment_criteria: [
+        'identify_container',
+        'establish_exclusion',
+        'deploy_robot',
+        'xray',
+        'rsp',
+      ],
+      status: 'active',
+      appears_at_minutes: 0,
+      detonation_deadline: detonationDeadline,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    logger.error({ error, sessionId, injectId }, 'Failed to spawn secondary device hazard');
+    return;
+  }
+
+  getWebSocketService().broadcastToSession(sessionId, {
+    type: 'secondary_device_spawned',
+    data: {
+      hazard_id: inserted?.id,
+      lat,
+      lng,
+      is_live: isLive,
+      container_type: profile.container_type,
+      detonation_deadline: detonationDeadline,
+    },
+    timestamp: new Date().toISOString(),
+  });
+
+  logger.info(
+    { sessionId, injectId, hazardId: inserted?.id, isLive, containerType: profile.container_type },
+    'Secondary device pin spawned',
+  );
 }

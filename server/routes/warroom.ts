@@ -82,6 +82,8 @@ const generateSchema = z.object({
     duration_minutes: z.number().int().min(20).max(240).optional(),
     include_adversary_pursuit: z.boolean().optional(),
     inject_profiles: z.array(z.string().min(1).max(50)).min(2).max(35).optional(),
+    secondary_devices_count: z.number().int().min(0).max(10).optional(),
+    real_bombs_count: z.number().int().min(0).max(10).optional(),
     teams: z.array(teamSchema).optional(),
   }),
 });
@@ -199,6 +201,8 @@ router.post(
         duration_minutes,
         include_adversary_pursuit,
         inject_profiles,
+        secondary_devices_count,
+        real_bombs_count,
         teams,
       } = req.body;
 
@@ -232,6 +236,8 @@ router.post(
           duration_minutes,
           include_adversary_pursuit,
           inject_profiles,
+          secondary_devices_count,
+          real_bombs_count,
           teams,
         },
         env.openAiApiKey,
@@ -275,6 +281,8 @@ router.post(
         duration_minutes,
         include_adversary_pursuit,
         inject_profiles,
+        secondary_devices_count,
+        real_bombs_count,
         teams,
       } = req.body;
 
@@ -317,6 +325,8 @@ router.post(
           duration_minutes,
           include_adversary_pursuit,
           inject_profiles,
+          secondary_devices_count,
+          real_bombs_count,
           teams,
         },
         env.openAiApiKey,

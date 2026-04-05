@@ -457,7 +457,7 @@ export async function updateTeamStateFromDecision(
         if (/evacuation|evac/.test(n)) return 'evacuation_state';
         if (/triage|medical/.test(n)) return 'triage_state';
         if (/media|communi/.test(n)) return 'media_state';
-        if (/fire|hazmat/.test(n)) return 'fire_state';
+        if (/fire|hazmat|hazard|rescue/.test(n)) return 'fire_state';
         if (/pursuit|investigation|police|intelligence/.test(n)) return 'pursuit_state';
         if (/bomb|eod|explosive/.test(n)) return 'bomb_squad_state';
         return `${n.replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}_state`;

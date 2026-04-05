@@ -24,7 +24,15 @@ import {
   recordSpaceClaim,
 } from './environmentalConditionManagementService.js';
 import { evaluateStateEffectManagementAndUpdateState } from './stateEffectManagementService.js';
-import { applyDecisionCasualtyEffects } from './decisionCasualtyEffectsService.js';
+import {
+  applyDecisionCasualtyEffects,
+  resolveAndApply,
+  type CasualtyEffect,
+  type CasualtyRow,
+  type LocationRow,
+  type PlacedAreaRow,
+} from './decisionCasualtyEffectsService.js';
+import { determineZone, type ZoneRadii, type PlacedZoneArea } from './geoUtils.js';
 import { evaluateTransportOutcome } from './transportOutcomeService.js';
 import { extractAndPlaceInfrastructureFromText } from './demoAIAgentService.js';
 import { publishInjectToSession } from '../routes/injects.js';
@@ -340,6 +348,7 @@ export class DemoActionDispatcher {
           title,
           description,
           incidentCenter,
+          botUserId,
         );
         if (placedCount > 0) {
           logger.info(
@@ -919,6 +928,11 @@ export class DemoActionDispatcher {
 
       evaluatePinResolution(sessionId).catch(() => {});
 
+      // Attach a hidden device from the sweep pool (bomb squad challenge)
+      this.tryAttachHiddenDevice(sessionId, placement.id as string).catch((e) =>
+        logger.warn({ err: e, sessionId }, 'Hidden device attach failed (non-blocking)'),
+      );
+
       logger.info({ placementId: placement.id, asset_type, team_name }, 'Demo: placement created');
       return placement.id;
     } catch (err) {
@@ -1107,26 +1121,33 @@ export class DemoActionDispatcher {
           updates.assessed_by = teamName;
         }
 
-        // Progress the status
+        // Flip undiscovered → identified immediately (first contact)
         const { data: current } = await supabaseAdmin
           .from('scenario_casualties')
-          .select('status')
+          .select('id, casualty_type, location_lat, location_lng, conditions, status, headcount')
           .eq('id', payload.target_id)
           .single();
 
         if (current) {
-          const statusProgression: Record<string, string> = {
-            undiscovered: 'identified',
-            identified: 'endorsed_to_triage',
-            endorsed_to_triage: 'in_treatment',
-          };
           const currentStatus = current.status as string;
-          if (statusProgression[currentStatus]) {
-            updates.status = statusProgression[currentStatus];
+          if (currentStatus === 'undiscovered') {
+            updates.status = 'identified';
           }
         }
 
         await supabaseAdmin.from('scenario_casualties').update(updates).eq('id', payload.target_id);
+
+        // Zone-aware effect application via the unified pipeline
+        if (current) {
+          try {
+            await this.applyZoneAwareEffects(sessionId, current as CasualtyRow, teamName, payload);
+          } catch (err) {
+            logger.warn(
+              { err, targetId: payload.target_id },
+              'Demo: zone-aware effect application failed',
+            );
+          }
+        }
       } else {
         // Hazard: mark as contained (valid DB status)
         await supabaseAdmin
@@ -1207,6 +1228,204 @@ export class DemoActionDispatcher {
   }
 
   /**
+   * Determine the appropriate casualty effect action from the bot's structured
+   * pin response, using zone + team role + patient status, then apply via the
+   * unified resolveAndApply pipeline (same as human players).
+   */
+  private async applyZoneAwareEffects(
+    sessionId: string,
+    casualty: CasualtyRow,
+    teamName: string,
+    payload: {
+      target_id: string;
+      target_type: 'casualty' | 'hazard';
+      target_label: string;
+      actions: string[];
+      triage_color?: string;
+      description: string;
+    },
+  ): Promise<void> {
+    const { data: sessionRow } = await supabaseAdmin
+      .from('sessions')
+      .select('scenario_id')
+      .eq('id', sessionId)
+      .single();
+    if (!sessionRow) return;
+    const scenarioId = sessionRow.scenario_id as string;
+
+    // Load zone data for zone determination
+    const { data: hazards } = await supabaseAdmin
+      .from('scenario_hazards')
+      .select('location_lat, location_lng, zones')
+      .eq('scenario_id', scenarioId)
+      .eq('session_id', sessionId);
+
+    let incidentLat = 0,
+      incidentLng = 0;
+    const warRoomZones: ZoneRadii[] = [];
+    if (hazards?.length) {
+      for (const h of hazards) {
+        incidentLat += Number(h.location_lat);
+        incidentLng += Number(h.location_lng);
+      }
+      incidentLat /= hazards.length;
+      incidentLng /= hazards.length;
+      const found = hazards.map((h) => (h.zones ?? []) as ZoneRadii[]).find((z) => z.length > 0);
+      if (found) warRoomZones.push(...found);
+    }
+
+    // Load player-drawn zones
+    const { data: placedAreas } = await supabaseAdmin
+      .from('placed_assets')
+      .select('id, asset_type, label, geometry, properties')
+      .eq('session_id', sessionId)
+      .eq('status', 'active')
+      .in('asset_type', [
+        'operating_area',
+        'operational_area',
+        'assembly_point',
+        'triage_tent',
+        'field_hospital',
+        'exit_pathway',
+        'hazard_zone',
+        'decon_zone',
+      ]);
+
+    const playerZones = ((placedAreas ?? []) as PlacedAreaRow[]).filter(
+      (a) => a.asset_type === 'hazard_zone',
+    );
+
+    // Refresh casualty status (may have been bumped to 'identified')
+    const { data: freshCas } = await supabaseAdmin
+      .from('scenario_casualties')
+      .select('id, casualty_type, location_lat, location_lng, conditions, status, headcount')
+      .eq('id', payload.target_id)
+      .single();
+    if (!freshCas) return;
+    const cas = freshCas as CasualtyRow;
+
+    const patientZone = determineZone(
+      cas.location_lat,
+      cas.location_lng,
+      playerZones as unknown as PlacedZoneArea[],
+      warRoomZones,
+      incidentLat,
+      incidentLng,
+    );
+
+    // Map team role + zone + actions to the correct CasualtyEffect action
+    const tk = teamName.toLowerCase();
+    const isFireRescue = tk.includes('fire') || tk.includes('hazard') || tk.includes('rescue');
+    const isTriage = tk.includes('triage') || tk.includes('medical');
+    const isEvac = tk.includes('evac');
+    const actionText = payload.actions.join(' ').toLowerCase();
+
+    let effectAction: CasualtyEffect['action'];
+    let destDescription: string | undefined;
+
+    if (isFireRescue && patientZone === 'hot') {
+      effectAction = 'extract';
+    } else if (isEvac && (patientZone === 'hot' || patientZone === 'warm')) {
+      effectAction = 'direct_to';
+      destDescription = 'assembly point';
+    } else if (
+      isTriage &&
+      (cas.status === 'awaiting_triage' ||
+        cas.status === 'endorsed_to_triage' ||
+        cas.status === 'identified' ||
+        cas.status === 'at_assembly')
+    ) {
+      effectAction = 'treat';
+    } else if (isTriage && cas.status === 'in_treatment') {
+      effectAction = 'transport';
+    } else if (actionText.includes('transport') || actionText.includes('ambulance')) {
+      effectAction = 'transport';
+    } else if (
+      actionText.includes('extract') ||
+      actionText.includes('rescue') ||
+      actionText.includes('carry')
+    ) {
+      effectAction = 'extract';
+    } else if (
+      actionText.includes('triage') ||
+      actionText.includes('treat') ||
+      actionText.includes('first aid')
+    ) {
+      effectAction = 'treat';
+    } else if (
+      actionText.includes('direct') ||
+      actionText.includes('move') ||
+      actionText.includes('evacuate')
+    ) {
+      effectAction = 'direct_to';
+    } else {
+      // Default: if patient is undiscovered/identified → extract to next zone; else treat
+      if (cas.status === 'identified' || cas.status === 'undiscovered') {
+        effectAction = 'extract';
+      } else {
+        effectAction = 'treat';
+      }
+    }
+
+    // Extract destination hint from payload description if present
+    if (!destDescription && payload.description) {
+      const descLower = payload.description.toLowerCase();
+      if (
+        descLower.includes('triage tent') ||
+        descLower.includes('triage area') ||
+        descLower.includes('triage point')
+      ) {
+        destDescription = 'triage tent';
+      } else if (descLower.includes('field hospital')) {
+        destDescription = 'field hospital';
+      } else if (descLower.includes('assembly')) {
+        destDescription = 'assembly point';
+      } else if (descLower.includes('hospital') || descLower.includes('trauma centre')) {
+        const hospMatch = payload.description.match(
+          /(?:to|at)\s+(.+?(?:Hospital|Trauma Centre|Medical Centre)[^,.]*)/i,
+        );
+        if (hospMatch) destDescription = hospMatch[1].trim();
+      }
+    }
+
+    const effect: CasualtyEffect = {
+      target_type: cas.casualty_type === 'patient' ? 'patient' : 'crowd',
+      target_description: payload.target_label,
+      action: effectAction,
+      destination_description: destDescription,
+    };
+
+    // Load locations for destination resolution
+    const { data: locations } = await supabaseAdmin
+      .from('scenario_locations')
+      .select('id, label, coordinates, conditions, claimed_by_team, claimed_as')
+      .eq('scenario_id', scenarioId)
+      .eq('session_id', sessionId);
+
+    // Load all casualties for target resolution
+    const { data: allCasualties } = await supabaseAdmin
+      .from('scenario_casualties')
+      .select('id, casualty_type, location_lat, location_lng, conditions, status, headcount')
+      .eq('scenario_id', scenarioId)
+      .eq('session_id', sessionId)
+      .not('status', 'in', '("resolved","transported","deceased")');
+
+    await resolveAndApply(
+      sessionId,
+      scenarioId,
+      effect,
+      (allCasualties ?? []) as CasualtyRow[],
+      (locations ?? []) as LocationRow[],
+      (placedAreas ?? []) as PlacedAreaRow[],
+    );
+
+    logger.info(
+      { sessionId, casualtyId: cas.id, effectAction, patientZone, teamName },
+      'Demo: zone-aware effect applied via unified pipeline',
+    );
+  }
+
+  /**
    * Find the main (inter_agency or public) channel for a session that a team can post in.
    */
   async getSessionChannelId(sessionId: string): Promise<string | null> {
@@ -1219,5 +1438,54 @@ export class DemoActionDispatcher {
       .limit(1);
 
     return channels?.[0]?.id ?? null;
+  }
+
+  /**
+   * Pop a device from the session's sweep_device_pool and attach it as a hidden device
+   * to the given asset. No map pin is created — the device is invisible until swept.
+   */
+  private async tryAttachHiddenDevice(sessionId: string, assetId: string): Promise<void> {
+    const { data: sessionRow } = await supabaseAdmin
+      .from('sessions')
+      .select('sweep_device_pool, hidden_devices')
+      .eq('id', sessionId)
+      .single();
+    if (!sessionRow) return;
+
+    const pool = (sessionRow.sweep_device_pool as Array<Record<string, unknown>>) ?? [];
+    if (pool.length === 0) return;
+
+    const device = pool[0];
+    const remaining = pool.slice(1);
+    const existing = (sessionRow.hidden_devices as Array<Record<string, unknown>>) ?? [];
+    const newHidden = [
+      ...existing,
+      {
+        asset_id: assetId,
+        device_profile: device,
+        discovered: false,
+        attached_at: new Date().toISOString(),
+      },
+    ];
+
+    const { error } = await supabaseAdmin
+      .from('sessions')
+      .update({ sweep_device_pool: remaining, hidden_devices: newHidden })
+      .eq('id', sessionId);
+
+    if (error) {
+      logger.error({ error, sessionId, assetId }, 'Failed to attach hidden device to asset');
+      return;
+    }
+
+    logger.info(
+      {
+        sessionId,
+        assetId,
+        poolRemaining: remaining.length,
+        containerType: (device as Record<string, unknown>).container_type,
+      },
+      'Hidden device attached to placed asset',
+    );
   }
 }

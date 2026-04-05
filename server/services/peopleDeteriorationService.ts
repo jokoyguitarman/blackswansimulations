@@ -44,6 +44,8 @@ const DEMO_CRITICAL_TRANSPORT_WARNING_BEFORE_MIN = 2;
 const UNTREATED_STATUSES = [
   'undiscovered',
   'identified',
+  'being_moved',
+  'being_evacuated',
   'awaiting_triage',
   'endorsed_to_triage',
   'at_assembly',
@@ -233,7 +235,10 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
         cas.appears_at_minutes ?? 0,
       );
 
-      if (['identified'].includes(cas.status) && sinceLastDet >= escalationMin) {
+      if (
+        ['identified', 'being_moved', 'being_evacuated'].includes(cas.status) &&
+        sinceLastDet >= escalationMin
+      ) {
         const currentBehavior = (conds.behavior as string) ?? 'calm';
         const newBehavior = BEHAVIOR_ESCALATION[currentBehavior];
 

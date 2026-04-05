@@ -1212,6 +1212,233 @@ router.post('/:id/retry-routes', requireAuth, async (req: AuthenticatedRequest, 
   }
 });
 
+// ---------------------------------------------------------------------------
+// Pin enrichment helpers — generate rich structured data via LLM
+// ---------------------------------------------------------------------------
+
+async function enrichPatientConditions(
+  triageColor: string,
+  injuryType: string,
+  description?: string,
+): Promise<Record<string, unknown>> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return {};
+
+  const descHint = description ? `\nDescription provided by trainer: "${description}"` : '';
+
+  const prompt = `You are a pre-hospital emergency medicine expert. Generate a single realistic patient profile for a crisis training exercise.
+
+Triage color: ${triageColor.toUpperCase()}
+Injury type: ${injuryType.replace(/_/g, ' ')}${descHint}
+
+Generate a medically accurate patient profile consistent with the triage color and injury type.
+
+Return ONLY valid JSON:
+{
+  "injuries": [{ "type": "string", "severity": "minor|moderate|severe|critical", "body_part": "string", "visible_signs": "string" }],
+  "triage_color": "${triageColor}",
+  "mobility": "ambulatory|non_ambulatory|trapped",
+  "consciousness": "alert|confused|unconscious|unresponsive",
+  "breathing": "normal|labored|absent",
+  "accessibility": "open|in_smoke|under_debris|behind_fire",
+  "visible_description": "1-2 sentences of ONLY what a responder SEES approaching — no diagnoses",
+  "treatment_requirements": [{ "intervention": "string", "priority": "critical|high|medium", "reason": "string" }],
+  "transport_prerequisites": ["string"],
+  "contraindications": ["string"],
+  "ideal_response_sequence": [{ "step": 1, "action": "string", "detail": "string" }],
+  "required_ppe": ["string"],
+  "required_equipment": [{ "item": "string", "quantity": 1, "purpose": "string" }],
+  "expected_time_to_treat_minutes": 10
+}
+
+Rules:
+- injuries: 1-3 injuries consistent with the type and severity implied by the triage color
+- GREEN = minor, walking wounded. YELLOW = serious but stable. RED = life-threatening, immediate care. BLACK = deceased/expectant.
+- ideal_response_sequence: 4-8 ordered steps from approach to handoff (PPE, survey, interventions, packaging)
+- required_ppe: at minimum nitrile gloves; add N95/face shield/turnout gear if contamination or burns
+- required_equipment: specific items with quantity and purpose (e.g. SAM splint, burn dressing, tourniquet)
+- treatment_requirements: real pre-hospital interventions with clinical rationale
+- transport_prerequisites: what must be done before safe transport
+- contraindications: dangerous actions to avoid for this patient`;
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1200,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!res.ok) return {};
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content as string | undefined;
+    if (!raw) return {};
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return {};
+    return JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+  } catch (err) {
+    logger.warn({ err }, 'Patient enrichment failed; using basic conditions');
+    return {};
+  }
+}
+
+async function enrichHazardDetails(
+  hazardType: string,
+  description?: string,
+): Promise<{
+  properties: Record<string, unknown>;
+  resolution_requirements: Record<string, unknown>;
+  equipment_requirements: Array<Record<string, unknown>>;
+  enriched_description: string;
+}> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  const fallback = {
+    properties: { severity: 'medium', description: description || hazardType.replace(/_/g, ' ') },
+    resolution_requirements: {},
+    equipment_requirements: [],
+    enriched_description: description || hazardType.replace(/_/g, ' '),
+  };
+  if (!apiKey) return fallback;
+
+  const descHint = description ? `\nDescription: "${description}"` : '';
+
+  const prompt = `You are an emergency response expert. Generate detailed hazard data for a crisis training exercise.
+
+Hazard type: ${hazardType.replace(/_/g, ' ')}${descHint}
+
+Return ONLY valid JSON:
+{
+  "properties": {
+    "severity": "low|medium|high|critical",
+    "description": "2-3 sentence description of what responders see",
+    "fuel_source": "what is burning/leaking/collapsing (if applicable)",
+    "spread_risk": "low|medium|high"
+  },
+  "enriched_description": "1-2 sentence vivid description for display",
+  "resolution_requirements": {
+    "ideal_response_sequence": [
+      { "step": 1, "action": "string", "detail": "string", "responsible_team": "string" }
+    ],
+    "required_ppe": [{ "item": "string", "mandatory": true }],
+    "estimated_resolution_minutes": 30
+  },
+  "equipment_requirements": [
+    { "equipment_type": "string", "label": "string", "quantity": 1, "critical": true }
+  ]
+}
+
+Rules:
+- ideal_response_sequence: 4-8 steps from approach to resolution (zone setup, PPE, containment, mitigation, monitoring)
+- required_ppe: specific items needed to approach this hazard safely
+- equipment_requirements: 2-4 items with realistic quantities`;
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1000,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!res.ok) return fallback;
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content as string | undefined;
+    if (!raw) return fallback;
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return fallback;
+    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    return {
+      properties: (parsed.properties as Record<string, unknown>) || fallback.properties,
+      resolution_requirements: (parsed.resolution_requirements as Record<string, unknown>) || {},
+      equipment_requirements:
+        (parsed.equipment_requirements as Array<Record<string, unknown>>) || [],
+      enriched_description:
+        (parsed.enriched_description as string) || fallback.enriched_description,
+    };
+  } catch (err) {
+    logger.warn({ err }, 'Hazard enrichment failed; using basic details');
+    return fallback;
+  }
+}
+
+async function enrichCrowdConditions(
+  crowdType: string,
+  headcount: number,
+  behavior?: string,
+  description?: string,
+): Promise<Record<string, unknown>> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey)
+    return {
+      behavior: behavior || 'calm',
+      description: description || `Group of ~${headcount} people`,
+    };
+
+  const descHint = description ? `\nDescription: "${description}"` : '';
+
+  const prompt = `You are a crowd psychology expert. Generate realistic crowd profile data for a crisis training exercise.
+
+Crowd type: ${crowdType.replace(/_/g, ' ')}
+Headcount: ~${headcount}
+Behavior: ${behavior || 'unknown'}${descHint}
+
+Return ONLY valid JSON:
+{
+  "behavior": "calm|anxious|panicking|hostile|cooperative",
+  "description": "2-3 sentence description of what responders observe",
+  "movement_pattern": "stationary|milling|fleeing|converging",
+  "special_needs": ["elderly", "children", "disabled", "non_english_speakers"],
+  "risk_factors": ["stampede_risk", "bottleneck", "crush_potential", "medical_emergencies_likely"],
+  "management_requirements": {
+    "personnel_ratio": "1:25 marshal-to-evacuee",
+    "equipment_needed": ["megaphone", "barrier_tape", "high_vis_vests"],
+    "priority_actions": ["establish_cordon", "identify_exit_routes", "deploy_marshals"]
+  },
+  "estimated_evacuation_minutes": 15,
+  "injured_count_estimate": 0
+}
+
+Rules:
+- Tailor the response to the crowd type (evacuee group vs convergent crowd vs bystanders)
+- injured_count_estimate: 0 for calm crowds, 1-3 for panicking (trampling), 0 for convergent
+- risk_factors: only include realistic risks for this crowd size and behavior`;
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 800,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!res.ok) return {};
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content as string | undefined;
+    if (!raw) return {};
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return {};
+    return JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+  } catch (err) {
+    logger.warn({ err }, 'Crowd enrichment failed; using basic conditions');
+    return {
+      behavior: behavior || 'calm',
+      description: description || `Group of ~${headcount} people`,
+    };
+  }
+}
+
 // ── Create a single pin (trainer/admin — scenario preview editing) ──
 router.post('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
@@ -1285,18 +1512,26 @@ router.post('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) => 
     }
 
     if (pin_type === 'hazard') {
+      const hazardType = (data.hazard_type as string) || 'unknown';
+      const desc = (data.label as string) || (data.description as string) || '';
+
+      logger.info({ hazardType, desc }, 'Enriching hazard pin via LLM');
+      const hazardEnriched = await enrichHazardDetails(hazardType, desc || undefined);
+
       const row = {
         scenario_id: scenarioId,
         session_id: null,
-        hazard_type: data.hazard_type || 'unknown',
+        hazard_type: hazardType,
         location_lat: data.lat,
         location_lng: data.lng,
         floor_level: (data.floor_level as string) || 'G',
-        properties: data.properties || { severity: 'medium', description: data.label || '' },
+        properties: hazardEnriched.properties,
         status: 'active',
         appears_at_minutes: 0,
-        enriched_description: (data.label as string) || '',
+        enriched_description: hazardEnriched.enriched_description,
         zones: [],
+        resolution_requirements: hazardEnriched.resolution_requirements,
+        equipment_requirements: hazardEnriched.equipment_requirements,
       };
 
       const { data: inserted, error } = await supabaseAdmin
@@ -1316,9 +1551,9 @@ router.post('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) => 
         const lat = Number(data.lat);
         const lng = Number(data.lng);
         const blastRadii = [
-          { radius_m: 50, zone_type: 'blast_lethal', label: 'Lethal Blast Zone (~164 ft)' },
-          { radius_m: 100, zone_type: 'blast_severe', label: 'Severe Injury Zone (~328 ft)' },
-          { radius_m: 150, zone_type: 'blast_fragment', label: 'Shrapnel Zone (~492 ft)' },
+          { radius_m: 15, zone_type: 'blast_lethal', label: 'Lethal Zone (0–49 ft)' },
+          { radius_m: 30, zone_type: 'blast_severe', label: 'Severe Injury Zone (49–98 ft)' },
+          { radius_m: 50, zone_type: 'blast_fragment', label: 'Fragment Zone (98–164 ft)' },
         ];
         for (const br of blastRadii) {
           await supabaseAdmin.from('scenario_locations').insert({
@@ -1341,15 +1576,58 @@ router.post('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) => 
     }
 
     if (pin_type === 'casualty') {
+      const casualtyType = (data.casualty_type as string) || 'individual';
+      let conditions: Record<string, unknown> = (data.conditions as Record<string, unknown>) || {};
+
+      if (casualtyType === 'individual' || casualtyType === 'patient') {
+        const triageColor =
+          (data.triage_color as string) || (conditions.triage_color as string) || 'yellow';
+        const injuryType =
+          (data.injury_type as string) || (conditions.injury_type as string) || 'blunt_trauma';
+        const desc =
+          (data.description as string) || (conditions.injury_description as string) || '';
+
+        logger.info({ triageColor, injuryType, desc }, 'Enriching patient pin via LLM');
+        const enriched = await enrichPatientConditions(triageColor, injuryType, desc || undefined);
+        if (Object.keys(enriched).length > 0) {
+          conditions = { ...conditions, ...enriched };
+        } else {
+          conditions = {
+            ...conditions,
+            triage_color: triageColor,
+            injury_type: injuryType,
+            visible_description: desc || `Patient with ${injuryType.replace(/_/g, ' ')}`,
+          };
+        }
+      } else if (casualtyType === 'crowd' || casualtyType === 'group') {
+        const headcount = Number(data.headcount) || 10;
+        const behavior = (data.behavior as string) || (conditions.behavior as string) || 'anxious';
+        const desc = (data.description as string) || (conditions.description as string) || '';
+
+        logger.info(
+          { crowdType: casualtyType, headcount, behavior },
+          'Enriching crowd pin via LLM',
+        );
+        const enriched = await enrichCrowdConditions(
+          casualtyType,
+          headcount,
+          behavior,
+          desc || undefined,
+        );
+        if (Object.keys(enriched).length > 0) {
+          conditions = { ...conditions, ...enriched };
+        }
+      }
+
       const row = {
         scenario_id: scenarioId,
         session_id: null,
-        casualty_type: data.casualty_type || 'individual',
+        casualty_type: casualtyType,
         location_lat: data.lat,
         location_lng: data.lng,
         floor_level: (data.floor_level as string) || 'G',
         headcount: Number(data.headcount) || 1,
-        conditions: data.conditions || {},
+        conditions,
         status: 'undiscovered',
         appears_at_minutes: 0,
       };

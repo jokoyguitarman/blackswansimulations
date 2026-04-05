@@ -172,4 +172,24 @@ export async function cloneScenarioPinsForSession(
       }
     }
   }
+
+  // --- Sweep device pool + hidden devices ---
+  const { data: scenarioRow } = await supabaseAdmin
+    .from('scenarios')
+    .select('sweep_device_pool')
+    .eq('id', scenarioId)
+    .single();
+
+  const pool = (scenarioRow as Record<string, unknown> | null)?.sweep_device_pool;
+  if (Array.isArray(pool) && pool.length > 0) {
+    const { error: poolErr } = await supabaseAdmin
+      .from('sessions')
+      .update({ sweep_device_pool: pool, hidden_devices: [] })
+      .eq('id', sessionId);
+    if (poolErr) {
+      logger.error({ error: poolErr, sessionId }, 'Failed to clone sweep_device_pool to session');
+    } else {
+      logger.info({ sessionId, poolSize: pool.length }, 'Cloned sweep_device_pool into session');
+    }
+  }
 }

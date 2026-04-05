@@ -844,6 +844,36 @@ Specificity requirements by team role:
   • COORDINATION WITH OTHER TEAMS: Must state what information is being requested/shared and from/to which team. General "coordinate with teams" = not specific.
   Do NOT require spokesperson names, press conference locations, or update frequencies on EVERY media decision — these are foundational items established once, not repeated in every statement.
 - Hazard Response: specific equipment type and class (e.g. "ABC dry chemical extinguisher" not just "water"), trained personnel to deploy it, approach method (upwind, from safe distance, etc.), safety perimeter, containment procedure, whether external services (fire brigade, HAZMAT) need to be called
+- Bomb Squad / EOD (suspicious package / explosive device response):
+  CRITICAL FAILURES (set consistent: false, severity: "high", mismatch_kind: "contradiction"):
+  • Manual approach without robot assessment first
+  • Using standard water disruptor on a METALLIC container (fragmentation risk — requires hard target disruptor)
+  • Moving/transporting an unstable device manually without TCV
+  • No exclusion zone established before attempting render safe procedure
+  • Allowing radio/cell use within exclusion zone (RF detonation risk)
+  
+  BELOW STANDARD (consistent: false, severity: "medium", mismatch_kind: "below_standard"):
+  • Exclusion zone radius smaller than the device's correct_standoff_m
+  • No X-ray before RSP attempt
+  • No coordination with nearby teams to evacuate their operational area within exclusion zone
+  • Blow-in-place near a sensitive structure when transport via TCV was viable
+  
+  MEETS STANDARD (consistent: true, specific: true):
+  • Correct exclusion zone for container type (matching correct_standoff_m/ft)
+  • Robot deployed before any human approach
+  • Correct disruptor type selected for container material
+  • Comms blackout ordered within exclusion zone
+  • Nearby teams warned and operations relocated if within exclusion radius
+  • Evidence preserved post-RSP
+  
+  EXCEEDS STANDARD: All above + K9 sweep of surrounding area + forensic evidence catalogued + timely all-clear allowing operations to resume
+
+  RSP SELECTION GUIDE (use to evaluate correctness):
+  • Soft containers (backpack, cardboard, fabric): Standard Water Cannon / Water Disruption
+  • Semi-rigid (plastic cooler): Standard Water Cannon acceptable
+  • Metallic (briefcase, pipe, pressure cooker, toolbox): Hard Target Disruptor ONLY
+  • Vehicle-borne: Vehicle-rated Standoff Disruptor
+  • Sealed/unstable: Controlled Detonation (blow-in-place) or TCV transport
 
 Set "specific": false when the decision gives general/vague instructions without naming concrete details. Set "specific": true when the decision names enough specifics to be executed without further clarification.
 
@@ -974,13 +1004,13 @@ RELEVANCE: Only evaluate zone safety when decisions involve deploying people nea
 
 === SAFETY GUARDRAILS ===
 FORBIDDEN ACTIONS (set "rejected": true with "rejection_reason"):
-- Directly handling, detonating, disarming, or triggering explosive devices
+- Non-EOD teams directly handling, detonating, disarming, or triggering explosive devices (Bomb Squad / EOD teams ARE authorized to perform render-safe procedures via robot or approved RSP methods)
 - Intentionally causing harm to people
 - Ordering emergency services to stand down without authorisation
 - Deliberately endangering civilians
 - Impersonating emergency services
 
-Contacting or requesting bomb disposal teams, EOD, SPF, or SCDF is ALLOWED.
+Contacting or requesting bomb disposal teams, EOD, SPF, or SCDF is ALLOWED. Bomb Squad / EOD teams performing render-safe procedures (water disruption, hard target disruption, controlled detonation, TCV transport) via robot are ALLOWED and should be evaluated using the EOD evaluation criteria above.
 
 When "rejected" is true, set "rejection_reason" to an in-world explanation. Set consistent: false, severity: "high", specific: false.
 

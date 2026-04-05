@@ -10,7 +10,7 @@
       "max_participants": 10
     },
     {
-      "team_name": "Fire Safety",
+      "team_name": "Hazards / Fire / Rescue",
       "team_description": "Fire containment, debris clearance, search and rescue in rubble, structural assessment",
       "min_participants": 2,
       "max_participants": 8
@@ -1010,7 +1010,7 @@
         }
       }
     ],
-    "Fire Safety": [
+    "Hazards / Fire / Rescue": [
       {
         "key": "fire_contained",
         "label": "Fire Contained",

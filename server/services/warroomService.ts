@@ -114,6 +114,8 @@ export interface WarroomGenerateOptions {
   duration_minutes?: number;
   include_adversary_pursuit?: boolean;
   inject_profiles?: string[];
+  secondary_devices_count?: number;
+  real_bombs_count?: number;
   teams?: WarroomTeamInput[];
 }
 
@@ -528,6 +530,8 @@ export async function generateAndPersistWarroomScenario(
       phase1Preview,
       inject_profiles: options.inject_profiles,
       threat_profile: threatProfile,
+      secondary_devices_count: options.secondary_devices_count,
+      real_bombs_count: options.real_bombs_count,
     },
     openAiApiKey,
     aiProgress,

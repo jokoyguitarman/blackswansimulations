@@ -1419,6 +1419,8 @@ export const api = {
       duration_minutes?: number;
       include_adversary_pursuit?: boolean;
       inject_profiles?: string[];
+      secondary_devices_count?: number;
+      real_bombs_count?: number;
       teams?: Array<{
         team_name: string;
         team_description?: string;
@@ -1447,6 +1449,8 @@ export const api = {
         duration_minutes?: number;
         include_adversary_pursuit?: boolean;
         inject_profiles?: string[];
+        secondary_devices_count?: number;
+        real_bombs_count?: number;
         teams?: Array<{
           team_name: string;
           team_description?: string;
@@ -1607,6 +1611,31 @@ export const api = {
           method: 'POST',
           headers,
           body: JSON.stringify({ session_id: sessionId }),
+        }),
+      );
+    },
+  },
+
+  bombSquad: {
+    sweep: async (
+      sessionId: string,
+      assetId: string,
+      resources?: { personnel?: number; k9?: boolean; robot?: boolean },
+    ) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        found: boolean;
+        message?: string;
+        hazard_id?: string;
+        is_live?: boolean;
+        container_type?: string;
+        detonation_deadline?: string;
+        device_description?: string;
+      }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/sweep`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ asset_id: assetId, resources }),
         }),
       );
     },

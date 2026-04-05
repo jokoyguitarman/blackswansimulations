@@ -346,6 +346,7 @@ const TEAM_ALLOWED_PIN_TYPES: Record<string, Set<string>> = {
   triage: new Set(['casualty']),
   fire: new Set(['hazard', 'casualty']),
   evacuation: new Set(['crowd']),
+  bomb_squad: new Set(['hazard']),
 };
 
 const EXTRACT_ONLY_TEAMS = new Set(['fire']);
@@ -587,13 +588,13 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
       items.push({
         id: 'forward_command',
         asset_type: 'forward_command',
-        label: 'Fire Safety Forward Command Post',
+        label: 'Hazards / Fire / Rescue Forward Command Post',
         geometry_type: 'point',
         zone: 'warm',
         placement_hint: `Warm zone, upwind from hazards, ~80m from incident center with clear line of sight`,
         personnel: [
           {
-            role: 'Fire Safety Sector Commander',
+            role: 'Hazards / Fire / Rescue Sector Commander',
             count: 1,
             ppe: 'command vest, radio, helmet',
           },
@@ -609,14 +610,14 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
           'maps',
         ],
         description:
-          'Forward command post for Fire Safety operations. Upwind position with accountability tracking for all personnel entering hot zone.',
+          'Forward command post for Hazards / Fire / Rescue operations. Upwind position with accountability tracking for all personnel entering hot zone.',
         priority: 1,
       });
 
       items.push({
         id: 'staging_area',
         asset_type: 'staging_area',
-        label: 'Fire Safety Equipment Staging Area',
+        label: 'Hazards / Fire / Rescue Equipment Staging Area',
         geometry_type: 'polygon',
         zone: 'warm',
         radius_deg: 0.00027,
@@ -644,19 +645,19 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
         priority: 1,
       });
 
-      // Operating perimeter around Fire Safety staging and command area
+      // Operating perimeter around Hazards / Fire / Rescue staging and command area
       items.push({
         id: 'fire_operating_perimeter',
         asset_type: 'inner_cordon',
-        label: 'Fire Safety Operations Perimeter',
+        label: 'Hazards / Fire / Rescue Operations Perimeter',
         geometry_type: 'polygon',
         zone: 'warm',
         radius_deg: 0.00054,
-        placement_hint: `Circle around forward command post and staging area, radius ~60m, securing Fire Safety operations zone`,
+        placement_hint: `Circle around forward command post and staging area, radius ~60m, securing Hazards / Fire / Rescue operations zone`,
         personnel: [{ role: 'Perimeter Guard', count: 2, ppe: 'high-vis vest, helmet' }],
         equipment: ['portable barriers', 'barrier tape', 'hazard signage', 'access log'],
         description:
-          'Controlled perimeter around Fire Safety operations. Only personnel with appropriate PPE and accountability check-in may enter. Barriers prevent unauthorized access to hazardous area.',
+          'Controlled perimeter around Hazards / Fire / Rescue operations. Only personnel with appropriate PPE and accountability check-in may enter. Barriers prevent unauthorized access to hazardous area.',
         priority: 2,
       });
 
@@ -1001,13 +1002,61 @@ function generateTeamBlueprint(teamKey: string, metrics: ScenarioMetrics): Opera
       break;
     }
 
+    case 'bomb_squad': {
+      items.push({
+        id: 'eod_staging',
+        asset_type: 'staging_area',
+        label: 'EOD Staging Area',
+        geometry_type: 'point',
+        zone: 'cold',
+        placement_hint: `Cold zone, minimum 150m from incident center, hard-standing surface for robot deployment`,
+        personnel: [
+          { role: 'EOD Team Leader', count: 1, ppe: 'bomb suit (standby), radio, ID' },
+          { role: 'EOD Technician', count: 2, ppe: 'bomb suit (standby), radio' },
+          { role: 'Robot Operator', count: 1, ppe: 'radio' },
+        ],
+        equipment: [
+          'EOD robot (ROV)',
+          'portable X-ray unit',
+          'standard water disruptor',
+          'hard target disruptor',
+          'blast shields',
+          'bomb suit (×2)',
+          'K9 explosive detection unit',
+          'electronic countermeasure (ECM)',
+          'total containment vessel (TCV)',
+          'evidence collection kit',
+          'detonation cord',
+        ],
+        description:
+          'EOD staging area for equipment prep, robot deployment, and team briefings. All render-safe procedures initiated from here.',
+        priority: 1,
+      });
+
+      items.push({
+        id: 'eod_exclusion_zone',
+        asset_type: 'exclusion_zone',
+        label: 'Exclusion Zone (template)',
+        geometry_type: 'polygon',
+        zone: 'cold',
+        radius_deg: 0.001,
+        placement_hint: `Deployed around each suspicious device. Radius varies by container type (45m-320m).`,
+        personnel: [{ role: 'Perimeter Guard', count: 4, ppe: 'high-vis vest, radio' }],
+        equipment: ['barrier tape', 'portable barriers', 'megaphone'],
+        description:
+          'Exclusion zone established around each suspicious device. Radius based on container material and estimated yield. All personnel evacuated. Comms blackout enforced.',
+        priority: 2,
+      });
+      break;
+    }
+
     default:
       break;
   }
 
   const teamLabels: Record<string, string> = {
     evacuation: 'Evacuation',
-    fire: 'Fire Safety',
+    fire: 'Hazards / Fire / Rescue',
     triage: 'Medical Triage',
     media: 'Media & Communications',
     pursuit: 'Pursuit & Investigation',
@@ -1031,6 +1080,8 @@ function buildLayoutRationale(teamKey: string, m: ScenarioMetrics): string {
       return `${m.hazardCount} active hazard(s) → staging for ${Math.max(4, m.hazardCount * 3)} responders with SCBA rotation. Decon corridor required between hot and warm zones. 2-in/2-out protocol.`;
     case 'media':
       return `Media cordon positioned in cold zone with line-of-sight. PIO conducts regular briefings to control narrative and prevent unauthorized access.`;
+    case 'bomb_squad':
+      return `EOD staging in cold zone (150m+). Sweep-first protocol: systematically sweep all operational areas placed by other teams. When suspicious device reported or discovered: establish exclusion zone (radius by container type), comms blackout, deploy robot, X-ray, select correct RSP, render safe, collect evidence, declare all-clear. LIVE DEVICES DETONATE AFTER 2 MINUTES.`;
     default:
       return '';
   }
@@ -1110,7 +1161,8 @@ function getTeamScopeKey(teamName: string): string | null {
     t.includes('paramedic')
   )
     return 'triage';
-  if (t.includes('fire') || t.includes('hazmat') || t.includes('hazard')) return 'fire';
+  if (t.includes('fire') || t.includes('hazmat') || t.includes('hazard') || t.includes('rescue'))
+    return 'fire';
   if (
     t.includes('media') ||
     t.includes('press') ||
@@ -1170,6 +1222,7 @@ async function loadScenarioMetrics(
       .in('status', [
         'undiscovered',
         'identified',
+        'being_moved',
         'being_evacuated',
         'at_assembly',
         'endorsed_to_triage',
@@ -1738,6 +1791,7 @@ export async function extractAndPlaceInfrastructureFromText(
   title: string,
   description: string,
   incidentCenter: { lat: number; lng: number } | null,
+  placedBy?: string,
 ): Promise<number> {
   const rawText = `${title} ${description}`;
   const center = incidentCenter;
@@ -1855,11 +1909,20 @@ export async function extractAndPlaceInfrastructureFromText(
       'Pre-eval placement (AI): auto-creating infrastructure from decision text',
     );
 
+    if (!placedBy) {
+      logger.warn(
+        { sessionId, assetType: p.asset_type },
+        'Pre-eval placement (AI): skipped — no placedBy user ID',
+      );
+      continue;
+    }
+
     const { data: createdAsset, error } = await supabaseAdmin
       .from('placed_assets')
       .insert({
         session_id: sessionId,
         team_name: teamName,
+        placed_by: placedBy,
         asset_type: p.asset_type,
         label,
         geometry,
@@ -2883,7 +2946,7 @@ export class DemoAIAgentService {
       'Every casualty and hazard follows a strict lifecycle. You can ONLY take actions valid for their current status.',
       '',
       '### Patient lifecycle:',
-      '  undiscovered → identified → being_evacuated → at_assembly → endorsed_to_triage → in_treatment → endorsed_to_transport → transported',
+      '  undiscovered → identified → being_moved → awaiting_triage → in_treatment → endorsed_to_transport → transported',
       '  - You can TRIAGE (pin_response) patients that are: identified, at_assembly, endorsed_to_triage',
       '  - You can EXTRACT/EVACUATE patients that are: identified, undiscovered',
       '  - You can TRANSPORT patients ONLY if they are: in_treatment or endorsed_to_transport (they MUST be treated first!)',
@@ -2891,7 +2954,7 @@ export class DemoAIAgentService {
       '  - You CANNOT skip steps (e.g. cannot go from "identified" straight to "transported").',
       '',
       '### Crowd lifecycle:',
-      '  undiscovered → identified → being_evacuated → at_exit → at_assembly → resolved',
+      '  undiscovered → identified → being_moved → at_exit → at_assembly → resolved',
       '  - You can EVACUATE (direct_to) crowds that are: identified, undiscovered',
       '  - A crowd MUST have an explicit evacuation order with a named exit/destination before it moves.',
       '  - Crowds do NOT automatically evacuate just because an exit is claimed.',
@@ -2970,17 +3033,17 @@ export class DemoAIAgentService {
       '- Bundle ALL your tactical moves into ONE decision with a rich description.',
       '- NEVER place an inner_cordon or outer_cordon if one already exists.',
       '- READ "Recent actions" and "Ground situation" carefully. Address SPECIFIC casualties and hazards by name/location.',
-      "- Focus EXCLUSIVELY on YOUR team specialty. Fire Safety handles fires, hazmat, and hot zone extraction. Medical Triage handles patient triage and treatment (warm/cold zone). Evacuation handles cordons, crowd movement, and assembly areas. Media & Communications handles press and public statements. Pursuit & Investigation handles suspect tracking. NEVER make decisions about another team's domain.",
+      "- Focus EXCLUSIVELY on YOUR team specialty. Hazards / Fire / Rescue handles fires, hazmat, and hot zone extraction. Medical Triage handles patient triage and treatment (warm/cold zone). Evacuation handles cordons, crowd movement, and assembly areas. Media & Communications handles press and public statements. Pursuit & Investigation handles suspect tracking. NEVER make decisions about another team's domain.",
       '',
       '## 🚫 ZONE ACCESS RULES (STRICTLY ENFORCED):',
-      '- HOT ZONE: ONLY Fire Safety teams may enter. They extract patients to the warm zone boundary using DRABC, stretcher, and full PPE. They do NOT triage — they hand off to Medical Triage.',
-      '- WARM ZONE: Medical Triage teams triage and stabilize patients here. Fire Safety may pass through during extraction.',
+      '- HOT ZONE: ONLY Hazards / Fire / Rescue teams may enter. They extract patients to the warm zone boundary using DRABC, stretcher, and full PPE. They do NOT triage — they hand off to Medical Triage.',
+      '- WARM ZONE: Medical Triage teams triage and stabilize patients here. Hazards / Fire / Rescue may pass through during extraction.',
       '- COLD ZONE: All teams operate here. Command posts, staging areas, media zones go in the cold zone.',
-      '- Medical Triage: You CANNOT enter the hot zone. If patients are in the hot zone, request Fire Safety to extract them first.',
+      '- Medical Triage: You CANNOT enter the hot zone. If patients are in the hot zone, request Hazards / Fire / Rescue to extract them first.',
       '',
       '## 🚫 CROWD vs PATIENT JURISDICTION (STRICTLY ENFORCED):',
       '- CROWD pins (type: crowd, evacuee_group, convergent_crowd): ONLY Evacuation team handles these.',
-      '- PATIENT pins (type: patient, casualty): Medical Triage triages and treats. Fire Safety extracts from hot zone only.',
+      '- PATIENT pins (type: patient, casualty): Medical Triage triages and treats. Hazards / Fire / Rescue extracts from hot zone only.',
       '- If you see a crowd pin and you are NOT the Evacuation team — DO NOT interact with it. Return { "actions": [{ "action": "none" }] }.',
       '- If a pin has NO injury information and describes a group of people — it is a CROWD, not a patient. Do NOT triage crowds.',
       '- READ "Recent actions by all teams" CAREFULLY. If another team already addressed a fire, casualty, or hazard — DO NOT address the same one. Find something DIFFERENT to do.',
@@ -3046,9 +3109,9 @@ export class DemoAIAgentService {
           '',
           '### Zone Architecture (ownership rules)',
           'The scene requires 3 concentric zone polygons: HOT ZONE (innermost), WARM ZONE (buffer/staging), COLD ZONE (outermost).',
-          "- ONLY the Evacuation team OR Fire Safety team draws these zone polygons. They are the Incident Commander's responsibility.",
-          '- If you are Evacuation or Fire Safety: draw the zone polygons early as one of your first placements.',
-          '- If you are ANY OTHER TEAM: do NOT draw zone polygons. Instead, REFERENCE the zones already drawn by Evacuation/Fire Safety when describing where you are operating.',
+          "- ONLY the Evacuation team OR Hazards / Fire / Rescue team draws these zone polygons. They are the Incident Commander's responsibility.",
+          '- If you are Evacuation or Hazards / Fire / Rescue: draw the zone polygons early as one of your first placements.',
+          '- If you are ANY OTHER TEAM: do NOT draw zone polygons. Instead, REFERENCE the zones already drawn by Evacuation/Hazards / Fire / Rescue when describing where you are operating.',
           '- If you see in "Deployed Infrastructure" that zone polygons already exist, do NOT redraw them. Work within what is already established.',
           '- The HOT zone tightly surrounds the incident and hazards. The WARM zone is larger (triage, decon). The COLD zone is outermost (command, media, assembly).',
           '',
@@ -3082,7 +3145,7 @@ export class DemoAIAgentService {
           '- COMMAND POST (Point asset in cold zone): every team must have a command post. Place it first. Label it clearly (e.g., "Police Command Post", "Medical Command Post").',
           '- TEAM STAGING AREA (Point or Polygon in cold/warm zone): where your team assembles equipment and personnel before deployment.',
           '- For Evacuation: command post + outer cordon BEFORE any crowd or security operations.',
-          '- For Fire Safety: command post + staging area + decon corridor BEFORE entering hot zone.',
+          '- For Hazards / Fire / Rescue: command post + staging area + decon corridor BEFORE entering hot zone.',
           '- For Medical Triage: command post + triage tent (inside warm zone) BEFORE any patient contact.',
           '- For Evacuation: command post + assembly points BEFORE issuing any evacuation orders.',
           '- For Media: command post + media staging area BEFORE issuing any statements.',
@@ -3102,14 +3165,14 @@ export class DemoAIAgentService {
           '### Operational Sequencing (expert knows the correct order)',
           '1. FIRST: Place COMMAND POST for your team in the cold zone → this is your base.',
           '2. SECOND (Evacuation ONLY): Establish outer cordon, claim exits, draw hot/warm/cold zone polygons.',
-          "3. THIRD (Fire Safety ONLY): If Evacuation hasn't drawn zones yet, draw them. Place decon corridor. Assess hazards.",
+          "3. THIRD (Hazards / Fire / Rescue ONLY): If Evacuation hasn't drawn zones yet, draw them. Place decon corridor. Assess hazards.",
           '4. FOURTH: Place team-specific infrastructure INSIDE the appropriate zone (triage tent in warm zone, assembly point in cold zone, etc.).',
           '5. FIFTH: Begin pin_response interactions — one casualty/hazard at a time. Specify all equipment AND PPE.',
           '6. SIXTH: Follow jurisdiction rules for patient movement:',
-          '   - HOT ZONE extraction: ONLY Fire Safety team extracts patients from hot zone to warm zone boundary. They wear full PPE.',
+          '   - HOT ZONE extraction: ONLY Hazards / Fire / Rescue team extracts patients from hot zone to warm zone boundary. They wear full PPE.',
           '   - WARM ZONE treatment: Medical Triage team receives patients at the warm zone boundary. They triage and treat.',
           '   - COLD ZONE transport: Medical Triage team arranges transport from warm/cold zone to hospital (from AVAILABLE FACILITIES list).',
-          '   - If you are NOT Fire Safety, do NOT enter the hot zone. Request Fire Safety to extract casualties to you.',
+          '   - If you are NOT Hazards / Fire / Rescue, do NOT enter the hot zone. Request Hazards / Fire / Rescue to extract casualties to you.',
           '7. SEVENTH: Transport treated patients to a hospital from the AVAILABLE FACILITIES list → only after treatment, with named vehicle.',
           '8. THROUGHOUT: Contain and mitigate hazards (fire/HAZMAT only). Other teams support from outside.',
           '',
@@ -3163,7 +3226,7 @@ export class DemoAIAgentService {
           '',
           '### Coordination & Jurisdiction',
           '- Reference what other teams have done and build on their work.',
-          '- Fire Safety clears the hot zone → then Medical Triage can operate at the warm zone boundary.',
+          '- Hazards / Fire / Rescue clears the hot zone → then Medical Triage can operate at the warm zone boundary.',
           '- Evacuation secures cordons → then directs crowds through secured exits to assembly areas.',
           '- Medical triages and treats → then transport arranges ambulance to hospital (from AVAILABLE FACILITIES list).',
           "- NEVER do another team's job. If you need something outside your jurisdiction, REQUEST it in chat.",
@@ -4158,6 +4221,7 @@ export class DemoAIAgentService {
           'identified',
           'endorsed_to_triage',
           'in_treatment',
+          'being_moved',
           'being_evacuated',
           'at_assembly',
         ])
@@ -4598,6 +4662,59 @@ export class DemoAIAgentService {
         '- If suspects are identified, coordinate with police for containment — do NOT send medical teams into an area with active threat',
         '- Preserve chain of custody for all evidence',
         '- Brief all teams on threat updates in real-time via chat',
+      );
+    }
+
+    if (tk === 'bomb_squad') {
+      parts.push(
+        '',
+        '### EXPERT PLAYBOOK: BOMB SQUAD / EOD',
+        '',
+        '#### Phase 1 — Setup:',
+        '1. Establish EOD STAGING AREA in the cold zone (150m+ from incident center)',
+        '2. Request SITREP from unified command — confirm primary device status',
+        '3. Confirm comms channel and equipment readiness',
+        '',
+        '#### Phase 2 — Proactive Sweeps:',
+        '4. As other teams place operational areas (triage tents, command posts, assembly points), SYSTEMATICALLY SWEEP each one',
+        '5. Prioritize high-value assets: ICP, triage tents, assembly areas near the incident',
+        '6. Sweep 1-2 assets per decision cycle using your sweep resources (K9, robot, personnel)',
+        '',
+        '#### Phase 3 — Device Response (when suspicious package is reported or discovered):',
+        '7. Read the device properties carefully: container_type, container_material, visibility, stability',
+        '8. ESTABLISH EXCLUSION ZONE — use the correct_standoff_m from device properties',
+        '9. ORDER COMMS BLACKOUT within exclusion zone (prevent RF-triggered detonation)',
+        '10. COORDINATE with nearby teams to EVACUATE their operational area if within the exclusion zone',
+        '11. DEPLOY EOD ROBOT for visual assessment — NEVER manual approach first',
+        '12. DEPLOY PORTABLE X-RAY — multiple angles if metallic container',
+        '13. SELECT RENDER SAFE PROCEDURE based on container material:',
+        '    - Soft containers (backpack, cardboard): Standard Water Cannon / Water Disruption',
+        '    - Metallic containers (briefcase, pipe, pressure cooker): Hard Target Disruptor',
+        '    - Sealed/unstable containers: Controlled Detonation (blow-in-place)',
+        '    - Vehicle-borne: Vehicle-rated Standoff Disruptor',
+        '14. EXECUTE RSP via robot',
+        '15. Technician approach in bomb suit for confirmation',
+        '16. Collect evidence for forensics',
+        '17. Shrink exclusion zone, restore comms, declare ALL CLEAR',
+        '',
+        '#### CRITICAL WARNINGS:',
+        '- LIVE DEVICES DETONATE AFTER 2 MINUTES from discovery — time is critical',
+        '- NEVER approach manually before deploying robot',
+        '- NEVER use standard water disruptor on metallic containers',
+        '- NEVER move an unstable device manually',
+        '- ALWAYS establish exclusion zone BEFORE any render-safe attempt',
+        '- ALWAYS order comms blackout within exclusion zone',
+        '',
+        '#### Equipment Available:',
+        '- EOD Robot (ROV), Portable X-ray, Standard Water Disruptor, Hard Target Disruptor',
+        '- Blast Shield / Bomb Suit (×2), K9 Explosive Detection Unit',
+        '- Total Containment Vessel (TCV), Counter-charge Kit',
+        '- Electronic Countermeasure (ECM), Detonation Cord, Evidence Collection Kit',
+        '',
+        '#### Contraindications by Container:',
+        '- Metallic: do NOT use standard water cannon (fragmentation risk)',
+        '- Unstable: do NOT move manually, do NOT transport without TCV',
+        '- Unknown: treat as worst-case (metallic + unstable) until X-ray confirms',
       );
     }
 
@@ -5233,8 +5350,13 @@ export class DemoAIAgentService {
         }
 
         let geometry: { type: string; coordinates: unknown };
-        if (p.geometry_type === 'polygon' && p.radius_deg) {
-          const clampedR = clampCordonRadius(p.radius_deg);
+        const catalogEntry = ASSET_TYPE_CATALOG[p.asset_type];
+        const shouldBePolygon =
+          p.geometry_type === 'polygon' || catalogEntry?.geometry === 'polygon';
+
+        if (shouldBePolygon) {
+          const radiusDeg = p.radius_deg || 75 / METERS_PER_DEG;
+          const clampedR = clampCordonRadius(radiusDeg);
           const pts: [number, number][] = [];
           for (let i = 0; i < 12; i++) {
             const angle = (2 * Math.PI * i) / 12;
@@ -5793,7 +5915,13 @@ export class DemoAIAgentService {
         .from('scenario_casualties')
         .select('id, status, casualty_type, conditions')
         .eq('session_id', session.sessionId)
-        .in('status', ['undiscovered', 'identified', 'being_evacuated', 'at_assembly'])
+        .in('status', [
+          'undiscovered',
+          'identified',
+          'being_moved',
+          'being_evacuated',
+          'at_assembly',
+        ])
         .limit(5);
 
       const filtered = (targets ?? []).filter((t) => {
@@ -5892,6 +6020,7 @@ export class DemoAIAgentService {
       title,
       description,
       session.incidentCenter,
+      agent.persona.botUserId,
     );
   }
 
@@ -6084,9 +6213,13 @@ export class DemoAIAgentService {
     const tk = getTeamScopeKey(teamName);
 
     // These teams never interact with any pins directly
-    // These teams never interact with any pins directly
-    if (tk === 'media' || tk === 'pursuit' || tk === 'bomb_squad') {
+    if (tk === 'media' || tk === 'pursuit') {
       return true;
+    }
+
+    // Bomb squad only interacts with hazard pins (suspicious packages / explosives)
+    if (tk === 'bomb_squad') {
+      return targetType !== 'hazard';
     }
 
     // Crowd pins: ONLY evacuation may interact
@@ -6101,12 +6234,12 @@ export class DemoAIAgentService {
 
     // Zone-based access control for patients
     if (targetType === 'casualty' && pinZone === 'hot') {
-      // Hot zone: ONLY Fire Safety may extract — Medical Triage/evacuation CANNOT enter
+      // Hot zone: ONLY Hazards / Fire / Rescue may extract — Medical Triage/evacuation CANNOT enter
       if (tk === 'fire') return false;
       return true;
     }
 
-    // Fire Safety can only interact with patients for extraction (not in warm/cold zone)
+    // Hazards / Fire / Rescue can only interact with patients for extraction (not in warm/cold zone)
     if (targetType === 'casualty' && tk === 'fire') {
       if (pinZone && pinZone !== 'hot' && pinZone !== 'unknown' && pinZone !== 'outside') {
         return true;
@@ -6378,7 +6511,9 @@ export class DemoAIAgentService {
         .in('status', [
           'undiscovered',
           'identified',
+          'being_moved',
           'being_evacuated',
+          'awaiting_triage',
           'at_assembly',
           'endorsed_to_triage',
           'in_treatment',
