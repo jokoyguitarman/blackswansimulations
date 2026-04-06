@@ -651,4 +651,104 @@ router.post(
   },
 );
 
+// --- Wizard: Deterioration Preview ---
+router.post(
+  ['/wizard/deterioration-preview', '/wizard/deterioration-preview/'],
+  requireAuth,
+  async (req, res) => {
+    try {
+      const user = (req as AuthenticatedRequest).user!;
+      logger.info({ userId: user.id }, 'Deterioration preview requested');
+
+      const { hazards, casualties, locations, venue, areaContext } = req.body as {
+        hazards: Array<Record<string, unknown>>;
+        casualties: Array<Record<string, unknown>>;
+        locations: Array<Record<string, unknown>>;
+        venue: string;
+        areaContext?: string;
+      };
+
+      if (!hazards?.length && !casualties?.length) {
+        res.status(400).json({ error: 'No hazards or casualties provided' });
+        return;
+      }
+
+      if (!env.openAiApiKey) {
+        res.status(500).json({ error: 'OpenAI API key not configured' });
+        return;
+      }
+
+      const openAiKey = env.openAiApiKey;
+
+      const { researchDeteriorationPhysics, deteriorationResearchToPromptBlock } =
+        await import('../services/warroomResearchService.js');
+      const { generateDeteriorationTimeline } = await import('../services/warroomAiService.js');
+
+      const detResearch = await researchDeteriorationPhysics(
+        (hazards || []).map((h) => ({
+          label: (h.label as string) || (h.hazard_type as string),
+          hazard_type: h.hazard_type as string,
+          properties: h.properties as Record<string, unknown> | undefined,
+        })),
+        (casualties || []).map((c) => ({
+          casualty_type: c.casualty_type as string,
+          conditions: c.conditions as Record<string, unknown> | undefined,
+        })),
+        areaContext || '',
+        venue || '',
+        openAiKey,
+      );
+
+      if (!detResearch) {
+        res.status(500).json({ error: 'Deterioration research failed' });
+        return;
+      }
+
+      const detPromptBlock = deteriorationResearchToPromptBlock(detResearch);
+
+      const detResult = await generateDeteriorationTimeline(
+        (hazards || []).map((h) => ({
+          label: (h.label as string) || (h.hazard_type as string),
+          hazard_type: h.hazard_type as string,
+          location_lat: h.location_lat as number,
+          location_lng: h.location_lng as number,
+          properties: h.properties as Record<string, unknown> | undefined,
+        })),
+        (casualties || []).map((c) => ({
+          casualty_type: c.casualty_type as string,
+          location_lat: c.location_lat as number,
+          location_lng: c.location_lng as number,
+          conditions: c.conditions as Record<string, unknown> | undefined,
+          headcount: c.headcount as number | undefined,
+        })),
+        (locations || []).map((l) => ({
+          label: l.label as string,
+          location_type: (l.location_type as string) || (l.pin_category as string) || '',
+          lat: (l.coordinates as { lat: number })?.lat ?? (l.lat as number) ?? 0,
+          lng: (l.coordinates as { lng: number })?.lng ?? (l.lng as number) ?? 0,
+        })),
+        detPromptBlock,
+        venue || '',
+        openAiKey,
+      );
+
+      if (!detResult) {
+        res.status(500).json({ error: 'Deterioration timeline generation failed' });
+        return;
+      }
+
+      res.json({
+        enrichedHazards: detResult.enriched_hazard_timelines,
+        enrichedCasualties: detResult.enriched_casualty_timelines,
+        spawnPins: detResult.spawn_pins,
+        cascadeNarrative: detResult.cascade_narrative,
+      });
+    } catch (err) {
+      const error = err as Error;
+      logger.error({ error: error.message }, 'Error in POST /warroom/wizard/deterioration-preview');
+      res.status(500).json({ error: error.message || 'Deterioration preview failed' });
+    }
+  },
+);
+
 export { router as warroomRouter };

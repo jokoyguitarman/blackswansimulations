@@ -1175,6 +1175,152 @@ Base your response on documented after-action reports and crowd psychology resea
   }
 }
 
+/* ------------------------------------------------------------------ */
+/*  Deterioration Physics Research                                     */
+/* ------------------------------------------------------------------ */
+
+export interface DeteriorationResearch {
+  per_hazard_physics: Array<{
+    hazard_label: string;
+    dispersion_rate: string;
+    structural_progression: string;
+    timeline_notes: string;
+    real_world_precedent: string;
+  }>;
+  cross_hazard_interactions: Array<{
+    hazard_a: string;
+    hazard_b: string;
+    interaction: string;
+    compound_effect: string;
+    timeline: string;
+  }>;
+  patient_deterioration_notes: string;
+}
+
+/**
+ * Phase 4d-a: Research real-world deterioration physics for the generated
+ * hazards and casualties. Uses gpt-4o-search-preview to ground the
+ * deterioration timeline in scientific reality.
+ */
+export async function researchDeteriorationPhysics(
+  hazards: Array<{ label: string; hazard_type: string; properties?: Record<string, unknown> }>,
+  casualties: Array<{ casualty_type: string; conditions?: Record<string, unknown> }>,
+  areaContext: string,
+  venue: string,
+  openAiApiKey: string,
+): Promise<DeteriorationResearch | null> {
+  const hazardBlock = hazards
+    .map(
+      (h) =>
+        `- ${h.label} (${h.hazard_type})${h.properties ? `: ${JSON.stringify(h.properties)}` : ''}`,
+    )
+    .join('\n');
+
+  const patientSummary = casualties
+    .filter((c) => c.casualty_type === 'patient')
+    .map((c) => {
+      const conds = c.conditions || {};
+      const injuries = (conds.injuries as Array<{ type: string; severity: string }>) || [];
+      return `- ${(conds.triage_color as string) || 'unknown'} patient: ${injuries.map((i) => `${i.type}(${i.severity})`).join(', ')}`;
+    })
+    .join('\n');
+
+  const prompt = `You are a hazardous materials scientist and emergency medicine physician advising a crisis simulation design team.
+
+VENUE: ${venue}
+AREA CONTEXT (excerpt):
+${areaContext.slice(0, 3000)}
+
+GENERATED HAZARDS:
+${hazardBlock}
+
+GENERATED PATIENTS (summary):
+${patientSummary}
+
+Research and provide REAL-WORLD PHYSICS for how each hazard deteriorates over time at this specific facility, and how different hazards interact with each other.
+
+For each hazard, cover:
+1. Dispersion/spread rate in local climate conditions (tropical humidity, temperature, wind patterns)
+2. Structural progression timeline (fire spread rates, structural failure sequence, gas cloud expansion)
+3. Timeline notes: key milestones (e.g. "ammonia cloud reaches 300ppm IDLH at 100m within 8 minutes in still tropical air")
+4. Real-world precedent: cite a documented incident with similar materials
+
+For cross-hazard interactions:
+- Which hazards can combine or cascade? (e.g. fire + ammonia = toxic plume, dust + ignition source = secondary explosion)
+- What compound effects emerge and on what timeline?
+
+For patient deterioration:
+- How do the specific injuries worsen over time without treatment? Reference clinical deterioration data.
+
+Return valid JSON:
+{
+  "per_hazard_physics": [
+    { "hazard_label": "...", "dispersion_rate": "...", "structural_progression": "...", "timeline_notes": "...", "real_world_precedent": "..." }
+  ],
+  "cross_hazard_interactions": [
+    { "hazard_a": "...", "hazard_b": "...", "interaction": "...", "compound_effect": "...", "timeline": "..." }
+  ],
+  "patient_deterioration_notes": "..."
+}`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: SEARCH_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 8000,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      const msg = (err as { error?: { message?: string } }).error?.message || response.statusText;
+      logger.warn({ status: response.status, msg }, 'Deterioration research failed');
+      return null;
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (typeof content !== 'string') return null;
+
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      logger.warn('Deterioration research returned non-JSON content');
+      return null;
+    }
+    return JSON.parse(jsonMatch[0]) as DeteriorationResearch;
+  } catch (err) {
+    logger.warn({ err }, 'Deterioration research error');
+    return null;
+  }
+}
+
+/**
+ * Serialize DeteriorationResearch into a prompt block for the generation call.
+ */
+export function deteriorationResearchToPromptBlock(research: DeteriorationResearch): string {
+  const hazards = research.per_hazard_physics
+    .map(
+      (h) =>
+        `[${h.hazard_label}]\n  Dispersion: ${h.dispersion_rate}\n  Structural: ${h.structural_progression}\n  Timeline: ${h.timeline_notes}\n  Precedent: ${h.real_world_precedent}`,
+    )
+    .join('\n\n');
+
+  const interactions = research.cross_hazard_interactions
+    .map(
+      (x) =>
+        `${x.hazard_a} + ${x.hazard_b}: ${x.interaction} → ${x.compound_effect} (${x.timeline})`,
+    )
+    .join('\n');
+
+  return `HAZARD PHYSICS:\n${hazards}\n\nCROSS-HAZARD INTERACTIONS:\n${interactions}\n\nPATIENT DETERIORATION NOTES:\n${research.patient_deterioration_notes}`;
+}
+
 /**
  * Serialize CrowdDynamicsResearch into a prompt block for AI generation.
  */

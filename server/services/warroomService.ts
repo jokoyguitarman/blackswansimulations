@@ -24,8 +24,10 @@ import {
   warroomGenerateScenario,
   generateAdversaryPursuitTree,
   generateTeamsAndCoreForResearch,
+  generateDeteriorationTimeline,
   type WarroomScenarioPayload,
   type Phase1Result,
+  type DeteriorationTimelineResult,
 } from './warroomAiService.js';
 import { persistWarroomScenario } from './warroomPersistenceService.js';
 import {
@@ -34,6 +36,8 @@ import {
   researchSimilarCases,
   researchCrowdDynamics,
   researchTeamWorkflows,
+  researchDeteriorationPhysics,
+  deteriorationResearchToPromptBlock,
   persistResearchCases,
   linkResearchToScenario,
   extractSettingTags,
@@ -603,6 +607,89 @@ export async function generateAndPersistWarroomScenario(
 }
 
 /**
+ * Merge the deterioration specialist output back into the scenario payload.
+ * Enriches existing hazard/casualty timelines and appends spawn pins.
+ */
+function mergeDeteriorationResult(
+  payload: WarroomScenarioPayload,
+  det: DeteriorationTimelineResult,
+): void {
+  // Enrich existing hazard deterioration timelines
+  for (const eh of det.enriched_hazard_timelines) {
+    const match = (payload.hazards ?? []).find(
+      (h) => ((h as Record<string, unknown>).label ?? h.hazard_type) === eh.hazard_label,
+    );
+    if (match) {
+      if (!match.properties) match.properties = {} as Record<string, unknown>;
+      (match.properties as Record<string, unknown>).deterioration_timeline =
+        eh.deterioration_timeline;
+    }
+  }
+
+  // Enrich existing casualty deterioration timelines
+  for (const ec of det.enriched_casualty_timelines) {
+    const cas = (payload.casualties ?? [])[ec.casualty_index];
+    if (cas && cas.conditions) {
+      (cas.conditions as Record<string, unknown>).deterioration_timeline =
+        ec.deterioration_timeline;
+    }
+  }
+
+  // Append spawn pins — these will be persisted with parent_pin_id + spawn_condition
+  if (!payload.hazards) payload.hazards = [] as unknown as typeof payload.hazards;
+  if (!payload.casualties) payload.casualties = [] as unknown as typeof payload.casualties;
+
+  for (const sp of det.spawn_pins) {
+    const parentHazard = payload.hazards!.find(
+      (h) => ((h as Record<string, unknown>).label ?? h.hazard_type) === sp.parent_pin_label,
+    );
+    const parentLat = parentHazard?.location_lat ?? 0;
+    const parentLng = parentHazard?.location_lng ?? 0;
+
+    if (sp.pin_type === 'hazard') {
+      (payload.hazards as Array<Record<string, unknown>>).push({
+        hazard_type: sp.hazard_type || 'secondary_hazard',
+        label: sp.label,
+        location_lat: parentLat + sp.lat_offset,
+        location_lng: parentLng + sp.lng_offset,
+        floor_level: sp.floor_level || 'G',
+        status: 'delayed',
+        appears_at_minutes: sp.appears_at_minutes,
+        properties: {
+          ...sp.properties,
+          description: sp.description,
+        },
+        _parent_pin_label: sp.parent_pin_label,
+        _spawn_condition: sp.spawn_condition,
+      });
+    } else {
+      (payload.casualties as Array<Record<string, unknown>>).push({
+        casualty_type: sp.casualty_type || 'patient',
+        location_lat: parentLat + sp.lat_offset,
+        location_lng: parentLng + sp.lng_offset,
+        floor_level: sp.floor_level || 'G',
+        headcount: sp.headcount ?? 1,
+        status: 'delayed',
+        appears_at_minutes: sp.appears_at_minutes,
+        conditions: {
+          ...sp.conditions,
+          visible_description: sp.description,
+        },
+        _parent_pin_label: sp.parent_pin_label,
+        _spawn_condition: sp.spawn_condition,
+      });
+    }
+  }
+
+  // Store cascade narrative in insider_knowledge
+  if (det.cascade_narrative) {
+    if (!payload.insider_knowledge) payload.insider_knowledge = {};
+    (payload.insider_knowledge as Record<string, unknown>).cascade_narrative =
+      det.cascade_narrative;
+  }
+}
+
+/**
  * Stage 4+5 combined: full AI generation + persistence.
  * Accepts pre-computed stage results so wizard mode can inject validated data.
  */
@@ -766,6 +853,70 @@ export async function stageGenerateAndPersist(
       if (!payload.insider_knowledge) payload.insider_knowledge = {};
       (payload.insider_knowledge as Record<string, unknown>).site_requirements = allSiteReqs;
     }
+  }
+
+  // Phase 4d: Deterioration specialist AI
+  try {
+    onProgress?.('ai', 'Researching deterioration physics...');
+    const detResearch = await researchDeteriorationPhysics(
+      (payload.hazards ?? []).map((h) => ({
+        label: ((h as Record<string, unknown>).label as string) ?? h.hazard_type,
+        hazard_type: h.hazard_type,
+        properties: h.properties as Record<string, unknown> | undefined,
+      })),
+      (payload.casualties ?? []).map((c) => ({
+        casualty_type: c.casualty_type,
+        conditions: c.conditions as Record<string, unknown> | undefined,
+      })),
+      areaSummary || '',
+      geoResult.venueName || parsed.location || '',
+      openAiApiKey,
+    );
+
+    if (detResearch) {
+      onProgress?.('ai', 'Generating deterioration timeline...');
+      const detPromptBlock = deteriorationResearchToPromptBlock(detResearch);
+
+      const detResult = await generateDeteriorationTimeline(
+        (payload.hazards ?? []).map((h) => ({
+          label: ((h as Record<string, unknown>).label as string) ?? h.hazard_type,
+          hazard_type: h.hazard_type,
+          location_lat: h.location_lat,
+          location_lng: h.location_lng,
+          properties: h.properties as Record<string, unknown> | undefined,
+        })),
+        (payload.casualties ?? []).map((c) => ({
+          casualty_type: c.casualty_type,
+          location_lat: c.location_lat,
+          location_lng: c.location_lng,
+          conditions: c.conditions as Record<string, unknown> | undefined,
+          headcount: c.headcount,
+        })),
+        (payload.locations ?? []).map((l) => ({
+          label: l.label,
+          location_type: l.location_type || l.pin_category || '',
+          lat: l.coordinates?.lat ?? 0,
+          lng: l.coordinates?.lng ?? 0,
+        })),
+        detPromptBlock,
+        geoResult.venueName || parsed.location || '',
+        openAiApiKey,
+      );
+
+      if (detResult) {
+        mergeDeteriorationResult(payload, detResult);
+        logger.info(
+          {
+            enrichedHazards: detResult.enriched_hazard_timelines.length,
+            enrichedCasualties: detResult.enriched_casualty_timelines.length,
+            spawnPins: detResult.spawn_pins.length,
+          },
+          'Deterioration timeline merged into scenario payload',
+        );
+      }
+    }
+  } catch (detErr) {
+    logger.warn({ err: detErr }, 'Deterioration specialist failed; continuing without');
   }
 
   // Ensure we always have center coordinates: geocode first, then fall back to incident_site pin

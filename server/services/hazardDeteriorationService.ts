@@ -93,46 +93,74 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
       continue;
     }
 
-    // Spawn new hazards if the timeline says so
-    if (timeline.spawns_new_hazards && timeline.new_hazard_description) {
-      const hazRef = { lat: hazard.location_lat as number, lng: hazard.location_lng as number };
-      const hazCoord = await placeInsideZoneType(
-        sessionId,
-        'hot',
-        hazRef,
-        55,
-        undefined,
-        session.scenario_id as string,
-      );
-      const newHazard = {
-        scenario_id: session.scenario_id,
-        session_id: sessionId,
-        hazard_type: hazard.hazard_type,
-        location_lat: hazCoord.lat,
-        location_lng: hazCoord.lng,
-        floor_level: hazard.floor_level,
-        properties: {
-          size: 'small',
-          fuel_source: timeline.new_hazard_description,
-          spawned_from: hazard.id,
-        },
-        assessment_criteria: [],
-        status: 'active',
-        appears_at_minutes: elapsedMinutes,
-        enriched_description: `Spawned from deterioration: ${timeline.new_hazard_description}`,
-      };
-
-      const { data: created } = await supabaseAdmin
+    // Reveal pre-generated child pins whose spawn_condition is now met
+    let revealedPreGenerated = false;
+    {
+      const { data: childHazards } = await supabaseAdmin
         .from('scenario_hazards')
-        .insert(newHazard)
-        .select()
-        .single();
+        .select('id, spawn_condition, status')
+        .eq('scenario_id', session.scenario_id)
+        .eq('session_id', sessionId)
+        .eq('parent_pin_id', hazard.id)
+        .eq('status', 'delayed');
 
-      if (created) {
+      for (const child of childHazards ?? []) {
+        const cond = child.spawn_condition as {
+          trigger?: string;
+          at_minutes?: number;
+          unless_status?: string[];
+        } | null;
+        if (!cond || cond.trigger !== 'parent_unresolved') continue;
+        if (typeof cond.at_minutes === 'number' && minutesSinceAppeared < cond.at_minutes) continue;
+        const parentStatus = hazard.status as string;
+        if (cond.unless_status?.includes(parentStatus)) continue;
+
+        await supabaseAdmin
+          .from('scenario_hazards')
+          .update({ status: 'active', appears_at_minutes: elapsedMinutes })
+          .eq('id', child.id);
+
+        revealedPreGenerated = true;
         try {
           getWebSocketService().broadcastToSession(sessionId, {
             type: 'hazard.updated',
-            data: { hazard_id: created.id, status: 'active', spawned: true },
+            data: { hazard_id: child.id, status: 'active', spawned: true },
+            timestamp: new Date().toISOString(),
+          });
+        } catch {
+          /* ws not initialized */
+        }
+      }
+
+      const { data: childCasualties } = await supabaseAdmin
+        .from('scenario_casualties')
+        .select('id, spawn_condition, status')
+        .eq('scenario_id', session.scenario_id)
+        .eq('session_id', sessionId)
+        .eq('parent_pin_id', hazard.id)
+        .eq('status', 'delayed');
+
+      for (const child of childCasualties ?? []) {
+        const cond = child.spawn_condition as {
+          trigger?: string;
+          at_minutes?: number;
+          unless_status?: string[];
+        } | null;
+        if (!cond || cond.trigger !== 'parent_unresolved') continue;
+        if (typeof cond.at_minutes === 'number' && minutesSinceAppeared < cond.at_minutes) continue;
+        const parentStatus = hazard.status as string;
+        if (cond.unless_status?.includes(parentStatus)) continue;
+
+        await supabaseAdmin
+          .from('scenario_casualties')
+          .update({ status: 'identified', appears_at_minutes: elapsedMinutes })
+          .eq('id', child.id);
+
+        revealedPreGenerated = true;
+        try {
+          getWebSocketService().broadcastToSession(sessionId, {
+            type: 'casualty.created',
+            data: { casualty_id: child.id, spawned: true },
             timestamp: new Date().toISOString(),
           });
         } catch {
@@ -141,64 +169,113 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
       }
     }
 
-    // Spawn new casualties if applicable
-    if (timeline.spawns_casualties && (timeline.estimated_new_casualties as number) > 0) {
-      const count = Math.min(timeline.estimated_new_casualties as number, 5);
-      const injuryTypes = (timeline.new_casualty_injury_types as string[]) ?? ['blast_injury'];
-
-      const casRef = { lat: hazard.location_lat as number, lng: hazard.location_lng as number };
-      for (let i = 0; i < count; i++) {
-        const casCoord = await placeInsideZoneType(
+    // Fallback: runtime spawn if no pre-generated children were revealed
+    if (!revealedPreGenerated) {
+      if (timeline.spawns_new_hazards && timeline.new_hazard_description) {
+        const hazRef = { lat: hazard.location_lat as number, lng: hazard.location_lng as number };
+        const hazCoord = await placeInsideZoneType(
           sessionId,
           'hot',
-          casRef,
-          44,
+          hazRef,
+          55,
           undefined,
           session.scenario_id as string,
         );
-        const newCas = {
+        const newHazard = {
           scenario_id: session.scenario_id,
           session_id: sessionId,
-          casualty_type: 'patient',
-          location_lat: casCoord.lat,
-          location_lng: casCoord.lng,
+          hazard_type: hazard.hazard_type,
+          location_lat: hazCoord.lat,
+          location_lng: hazCoord.lng,
           floor_level: hazard.floor_level,
-          headcount: 1,
-          conditions: {
-            injuries: [
-              {
-                type: injuryTypes[i % injuryTypes.length],
-                severity: i === 0 ? 'critical' : 'moderate',
-                body_part: 'multiple',
-                visible_signs: `Injured by worsening ${hazard.hazard_type}`,
-              },
-            ],
-            triage_color: i === 0 ? 'red' : 'yellow',
-            mobility: 'non_ambulatory',
-            accessibility: 'open',
-            consciousness: i === 0 ? 'unconscious' : 'confused',
-            breathing: i === 0 ? 'labored' : 'normal',
-            visible_description: `Person injured by worsening ${(hazard.hazard_type as string).replace(/_/g, ' ')} near ${hazard.enriched_description?.slice(0, 50) || hazard.hazard_type}`,
+          properties: {
+            size: 'small',
+            fuel_source: timeline.new_hazard_description,
+            spawned_from: hazard.id,
           },
-          status: 'identified',
+          assessment_criteria: [],
+          status: 'active',
           appears_at_minutes: elapsedMinutes,
+          enriched_description: `Spawned from deterioration: ${timeline.new_hazard_description}`,
         };
 
-        const { data: createdCas } = await supabaseAdmin
-          .from('scenario_casualties')
-          .insert(newCas)
+        const { data: created } = await supabaseAdmin
+          .from('scenario_hazards')
+          .insert(newHazard)
           .select()
           .single();
 
-        if (createdCas) {
+        if (created) {
           try {
             getWebSocketService().broadcastToSession(sessionId, {
-              type: 'casualty.created',
-              data: { casualty_id: createdCas.id },
+              type: 'hazard.updated',
+              data: { hazard_id: created.id, status: 'active', spawned: true },
               timestamp: new Date().toISOString(),
             });
           } catch {
             /* ws not initialized */
+          }
+        }
+      }
+
+      if (timeline.spawns_casualties && (timeline.estimated_new_casualties as number) > 0) {
+        const count = Math.min(timeline.estimated_new_casualties as number, 5);
+        const injuryTypes = (timeline.new_casualty_injury_types as string[]) ?? ['blast_injury'];
+
+        const casRef = { lat: hazard.location_lat as number, lng: hazard.location_lng as number };
+        for (let i = 0; i < count; i++) {
+          const casCoord = await placeInsideZoneType(
+            sessionId,
+            'hot',
+            casRef,
+            44,
+            undefined,
+            session.scenario_id as string,
+          );
+          const newCas = {
+            scenario_id: session.scenario_id,
+            session_id: sessionId,
+            casualty_type: 'patient',
+            location_lat: casCoord.lat,
+            location_lng: casCoord.lng,
+            floor_level: hazard.floor_level,
+            headcount: 1,
+            conditions: {
+              injuries: [
+                {
+                  type: injuryTypes[i % injuryTypes.length],
+                  severity: i === 0 ? 'critical' : 'moderate',
+                  body_part: 'multiple',
+                  visible_signs: `Injured by worsening ${hazard.hazard_type}`,
+                },
+              ],
+              triage_color: i === 0 ? 'red' : 'yellow',
+              mobility: 'non_ambulatory',
+              accessibility: 'open',
+              consciousness: i === 0 ? 'unconscious' : 'confused',
+              breathing: i === 0 ? 'labored' : 'normal',
+              visible_description: `Person injured by worsening ${(hazard.hazard_type as string).replace(/_/g, ' ')} near ${hazard.enriched_description?.slice(0, 50) || hazard.hazard_type}`,
+            },
+            status: 'identified',
+            appears_at_minutes: elapsedMinutes,
+          };
+
+          const { data: createdCas } = await supabaseAdmin
+            .from('scenario_casualties')
+            .insert(newCas)
+            .select()
+            .single();
+
+          if (createdCas) {
+            try {
+              getWebSocketService().broadcastToSession(sessionId, {
+                type: 'casualty.created',
+                data: { casualty_id: createdCas.id },
+                timestamp: new Date().toISOString(),
+              });
+            } catch {
+              /* ws not initialized */
+            }
           }
         }
       }

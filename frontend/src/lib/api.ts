@@ -1687,6 +1687,52 @@ export const api = {
       if (!result) throw new Error('No scenario ID returned');
       return result;
     },
+    wizardDeteriorationPreview: async (options: {
+      hazards: Array<Record<string, unknown>>;
+      casualties: Array<Record<string, unknown>>;
+      locations: Array<Record<string, unknown>>;
+      venue: string;
+      areaContext?: string;
+    }): Promise<{
+      enrichedHazards: Array<{
+        hazard_label: string;
+        deterioration_timeline: Record<string, unknown>;
+      }>;
+      enrichedCasualties: Array<{
+        casualty_index: number;
+        casualty_label: string;
+        deterioration_timeline: Array<{ at_minutes: number; description: string }>;
+      }>;
+      spawnPins: Array<{
+        pin_type: 'hazard' | 'casualty';
+        parent_pin_label: string;
+        label: string;
+        hazard_type?: string;
+        casualty_type?: string;
+        lat_offset: number;
+        lng_offset: number;
+        appears_at_minutes: number;
+        spawn_condition: {
+          trigger: string;
+          at_minutes: number;
+          unless_status: string[];
+        };
+        description: string;
+        properties?: Record<string, unknown>;
+        conditions?: Record<string, unknown>;
+        headcount?: number;
+      }>;
+      cascadeNarrative: string;
+    }> => {
+      const headers = await getAuthHeaders();
+      return handleResponse(
+        await fetch(apiUrl('/api/warroom/wizard/deterioration-preview'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(options),
+        }),
+      );
+    },
   },
 
   // Join Link

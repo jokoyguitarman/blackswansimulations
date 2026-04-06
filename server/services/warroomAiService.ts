@@ -3888,6 +3888,10 @@ RULES:
 
 interface VictimProfile {
   id: number;
+  name: string;
+  age: number;
+  sex: string;
+  role: string;
   injuries: Array<{ type: string; severity: string; body_part: string; visible_signs: string }>;
   triage_color: string;
   mobility: string;
@@ -3901,6 +3905,8 @@ interface VictimProfile {
   required_ppe: string[];
   required_equipment: Array<{ item: string; quantity: number; purpose: string }>;
   expected_time_to_treat_minutes: number;
+  recommended_transport: string;
+  deterioration_timeline: Array<{ at_minutes: number; description: string }>;
   appears_at_minutes: number;
 }
 
@@ -3974,6 +3980,18 @@ async function generateCasualties(
       ? researchContext.area_summary
       : undefined;
 
+  const hospitalListBlock = (locations ?? [])
+    .filter((l) => l.location_type === 'hospital' || l.pin_category === 'hospital')
+    .map((h) => {
+      const conds = (h.conditions ?? {}) as Record<string, unknown>;
+      const accepted = Array.isArray(conds.accepted_conditions)
+        ? (conds.accepted_conditions as unknown[]).map((v) => String(v))
+        : [];
+      const specs = accepted.length > 0 ? accepted.join(', ') : 'general';
+      return `- ${h.label} (${specs})`;
+    })
+    .join('\n');
+
   // --- PHASE 1: Generate victim profiles (no location data) ---
   onProgress?.('Creating victim profiles...');
   const profiles = await generateVictimProfiles(
@@ -3990,6 +4008,7 @@ async function generateCasualties(
     narrative,
     openAiApiKey,
     areaContextExcerpt,
+    hospitalListBlock || undefined,
   );
   if (!profiles?.length) return undefined;
 
@@ -4032,6 +4051,7 @@ async function generateVictimProfiles(
   narrative: { title?: string; description?: string; briefing?: string } | undefined,
   openAiApiKey: string,
   areaContext?: string,
+  hospitalList?: string,
 ): Promise<VictimProfile[] | null> {
   const triageGuidance = isMelee
     ? `Triage distribution for a melee ${weaponDesc} attack with ${threatProfile?.adversary_count ?? 1} attacker(s):
@@ -4077,6 +4097,10 @@ ${triageGuidance}
 INJURY TYPES — only use injuries a ${weaponDesc} can realistically cause: ${injuryEmphasis.join(', ')}
 
 For EACH victim, provide:
+- name: a culturally-appropriate full name for the victim based on the locale/setting
+- age: realistic age in years
+- sex: "M" or "F"
+- role: their job or reason for being at the venue (e.g. "QC microbiologist — testing batch samples when blast shattered chemical cabinet")
 - injuries: array of specific injuries with type, severity (minor|moderate|severe|critical), body_part, and visible_signs (what a responder physically observes)
 - triage_color: green|yellow|red|black
 - mobility: ambulatory|non_ambulatory|trapped
@@ -4090,13 +4114,20 @@ For EACH victim, provide:
 - required_ppe: list of specific PPE items responders MUST wear to safely treat this patient (e.g. "nitrile gloves", "N95 respirator", "face shield", "full turnout gear")
 - required_equipment: list of specific equipment items with quantity and purpose needed to treat this patient (e.g. { "item": "SAM splint", "quantity": 2, "purpose": "immobilize fractured left tibia" })
 - expected_time_to_treat_minutes: realistic estimate of time (in minutes) for pre-hospital treatment before transport-ready
+- recommended_transport: name of the most appropriate nearby hospital from the list below, with specialty reason (e.g. "National University Hospital — burns unit and ophthalmology")
+- deterioration_timeline: array of 2-4 time-stamped entries describing how this patient's condition worsens if NOT treated, with at_minutes and description (e.g. { at_minutes: 5, description: "Hemorrhagic shock progressing — BP dropping" })
 - appears_at_minutes: 0 for immediately visible, 5-20 for delayed discovery
+${hospitalList ? `\nNEARBY HOSPITALS FOR TRANSPORT RECOMMENDATIONS:\n${hospitalList}\nMatch each victim to the most appropriate hospital based on their injuries and the hospital's specialties.` : ''}
 
 Return ONLY valid JSON:
 {
   "victims": [
     {
       "id": 1,
+      "name": "Full Name",
+      "age": 35,
+      "sex": "M|F",
+      "role": "description of who they are and what they were doing",
       "injuries": [{ "type": "string", "severity": "minor|moderate|severe|critical", "body_part": "string", "visible_signs": "string" }],
       "triage_color": "green|yellow|red|black",
       "mobility": "ambulatory|non_ambulatory|trapped",
@@ -4110,6 +4141,8 @@ Return ONLY valid JSON:
       "required_ppe": ["string"],
       "required_equipment": [{ "item": "string", "quantity": 1, "purpose": "string" }],
       "expected_time_to_treat_minutes": 10,
+      "recommended_transport": "Hospital Name — specialty reason",
+      "deterioration_timeline": [{ "at_minutes": 5, "description": "what happens if untreated" }],
       "appears_at_minutes": 0
     }
   ]
@@ -4345,6 +4378,10 @@ RULES:
       floor_level: placement?.floor_level ?? 'G',
       headcount: 1,
       conditions: {
+        name: profile.name,
+        age: profile.age,
+        sex: profile.sex,
+        role: profile.role,
         injuries: profile.injuries,
         triage_color: profile.triage_color,
         mobility: profile.mobility,
@@ -4359,6 +4396,8 @@ RULES:
         required_ppe: profile.required_ppe,
         required_equipment: profile.required_equipment,
         expected_time_to_treat_minutes: profile.expected_time_to_treat_minutes,
+        recommended_transport: profile.recommended_transport,
+        deterioration_timeline: profile.deterioration_timeline,
       },
       status: 'undiscovered' as const,
       appears_at_minutes: profile.appears_at_minutes ?? 0,
@@ -6880,6 +6919,203 @@ function generateSecondaryDevices(
  * Batch B      (parallel)   : per-team condition injects + per-pair condition injects
  * Post-process              : normalizeInjectTiming + validatePinTopology
  */
+
+/* ------------------------------------------------------------------ */
+/*  Deterioration Specialist AI (Phase 4d of pipeline)                 */
+/* ------------------------------------------------------------------ */
+
+export interface DeteriorationSpawnPin {
+  pin_type: 'hazard' | 'casualty';
+  parent_pin_label: string;
+  label: string;
+  hazard_type?: string;
+  casualty_type?: string;
+  lat_offset: number;
+  lng_offset: number;
+  floor_level?: string;
+  appears_at_minutes: number;
+  spawn_condition: {
+    trigger: 'parent_unresolved';
+    at_minutes: number;
+    unless_status: string[];
+  };
+  description: string;
+  properties?: Record<string, unknown>;
+  conditions?: Record<string, unknown>;
+  headcount?: number;
+}
+
+export interface DeteriorationTimelineResult {
+  enriched_hazard_timelines: Array<{
+    hazard_label: string;
+    deterioration_timeline: {
+      at_10min: string;
+      at_20min: string;
+      at_30min: string;
+      spawns_new_hazards?: Array<{
+        label: string;
+        hazard_type: string;
+        description: string;
+        lat_offset: number;
+        lng_offset: number;
+      }>;
+      spawns_casualties?: Array<{
+        description: string;
+        triage_color: string;
+        lat_offset: number;
+        lng_offset: number;
+        headcount: number;
+      }>;
+    };
+  }>;
+  enriched_casualty_timelines: Array<{
+    casualty_index: number;
+    casualty_label: string;
+    deterioration_timeline: Array<{ at_minutes: number; description: string }>;
+  }>;
+  spawn_pins: DeteriorationSpawnPin[];
+  cascade_narrative: string;
+}
+
+/**
+ * Phase 4d-b: Generate a cross-pin-aware deterioration timeline.
+ * Sees ALL hazards and casualties together, models interactions and compound
+ * cascades, and produces enriched timelines plus pre-generated spawn pins.
+ */
+export async function generateDeteriorationTimeline(
+  hazards: Array<{
+    label: string;
+    hazard_type: string;
+    location_lat: number;
+    location_lng: number;
+    properties?: Record<string, unknown>;
+  }>,
+  casualties: Array<{
+    casualty_type: string;
+    location_lat: number;
+    location_lng: number;
+    conditions?: Record<string, unknown>;
+    headcount?: number;
+  }>,
+  locations: Array<{ label: string; location_type: string; lat: number; lng: number }>,
+  deteriorationResearch: string,
+  venue: string,
+  openAiApiKey: string,
+): Promise<DeteriorationTimelineResult | null> {
+  const hazardBlock = hazards
+    .map(
+      (h, i) =>
+        `H${i}: "${h.label}" (${h.hazard_type}) at [${h.location_lat}, ${h.location_lng}]${h.properties ? ` props: ${JSON.stringify(h.properties)}` : ''}`,
+    )
+    .join('\n');
+
+  const casualtyBlock = casualties
+    .map((c, i) => {
+      const conds = c.conditions || {};
+      const name = (conds.name as string) || `Casualty ${i}`;
+      const triage = (conds.triage_color as string) || 'unknown';
+      const injuries = (conds.injuries as Array<{ type: string; severity: string }>) || [];
+      return `C${i}: "${name}" (${c.casualty_type}, ${triage}) at [${c.location_lat}, ${c.location_lng}] — ${injuries.map((inj) => `${inj.type}(${inj.severity})`).join(', ')}`;
+    })
+    .join('\n');
+
+  const locationBlock = locations
+    .map((l) => `- ${l.label} (${l.location_type}) at [${l.lat}, ${l.lng}]`)
+    .join('\n');
+
+  const systemPrompt = `You are a deterioration specialist for crisis simulations. You model how hazards and casualties worsen over time using real-world physics and medical science. You think about compound cascades — how one hazard worsening can trigger new hazards or worsen nearby casualties.
+
+Return ONLY valid JSON matching the schema below. All coordinate offsets are relative to the parent pin's position (small floating-point values like 0.0001 for ~11 meters).`;
+
+  const userPrompt = `VENUE: ${venue}
+
+DETERIORATION PHYSICS RESEARCH:
+${deteriorationResearch}
+
+EXISTING HAZARDS:
+${hazardBlock}
+
+EXISTING CASUALTIES:
+${casualtyBlock}
+
+SCENARIO LOCATIONS:
+${locationBlock}
+
+Using the physics research above, produce a comprehensive deterioration timeline for this scenario. Think about:
+
+1. ENRICHED HAZARD TIMELINES: For each hazard, provide realistic deterioration at 10min, 20min, 30min if unaddressed. Include what new hazards or casualties each stage spawns.
+
+2. ENRICHED CASUALTY TIMELINES: For each patient, refine or create a deterioration_timeline (array of {at_minutes, description}) based on their specific injuries and how they interact with nearby hazards. Consider proximity to hazards — a patient near an ammonia leak deteriorates differently than one in open air.
+
+3. SPAWN PINS: Pre-generate child pins that appear when parent hazards are unresolved. Each spawn pin needs:
+   - pin_type: "hazard" or "casualty"
+   - parent_pin_label: which existing hazard triggers this
+   - label: descriptive name
+   - hazard_type or casualty_type
+   - lat_offset, lng_offset: offset from parent (use realistic distances, ~0.0001 per 11m)
+   - appears_at_minutes: when it would appear
+   - spawn_condition: { trigger: "parent_unresolved", at_minutes: N, unless_status: ["contained", "resolved"] }
+   - description, properties/conditions as appropriate
+   - headcount (for casualty spawn pins)
+
+4. CASCADE NARRATIVE: A brief text describing the overall deterioration cascade — how the scenario spirals if teams fail to act.
+
+Return JSON:
+{
+  "enriched_hazard_timelines": [
+    {
+      "hazard_label": "...",
+      "deterioration_timeline": {
+        "at_10min": "...",
+        "at_20min": "...",
+        "at_30min": "...",
+        "spawns_new_hazards": [{ "label": "...", "hazard_type": "...", "description": "...", "lat_offset": 0.0002, "lng_offset": -0.0001 }],
+        "spawns_casualties": [{ "description": "...", "triage_color": "red", "lat_offset": 0.0001, "lng_offset": 0.0001, "headcount": 1 }]
+      }
+    }
+  ],
+  "enriched_casualty_timelines": [
+    {
+      "casualty_index": 0,
+      "casualty_label": "...",
+      "deterioration_timeline": [
+        { "at_minutes": 5, "description": "..." },
+        { "at_minutes": 15, "description": "..." }
+      ]
+    }
+  ],
+  "spawn_pins": [
+    {
+      "pin_type": "hazard",
+      "parent_pin_label": "...",
+      "label": "...",
+      "hazard_type": "...",
+      "lat_offset": 0.0002,
+      "lng_offset": -0.0001,
+      "appears_at_minutes": 10,
+      "spawn_condition": { "trigger": "parent_unresolved", "at_minutes": 10, "unless_status": ["contained", "resolved"] },
+      "description": "...",
+      "properties": {}
+    }
+  ],
+  "cascade_narrative": "..."
+}`;
+
+  try {
+    const result = await callOpenAi<DeteriorationTimelineResult>(
+      systemPrompt,
+      userPrompt,
+      openAiApiKey,
+      10000,
+      0.6,
+    );
+    return result;
+  } catch (err) {
+    logger.warn({ err }, 'generateDeteriorationTimeline failed');
+    return null;
+  }
+}
+
 export async function warroomGenerateScenario(
   input: WarroomGenerateInput,
   openAiApiKey: string,

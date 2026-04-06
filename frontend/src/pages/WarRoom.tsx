@@ -367,7 +367,7 @@ export const WarRoom = () => {
   const [useStructured, setUseStructured] = useState(false);
   const [progressPhase, setProgressPhase] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState<string>('');
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
   const [teams, setTeams] = useState<TeamEntry[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [resolvedScenarioType, setResolvedScenarioType] = useState<string | null>(null);
@@ -383,6 +383,10 @@ export const WarRoom = () => {
   const [geocodeLoading, setGeocodeLoading] = useState(false);
   const [doctrines, setDoctrines] = useState<WizardDoctrines | null>(null);
   const [doctrinesLoading, setDoctrinesLoading] = useState(false);
+  const [deteriorationPreview, setDeteriorationPreview] = useState<Awaited<
+    ReturnType<typeof api.warroom.wizardDeteriorationPreview>
+  > | null>(null);
+  const [deteriorationLoading, setDeteriorationLoading] = useState(false);
 
   if (!isTrainer) {
     return (
@@ -563,12 +567,33 @@ export const WarRoom = () => {
     }
   }, [teams, buildOptions, geocodeData]);
 
+  const handleDeteriorationPreview = useCallback(async () => {
+    setError(null);
+    setDeteriorationLoading(true);
+    setDeteriorationPreview(null);
+    try {
+      const result = await api.warroom.wizardDeteriorationPreview({
+        hazards: [],
+        casualties: [],
+        locations: [],
+        venue: geocodeData?.display_name || '',
+        areaContext: areaSummary || undefined,
+      });
+      setDeteriorationPreview(result);
+      setStep(5);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Deterioration preview failed');
+    } finally {
+      setDeteriorationLoading(false);
+    }
+  }, [geocodeData, areaSummary]);
+
   const handleWizardGenerate = useCallback(async () => {
     setError(null);
     setLoading(true);
     setProgressPhase(null);
     setProgressMessage('');
-    setStep(5);
+    setStep(6);
     try {
       const options = buildOptions();
       options.teams = teams.map((t) => ({
@@ -1428,8 +1453,157 @@ export const WarRoom = () => {
           </div>
         )}
 
-        {/* Step 5: Wizard Generate Progress (wizard only) */}
-        {wizardMode && step === 5 && loading && (
+        {/* Step 5: Deterioration Timeline Review (wizard only) */}
+        {wizardMode && step === 5 && (
+          <div className="military-border p-6 mb-6 bg-robotic-gray-300">
+            <h3 className="text-lg terminal-text uppercase mb-4">
+              [DETERIORATION TIMELINE REVIEW]
+            </h3>
+            <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
+              Review how the scenario deteriorates over time if teams fail to act. You can edit or
+              remove spawn events before generating.
+            </p>
+
+            {deteriorationLoading && (
+              <p className="text-xs terminal-text text-robotic-yellow/60 animate-pulse">
+                Researching deterioration physics and generating timeline...
+              </p>
+            )}
+
+            {deteriorationPreview && (
+              <div className="space-y-6">
+                {/* Cascade Narrative */}
+                {deteriorationPreview.cascadeNarrative && (
+                  <div className="border border-robotic-yellow/30 p-4">
+                    <h4 className="text-sm terminal-text uppercase mb-2 text-robotic-yellow">
+                      Cascade Narrative
+                    </h4>
+                    <p className="text-xs terminal-text text-robotic-yellow/80">
+                      {deteriorationPreview.cascadeNarrative}
+                    </p>
+                  </div>
+                )}
+
+                {/* Enriched Hazard Timelines */}
+                {deteriorationPreview.enrichedHazards.length > 0 && (
+                  <div>
+                    <h4 className="text-sm terminal-text uppercase mb-2 text-robotic-yellow">
+                      Hazard Deterioration ({deteriorationPreview.enrichedHazards.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {deteriorationPreview.enrichedHazards.map((eh, i) => (
+                        <div key={i} className="border border-robotic-gray-200 p-3">
+                          <div className="text-xs terminal-text text-robotic-yellow/90 font-bold mb-1">
+                            {eh.hazard_label}
+                          </div>
+                          {Object.entries(eh.deterioration_timeline)
+                            .filter(([k]) => k.startsWith('at_'))
+                            .map(([k, v]) => (
+                              <div
+                                key={k}
+                                className="text-xs terminal-text text-robotic-yellow/70 pl-4"
+                              >
+                                <span className="text-robotic-yellow/50">{k}:</span> {String(v)}
+                              </div>
+                            ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Enriched Casualty Timelines */}
+                {deteriorationPreview.enrichedCasualties.length > 0 && (
+                  <div>
+                    <h4 className="text-sm terminal-text uppercase mb-2 text-robotic-yellow">
+                      Patient Deterioration ({deteriorationPreview.enrichedCasualties.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {deteriorationPreview.enrichedCasualties.map((ec, i) => (
+                        <div key={i} className="border border-robotic-gray-200 p-3">
+                          <div className="text-xs terminal-text text-robotic-yellow/90 font-bold mb-1">
+                            {ec.casualty_label}
+                          </div>
+                          {ec.deterioration_timeline.map((entry, j) => (
+                            <div
+                              key={j}
+                              className="text-xs terminal-text text-robotic-yellow/70 pl-4"
+                            >
+                              <span className="text-robotic-yellow/50">
+                                +{entry.at_minutes}min:
+                              </span>{' '}
+                              {entry.description}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Spawn Pins */}
+                {deteriorationPreview.spawnPins.length > 0 && (
+                  <div>
+                    <h4 className="text-sm terminal-text uppercase mb-2 text-robotic-yellow">
+                      Spawn Events ({deteriorationPreview.spawnPins.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {deteriorationPreview.spawnPins.map((sp, i) => (
+                        <div
+                          key={i}
+                          className="border border-robotic-gray-200 p-3 flex items-start justify-between gap-4"
+                        >
+                          <div className="flex-1">
+                            <div className="text-xs terminal-text text-robotic-yellow/90 font-bold mb-1">
+                              <span
+                                className={
+                                  sp.pin_type === 'hazard' ? 'text-red-400' : 'text-amber-400'
+                                }
+                              >
+                                [{sp.pin_type.toUpperCase()}]
+                              </span>{' '}
+                              {sp.label}
+                            </div>
+                            <div className="text-xs terminal-text text-robotic-yellow/60">
+                              Parent: {sp.parent_pin_label} | Appears: +{sp.appears_at_minutes}min |
+                              Trigger: {sp.spawn_condition.trigger} at +
+                              {sp.spawn_condition.at_minutes}min (unless{' '}
+                              {sp.spawn_condition.unless_status.join(', ')})
+                            </div>
+                            <div className="text-xs terminal-text text-robotic-yellow/70 mt-1">
+                              {sp.description}
+                            </div>
+                            <div className="text-xs terminal-text text-robotic-yellow/40 mt-1">
+                              Offset: [{sp.lat_offset.toFixed(5)}, {sp.lng_offset.toFixed(5)}]
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setDeteriorationPreview((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      spawnPins: prev.spawnPins.filter((_, idx) => idx !== i),
+                                    }
+                                  : null,
+                              );
+                            }}
+                            className="text-xs terminal-text text-red-400 hover:text-red-300 border border-red-400/30 px-2 py-1"
+                          >
+                            [REMOVE]
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 6: Wizard Generate Progress (wizard only) */}
+        {wizardMode && step === 6 && loading && (
           <div className="military-border p-6 mb-6 bg-robotic-gray-300">
             <h3 className="text-lg terminal-text uppercase mb-4">
               [WIZARD] Building scenario world
@@ -1551,11 +1725,30 @@ export const WarRoom = () => {
                 [BACK: MAP]
               </button>
               <button
+                onClick={handleDeteriorationPreview}
+                disabled={loading || deteriorationLoading || !doctrines}
+                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deteriorationLoading
+                  ? '[RESEARCHING DETERIORATION...]'
+                  : '[NEXT: DETERIORATION PREVIEW]'}
+              </button>
+            </>
+          ) : step === 5 ? (
+            <>
+              <button
+                onClick={() => setStep(4)}
+                disabled={loading}
+                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              >
+                [BACK: DOCTRINES]
+              </button>
+              <button
                 onClick={handleWizardGenerate}
                 disabled={loading || !doctrines}
                 className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? '[GENERATING...]' : '[APPROVE & GENERATE]'}
+                {loading ? '[GENERATING...]' : '[APPROVE & PERSIST]'}
               </button>
             </>
           ) : null}

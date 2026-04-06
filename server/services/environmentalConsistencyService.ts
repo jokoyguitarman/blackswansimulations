@@ -318,6 +318,20 @@ async function buildCasualtyContext(sessionId: string): Promise<string> {
       patientLines.push(`  Expected treatment time: ~${expectedTime} minutes`);
     }
 
+    const recommendedTransport = conds.recommended_transport as string | undefined;
+    if (recommendedTransport) {
+      patientLines.push(`  Recommended transport: ${recommendedTransport}`);
+    }
+
+    const detTimeline = conds.deterioration_timeline as
+      | Array<{ at_minutes: number; description: string }>
+      | undefined;
+    if (detTimeline && detTimeline.length > 0) {
+      patientLines.push(
+        `  Deterioration if untreated: ${detTimeline.map((d) => `+${d.at_minutes}min: ${d.description}`).join('; ')}`,
+      );
+    }
+
     // Fallback: if no explicit treatment data, the LLM can infer from injuries
     if (!treatmentReqs && injuries && injuries.length > 0) {
       patientLines.push(
@@ -960,6 +974,7 @@ Apply the TRANSPORT DESTINATION CHECK rules from INFRASTRUCTURE READINESS above.
 5. RELEVANCE: Only evaluate when the decision DIRECTLY involves patient care, treatment, or transport. Do not evaluate infrastructure setup, command, or communication decisions against casualty data.
 
 When treatment_requirements or transport_prerequisites are listed for a patient, use them as ground truth. When ideal_response_sequence is provided, use it as the benchmark for a perfect response — check if the player's actions follow the correct order and include all critical steps. When required_ppe is listed, the decision MUST mention appropriate PPE or it is a specificity failure. When required_equipment is listed, the decision MUST name the specific equipment or it is a specificity failure. When they are absent, infer required care from the injury data using standard pre-hospital protocols (PHTLS, ITLS, TCCC).
+When recommended_transport is listed for a patient, score the transport destination against it — sending a burns patient to a hospital without a burns unit, or a spinal injury to a facility without a spine unit, is below_standard. The recommended hospital reflects the best match for the patient's specific injuries and nearby hospital capabilities. When deterioration_timeline is listed, use it to assess time-sensitivity — if the team delayed treatment beyond a critical deterioration milestone (e.g. patient needed airway management within 10 minutes but team took 25 minutes), note the real-world consequence from the timeline as in-world feedback.
 
 === ZONE MANAGEMENT & SAFETY ===
 When "HAZARD ZONE SAFETY STATUS" is provided, evaluate four dimensions following ICS/NIMS zone protocol. The game does NOT hard-block any action — all decisions proceed, but violations produce consequence injects.

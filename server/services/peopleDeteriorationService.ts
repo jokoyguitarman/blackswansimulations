@@ -107,46 +107,123 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
 
     if (cas.casualty_type === 'patient') {
       const currentTriage = (conds.triage_color as string) ?? 'green';
-      const sinceLastDet = minutesSinceLastDeterioration(
-        conds,
-        sessionStartMs,
-        cas.appears_at_minutes ?? 0,
+      const appearsAt = cas.appears_at_minutes ?? 0;
+      const minutesSinceAppeared = Math.floor(
+        (Date.now() - (sessionStartMs + appearsAt * 60000)) / 60000,
       );
+      const sinceLastDet = minutesSinceLastDeterioration(conds, sessionStartMs, appearsAt);
 
-      // --- Untreated patients: escalate triage color every escalationMin ---
-      if (UNTREATED_STATUSES.includes(cas.status) && sinceLastDet >= escalationMin) {
-        const newTriage = TRIAGE_ESCALATION[currentTriage];
+      const detTimeline = conds.deterioration_timeline as
+        | Array<{ at_minutes: number; description: string }>
+        | undefined;
 
-        if (newTriage) {
-          conds.triage_color = newTriage;
-          conds.last_deterioration_at = new Date().toISOString();
-          updated = true;
+      // --- Untreated patients: patient-specific timeline OR generic ladder ---
+      if (UNTREATED_STATUSES.includes(cas.status)) {
+        if (detTimeline && detTimeline.length > 0) {
+          const lastStageIdx = (conds.last_deterioration_stage_index as number) ?? -1;
+          let appliedIdx = lastStageIdx;
+          let appliedEntry: { at_minutes: number; description: string } | null = null;
 
-          if (newTriage === 'black') {
-            statusChange = 'deceased';
-            injectsToCreate.push({
-              scenario_id: session.scenario_id,
-              session_id: sessionId,
-              title: 'Patient Deceased',
-              body: `A patient near the incident area has died due to lack of treatment. Visible condition: ${(conds.visible_description as string)?.slice(0, 100) || 'unknown'}`,
-              inject_type: 'deterioration',
-              trigger_type: 'time_based',
-              trigger_minutes: elapsedMinutes,
-              target_team: cas.assigned_team,
-              generation_source: 'deterioration_cycle',
-            });
-          } else {
-            injectsToCreate.push({
-              scenario_id: session.scenario_id,
-              session_id: sessionId,
-              title: 'Patient Condition Worsening',
-              body: `A patient's condition has deteriorated from ${currentTriage.toUpperCase()} to ${newTriage.toUpperCase()} triage. ${(conds.visible_description as string)?.slice(0, 100) || ''}`,
-              inject_type: 'deterioration',
-              trigger_type: 'time_based',
-              trigger_minutes: elapsedMinutes,
-              target_team: cas.assigned_team,
-              generation_source: 'deterioration_cycle',
-            });
+          for (let i = 0; i < detTimeline.length; i++) {
+            if (i > lastStageIdx && minutesSinceAppeared >= detTimeline[i].at_minutes) {
+              appliedIdx = i;
+              appliedEntry = detTimeline[i];
+            }
+          }
+
+          if (appliedEntry && appliedIdx > lastStageIdx) {
+            conds.last_deterioration_stage_index = appliedIdx;
+            conds.last_deterioration_at = new Date().toISOString();
+            conds.visible_description = appliedEntry.description;
+            updated = true;
+
+            const desc = appliedEntry.description.toLowerCase();
+            if (
+              desc.includes('deceased') ||
+              desc.includes('cardiac arrest') ||
+              desc.includes('death') ||
+              desc.includes('dies') ||
+              desc.includes('dead') ||
+              desc.includes('fatal')
+            ) {
+              conds.triage_color = 'black';
+              statusChange = 'deceased';
+            } else if (
+              currentTriage !== 'red' &&
+              (desc.includes('critical') ||
+                desc.includes('hemorrhag') ||
+                desc.includes('shock') ||
+                desc.includes('intubat') ||
+                desc.includes('irreversible'))
+            ) {
+              conds.triage_color = 'red';
+            } else if (
+              currentTriage === 'green' &&
+              (desc.includes('worsening') || desc.includes('deteriorat') || desc.includes('pain'))
+            ) {
+              conds.triage_color = 'yellow';
+            }
+
+            if (statusChange === 'deceased') {
+              injectsToCreate.push({
+                scenario_id: session.scenario_id,
+                session_id: sessionId,
+                title: 'Patient Deceased',
+                body: `A patient has died: ${appliedEntry.description}`,
+                inject_type: 'deterioration',
+                trigger_type: 'time_based',
+                trigger_minutes: elapsedMinutes,
+                target_team: cas.assigned_team,
+                generation_source: 'deterioration_cycle',
+              });
+            } else {
+              injectsToCreate.push({
+                scenario_id: session.scenario_id,
+                session_id: sessionId,
+                title: 'Patient Condition Worsening',
+                body: `Patient deterioration at +${appliedEntry.at_minutes}min: ${appliedEntry.description}`,
+                inject_type: 'deterioration',
+                trigger_type: 'time_based',
+                trigger_minutes: elapsedMinutes,
+                target_team: cas.assigned_team,
+                generation_source: 'deterioration_cycle',
+              });
+            }
+          }
+        } else if (sinceLastDet >= escalationMin) {
+          const newTriage = TRIAGE_ESCALATION[currentTriage];
+
+          if (newTriage) {
+            conds.triage_color = newTriage;
+            conds.last_deterioration_at = new Date().toISOString();
+            updated = true;
+
+            if (newTriage === 'black') {
+              statusChange = 'deceased';
+              injectsToCreate.push({
+                scenario_id: session.scenario_id,
+                session_id: sessionId,
+                title: 'Patient Deceased',
+                body: `A patient near the incident area has died due to lack of treatment. Visible condition: ${(conds.visible_description as string)?.slice(0, 100) || 'unknown'}`,
+                inject_type: 'deterioration',
+                trigger_type: 'time_based',
+                trigger_minutes: elapsedMinutes,
+                target_team: cas.assigned_team,
+                generation_source: 'deterioration_cycle',
+              });
+            } else {
+              injectsToCreate.push({
+                scenario_id: session.scenario_id,
+                session_id: sessionId,
+                title: 'Patient Condition Worsening',
+                body: `A patient's condition has deteriorated from ${currentTriage.toUpperCase()} to ${newTriage.toUpperCase()} triage. ${(conds.visible_description as string)?.slice(0, 100) || ''}`,
+                inject_type: 'deterioration',
+                trigger_type: 'time_based',
+                trigger_minutes: elapsedMinutes,
+                target_team: cas.assigned_team,
+                generation_source: 'deterioration_cycle',
+              });
+            }
           }
         }
       }

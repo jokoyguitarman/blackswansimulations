@@ -3864,6 +3864,14 @@ export class DemoAIAgentService {
           );
           if (patientDetail) {
             parts.push('', '### 📋 PATIENT ASSESSMENT (follow this exactly):');
+            if (patientDetail.name) {
+              parts.push(
+                `Patient: ${patientDetail.name}${patientDetail.age ? `, ${patientDetail.age}${patientDetail.sex}` : ''}`,
+              );
+            }
+            if (patientDetail.role) {
+              parts.push(`Role: ${patientDetail.role}`);
+            }
             parts.push(`Status: ${patientDetail.status}`);
             parts.push(`Mobility: ${patientDetail.mobility}`);
             parts.push(`Consciousness: ${patientDetail.consciousness}`);
@@ -3927,6 +3935,15 @@ export class DemoAIAgentService {
             }
             if (patientDetail.expectedMinutes) {
               parts.push(`Expected treatment time: ~${patientDetail.expectedMinutes} min`);
+            }
+            if (patientDetail.recommendedTransport) {
+              parts.push(`🚑 Recommended transport: ${patientDetail.recommendedTransport}`);
+            }
+            if (patientDetail.deteriorationTimeline.length > 0) {
+              parts.push('', '### ⚠️ DETERIORATION IF UNTREATED:');
+              for (const d of patientDetail.deteriorationTimeline) {
+                parts.push(`  +${d.at_minutes}min: ${d.description}`);
+              }
             }
           }
         }
@@ -4329,7 +4346,16 @@ export class DemoAIAgentService {
           for (const c of patients) {
             const conds = (c.conditions ?? {}) as Record<string, unknown>;
             const idShort = (c.id as string).slice(0, 8);
-            sections.push(`\n### Patient [${idShort}] — Status: ${c.status}`);
+            const patientName = (conds.name as string) || `Patient [${idShort}]`;
+            const patientAge = conds.age as number | undefined;
+            const patientSex = conds.sex as string | undefined;
+            const patientRole = conds.role as string | undefined;
+            sections.push(
+              `\n### ${patientName}${patientAge ? `, ${patientAge}${patientSex ?? ''}` : ''} — Status: ${c.status}`,
+            );
+            if (patientRole) {
+              sections.push(`  Role: ${patientRole}`);
+            }
             sections.push(
               `  Triage: ${conds.triage_color ?? 'unassessed'}, Mobility: ${conds.mobility ?? 'unknown'}, Consciousness: ${conds.consciousness ?? 'unknown'}, Breathing: ${conds.breathing ?? 'unknown'}`,
             );
@@ -4389,6 +4415,21 @@ export class DemoAIAgentService {
             const expectedTime = conds.expected_time_to_treat_minutes as number | undefined;
             if (expectedTime) {
               sections.push(`  ⏱️ Expected treatment time: ~${expectedTime} minutes`);
+            }
+
+            const recTransport = conds.recommended_transport as string | undefined;
+            if (recTransport) {
+              sections.push(`  🚑 Recommended transport: ${recTransport}`);
+            }
+
+            const detTimeline = conds.deterioration_timeline as
+              | Array<{ at_minutes: number; description: string }>
+              | undefined;
+            if (detTimeline?.length) {
+              sections.push('  ⚠️ DETERIORATION IF UNTREATED:');
+              for (const d of detTimeline) {
+                sections.push(`    +${d.at_minutes}min: ${d.description}`);
+              }
             }
           }
         }
@@ -6116,12 +6157,13 @@ export class DemoAIAgentService {
         }
 
         const conds = (casualty.conditions as Record<string, unknown>) ?? {};
+        const patName = (conds.name as string) || '';
         const vis = (conds.visible_description as string) || (conds.injury_type as string) || '';
         const triageColor = this.inferTriageColor(fullText, conds);
         return {
           target_id: casualty.id as string,
           target_type: 'casualty',
-          target_label: vis || `${cType} (${casualty.status})`,
+          target_label: patName || vis || `${cType} (${casualty.status})`,
           actions: this.inferActionsFromText(fullText, 'casualty'),
           resources: [{ type: 'responder', label: `${agent.persona.teamName} Team`, quantity: 1 }],
           triage_color: isCrowdPin ? undefined : triageColor,
@@ -6206,11 +6248,12 @@ export class DemoAIAgentService {
       if (filtered.length > 0) {
         const target = filtered[0] as unknown as Record<string, unknown>;
         const conds = (target.conditions as Record<string, unknown>) ?? {};
+        const pName = (conds.name as string) || '';
         const vis = (conds.visible_description as string) || '';
         return {
           target_id: target.id as string,
           target_type: 'casualty',
-          target_label: vis || `${target.casualty_type} (${target.status})`,
+          target_label: pName || vis || `${target.casualty_type} (${target.status})`,
           actions: this.inferActionsFromText(fullText, 'casualty'),
           resources: [{ type: 'responder', label: `${agent.persona.teamName} Team`, quantity: 1 }],
           triage_color: this.inferTriageColor(fullText, conds),
@@ -6622,6 +6665,10 @@ export class DemoAIAgentService {
     sessionId: string,
     patientId: string,
   ): Promise<{
+    name: string;
+    age: number | null;
+    sex: string;
+    role: string;
     status: string;
     mobility: string;
     consciousness: string;
@@ -6636,6 +6683,8 @@ export class DemoAIAgentService {
     requiredPpe: string[];
     requiredEquipment: Array<{ item: string; quantity: number; purpose: string }>;
     expectedMinutes: number | null;
+    recommendedTransport: string;
+    deteriorationTimeline: Array<{ at_minutes: number; description: string }>;
   } | null> {
     try {
       const { data } = await supabaseAdmin
@@ -6647,6 +6696,10 @@ export class DemoAIAgentService {
       if (!data) return null;
       const c = (data.conditions ?? {}) as Record<string, unknown>;
       return {
+        name: (c.name as string) || '',
+        age: (c.age as number) || null,
+        sex: (c.sex as string) || '',
+        role: (c.role as string) || '',
         status: data.status as string,
         mobility: (c.mobility as string) || 'unknown',
         consciousness: (c.consciousness as string) || 'unknown',
@@ -6674,6 +6727,9 @@ export class DemoAIAgentService {
           (c.required_equipment as Array<{ item: string; quantity: number; purpose: string }>) ||
           [],
         expectedMinutes: (c.expected_time_to_treat_minutes as number) || null,
+        recommendedTransport: (c.recommended_transport as string) || '',
+        deteriorationTimeline:
+          (c.deterioration_timeline as Array<{ at_minutes: number; description: string }>) || [],
       };
     } catch {
       return null;
@@ -6848,7 +6904,8 @@ export class DemoAIAgentService {
 
         result.pinZoneMap.set(pinId, zone);
 
-        const line = `[id:${pinId}] ${cType} (${c.headcount} people) at [${lat}, ${lng}] — status: ${status}${zoneLabel}${triageTag}${assigned}${condSummary ? `, ${condSummary}` : ''}`;
+        const patientName = !isCrowd && conds?.name ? ` "${conds.name}"` : '';
+        const line = `[id:${pinId}]${patientName} ${cType} (${c.headcount} people) at [${lat}, ${lng}] — status: ${status}${zoneLabel}${triageTag}${assigned}${condSummary ? `, ${condSummary}` : ''}`;
 
         if (isCrowd) {
           // Crowds: only visible to evacuation team

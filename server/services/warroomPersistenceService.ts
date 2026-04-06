@@ -300,14 +300,18 @@ export async function persistWarroomScenario(
         'resolved',
         'delayed',
       ]);
-      const { error: hazError } = await supabaseAdmin.from('scenario_hazards').insert(
-        hazards.map((h) => ({
+
+      const hazardRows = hazards.map((h) => {
+        const hAny = h as Record<string, unknown>;
+        const props = { ...(h.properties ?? {}) } as Record<string, unknown>;
+        if (hAny.label && !props.label) props.label = hAny.label;
+        return {
           scenario_id: scenarioId,
           hazard_type: h.hazard_type,
           location_lat: h.location_lat,
           location_lng: h.location_lng,
           floor_level: h.floor_level ?? 'G',
-          properties: h.properties ?? {},
+          properties: props,
           assessment_criteria: h.assessment_criteria ?? [],
           image_url: h.image_url ?? null,
           image_sequence: h.image_sequence ?? null,
@@ -321,10 +325,53 @@ export async function persistWarroomScenario(
           fire_class: h.fire_class ?? null,
           debris_type: h.debris_type ?? null,
           zones: h.zones ?? [],
-        })),
-      );
+          spawn_condition: (h as Record<string, unknown>)._spawn_condition ?? null,
+        };
+      });
+
+      const { error: hazError } = await supabaseAdmin.from('scenario_hazards').insert(hazardRows);
       if (hazError) {
         logger.warn({ error: hazError }, 'scenario_hazards insert failed (non-blocking)');
+      }
+
+      // Resolve parent_pin_id for spawn hazards (those with _parent_pin_label)
+      const spawnHazards = hazards.filter((h) => (h as Record<string, unknown>)._parent_pin_label);
+      if (spawnHazards.length > 0) {
+        const { data: insertedHazardRows } = await supabaseAdmin
+          .from('scenario_hazards')
+          .select('id, hazard_type, location_lat, location_lng, properties')
+          .eq('scenario_id', scenarioId);
+
+        if (insertedHazardRows?.length) {
+          const labelToId = new Map<string, string>();
+          for (const row of insertedHazardRows) {
+            const label =
+              (row.properties as Record<string, unknown>)?.label ??
+              (row as Record<string, unknown>).hazard_type;
+            labelToId.set(String(label), row.id as string);
+          }
+
+          for (const original of hazards) {
+            const hAny = original as Record<string, unknown>;
+            if (!hAny._parent_pin_label) continue;
+            const parentLabel = String(hAny._parent_pin_label);
+            const parentId = labelToId.get(parentLabel);
+            if (!parentId) continue;
+
+            const childRow = insertedHazardRows.find(
+              (r) =>
+                Math.abs(Number(r.location_lat) - Number(original.location_lat)) < 0.00001 &&
+                Math.abs(Number(r.location_lng) - Number(original.location_lng)) < 0.00001 &&
+                r.hazard_type === original.hazard_type,
+            );
+            if (childRow) {
+              await supabaseAdmin
+                .from('scenario_hazards')
+                .update({ parent_pin_id: parentId })
+                .eq('id', childRow.id);
+            }
+          }
+        }
       }
 
       // Auto-generate blast radius guide circles for explosion/bomb hazards
@@ -428,11 +475,57 @@ export async function persistWarroomScenario(
             destination_lng: c.destination_lng ?? null,
             destination_label: c.destination_label ?? null,
             movement_speed_mpm: c.movement_speed_mpm ?? 0,
+            spawn_condition: (c as Record<string, unknown>)._spawn_condition ?? null,
           };
         }),
       );
       if (casError) {
         logger.warn({ error: casError }, 'scenario_casualties insert failed (non-blocking)');
+      }
+
+      // Resolve parent_pin_id for spawn casualties (those with _parent_pin_label)
+      const spawnCasualties = spacedCasualties.filter(
+        (c) => (c as Record<string, unknown>)._parent_pin_label,
+      );
+      if (spawnCasualties.length > 0) {
+        const { data: allHazardRows } = await supabaseAdmin
+          .from('scenario_hazards')
+          .select('id, hazard_type, properties')
+          .eq('scenario_id', scenarioId);
+
+        const { data: insertedCasRows } = await supabaseAdmin
+          .from('scenario_casualties')
+          .select('id, casualty_type, location_lat, location_lng')
+          .eq('scenario_id', scenarioId);
+
+        if (allHazardRows?.length && insertedCasRows?.length) {
+          const hazardLabelToId = new Map<string, string>();
+          for (const row of allHazardRows) {
+            const label =
+              (row.properties as Record<string, unknown>)?.label ??
+              (row as Record<string, unknown>).hazard_type;
+            hazardLabelToId.set(String(label), row.id as string);
+          }
+
+          for (const original of spawnCasualties) {
+            const cAny = original as Record<string, unknown>;
+            const parentLabel = String(cAny._parent_pin_label);
+            const parentId = hazardLabelToId.get(parentLabel);
+            if (!parentId) continue;
+
+            const childRow = insertedCasRows.find(
+              (r) =>
+                Math.abs(Number(r.location_lat) - Number(original.location_lat)) < 0.00001 &&
+                Math.abs(Number(r.location_lng) - Number(original.location_lng)) < 0.00001,
+            );
+            if (childRow) {
+              await supabaseAdmin
+                .from('scenario_casualties')
+                .update({ parent_pin_id: parentId })
+                .eq('id', childRow.id);
+            }
+          }
+        }
       }
     }
 
