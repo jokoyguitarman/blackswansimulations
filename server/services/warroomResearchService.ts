@@ -58,7 +58,8 @@ export interface StandardsFinding {
 }
 
 /**
- * Research the area around a location: geography, access, landmarks, local agencies.
+ * Research the area around a location: geography, access, landmarks, local agencies,
+ * establishment type, and on-site materials/systems relevant to secondary hazards.
  */
 export async function researchArea(
   openAiApiKey: string,
@@ -89,6 +90,18 @@ Produce a detailed area intelligence report covering ALL of the following sectio
 - Adjacent buildings and what they are (commercial, residential, government)
 - Crowd capacity estimates for the area
 - CCTV coverage (if known — transit stations, government buildings typically have it)
+
+## ESTABLISHMENT TYPE & ON-SITE HAZARD CONTEXT
+Classify the PRIMARY facility or site type at "${venue}" (e.g. acute hospital, outpatient clinic, R&D chemistry lab, pharmaceutical manufacturing, university teaching lab, school, shopping mall, office tower, industrial plant, warehouse, transit hub, stadium, hotel). If multiple, list them and note which is the incident focus.
+
+For that establishment type, list REALISTIC on-site materials, stored goods, and fixed systems that change crisis outcomes when fire, blast, flood, or loss of utilities occurs. Be specific where credible; use categories if exact inventory is unknown:
+- Medical/clinical: medical oxygen and other compressed medical gases, vacuum/SMV systems, sterilants, pharmacies, LNG for backup power, isolation wards, vulnerable patients
+- Laboratories (chemistry/biology/pharma): flammable and combustible liquids, compressed and cryogenic gases, corrosives, toxics, waste accumulation areas, fume hoods, peroxide-formers
+- Industrial/manufacturing: dust explosion fuels, ammonia refrigeration, battery storage, forklift/LPG, spray booths, bulk chemicals, high-voltage equipment
+- Commercial/retail: stockpiled goods, cleaning chemicals, food service oils, data/UPS battery rooms
+- Infrastructure: diesel generators, fuel storage, transformer yards, elevator machine rooms
+
+Briefly note how a violent incident (explosion, major fire, structural breach) at THIS venue could realistically trigger SECONDARY effects via those materials (e.g. oxygen accelerating fire spread, solvent pool fires, toxic smoke plumes, gas cylinder projectiles).
 
 ## INFRASTRUCTURE & UTILITIES
 - Major utility corridors (power substations, gas mains, water supply)

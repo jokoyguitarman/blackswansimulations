@@ -23,7 +23,9 @@ import {
 import {
   warroomGenerateScenario,
   generateAdversaryPursuitTree,
+  generateTeamsAndCoreForResearch,
   type WarroomScenarioPayload,
+  type Phase1Result,
 } from './warroomAiService.js';
 import { persistWarroomScenario } from './warroomPersistenceService.js';
 import {
@@ -31,6 +33,7 @@ import {
   researchStandardsPerTeam,
   researchSimilarCases,
   researchCrowdDynamics,
+  researchTeamWorkflows,
   persistResearchCases,
   linkResearchToScenario,
   extractSettingTags,
@@ -38,10 +41,12 @@ import {
   type SimilarCase,
   type CrowdDynamicsResearch,
   type TeamInput,
+  type TeamWorkflow,
 } from './warroomResearchService.js';
 
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import type { OsmVicinity } from './osmVicinityService.js';
+import type { OsmOpenSpace, OsmBuilding, OsmRouteGeometry } from './osmVicinityService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -234,15 +239,38 @@ export async function suggestWarroomTeams(
   };
 }
 
-/**
- * Generate and persist a War Room scenario.
- */
-export async function generateAndPersistWarroomScenario(
+// ---------------------------------------------------------------------------
+// Composable Wizard Stages
+// ---------------------------------------------------------------------------
+
+export interface ParseAndGeocodeResult {
+  parsed: ParsedWarroomInput;
+  geocodeResult: { lat: number; lng: number; display_name: string } | null;
+  osmVicinity?: OsmVicinity;
+  osmOpenSpaces?: OsmOpenSpace[];
+  osmBuildings?: OsmBuilding[];
+  osmRouteGeometries?: OsmRouteGeometry[];
+  areaSummary: string;
+  similarCases: SimilarCase[];
+  crowdDynamics: CrowdDynamicsResearch | null;
+  typeSpec: Record<string, unknown>;
+  settingSpec: Record<string, unknown>;
+  terrainSpec: Record<string, unknown>;
+  venueName: string;
+  threatProfile: import('./warroomPromptParser.js').ThreatProfile | undefined;
+}
+
+export interface DoctrineResearchResult {
+  standardsFindings: StandardsFinding[];
+  perTeamDoctrines: Record<string, StandardsFinding[]>;
+  teamWorkflows: Record<string, TeamWorkflow>;
+}
+
+export async function stageParseAndGeocode(
   options: WarroomGenerateOptions,
   openAiApiKey: string,
-  createdBy: string,
   onProgress?: WarroomProgressCallback,
-): Promise<{ scenarioId: string; payload: WarroomScenarioPayload }> {
+): Promise<ParseAndGeocodeResult> {
   let parsed: ParsedWarroomInput;
 
   if (options.prompt && !options.scenario_type) {
@@ -259,9 +287,7 @@ export async function generateAndPersistWarroomScenario(
   }
 
   const validation = validateCompatibility(parsed.scenario_type, parsed.setting, parsed.terrain);
-  if (!validation.valid) {
-    throw new Error(validation.message);
-  }
+  if (!validation.valid) throw new Error(validation.message);
 
   const templatesDir = getTemplatesDir();
   const typeSpec = loadJson<Record<string, unknown>>(
@@ -273,17 +299,12 @@ export async function generateAndPersistWarroomScenario(
   const terrainSpec = loadJson<Record<string, unknown>>(
     path.join(templatesDir, 'terrains', `${parsed.terrain}.json`),
   );
-
-  if (!typeSpec || !settingSpec || !terrainSpec) {
+  if (!typeSpec || !settingSpec || !terrainSpec)
     throw new Error('Failed to load scenario templates');
-  }
-
-  const complexity_tier = options.complexity_tier || 'full';
-  const duration_minutes = options.duration_minutes || 60;
-  const threatProfile = parsed.threat_profile;
 
   const venueName = parsed.venue_name || parsed.location || parsed.setting;
-  // Run geocoding and similar-cases research in parallel (both can start right after parsing)
+  const threatProfile = parsed.threat_profile;
+
   onProgress?.(
     'geocoding',
     parsed.location
@@ -291,10 +312,6 @@ export async function generateAndPersistWarroomScenario(
       : 'No location specified; skipping geocoding.',
   );
   onProgress?.('case_research', 'Researching similar real-world incidents...');
-
-  let geocodeResult = null;
-  let similarCases: SimilarCase[] = [];
-  let crowdDynamics: CrowdDynamicsResearch | null = null;
 
   const geocodePromise = parsed.location
     ? (() => {
@@ -310,7 +327,7 @@ export async function generateAndPersistWarroomScenario(
       })()
     : Promise.resolve(null);
 
-  [geocodeResult, similarCases, crowdDynamics] = await Promise.all([
+  const [geocodeResult, similarCases, crowdDynamics] = await Promise.all([
     geocodePromise,
     researchSimilarCases(
       openAiApiKey,
@@ -344,10 +361,10 @@ export async function generateAndPersistWarroomScenario(
     );
   }
 
-  let osmVicinity: OsmVicinity | undefined = undefined;
-  let osmOpenSpaces: import('./osmVicinityService.js').OsmOpenSpace[] | undefined;
-  let osmBuildings: import('./osmVicinityService.js').OsmBuilding[] | undefined;
-  let osmRouteGeometries: import('./osmVicinityService.js').OsmRouteGeometry[] | undefined;
+  let osmVicinity: OsmVicinity | undefined;
+  let osmOpenSpaces: OsmOpenSpace[] | undefined;
+  let osmBuildings: OsmBuilding[] | undefined;
+  let osmRouteGeometries: OsmRouteGeometry[] | undefined;
   if (geocodeResult) {
     onProgress?.(
       'osm',
@@ -355,10 +372,7 @@ export async function generateAndPersistWarroomScenario(
     );
     try {
       const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-      // Try cache first — reuse OSM vicinity from a nearby scenario
       const cachedVicinity = await findCachedOsmVicinity(geocodeResult.lat, geocodeResult.lng);
-
       const vicinity =
         cachedVicinity ??
         (await fetchOsmVicinityByCoordinates(geocodeResult.lat, geocodeResult.lng, 5000));
@@ -367,7 +381,7 @@ export async function generateAndPersistWarroomScenario(
       const buildings = await fetchVenueBuilding(geocodeResult.lat, geocodeResult.lng, 300).catch(
         (err) => {
           logger.warn({ err }, 'OSM venue building fetch failed; continuing without');
-          return [] as import('./osmVicinityService.js').OsmBuilding[];
+          return [] as OsmBuilding[];
         },
       );
       await delay(1500);
@@ -375,7 +389,7 @@ export async function generateAndPersistWarroomScenario(
       const spaces = await fetchOsmOpenSpaces(geocodeResult.lat, geocodeResult.lng, 1500).catch(
         (err) => {
           logger.warn({ err }, 'OSM open spaces fetch failed; continuing without');
-          return [] as import('./osmVicinityService.js').OsmOpenSpace[];
+          return [] as OsmOpenSpace[];
         },
       );
       await delay(3000);
@@ -386,7 +400,7 @@ export async function generateAndPersistWarroomScenario(
         6000,
       ).catch((err) => {
         logger.warn({ err }, 'OSM route geometries fetch failed; continuing without');
-        return [] as import('./osmVicinityService.js').OsmRouteGeometry[];
+        return [] as OsmRouteGeometry[];
       });
 
       osmVicinity = vicinity;
@@ -401,7 +415,6 @@ export async function generateAndPersistWarroomScenario(
     }
   }
 
-  // Phase A: area research (runs independently of standards)
   const areaSummary = parsed.location
     ? await (() => {
         onProgress?.('area_research', 'Researching area: geography, agencies...');
@@ -409,61 +422,96 @@ export async function generateAndPersistWarroomScenario(
       })()
     : '';
 
-  // Phase B: generate core scenario first (Phase 1) so standards research can read the narrative
+  return {
+    parsed,
+    geocodeResult,
+    osmVicinity,
+    osmOpenSpaces,
+    osmBuildings,
+    osmRouteGeometries,
+    areaSummary,
+    similarCases,
+    crowdDynamics,
+    typeSpec,
+    settingSpec,
+    terrainSpec,
+    venueName,
+    threatProfile,
+  };
+}
+
+export async function stageTeamsAndNarrative(
+  geoResult: ParseAndGeocodeResult,
+  options: WarroomGenerateOptions,
+  openAiApiKey: string,
+  onProgress?: WarroomProgressCallback,
+): Promise<{ phase1Preview: Phase1Result; userTeams: ReturnType<typeof buildUserTeams> }> {
   onProgress?.('ai', 'Generating scenario world: teams, injects, objectives, locations...');
   const aiProgress = (msg: string) => onProgress?.('ai', msg);
-  const userTeams = options.teams?.map((t) => ({
+  const userTeams = buildUserTeams(options.teams);
+
+  const phase1Preview = await generateTeamsAndCoreForResearch(
+    {
+      scenario_type: geoResult.parsed.scenario_type,
+      setting: geoResult.parsed.setting,
+      terrain: geoResult.parsed.terrain,
+      location: geoResult.parsed.location,
+      venue_name: geoResult.venueName,
+      original_prompt: options.prompt || undefined,
+      landmarks: geoResult.parsed.landmarks,
+      osm_vicinity: geoResult.osmVicinity,
+      geocode: geoResult.geocodeResult
+        ? {
+            lat: geoResult.geocodeResult.lat,
+            lng: geoResult.geocodeResult.lng,
+            display_name: geoResult.geocodeResult.display_name,
+          }
+        : undefined,
+      complexity_tier: options.complexity_tier || 'full',
+      typeSpec: geoResult.typeSpec,
+      settingSpec: geoResult.settingSpec,
+      terrainSpec: geoResult.terrainSpec,
+      researchContext:
+        geoResult.similarCases.length > 0 || geoResult.areaSummary || geoResult.crowdDynamics
+          ? {
+              area_summary: geoResult.areaSummary || undefined,
+              similar_cases: geoResult.similarCases.length > 0 ? geoResult.similarCases : undefined,
+              crowd_dynamics: geoResult.crowdDynamics || undefined,
+            }
+          : undefined,
+      userTeams,
+      inject_profiles: options.inject_profiles,
+      threat_profile: geoResult.threatProfile,
+    },
+    openAiApiKey,
+    aiProgress,
+  );
+
+  return { phase1Preview, userTeams };
+}
+
+function buildUserTeams(teams?: WarroomTeamInput[]) {
+  return teams?.map((t) => ({
     team_name: t.team_name,
     team_description: t.team_description || '',
     min_participants: t.min_participants ?? 1,
     max_participants: t.max_participants ?? 10,
     is_investigative: (t as unknown as Record<string, unknown>).is_investigative === true,
   }));
+}
 
-  // Run Phase 1 (core + teams) to get the narrative before standards research
-  const { generateTeamsAndCoreForResearch } = await import('./warroomAiService.js');
-  const phase1Preview = await generateTeamsAndCoreForResearch(
-    {
-      scenario_type: parsed.scenario_type,
-      setting: parsed.setting,
-      terrain: parsed.terrain,
-      location: parsed.location,
-      venue_name: venueName,
-      original_prompt: options.prompt || undefined,
-      landmarks: parsed.landmarks,
-      osm_vicinity: osmVicinity,
-      geocode: geocodeResult
-        ? {
-            lat: geocodeResult.lat,
-            lng: geocodeResult.lng,
-            display_name: geocodeResult.display_name,
-          }
-        : undefined,
-      complexity_tier,
-      typeSpec,
-      settingSpec,
-      terrainSpec,
-      researchContext:
-        similarCases.length > 0 || areaSummary || crowdDynamics
-          ? {
-              area_summary: areaSummary || undefined,
-              similar_cases: similarCases.length > 0 ? similarCases : undefined,
-              crowd_dynamics: crowdDynamics || undefined,
-            }
-          : undefined,
-      userTeams,
-      inject_profiles: options.inject_profiles,
-      threat_profile: threatProfile,
-    },
-    openAiApiKey,
-    aiProgress,
-  );
-
-  // Phase C: per-team standards research using the real story + team descriptions
+export async function stageResearchDoctrines(
+  phase1Preview: Phase1Result,
+  geoResult: ParseAndGeocodeResult,
+  userTeams: ReturnType<typeof buildUserTeams>,
+  openAiApiKey: string,
+  onProgress?: WarroomProgressCallback,
+): Promise<DoctrineResearchResult> {
   onProgress?.(
     'standards_research',
     'Researching response standards per team for this scenario...',
   );
+
   let standardsFindings: StandardsFinding[] = [];
   let perTeamDoctrines: Record<string, StandardsFinding[]> = {};
   try {
@@ -475,16 +523,102 @@ export async function generateAndPersistWarroomScenario(
             team_description: t.team_description || undefined,
           }));
 
-    const result = await researchStandardsPerTeam(openAiApiKey, parsed.scenario_type, teamInputs, {
-      title: phase1Preview.scenario.title,
-      description: phase1Preview.scenario.description,
-      briefing: phase1Preview.scenario.briefing,
-    });
+    const result = await researchStandardsPerTeam(
+      openAiApiKey,
+      geoResult.parsed.scenario_type,
+      teamInputs,
+      {
+        title: phase1Preview.scenario.title,
+        description: phase1Preview.scenario.description,
+        briefing: phase1Preview.scenario.briefing,
+      },
+    );
     standardsFindings = result.allFindings;
     perTeamDoctrines = result.teamDoctrines;
   } catch (err) {
     logger.warn({ err }, 'Standards research failed; continuing without');
   }
+
+  const teamNames =
+    userTeams?.map((t) => t.team_name) ?? phase1Preview.teams.map((t) => t.team_name);
+  let teamWorkflows: Record<string, TeamWorkflow> = {};
+  try {
+    teamWorkflows = await researchTeamWorkflows(
+      openAiApiKey,
+      geoResult.parsed.scenario_type,
+      teamNames,
+      {
+        title: phase1Preview.scenario.title,
+        description: phase1Preview.scenario.description,
+        briefing: phase1Preview.scenario.briefing,
+      },
+    );
+  } catch (err) {
+    logger.warn({ err }, 'Team workflow research failed; continuing without');
+  }
+
+  return { standardsFindings, perTeamDoctrines, teamWorkflows };
+}
+
+/**
+ * Generate and persist a War Room scenario.
+ */
+export async function generateAndPersistWarroomScenario(
+  options: WarroomGenerateOptions,
+  openAiApiKey: string,
+  createdBy: string,
+  onProgress?: WarroomProgressCallback,
+): Promise<{ scenarioId: string; payload: WarroomScenarioPayload }> {
+  // Stage 1: Parse prompt, geocode, fetch OSM data, area research, similar cases
+  const geoResult = await stageParseAndGeocode(options, openAiApiKey, onProgress);
+
+  // Stage 2: Generate Phase 1 (teams + narrative)
+  const { phase1Preview, userTeams } = await stageTeamsAndNarrative(
+    geoResult,
+    options,
+    openAiApiKey,
+    onProgress,
+  );
+
+  // Stage 3: Research doctrines & workflows
+  const doctrines = await stageResearchDoctrines(
+    phase1Preview,
+    geoResult,
+    userTeams,
+    openAiApiKey,
+    onProgress,
+  );
+
+  // Stage 4: Full generation
+  return stageGenerateAndPersist(
+    geoResult,
+    phase1Preview,
+    userTeams,
+    doctrines,
+    options,
+    openAiApiKey,
+    createdBy,
+    onProgress,
+  );
+}
+
+/**
+ * Stage 4+5 combined: full AI generation + persistence.
+ * Accepts pre-computed stage results so wizard mode can inject validated data.
+ */
+export async function stageGenerateAndPersist(
+  geoResult: ParseAndGeocodeResult,
+  phase1Preview: Phase1Result,
+  userTeams: ReturnType<typeof buildUserTeams>,
+  doctrines: DoctrineResearchResult,
+  options: WarroomGenerateOptions,
+  openAiApiKey: string,
+  createdBy: string,
+  onProgress?: WarroomProgressCallback,
+): Promise<{ scenarioId: string; payload: WarroomScenarioPayload }> {
+  const { parsed, geocodeResult, areaSummary, similarCases, crowdDynamics } = geoResult;
+  const { standardsFindings, perTeamDoctrines } = doctrines;
+  const aiProgress = (msg: string) => onProgress?.('ai', msg);
 
   const payload = await warroomGenerateScenario(
     {
@@ -492,13 +626,13 @@ export async function generateAndPersistWarroomScenario(
       setting: parsed.setting,
       terrain: parsed.terrain,
       location: parsed.location,
-      venue_name: venueName,
+      venue_name: geoResult.venueName,
       original_prompt: options.prompt || undefined,
       landmarks: parsed.landmarks,
-      osm_vicinity: osmVicinity,
-      osmOpenSpaces,
-      osmBuildings,
-      osmRouteGeometries,
+      osm_vicinity: geoResult.osmVicinity,
+      osmOpenSpaces: geoResult.osmOpenSpaces,
+      osmBuildings: geoResult.osmBuildings,
+      osmRouteGeometries: geoResult.osmRouteGeometries,
       geocode: geocodeResult
         ? {
             lat: geocodeResult.lat,
@@ -506,11 +640,11 @@ export async function generateAndPersistWarroomScenario(
             display_name: geocodeResult.display_name,
           }
         : undefined,
-      complexity_tier,
-      duration_minutes,
-      typeSpec,
-      settingSpec,
-      terrainSpec,
+      complexity_tier: options.complexity_tier || 'full',
+      duration_minutes: options.duration_minutes || 60,
+      typeSpec: geoResult.typeSpec,
+      settingSpec: geoResult.settingSpec,
+      terrainSpec: geoResult.terrainSpec,
       researchContext:
         areaSummary ||
         standardsFindings.length > 0 ||
@@ -529,7 +663,7 @@ export async function generateAndPersistWarroomScenario(
       userTeams,
       phase1Preview,
       inject_profiles: options.inject_profiles,
-      threat_profile: threatProfile,
+      threat_profile: geoResult.threatProfile,
       secondary_devices_count: options.secondary_devices_count,
       real_bombs_count: options.real_bombs_count,
     },
@@ -537,7 +671,7 @@ export async function generateAndPersistWarroomScenario(
     aiProgress,
   );
 
-  // Adversary pursuit decision tree (only for scenarios with has_adversary: true)
+  // Adversary pursuit decision tree
   try {
     const payloadLocations = (payload.locations || []).map((l) => ({
       location_type: l.location_type,
@@ -561,11 +695,11 @@ export async function generateAndPersistWarroomScenario(
         venue_name: parsed.venue_name,
         original_prompt: options.prompt,
         duration_minutes: options.duration_minutes || 60,
-        typeSpec,
-        settingSpec,
-        terrainSpec,
+        typeSpec: geoResult.typeSpec,
+        settingSpec: geoResult.settingSpec,
+        terrainSpec: geoResult.terrainSpec,
         complexity_tier: options.complexity_tier || 'full',
-        threat_profile: threatProfile,
+        threat_profile: geoResult.threatProfile,
       },
       payloadLocations,
       payloadTeamNames,

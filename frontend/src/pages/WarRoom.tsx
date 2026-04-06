@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
@@ -10,6 +10,39 @@ type TeamEntry = {
   min_participants: number;
   max_participants: number;
   is_investigative?: boolean;
+};
+
+type StandardsFinding = {
+  domain: string;
+  source: string;
+  key_points: string[];
+  decision_thresholds?: string;
+};
+
+type TeamWorkflow = {
+  endgame: string;
+  steps: string[];
+  personnel_ratios?: Record<string, string>;
+  sop_checklist?: string[];
+};
+
+type GeocodeData = {
+  lat: number;
+  lng: number;
+  display_name: string;
+};
+
+type OsmPoi = { name: string; lat: number; lng: number; address?: string };
+
+type OsmVicinityData = {
+  hospitals?: OsmPoi[];
+  police?: OsmPoi[];
+  fire_stations?: OsmPoi[];
+};
+
+type WizardDoctrines = {
+  perTeamDoctrines: Record<string, StandardsFinding[]>;
+  teamWorkflows: Record<string, TeamWorkflow>;
 };
 
 const SCENARIO_TYPES = [
@@ -334,13 +367,22 @@ export const WarRoom = () => {
   const [useStructured, setUseStructured] = useState(false);
   const [progressPhase, setProgressPhase] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState<string>('');
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [teams, setTeams] = useState<TeamEntry[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [resolvedScenarioType, setResolvedScenarioType] = useState<string | null>(null);
   const [resolvedWeaponClass, setResolvedWeaponClass] = useState<string | null>(null);
   const [secondaryDevicesCount, setSecondaryDevicesCount] = useState(0);
   const [realBombsCount, setRealBombsCount] = useState(0);
+
+  // Wizard mode
+  const [wizardMode, setWizardMode] = useState(false);
+  const [geocodeData, setGeocodeData] = useState<GeocodeData | null>(null);
+  const [osmVicinity, setOsmVicinity] = useState<OsmVicinityData | null>(null);
+  const [areaSummary, setAreaSummary] = useState<string | null>(null);
+  const [geocodeLoading, setGeocodeLoading] = useState(false);
+  const [doctrines, setDoctrines] = useState<WizardDoctrines | null>(null);
+  const [doctrinesLoading, setDoctrinesLoading] = useState(false);
 
   if (!isTrainer) {
     return (
@@ -466,6 +508,112 @@ export const WarRoom = () => {
     }
   };
 
+  // --- Wizard Step Handlers ---
+
+  const handleGeocodeValidate = useCallback(async () => {
+    setError(null);
+    setGeocodeLoading(true);
+    try {
+      const opts = buildOptions();
+      opts.teams = teams.map((t) => ({
+        team_name: t.team_name,
+        team_description: t.team_description,
+      }));
+      const { data } = await api.warroom.wizardGeocodeValidate(opts);
+      setGeocodeData(data.geocode);
+      setOsmVicinity(data.osmVicinity);
+      setAreaSummary(data.areaSummary);
+      setStep(3);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Geocode validation failed');
+    } finally {
+      setGeocodeLoading(false);
+    }
+  }, [teams, buildOptions]);
+
+  const handleResearchDoctrines = useCallback(async () => {
+    setError(null);
+    setDoctrinesLoading(true);
+    try {
+      const opts = buildOptions();
+      opts.teams = teams.map((t) => ({
+        team_name: t.team_name,
+        team_description: t.team_description,
+      }));
+      const reqBody: Record<string, unknown> = { ...opts };
+      if (geocodeData) {
+        reqBody.geocode_override = {
+          lat: geocodeData.lat,
+          lng: geocodeData.lng,
+          display_name: geocodeData.display_name,
+        };
+      }
+      const { data } = await api.warroom.wizardResearchDoctrines(
+        reqBody as Parameters<typeof api.warroom.wizardResearchDoctrines>[0],
+      );
+      setDoctrines({
+        perTeamDoctrines: data.doctrines.perTeamDoctrines,
+        teamWorkflows: data.doctrines.teamWorkflows,
+      });
+      setStep(4);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Doctrine research failed');
+    } finally {
+      setDoctrinesLoading(false);
+    }
+  }, [teams, buildOptions, geocodeData]);
+
+  const handleWizardGenerate = useCallback(async () => {
+    setError(null);
+    setLoading(true);
+    setProgressPhase(null);
+    setProgressMessage('');
+    setStep(5);
+    try {
+      const options = buildOptions();
+      options.teams = teams.map((t) => ({
+        team_name: t.team_name,
+        team_description: t.team_description,
+        min_participants: t.min_participants,
+        max_participants: t.max_participants,
+        is_investigative: t.is_investigative ?? false,
+      }));
+
+      const wizardOpts: Parameters<typeof api.warroom.wizardGenerate>[0] = {
+        ...options,
+      };
+      if (geocodeData) {
+        wizardOpts.geocode_override = {
+          lat: geocodeData.lat,
+          lng: geocodeData.lng,
+          display_name: geocodeData.display_name,
+        };
+      }
+      if (doctrines) {
+        wizardOpts.validated_doctrines = {
+          perTeamDoctrines: doctrines.perTeamDoctrines,
+          teamWorkflows: doctrines.teamWorkflows,
+        };
+      }
+
+      const result = await api.warroom.wizardGenerate(wizardOpts, (phase, message) => {
+        setProgressPhase(phase);
+        setProgressMessage(message);
+      });
+      if (result.scenarioId) {
+        setProgressPhase('persist');
+        setProgressMessage('Scenario created successfully.');
+        navigate(`/scenarios`);
+      } else {
+        setError('No scenario ID returned');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate scenario');
+    } finally {
+      setLoading(false);
+    }
+  }, [teams, buildOptions, geocodeData, doctrines, navigate]);
+
   const updateTeam = (index: number, field: keyof TeamEntry, value: string | number) => {
     setTeams((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)));
   };
@@ -502,11 +650,29 @@ export const WarRoom = () => {
           </Link>
         </div>
         <div className="military-border p-6 mb-6">
-          <h1 className="text-2xl terminal-text uppercase tracking-wider mb-2">
-            [WAR_ROOM] Scenario Generator
-          </h1>
+          <div className="flex items-center justify-between mb-2">
+            <h1 className="text-2xl terminal-text uppercase tracking-wider">
+              [WAR_ROOM] Scenario Generator
+            </h1>
+            <button
+              onClick={() => {
+                setWizardMode((prev) => !prev);
+                if (step > 2) setStep(2);
+              }}
+              disabled={loading}
+              className={`px-4 py-1.5 text-[10px] terminal-text uppercase tracking-wider border transition-all ${
+                wizardMode
+                  ? 'border-cyan-500 bg-cyan-500/15 text-cyan-300'
+                  : 'border-robotic-yellow/30 text-robotic-yellow/50 hover:border-robotic-yellow/60'
+              }`}
+            >
+              {wizardMode ? '[WIZARD MODE]' : '[QUICK GENERATE]'}
+            </button>
+          </div>
           <p className="text-xs terminal-text text-robotic-yellow/70">
-            Enter a prompt or select parameters. AI will generate a complete, playable scenario.
+            {wizardMode
+              ? 'Wizard mode: validate location, review doctrines, then generate.'
+              : 'Enter a prompt or select parameters. AI will generate a complete, playable scenario.'}
           </p>
         </div>
 
@@ -974,6 +1140,340 @@ export const WarRoom = () => {
           </div>
         )}
 
+        {/* Step 3: Map Validation (wizard only) */}
+        {wizardMode && step === 3 && (
+          <div className="military-border p-6 mb-6">
+            <h3 className="text-lg terminal-text uppercase mb-4">[MAP VALIDATION]</h3>
+            {geocodeLoading ? (
+              <p className="text-sm terminal-text text-robotic-yellow/70">
+                Geocoding location and fetching map data...
+              </p>
+            ) : geocodeData ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs terminal-text text-robotic-yellow/70 mb-1">
+                      RESOLVED LOCATION
+                    </p>
+                    <p className="text-sm terminal-text text-robotic-yellow">
+                      {geocodeData.display_name}
+                    </p>
+                    <p className="text-xs terminal-text text-robotic-yellow/50 mt-1">
+                      {geocodeData.lat.toFixed(6)}, {geocodeData.lng.toFixed(6)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs terminal-text text-robotic-yellow/70 mb-1">
+                      NEARBY FACILITIES
+                    </p>
+                    {osmVicinity ? (
+                      <div className="text-xs terminal-text text-robotic-yellow/80 space-y-1">
+                        <p>Hospitals: {osmVicinity.hospitals?.length ?? 0}</p>
+                        <p>Police: {osmVicinity.police?.length ?? 0}</p>
+                        <p>Fire Stations: {osmVicinity.fire_stations?.length ?? 0}</p>
+                      </div>
+                    ) : (
+                      <p className="text-xs terminal-text text-robotic-yellow/50">
+                        No OSM data available
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {osmVicinity &&
+                  (osmVicinity.hospitals?.length ||
+                    osmVicinity.police?.length ||
+                    osmVicinity.fire_stations?.length) && (
+                    <div className="border border-robotic-yellow/20 p-3 max-h-40 overflow-y-auto">
+                      <p className="text-[10px] terminal-text text-robotic-yellow/50 mb-2 uppercase">
+                        Facility Details
+                      </p>
+                      {[
+                        ...(osmVicinity.hospitals?.map((h) => ({ ...h, type: 'Hospital' })) ?? []),
+                        ...(osmVicinity.police?.map((p) => ({ ...p, type: 'Police' })) ?? []),
+                        ...(osmVicinity.fire_stations?.map((f) => ({ ...f, type: 'Fire' })) ?? []),
+                      ].map((f, i) => (
+                        <div
+                          key={i}
+                          className="text-[10px] terminal-text text-robotic-yellow/70 mb-0.5"
+                        >
+                          [{f.type}] {f.name}
+                          {f.address ? ` — ${f.address}` : ''}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                {areaSummary && (
+                  <div className="border border-robotic-yellow/20 p-3">
+                    <p className="text-[10px] terminal-text text-robotic-yellow/50 mb-2 uppercase">
+                      Area Research Summary
+                    </p>
+                    <div className="text-[10px] terminal-text text-robotic-yellow/70 max-h-60 overflow-y-auto whitespace-pre-wrap">
+                      {areaSummary.slice(0, 3000)}
+                      {areaSummary.length > 3000 ? '...' : ''}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <label className="text-xs terminal-text text-robotic-yellow/70">
+                    Override Lat:
+                    <input
+                      type="number"
+                      step="0.0001"
+                      value={geocodeData.lat}
+                      onChange={(e) =>
+                        setGeocodeData((prev) =>
+                          prev ? { ...prev, lat: parseFloat(e.target.value) || prev.lat } : prev,
+                        )
+                      }
+                      className="ml-2 w-28 px-2 py-1 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow text-xs"
+                    />
+                  </label>
+                  <label className="text-xs terminal-text text-robotic-yellow/70">
+                    Lng:
+                    <input
+                      type="number"
+                      step="0.0001"
+                      value={geocodeData.lng}
+                      onChange={(e) =>
+                        setGeocodeData((prev) =>
+                          prev ? { ...prev, lng: parseFloat(e.target.value) || prev.lng } : prev,
+                        )
+                      }
+                      className="ml-2 w-28 px-2 py-1 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow text-xs"
+                    />
+                  </label>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm terminal-text text-robotic-yellow/50">
+                No location data available. You may proceed without validation.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Step 4: Doctrine Review (wizard only) */}
+        {wizardMode && step === 4 && (
+          <div className="military-border p-6 mb-6">
+            <h3 className="text-lg terminal-text uppercase mb-4">[DOCTRINE & SOP REVIEW]</h3>
+            <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
+              Review and edit the researched doctrines for each team. These will be used as ground
+              truth for evaluating player decisions during the simulation.
+            </p>
+            {doctrinesLoading ? (
+              <p className="text-sm terminal-text text-robotic-yellow/70">
+                Researching doctrines and SOPs per team...
+              </p>
+            ) : doctrines ? (
+              <div className="space-y-4">
+                {Object.entries(doctrines.perTeamDoctrines).map(([teamName, findings]) => (
+                  <div
+                    key={teamName}
+                    className="border border-robotic-yellow/30 bg-black/30 p-4 space-y-3"
+                  >
+                    <h4 className="text-sm terminal-text text-robotic-yellow uppercase tracking-wider">
+                      {teamName}
+                    </h4>
+
+                    {findings.map((finding, fi) => (
+                      <div
+                        key={fi}
+                        className="border border-robotic-yellow/15 p-3 space-y-2 relative"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="text-[10px] terminal-text text-cyan-400/80 uppercase">
+                              {finding.domain}
+                            </span>
+                            <span className="text-[10px] terminal-text text-robotic-yellow/50 ml-2">
+                              Source: {finding.source}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setDoctrines((prev) => {
+                                if (!prev) return prev;
+                                const updated = { ...prev };
+                                updated.perTeamDoctrines = { ...updated.perTeamDoctrines };
+                                updated.perTeamDoctrines[teamName] = [
+                                  ...updated.perTeamDoctrines[teamName],
+                                ];
+                                updated.perTeamDoctrines[teamName].splice(fi, 1);
+                                return updated;
+                              });
+                            }}
+                            className="text-[10px] terminal-text text-robotic-orange hover:text-robotic-orange/80"
+                          >
+                            [DELETE]
+                          </button>
+                        </div>
+                        {finding.key_points.map((kp, ki) => (
+                          <div key={ki} className="flex gap-1 items-start">
+                            <span className="text-robotic-yellow/40 text-[10px] mt-1 shrink-0">
+                              {ki + 1}.
+                            </span>
+                            <textarea
+                              value={kp}
+                              rows={1}
+                              onChange={(e) => {
+                                setDoctrines((prev) => {
+                                  if (!prev) return prev;
+                                  const updated = { ...prev };
+                                  updated.perTeamDoctrines = { ...updated.perTeamDoctrines };
+                                  updated.perTeamDoctrines[teamName] = [
+                                    ...updated.perTeamDoctrines[teamName],
+                                  ];
+                                  const newFinding = {
+                                    ...updated.perTeamDoctrines[teamName][fi],
+                                  };
+                                  newFinding.key_points = [...newFinding.key_points];
+                                  newFinding.key_points[ki] = e.target.value;
+                                  updated.perTeamDoctrines[teamName][fi] = newFinding;
+                                  return updated;
+                                });
+                              }}
+                              className="flex-1 px-2 py-1 bg-black/30 border border-robotic-yellow/20 text-robotic-yellow/80 text-[10px] terminal-text resize-y"
+                            />
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => {
+                            setDoctrines((prev) => {
+                              if (!prev) return prev;
+                              const updated = { ...prev };
+                              updated.perTeamDoctrines = { ...updated.perTeamDoctrines };
+                              updated.perTeamDoctrines[teamName] = [
+                                ...updated.perTeamDoctrines[teamName],
+                              ];
+                              const newFinding = {
+                                ...updated.perTeamDoctrines[teamName][fi],
+                              };
+                              newFinding.key_points = [...newFinding.key_points, ''];
+                              updated.perTeamDoctrines[teamName][fi] = newFinding;
+                              return updated;
+                            });
+                          }}
+                          className="text-[10px] terminal-text text-robotic-yellow/50 hover:text-robotic-yellow"
+                        >
+                          [+ ADD KEY POINT]
+                        </button>
+                      </div>
+                    ))}
+
+                    <button
+                      onClick={() => {
+                        setDoctrines((prev) => {
+                          if (!prev) return prev;
+                          const updated = { ...prev };
+                          updated.perTeamDoctrines = { ...updated.perTeamDoctrines };
+                          updated.perTeamDoctrines[teamName] = [
+                            ...updated.perTeamDoctrines[teamName],
+                            {
+                              domain: 'Custom',
+                              source: 'Trainer-defined',
+                              key_points: [''],
+                            },
+                          ];
+                          return updated;
+                        });
+                      }}
+                      className="text-[10px] terminal-text text-cyan-400/70 hover:text-cyan-300 border border-cyan-500/30 px-3 py-1.5"
+                    >
+                      [+ ADD DOCTRINE FINDING]
+                    </button>
+
+                    {/* Workflow section */}
+                    {doctrines.teamWorkflows[teamName] && (
+                      <div className="border-t border-robotic-yellow/15 pt-3 mt-3">
+                        <p className="text-[10px] terminal-text text-robotic-yellow/50 uppercase mb-2">
+                          Workflow Chain
+                        </p>
+                        <div className="space-y-1">
+                          <div className="text-[10px] terminal-text text-robotic-yellow/70">
+                            <span className="text-robotic-yellow/40">Endgame:</span>{' '}
+                            {doctrines.teamWorkflows[teamName].endgame}
+                          </div>
+                          <div className="text-[10px] terminal-text text-robotic-yellow/70">
+                            <span className="text-robotic-yellow/40">Steps:</span>
+                            <ol className="list-decimal list-inside mt-1 space-y-0.5">
+                              {doctrines.teamWorkflows[teamName].steps.map((s, si) => (
+                                <li key={si}>{s}</li>
+                              ))}
+                            </ol>
+                          </div>
+                          {doctrines.teamWorkflows[teamName].sop_checklist?.length ? (
+                            <div className="text-[10px] terminal-text text-robotic-yellow/70">
+                              <span className="text-robotic-yellow/40">SOP Checklist:</span>
+                              <ul className="list-disc list-inside mt-1 space-y-0.5">
+                                {doctrines.teamWorkflows[teamName].sop_checklist!.map((s, si) => (
+                                  <li key={si}>{s}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm terminal-text text-robotic-yellow/50">
+                No doctrine data available.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Step 5: Wizard Generate Progress (wizard only) */}
+        {wizardMode && step === 5 && loading && (
+          <div className="military-border p-6 mb-6 bg-robotic-gray-300">
+            <h3 className="text-lg terminal-text uppercase mb-4">
+              [WIZARD] Building scenario world
+            </h3>
+            <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
+              Generating with trainer-validated doctrines and confirmed location.
+            </p>
+            <div className="space-y-2">
+              {GENERATION_PHASES.map((phase) => {
+                const phaseIndex = GENERATION_PHASES.findIndex((p) => p.id === phase.id);
+                const currentIndex =
+                  progressPhase !== null
+                    ? GENERATION_PHASES.findIndex((p) => p.id === progressPhase)
+                    : 0;
+                const isDone = phaseIndex >= 0 && currentIndex >= 0 && phaseIndex < currentIndex;
+                const isCurrent =
+                  progressPhase === phase.id || (progressPhase === null && phaseIndex === 0);
+                return (
+                  <div
+                    key={phase.id}
+                    className={`border p-3 font-mono text-xs transition-all ${
+                      isCurrent
+                        ? 'border-robotic-yellow bg-robotic-yellow/10'
+                        : isDone
+                          ? 'border-robotic-green/50 bg-robotic-green/5'
+                          : 'border-robotic-gray-200 text-robotic-yellow/60'
+                    }`}
+                  >
+                    <span className="text-robotic-yellow/90">
+                      {isDone ? '[DONE]' : isCurrent ? '[...]' : '[---]'} {phase.label}
+                    </span>
+                    <span className="text-robotic-yellow/60"> — {phase.desc}</span>
+                    {isCurrent && (
+                      <div className="mt-2 text-robotic-yellow/80 pl-6">
+                        {progressMessage || 'In progress...'}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-4">
           {step === 1 ? (
             <>
@@ -991,7 +1491,7 @@ export const WarRoom = () => {
                 [CANCEL]
               </Link>
             </>
-          ) : (
+          ) : step === 2 ? (
             <>
               <button
                 onClick={() => setStep(1)}
@@ -1000,13 +1500,23 @@ export const WarRoom = () => {
               >
                 [BACK]
               </button>
-              <button
-                onClick={handleGenerate}
-                disabled={loading || teams.length === 0}
-                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? '[GENERATING...] (30–60s)' : '[GENERATE]'}
-              </button>
+              {wizardMode ? (
+                <button
+                  onClick={handleGeocodeValidate}
+                  disabled={loading || geocodeLoading || teams.length === 0}
+                  className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {geocodeLoading ? '[VALIDATING LOCATION...]' : '[NEXT: VALIDATE LOCATION]'}
+                </button>
+              ) : (
+                <button
+                  onClick={handleGenerate}
+                  disabled={loading || teams.length === 0}
+                  className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? '[GENERATING...] (30–60s)' : '[GENERATE]'}
+                </button>
+              )}
               <Link
                 to="/scenarios"
                 className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50 transition-all"
@@ -1014,7 +1524,41 @@ export const WarRoom = () => {
                 [CANCEL]
               </Link>
             </>
-          )}
+          ) : step === 3 ? (
+            <>
+              <button
+                onClick={() => setStep(2)}
+                disabled={loading}
+                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              >
+                [BACK: TEAMS]
+              </button>
+              <button
+                onClick={handleResearchDoctrines}
+                disabled={loading || doctrinesLoading}
+                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {doctrinesLoading ? '[RESEARCHING DOCTRINES...]' : '[NEXT: RESEARCH DOCTRINES]'}
+              </button>
+            </>
+          ) : step === 4 ? (
+            <>
+              <button
+                onClick={() => setStep(3)}
+                disabled={loading}
+                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              >
+                [BACK: MAP]
+              </button>
+              <button
+                onClick={handleWizardGenerate}
+                disabled={loading || !doctrines}
+                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? '[GENERATING...]' : '[APPROVE & GENERATE]'}
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
     </div>

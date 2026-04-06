@@ -949,8 +949,10 @@ Where possible, the selected themes SHOULD intersect and create compound complic
 Each inject must reference the specific scenario title, venue, and narrative details. Be geographically and culturally specific to the venue location.`;
 }
 
+type ResearchContextPurpose = 'injects' | 'hazards';
+
 /**
- * Tiered research context block for inject generation prompts.
+ * Tiered research context block for inject / hazard generation prompts.
  * Tier 1: similar cases exist → use them as creative fuel.
  * Tier 2: no cases but area_summary exists → use venue research.
  * Tier 3: neither → instruct AI to reason from venue/scenario specifics.
@@ -958,28 +960,36 @@ Each inject must reference the specific scenario title, venue, and narrative det
 function buildResearchContextBlock(
   researchContext: WarroomResearchContext | undefined,
   venue: string,
+  purpose: ResearchContextPurpose = 'injects',
 ): string {
   const parts: string[] = [];
 
   const hasCases = researchContext?.similar_cases && researchContext.similar_cases.length > 0;
   const hasArea = !!researchContext?.area_summary;
   const hasCrowd = !!researchContext?.crowd_dynamics;
+  const forHazards = purpose === 'hazards';
 
   if (hasCases) {
     parts.push(
-      `REAL-WORLD PRECEDENTS — study these incidents for inspiration on what complications, intelligence sources, and unexpected developments actually occurred. Adapt them creatively to THIS venue — do not simply copy the same props or assets:\n${similarCasesToPromptBlock(researchContext!.similar_cases!)}`,
+      forHazards
+        ? `REAL-WORLD PRECEDENTS — use these incidents to calibrate secondary hazards, material releases, and realistic complication chains. Adapt to THIS venue; do not copy unrelated details:\n${similarCasesToPromptBlock(researchContext!.similar_cases!)}`
+        : `REAL-WORLD PRECEDENTS — study these incidents for inspiration on what complications, intelligence sources, and unexpected developments actually occurred. Adapt them creatively to THIS venue — do not simply copy the same props or assets:\n${similarCasesToPromptBlock(researchContext!.similar_cases!)}`,
     );
   }
 
   if (hasArea) {
-    const areaTruncated = researchContext!.area_summary!.slice(0, 4000);
+    const areaTruncated = researchContext!.area_summary!.slice(0, 4500);
     if (hasCases) {
       parts.push(
-        `VENUE & AREA RESEARCH (use to ground injects in local reality):\n${areaTruncated}`,
+        forHazards
+          ? `VENUE & AREA RESEARCH (includes establishment type and on-site materials — use for facility-specific hazards):\n${areaTruncated}`
+          : `VENUE & AREA RESEARCH (use to ground injects in local reality):\n${areaTruncated}`,
       );
     } else {
       parts.push(
-        `NO SIMILAR INCIDENTS FOUND — use the area research below as your creative fuel. Consider: what infrastructure exists at this venue? What communities live nearby? What transport links, utilities, or cultural dynamics could create complications?\n\nAREA RESEARCH:\n${areaTruncated}`,
+        forHazards
+          ? `NO SIMILAR INCIDENTS FOUND — rely on the area research below, especially ESTABLISHMENT TYPE & ON-SITE HAZARD CONTEXT. Derive secondary hazards from realistic materials and fixed systems at this facility (medical gases, lab solvents, industrial fuels, etc.):\n\nAREA RESEARCH:\n${areaTruncated}`
+          : `NO SIMILAR INCIDENTS FOUND — use the area research below as your creative fuel. Consider: what infrastructure exists at this venue? What communities live nearby? What transport links, utilities, or cultural dynamics could create complications?\n\nAREA RESEARCH:\n${areaTruncated}`,
       );
     }
   }
@@ -992,7 +1002,9 @@ function buildResearchContextBlock(
 
   if (!hasCases && !hasArea) {
     parts.push(
-      `Reason from the scenario type, venue name ("${venue}"), setting, and terrain. What would ACTUALLY happen at this specific location? Think about local resources, cultural context, and environmental factors unique to this place. Do not fall back on generic crisis management textbook scenarios.`,
+      forHazards
+        ? `No area web-research block is available. Infer the establishment type from the venue name ("${venue}"), setting, terrain, and narrative. Identify hazards typical of that establishment (e.g. oxygen cylinders in hospitals, flammables in labs) plus direct weapon/scenario effects. Avoid generic textbook hazards with no facility anchor.`
+        : `Reason from the scenario type, venue name ("${venue}"), setting, and terrain. What would ACTUALLY happen at this specific location? Think about local resources, cultural context, and environmental factors unique to this place. Do not fall back on generic crisis management textbook scenarios.`,
     );
   }
 
@@ -3313,11 +3325,6 @@ async function generateScenarioHazards(
   const { scenario_type, setting, venue_name, location, researchContext } = input;
   const venue = venue_name || location || setting;
 
-  const similarCasesBlock =
-    researchContext?.similar_cases && researchContext.similar_cases.length > 0
-      ? `\nSIMILAR REAL INCIDENTS (for hazard reference):\n${similarCasesToPromptBlock(researchContext.similar_cases)}`
-      : '';
-
   const incidentSites =
     locations?.filter(
       (l) =>
@@ -3338,8 +3345,11 @@ async function generateScenarioHazards(
     openAiApiKey,
     researchContext?.similar_cases,
   );
+  const hazardResearchBlock = buildResearchContextBlock(researchContext, venue, 'hazards');
   const minHazards = rules?.min_hazards ?? 8;
   const maxHazards = rules?.max_hazards ?? 15;
+  const minEstablishmentLinked =
+    minHazards > 0 ? Math.min(maxHazards, Math.max(1, Math.ceil(minHazards / 3))) : 0;
   const allowedHazardTypes = rules?.allowed_hazards ?? [
     'fire',
     'chemical_spill',
@@ -3361,14 +3371,16 @@ Setting: ${setting}
 ${narrative ? `Narrative: ${narrative.title}\nDescription: ${narrative.description}\nBriefing: ${narrative.briefing || ''}` : ''}
 ${incidentBlock}
 Teams available: ${(teamNames ?? []).join(', ') || 'not specified'}
-${threatBlock}${similarCasesBlock}
+${threatBlock}${hazardResearchBlock}
 ${
   minHazards === 0
     ? `This incident type may produce NO environmental hazards at all. Only generate hazards if the weapon/scenario can physically cause them. It is acceptable to return an empty hazards array.`
-    : `Research the venue and scenario type to identify realistic hazards that would result from this incident. Consider:
-- What materials are at this venue that this weapon could interact with?
-- What REALISTIC damage would a ${threatProfile?.weapon_type || scenario_type} cause?
-- Only include secondary hazards that can physically result from the primary attack method.`
+    : `Identify realistic hazards from this incident. Use the AREA / ESTABLISHMENT research above when present to classify the facility and tie hazards to on-site materials and systems.
+- What establishment type is this (hospital, lab, plant, school, etc.) and what is typically stored or installed there?
+- What materials or fixed systems could the ${threatProfile?.weapon_type || scenario_type} ignite, breach, or compromise?
+- Include secondary hazards that physically follow from the primary event (e.g. blast + lab solvents → fire/toxic smoke; hospital → medical oxygen accelerating fire or cylinder risk).
+- Only include hazards that can physically result from the primary attack method and the described venue.
+${minHazards >= 4 ? `- At least ${minEstablishmentLinked} hazard(s) must explicitly reference establishment-specific materials or building systems named in the research or clearly implied by the venue/narrative (not only generic debris or anonymous "smoke").` : ''}`
 }
 
 Generate ${minHazards}-${maxHazards} hazards. ${minHazards === 0 ? 'Return 0 if the weapon cannot cause environmental hazards.' : 'Each hazard is a DISTINCT danger at a SPECIFIC location.'}
@@ -3404,7 +3416,7 @@ ${minHazards >= 4 ? `- At least ${Math.ceil(minHazards / 2)} immediate hazards (
 - Include venue-specific material detail in properties.fuel_source and venue_material_context
 - Locations must be realistic coordinates near the incident sites`;
 
-  const userPrompt = `Identify all hazards from "${narrative?.title || scenario_type}" at ${venue}. Research what materials and infrastructure exist at this type of venue.`;
+  const userPrompt = `Identify all hazards from "${narrative?.title || scenario_type}" at ${venue}. Classify the establishment type, then list hazards that combine (1) direct effects of the incident and (2) realistic secondary risks from materials and systems typical of that facility.`;
 
   try {
     const parsed = await callOpenAi<{
@@ -3435,8 +3447,12 @@ async function enrichHazardDetail(
   narrative?: { title?: string; description?: string; briefing?: string },
   teamNames?: string[],
 ): Promise<NonNullable<WarroomScenarioPayload['hazards']>[number]> {
-  const { scenario_type, setting, venue_name, location } = input;
+  const { scenario_type, setting, venue_name, location, researchContext } = input;
   const venue = venue_name || location || setting;
+  const areaExcerpt =
+    researchContext?.area_summary && researchContext.area_summary.length > 0
+      ? `\nFacility / area research (excerpt — use for establishment-typical materials and systems):\n${researchContext.area_summary.slice(0, 2200)}`
+      : '';
 
   const hazardContext = `Scenario: ${scenario_type} at ${venue}
 ${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
@@ -3445,7 +3461,8 @@ Location: (${hazard.location_lat}, ${hazard.location_lng}), floor ${hazard.floor
 Size: ${(hazard.properties as Record<string, unknown>).size || 'unknown'}
 Fuel/source: ${(hazard.properties as Record<string, unknown>).fuel_source || 'unknown'}
 Adjacent risks: ${JSON.stringify((hazard.properties as Record<string, unknown>).adjacent_risks || [])}
-Teams available: ${(teamNames ?? []).join(', ') || 'not specified'}`;
+Venue material context: ${String((hazard.properties as Record<string, unknown>).venue_material_context || 'n/a')}
+Teams available: ${(teamNames ?? []).join(', ') || 'not specified'}${areaExcerpt}`;
 
   // Run three focused calls in parallel (zones are now unified per-incident, not per-hazard)
   const [descResult, reqsResult, deteriorationResult] = await Promise.all([
@@ -3952,6 +3969,11 @@ async function generateCasualties(
   const isExplosive = threatProfile?.weapon_class === 'explosive';
   const weaponDesc = threatProfile?.weapon_type || scenario_type;
 
+  const areaContextExcerpt =
+    researchContext?.area_summary && researchContext.area_summary.length > 0
+      ? researchContext.area_summary
+      : undefined;
+
   // --- PHASE 1: Generate victim profiles (no location data) ---
   onProgress?.('Creating victim profiles...');
   const profiles = await generateVictimProfiles(
@@ -3967,6 +3989,7 @@ async function generateCasualties(
     similarCasesBlock,
     narrative,
     openAiApiKey,
+    areaContextExcerpt,
   );
   if (!profiles?.length) return undefined;
 
@@ -4008,6 +4031,7 @@ async function generateVictimProfiles(
   similarCasesBlock: string,
   narrative: { title?: string; description?: string; briefing?: string } | undefined,
   openAiApiKey: string,
+  areaContext?: string,
 ): Promise<VictimProfile[] | null> {
   const triageGuidance = isMelee
     ? `Triage distribution for a melee ${weaponDesc} attack with ${threatProfile?.adversary_count ?? 1} attacker(s):
@@ -4025,13 +4049,26 @@ Do NOT generate trapped casualties or casualties behind fire/debris — a ${weap
 Include some trapped casualties (under_debris, behind_fire) in the 0-328 ft band.`
       : `Triage distribution appropriate for a ${scenarioType}. Generate a realistic mix of severity levels.`;
 
+  const facilityContextBlock = areaContext
+    ? `\nFACILITY-SPECIFIC PATIENT CONTEXT (from area research — use to create location-appropriate victims):
+${areaContext.slice(0, 2500)}
+
+Generate victims appropriate to this facility type. For example:
+- In a hospital: include patients already in beds (post-surgical, ICU, neonatal), staff in scrubs, visitors
+- In a school: include children of appropriate ages, teachers, administrative staff
+- In a lab/university: include researchers, students, people with chemical exposure
+- In a mall/commercial area: include shoppers, retail workers, food court staff, children with parents
+- In an airport: include travelers with luggage, mobility-impaired passengers, airline crew
+Adapt victim demographics and pre-existing conditions to match the venue realistically.\n`
+    : '';
+
   const systemPrompt = `You are a pre-hospital emergency medicine expert creating victim profiles for a crisis training exercise.
 
 Scenario: ${scenarioType} at ${venue}
 ${narrative ? `Narrative: ${narrative.title} — ${narrative.description}` : ''}
 Weapon: ${weaponDesc} (${threatProfile?.weapon_class || 'unknown'})
 Attackers: ${threatProfile?.adversary_count ?? 1}
-${similarCasesBlock}
+${similarCasesBlock}${facilityContextBlock}
 
 You MUST generate EXACTLY ${minCasualties} to ${maxCasualties} individual victim profiles. Each victim is ONE person.
 
