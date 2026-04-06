@@ -966,6 +966,9 @@ function buildResearchContextBlock(
 
   const hasCases = researchContext?.similar_cases && researchContext.similar_cases.length > 0;
   const hasArea = !!researchContext?.area_summary;
+  const hasAreaStructured = !!researchContext?.area_structured;
+  const hasHazardCtx = !!researchContext?.hazard_material_context;
+  const hasSensitive = !!researchContext?.sensitive_infrastructure;
   const hasCrowd = !!researchContext?.crowd_dynamics;
   const forHazards = purpose === 'hazards';
 
@@ -992,6 +995,27 @@ function buildResearchContextBlock(
           : `NO SIMILAR INCIDENTS FOUND — use the area research below as your creative fuel. Consider: what infrastructure exists at this venue? What communities live nearby? What transport links, utilities, or cultural dynamics could create complications?\n\nAREA RESEARCH:\n${areaTruncated}`,
       );
     }
+  }
+
+  if (hasAreaStructured) {
+    const structured = JSON.stringify(researchContext!.area_structured, null, 1).slice(0, 7000);
+    parts.push(
+      forHazards
+        ? `STRUCTURED AREA FACTS (prefer these over free-text when deciding establishment-anchored hazards and constraints):\n${structured}`
+        : `STRUCTURED AREA FACTS (prefer these over free-text for grounded realism):\n${structured}`,
+    );
+  }
+
+  if (hasHazardCtx) {
+    const hz = JSON.stringify(researchContext!.hazard_material_context, null, 1).slice(0, 7000);
+    parts.push(
+      `ESTABLISHMENT MATERIAL RISK REGISTER (use this to invent realistic secondary hazards and cascading effects):\n${hz}`,
+    );
+  }
+
+  if (hasSensitive) {
+    const si = JSON.stringify(researchContext!.sensitive_infrastructure, null, 1).slice(0, 5000);
+    parts.push(`SENSITIVE NEARBY INFRASTRUCTURE (apply operational constraints):\n${si}`);
   }
 
   if (hasCrowd) {
@@ -1215,6 +1239,12 @@ export interface WarroomScenarioPayload {
 
 export interface WarroomResearchContext {
   area_summary?: string;
+  /** Structured extraction of the area research dossier (establishment, materials, utilities, sensitive sites). */
+  area_structured?: import('./warroomResearchService.js').AreaResearchStructured;
+  /** Establishment-anchored material risk register for realistic secondary hazards. */
+  hazard_material_context?: import('./warroomResearchService.js').HazardMaterialInference;
+  /** Sensitive nearby infrastructure and operational impacts. */
+  sensitive_infrastructure?: import('./warroomResearchService.js').SensitiveInfrastructureStructured;
   /** @deprecated use standards_findings instead */
   standards_summary?: string;
   standards_findings?: import('./warroomResearchService.js').StandardsFinding[];
@@ -7587,6 +7617,22 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
     insiderKnowledge.team_doctrines = input.researchContext.team_doctrines;
   } else if (!insiderKnowledge.sector_standards && input.researchContext?.standards_summary) {
     insiderKnowledge.sector_standards = input.researchContext.standards_summary;
+  }
+
+  // Persist structured research artifacts for later inspection and regeneration.
+  if (
+    input.researchContext?.area_structured ||
+    input.researchContext?.hazard_material_context ||
+    input.researchContext?.sensitive_infrastructure
+  ) {
+    const archive: Record<string, unknown> = {};
+    if (input.researchContext.area_structured)
+      archive.area_structured = input.researchContext.area_structured;
+    if (input.researchContext.hazard_material_context)
+      archive.hazard_material_context = input.researchContext.hazard_material_context;
+    if (input.researchContext.sensitive_infrastructure)
+      archive.sensitive_infrastructure = input.researchContext.sensitive_infrastructure;
+    (insiderKnowledge as Record<string, unknown>).research_archive = archive;
   }
   if (phase4c.layout_ground_truth)
     insiderKnowledge.layout_ground_truth = phase4c.layout_ground_truth;

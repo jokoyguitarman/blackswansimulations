@@ -255,6 +255,11 @@ export interface ParseAndGeocodeResult {
   osmBuildings?: OsmBuilding[];
   osmRouteGeometries?: OsmRouteGeometry[];
   areaSummary: string;
+  areaStructured?: import('./warroomResearchService.js').AreaResearchStructured | null;
+  hazardMaterialContext?: import('./warroomResearchService.js').HazardMaterialInference | null;
+  sensitiveInfrastructure?:
+    | import('./warroomResearchService.js').SensitiveInfrastructureStructured
+    | null;
   similarCases: SimilarCase[];
   crowdDynamics: CrowdDynamicsResearch | null;
   typeSpec: Record<string, unknown>;
@@ -426,6 +431,49 @@ export async function stageParseAndGeocode(
       })()
     : '';
 
+  let areaStructured: import('./warroomResearchService.js').AreaResearchStructured | null = null;
+  let hazardMaterialContext: import('./warroomResearchService.js').HazardMaterialInference | null =
+    null;
+  let sensitiveInfrastructure:
+    | import('./warroomResearchService.js').SensitiveInfrastructureStructured
+    | null = null;
+
+  if (parsed.location && areaSummary) {
+    try {
+      onProgress?.(
+        'area_research',
+        'Structuring research (establishment, utilities, sensitive sites)...',
+      );
+      const {
+        extractAreaResearchStructured,
+        inferHazardMaterialContext,
+        extractSensitiveInfrastructureStructured,
+      } = await import('./warroomResearchService.js');
+      const venue = venueName || parsed.location!;
+
+      areaStructured = await extractAreaResearchStructured(
+        openAiApiKey,
+        areaSummary,
+        parsed.location!,
+        venueName,
+      );
+
+      const [hazCtx, sensitive] = await Promise.all([
+        inferHazardMaterialContext(openAiApiKey, areaStructured, parsed.scenario_type, venue),
+        extractSensitiveInfrastructureStructured(
+          openAiApiKey,
+          areaSummary,
+          parsed.location!,
+          venue,
+        ),
+      ]);
+      hazardMaterialContext = hazCtx;
+      sensitiveInfrastructure = sensitive;
+    } catch (err) {
+      logger.warn({ err }, 'Structured research extraction failed; continuing without');
+    }
+  }
+
   return {
     parsed,
     geocodeResult,
@@ -434,6 +482,9 @@ export async function stageParseAndGeocode(
     osmBuildings,
     osmRouteGeometries,
     areaSummary,
+    areaStructured,
+    hazardMaterialContext,
+    sensitiveInfrastructure,
     similarCases,
     crowdDynamics,
     typeSpec,
@@ -479,6 +530,9 @@ export async function stageTeamsAndNarrative(
         geoResult.similarCases.length > 0 || geoResult.areaSummary || geoResult.crowdDynamics
           ? {
               area_summary: geoResult.areaSummary || undefined,
+              area_structured: geoResult.areaStructured ?? undefined,
+              hazard_material_context: geoResult.hazardMaterialContext ?? undefined,
+              sensitive_infrastructure: geoResult.sensitiveInfrastructure ?? undefined,
               similar_cases: geoResult.similarCases.length > 0 ? geoResult.similarCases : undefined,
               crowd_dynamics: geoResult.crowdDynamics || undefined,
             }
@@ -740,6 +794,9 @@ export async function stageGenerateAndPersist(
         Object.keys(perTeamDoctrines).length > 0
           ? {
               area_summary: areaSummary || undefined,
+              area_structured: geoResult.areaStructured ?? undefined,
+              hazard_material_context: geoResult.hazardMaterialContext ?? undefined,
+              sensitive_infrastructure: geoResult.sensitiveInfrastructure ?? undefined,
               standards_findings: standardsFindings.length > 0 ? standardsFindings : undefined,
               team_doctrines:
                 Object.keys(perTeamDoctrines).length > 0 ? perTeamDoctrines : undefined,

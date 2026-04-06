@@ -12,6 +12,82 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 
 const SEARCH_MODEL = 'gpt-4o-search-preview';
 
+export interface AreaResearchStructured {
+  venue_name?: string;
+  location?: string;
+  establishment_types: string[];
+  incident_focus_establishment?: string;
+  access_routes: {
+    primary_roads: Array<{ name: string; notes?: string }>;
+    secondary_roads: Array<{ name: string; notes?: string }>;
+    bottlenecks: Array<{ name: string; notes?: string }>;
+    pedestrian_restrictions?: string[];
+    underground_connections?: string[];
+  };
+  emergency_facilities: {
+    hospitals: Array<{
+      name: string;
+      distance_km?: number;
+      drive_time_min?: number;
+      notes?: string;
+    }>;
+    police: Array<{ name: string; distance_km?: number; notes?: string }>;
+    fire_stations: Array<{ name: string; distance_km?: number; notes?: string }>;
+    ambulance_rally_points?: Array<{ name: string; notes?: string }>;
+  };
+  venue_layout: {
+    description?: string;
+    floors?: string;
+    entries_exits?: string[];
+    adjacent_buildings?: string[];
+    crowd_capacity_notes?: string;
+    cctv_notes?: string;
+  };
+  on_site_materials_and_systems: Array<{
+    category: string;
+    items: string[];
+    why_it_matters?: string;
+  }>;
+  secondary_effects: string[];
+  utilities_and_infrastructure: {
+    power?: string[];
+    gas?: string[];
+    water?: string[];
+    telecoms?: string[];
+    drainage_flood?: string[];
+  };
+  environmental_cultural_context?: string[];
+  operational_constraints?: string[];
+  sensitive_nearby_sites?: Array<{ name: string; type: string; notes?: string }>;
+  summary_for_ui: string;
+}
+
+export interface HazardMaterialInference {
+  establishment_inference: {
+    primary: string;
+    secondary?: string[];
+    confidence: 'low' | 'medium' | 'high';
+    rationale: string[];
+  };
+  venue_material_risks: Array<{
+    hazard_theme: string;
+    plausible_sources: string[];
+    trigger_conditions: string[];
+    secondary_effects: string[];
+    responder_implications: string[];
+  }>;
+}
+
+export interface SensitiveInfrastructureStructured {
+  sites: Array<{
+    name: string;
+    type: string;
+    distance_km?: number;
+    operational_impact: string[];
+  }>;
+  summary_for_ui: string;
+}
+
 export interface SimilarCase {
   name: string;
   summary: string;
@@ -149,6 +225,231 @@ Write 2000-5000 words. Be thorough — this will be used to ground a realistic c
   } catch (err) {
     logger.warn({ err }, 'Area research error');
     return '';
+  }
+}
+
+/**
+ * Extract a structured, JSON-safe representation of the area research dossier.
+ * This is used to avoid "skimping" in downstream generations and to drive
+ * establishment-anchored hazards and sensitive-site constraints.
+ */
+export async function extractAreaResearchStructured(
+  openAiApiKey: string,
+  dossier: string,
+  location: string,
+  venueName?: string,
+): Promise<AreaResearchStructured | null> {
+  const venue = venueName || location;
+  const prompt = `You are an analyst. Convert the following area research dossier into STRICT JSON with the required schema.
+
+Rules:
+- Preserve concrete facts; do not invent.
+- If unknown, use empty arrays/omit optional fields.
+- Keep summary_for_ui to ~15-25 lines max, but information-dense.
+
+SCHEMA (return EXACT keys):
+{
+  "venue_name": "string?",
+  "location": "string?",
+  "establishment_types": ["string"],
+  "incident_focus_establishment": "string?",
+  "access_routes": {
+    "primary_roads": [{ "name": "string", "notes": "string?" }],
+    "secondary_roads": [{ "name": "string", "notes": "string?" }],
+    "bottlenecks": [{ "name": "string", "notes": "string?" }],
+    "pedestrian_restrictions": ["string"]?,
+    "underground_connections": ["string"]?
+  },
+  "emergency_facilities": {
+    "hospitals": [{ "name": "string", "distance_km": 0, "drive_time_min": 0, "notes": "string?" }],
+    "police": [{ "name": "string", "distance_km": 0, "notes": "string?" }],
+    "fire_stations": [{ "name": "string", "distance_km": 0, "notes": "string?" }],
+    "ambulance_rally_points": [{ "name": "string", "notes": "string?" }]?
+  },
+  "venue_layout": {
+    "description": "string?",
+    "floors": "string?",
+    "entries_exits": ["string"]?,
+    "adjacent_buildings": ["string"]?,
+    "crowd_capacity_notes": "string?",
+    "cctv_notes": "string?"
+  },
+  "on_site_materials_and_systems": [
+    { "category": "string", "items": ["string"], "why_it_matters": "string?" }
+  ],
+  "secondary_effects": ["string"],
+  "utilities_and_infrastructure": {
+    "power": ["string"]?,
+    "gas": ["string"]?,
+    "water": ["string"]?,
+    "telecoms": ["string"]?,
+    "drainage_flood": ["string"]?
+  },
+  "environmental_cultural_context": ["string"]?,
+  "operational_constraints": ["string"]?,
+  "sensitive_nearby_sites": [{ "name": "string", "type": "string", "notes": "string?" }]?,
+  "summary_for_ui": "string"
+}
+
+Venue: ${venue}
+Location: ${location}
+
+DOSSIER:
+${dossier.slice(0, 24000)}
+`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 2200,
+        temperature: 0.2,
+      }),
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    const raw = data.choices?.[0]?.message?.content as string | undefined;
+    if (!raw) return null;
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    return JSON.parse(jsonMatch[0]) as AreaResearchStructured;
+  } catch (err) {
+    logger.warn({ err }, 'Area structured extraction failed');
+    return null;
+  }
+}
+
+/**
+ * Infer establishment-anchored hazard material context separately from hazard placement.
+ * This yields a stable "material risk register" that hazard generation can draw from.
+ */
+export async function inferHazardMaterialContext(
+  openAiApiKey: string,
+  area: AreaResearchStructured | null,
+  scenarioType: string,
+  venue: string,
+): Promise<HazardMaterialInference | null> {
+  const prompt = `You are a HazMat and industrial safety analyst supporting crisis simulation design.
+
+Given the venue and structured area research, produce a "material risk register" that:
+- Anchors risks to establishment type, stored goods, and fixed systems
+- Predicts realistic secondary effects from blast/fire/flood/power loss
+- Provides responder implications (PPE, cordons, monitoring, specialized assets)
+
+Return ONLY valid JSON:
+{
+  "establishment_inference": {
+    "primary": "string",
+    "secondary": ["string"]?,
+    "confidence": "low|medium|high",
+    "rationale": ["string"]
+  },
+  "venue_material_risks": [
+    {
+      "hazard_theme": "string",
+      "plausible_sources": ["string"],
+      "trigger_conditions": ["string"],
+      "secondary_effects": ["string"],
+      "responder_implications": ["string"]
+    }
+  ]
+}
+
+Scenario type: ${scenarioType}
+Venue: ${venue}
+Structured area research (may be empty): ${area ? JSON.stringify(area).slice(0, 12000) : '{}'}
+`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1700,
+        temperature: 0.3,
+      }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const raw = data.choices?.[0]?.message?.content as string | undefined;
+    if (!raw) return null;
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    return JSON.parse(jsonMatch[0]) as HazardMaterialInference;
+  } catch (err) {
+    logger.warn({ err }, 'Hazard material context inference failed');
+    return null;
+  }
+}
+
+/**
+ * Extract sensitive nearby infrastructure separately so downstream generation
+ * can apply explicit constraints (hospital surge, school evacuation, utilities).
+ */
+export async function extractSensitiveInfrastructureStructured(
+  openAiApiKey: string,
+  dossier: string,
+  location: string,
+  venue: string,
+): Promise<SensitiveInfrastructureStructured | null> {
+  const prompt = `You are an emergency planning analyst. From the dossier, extract sensitive nearby infrastructure and operational impacts.
+
+Return ONLY valid JSON:
+{
+  "sites": [
+    {
+      "name": "string",
+      "type": "hospital|school|nursing_home|industrial|utilities|government|transit|port|religious|other",
+      "distance_km": 0,
+      "operational_impact": ["string"]
+    }
+  ],
+  "summary_for_ui": "string"
+}
+
+Venue: ${venue}
+Location: ${location}
+
+DOSSIER:
+${dossier.slice(0, 20000)}
+`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1200,
+        temperature: 0.2,
+      }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const raw = data.choices?.[0]?.message?.content as string | undefined;
+    if (!raw) return null;
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    return JSON.parse(jsonMatch[0]) as SensitiveInfrastructureStructured;
+  } catch (err) {
+    logger.warn({ err }, 'Sensitive infrastructure extraction failed');
+    return null;
   }
 }
 
