@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
 import { VoiceMicButton } from '../components/VoiceMicButton';
@@ -390,6 +390,45 @@ export const WarRoom = () => {
   > | null>(null);
   const [deteriorationLoading, setDeteriorationLoading] = useState(false);
 
+  const [searchParams] = useSearchParams();
+  const draftResumeLoadedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const draftParam = searchParams.get('draft');
+    if (!draftParam || !isTrainer) return;
+    if (draftResumeLoadedRef.current === draftParam) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.warroom.wizardDraftGet(draftParam);
+        if (cancelled) return;
+        const sid = typeof data.scenario_id === 'string' ? data.scenario_id : null;
+        const dp = data.deterioration_preview;
+        if (
+          sid &&
+          dp &&
+          typeof dp === 'object' &&
+          dp !== null &&
+          Array.isArray((dp as { enrichedHazards?: unknown }).enrichedHazards)
+        ) {
+          draftResumeLoadedRef.current = draftParam;
+          setWizardDraftId(draftParam);
+          setWizardScenarioId(sid);
+          setDeteriorationPreview(
+            dp as Awaited<ReturnType<typeof api.warroom.wizardDeteriorationPreview>>,
+          );
+          setWizardMode(true);
+          setStep(5);
+        }
+      } catch {
+        // invalid id or network
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, isTrainer]);
+
   if (!isTrainer) {
     return (
       <div className="min-h-screen scanline flex items-center justify-center">
@@ -779,12 +818,24 @@ export const WarRoom = () => {
       >;
       const cascadeNarrative = String(ik.cascade_narrative ?? '');
 
-      setDeteriorationPreview({
+      const previewPayload = {
         enrichedHazards,
         enrichedCasualties,
         spawnPins,
         cascadeNarrative,
-      });
+      };
+      setDeteriorationPreview(previewPayload);
+
+      if (wizardDraftId) {
+        try {
+          await api.warroom.wizardDraftPatch(wizardDraftId, {
+            deterioration_preview: previewPayload,
+            current_step: 5,
+          });
+        } catch {
+          // preview still shown; draft cache is best-effort
+        }
+      }
 
       setStep(5);
     } catch (err) {
