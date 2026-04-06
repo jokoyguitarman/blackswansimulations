@@ -384,6 +384,7 @@ export const WarRoom = () => {
   const [doctrines, setDoctrines] = useState<WizardDoctrines | null>(null);
   const [doctrinesLoading, setDoctrinesLoading] = useState(false);
   const [wizardScenarioId, setWizardScenarioId] = useState<string | null>(null);
+  const [wizardDraftId, setWizardDraftId] = useState<string | null>(null);
   const [deteriorationPreview, setDeteriorationPreview] = useState<Awaited<
     ReturnType<typeof api.warroom.wizardDeteriorationPreview>
   > | null>(null);
@@ -459,15 +460,30 @@ export const WarRoom = () => {
     try {
       const opts = buildOptions();
       const { data } = await api.warroom.suggestTeams(opts);
-      setTeams(
-        data.suggested_teams.map((t: Record<string, unknown>) => ({
-          team_name: t.team_name as string,
-          team_description: (t.team_description as string) || '',
-          min_participants: (t.min_participants as number) ?? 1,
-          max_participants: (t.max_participants as number) ?? 10,
-          is_investigative: (t.is_investigative as boolean) ?? false,
-        })),
-      );
+      const mappedTeams = data.suggested_teams.map((t: Record<string, unknown>) => ({
+        team_name: t.team_name as string,
+        team_description: (t.team_description as string) || '',
+        min_participants: (t.min_participants as number) ?? 1,
+        max_participants: (t.max_participants as number) ?? 10,
+        is_investigative: (t.is_investigative as boolean) ?? false,
+      }));
+      setTeams(mappedTeams);
+      if (wizardMode) {
+        const draftInput = {
+          ...opts,
+          teams: mappedTeams.map((t) => ({
+            team_name: t.team_name,
+            team_description: t.team_description,
+            min_participants: t.min_participants,
+            max_participants: t.max_participants,
+            is_investigative: t.is_investigative ?? false,
+          })),
+        };
+        const { data: draftRes } = await api.warroom.wizardDraftCreate({ input: draftInput });
+        setWizardDraftId(draftRes.draft_id);
+      } else {
+        setWizardDraftId(null);
+      }
       if (data.scenario_type) setResolvedScenarioType(data.scenario_type);
       if (data.threat_profile?.weapon_class)
         setResolvedWeaponClass(data.threat_profile.weapon_class);
@@ -495,11 +511,24 @@ export const WarRoom = () => {
         is_investigative: t.is_investigative ?? false,
       }));
 
-      const result = await api.warroom.generateStream(options, (phase, message) => {
-        setProgressPhase(phase);
-        setProgressMessage(message);
+      const { data: created } = await api.warroom.wizardDraftCreate({
+        input: { ...options },
       });
-      if (result.scenarioId) {
+      const draftId = created.draft_id;
+
+      setProgressPhase('parsing');
+      setProgressMessage('Parsing scenario and location…');
+      await api.warroom.wizardDraftGeocodeValidate(draftId);
+
+      setProgressPhase('standards_research');
+      setProgressMessage('Researching standards and team workflows…');
+      await api.warroom.wizardDraftResearchDoctrines(draftId);
+
+      setProgressPhase('ai');
+      setProgressMessage('Generating full scenario…');
+      const { data: persisted } = await api.warroom.wizardDraftPersist(draftId);
+
+      if (persisted.scenarioId) {
         setProgressPhase('persist');
         setProgressMessage('Scenario created successfully.');
         navigate(`/scenarios`);
@@ -520,11 +549,27 @@ export const WarRoom = () => {
     setGeocodeLoading(true);
     try {
       const opts = buildOptions();
-      opts.teams = teams.map((t) => ({
-        team_name: t.team_name,
-        team_description: t.team_description,
-      }));
-      const { data } = await api.warroom.wizardGeocodeValidate(opts);
+      const inputPayload = {
+        ...opts,
+        teams: teams.map((t) => ({
+          team_name: t.team_name,
+          team_description: t.team_description,
+          min_participants: t.min_participants,
+          max_participants: t.max_participants,
+          is_investigative: t.is_investigative ?? false,
+        })),
+      };
+
+      let draftId = wizardDraftId;
+      if (!draftId) {
+        const { data: created } = await api.warroom.wizardDraftCreate({ input: inputPayload });
+        draftId = created.draft_id;
+        setWizardDraftId(draftId);
+      } else {
+        await api.warroom.wizardDraftPatch(draftId, { input: inputPayload });
+      }
+
+      const { data } = await api.warroom.wizardDraftGeocodeValidate(draftId);
       setGeocodeData(data.geocode);
       setOsmVicinity(data.osmVicinity);
       setAreaSummary(data.areaSummary);
@@ -534,28 +579,36 @@ export const WarRoom = () => {
     } finally {
       setGeocodeLoading(false);
     }
-  }, [teams, buildOptions]);
+  }, [teams, buildOptions, wizardDraftId]);
 
   const handleResearchDoctrines = useCallback(async () => {
     setError(null);
     setDoctrinesLoading(true);
     try {
+      if (!wizardDraftId) {
+        setError('Wizard draft missing. Go back to teams and continue.');
+        return;
+      }
       const opts = buildOptions();
-      opts.teams = teams.map((t) => ({
-        team_name: t.team_name,
-        team_description: t.team_description,
-      }));
-      const reqBody: Record<string, unknown> = { ...opts };
+      const inputPayload: Record<string, unknown> = {
+        ...opts,
+        teams: teams.map((t) => ({
+          team_name: t.team_name,
+          team_description: t.team_description,
+          min_participants: t.min_participants,
+          max_participants: t.max_participants,
+          is_investigative: t.is_investigative ?? false,
+        })),
+      };
       if (geocodeData) {
-        reqBody.geocode_override = {
+        inputPayload.geocode_override = {
           lat: geocodeData.lat,
           lng: geocodeData.lng,
           display_name: geocodeData.display_name,
         };
       }
-      const { data } = await api.warroom.wizardResearchDoctrines(
-        reqBody as Parameters<typeof api.warroom.wizardResearchDoctrines>[0],
-      );
+      await api.warroom.wizardDraftPatch(wizardDraftId, { input: inputPayload });
+      const { data } = await api.warroom.wizardDraftResearchDoctrines(wizardDraftId);
       setDoctrines({
         perTeamDoctrines: data.doctrines.perTeamDoctrines,
         teamWorkflows: data.doctrines.teamWorkflows,
@@ -566,7 +619,7 @@ export const WarRoom = () => {
     } finally {
       setDoctrinesLoading(false);
     }
-  }, [teams, buildOptions, geocodeData]);
+  }, [teams, buildOptions, geocodeData, wizardDraftId]);
 
   const handleDeteriorationPreview = useCallback(async () => {
     setError(null);
@@ -582,37 +635,45 @@ export const WarRoom = () => {
         setProgressMessage('');
         setStep(6);
 
-        const options = buildOptions();
-        options.teams = teams.map((t) => ({
-          team_name: t.team_name,
-          team_description: t.team_description,
-          min_participants: t.min_participants,
-          max_participants: t.max_participants,
-          is_investigative: t.is_investigative ?? false,
-        }));
+        if (!wizardDraftId) {
+          throw new Error('Wizard draft missing. Go back to teams and continue.');
+        }
 
-        const wizardOpts: Parameters<typeof api.warroom.wizardGenerate>[0] = {
+        const options = buildOptions();
+        const inputPayload: Record<string, unknown> = {
           ...options,
+          teams: teams.map((t) => ({
+            team_name: t.team_name,
+            team_description: t.team_description,
+            min_participants: t.min_participants,
+            max_participants: t.max_participants,
+            is_investigative: t.is_investigative ?? false,
+          })),
         };
         if (geocodeData) {
-          wizardOpts.geocode_override = {
+          inputPayload.geocode_override = {
             lat: geocodeData.lat,
             lng: geocodeData.lng,
             display_name: geocodeData.display_name,
           };
         }
-        if (doctrines) {
-          wizardOpts.validated_doctrines = {
-            perTeamDoctrines: doctrines.perTeamDoctrines,
-            teamWorkflows: doctrines.teamWorkflows,
-          };
-        }
 
-        const created = await api.warroom.wizardGenerate(wizardOpts, (phase, message) => {
-          setProgressPhase(phase);
-          setProgressMessage(message);
+        await api.warroom.wizardDraftPatch(wizardDraftId, {
+          input: inputPayload,
+          ...(doctrines
+            ? {
+                validated_doctrines: {
+                  perTeamDoctrines: doctrines.perTeamDoctrines,
+                  teamWorkflows: doctrines.teamWorkflows,
+                },
+              }
+            : {}),
         });
-        scenarioId = created.scenarioId;
+
+        setProgressPhase('ai');
+        setProgressMessage('Generating scenario and saving to database…');
+        const { data: persisted } = await api.warroom.wizardDraftPersist(wizardDraftId);
+        scenarioId = persisted.scenarioId;
         if (!scenarioId) throw new Error('No scenario ID returned');
         setWizardScenarioId(scenarioId);
       }
@@ -732,7 +793,7 @@ export const WarRoom = () => {
       setDeteriorationLoading(false);
       setLoading(false);
     }
-  }, [wizardScenarioId, teams, buildOptions, geocodeData, doctrines]);
+  }, [wizardScenarioId, wizardDraftId, teams, buildOptions, geocodeData, doctrines]);
 
   const updateTeam = (index: number, field: keyof TeamEntry, value: string | number) => {
     setTeams((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)));
@@ -776,6 +837,7 @@ export const WarRoom = () => {
             </h1>
             <button
               onClick={() => {
+                if (wizardMode) setWizardDraftId(null);
                 setWizardMode((prev) => !prev);
                 if (step > 2) setStep(2);
               }}
@@ -1217,11 +1279,14 @@ export const WarRoom = () => {
         {loading && (
           <div className="military-border p-6 mb-6 bg-robotic-gray-300">
             <h3 className="text-lg terminal-text uppercase mb-4">
-              [BACKEND] Building scenario world
+              {wizardMode && step === 6
+                ? '[WIZARD] Building scenario world'
+                : '[BACKEND] Building scenario world'}
             </h3>
             <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
-              Creating a playable scenario with multiple layers: teams, injects, objectives,
-              locations, environmental seeds, and real-world facility data.
+              {wizardMode && step === 6
+                ? 'Generating with trainer-validated doctrines and confirmed location.'
+                : 'Creating a playable scenario with multiple layers: teams, injects, objectives, locations, environmental seeds, and real-world facility data.'}
             </p>
             <div className="space-y-2">
               {GENERATION_PHASES.map((phase) => {
@@ -1697,52 +1762,6 @@ export const WarRoom = () => {
           </div>
         )}
 
-        {/* Step 6: Wizard Generate Progress (wizard only) */}
-        {wizardMode && step === 6 && loading && (
-          <div className="military-border p-6 mb-6 bg-robotic-gray-300">
-            <h3 className="text-lg terminal-text uppercase mb-4">
-              [WIZARD] Building scenario world
-            </h3>
-            <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
-              Generating with trainer-validated doctrines and confirmed location.
-            </p>
-            <div className="space-y-2">
-              {GENERATION_PHASES.map((phase) => {
-                const phaseIndex = GENERATION_PHASES.findIndex((p) => p.id === phase.id);
-                const currentIndex =
-                  progressPhase !== null
-                    ? GENERATION_PHASES.findIndex((p) => p.id === progressPhase)
-                    : 0;
-                const isDone = phaseIndex >= 0 && currentIndex >= 0 && phaseIndex < currentIndex;
-                const isCurrent =
-                  progressPhase === phase.id || (progressPhase === null && phaseIndex === 0);
-                return (
-                  <div
-                    key={phase.id}
-                    className={`border p-3 font-mono text-xs transition-all ${
-                      isCurrent
-                        ? 'border-robotic-yellow bg-robotic-yellow/10'
-                        : isDone
-                          ? 'border-robotic-green/50 bg-robotic-green/5'
-                          : 'border-robotic-gray-200 text-robotic-yellow/60'
-                    }`}
-                  >
-                    <span className="text-robotic-yellow/90">
-                      {isDone ? '[DONE]' : isCurrent ? '[...]' : '[---]'} {phase.label}
-                    </span>
-                    <span className="text-robotic-yellow/60"> — {phase.desc}</span>
-                    {isCurrent && (
-                      <div className="mt-2 text-robotic-yellow/80 pl-6">
-                        {progressMessage || 'In progress...'}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         <div className="flex gap-4">
           {step === 1 ? (
             <>
@@ -1763,7 +1782,10 @@ export const WarRoom = () => {
           ) : step === 2 ? (
             <>
               <button
-                onClick={() => setStep(1)}
+                onClick={() => {
+                  setWizardDraftId(null);
+                  setStep(1);
+                }}
                 disabled={loading}
                 className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
               >

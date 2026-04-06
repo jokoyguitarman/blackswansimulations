@@ -548,7 +548,7 @@ export async function stageTeamsAndNarrative(
   return { phase1Preview, userTeams };
 }
 
-function buildUserTeams(teams?: WarroomTeamInput[]) {
+export function buildUserTeams(teams?: WarroomTeamInput[]) {
   return teams?.map((t) => ({
     team_name: t.team_name,
     team_description: t.team_description || '',

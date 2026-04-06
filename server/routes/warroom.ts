@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
+import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import {
   generateAndPersistWarroomScenario,
   suggestWarroomTeams,
@@ -10,9 +11,27 @@ import {
   stageTeamsAndNarrative,
   stageResearchDoctrines,
   stageGenerateAndPersist,
+  buildUserTeams,
   type WarroomProgressPhase,
   type DoctrineResearchResult,
+  type ParseAndGeocodeResult,
+  type WarroomTeamInput,
 } from '../services/warroomService.js';
+
+function applyWizardGeocodeOverride(
+  geoResult: ParseAndGeocodeResult,
+  body: Record<string, unknown>,
+): void {
+  const o = body.geocode_override as
+    | { lat: number; lng: number; display_name?: string }
+    | undefined;
+  if (!o || typeof o.lat !== 'number' || typeof o.lng !== 'number') return;
+  geoResult.geocodeResult = {
+    lat: o.lat,
+    lng: o.lng,
+    display_name: o.display_name || geoResult.venueName,
+  };
+}
 import { env } from '../env.js';
 
 const router = Router();
@@ -369,6 +388,389 @@ router.post(
 // ---------------------------------------------------------------------------
 // Wizard Mode Endpoints (multi-step human-in-the-loop generation)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Wizard Drafts (DB-backed, resumable)
+// ---------------------------------------------------------------------------
+
+const wizardDraftCreateSchema = z.object({
+  body: z.object({
+    input: z.record(z.string(), z.unknown()).default({}),
+  }),
+});
+
+router.post(
+  ['/wizard/drafts', '/wizard/drafts/'],
+  requireAuth,
+  validate(wizardDraftCreateSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only trainers can use the War Room' });
+      }
+
+      const { input } = req.body as { input: Record<string, unknown> };
+      const { data, error } = await supabaseAdmin
+        .from('warroom_wizard_drafts')
+        .insert({
+          created_by: user.id,
+          status: 'draft',
+          current_step: 1,
+          input: input ?? {},
+        })
+        .select('id')
+        .single();
+
+      if (error || !data) {
+        logger.error({ error }, 'Failed to create wizard draft');
+        return res.status(500).json({ error: 'Failed to create wizard draft' });
+      }
+
+      return res.json({ data: { draft_id: data.id } });
+    } catch (err) {
+      const error = err as Error;
+      logger.error({ error: error.message }, 'Error in POST /warroom/wizard/drafts');
+      return res.status(500).json({ error: error.message || 'Draft creation failed' });
+    }
+  },
+);
+
+router.get(
+  ['/wizard/drafts/:id', '/wizard/drafts/:id/'],
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only trainers can use the War Room' });
+      }
+      const draftId = req.params.id;
+      const { data, error } = await supabaseAdmin
+        .from('warroom_wizard_drafts')
+        .select('*')
+        .eq('id', draftId)
+        .single();
+      if (error || !data) return res.status(404).json({ error: 'Draft not found' });
+
+      // Basic access control: creator or admin
+      if (data.created_by && data.created_by !== user.id && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      return res.json({ data });
+    } catch (err) {
+      const error = err as Error;
+      logger.error({ error: error.message }, 'Error in GET /warroom/wizard/drafts/:id');
+      return res.status(500).json({ error: error.message || 'Draft fetch failed' });
+    }
+  },
+);
+
+const wizardDraftPatchSchema = z.object({
+  body: z.object({
+    status: z.string().optional(),
+    current_step: z.number().int().min(1).max(10).optional(),
+    input: z.record(z.string(), z.unknown()).optional(),
+    validated_doctrines: z.record(z.string(), z.unknown()).optional(),
+  }),
+});
+
+router.patch(
+  ['/wizard/drafts/:id', '/wizard/drafts/:id/'],
+  requireAuth,
+  validate(wizardDraftPatchSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only trainers can use the War Room' });
+      }
+      const draftId = req.params.id;
+
+      const { data: draft, error: fetchErr } = await supabaseAdmin
+        .from('warroom_wizard_drafts')
+        .select('id, created_by, input')
+        .eq('id', draftId)
+        .single();
+      if (fetchErr || !draft) return res.status(404).json({ error: 'Draft not found' });
+      if (draft.created_by && draft.created_by !== user.id && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const patch = req.body as Record<string, unknown>;
+      const updatePayload: Record<string, unknown> = {};
+      if (typeof patch.status === 'string') updatePayload.status = patch.status;
+      if (typeof patch.current_step === 'number') updatePayload.current_step = patch.current_step;
+      if (patch.input && typeof patch.input === 'object') {
+        updatePayload.input = {
+          ...(draft.input ?? {}),
+          ...(patch.input as Record<string, unknown>),
+        };
+      }
+      if (patch.validated_doctrines && typeof patch.validated_doctrines === 'object') {
+        updatePayload.validated_doctrines = patch.validated_doctrines;
+      }
+
+      const { data: updated, error: upErr } = await supabaseAdmin
+        .from('warroom_wizard_drafts')
+        .update(updatePayload)
+        .eq('id', draftId)
+        .select('*')
+        .single();
+      if (upErr || !updated) return res.status(500).json({ error: 'Failed to update draft' });
+      return res.json({ data: updated });
+    } catch (err) {
+      const error = err as Error;
+      logger.error({ error: error.message }, 'Error in PATCH /warroom/wizard/drafts/:id');
+      return res.status(500).json({ error: error.message || 'Draft update failed' });
+    }
+  },
+);
+
+router.post(
+  ['/wizard/drafts/:id/geocode-validate', '/wizard/drafts/:id/geocode-validate/'],
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only trainers can use the War Room' });
+      }
+      if (!env.openAiApiKey)
+        return res.status(500).json({ error: 'OpenAI API key not configured' });
+
+      const draftId = req.params.id;
+      const { data: draft, error: fetchErr } = await supabaseAdmin
+        .from('warroom_wizard_drafts')
+        .select('id, created_by, input')
+        .eq('id', draftId)
+        .single();
+      if (fetchErr || !draft) return res.status(404).json({ error: 'Draft not found' });
+      if (draft.created_by && draft.created_by !== user.id && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const input = (draft.input ?? {}) as Record<string, unknown>;
+      const result = await stageParseAndGeocode(input, env.openAiApiKey);
+      applyWizardGeocodeOverride(result, input);
+
+      const { error: upErr } = await supabaseAdmin
+        .from('warroom_wizard_drafts')
+        .update({
+          geo_result: result as unknown,
+          geocode_result: result.geocodeResult as unknown,
+          osm_vicinity: (result.osmVicinity ?? null) as unknown,
+          area_dossier: result.areaSummary || null,
+          research_archive: {
+            area_structured: (result as unknown as Record<string, unknown>).areaStructured ?? null,
+            hazard_material_context:
+              (result as unknown as Record<string, unknown>).hazardMaterialContext ?? null,
+            sensitive_infrastructure:
+              (result as unknown as Record<string, unknown>).sensitiveInfrastructure ?? null,
+          },
+          current_step: 2,
+        })
+        .eq('id', draftId);
+      if (upErr) {
+        logger.error({ error: upErr }, 'Failed to update draft with geocode results');
+      }
+
+      return res.json({
+        data: {
+          draft_id: draftId,
+          parsed: {
+            scenario_type: result.parsed.scenario_type,
+            setting: result.parsed.setting,
+            terrain: result.parsed.terrain,
+            location: result.parsed.location,
+            venue_name: result.parsed.venue_name,
+            landmarks: result.parsed.landmarks,
+          },
+          geocode: result.geocodeResult,
+          osmVicinity: result.osmVicinity ?? null,
+          areaSummary: result.areaSummary || null,
+          venueName: result.venueName,
+          researchArchive: {
+            area_structured: (result as unknown as Record<string, unknown>).areaStructured ?? null,
+            hazard_material_context:
+              (result as unknown as Record<string, unknown>).hazardMaterialContext ?? null,
+            sensitive_infrastructure:
+              (result as unknown as Record<string, unknown>).sensitiveInfrastructure ?? null,
+          },
+        },
+      });
+    } catch (err) {
+      const error = err as Error;
+      logger.error(
+        { error: error.message },
+        'Error in POST /warroom/wizard/drafts/:id/geocode-validate',
+      );
+      return res.status(500).json({ error: error.message || 'Geocode validation failed' });
+    }
+  },
+);
+
+router.post(
+  ['/wizard/drafts/:id/research-doctrines', '/wizard/drafts/:id/research-doctrines/'],
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only trainers can use the War Room' });
+      }
+      if (!env.openAiApiKey)
+        return res.status(500).json({ error: 'OpenAI API key not configured' });
+
+      const draftId = req.params.id;
+      const { data: draft, error: fetchErr } = await supabaseAdmin
+        .from('warroom_wizard_drafts')
+        .select('id, created_by, input, geo_result')
+        .eq('id', draftId)
+        .single();
+      if (fetchErr || !draft) return res.status(404).json({ error: 'Draft not found' });
+      if (draft.created_by && draft.created_by !== user.id && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      if (!draft.geo_result)
+        return res
+          .status(400)
+          .json({ error: 'Draft is missing geo_result; run geocode-validate first' });
+
+      const geoResult = structuredClone(draft.geo_result) as unknown as ParseAndGeocodeResult;
+      const input = (draft.input ?? {}) as Record<string, unknown>;
+      applyWizardGeocodeOverride(geoResult, input);
+
+      const { phase1Preview, userTeams } = await stageTeamsAndNarrative(
+        geoResult as unknown as Parameters<typeof stageTeamsAndNarrative>[0],
+        input as unknown as Parameters<typeof stageTeamsAndNarrative>[1],
+        env.openAiApiKey,
+      );
+
+      const doctrines = await stageResearchDoctrines(
+        phase1Preview,
+        geoResult as unknown as Parameters<typeof stageResearchDoctrines>[1],
+        userTeams,
+        env.openAiApiKey,
+      );
+
+      await supabaseAdmin
+        .from('warroom_wizard_drafts')
+        .update({
+          phase1_preview: phase1Preview as unknown,
+          doctrines: {
+            standardsFindings: doctrines.standardsFindings,
+            perTeamDoctrines: doctrines.perTeamDoctrines,
+            teamWorkflows: doctrines.teamWorkflows,
+          },
+          current_step: 3,
+        })
+        .eq('id', draftId);
+
+      return res.json({
+        data: {
+          draft_id: draftId,
+          phase1Preview,
+          doctrines: {
+            standardsFindings: doctrines.standardsFindings,
+            perTeamDoctrines: doctrines.perTeamDoctrines,
+            teamWorkflows: doctrines.teamWorkflows,
+          },
+          geocode: (geoResult as unknown as Record<string, unknown>).geocodeResult ?? null,
+          areaSummary: (geoResult as unknown as Record<string, unknown>).areaSummary ?? null,
+        },
+      });
+    } catch (err) {
+      const error = err as Error;
+      logger.error(
+        { error: error.message },
+        'Error in POST /warroom/wizard/drafts/:id/research-doctrines',
+      );
+      return res.status(500).json({ error: error.message || 'Doctrine research failed' });
+    }
+  },
+);
+
+// Persist scenario from a draft in one shot (used by Quick Generate and Wizard finalization)
+router.post(
+  ['/wizard/drafts/:id/persist', '/wizard/drafts/:id/persist/'],
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only trainers can use the War Room' });
+      }
+      if (!env.openAiApiKey)
+        return res.status(500).json({ error: 'OpenAI API key not configured' });
+
+      const draftId = req.params.id;
+      const { data: draft, error: fetchErr } = await supabaseAdmin
+        .from('warroom_wizard_drafts')
+        .select(
+          'id, created_by, input, geo_result, phase1_preview, doctrines, validated_doctrines, scenario_id',
+        )
+        .eq('id', draftId)
+        .single();
+      if (fetchErr || !draft) return res.status(404).json({ error: 'Draft not found' });
+      if (draft.created_by && draft.created_by !== user.id && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      if (draft.scenario_id) {
+        return res.json({ data: { scenarioId: draft.scenario_id, draft_id: draftId } });
+      }
+      if (!draft.geo_result) return res.status(400).json({ error: 'Draft is missing geo_result' });
+      if (!draft.phase1_preview)
+        return res.status(400).json({ error: 'Draft is missing phase1_preview' });
+      if (!draft.doctrines) return res.status(400).json({ error: 'Draft is missing doctrines' });
+
+      const geoResult = structuredClone(draft.geo_result) as unknown as ParseAndGeocodeResult;
+      const phase1Preview = draft.phase1_preview as unknown as Parameters<
+        typeof stageGenerateAndPersist
+      >[1];
+      const input = (draft.input ?? {}) as Record<string, unknown>;
+      applyWizardGeocodeOverride(geoResult, input);
+
+      const userTeams = buildUserTeams(input.teams as WarroomTeamInput[] | undefined);
+
+      const baseDoc = (draft.doctrines ?? {}) as Record<string, unknown>;
+      const valDoc = (draft.validated_doctrines ?? null) as Record<string, unknown> | null;
+      const doctrines = {
+        standardsFindings: (valDoc?.standardsFindings ??
+          baseDoc.standardsFindings ??
+          []) as DoctrineResearchResult['standardsFindings'],
+        perTeamDoctrines: (valDoc?.perTeamDoctrines ??
+          baseDoc.perTeamDoctrines ??
+          {}) as DoctrineResearchResult['perTeamDoctrines'],
+        teamWorkflows: (valDoc?.teamWorkflows ??
+          baseDoc.teamWorkflows ??
+          {}) as DoctrineResearchResult['teamWorkflows'],
+      };
+
+      const { scenarioId } = await stageGenerateAndPersist(
+        geoResult,
+        phase1Preview,
+        userTeams as Parameters<typeof stageGenerateAndPersist>[2],
+        doctrines,
+        input as unknown as Parameters<typeof stageGenerateAndPersist>[4],
+        env.openAiApiKey,
+        user.id,
+      );
+
+      await supabaseAdmin
+        .from('warroom_wizard_drafts')
+        .update({ scenario_id: scenarioId, status: 'persisted', current_step: 6 })
+        .eq('id', draftId);
+
+      return res.json({ data: { scenarioId, draft_id: draftId } });
+    } catch (err) {
+      const error = err as Error;
+      logger.error({ error: error.message }, 'Error in POST /warroom/wizard/drafts/:id/persist');
+      return res.status(500).json({ error: error.message || 'Persist failed' });
+    }
+  },
+);
 
 const wizardGeocodeSchema = z.object({
   body: z.object({

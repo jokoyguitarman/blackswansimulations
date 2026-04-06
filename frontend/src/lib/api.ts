@@ -1540,8 +1540,147 @@ export const api = {
           }
         }
       }
+      if (!result && buffer.trim()) {
+        try {
+          const obj = JSON.parse(buffer) as {
+            type: string;
+            data?: { scenarioId: string };
+            error?: string;
+          };
+          if (obj.type === 'done' && obj.data?.scenarioId)
+            result = { scenarioId: obj.data.scenarioId };
+          if (obj.type === 'error') throw new Error(obj.error || 'Generation failed');
+        } catch (e) {
+          if (!(e instanceof SyntaxError)) throw e;
+        }
+      }
       if (!result) throw new Error('No scenario ID returned');
       return result;
+    },
+
+    wizardDraftCreate: async (body: { input?: Record<string, unknown> }) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { draft_id: string } }>(
+        await fetch(apiUrl('/api/warroom/wizard/drafts'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        }),
+      );
+    },
+
+    wizardDraftGet: async (draftId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/warroom/wizard/drafts/${draftId}`), { headers }),
+      );
+    },
+
+    wizardDraftPatch: async (
+      draftId: string,
+      body: {
+        status?: string;
+        current_step?: number;
+        input?: Record<string, unknown>;
+        validated_doctrines?: Record<string, unknown>;
+      },
+    ) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/warroom/wizard/drafts/${draftId}`), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(body),
+        }),
+      );
+    },
+
+    wizardDraftGeocodeValidate: async (draftId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: {
+          draft_id: string;
+          parsed: {
+            scenario_type: string;
+            setting: string;
+            terrain: string;
+            location: string | null;
+            venue_name?: string;
+            landmarks?: string[];
+          };
+          geocode: { lat: number; lng: number; display_name: string } | null;
+          osmVicinity: {
+            hospitals?: Array<{ name: string; lat: number; lng: number; address?: string }>;
+            police?: Array<{ name: string; lat: number; lng: number; address?: string }>;
+            fire_stations?: Array<{ name: string; lat: number; lng: number; address?: string }>;
+          } | null;
+          areaSummary: string | null;
+          venueName: string;
+          researchArchive?: Record<string, unknown>;
+        };
+      }>(
+        await fetch(apiUrl(`/api/warroom/wizard/drafts/${draftId}/geocode-validate`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
+
+    wizardDraftResearchDoctrines: async (draftId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: {
+          draft_id: string;
+          phase1Preview: {
+            scenario: { title: string; description: string; briefing: string };
+            teams: Array<{ team_name: string; team_description?: string }>;
+            objectives: unknown[];
+          };
+          doctrines: {
+            standardsFindings: Array<{
+              domain: string;
+              source: string;
+              key_points: string[];
+              decision_thresholds?: string;
+            }>;
+            perTeamDoctrines: Record<
+              string,
+              Array<{
+                domain: string;
+                source: string;
+                key_points: string[];
+                decision_thresholds?: string;
+              }>
+            >;
+            teamWorkflows: Record<
+              string,
+              {
+                endgame: string;
+                steps: string[];
+                personnel_ratios?: Record<string, string>;
+                sop_checklist?: string[];
+              }
+            >;
+          };
+          geocode: { lat: number; lng: number; display_name: string } | null;
+          areaSummary: string | null;
+        };
+      }>(
+        await fetch(apiUrl(`/api/warroom/wizard/drafts/${draftId}/research-doctrines`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
+
+    wizardDraftPersist: async (draftId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { scenarioId: string; draft_id: string } }>(
+        await fetch(apiUrl(`/api/warroom/wizard/drafts/${draftId}/persist`), {
+          method: 'POST',
+          headers,
+        }),
+      );
     },
 
     wizardGeocodeValidate: async (options: {
@@ -1571,6 +1710,7 @@ export const api = {
           } | null;
           areaSummary: string | null;
           venueName: string;
+          geoCache?: Record<string, unknown>;
         };
       }>(
         await fetch(apiUrl('/api/warroom/wizard/geocode-validate'), {
@@ -1591,6 +1731,7 @@ export const api = {
       inject_profiles?: string[];
       teams?: Array<{ team_name: string; team_description?: string }>;
       geocode_override?: { lat: number; lng: number; display_name?: string };
+      geo_cache?: Record<string, unknown>;
     }) => {
       const headers = await getAuthHeaders();
       return handleResponse<{
@@ -1658,6 +1799,7 @@ export const api = {
           max_participants?: number;
         }>;
         geocode_override?: { lat: number; lng: number; display_name?: string };
+        geo_cache?: Record<string, unknown>;
         validated_doctrines?: {
           perTeamDoctrines: Record<
             string,
@@ -1718,6 +1860,21 @@ export const api = {
             if (e instanceof SyntaxError) continue;
             throw e;
           }
+        }
+      }
+      // Try to parse any remaining buffered line (in case stream ends without trailing newline)
+      if (!result && buffer.trim()) {
+        try {
+          const obj = JSON.parse(buffer) as {
+            type: string;
+            data?: { scenarioId: string };
+            error?: string;
+          };
+          if (obj.type === 'done' && obj.data?.scenarioId)
+            result = { scenarioId: obj.data.scenarioId };
+          if (obj.type === 'error') throw new Error(obj.error || 'Generation failed');
+        } catch {
+          // ignore
         }
       }
       if (!result) throw new Error('No scenario ID returned');
