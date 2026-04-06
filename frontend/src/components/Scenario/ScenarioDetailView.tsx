@@ -522,6 +522,41 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                 )}
                 {ik?.custom_facts && ik.custom_facts.length > 0 ? (
                   <div className="space-y-3">
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setCustomFactsLoading(true);
+                          setCustomFactsMsg(null);
+                          try {
+                            const res = await api.scenarios.retryCustomFacts(scenarioId, {
+                              force: true,
+                            });
+                            setCustomFactsMsg(
+                              res.message ||
+                                (res.ok
+                                  ? `Regenerated ${res.facts_count ?? 0} custom facts`
+                                  : res.error) ||
+                                'Done',
+                            );
+                            const scenRes = await api.scenarios.get(scenarioId);
+                            setScenario(scenRes.data as ScenarioFull);
+                          } catch (err) {
+                            setCustomFactsMsg(
+                              err instanceof Error
+                                ? err.message
+                                : 'Failed to regenerate custom facts',
+                            );
+                          } finally {
+                            setCustomFactsLoading(false);
+                          }
+                        }}
+                        disabled={customFactsLoading}
+                        className="px-3 py-1 text-xs terminal-text bg-robotic-yellow/10 hover:bg-robotic-yellow/20 text-robotic-yellow rounded border border-robotic-yellow/40 disabled:opacity-50"
+                      >
+                        {customFactsLoading ? 'REGENERATING…' : 'REGENERATE CUSTOM FACTS'}
+                      </button>
+                    </div>
                     {ik.custom_facts.map((fact, i) => (
                       <div key={i} className="military-border p-3">
                         <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-1">
@@ -529,7 +564,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                         </div>
                         <p className="text-sm terminal-text">{fact.summary}</p>
                         {fact.detail && (
-                          <p className="text-xs terminal-text text-robotic-yellow/60 mt-1">
+                          <p className="text-xs terminal-text text-robotic-yellow/60 mt-1 whitespace-pre-wrap">
                             {fact.detail}
                           </p>
                         )}

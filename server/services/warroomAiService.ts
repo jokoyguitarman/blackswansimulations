@@ -5236,7 +5236,7 @@ Return ONLY valid JSON with these keys:
     { "area_id": "string", "label": "string — area name specific to this ${scenario_type}", "capacity": number, "area_m2": number, "hazards": ["string — hazards relevant to this scenario type"], "vehicle_access": boolean, "restricted_access": boolean }
   ],
   "custom_facts": [
-    { "topic": "string", "summary": "string", "detail": "string (optional)" }
+    { "topic": "string", "summary": "string — 1–2 sentences", "detail": "string — REQUIRED: 3–8 sentences with concrete, trainer-usable specifics (materials, processes, exposure routes, secondary hazards). When chemicals or confined spaces apply, ground in realistic terms (e.g. flammable range / LEL context, IDLH-style oxygen displacement or toxic exposure concerns, oxidizer–fuel pairings, dust explosion sensitizers) without inventing numeric thresholds unless they are widely known for named substances." }
   ],
   "baseline_escalation_factors": [
     { "id": "string", "name": "string", "description": "string", "severity": "critical|high|medium" }
@@ -5246,7 +5246,7 @@ Return ONLY valid JSON with these keys:
 RULES:
 - layout_ground_truth: the physical venue structure as it relates to THIS ${scenario_type}. Zones and exits should reflect the scenario (e.g. for kidnapping: "Perimeter Zone", "Negotiation Approach Corridor"; for fire: "Stairwell B", "Roof Access").
 - site_areas: If the scenario locations already carry rich conditions (capacity_persons, has_water, has_electricity, area_m2, potential_uses, etc.), return an EMPTY site_areas array [] — the location conditions are the source of truth. Otherwise, generate 3–5 operational areas that teams in THIS scenario actually use. Name them for this incident type — NOT generic MCI area names unless this is an MCI.
-- custom_facts: 4–6 trainer-only insider facts that are specific to this ${scenario_type} — intelligence gaps, political sensitivities, known perpetrator behaviours, environmental constraints, known unknowns.
+- custom_facts: 4–6 trainer-only insider facts specific to this ${scenario_type}. Put the heaviest technical and operational grounding in "detail" (not just the summary): intelligence gaps, political sensitivities, perpetrator/hostile behaviour, environmental and HAZMAT/process constraints, and known unknowns. When the scenario involves industrial or chemical context, "detail" should read like credible hazmat / safety intel (pathways, confinement, incompatibilities, plausible secondary events), not generic filler.
 - baseline_escalation_factors: 2–4 risks specific to THIS ${scenario_type} that escalate if teams perform poorly. Examples must match the incident type (e.g. for kidnapping: "Hostage Transfer", "Ransom Deadline", "Intelligence Leak"; for fire: "Structural Collapse", "Civilian Entrapment"; for bombing: "Secondary Device", "Crowd Surge"). Do NOT use bombing/MCI examples for non-bombing scenarios.`;
 
   const userPrompt = `Build layout and site knowledge for "${narrative?.title || scenario_type}" at ${venue}.`;
@@ -5262,7 +5262,7 @@ RULES:
         description: string;
         severity: string;
       }>;
-    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
+    }>(systemPrompt, userPrompt, openAiApiKey, 8000);
 
     return {
       layout_ground_truth: parsed.layout_ground_truth || undefined,
@@ -7082,16 +7082,16 @@ Using the physics research above, produce a comprehensive deterioration timeline
 
 2. ENRICHED CASUALTY TIMELINES: For each patient, refine or create a deterioration_timeline (array of {at_minutes, description}) based on their specific injuries and how they interact with nearby hazards. Consider proximity to hazards — a patient near an ammonia leak deteriorates differently than one in open air.
 
-3. SPAWN PINS: Pre-generate child pins that appear when parent hazards are unresolved. Each spawn pin needs:
+3. SPAWN PINS (MANDATORY — at least 2 per existing hazard): Pre-generate child pins that appear when parent hazards are left unresolved. EVERY hazard MUST produce at least one secondary-hazard spawn and one casualty spawn. If no casualties currently exist, the spawn_pins array is the ONLY way casualties enter the scenario, so generate them. Each spawn pin needs:
    - pin_type: "hazard" or "casualty"
-   - parent_pin_label: which existing hazard triggers this
+   - parent_pin_label: MUST exactly match one of the quoted LABEL strings from the EXISTING HAZARDS list above (copy verbatim)
    - label: descriptive name
    - hazard_type or casualty_type
    - lat_offset, lng_offset: offset from parent (use realistic distances, ~0.0001 per 11m)
    - appears_at_minutes: when it would appear
    - spawn_condition: { trigger: "parent_unresolved", at_minutes: N, unless_status: ["contained", "resolved"] }
    - description, properties/conditions as appropriate
-   - headcount (for casualty spawn pins)
+   - headcount (for casualty spawn pins — required, typically 1–5)
 
 4. CASCADE NARRATIVE: A brief text describing the overall deterioration cascade — how the scenario spirals if teams fail to act.
 

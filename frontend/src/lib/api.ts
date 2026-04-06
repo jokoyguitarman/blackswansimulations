@@ -388,7 +388,7 @@ export const api = {
         }),
       );
     },
-    retryCustomFacts: async (id: string) => {
+    retryCustomFacts: async (id: string, opts?: { force?: boolean }) => {
       const headers = await getAuthHeaders();
       return handleResponse<{
         ok: boolean;
@@ -399,6 +399,7 @@ export const api = {
         await fetch(apiUrl(`/api/scenarios/${id}/retry-custom-facts`), {
           method: 'POST',
           headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force: Boolean(opts?.force) }),
         }),
       );
     },

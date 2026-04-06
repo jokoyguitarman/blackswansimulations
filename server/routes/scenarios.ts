@@ -1225,9 +1225,19 @@ function resolveHazardMatchFromAiLabel(
 ): (typeof hazards)[0] | null {
   const t = aiLabel.trim();
   if (!t) return null;
+
+  // Exact match
   for (const h of hazards) {
     if (h.label === t) return h;
   }
+
+  // Index-based: "H0", "H1", or "H0: Some Label"
+  const idxMatch = t.match(/^H(\d+)(?:\s*[:—–-]\s*|$)/i);
+  if (idxMatch) {
+    const idx = parseInt(idxMatch[1], 10);
+    if (idx >= 0 && idx < hazards.length) return hazards[idx];
+  }
+
   const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
   const nt = norm(t);
   for (const h of hazards) {
@@ -1430,13 +1440,36 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
       headcount: c.headcount != null ? Number(c.headcount) : undefined,
     }));
 
+    // Synthesise crowd location pins as seed casualties so the AI can spawn
+    // casualty pins even when scenario_casualties is empty.
+    const crowdPins = locationRows.filter(
+      (l) => String(l.pin_category ?? '') === 'crowd' || String(l.location_type ?? '') === 'crowd',
+    );
+    const crowdAsCasualties = crowdPins.map((cp) => {
+      const coords = (cp.coordinates ?? {}) as Record<string, unknown>;
+      const conds = (cp.conditions ?? {}) as Record<string, unknown>;
+      return {
+        id: `crowd-${String(cp.id)}`,
+        casualty_type: 'crowd',
+        location_lat: Number(coords.lat ?? 0),
+        location_lng: Number(coords.lng ?? 0),
+        conditions: {
+          visible_description: String(conds.description || cp.label || 'Crowd area'),
+          capacity_persons: conds.capacity_persons ?? undefined,
+        } as Record<string, unknown>,
+        headcount: Number(conds.capacity_persons ?? conds.headcount ?? 20),
+      };
+    });
+
+    const allCasualtiesForAi = [...casualtiesForAi, ...crowdAsCasualties];
+
     const detResearch = await researchDeteriorationPhysics(
       hazardsForAi.map((h) => ({
         label: h.label,
         hazard_type: h.hazard_type,
         properties: h.properties,
       })),
-      casualtiesForAi.map((c) => ({ casualty_type: c.casualty_type, conditions: c.conditions })),
+      allCasualtiesForAi.map((c) => ({ casualty_type: c.casualty_type, conditions: c.conditions })),
       areaContext || '',
       venue,
       openAiApiKey,
@@ -1456,7 +1489,7 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
         location_lng: h.location_lng,
         properties: h.properties,
       })),
-      casualtiesForAi.map((c) => ({
+      allCasualtiesForAi.map((c) => ({
         casualty_type: c.casualty_type,
         location_lat: c.location_lat,
         location_lng: c.location_lng,
@@ -1502,14 +1535,13 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
     }
 
     // Persist casualty timelines (use index mapping to the fetched casualty order)
+    // Skip crowd-synthesised entries (IDs start with "crowd-") — they have no DB row.
     let casualtiesUpdated = 0;
     for (const ec of detResult.enriched_casualty_timelines) {
-      const cid = casualtiesForAi[ec.casualty_index]?.id;
-      if (!cid) continue;
-      const prevConds = (casualtiesForAi[ec.casualty_index].conditions ?? {}) as Record<
-        string,
-        unknown
-      >;
+      const entry = allCasualtiesForAi[ec.casualty_index];
+      const cid = entry?.id;
+      if (!cid || cid.startsWith('crowd-')) continue;
+      const prevConds = (entry.conditions ?? {}) as Record<string, unknown>;
       const nextConds = { ...prevConds, deterioration_timeline: ec.deterioration_timeline };
       const { error: upErr } = await supabaseAdmin
         .from('scenario_casualties')
@@ -1582,6 +1614,15 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
       }
     }
 
+    const spawnPinsFromAi = detResult.spawn_pins?.length ?? 0;
+    const spawnPinsMatched = spawnHazardsInserted + spawnCasualtiesInserted;
+    if (spawnPinsFromAi > 0 && spawnPinsMatched === 0) {
+      logger.warn(
+        { scenarioId, spawnPinsFromAi },
+        'retry-deterioration: AI produced spawn pins but NONE matched a parent hazard label',
+      );
+    }
+
     // Persist cascade narrative
     if (detResult.cascade_narrative) {
       const nextIk = { ...(ik ?? {}) } as Record<string, unknown>;
@@ -1598,6 +1639,8 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
       casualties_updated: casualtiesUpdated,
       spawn_hazards_inserted: spawnHazardsInserted,
       spawn_casualties_inserted: spawnCasualtiesInserted,
+      spawn_pins_from_ai: spawnPinsFromAi,
+      crowd_pins_injected: crowdAsCasualties.length,
     });
   } catch (err) {
     logger.error(
@@ -1701,14 +1744,34 @@ router.post('/:id/retry-custom-facts', requireAuth, async (req: AuthenticatedReq
       })
       .join('\n');
 
+    const force = Boolean((req.body as Record<string, unknown> | undefined)?.force);
+
     const ik = (scenario.insider_knowledge ?? {}) as Record<string, unknown>;
     const prior = Array.isArray(ik.custom_facts) ? (ik.custom_facts as unknown[]) : [];
-    if (prior.length > 0) {
+    if (prior.length > 0 && !force) {
       return res.json({
         ok: true,
         facts_count: prior.length,
-        message: 'Custom facts already exist',
+        message: 'Custom facts already exist (pass force: true to regenerate)',
       });
+    }
+
+    const researchArchive = ik.research_archive;
+    let researchArchiveBlock = '';
+    if (researchArchive && typeof researchArchive === 'object') {
+      const ra = researchArchive as Record<string, unknown>;
+      const chunks: string[] = [];
+      for (const key of [
+        'area_structured',
+        'hazard_material_context',
+        'sensitive_infrastructure',
+      ] as const) {
+        if (ra[key] == null) continue;
+        const raw = JSON.stringify(ra[key]);
+        const cap = 2400;
+        chunks.push(`${key}:\n${raw.length > cap ? `${raw.slice(0, cap)}…` : raw}`);
+      }
+      researchArchiveBlock = chunks.join('\n\n').slice(0, 7200);
     }
 
     // Use the same search model as warroomResearchService
@@ -1730,16 +1793,21 @@ ${facilitiesBlock || '(none provided)'}
 Linked real-world research cases:
 ${researchBlock || '(none linked)'}
 
+Persisted area / material research (from scenario generation — use as authoritative context when present):
+${researchArchiveBlock || '(none stored in insider_knowledge.research_archive)'}
+
 Produce 6–10 Custom Facts. They MUST be venue- and incident-relevant, and should emphasize:
 - Establishment type / industrial process context (if implied)
 - On-site chemicals, compressed gases, fuels, oxidizers, dust explosion risks, refrigeration gases, etc.
 - Secondary hazards that are realistic given the above (e.g., oxidizers + organics, ammonia plume drift, oxygen enrichment)
 - Nearby infrastructure/sensitive facilities (hospitals, schools, ports, utilities) and what that changes operationally
 
+Put the deepest technical grounding in "detail" (3–8 sentences): plausible exposure routes, confinement, incompatibilities, and secondary events. When HAZMAT or industrial fire applies, use credible safety framing (e.g. flammable atmosphere / LEL context, oxygen displacement or toxic exposure in enclosed spaces, oxidizer–fuel interactions) without fabricating exact numeric limits unless they are standard for a named substance.
+
 Return ONLY valid JSON:
 {
   "custom_facts": [
-    { "topic": "string", "summary": "1–2 sentences", "detail": "2–6 sentences with concrete specifics" }
+    { "topic": "string", "summary": "1–2 sentences", "detail": "3–8 sentences with concrete specifics" }
   ]
 }`;
 
@@ -1752,7 +1820,7 @@ Return ONLY valid JSON:
       body: JSON.stringify({
         model: SEARCH_MODEL,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 2500,
+        max_tokens: 5000,
       }),
     });
 
