@@ -4,7 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS warroom_wizard_drafts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  created_by UUID REFERENCES user_profiles(id) ON DELETE SET NULL,
   status TEXT NOT NULL DEFAULT 'draft',
   current_step INT NOT NULL DEFAULT 1,
   -- Initial user inputs (prompt or structured selections, teams, toggles)
