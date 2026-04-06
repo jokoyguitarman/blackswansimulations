@@ -383,6 +383,7 @@ export const WarRoom = () => {
   const [geocodeLoading, setGeocodeLoading] = useState(false);
   const [doctrines, setDoctrines] = useState<WizardDoctrines | null>(null);
   const [doctrinesLoading, setDoctrinesLoading] = useState(false);
+  const [wizardScenarioId, setWizardScenarioId] = useState<string | null>(null);
   const [deteriorationPreview, setDeteriorationPreview] = useState<Awaited<
     ReturnType<typeof api.warroom.wizardDeteriorationPreview>
   > | null>(null);
@@ -572,21 +573,166 @@ export const WarRoom = () => {
     setDeteriorationLoading(true);
     setDeteriorationPreview(null);
     try {
-      const result = await api.warroom.wizardDeteriorationPreview({
-        hazards: [],
-        casualties: [],
-        locations: [],
-        venue: geocodeData?.display_name || '',
-        areaContext: areaSummary || undefined,
+      // Persist-first, DB-backed preview:
+      // 1) Ensure the scenario (pins) exists in DB
+      let scenarioId = wizardScenarioId;
+      if (!scenarioId) {
+        setLoading(true);
+        setProgressPhase(null);
+        setProgressMessage('');
+        setStep(6);
+
+        const options = buildOptions();
+        options.teams = teams.map((t) => ({
+          team_name: t.team_name,
+          team_description: t.team_description,
+          min_participants: t.min_participants,
+          max_participants: t.max_participants,
+          is_investigative: t.is_investigative ?? false,
+        }));
+
+        const wizardOpts: Parameters<typeof api.warroom.wizardGenerate>[0] = {
+          ...options,
+        };
+        if (geocodeData) {
+          wizardOpts.geocode_override = {
+            lat: geocodeData.lat,
+            lng: geocodeData.lng,
+            display_name: geocodeData.display_name,
+          };
+        }
+        if (doctrines) {
+          wizardOpts.validated_doctrines = {
+            perTeamDoctrines: doctrines.perTeamDoctrines,
+            teamWorkflows: doctrines.teamWorkflows,
+          };
+        }
+
+        const created = await api.warroom.wizardGenerate(wizardOpts, (phase, message) => {
+          setProgressPhase(phase);
+          setProgressMessage(message);
+        });
+        scenarioId = created.scenarioId;
+        if (!scenarioId) throw new Error('No scenario ID returned');
+        setWizardScenarioId(scenarioId);
+      }
+
+      // 2) Generate deterioration from DB pins (spawns + timelines)
+      await api.scenarios.retryDeterioration(scenarioId);
+
+      // 3) Build preview from DB state
+      const [scenRes, hazRes, casRes] = await Promise.all([
+        api.scenarios.get(scenarioId),
+        api.scenarios.getScenarioHazards(scenarioId).catch(() => ({ data: [] })),
+        api.scenarios.getScenarioCasualties(scenarioId).catch(() => ({ data: [] })),
+      ]);
+
+      const hazards = (hazRes.data ?? []) as Array<Record<string, unknown>>;
+      const casualties = (casRes.data ?? []) as Array<Record<string, unknown>>;
+
+      const enrichedHazards = hazards
+        .map((h) => {
+          const props = (h.properties ?? {}) as Record<string, unknown>;
+          const label = String(props.label ?? h.enriched_description ?? h.hazard_type ?? 'Hazard');
+          const dt = (h.deterioration_timeline ?? {}) as Record<string, unknown>;
+          return { hazard_label: label, deterioration_timeline: dt };
+        })
+        .filter((eh) => Object.keys(eh.deterioration_timeline ?? {}).length > 0);
+
+      const enrichedCasualties = casualties
+        .map((c, idx) => {
+          const conds = (c.conditions ?? {}) as Record<string, unknown>;
+          const label = String(
+            conds.visible_description ?? conds.injury_description ?? c.casualty_type ?? 'Casualty',
+          );
+          const timeline = (conds.deterioration_timeline ?? []) as Array<{
+            at_minutes: number;
+            description: string;
+          }>;
+          return { casualty_index: idx, casualty_label: label, deterioration_timeline: timeline };
+        })
+        .filter(
+          (ec) => Array.isArray(ec.deterioration_timeline) && ec.deterioration_timeline.length > 0,
+        );
+
+      const spawnPins = [
+        ...hazards
+          .filter((h) => h.spawn_condition != null || h.parent_pin_id != null)
+          .map((h) => {
+            const props = (h.properties ?? {}) as Record<string, unknown>;
+            const label = String(
+              props.label ?? h.enriched_description ?? h.hazard_type ?? 'Spawn hazard',
+            );
+            return {
+              pin_type: 'hazard' as const,
+              parent_pin_label: String(h.parent_pin_id ?? 'unknown'),
+              label,
+              hazard_type: String(h.hazard_type ?? 'secondary_hazard'),
+              lat_offset: 0,
+              lng_offset: 0,
+              appears_at_minutes: Number(h.appears_at_minutes ?? 0),
+              spawn_condition: (h.spawn_condition ??
+                ({
+                  trigger: 'unknown',
+                  at_minutes: Number(h.appears_at_minutes ?? 0),
+                  unless_status: [],
+                } as unknown)) as { trigger: string; at_minutes: number; unless_status: string[] },
+              description: String(props.description ?? props.visible_description ?? label),
+              properties: props,
+            };
+          }),
+        ...casualties
+          .filter((c) => c.spawn_condition != null || c.parent_pin_id != null)
+          .map((c) => {
+            const conds = (c.conditions ?? {}) as Record<string, unknown>;
+            const label = String(
+              conds.visible_description ??
+                conds.injury_description ??
+                c.casualty_type ??
+                'Spawn casualty',
+            );
+            return {
+              pin_type: 'casualty' as const,
+              parent_pin_label: String(c.parent_pin_id ?? 'unknown'),
+              label,
+              casualty_type: String(c.casualty_type ?? 'patient'),
+              lat_offset: 0,
+              lng_offset: 0,
+              appears_at_minutes: Number(c.appears_at_minutes ?? 0),
+              spawn_condition: (c.spawn_condition ??
+                ({
+                  trigger: 'unknown',
+                  at_minutes: Number(c.appears_at_minutes ?? 0),
+                  unless_status: [],
+                } as unknown)) as { trigger: string; at_minutes: number; unless_status: string[] },
+              description: String(conds.visible_description ?? label),
+              conditions: conds,
+              headcount: (c.headcount as number | undefined) ?? 1,
+            };
+          }),
+      ];
+
+      const ik = ((scenRes.data as Record<string, unknown>)?.insider_knowledge ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const cascadeNarrative = String(ik.cascade_narrative ?? '');
+
+      setDeteriorationPreview({
+        enrichedHazards,
+        enrichedCasualties,
+        spawnPins,
+        cascadeNarrative,
       });
-      setDeteriorationPreview(result);
+
       setStep(5);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Deterioration preview failed');
     } finally {
       setDeteriorationLoading(false);
+      setLoading(false);
     }
-  }, [geocodeData, areaSummary]);
+  }, [wizardScenarioId, teams, buildOptions, geocodeData, doctrines]);
 
   const handleWizardGenerate = useCallback(async () => {
     setError(null);
@@ -1730,8 +1876,10 @@ export const WarRoom = () => {
                 className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {deteriorationLoading
-                  ? '[RESEARCHING DETERIORATION...]'
-                  : '[NEXT: DETERIORATION PREVIEW]'}
+                  ? '[BUILDING PREVIEW...]'
+                  : wizardScenarioId
+                    ? '[REBUILD DETERIORATION PREVIEW]'
+                    : '[NEXT: DETERIORATION PREVIEW]'}
               </button>
             </>
           ) : step === 5 ? (
@@ -1744,11 +1892,11 @@ export const WarRoom = () => {
                 [BACK: DOCTRINES]
               </button>
               <button
-                onClick={handleWizardGenerate}
-                disabled={loading || !doctrines}
+                onClick={() => navigate('/scenarios')}
+                disabled={loading || !wizardScenarioId}
                 className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? '[GENERATING...]' : '[APPROVE & PERSIST]'}
+                {loading ? '[LOADING...]' : '[OPEN SCENARIOS]'}
               </button>
             </>
           ) : null}
