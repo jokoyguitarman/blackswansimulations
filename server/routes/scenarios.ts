@@ -1212,6 +1212,526 @@ router.post('/:id/retry-routes', requireAuth, async (req: AuthenticatedRequest, 
   }
 });
 
+// Retry deterioration generation for a scenario (trainer/admin)
+router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { id: scenarioId } = req.params;
+
+    const { data: scenario, error: scenErr } = await supabaseAdmin
+      .from('scenarios')
+      .select('id, title, description, briefing, insider_knowledge')
+      .eq('id', scenarioId)
+      .single();
+
+    if (scenErr || !scenario) {
+      return res.status(404).json({ error: 'Scenario not found' });
+    }
+
+    // Fetch hazards/casualties/locations from DB
+    const [{ data: hazards }, { data: casualties }, { data: locations }] = await Promise.all([
+      supabaseAdmin
+        .from('scenario_hazards')
+        .select(
+          'id, hazard_type, location_lat, location_lng, floor_level, properties, deterioration_timeline, spawn_condition, parent_pin_id',
+        )
+        .eq('scenario_id', scenarioId)
+        .is('session_id', null)
+        .order('appears_at_minutes', { ascending: true }),
+      supabaseAdmin
+        .from('scenario_casualties')
+        .select(
+          'id, casualty_type, location_lat, location_lng, floor_level, headcount, conditions, spawn_condition, parent_pin_id',
+        )
+        .eq('scenario_id', scenarioId)
+        .is('session_id', null)
+        .order('appears_at_minutes', { ascending: true }),
+      supabaseAdmin
+        .from('scenario_locations')
+        .select('id, label, location_type, pin_category, coordinates, conditions')
+        .eq('scenario_id', scenarioId)
+        .order('display_order', { ascending: true }),
+    ]);
+
+    const hazardRows = (hazards ?? []) as Array<Record<string, unknown>>;
+    const casualtyRows = (casualties ?? []) as Array<Record<string, unknown>>;
+    const locationRows = (locations ?? []) as Array<Record<string, unknown>>;
+
+    if (hazardRows.length === 0 && casualtyRows.length === 0) {
+      return res.status(400).json({ error: 'Scenario has no hazards or casualties to enrich' });
+    }
+
+    const existingSpawnCount =
+      hazardRows.filter((h) => h.spawn_condition != null).length +
+      casualtyRows.filter((c) => c.spawn_condition != null).length;
+    if (existingSpawnCount > 0) {
+      return res.json({
+        ok: true,
+        message: 'Deterioration spawn pins already exist',
+        hazards_updated: 0,
+        casualties_updated: 0,
+        spawn_hazards_inserted: 0,
+        spawn_casualties_inserted: 0,
+      });
+    }
+
+    const ik = (scenario.insider_knowledge ?? {}) as Record<string, unknown>;
+    const customFacts = Array.isArray(ik.custom_facts)
+      ? (ik.custom_facts as Array<Record<string, unknown>>)
+      : [];
+    const baselineFactors = Array.isArray(ik.baseline_escalation_factors)
+      ? (ik.baseline_escalation_factors as Array<Record<string, unknown>>)
+      : [];
+
+    // Pull a few linked research case summaries for extra grounding (best-effort)
+    const { data: linkedResearch } = await supabaseAdmin
+      .from('scenario_research_usage')
+      .select(
+        'relevance_score, research_cases(name, summary, environment, hazards_triggered, secondary_effects)',
+      )
+      .eq('scenario_id', scenarioId)
+      .order('relevance_score', { ascending: false })
+      .limit(5);
+
+    const researchBlock =
+      (linkedResearch ?? []).length > 0
+        ? (linkedResearch ?? [])
+            .map((row: Record<string, unknown>) => {
+              const rc = row.research_cases as Record<string, unknown>;
+              return `- ${String(rc?.name ?? 'Case')}: ${(rc?.summary ?? '').toString().slice(0, 240)}${
+                rc?.hazards_triggered ? ` | hazards: ${JSON.stringify(rc.hazards_triggered)}` : ''
+              }${
+                rc?.secondary_effects
+                  ? ` | secondaries: ${JSON.stringify(rc.secondary_effects)}`
+                  : ''
+              }`;
+            })
+            .join('\n')
+        : '';
+
+    const areaContext = [
+      `Scenario: ${String(scenario.title ?? '')}`,
+      (scenario.description as string)
+        ? `Description: ${(scenario.description as string).slice(0, 800)}`
+        : '',
+      (scenario.briefing as string)
+        ? `Briefing: ${(scenario.briefing as string).slice(0, 800)}`
+        : '',
+      customFacts.length
+        ? `Facility / custom facts:\n${customFacts
+            .map((f) => `- ${String(f.topic ?? 'Fact')}: ${String(f.summary ?? '').slice(0, 260)}`)
+            .join('\n')}`
+        : '',
+      baselineFactors.length
+        ? `Baseline escalation factors:\n${baselineFactors
+            .map(
+              (f) =>
+                `- ${String(f.name ?? 'Factor')}: ${String(f.description ?? '').slice(0, 260)}`,
+            )
+            .join('\n')}`
+        : '',
+      researchBlock ? `Linked research cases:\n${researchBlock}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    const venue = (scenario.title as string) || 'the venue';
+
+    const openAiApiKey = process.env.OPENAI_API_KEY;
+    if (!openAiApiKey) {
+      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    }
+
+    const { researchDeteriorationPhysics, deteriorationResearchToPromptBlock } =
+      await import('../services/warroomResearchService.js');
+    const { generateDeteriorationTimeline } = await import('../services/warroomAiService.js');
+
+    const hazardsForAi = hazardRows.map((h) => {
+      const props = (h.properties ?? {}) as Record<string, unknown>;
+      const label = String(props.label ?? h.hazard_type ?? 'hazard');
+      return {
+        id: String(h.id),
+        label,
+        hazard_type: String(h.hazard_type ?? 'hazard'),
+        location_lat: Number(h.location_lat) || 0,
+        location_lng: Number(h.location_lng) || 0,
+        properties: props,
+      };
+    });
+
+    const casualtiesForAi = casualtyRows.map((c) => ({
+      id: String(c.id),
+      casualty_type: String(c.casualty_type ?? 'patient'),
+      location_lat: Number(c.location_lat) || 0,
+      location_lng: Number(c.location_lng) || 0,
+      conditions: (c.conditions ?? {}) as Record<string, unknown>,
+      headcount: c.headcount != null ? Number(c.headcount) : undefined,
+    }));
+
+    const detResearch = await researchDeteriorationPhysics(
+      hazardsForAi.map((h) => ({
+        label: h.label,
+        hazard_type: h.hazard_type,
+        properties: h.properties,
+      })),
+      casualtiesForAi.map((c) => ({ casualty_type: c.casualty_type, conditions: c.conditions })),
+      areaContext || '',
+      venue,
+      openAiApiKey,
+    );
+
+    if (!detResearch) {
+      return res.status(502).json({ error: 'Deterioration research failed (search model)' });
+    }
+
+    const detPromptBlock = deteriorationResearchToPromptBlock(detResearch);
+
+    const detResult = await generateDeteriorationTimeline(
+      hazardsForAi.map((h) => ({
+        label: h.label,
+        hazard_type: h.hazard_type,
+        location_lat: h.location_lat,
+        location_lng: h.location_lng,
+        properties: h.properties,
+      })),
+      casualtiesForAi.map((c) => ({
+        casualty_type: c.casualty_type,
+        location_lat: c.location_lat,
+        location_lng: c.location_lng,
+        conditions: c.conditions,
+        headcount: c.headcount,
+      })),
+      locationRows.map((l) => ({
+        label: String(l.label ?? ''),
+        location_type: String(l.location_type ?? l.pin_category ?? ''),
+        lat: ((l.coordinates as { lat?: number })?.lat ??
+          ((l as unknown as Record<string, unknown>).lat as number | undefined) ??
+          0) as number,
+        lng: ((l.coordinates as { lng?: number })?.lng ??
+          ((l as unknown as Record<string, unknown>).lng as number | undefined) ??
+          0) as number,
+      })),
+      detPromptBlock,
+      venue,
+      openAiApiKey,
+    );
+
+    if (!detResult) {
+      return res.status(502).json({ error: 'Deterioration timeline generation failed' });
+    }
+
+    // Persist hazard timelines
+    const labelToHazardId = new Map<string, string>();
+    for (const h of hazardsForAi) labelToHazardId.set(h.label, h.id);
+
+    let hazardsUpdated = 0;
+    for (const eh of detResult.enriched_hazard_timelines) {
+      const hid = labelToHazardId.get(eh.hazard_label);
+      if (!hid) continue;
+      const { error: upErr } = await supabaseAdmin
+        .from('scenario_hazards')
+        .update({ deterioration_timeline: eh.deterioration_timeline })
+        .eq('id', hid)
+        .eq('scenario_id', scenarioId);
+      if (!upErr) hazardsUpdated++;
+    }
+
+    // Persist casualty timelines (use index mapping to the fetched casualty order)
+    let casualtiesUpdated = 0;
+    for (const ec of detResult.enriched_casualty_timelines) {
+      const cid = casualtiesForAi[ec.casualty_index]?.id;
+      if (!cid) continue;
+      const prevConds = (casualtiesForAi[ec.casualty_index].conditions ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const nextConds = { ...prevConds, deterioration_timeline: ec.deterioration_timeline };
+      const { error: upErr } = await supabaseAdmin
+        .from('scenario_casualties')
+        .update({ conditions: nextConds })
+        .eq('id', cid)
+        .eq('scenario_id', scenarioId);
+      if (!upErr) casualtiesUpdated++;
+    }
+
+    // Insert spawn pins
+    let spawnHazardsInserted = 0;
+    let spawnCasualtiesInserted = 0;
+
+    const parentByLabel = new Map<string, { id: string; lat: number; lng: number }>();
+    for (const h of hazardsForAi) {
+      parentByLabel.set(h.label, { id: h.id, lat: h.location_lat, lng: h.location_lng });
+    }
+
+    for (const sp of detResult.spawn_pins) {
+      const parent = parentByLabel.get(sp.parent_pin_label);
+      if (!parent) continue;
+
+      if (sp.pin_type === 'hazard') {
+        const props = { ...(sp.properties ?? {}) } as Record<string, unknown>;
+        props.label = sp.label;
+        if (!props.description) props.description = sp.description;
+        const row = {
+          scenario_id: scenarioId,
+          hazard_type: sp.hazard_type || 'secondary_hazard',
+          location_lat: parent.lat + sp.lat_offset,
+          location_lng: parent.lng + sp.lng_offset,
+          floor_level: sp.floor_level || 'G',
+          properties: props,
+          assessment_criteria: [],
+          status: 'delayed',
+          appears_at_minutes: sp.appears_at_minutes,
+          resolution_requirements: {},
+          personnel_requirements: {},
+          equipment_requirements: [],
+          deterioration_timeline: {},
+          zones: [],
+          parent_pin_id: parent.id,
+          spawn_condition: sp.spawn_condition,
+        };
+        const { error: insErr } = await supabaseAdmin.from('scenario_hazards').insert(row);
+        if (!insErr) spawnHazardsInserted++;
+      } else {
+        const conds = { ...(sp.conditions ?? {}) } as Record<string, unknown>;
+        if (!conds.visible_description) conds.visible_description = sp.description;
+        const row = {
+          scenario_id: scenarioId,
+          casualty_type: sp.casualty_type || 'patient',
+          location_lat: parent.lat + sp.lat_offset,
+          location_lng: parent.lng + sp.lng_offset,
+          floor_level: sp.floor_level || 'G',
+          headcount: sp.headcount ?? 1,
+          conditions: conds,
+          status: 'delayed',
+          appears_at_minutes: sp.appears_at_minutes,
+          destination_lat: null,
+          destination_lng: null,
+          destination_label: null,
+          movement_speed_mpm: 0,
+          parent_pin_id: parent.id,
+          spawn_condition: sp.spawn_condition,
+        };
+        const { error: insErr } = await supabaseAdmin.from('scenario_casualties').insert(row);
+        if (!insErr) spawnCasualtiesInserted++;
+      }
+    }
+
+    // Persist cascade narrative
+    if (detResult.cascade_narrative) {
+      const nextIk = { ...(ik ?? {}) } as Record<string, unknown>;
+      nextIk.cascade_narrative = detResult.cascade_narrative;
+      await supabaseAdmin
+        .from('scenarios')
+        .update({ insider_knowledge: nextIk })
+        .eq('id', scenarioId);
+    }
+
+    return res.json({
+      ok: true,
+      hazards_updated: hazardsUpdated,
+      casualties_updated: casualtiesUpdated,
+      spawn_hazards_inserted: spawnHazardsInserted,
+      spawn_casualties_inserted: spawnCasualtiesInserted,
+    });
+  } catch (err) {
+    logger.error(
+      { error: err, scenarioId: req.params?.id },
+      'Error in POST /scenarios/:id/retry-deterioration',
+    );
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Retry / generate research-driven custom facts for a scenario (trainer/admin)
+router.post('/:id/retry-custom-facts', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const { id: scenarioId } = req.params;
+
+    const openAiApiKey = process.env.OPENAI_API_KEY;
+    if (!openAiApiKey) {
+      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    }
+
+    const { data: scenario, error: scenErr } = await supabaseAdmin
+      .from('scenarios')
+      .select('id, title, category, description, briefing, insider_knowledge')
+      .eq('id', scenarioId)
+      .single();
+
+    if (scenErr || !scenario) {
+      return res.status(404).json({ error: 'Scenario not found' });
+    }
+
+    const [{ data: hazards }, { data: locations }, { data: researchUsage }] = await Promise.all([
+      supabaseAdmin
+        .from('scenario_hazards')
+        .select('hazard_type, properties, location_lat, location_lng')
+        .eq('scenario_id', scenarioId)
+        .is('session_id', null)
+        .order('appears_at_minutes', { ascending: true }),
+      supabaseAdmin
+        .from('scenario_locations')
+        .select('location_type, pin_category, label, coordinates, conditions')
+        .eq('scenario_id', scenarioId)
+        .order('display_order', { ascending: true }),
+      supabaseAdmin
+        .from('scenario_research_usage')
+        .select(
+          'relevance_score, research_cases(name, summary, environment, hazards_triggered, secondary_effects, environment_factors)',
+        )
+        .eq('scenario_id', scenarioId)
+        .order('relevance_score', { ascending: false })
+        .limit(8),
+    ]);
+
+    const hazardBlock = (hazards ?? [])
+      .slice(0, 24)
+      .map((h: Record<string, unknown>) => {
+        const props = (h.properties ?? {}) as Record<string, unknown>;
+        const label = String(props.label ?? h.hazard_type ?? 'hazard');
+        const vm = props.venue_material_context
+          ? String(props.venue_material_context).slice(0, 280)
+          : '';
+        return `- ${label} (${String(h.hazard_type ?? '')})${vm ? ` — ${vm}` : ''}`;
+      })
+      .join('\n');
+
+    const facilitiesBlock = (locations ?? [])
+      .filter((l: Record<string, unknown>) => {
+        const t = String(l.location_type ?? '');
+        const pc = String(l.pin_category ?? '');
+        return (
+          pc === 'poi' ||
+          pc === 'incident_site' ||
+          t === 'hospital' ||
+          t === 'fire_station' ||
+          t === 'police_station' ||
+          t === 'entry_point' ||
+          t === 'assembly_point'
+        );
+      })
+      .slice(0, 24)
+      .map(
+        (l: Record<string, unknown>) =>
+          `- ${String(l.label ?? '')} (${String(l.location_type ?? l.pin_category ?? '')})`,
+      )
+      .join('\n');
+
+    const researchBlock = (researchUsage ?? [])
+      .map((row: Record<string, unknown>) => {
+        const rc = row.research_cases as Record<string, unknown>;
+        const name = String(rc?.name ?? 'Case');
+        const summary = String(rc?.summary ?? '').slice(0, 260);
+        const hz = rc?.hazards_triggered ? ` hazards=${JSON.stringify(rc.hazards_triggered)}` : '';
+        const sec = rc?.secondary_effects
+          ? ` secondaries=${JSON.stringify(rc.secondary_effects)}`
+          : '';
+        return `- ${name}: ${summary}${hz}${sec}`;
+      })
+      .join('\n');
+
+    const ik = (scenario.insider_knowledge ?? {}) as Record<string, unknown>;
+    const prior = Array.isArray(ik.custom_facts) ? (ik.custom_facts as unknown[]) : [];
+    if (prior.length > 0) {
+      return res.json({
+        ok: true,
+        facts_count: prior.length,
+        message: 'Custom facts already exist',
+      });
+    }
+
+    // Use the same search model as warroomResearchService
+    const SEARCH_MODEL = 'gpt-4o-search-preview';
+
+    const prompt = `You are an intelligence analyst supporting a crisis simulation. Generate research-oriented "Custom Facts" that help trainers run a realistic scenario.
+
+Scenario title: ${String(scenario.title ?? '')}
+Scenario type: ${String(scenario.category ?? '')}
+Description: ${String(scenario.description ?? '').slice(0, 1200)}
+Briefing: ${String(scenario.briefing ?? '').slice(0, 1200)}
+
+Known hazards & facility material context:
+${hazardBlock || '(none provided)'}
+
+Nearby facilities / key pins:
+${facilitiesBlock || '(none provided)'}
+
+Linked real-world research cases:
+${researchBlock || '(none linked)'}
+
+Produce 6–10 Custom Facts. They MUST be venue- and incident-relevant, and should emphasize:
+- Establishment type / industrial process context (if implied)
+- On-site chemicals, compressed gases, fuels, oxidizers, dust explosion risks, refrigeration gases, etc.
+- Secondary hazards that are realistic given the above (e.g., oxidizers + organics, ammonia plume drift, oxygen enrichment)
+- Nearby infrastructure/sensitive facilities (hospitals, schools, ports, utilities) and what that changes operationally
+
+Return ONLY valid JSON:
+{
+  "custom_facts": [
+    { "topic": "string", "summary": "1–2 sentences", "detail": "2–6 sentences with concrete specifics" }
+  ]
+}`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: SEARCH_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 2500,
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      logger.error(
+        { status: response.status, body: text },
+        'retry-custom-facts OpenAI call failed',
+      );
+      return res.status(502).json({ error: 'Custom facts generation failed' });
+    }
+
+    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) return res.status(502).json({ error: 'Custom facts generation returned empty' });
+
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch)
+      return res.status(502).json({ error: 'Custom facts generation returned non-JSON' });
+
+    const parsed = JSON.parse(jsonMatch[0]) as { custom_facts?: Array<Record<string, unknown>> };
+    const facts = Array.isArray(parsed.custom_facts) ? parsed.custom_facts : [];
+    if (facts.length === 0) return res.status(502).json({ error: 'No custom facts generated' });
+
+    const nextIk = { ...ik, custom_facts: facts };
+    const { error: upErr } = await supabaseAdmin
+      .from('scenarios')
+      .update({ insider_knowledge: nextIk })
+      .eq('id', scenarioId);
+    if (upErr) return res.status(500).json({ error: 'Failed to save custom facts' });
+
+    return res.json({ ok: true, facts_count: facts.length });
+  } catch (err) {
+    logger.error(
+      { error: err, scenarioId: req.params?.id },
+      'Error in POST /scenarios/:id/retry-custom-facts',
+    );
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Pin enrichment helpers — generate rich structured data via LLM
 // ---------------------------------------------------------------------------

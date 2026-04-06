@@ -282,6 +282,8 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
   const [savingDoctrine, setSavingDoctrine] = useState(false);
   const [retryingRoutes, setRetryingRoutes] = useState(false);
   const [retryRoutesMsg, setRetryRoutesMsg] = useState<string | null>(null);
+  const [customFactsLoading, setCustomFactsLoading] = useState(false);
+  const [customFactsMsg, setCustomFactsMsg] = useState<string | null>(null);
 
   const saveDoctrine = useCallback(
     async (updated: StandardsFinding[]) => {
@@ -476,8 +478,49 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                   </Section>
                 )}
 
-              {ik?.custom_facts && ik.custom_facts.length > 0 && (
-                <Section title="Intelligence / Custom Facts">
+              <Section title="Intelligence / Custom Facts">
+                {(!ik?.custom_facts || ik.custom_facts.length === 0) && (
+                  <div className="flex items-center gap-3 mb-3">
+                    <p className="text-sm terminal-text text-robotic-yellow/50">
+                      [NO CUSTOM FACTS] Generate research-oriented facility/area facts for this
+                      scenario.
+                    </p>
+                    <button
+                      onClick={async () => {
+                        setCustomFactsLoading(true);
+                        setCustomFactsMsg(null);
+                        try {
+                          const res = await api.scenarios.retryCustomFacts(scenarioId);
+                          setCustomFactsMsg(
+                            res.message ||
+                              (res.ok
+                                ? `Generated ${res.facts_count ?? 0} custom facts`
+                                : res.error) ||
+                              'Done',
+                          );
+                          const scenRes = await api.scenarios.get(scenarioId);
+                          setScenario(scenRes.data as ScenarioFull);
+                        } catch (err) {
+                          setCustomFactsMsg(
+                            err instanceof Error ? err.message : 'Failed to generate custom facts',
+                          );
+                        } finally {
+                          setCustomFactsLoading(false);
+                        }
+                      }}
+                      disabled={customFactsLoading}
+                      className="ml-auto px-4 py-1.5 text-xs terminal-text bg-blue-700 hover:bg-blue-600 text-white rounded border border-blue-500 disabled:opacity-50"
+                    >
+                      {customFactsLoading ? 'GENERATING...' : 'GENERATE CUSTOM FACTS'}
+                    </button>
+                  </div>
+                )}
+                {customFactsMsg && (
+                  <div className="text-xs terminal-text text-green-400 p-1 mb-2">
+                    {customFactsMsg}
+                  </div>
+                )}
+                {ik?.custom_facts && ik.custom_facts.length > 0 ? (
                   <div className="space-y-3">
                     {ik.custom_facts.map((fact, i) => (
                       <div key={i} className="military-border p-3">
@@ -493,8 +536,8 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                       </div>
                     ))}
                   </div>
-                </Section>
-              )}
+                ) : null}
+              </Section>
 
               {ik?.baseline_escalation_factors && ik.baseline_escalation_factors.length > 0 && (
                 <Section title="Baseline Escalation Factors">
@@ -1546,6 +1589,8 @@ const MapPinsTab = ({
   const [expandedPin, setExpandedPin] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [retryDetLoading, setRetryDetLoading] = useState(false);
+  const [retryDetMsg, setRetryDetMsg] = useState<string | null>(null);
   const [activeFloor, setActiveFloor] = useState('G');
 
   // Add-pin mode state
@@ -2051,6 +2096,24 @@ const MapPinsTab = ({
       c.casualty_type === 'convergent_crowd',
   );
 
+  const hasAnySpawnPins =
+    hazards.some((h) => (h as unknown as { spawn_condition?: unknown }).spawn_condition) ||
+    casualties.some((c) => (c as unknown as { spawn_condition?: unknown }).spawn_condition);
+  const hasAnyHazardDeterioration = hazards.some((h) => {
+    const dt = (h as unknown as { deterioration_timeline?: Record<string, unknown> })
+      .deterioration_timeline;
+    return dt && Object.keys(dt).length > 0;
+  });
+  const hasAnyCasualtyDeterioration = casualties.some((c) => {
+    const conds = (c.conditions ?? {}) as Record<string, unknown>;
+    return Array.isArray(conds.deterioration_timeline) && conds.deterioration_timeline.length > 0;
+  });
+  const deteriorationMissing =
+    (hazards.length > 0 || casualties.length > 0) &&
+    !hasAnySpawnPins &&
+    !hasAnyHazardDeterioration &&
+    !hasAnyCasualtyDeterioration;
+
   const allCoords: [number, number][] = [
     ...validPins
       .filter((p) => p.coordinates.lat != null)
@@ -2082,6 +2145,51 @@ const MapPinsTab = ({
         {floorPlans.length > 1 && <span className="text-blue-400">{floorPlans.length} floors</span>}
         <span className="ml-auto text-robotic-yellow/40">drag pins to reposition</span>
       </div>
+
+      {deteriorationMissing && (
+        <div className="flex items-center gap-3 p-2 military-border bg-robotic-yellow/5">
+          <div className="text-xs terminal-text text-robotic-yellow/70">
+            Deterioration data is missing (no timelines/spawn pins). You can generate it from the
+            current map pins.
+          </div>
+          <button
+            onClick={async () => {
+              setRetryDetLoading(true);
+              setRetryDetMsg(null);
+              try {
+                const res = await api.scenarios.retryDeterioration(scenarioId);
+                const msg =
+                  res.message ||
+                  (res.ok
+                    ? `Updated hazards: ${res.hazards_updated ?? 0}, casualties: ${res.casualties_updated ?? 0}, spawn pins: ${(res.spawn_hazards_inserted ?? 0) + (res.spawn_casualties_inserted ?? 0)}`
+                    : res.error) ||
+                  'Retry complete';
+                setRetryDetMsg(msg);
+
+                const [locRes, hazRes, casRes] = await Promise.all([
+                  api.scenarios.getScenarioLocations(scenarioId),
+                  api.scenarios.getScenarioHazards(scenarioId).catch(() => ({ data: [] })),
+                  api.scenarios.getScenarioCasualties(scenarioId).catch(() => ({ data: [] })),
+                ]);
+                setLocations((locRes.data ?? []) as LocationPin[]);
+                setHazards((hazRes.data ?? []) as HazardPin[]);
+                setCasualties((casRes.data ?? []) as CasualtyPin[]);
+              } catch (err) {
+                setRetryDetMsg(
+                  err instanceof Error ? err.message : 'Failed to retry deterioration',
+                );
+              } finally {
+                setRetryDetLoading(false);
+              }
+            }}
+            disabled={retryDetLoading}
+            className="ml-auto px-4 py-1.5 text-xs terminal-text bg-blue-700 hover:bg-blue-600 text-white rounded border border-blue-500 disabled:opacity-50"
+          >
+            {retryDetLoading ? 'GENERATING...' : 'RETRY DETERIORATION'}
+          </button>
+        </div>
+      )}
+      {retryDetMsg && <div className="text-xs terminal-text text-green-400 p-1">{retryDetMsg}</div>}
 
       {/* Add Pin toolbar */}
       <div className="flex flex-wrap items-center gap-2 p-2 military-border bg-black/30">

@@ -210,6 +210,8 @@ export const api = {
           personnel_requirements?: Record<string, unknown>;
           equipment_requirements?: unknown[];
           deterioration_timeline?: Record<string, unknown>;
+          parent_pin_id?: string | null;
+          spawn_condition?: Record<string, unknown> | null;
           appears_at_minutes: number;
           zones?: Array<{
             zone_type: string;
@@ -235,6 +237,8 @@ export const api = {
           conditions: Record<string, unknown>;
           status: string;
           appears_at_minutes: number;
+          parent_pin_id?: string | null;
+          spawn_condition?: Record<string, unknown> | null;
         }>;
       }>(await fetch(apiUrl(`/api/scenarios/${id}/casualties`), { headers }));
     },
@@ -361,6 +365,37 @@ export const api = {
         error?: string;
       }>(
         await fetch(apiUrl(`/api/scenarios/${id}/retry-routes`), {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+        }),
+      );
+    },
+    retryDeterioration: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        ok: boolean;
+        hazards_updated?: number;
+        casualties_updated?: number;
+        spawn_hazards_inserted?: number;
+        spawn_casualties_inserted?: number;
+        message?: string;
+        error?: string;
+      }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/retry-deterioration`), {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+        }),
+      );
+    },
+    retryCustomFacts: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        ok: boolean;
+        facts_count?: number;
+        message?: string;
+        error?: string;
+      }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/retry-custom-facts`), {
           method: 'POST',
           headers: { ...headers, 'Content-Type': 'application/json' },
         }),

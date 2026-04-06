@@ -376,7 +376,7 @@ export const WarRoom = () => {
   const [realBombsCount, setRealBombsCount] = useState(0);
 
   // Wizard mode
-  const [wizardMode, setWizardMode] = useState(false);
+  const [wizardMode, setWizardMode] = useState(true);
   const [geocodeData, setGeocodeData] = useState<GeocodeData | null>(null);
   const [osmVicinity, setOsmVicinity] = useState<OsmVicinityData | null>(null);
   const [areaSummary, setAreaSummary] = useState<string | null>(null);
@@ -691,13 +691,13 @@ export const WarRoom = () => {
                   : 'border-robotic-yellow/30 text-robotic-yellow/50 hover:border-robotic-yellow/60'
               }`}
             >
-              {wizardMode ? '[WIZARD MODE]' : '[QUICK GENERATE]'}
+              {wizardMode ? '[SWITCH TO QUICK GENERATE]' : '[SWITCH TO WIZARD MODE]'}
             </button>
           </div>
           <p className="text-xs terminal-text text-robotic-yellow/70">
             {wizardMode
-              ? 'Wizard mode: validate location, review doctrines, then generate.'
-              : 'Enter a prompt or select parameters. AI will generate a complete, playable scenario.'}
+              ? 'You are in Wizard Mode: validate location, review doctrines, then generate.'
+              : 'You are in Quick Generate: enter inputs and generate immediately (fewer review steps).'}
           </p>
         </div>
 
