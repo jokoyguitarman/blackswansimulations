@@ -978,7 +978,7 @@ function buildResearchContextBlock(
   }
 
   if (hasArea) {
-    const areaTruncated = researchContext!.area_summary!.slice(0, 4500);
+    const areaTruncated = researchContext!.area_summary!.slice(0, 9000);
     if (hasCases) {
       parts.push(
         forHazards
@@ -1978,7 +1978,7 @@ RULES:${teamsRule}
     };
     teams?: WarroomScenarioPayload['teams'];
     objectives?: WarroomScenarioPayload['objectives'];
-  }>(systemPrompt, userPrompt, openAiApiKey, 3000);
+  }>(systemPrompt, userPrompt, openAiApiKey, 5000);
 
   const templateTeams = getRequiredTeamsFromTemplate(typeSpec);
   const teams = hasUserTeams
@@ -2494,7 +2494,7 @@ Return ONLY valid JSON:
   try {
     const parsed = await callOpenAi<{
       counter_definitions?: Record<string, CounterDefinition[]>;
-    }>(systemPrompt, userPrompt, openAiApiKey, 4000);
+    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
 
     if (!parsed.counter_definitions || typeof parsed.counter_definitions !== 'object') {
       return undefined;
@@ -2759,7 +2759,7 @@ Return ONLY valid JSON:
       systemPrompt,
       userPrompt,
       openAiApiKey,
-      2000,
+      3000,
     );
     return parsed.locations?.length ? parsed.locations : undefined;
   } catch (err) {
@@ -2980,7 +2980,7 @@ Base response times on distance. Use the facility name to infer size/capabilitie
     try {
       const parsed = await callOpenAi<{
         facilities?: Array<{ index: number; conditions: Record<string, unknown> }>;
-      }>(batchSystemPrompt, batchUserPrompt, openAiApiKey, 3000);
+      }>(batchSystemPrompt, batchUserPrompt, openAiApiKey, 4500);
 
       for (const f of parsed.facilities ?? []) {
         if (
@@ -3225,7 +3225,7 @@ Return ONLY valid JSON:
         batchPrompt,
         batchUserPrompt,
         openAiApiKey,
-        2500,
+        3500,
       );
       return parsed.routes ?? [];
     } catch (err) {
@@ -3421,7 +3421,7 @@ ${minHazards >= 4 ? `- At least ${Math.ceil(minHazards / 2)} immediate hazards (
   try {
     const parsed = await callOpenAi<{
       hazards?: WarroomScenarioPayload['hazards'];
-    }>(systemPrompt, userPrompt, openAiApiKey, 4000);
+    }>(systemPrompt, userPrompt, openAiApiKey, 6000);
     const stubs = parsed.hazards?.length ? parsed.hazards : undefined;
     if (!stubs?.length) return undefined;
 
@@ -3451,7 +3451,7 @@ async function enrichHazardDetail(
   const venue = venue_name || location || setting;
   const areaExcerpt =
     researchContext?.area_summary && researchContext.area_summary.length > 0
-      ? `\nFacility / area research (excerpt — use for establishment-typical materials and systems):\n${researchContext.area_summary.slice(0, 2200)}`
+      ? `\nFacility / area research (excerpt — use for establishment-typical materials and systems):\n${researchContext.area_summary.slice(0, 4500)}`
       : '';
 
   const hazardContext = `Scenario: ${scenario_type} at ${venue}
@@ -3521,7 +3521,7 @@ Return ONLY valid JSON:
       systemPrompt,
       `Describe the ${hazard.hazard_type} hazard at ${venue} in vivid detail.`,
       openAiApiKey,
-      2000,
+      3000,
     );
   } catch (err) {
     logger.warn({ err, hazardType: hazard.hazard_type }, 'Hazard description enrichment failed');
@@ -3609,7 +3609,7 @@ IMPORTANT:
       systemPrompt,
       `What personnel, equipment, and procedures are needed to resolve this ${hazard.hazard_type} at ${venue}?`,
       openAiApiKey,
-      3000,
+      4000,
     );
   } catch (err) {
     logger.warn({ err, hazardType: hazard.hazard_type }, 'Hazard requirements enrichment failed');
@@ -3651,7 +3651,7 @@ Return ONLY valid JSON:
       systemPrompt,
       `What happens if this ${hazard.hazard_type} at ${venue} is left unaddressed for 30 minutes?`,
       openAiApiKey,
-      1500,
+      3000,
     );
   } catch (err) {
     logger.warn({ err, hazardType: hazard.hazard_type }, 'Hazard deterioration enrichment failed');
@@ -3866,7 +3866,7 @@ RULES:
       systemPrompt,
       `Define the unified hot, warm, and cold zones for this ${scenario_type} incident with ${hazards.length} active hazards.`,
       openAiApiKey,
-      2000,
+      3000,
     );
 
     const rawZones = result.zones ?? [];
@@ -4148,7 +4148,7 @@ CRITICAL: You MUST return ${minCasualties}-${maxCasualties} victims. Do NOT retu
             batchSystemPrompt,
             batchUserPrompt,
             openAiApiKey,
-            4000,
+            8000,
           );
           return parsed.victims?.length ? parsed.victims : null;
         } catch (err) {
@@ -4512,7 +4512,7 @@ ${isMeleeAttack ? '- Most groups should be calm or anxious — only groups withi
         batchPrompt,
         batchUserPrompt,
         openAiApiKey,
-        4000,
+        5000,
       );
       return parsed.crowds ?? [];
     } catch (err) {
@@ -4697,7 +4697,7 @@ RULES:
       const parsed = await callOpenAi<{
         convergent_crowds?: WarroomScenarioPayload['casualties'];
         alert_injects?: WarroomScenarioPayload['time_injects'];
-      }>(batchPrompt, batchUserPrompt, openAiApiKey, 4000);
+      }>(batchPrompt, batchUserPrompt, openAiApiKey, 5000);
       return {
         crowds: parsed.convergent_crowds ?? [],
         injects: parsed.alert_injects ?? [],
@@ -5025,7 +5025,7 @@ RULES:
 
     const parsed = await callOpenAi<{
       floor_plans?: AiFloorPlan[];
-    }>(systemPrompt, userPrompt, openAiApiKey, 4000);
+    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
 
     if (!parsed.floor_plans?.length) return undefined;
 
@@ -5193,7 +5193,7 @@ RULES:
         description: string;
         severity: string;
       }>;
-    }>(systemPrompt, userPrompt, openAiApiKey, 3000);
+    }>(systemPrompt, userPrompt, openAiApiKey, 5000);
 
     return {
       layout_ground_truth: parsed.layout_ground_truth || undefined,
@@ -5317,7 +5317,7 @@ RULES:
     systemPrompt,
     userPrompt,
     openAiApiKey,
-    3000,
+    5000,
   );
   return parsed.dossier?.length ? parsed.dossier : [];
 }

@@ -132,7 +132,7 @@ Write 2000-5000 words. Be thorough — this will be used to ground a realistic c
       body: JSON.stringify({
         model: SEARCH_MODEL,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 6000,
+        max_tokens: 10000,
       }),
     });
 
@@ -243,7 +243,7 @@ Focus on: decision gates, time thresholds, role responsibilities, handover proce
           body: JSON.stringify({
             model: SEARCH_MODEL,
             messages: [{ role: 'user', content: prompt }],
-            max_tokens: 4000,
+            max_tokens: 8000,
           }),
         });
 
@@ -498,7 +498,7 @@ Scenario context: ${scenarioDescription} at ${venueContext}`;
       body: JSON.stringify({
         model: SEARCH_MODEL,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 3000,
+        max_tokens: 5000,
       }),
     });
 
@@ -1015,7 +1015,7 @@ Return ONLY valid JSON:
       body: JSON.stringify({
         model: SEARCH_MODEL,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 3000,
+        max_tokens: 5000,
       }),
     });
 
@@ -1141,7 +1141,7 @@ Base your response on documented after-action reports and crowd psychology resea
       body: JSON.stringify({
         model: SEARCH_MODEL,
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 3500,
+        max_tokens: 5000,
       }),
     });
 
