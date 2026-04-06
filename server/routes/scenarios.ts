@@ -1221,6 +1221,7 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
     }
 
     const { id: scenarioId } = req.params;
+    const force = Boolean((req.body as Record<string, unknown> | undefined)?.force);
 
     const { data: scenario, error: scenErr } = await supabaseAdmin
       .from('scenarios')
@@ -1266,17 +1267,32 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
     }
 
     const existingSpawnCount =
-      hazardRows.filter((h) => h.spawn_condition != null).length +
-      casualtyRows.filter((c) => c.spawn_condition != null).length;
-    if (existingSpawnCount > 0) {
+      hazardRows.filter((h) => h.spawn_condition != null || h.parent_pin_id != null).length +
+      casualtyRows.filter((c) => c.spawn_condition != null || c.parent_pin_id != null).length;
+    if (existingSpawnCount > 0 && !force) {
       return res.json({
         ok: true,
-        message: 'Deterioration spawn pins already exist',
+        message: 'Deterioration spawn pins already exist (use force to rebuild)',
         hazards_updated: 0,
         casualties_updated: 0,
         spawn_hazards_inserted: 0,
         spawn_casualties_inserted: 0,
       });
+    }
+
+    if (existingSpawnCount > 0 && force) {
+      await Promise.all([
+        supabaseAdmin
+          .from('scenario_hazards')
+          .delete()
+          .eq('scenario_id', scenarioId)
+          .or('spawn_condition.not.is.null,parent_pin_id.not.is.null'),
+        supabaseAdmin
+          .from('scenario_casualties')
+          .delete()
+          .eq('scenario_id', scenarioId)
+          .or('spawn_condition.not.is.null,parent_pin_id.not.is.null'),
+      ]);
     }
 
     const ik = (scenario.insider_knowledge ?? {}) as Record<string, unknown>;
@@ -1736,20 +1752,107 @@ Return ONLY valid JSON:
 // Pin enrichment helpers — generate rich structured data via LLM
 // ---------------------------------------------------------------------------
 
+async function buildScenarioPinEnrichmentContext(scenarioId: string): Promise<string> {
+  const { data: scenario } = await supabaseAdmin
+    .from('scenarios')
+    .select('title, category, description, briefing, insider_knowledge')
+    .eq('id', scenarioId)
+    .single();
+
+  const ik = ((scenario?.insider_knowledge ?? {}) as Record<string, unknown>) || {};
+  const customFacts = Array.isArray(ik.custom_facts)
+    ? (ik.custom_facts as Array<Record<string, unknown>>)
+    : [];
+
+  const [{ data: hazards }, { data: locations }, { data: researchUsage }] = await Promise.all([
+    supabaseAdmin
+      .from('scenario_hazards')
+      .select('hazard_type, enriched_description, properties')
+      .eq('scenario_id', scenarioId)
+      .is('session_id', null)
+      .order('appears_at_minutes', { ascending: true })
+      .limit(18),
+    supabaseAdmin
+      .from('scenario_locations')
+      .select('label, location_type, pin_category')
+      .eq('scenario_id', scenarioId)
+      .order('display_order', { ascending: true })
+      .limit(18),
+    supabaseAdmin
+      .from('scenario_research_usage')
+      .select(
+        'relevance_score, research_cases(name, summary, environment, hazards_triggered, secondary_effects)',
+      )
+      .eq('scenario_id', scenarioId)
+      .order('relevance_score', { ascending: false })
+      .limit(5),
+  ]);
+
+  const hazardsBlock = (hazards ?? [])
+    .map((h: Record<string, unknown>) => {
+      const props = (h.properties ?? {}) as Record<string, unknown>;
+      const label = String(
+        props.label ?? h.enriched_description ?? h.hazard_type ?? 'hazard',
+      ).slice(0, 160);
+      return `- ${label} (${String(h.hazard_type ?? '')})`;
+    })
+    .join('\n');
+
+  const locationsBlock = (locations ?? [])
+    .map(
+      (l: Record<string, unknown>) =>
+        `- ${String(l.label ?? '')} (${String(l.location_type ?? l.pin_category ?? '')})`,
+    )
+    .join('\n');
+
+  const researchBlock = (researchUsage ?? [])
+    .map((row: Record<string, unknown>) => {
+      const rc = row.research_cases as Record<string, unknown>;
+      const name = String(rc?.name ?? 'Case');
+      const summary = String(rc?.summary ?? '').slice(0, 220);
+      return `- ${name}: ${summary}`;
+    })
+    .join('\n');
+
+  const factsBlock = customFacts.length
+    ? customFacts
+        .slice(0, 10)
+        .map((f) => `- ${String(f.topic ?? 'Fact')}: ${String(f.summary ?? '').slice(0, 220)}`)
+        .join('\n')
+    : '';
+
+  return [
+    `Scenario: ${String(scenario?.title ?? '')} (${String(scenario?.category ?? '')})`,
+    scenario?.description ? `Description: ${String(scenario.description).slice(0, 700)}` : '',
+    scenario?.briefing ? `Briefing: ${String(scenario.briefing).slice(0, 700)}` : '',
+    factsBlock ? `Custom facts:\n${factsBlock}` : '',
+    hazardsBlock ? `Existing hazards:\n${hazardsBlock}` : '',
+    locationsBlock ? `Key locations:\n${locationsBlock}` : '',
+    researchBlock ? `Linked research cases:\n${researchBlock}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 async function enrichPatientConditions(
   triageColor: string,
   injuryType: string,
   description?: string,
+  scenarioContext?: string,
 ): Promise<Record<string, unknown>> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return {};
 
   const descHint = description ? `\nDescription provided by trainer: "${description}"` : '';
+  const ctx = scenarioContext
+    ? `\n\nScenario context (must stay consistent with this):\n${scenarioContext}`
+    : '';
 
   const prompt = `You are a pre-hospital emergency medicine expert. Generate a single realistic patient profile for a crisis training exercise.
 
 Triage color: ${triageColor.toUpperCase()}
 Injury type: ${injuryType.replace(/_/g, ' ')}${descHint}
+${ctx}
 
 Generate a medically accurate patient profile consistent with the triage color and injury type.
 
@@ -1809,6 +1912,7 @@ Rules:
 async function enrichHazardDetails(
   hazardType: string,
   description?: string,
+  scenarioContext?: string,
 ): Promise<{
   properties: Record<string, unknown>;
   resolution_requirements: Record<string, unknown>;
@@ -1825,10 +1929,13 @@ async function enrichHazardDetails(
   if (!apiKey) return fallback;
 
   const descHint = description ? `\nDescription: "${description}"` : '';
+  const ctx = scenarioContext
+    ? `\n\nScenario context (must stay consistent with this):\n${scenarioContext}`
+    : '';
 
   const prompt = `You are an emergency response expert. Generate detailed hazard data for a crisis training exercise.
 
-Hazard type: ${hazardType.replace(/_/g, ' ')}${descHint}
+Hazard type: ${hazardType.replace(/_/g, ' ')}${descHint}${ctx}
 
 Return ONLY valid JSON:
 {
@@ -1894,6 +2001,7 @@ async function enrichCrowdConditions(
   headcount: number,
   behavior?: string,
   description?: string,
+  scenarioContext?: string,
 ): Promise<Record<string, unknown>> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey)
@@ -1903,12 +2011,15 @@ async function enrichCrowdConditions(
     };
 
   const descHint = description ? `\nDescription: "${description}"` : '';
+  const ctx = scenarioContext
+    ? `\n\nScenario context (must stay consistent with this):\n${scenarioContext}`
+    : '';
 
   const prompt = `You are a crowd psychology expert. Generate realistic crowd profile data for a crisis training exercise.
 
 Crowd type: ${crowdType.replace(/_/g, ' ')}
 Headcount: ~${headcount}
-Behavior: ${behavior || 'unknown'}${descHint}
+Behavior: ${behavior || 'unknown'}${descHint}${ctx}
 
 Return ONLY valid JSON:
 {
@@ -2036,7 +2147,8 @@ router.post('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) => 
       const desc = (data.label as string) || (data.description as string) || '';
 
       logger.info({ hazardType, desc }, 'Enriching hazard pin via LLM');
-      const hazardEnriched = await enrichHazardDetails(hazardType, desc || undefined);
+      const scenarioCtx = await buildScenarioPinEnrichmentContext(scenarioId);
+      const hazardEnriched = await enrichHazardDetails(hazardType, desc || undefined, scenarioCtx);
 
       const row = {
         scenario_id: scenarioId,
@@ -2098,6 +2210,7 @@ router.post('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) => 
     if (pin_type === 'casualty') {
       const casualtyType = (data.casualty_type as string) || 'individual';
       let conditions: Record<string, unknown> = (data.conditions as Record<string, unknown>) || {};
+      const scenarioCtx = await buildScenarioPinEnrichmentContext(scenarioId);
 
       if (casualtyType === 'individual' || casualtyType === 'patient') {
         const triageColor =
@@ -2108,7 +2221,12 @@ router.post('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) => 
           (data.description as string) || (conditions.injury_description as string) || '';
 
         logger.info({ triageColor, injuryType, desc }, 'Enriching patient pin via LLM');
-        const enriched = await enrichPatientConditions(triageColor, injuryType, desc || undefined);
+        const enriched = await enrichPatientConditions(
+          triageColor,
+          injuryType,
+          desc || undefined,
+          scenarioCtx,
+        );
         if (Object.keys(enriched).length > 0) {
           conditions = { ...conditions, ...enriched };
         } else {
@@ -2133,6 +2251,7 @@ router.post('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) => 
           headcount,
           behavior,
           desc || undefined,
+          scenarioCtx,
         );
         if (Object.keys(enriched).length > 0) {
           conditions = { ...conditions, ...enriched };

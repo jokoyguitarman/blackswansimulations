@@ -2146,18 +2146,21 @@ const MapPinsTab = ({
         <span className="ml-auto text-robotic-yellow/40">drag pins to reposition</span>
       </div>
 
-      {deteriorationMissing && (
+      {(deteriorationMissing || hazards.length > 0 || casualties.length > 0) && (
         <div className="flex items-center gap-3 p-2 military-border bg-robotic-yellow/5">
           <div className="text-xs terminal-text text-robotic-yellow/70">
-            Deterioration data is missing (no timelines/spawn pins). You can generate it from the
-            current map pins.
+            {deteriorationMissing
+              ? 'Deterioration data is missing (no timelines/spawn pins). You can generate it from the current map pins.'
+              : 'Regenerate deterioration timelines/spawn pins after adding/removing map pins.'}
           </div>
           <button
             onClick={async () => {
               setRetryDetLoading(true);
               setRetryDetMsg(null);
               try {
-                const res = await api.scenarios.retryDeterioration(scenarioId);
+                const res = await api.scenarios.retryDeterioration(scenarioId, {
+                  force: !deteriorationMissing,
+                });
                 const msg =
                   res.message ||
                   (res.ok
@@ -2185,7 +2188,11 @@ const MapPinsTab = ({
             disabled={retryDetLoading}
             className="ml-auto px-4 py-1.5 text-xs terminal-text bg-blue-700 hover:bg-blue-600 text-white rounded border border-blue-500 disabled:opacity-50"
           >
-            {retryDetLoading ? 'GENERATING...' : 'RETRY DETERIORATION'}
+            {retryDetLoading
+              ? 'GENERATING...'
+              : deteriorationMissing
+                ? 'GENERATE DETERIORATION'
+                : 'REGENERATE DETERIORATION'}
           </button>
         </div>
       )}
