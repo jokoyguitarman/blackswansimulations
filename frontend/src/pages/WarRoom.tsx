@@ -734,57 +734,6 @@ export const WarRoom = () => {
     }
   }, [wizardScenarioId, teams, buildOptions, geocodeData, doctrines]);
 
-  const handleWizardGenerate = useCallback(async () => {
-    setError(null);
-    setLoading(true);
-    setProgressPhase(null);
-    setProgressMessage('');
-    setStep(6);
-    try {
-      const options = buildOptions();
-      options.teams = teams.map((t) => ({
-        team_name: t.team_name,
-        team_description: t.team_description,
-        min_participants: t.min_participants,
-        max_participants: t.max_participants,
-        is_investigative: t.is_investigative ?? false,
-      }));
-
-      const wizardOpts: Parameters<typeof api.warroom.wizardGenerate>[0] = {
-        ...options,
-      };
-      if (geocodeData) {
-        wizardOpts.geocode_override = {
-          lat: geocodeData.lat,
-          lng: geocodeData.lng,
-          display_name: geocodeData.display_name,
-        };
-      }
-      if (doctrines) {
-        wizardOpts.validated_doctrines = {
-          perTeamDoctrines: doctrines.perTeamDoctrines,
-          teamWorkflows: doctrines.teamWorkflows,
-        };
-      }
-
-      const result = await api.warroom.wizardGenerate(wizardOpts, (phase, message) => {
-        setProgressPhase(phase);
-        setProgressMessage(message);
-      });
-      if (result.scenarioId) {
-        setProgressPhase('persist');
-        setProgressMessage('Scenario created successfully.');
-        navigate(`/scenarios`);
-      } else {
-        setError('No scenario ID returned');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate scenario');
-    } finally {
-      setLoading(false);
-    }
-  }, [teams, buildOptions, geocodeData, doctrines, navigate]);
-
   const updateTeam = (index: number, field: keyof TeamEntry, value: string | number) => {
     setTeams((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)));
   };
