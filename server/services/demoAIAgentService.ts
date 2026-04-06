@@ -4955,6 +4955,30 @@ export class DemoAIAgentService {
     const teamName = agent.persona.teamName;
     const teamKey = getTeamScopeKey(teamName);
 
+    // Hard block: teams without pin jurisdiction must never submit pin_response
+    const PIN_RESPONSE_TEAMS: Record<string, Set<string>> = {
+      triage: new Set(['casualty']),
+      fire: new Set(['casualty', 'hazard']),
+      evacuation: new Set(['casualty']),
+      bomb_squad: new Set(['hazard']),
+    };
+    const allowedTargets = teamKey ? PIN_RESPONSE_TEAMS[teamKey] : undefined;
+    const pinAction = actions.find((a) => a.action === 'pin_response' && a.pin_response);
+    if (pinAction?.pin_response) {
+      if (!allowedTargets) {
+        return {
+          valid: false,
+          reason: `${teamName} does NOT have pin response jurisdiction. Do NOT interact with casualties or hazards. Your role is ${teamKey === 'media' ? 'public communication and media management' : teamKey === 'pursuit' ? 'suspect tracking and intelligence' : 'coordination'} only. Submit a DECISION instead.`,
+        };
+      }
+      if (!allowedTargets.has(pinAction.pin_response.target_type)) {
+        return {
+          valid: false,
+          reason: `${teamName} cannot respond to ${pinAction.pin_response.target_type} pins. Your jurisdiction is limited to: ${[...allowedTargets].join(', ')} pins only.`,
+        };
+      }
+    }
+
     // Load blueprint to check completeness
     const scenarioMetrics = await loadScenarioMetrics(
       session.sessionId,
