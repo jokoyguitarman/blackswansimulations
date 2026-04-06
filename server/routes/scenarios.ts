@@ -1212,6 +1212,48 @@ router.post('/:id/retry-routes', requireAuth, async (req: AuthenticatedRequest, 
   }
 });
 
+/** Map AI-returned hazard labels (often long prose) back to DB hazard rows. */
+function resolveHazardMatchFromAiLabel(
+  aiLabel: string,
+  hazards: Array<{
+    id: string;
+    label: string;
+    hazard_type: string;
+    location_lat: number;
+    location_lng: number;
+  }>,
+): (typeof hazards)[0] | null {
+  const t = aiLabel.trim();
+  if (!t) return null;
+  for (const h of hazards) {
+    if (h.label === t) return h;
+  }
+  const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+  const nt = norm(t);
+  for (const h of hazards) {
+    if (norm(h.label) === nt) return h;
+  }
+  const tl = t.toLowerCase();
+  for (const h of hazards) {
+    if (h.label.length >= 3 && tl.includes(h.label.toLowerCase())) return h;
+  }
+  const prefix = tl.slice(0, 40);
+  for (const h of hazards) {
+    const hl = h.label.toLowerCase();
+    if (hl.length >= 3 && tl.startsWith(hl.slice(0, Math.min(28, hl.length)))) return h;
+    if (hl.length >= 3 && hl.startsWith(prefix.slice(0, Math.min(16, prefix.length)))) return h;
+  }
+  for (const h of hazards) {
+    const ht = h.hazard_type.toLowerCase();
+    if (ht.length >= 4 && tl.includes(ht)) {
+      const sameType = hazards.filter((x) => x.hazard_type === h.hazard_type);
+      if (sameType.length === 1) return h;
+    }
+  }
+  if (hazards.length === 1) return hazards[0] ?? null;
+  return null;
+}
+
 // Retry deterioration generation for a scenario (trainer/admin)
 router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
@@ -1440,18 +1482,21 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
       return res.status(502).json({ error: 'Deterioration timeline generation failed' });
     }
 
-    // Persist hazard timelines
-    const labelToHazardId = new Map<string, string>();
-    for (const h of hazardsForAi) labelToHazardId.set(h.label, h.id);
-
+    // Persist hazard timelines (match AI labels to DB rows — model often returns prose)
     let hazardsUpdated = 0;
     for (const eh of detResult.enriched_hazard_timelines) {
-      const hid = labelToHazardId.get(eh.hazard_label);
-      if (!hid) continue;
+      const matched = resolveHazardMatchFromAiLabel(eh.hazard_label, hazardsForAi);
+      if (!matched) {
+        logger.warn(
+          { scenarioId, hazard_label: eh.hazard_label?.slice?.(0, 120) },
+          'retry-deterioration: unmatched hazard_label for timeline',
+        );
+        continue;
+      }
       const { error: upErr } = await supabaseAdmin
         .from('scenario_hazards')
         .update({ deterioration_timeline: eh.deterioration_timeline })
-        .eq('id', hid)
+        .eq('id', matched.id)
         .eq('scenario_id', scenarioId);
       if (!upErr) hazardsUpdated++;
     }
@@ -1478,14 +1523,15 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
     let spawnHazardsInserted = 0;
     let spawnCasualtiesInserted = 0;
 
-    const parentByLabel = new Map<string, { id: string; lat: number; lng: number }>();
-    for (const h of hazardsForAi) {
-      parentByLabel.set(h.label, { id: h.id, lat: h.location_lat, lng: h.location_lng });
-    }
-
     for (const sp of detResult.spawn_pins) {
-      const parent = parentByLabel.get(sp.parent_pin_label);
-      if (!parent) continue;
+      const parent = resolveHazardMatchFromAiLabel(sp.parent_pin_label, hazardsForAi);
+      if (!parent) {
+        logger.warn(
+          { scenarioId, parent_pin_label: sp.parent_pin_label?.slice?.(0, 120) },
+          'retry-deterioration: unmatched spawn parent_pin_label',
+        );
+        continue;
+      }
 
       if (sp.pin_type === 'hazard') {
         const props = { ...(sp.properties ?? {}) } as Record<string, unknown>;
@@ -1494,8 +1540,8 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
         const row = {
           scenario_id: scenarioId,
           hazard_type: sp.hazard_type || 'secondary_hazard',
-          location_lat: parent.lat + sp.lat_offset,
-          location_lng: parent.lng + sp.lng_offset,
+          location_lat: parent.location_lat + sp.lat_offset,
+          location_lng: parent.location_lng + sp.lng_offset,
           floor_level: sp.floor_level || 'G',
           properties: props,
           assessment_criteria: [],
@@ -1517,8 +1563,8 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
         const row = {
           scenario_id: scenarioId,
           casualty_type: sp.casualty_type || 'patient',
-          location_lat: parent.lat + sp.lat_offset,
-          location_lng: parent.lng + sp.lng_offset,
+          location_lat: parent.location_lat + sp.lat_offset,
+          location_lng: parent.location_lng + sp.lng_offset,
           floor_level: sp.floor_level || 'G',
           headcount: sp.headcount ?? 1,
           conditions: conds,

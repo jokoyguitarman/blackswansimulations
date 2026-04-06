@@ -26,6 +26,13 @@ type TeamWorkflow = {
   sop_checklist?: string[];
 };
 
+const WAR_ROOM_LABEL_MAX = 72;
+function warRoomShortLabel(raw: string, fallback: string): string {
+  const s = (raw || fallback).trim() || fallback;
+  if (s.length <= WAR_ROOM_LABEL_MAX) return s;
+  return `${s.slice(0, WAR_ROOM_LABEL_MAX - 1)}…`;
+}
+
 type GeocodeData = {
   lat: number;
   lng: number;
@@ -367,7 +374,7 @@ export const WarRoom = () => {
   const [useStructured, setUseStructured] = useState(false);
   const [progressPhase, setProgressPhase] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState<string>('');
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [teams, setTeams] = useState<TeamEntry[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [resolvedScenarioType, setResolvedScenarioType] = useState<string | null>(null);
@@ -389,6 +396,8 @@ export const WarRoom = () => {
     ReturnType<typeof api.warroom.wizardDeteriorationPreview>
   > | null>(null);
   const [deteriorationLoading, setDeteriorationLoading] = useState(false);
+  /** First-time persist from step 4→5 (avoid full-screen loading so spawn UI stays visible). */
+  const [wizardScenarioPersisting, setWizardScenarioPersisting] = useState(false);
 
   const [searchParams] = useSearchParams();
   const draftResumeLoadedRef = useRef<string | null>(null);
@@ -664,15 +673,16 @@ export const WarRoom = () => {
     setError(null);
     setDeteriorationLoading(true);
     setDeteriorationPreview(null);
+    setStep(5);
+    const hadScenarioAlready = Boolean(wizardScenarioId);
     try {
       // Persist-first, DB-backed preview:
       // 1) Ensure the scenario (pins) exists in DB
       let scenarioId = wizardScenarioId;
       if (!scenarioId) {
-        setLoading(true);
-        setProgressPhase(null);
-        setProgressMessage('');
-        setStep(6);
+        setWizardScenarioPersisting(true);
+        setProgressPhase('ai');
+        setProgressMessage('Generating scenario and saving to database…');
 
         if (!wizardDraftId) {
           throw new Error('Wizard draft missing. Go back to teams and continue.');
@@ -709,16 +719,15 @@ export const WarRoom = () => {
             : {}),
         });
 
-        setProgressPhase('ai');
-        setProgressMessage('Generating scenario and saving to database…');
         const { data: persisted } = await api.warroom.wizardDraftPersist(wizardDraftId);
         scenarioId = persisted.scenarioId;
         if (!scenarioId) throw new Error('No scenario ID returned');
         setWizardScenarioId(scenarioId);
+        setWizardScenarioPersisting(false);
       }
 
       // 2) Generate deterioration from DB pins (spawns + timelines)
-      await api.scenarios.retryDeterioration(scenarioId);
+      await api.scenarios.retryDeterioration(scenarioId, { force: hadScenarioAlready });
 
       // 3) Build preview from DB state
       const [scenRes, hazRes, casRes] = await Promise.all([
@@ -730,10 +739,21 @@ export const WarRoom = () => {
       const hazards = (hazRes.data ?? []) as Array<Record<string, unknown>>;
       const casualties = (casRes.data ?? []) as Array<Record<string, unknown>>;
 
+      const hazardIdToShortLabel = new Map<string, string>();
+      for (const h of hazards) {
+        const props = (h.properties ?? {}) as Record<string, unknown>;
+        const raw = String(props.label ?? h.enriched_description ?? h.hazard_type ?? 'Hazard');
+        hazardIdToShortLabel.set(
+          String(h.id),
+          warRoomShortLabel(raw, String(h.hazard_type ?? 'Hazard')),
+        );
+      }
+
       const enrichedHazards = hazards
         .map((h) => {
           const props = (h.properties ?? {}) as Record<string, unknown>;
-          const label = String(props.label ?? h.enriched_description ?? h.hazard_type ?? 'Hazard');
+          const raw = String(props.label ?? h.enriched_description ?? h.hazard_type ?? 'Hazard');
+          const label = warRoomShortLabel(raw, String(h.hazard_type ?? 'Hazard'));
           const dt = (h.deterioration_timeline ?? {}) as Record<string, unknown>;
           return { hazard_label: label, deterioration_timeline: dt };
         })
@@ -742,9 +762,10 @@ export const WarRoom = () => {
       const enrichedCasualties = casualties
         .map((c, idx) => {
           const conds = (c.conditions ?? {}) as Record<string, unknown>;
-          const label = String(
+          const raw = String(
             conds.visible_description ?? conds.injury_description ?? c.casualty_type ?? 'Casualty',
           );
+          const label = warRoomShortLabel(raw, String(c.casualty_type ?? 'Casualty'));
           const timeline = (conds.deterioration_timeline ?? []) as Array<{
             at_minutes: number;
             description: string;
@@ -760,12 +781,17 @@ export const WarRoom = () => {
           .filter((h) => h.spawn_condition != null || h.parent_pin_id != null)
           .map((h) => {
             const props = (h.properties ?? {}) as Record<string, unknown>;
-            const label = String(
+            const raw = String(
               props.label ?? h.enriched_description ?? h.hazard_type ?? 'Spawn hazard',
             );
+            const label = warRoomShortLabel(raw, String(h.hazard_type ?? 'Spawn hazard'));
+            const pid = h.parent_pin_id != null ? String(h.parent_pin_id) : '';
+            const parentLabel = pid
+              ? (hazardIdToShortLabel.get(pid) ?? `Parent ${pid.slice(0, 8)}…`)
+              : '—';
             return {
               pin_type: 'hazard' as const,
-              parent_pin_label: String(h.parent_pin_id ?? 'unknown'),
+              parent_pin_label: parentLabel,
               label,
               hazard_type: String(h.hazard_type ?? 'secondary_hazard'),
               lat_offset: 0,
@@ -785,15 +811,20 @@ export const WarRoom = () => {
           .filter((c) => c.spawn_condition != null || c.parent_pin_id != null)
           .map((c) => {
             const conds = (c.conditions ?? {}) as Record<string, unknown>;
-            const label = String(
+            const raw = String(
               conds.visible_description ??
                 conds.injury_description ??
                 c.casualty_type ??
                 'Spawn casualty',
             );
+            const label = warRoomShortLabel(raw, String(c.casualty_type ?? 'Spawn casualty'));
+            const pid = c.parent_pin_id != null ? String(c.parent_pin_id) : '';
+            const parentLabel = pid
+              ? (hazardIdToShortLabel.get(pid) ?? `Parent ${pid.slice(0, 8)}…`)
+              : '—';
             return {
               pin_type: 'casualty' as const,
-              parent_pin_label: String(c.parent_pin_id ?? 'unknown'),
+              parent_pin_label: parentLabel,
               label,
               casualty_type: String(c.casualty_type ?? 'patient'),
               lat_offset: 0,
@@ -836,12 +867,11 @@ export const WarRoom = () => {
           // preview still shown; draft cache is best-effort
         }
       }
-
-      setStep(5);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Deterioration preview failed');
     } finally {
       setDeteriorationLoading(false);
+      setWizardScenarioPersisting(false);
       setLoading(false);
     }
   }, [wizardScenarioId, wizardDraftId, teams, buildOptions, geocodeData, doctrines]);
@@ -1330,14 +1360,11 @@ export const WarRoom = () => {
         {loading && (
           <div className="military-border p-6 mb-6 bg-robotic-gray-300">
             <h3 className="text-lg terminal-text uppercase mb-4">
-              {wizardMode && step === 6
-                ? '[WIZARD] Building scenario world'
-                : '[BACKEND] Building scenario world'}
+              [BACKEND] Building scenario world
             </h3>
             <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
-              {wizardMode && step === 6
-                ? 'Generating with trainer-validated doctrines and confirmed location.'
-                : 'Creating a playable scenario with multiple layers: teams, injects, objectives, locations, environmental seeds, and real-world facility data.'}
+              Creating a playable scenario with multiple layers: teams, injects, objectives,
+              locations, environmental seeds, and real-world facility data.
             </p>
             <div className="space-y-2">
               {GENERATION_PHASES.map((phase) => {
@@ -1675,6 +1702,13 @@ export const WarRoom = () => {
               remove spawn events before generating.
             </p>
 
+            {wizardScenarioPersisting && (
+              <p className="text-xs terminal-text text-cyan-300/90 animate-pulse mb-3 border border-cyan-500/30 p-3">
+                Saving scenario to the database (first run can take 1–2 minutes). Spawn and timeline
+                review will appear below when ready — no need to leave this page.
+              </p>
+            )}
+
             {deteriorationLoading && (
               <p className="text-xs terminal-text text-robotic-yellow/60 animate-pulse">
                 Researching deterioration physics and generating timeline...
@@ -1683,6 +1717,70 @@ export const WarRoom = () => {
 
             {deteriorationPreview && (
               <div className="space-y-6">
+                {/* Spawn Pins first so trainers see editable pins without scrolling past long timelines */}
+                {deteriorationPreview.spawnPins.length > 0 ? (
+                  <div id="warroom-spawn-events">
+                    <h4 className="text-sm terminal-text uppercase mb-2 text-robotic-yellow">
+                      Spawn Events ({deteriorationPreview.spawnPins.length}) — edit or remove before
+                      opening scenarios
+                    </h4>
+                    <div className="space-y-2">
+                      {deteriorationPreview.spawnPins.map((sp, i) => (
+                        <div
+                          key={i}
+                          className="border border-robotic-gray-200 p-3 flex items-start justify-between gap-4"
+                        >
+                          <div className="flex-1">
+                            <div className="text-xs terminal-text text-robotic-yellow/90 font-bold mb-1">
+                              <span
+                                className={
+                                  sp.pin_type === 'hazard' ? 'text-red-400' : 'text-amber-400'
+                                }
+                              >
+                                [{sp.pin_type.toUpperCase()}]
+                              </span>{' '}
+                              {sp.label}
+                            </div>
+                            <div className="text-xs terminal-text text-robotic-yellow/60">
+                              Parent: {sp.parent_pin_label} | Appears: +{sp.appears_at_minutes}min |
+                              Trigger: {sp.spawn_condition.trigger} at +
+                              {sp.spawn_condition.at_minutes}min (unless{' '}
+                              {sp.spawn_condition.unless_status.join(', ')})
+                            </div>
+                            <div className="text-xs terminal-text text-robotic-yellow/70 mt-1">
+                              {sp.description}
+                            </div>
+                            <div className="text-xs terminal-text text-robotic-yellow/40 mt-1">
+                              Offset: [{sp.lat_offset.toFixed(5)}, {sp.lng_offset.toFixed(5)}]
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setDeteriorationPreview((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      spawnPins: prev.spawnPins.filter((_, idx) => idx !== i),
+                                    }
+                                  : null,
+                              );
+                            }}
+                            className="text-xs terminal-text text-red-400 hover:text-red-300 border border-red-400/30 px-2 py-1"
+                          >
+                            [REMOVE]
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs terminal-text text-robotic-yellow/50 border border-robotic-yellow/20 p-3">
+                    No spawn pins were written to the scenario yet. Use [REBUILD DETERIORATION
+                    PREVIEW] from the previous step, or regenerate — the server matches AI parent
+                    labels to hazards more reliably after the latest update.
+                  </p>
+                )}
+
                 {/* Cascade Narrative */}
                 {deteriorationPreview.cascadeNarrative && (
                   <div className="border border-robotic-yellow/30 p-4">
@@ -1746,63 +1844,6 @@ export const WarRoom = () => {
                               {entry.description}
                             </div>
                           ))}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Spawn Pins */}
-                {deteriorationPreview.spawnPins.length > 0 && (
-                  <div>
-                    <h4 className="text-sm terminal-text uppercase mb-2 text-robotic-yellow">
-                      Spawn Events ({deteriorationPreview.spawnPins.length})
-                    </h4>
-                    <div className="space-y-2">
-                      {deteriorationPreview.spawnPins.map((sp, i) => (
-                        <div
-                          key={i}
-                          className="border border-robotic-gray-200 p-3 flex items-start justify-between gap-4"
-                        >
-                          <div className="flex-1">
-                            <div className="text-xs terminal-text text-robotic-yellow/90 font-bold mb-1">
-                              <span
-                                className={
-                                  sp.pin_type === 'hazard' ? 'text-red-400' : 'text-amber-400'
-                                }
-                              >
-                                [{sp.pin_type.toUpperCase()}]
-                              </span>{' '}
-                              {sp.label}
-                            </div>
-                            <div className="text-xs terminal-text text-robotic-yellow/60">
-                              Parent: {sp.parent_pin_label} | Appears: +{sp.appears_at_minutes}min |
-                              Trigger: {sp.spawn_condition.trigger} at +
-                              {sp.spawn_condition.at_minutes}min (unless{' '}
-                              {sp.spawn_condition.unless_status.join(', ')})
-                            </div>
-                            <div className="text-xs terminal-text text-robotic-yellow/70 mt-1">
-                              {sp.description}
-                            </div>
-                            <div className="text-xs terminal-text text-robotic-yellow/40 mt-1">
-                              Offset: [{sp.lat_offset.toFixed(5)}, {sp.lng_offset.toFixed(5)}]
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => {
-                              setDeteriorationPreview((prev) =>
-                                prev
-                                  ? {
-                                      ...prev,
-                                      spawnPins: prev.spawnPins.filter((_, idx) => idx !== i),
-                                    }
-                                  : null,
-                              );
-                            }}
-                            className="text-xs terminal-text text-red-400 hover:text-red-300 border border-red-400/30 px-2 py-1"
-                          >
-                            [REMOVE]
-                          </button>
                         </div>
                       ))}
                     </div>
@@ -1894,10 +1935,10 @@ export const WarRoom = () => {
               </button>
               <button
                 onClick={handleDeteriorationPreview}
-                disabled={loading || deteriorationLoading || !doctrines}
+                disabled={loading || deteriorationLoading || wizardScenarioPersisting || !doctrines}
                 className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {deteriorationLoading
+                {deteriorationLoading || wizardScenarioPersisting
                   ? '[BUILDING PREVIEW...]'
                   : wizardScenarioId
                     ? '[REBUILD DETERIORATION PREVIEW]'

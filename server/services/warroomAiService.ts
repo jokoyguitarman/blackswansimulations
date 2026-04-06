@@ -7071,6 +7071,11 @@ ${casualtyBlock}
 SCENARIO LOCATIONS:
 ${locationBlock}
 
+CRITICAL LABEL RULES:
+- Each hazard line is formatted H0: "LABEL" (...). In enriched_hazard_timelines, hazard_label MUST exactly match that quoted LABEL string for the same hazard (same characters as between the quotes on the H0/H1/... line).
+- In spawn_pins, parent_pin_label MUST exactly match one of those same quoted LABEL strings (the parent hazard that triggers the spawn).
+- Do not invent paraphrased or narrative titles for hazard_label or parent_pin_label; copy the quoted label text verbatim.
+
 Using the physics research above, produce a comprehensive deterioration timeline for this scenario. Think about:
 
 1. ENRICHED HAZARD TIMELINES: For each hazard, provide realistic deterioration at 10min, 20min, 30min if unaddressed. Include what new hazards or casualties each stage spawns.
