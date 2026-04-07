@@ -433,6 +433,54 @@ router.patch('/sessions/:id/placements/:placementId', requireAuth, async (req, r
     if (label) updates.label = label;
     if (linked_decision_id) updates.linked_decision_id = linked_decision_id;
 
+    // Snap relocated Point geometry to building stud if inside a building
+    if (
+      geometry?.type === 'Point' &&
+      Array.isArray(geometry.coordinates) &&
+      geometry.coordinates.length === 2
+    ) {
+      const { data: sessionFull } = await supabaseAdmin
+        .from('sessions')
+        .select('scenario_id')
+        .eq('id', sessionId)
+        .single();
+
+      if (sessionFull?.scenario_id) {
+        const scenarioId = sessionFull.scenario_id as string;
+        let grids = getCachedGrids(scenarioId);
+
+        if (!grids) {
+          const { data: sc } = await supabaseAdmin
+            .from('scenarios')
+            .select('insider_knowledge')
+            .eq('id', scenarioId)
+            .single();
+
+          const ik = sc?.insider_knowledge as Record<string, unknown> | null;
+          const osmVicinity = ik?.osm_vicinity as { buildings?: OsmBuilding[] } | undefined;
+          const buildings = (osmVicinity as Record<string, unknown>)?.buildings as
+            | OsmBuilding[]
+            | undefined;
+
+          if (buildings?.length) {
+            grids = generateStudGrids(buildings);
+            setCachedGrids(scenarioId, grids);
+          }
+        }
+
+        if (grids?.length) {
+          const [gLng, gLat] = geometry.coordinates;
+          const floor = ((properties as Record<string, unknown>)?.floor_level as string) ?? 'G';
+          const occupied = await getOccupiedStudIds(scenarioId, grids, sessionId);
+          const snapped = snapCoordinate(gLat, gLng, floor, grids, occupied);
+          if (snapped.studId) {
+            geometry.coordinates = [snapped.lng, snapped.lat];
+            updates.geometry = geometry;
+          }
+        }
+      }
+    }
+
     // Re-validate if geometry changed
     if (geometry) {
       const { data: existing } = await supabaseAdmin
