@@ -539,16 +539,10 @@ export async function fetchVenueBuilding(
   radiusMeters: number = 300,
 ): Promise<OsmBuilding[]> {
   const MAX_BUILDINGS = 5;
-  const TIMEOUT_S = 15;
+  const radius = Math.min(radiusMeters, 1000);
+  const TIMEOUT_S = 25;
   const HTTP_TIMEOUT_MS = TIMEOUT_S * 1000 + 5000;
 
-  // Use a small radius (max 50m) to keep the query fast in dense urban areas.
-  // The caller passes up to 300m, but full-geometry queries over large radii
-  // routinely time out on public Overpass endpoints in places like Singapore.
-  const radius = Math.min(radiusMeters, 50);
-
-  // Query only ways (vast majority of buildings). Relations are rare and
-  // expensive to resolve with full geometry.
   const query = `
 [out:json][timeout:${TIMEOUT_S}];
 way["building"](around:${radius},${lat},${lng});
