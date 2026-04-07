@@ -13,6 +13,7 @@ import { api } from '../../lib/api';
 import { ScenarioLocationMarker, type ScenarioLocationPin } from '../COP/ScenarioLocationMarker';
 import { FloorSelector, type FloorPlan } from '../COP/FloorSelector';
 import { FloorPlanOverlay } from '../COP/FloorPlanOverlay';
+import { BuildingStudOverlay } from '../COP/BuildingStudOverlay';
 import { svg } from '../COP/mapIcons';
 
 interface StandardsFinding {
@@ -3101,6 +3102,9 @@ const MapPinsTab = ({
                 </Tooltip>
               </Marker>
             ))}
+
+          {/* Building Stud Overlay — snap-point grid inside buildings */}
+          <BuildingStudOverlay scenarioId={scenarioId} floor={activeFloor} />
         </MapContainer>
         {/* Floor Selector */}
         {floorPlans.length > 1 && (
