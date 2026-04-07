@@ -178,6 +178,63 @@ export function findContainingGrid(lat: number, lng: number, grids: StudGrid[]):
   return null;
 }
 
+const MAX_SNAP_DISTANCE_M = 300;
+
+/**
+ * Minimum distance from a point to a polygon edge (in metres).
+ * For each consecutive pair of vertices, computes the distance from the
+ * point to the closest position on that line segment.
+ */
+function pointToPolygonDistanceM(lat: number, lng: number, polygon: [number, number][]): number {
+  let minDist = Infinity;
+  for (let i = 0; i < polygon.length; i++) {
+    const [aLat, aLng] = polygon[i];
+    const [bLat, bLng] = polygon[(i + 1) % polygon.length];
+
+    const dxAB = bLat - aLat;
+    const dyAB = bLng - aLng;
+    const lenSq = dxAB * dxAB + dyAB * dyAB;
+
+    let closestLat: number;
+    let closestLng: number;
+
+    if (lenSq < 1e-14) {
+      closestLat = aLat;
+      closestLng = aLng;
+    } else {
+      const t = Math.max(0, Math.min(1, ((lat - aLat) * dxAB + (lng - aLng) * dyAB) / lenSq));
+      closestLat = aLat + t * dxAB;
+      closestLng = aLng + t * dyAB;
+    }
+
+    const d = haversineM(lat, lng, closestLat, closestLng);
+    if (d < minDist) minDist = d;
+  }
+  return minDist;
+}
+
+/**
+ * Find the nearest StudGrid to a point that is outside all building polygons.
+ * Returns null if no building is within MAX_SNAP_DISTANCE_M.
+ */
+export function findNearestGrid(
+  lat: number,
+  lng: number,
+  grids: StudGrid[],
+  maxDistM: number = MAX_SNAP_DISTANCE_M,
+): StudGrid | null {
+  let best: StudGrid | null = null;
+  let bestDist = Infinity;
+  for (const grid of grids) {
+    const d = pointToPolygonDistanceM(lat, lng, grid.polygon);
+    if (d < bestDist) {
+      bestDist = d;
+      best = grid;
+    }
+  }
+  return bestDist <= maxDistM ? best : null;
+}
+
 // ---------------------------------------------------------------------------
 // Zone classification — tag studs with blast band & operational zone
 // ---------------------------------------------------------------------------
@@ -299,8 +356,9 @@ export function snapToNearestStudInZone(
 }
 
 /**
- * Convenience: find containing building, then snap to nearest vacant stud.
- * Returns the original coordinates unchanged if the point is not inside any building.
+ * Convenience: find containing building (or nearest building within 300m),
+ * then snap to nearest vacant stud.
+ * Returns the original coordinates unchanged if no building is nearby.
  */
 export function snapCoordinate(
   lat: number,
@@ -309,7 +367,7 @@ export function snapCoordinate(
   grids: StudGrid[],
   occupiedStudIds: Set<string>,
 ): { lat: number; lng: number; studId: string | null } {
-  const grid = findContainingGrid(lat, lng, grids);
+  const grid = findContainingGrid(lat, lng, grids) ?? findNearestGrid(lat, lng, grids);
   if (!grid) return { lat, lng, studId: null };
 
   const stud = snapToNearestStud(grid.studs, lat, lng, floor, occupiedStudIds);
@@ -654,7 +712,9 @@ export function batchSnapCasualties<
     const triageColor = ((item.conditions?.triage_color as string) ?? '').toLowerCase();
     const targetBand = TRIAGE_TO_BLAST_BAND[triageColor];
 
-    const grid = findContainingGrid(item.location_lat, item.location_lng, grids);
+    const grid =
+      findContainingGrid(item.location_lat, item.location_lng, grids) ??
+      findNearestGrid(item.location_lat, item.location_lng, grids);
     if (!grid) continue;
 
     const studsClassified = grid.studs.some((s) => s.blastBand != null);

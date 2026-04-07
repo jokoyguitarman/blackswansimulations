@@ -2520,7 +2520,7 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 // GET /scenarios/:id/building-studs — stud grids with occupancy for frontend
 // ---------------------------------------------------------------------------
 
-router.get('/scenarios/:id/building-studs', requireAuth, async (req, res) => {
+router.get('/:id/building-studs', requireAuth, async (req, res) => {
   try {
     const { id: scenarioId } = req.params;
     const sessionId = req.query.sessionId as string | undefined;
