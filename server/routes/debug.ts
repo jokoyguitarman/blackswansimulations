@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
-import { fetchVenueBuilding } from '../services/osmVicinityService.js';
+import { fetchVenueBuilding, type OsmBuilding } from '../services/osmVicinityService.js';
 import { generateStudGrids } from '../services/buildingStudService.js';
 import { logger } from '../lib/logger.js';
 
@@ -22,7 +22,7 @@ router.get('/building-studs', requireAuth, async (req, res) => {
   }
 
   const t0 = Date.now();
-  let buildings;
+  let buildings: OsmBuilding[] = [];
   let fetchError: string | null = null;
 
   try {
