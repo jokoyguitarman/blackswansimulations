@@ -14,6 +14,10 @@ import {
   getOccupiedStudIds,
   getCachedGrids,
   setCachedGrids,
+  classifyStudZones,
+  BLAST_BANDS_EXPLOSIVE,
+  BLAST_BANDS_MELEE,
+  BLAST_BANDS_DEFAULT,
 } from '../services/buildingStudService.js';
 import type { OsmBuilding } from '../services/osmVicinityService.js';
 
@@ -2524,17 +2528,18 @@ router.get('/scenarios/:id/building-studs', requireAuth, async (req, res) => {
 
     let grids = getCachedGrids(scenarioId);
 
+    const { data: sc } = await supabaseAdmin
+      .from('scenarios')
+      .select('insider_knowledge')
+      .eq('id', scenarioId)
+      .single();
+
+    if (!sc) return res.status(404).json({ error: 'Scenario not found' });
+
+    const ik = sc.insider_knowledge as Record<string, unknown> | null;
+    const osmVicinity = ik?.osm_vicinity as Record<string, unknown> | undefined;
+
     if (!grids) {
-      const { data: sc } = await supabaseAdmin
-        .from('scenarios')
-        .select('insider_knowledge')
-        .eq('id', scenarioId)
-        .single();
-
-      if (!sc) return res.status(404).json({ error: 'Scenario not found' });
-
-      const ik = sc.insider_knowledge as Record<string, unknown> | null;
-      const osmVicinity = ik?.osm_vicinity as Record<string, unknown> | undefined;
       const buildings = osmVicinity?.buildings as OsmBuilding[] | undefined;
 
       if (!buildings?.length) {
@@ -2543,6 +2548,51 @@ router.get('/scenarios/:id/building-studs', requireAuth, async (req, res) => {
 
       grids = generateStudGrids(buildings);
       setCachedGrids(scenarioId, grids);
+    }
+
+    // Always reclassify studs from current DB data so zone resizing is reflected
+    if (grids.length > 0) {
+      const [hazRes, locRes] = await Promise.all([
+        supabaseAdmin
+          .from('scenario_hazards')
+          .select('location_lat, location_lng, zones')
+          .eq('scenario_id', scenarioId),
+        supabaseAdmin
+          .from('scenario_locations')
+          .select('conditions')
+          .eq('scenario_id', scenarioId)
+          .eq('pin_category', 'incident_zone'),
+      ]);
+
+      const hazardCenters = (hazRes.data ?? [])
+        .filter((h: Record<string, unknown>) => h.location_lat != null && h.location_lng != null)
+        .map((h: Record<string, unknown>) => ({
+          lat: h.location_lat as number,
+          lng: h.location_lng as number,
+        }));
+
+      const zonePolygons: Array<{ zone_type: string; polygon: [number, number][] }> = [];
+      for (const loc of locRes.data ?? []) {
+        const cond = loc.conditions as Record<string, unknown> | null;
+        if (cond?.zone_type && cond?.polygon) {
+          zonePolygons.push({
+            zone_type: cond.zone_type as string,
+            polygon: cond.polygon as [number, number][],
+          });
+        }
+      }
+
+      if (hazardCenters.length > 0) {
+        const threatProfile = ik?.threat_profile as Record<string, unknown> | undefined;
+        const weaponClass = threatProfile?.weapon_class as string | undefined;
+        const blastBands =
+          weaponClass === 'explosive'
+            ? BLAST_BANDS_EXPLOSIVE
+            : weaponClass?.startsWith('melee_')
+              ? BLAST_BANDS_MELEE
+              : BLAST_BANDS_DEFAULT;
+        classifyStudZones(grids, hazardCenters, zonePolygons, blastBands);
+      }
     }
 
     const occupied = await getOccupiedStudIds(scenarioId, grids, sessionId);
@@ -2561,6 +2611,9 @@ router.get('/scenarios/:id/building-studs', requireAuth, async (req, res) => {
           lng: s.lng,
           floor: s.floor,
           occupied: occupied.has(s.id),
+          blastBand: s.blastBand ?? null,
+          operationalZone: s.operationalZone ?? null,
+          distFromIncidentM: s.distFromIncidentM != null ? Math.round(s.distFromIncidentM) : null,
         })),
     }));
 

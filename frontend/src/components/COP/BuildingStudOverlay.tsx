@@ -8,6 +8,9 @@ interface StudData {
   lng: number;
   floor: string;
   occupied: boolean;
+  blastBand: string | null;
+  operationalZone: string | null;
+  distFromIncidentM: number | null;
 }
 
 interface GridData {
@@ -28,6 +31,39 @@ interface BuildingStudOverlayProps {
 }
 
 const MIN_ZOOM_TO_SHOW = 18;
+
+const ZONE_COLORS: Record<string, { color: string; fill: string }> = {
+  kill: { color: '#ef4444', fill: '#f87171' },
+  critical: { color: '#f97316', fill: '#fb923c' },
+  serious: { color: '#eab308', fill: '#facc15' },
+  minor: { color: '#3b82f6', fill: '#60a5fa' },
+};
+
+const OCCUPIED_STYLE = { color: '#94a3b8', fill: '#94a3b8' };
+const DEFAULT_STYLE = { color: '#6366f1', fill: '#818cf8' };
+
+function getStudStyle(stud: StudData) {
+  if (stud.occupied) {
+    return {
+      color: OCCUPIED_STYLE.color,
+      fillColor: OCCUPIED_STYLE.fill,
+      fillOpacity: 0.25,
+      weight: 0.5,
+      radius: 2.5,
+    };
+  }
+
+  const zoneStyle = stud.blastBand ? ZONE_COLORS[stud.blastBand] : null;
+  const colors = zoneStyle ?? DEFAULT_STYLE;
+
+  return {
+    color: colors.color,
+    fillColor: colors.fill,
+    fillOpacity: 0.55,
+    weight: 1,
+    radius: 3,
+  };
+}
 
 export const BuildingStudOverlay = ({
   scenarioId,
@@ -77,20 +113,23 @@ export const BuildingStudOverlay = ({
         />
       ))}
       {grids.flatMap((grid) =>
-        grid.studs.map((stud) => (
-          <CircleMarker
-            key={stud.id}
-            center={[stud.lat, stud.lng]}
-            radius={stud.occupied ? 2.5 : 3}
-            pathOptions={{
-              color: stud.occupied ? '#94a3b8' : '#6366f1',
-              fillColor: stud.occupied ? '#94a3b8' : '#818cf8',
-              fillOpacity: stud.occupied ? 0.25 : 0.5,
-              weight: stud.occupied ? 0.5 : 1,
-            }}
-            interactive={false}
-          />
-        )),
+        grid.studs.map((stud) => {
+          const style = getStudStyle(stud);
+          return (
+            <CircleMarker
+              key={stud.id}
+              center={[stud.lat, stud.lng]}
+              radius={style.radius}
+              pathOptions={{
+                color: style.color,
+                fillColor: style.fillColor,
+                fillOpacity: style.fillOpacity,
+                weight: style.weight,
+              }}
+              interactive={false}
+            />
+          );
+        }),
       )}
     </>
   );

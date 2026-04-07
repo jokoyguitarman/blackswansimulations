@@ -1061,6 +1061,11 @@ import {
   formatStudsForPrompt,
   batchSnap,
   batchSnapLocations,
+  batchSnapCasualties,
+  classifyStudZones,
+  BLAST_BANDS_EXPLOSIVE,
+  BLAST_BANDS_MELEE,
+  BLAST_BANDS_DEFAULT,
   type StudGrid,
 } from './buildingStudService.js';
 
@@ -7570,6 +7575,35 @@ export async function warroomGenerateScenario(
     }
   }
 
+  // Classify studs with blast-band and operational-zone metadata
+  if (studGrids.length > 0 && scenarioHazards?.length) {
+    const hazardCenters = scenarioHazards.map((h) => ({
+      lat: h.location_lat,
+      lng: h.location_lng,
+    }));
+    const weaponClass = input.threat_profile?.weapon_class;
+    const isMeleeWeapon = weaponClass?.startsWith('melee_');
+    const isExplosiveWeapon = weaponClass === 'explosive';
+    const blastBands = isExplosiveWeapon
+      ? BLAST_BANDS_EXPLOSIVE
+      : isMeleeWeapon
+        ? BLAST_BANDS_MELEE
+        : BLAST_BANDS_DEFAULT;
+    const zonePolys = unifiedZones.map((z) => ({
+      zone_type: z.zone_type,
+      polygon: z.polygon,
+    }));
+    classifyStudZones(studGrids, hazardCenters, zonePolys, blastBands);
+    const classified = studGrids.reduce(
+      (acc, g) => acc + g.studs.filter((s) => s.blastBand && s.blastBand !== 'outside').length,
+      0,
+    );
+    logger.info(
+      { classified, zones: unifiedZones.length },
+      'Studs classified with blast-band and operational-zone metadata',
+    );
+  }
+
   // Build a zone summary block for casualty/crowd generation prompts
   const zoneSummaryBlock =
     unifiedZones.length > 0
@@ -7599,9 +7633,9 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
     ...(convergentPins ?? []),
   ];
 
-  // Snap casualty/crowd coordinates to building studs
+  // Snap casualty/crowd coordinates to building studs (zone-aware for casualties)
   if (studGrids.length > 0 && allCasualtyPins.length > 0) {
-    batchSnap(allCasualtyPins, studGrids, occupiedStudIds);
+    batchSnapCasualties(allCasualtyPins, studGrids, occupiedStudIds);
   }
 
   const casualties: WarroomScenarioPayload['casualties'] =

@@ -296,6 +296,9 @@ export const api = {
             lng: number;
             floor: string;
             occupied: boolean;
+            blastBand: string | null;
+            operationalZone: string | null;
+            distFromIncidentM: number | null;
           }>;
         }>;
       }>(await fetch(apiUrl(`/api/scenarios/${scenarioId}/building-studs${qs}`), { headers }));
