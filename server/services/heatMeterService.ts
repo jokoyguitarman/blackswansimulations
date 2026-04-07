@@ -427,6 +427,203 @@ Generate a consequence inject that describes what happens IN THE WORLD as a resu
 }
 
 // ---------------------------------------------------------------------------
+// Senior Editor AI — Media Script Evaluator
+// ---------------------------------------------------------------------------
+
+export interface EditorialReview {
+  verdict: 'approved' | 'revision_requested' | 'rejected';
+  score: number;
+  dimensions: {
+    spokesperson_identity: number;
+    factual_precision: number;
+    verified_vs_unverified: number;
+    public_guidance: number;
+    victim_dignity: number;
+    empathy_tone: number;
+    rumor_management: number;
+    consistency: number;
+    next_update_commitment: number;
+  };
+  feedback: string;
+  editor_name: string;
+  platform_notes?: string;
+}
+
+export async function evaluateMediaScript(
+  scriptContent: string,
+  injectContext: string | null,
+  groundTruth: {
+    totalCasualties: number;
+    totalCrowdSize: number;
+    hazardCount: number;
+    deathsOnSite: number;
+    activeInjects: string[];
+  },
+  previousStatements: string[],
+  mediaStateFlags: Record<string, unknown>,
+  revisionCount: number,
+): Promise<EditorialReview> {
+  const fallback: EditorialReview = {
+    verdict: 'approved',
+    score: 7,
+    dimensions: {
+      spokesperson_identity: 3,
+      factual_precision: 3,
+      verified_vs_unverified: 3,
+      public_guidance: 3,
+      victim_dignity: 4,
+      empathy_tone: 3,
+      rumor_management: 3,
+      consistency: 4,
+      next_update_commitment: 3,
+    },
+    feedback: 'Statement meets basic standards.',
+    editor_name: 'Chief Editor M. Torres',
+  };
+
+  const apiKey = env.openAiApiKey;
+  if (!apiKey) return fallback;
+
+  try {
+    const previousBlock =
+      previousStatements.length > 0
+        ? `\nPREVIOUS STATEMENTS ISSUED:\n${previousStatements.map((s, i) => `${i + 1}. ${s.slice(0, 200)}`).join('\n')}`
+        : '\nNo previous statements have been issued.';
+
+    const injectBlock = injectContext
+      ? `\nINJECT BEING RESPONDED TO:\n${injectContext}`
+      : '\nThis is a proactive statement (no specific inject triggered it).';
+
+    const mediaFlagsBlock = [
+      `Spokesperson designated: ${mediaStateFlags.spokesperson_designated === true ? 'yes' : 'no'}`,
+      `Press conference held: ${mediaStateFlags.press_conference_held === true ? 'yes' : 'no'}`,
+      `Camera placement decided: ${mediaStateFlags.camera_placement_decided === true ? 'yes' : 'no'}`,
+      `Statements issued so far: ${Number(mediaStateFlags.statements_issued) || 0}`,
+    ].join(', ');
+
+    const systemPrompt = [
+      'You are Chief Editor M. Torres, a veteran crisis communications editor with 25 years of experience covering bombings, mass casualties, chemical attacks, hostage situations, and natural disasters.',
+      'You are reviewing a draft public statement BEFORE it goes to air. You are tough but fair.',
+      'Your job is to protect the public AND the organization issuing the statement.',
+      '',
+      'Score each dimension 1-5:',
+      '1. SPOKESPERSON IDENTITY: Did they identify who is speaking and their authority?',
+      '2. FACTUAL PRECISION: Specific numbers, locations, times — not vague hand-waving?',
+      '3. VERIFIED VS UNVERIFIED: Did they distinguish confirmed facts from preliminary info?',
+      '4. PUBLIC GUIDANCE: Clear instructions (evacuate, avoid area, shelter, hotline)?',
+      '5. VICTIM DIGNITY: No names before family notification, no graphic descriptions?',
+      '6. EMPATHY & TONE: Compassionate but controlled, not robotic or panicky?',
+      '7. RUMOR MANAGEMENT: Did they address known misinformation or leave a vacuum?',
+      '8. CONSISTENCY: Does this contradict any previous statement?',
+      '9. NEXT UPDATE: Did they commit to a follow-up timeline?',
+      '',
+      `GROUND TRUTH (actual situation — use to verify factual accuracy):`,
+      `- Total casualties: ${groundTruth.totalCasualties}`,
+      `- Crowd size: ${groundTruth.totalCrowdSize}`,
+      `- Active hazards: ${groundTruth.hazardCount}`,
+      `- Deaths on site: ${groundTruth.deathsOnSite}`,
+      `- Active injects/situations: ${groundTruth.activeInjects.slice(0, 5).join('; ') || 'none'}`,
+      `- Media state: ${mediaFlagsBlock}`,
+      previousBlock,
+      injectBlock,
+      '',
+      revisionCount > 0
+        ? `This is revision #${revisionCount + 1}. The player has already been asked to revise ${revisionCount} time(s). Be stricter — they should be improving.`
+        : 'This is the first submission.',
+      '',
+      'Compute an overall score (1-10) as the average of dimensions, weighted:',
+      '- Factual precision and public guidance are double-weighted.',
+      '- If casualty numbers are wrong by more than 30%, cap overall score at 5.',
+      '',
+      'VERDICT:',
+      '- Score 7+: "approved" — statement goes live. Include minor notes if any.',
+      '- Score 4-6: "revision_requested" — statement NOT published. Give specific, actionable feedback in-character.',
+      '- Score below 4: "rejected" — harsh feedback, this would damage credibility if aired.',
+      '',
+      'Write feedback IN CHARACTER as Chief Editor Torres. Be direct, specific, cite exact problems.',
+      '',
+      'Return ONLY valid JSON:',
+      '{ "spokesperson_identity": n, "factual_precision": n, "verified_vs_unverified": n, "public_guidance": n, "victim_dignity": n, "empathy_tone": n, "rumor_management": n, "consistency": n, "next_update_commitment": n, "score": n, "verdict": "approved|revision_requested|rejected", "feedback": "string", "platform_notes": "string or null" }',
+    ].join('\n');
+
+    const userPrompt = `Review this draft public statement:\n\n${scriptContent.slice(0, 1500)}`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a crisis communications editorial reviewer. Return valid JSON only.',
+          },
+          { role: 'user', content: systemPrompt + '\n\n' + userPrompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 600,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      logger.warn({ status: response.status }, 'evaluateMediaScript: OpenAI API error');
+      return fallback;
+    }
+
+    const json = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = json.choices?.[0]?.message?.content;
+    if (!content) return fallback;
+
+    const parsed = JSON.parse(content) as Record<string, unknown>;
+
+    const score =
+      typeof parsed.score === 'number' ? Math.min(10, Math.max(1, Math.round(parsed.score))) : 7;
+
+    let verdict: EditorialReview['verdict'] = 'approved';
+    if (typeof parsed.verdict === 'string') {
+      if (parsed.verdict === 'revision_requested' || parsed.verdict === 'rejected') {
+        verdict = parsed.verdict;
+      }
+    } else {
+      verdict = score >= 7 ? 'approved' : score >= 4 ? 'revision_requested' : 'rejected';
+    }
+
+    const dim = (key: string) =>
+      typeof parsed[key] === 'number'
+        ? Math.min(5, Math.max(1, Math.round(parsed[key] as number)))
+        : 3;
+
+    return {
+      verdict,
+      score,
+      dimensions: {
+        spokesperson_identity: dim('spokesperson_identity'),
+        factual_precision: dim('factual_precision'),
+        verified_vs_unverified: dim('verified_vs_unverified'),
+        public_guidance: dim('public_guidance'),
+        victim_dignity: dim('victim_dignity'),
+        empathy_tone: dim('empathy_tone'),
+        rumor_management: dim('rumor_management'),
+        consistency: dim('consistency'),
+        next_update_commitment: dim('next_update_commitment'),
+      },
+      feedback: typeof parsed.feedback === 'string' ? parsed.feedback : fallback.feedback,
+      editor_name: 'Chief Editor M. Torres',
+      platform_notes: typeof parsed.platform_notes === 'string' ? parsed.platform_notes : undefined,
+    };
+  } catch (err) {
+    logger.warn({ err }, 'evaluateMediaScript AI call failed, using fallback');
+    return fallback;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public Sentiment Nudge (media team only)
 // ---------------------------------------------------------------------------
 

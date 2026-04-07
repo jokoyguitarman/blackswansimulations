@@ -110,6 +110,31 @@ function computeCentroid(positions: [number, number][]): [number, number] {
   return [latSum / positions.length, lngSum / positions.length];
 }
 
+function createPolygonLabelIcon(label: string, color: string): DivIcon {
+  const truncated = label.length > 24 ? label.slice(0, 22) + '…' : label;
+  return new DivIcon({
+    className: 'polygon-label-icon',
+    html: `
+      <div style="
+        white-space: nowrap;
+        background: ${color}dd;
+        color: white;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        padding: 2px 6px;
+        border-radius: 3px;
+        border: 1px solid rgba(255,255,255,0.5);
+        box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+        text-transform: uppercase;
+        pointer-events: none;
+      ">${truncated}</div>
+    `,
+    iconSize: [0, 0],
+    iconAnchor: [0, 8],
+  });
+}
+
 function createDragHandleIcon(color: string): DivIcon {
   return new DivIcon({
     className: 'polygon-drag-handle',
@@ -279,6 +304,13 @@ export const PlacedAssetMarker = ({
               </Popup>
             )}
           </Polygon>
+          {!drawingActive && (
+            <Marker
+              position={centroid as LatLngExpression}
+              icon={createPolygonLabelIcon(zone?.label || asset.label, borderColor)}
+              interactive={false}
+            />
+          )}
           {canDrag && (
             <Marker
               position={centroid as LatLngExpression}
@@ -358,6 +390,13 @@ export const PlacedAssetMarker = ({
             </>
           )}
         </Polygon>
+        {!drawingActive && (
+          <Marker
+            position={centroid as LatLngExpression}
+            icon={createPolygonLabelIcon(asset.label, color)}
+            interactive={false}
+          />
+        )}
         {canDrag && (
           <Marker
             position={centroid as LatLngExpression}

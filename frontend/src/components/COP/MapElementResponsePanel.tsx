@@ -489,12 +489,15 @@ export const MapElementResponsePanel = ({
     const fullDescription = `[${typeLabel} Response: ${element.title}] ${parts.join('. ')}`;
     const title = `Response to ${element.title} by ${teamName}`;
 
+    const isPublicStatement = selectedActions.has('issue_statement');
+
     try {
       const createRes = await api.decisions.create({
         session_id: sessionId,
         description: fullDescription,
         team_name: teamName,
         title,
+        ...(isPublicStatement ? { decision_type: 'public_statement' } : {}),
       });
       const created = (createRes as { data?: { id: string } })?.data;
       if (created?.id) {

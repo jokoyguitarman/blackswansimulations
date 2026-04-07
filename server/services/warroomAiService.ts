@@ -1099,6 +1099,7 @@ export interface WarroomScenarioPayload {
     eligible_after_minutes?: number;
     objective_penalty?: { objective_id: string; reason: string; points: number };
     state_effect?: Record<string, unknown>;
+    response_type?: string;
   }>;
   condition_driven_injects?: Array<{
     title: string;
@@ -1113,6 +1114,7 @@ export interface WarroomScenarioPayload {
     eligible_after_minutes?: number;
     objective_penalty?: { objective_id: string; reason: string; points: number };
     state_effect?: Record<string, unknown>;
+    response_type?: string;
   }>;
   decision_injects?: Array<{
     trigger_condition: string;
@@ -1129,6 +1131,7 @@ export interface WarroomScenarioPayload {
     eligible_after_minutes?: number;
     objective_penalty?: { objective_id: string; reason: string; points: number };
     state_effect?: Record<string, unknown>;
+    response_type?: string;
   }>;
   locations?: Array<{
     location_type: string;
@@ -4375,7 +4378,7 @@ RULES:
 
     const batchPrompt = systemPrompt
       .replace(profileSummary, batchSummary)
-      .replace(/Return EXACTLY \d+ placements/, `Return EXACTLY ${batch.length} placements`)
+      .replace(/Return EXACTLY [0-9]+ placements/, `Return EXACTLY ${batch.length} placements`)
       .replace(/place ALL \d+ victims/, `place ALL ${batch.length} victims`);
     const batchUserPrompt = `Place ${batch.length} victims (IDs: ${batch.map((p) => p.id).join(', ')}) on the map for "${narrative?.title || scenarioType}" at ${venue}.`;
 
@@ -5530,7 +5533,8 @@ Return ONLY valid JSON:
       "inject_scope": "universal",
       "target_teams": [],
       "requires_response": true,
-      "requires_coordination": false
+      "requires_coordination": false,
+      "response_type": "standard|media_statement"
     }
   ]
 }
@@ -5542,6 +5546,7 @@ RULES:
 - Each inject must reference the specific scenario title, venue, and narrative details.
 - No operational/logistical injects (no "triage is overwhelmed" or "exit congested") — those emerge from gameplay.
 - requires_response: set to true when teams must react (e.g. political demand, media confrontation, secondary threat). false ONLY for atmospheric pressure (background news, social media chatter).
+- response_type: set to "media_statement" when the inject requires a public-facing response (viral video, misinformation spreading, public panic, media confrontation — situations where a public statement is needed). Use "standard" for all other injects.
 - Each inject title must be concretely different from the others — no two should share the same underlying theme, character archetype, or scenario element.
 
 DO NOT generate a T+0 inject. The initial incident report at T+0 is handled separately and must not be duplicated here. Your first inject should be at the earliest assigned time slot.
@@ -5806,6 +5811,7 @@ Return ONLY valid JSON:
       "inject_scope": "team_specific",
       "target_teams": ["${teamName}"],
       "requires_response": true,
+      "response_type": "standard|media_statement",
       "conditions_to_appear": {
         "threshold": 1,
         "conditions": ["condition_key_1", "condition_key_2"]
@@ -5822,6 +5828,7 @@ Return ONLY valid JSON:
 RULES:
 - Exactly ${chaosCount} injects.
 - inject_scope always "team_specific". target_teams always ["${teamName}"].
+- response_type: set to "media_statement" when the expected response is a public-facing communication (public statement, press release, misinformation correction, press conference answer). Use "standard" for operational decisions (camera setup, staging area, internal coordination).
 - Every inject must be a NON-PROCEDURAL chaos event.
 - Each inject must have conditions_to_appear with 1-3 condition keys from the list above.
 - threshold: how many conditions must be true (1 = any of them, 2+ = multiple must co-occur).
@@ -5853,6 +5860,7 @@ VARIETY IS CRITICAL:
         inject_scope?: string;
         target_teams?: string[];
         requires_response?: boolean;
+        response_type?: string;
         conditions_to_appear?: { threshold?: number; conditions?: string[] } | { all: string[] };
         conditions_to_cancel?: string[];
         eligible_after_minutes?: number;
@@ -5869,6 +5877,7 @@ VARIETY IS CRITICAL:
       inject_scope: 'team_specific',
       target_teams: [teamName],
       requires_response: inj.requires_response ?? true,
+      response_type: inj.response_type === 'media_statement' ? 'media_statement' : 'standard',
       conditions_to_appear: inj.conditions_to_appear ?? { threshold: 1, conditions: [] },
       conditions_to_cancel: inj.conditions_to_cancel,
       eligible_after_minutes: inj.eligible_after_minutes ?? 5,
@@ -5987,6 +5996,7 @@ RULES:
       inject_scope: 'team_specific' as const,
       target_teams: [mediaTeamName],
       requires_response: true,
+      response_type: 'media_statement' as const,
       conditions_to_appear: inj.conditions_to_appear ?? {
         threshold: 1,
         conditions: ['media_press_conference_or_statement'],
@@ -7286,6 +7296,7 @@ export async function warroomGenerateScenario(
           inject_scope: 'team_specific',
           target_teams: [mediaTeam],
           requires_response: true,
+          response_type: 'media_statement',
           conditions_to_appear: {
             threshold: 2,
             conditions: ['media_no_spokesperson_designated', 'media_press_conference_or_statement'],

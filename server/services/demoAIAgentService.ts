@@ -2031,6 +2031,19 @@ export async function extractAndPlaceInfrastructureFromText(
       } catch {
         /* non-blocking */
       }
+
+      // Auto-create paired perimeter/barrier polygon for point assets
+      if (catalog.geometry === 'point' && placedBy) {
+        const perimCount = await autoCreatePairedPerimeter(
+          sessionId,
+          teamName,
+          p.asset_type,
+          pointLat,
+          pointLng,
+          placedBy,
+        );
+        if (perimCount > 0) placedCount += perimCount;
+      }
     }
   }
 
@@ -2042,15 +2055,92 @@ export async function extractAndPlaceInfrastructureFromText(
  * Incident-level cordons (inner_cordon, outer_cordon) anchor to the incident center.
  * Team-specific perimeters anchor to the team's already-placed point asset they enclose.
  */
-const CORDON_ANCHOR_MAP: Record<string, { anchorTo: 'incident' | string[] }> = {
-  inner_cordon: { anchorTo: 'incident' },
-  outer_cordon: { anchorTo: 'incident' },
-  triage_inner_cordon: { anchorTo: ['triage_point', 'field_hospital', 'casualty_collection'] },
-  fire_operating_perimeter: { anchorTo: ['forward_command', 'command_post', 'staging_area'] },
-  assembly_perimeter: { anchorTo: ['assembly_point', 'marshal_post'] },
-  press_cordon: { anchorTo: ['media_staging'] },
-  exclusion_zone: { anchorTo: 'incident' },
+const CORDON_ANCHOR_MAP: Record<
+  string,
+  { anchorTo: 'incident' | string[]; radiusDeg: number; label: string; assetType: string }
+> = {
+  inner_cordon: {
+    anchorTo: 'incident',
+    radiusDeg: 0.00015,
+    label: 'Inner Cordon',
+    assetType: 'inner_cordon',
+  },
+  outer_cordon: {
+    anchorTo: 'incident',
+    radiusDeg: 0.000225,
+    label: 'Outer Security Cordon',
+    assetType: 'outer_cordon',
+  },
+  triage_inner_cordon: {
+    anchorTo: ['triage_point', 'field_hospital', 'casualty_collection'],
+    radiusDeg: 0.00015,
+    label: 'Triage Operating Perimeter',
+    assetType: 'inner_cordon',
+  },
+  fire_operating_perimeter: {
+    anchorTo: ['forward_command', 'command_post', 'staging_area'],
+    radiusDeg: 0.00045,
+    label: 'Operations Perimeter',
+    assetType: 'inner_cordon',
+  },
+  assembly_perimeter: {
+    anchorTo: ['assembly_point', 'marshal_post'],
+    radiusDeg: 0.00045,
+    label: 'Assembly Area Perimeter',
+    assetType: 'inner_cordon',
+  },
+  press_cordon: {
+    anchorTo: ['media_staging'],
+    radiusDeg: 0.00027,
+    label: 'Media Access Cordon',
+    assetType: 'press_cordon',
+  },
+  command_post_perimeter: {
+    anchorTo: ['command_post'],
+    radiusDeg: 0.0003,
+    label: 'Command Post Perimeter',
+    assetType: 'inner_cordon',
+  },
+  ambulance_staging_perimeter: {
+    anchorTo: ['ambulance_staging'],
+    radiusDeg: 0.0003,
+    label: 'Ambulance Staging Perimeter',
+    assetType: 'inner_cordon',
+  },
+  helicopter_lz_perimeter: {
+    anchorTo: ['helicopter_lz'],
+    radiusDeg: 0.00045,
+    label: 'Landing Zone Perimeter',
+    assetType: 'exclusion_zone',
+  },
+  decon_perimeter: {
+    anchorTo: ['decontamination_zone'],
+    radiusDeg: 0.0003,
+    label: 'Decontamination Perimeter',
+    assetType: 'inner_cordon',
+  },
+  exclusion_zone: {
+    anchorTo: 'incident',
+    radiusDeg: 0.00045,
+    label: 'Exclusion Zone',
+    assetType: 'exclusion_zone',
+  },
 };
+
+/**
+ * Reverse lookup: for a given point asset_type, which perimeter entries anchor to it?
+ * Built once from CORDON_ANCHOR_MAP.
+ */
+const POINT_TO_PERIMETER_MAP: Record<string, string[]> = (() => {
+  const m: Record<string, string[]> = {};
+  for (const [perimId, cfg] of Object.entries(CORDON_ANCHOR_MAP)) {
+    if (cfg.anchorTo === 'incident') continue;
+    for (const pointType of cfg.anchorTo) {
+      (m[pointType] ??= []).push(perimId);
+    }
+  }
+  return m;
+})();
 
 // Team-scoped overrides: when the same asset_type (e.g. inner_cordon) has different
 // anchor requirements per team, the team-specific key takes priority.
@@ -2104,6 +2194,89 @@ async function resolveCordonAnchor(
 
   // No anchor asset found — fall back to incident center
   return incidentCenter;
+}
+
+/**
+ * Auto-create paired perimeter/barrier polygons when a point asset is placed.
+ * Uses POINT_TO_PERIMETER_MAP to find which perimeters should surround the
+ * given asset type, checks if they already exist, and creates them if not.
+ * Returns the number of perimeters created.
+ */
+async function autoCreatePairedPerimeter(
+  sessionId: string,
+  teamName: string,
+  placedAssetType: string,
+  placedLat: number,
+  placedLng: number,
+  placedBy: string,
+): Promise<number> {
+  const perimeterIds = POINT_TO_PERIMETER_MAP[placedAssetType];
+  if (!perimeterIds?.length) return 0;
+
+  const { data: existing } = await supabaseAdmin
+    .from('placed_assets')
+    .select('asset_type, label')
+    .eq('session_id', sessionId)
+    .eq('team_name', teamName)
+    .eq('status', 'active');
+  const existingLabels = new Set(
+    (existing ?? []).map((a) => (a as Record<string, unknown>).label as string),
+  );
+
+  let created = 0;
+  for (const perimId of perimeterIds) {
+    const cfg = CORDON_ANCHOR_MAP[perimId];
+    if (!cfg) continue;
+
+    if (existingLabels.has(cfg.label)) continue;
+
+    const clampedR = clampCordonRadius(cfg.radiusDeg, cfg.assetType);
+    const pts: [number, number][] = [];
+    for (let i = 0; i < 12; i++) {
+      const angle = (2 * Math.PI * i) / 12;
+      pts.push([placedLng + clampedR * Math.cos(angle), placedLat + clampedR * Math.sin(angle)]);
+    }
+    pts.push(pts[0]);
+    const geometry = { type: 'Polygon', coordinates: [pts] };
+
+    const { data: createdAsset, error } = await supabaseAdmin
+      .from('placed_assets')
+      .insert({
+        session_id: sessionId,
+        team_name: teamName,
+        placed_by: placedBy,
+        asset_type: cfg.assetType,
+        label: cfg.label,
+        geometry,
+        properties: { auto_paired_with: placedAssetType },
+        status: 'active',
+      })
+      .select()
+      .single();
+
+    if (error || !createdAsset) {
+      logger.warn(
+        { error, sessionId, perimId, assetType: cfg.assetType },
+        'autoCreatePairedPerimeter: insert failed',
+      );
+    } else {
+      created++;
+      logger.info(
+        { sessionId, teamName, perimId, label: cfg.label, anchoredTo: placedAssetType },
+        'autoCreatePairedPerimeter: auto-created perimeter for placed asset',
+      );
+      try {
+        getWebSocketService().broadcastToSession(sessionId, {
+          type: 'placement.created',
+          data: { placement: createdAsset, warnings: [] },
+          timestamp: new Date().toISOString(),
+        });
+      } catch {
+        /* non-blocking */
+      }
+    }
+  }
+  return created;
 }
 
 function isInjectRelevantToTeam(
@@ -4062,16 +4235,55 @@ export class DemoAIAgentService {
       case 'inject_media':
       case 'inject_stakeholder':
       case 'inject_situational': {
+        const evtInjectData = !isProactive
+          ? ((event.data as Record<string, unknown>)?.inject as Record<string, unknown> | undefined)
+          : undefined;
+        const evtResponseType = (evtInjectData?.response_type as string) ?? 'standard';
+        const isMediaTeamBot = /media|communi/i.test(agent.persona.teamName);
+
         parts.push(
           '',
           `## YOUR TASK: Respond to this ${classification.actionClass.replace('inject_', '')} inject`,
           '⚠️ Read the inject carefully. Your response must DIRECTLY address what the inject describes.',
           '⚠️ Do NOT default to placing infrastructure or triaging patients unless the inject explicitly requires it.',
-          '',
-          'Match your response to the inject:',
-          '- Media inject → draft statement, manage press access, coordinate messaging',
-          '- Stakeholder inject → assign liaison, prepare briefing, compile status report',
-          '- Situational inject → adapt operations to new conditions',
+        );
+
+        if (evtResponseType === 'media_statement' && isMediaTeamBot) {
+          parts.push(
+            '',
+            '📋 THIS INJECT REQUIRES A PUBLIC STATEMENT. You are the media team — you must craft a detailed public statement.',
+            'Your statement MUST include:',
+            '1. SPOKESPERSON IDENTITY: State who is speaking and their role/authority.',
+            '2. VERIFIED FACTS: Specific numbers (casualty count, evacuee count, hazard status) from the ground situation above.',
+            '3. PUBLIC GUIDANCE: Clear instructions for the public (evacuate, avoid area, shelter, hotline).',
+            '4. EMPATHY: Acknowledge victims and express concern.',
+            '5. NEXT UPDATE: Commit to a follow-up timeline.',
+            '6. Distinguish confirmed facts from preliminary information.',
+            '',
+            'Your statement will be reviewed by an editorial board before going live. Be specific and factual.',
+          );
+        } else if (evtResponseType === 'media_statement' && !isMediaTeamBot) {
+          parts.push(
+            '',
+            '⚠️ THIS INJECT REQUIRES A PUBLIC STATEMENT — but you are NOT the media team.',
+            'Your response MUST be coordination with the media team. Do NOT issue a public statement yourself.',
+            'Frame your decision as: "Communicate to media team: [your verified operational facts]"',
+            'Provide the media team with specific, verified information from your domain:',
+            '- Specific numbers (patients treated, hazards contained, areas secured)',
+            '- Operational status (what your team is doing right now)',
+            '- Any information the public needs to know from your area of responsibility',
+          );
+        } else {
+          parts.push(
+            '',
+            'Match your response to the inject:',
+            '- Media inject → draft statement, manage press access, coordinate messaging',
+            '- Stakeholder inject → assign liaison, prepare briefing, compile status report',
+            '- Situational inject → adapt operations to new conditions',
+          );
+        }
+
+        parts.push(
           '',
           'Return: 1 decision + 1 chat. Include placement ONLY if the inject explicitly requires infrastructure.',
         );
@@ -5102,6 +5314,35 @@ export class DemoAIAgentService {
       }
     }
 
+    // Check 4b: Non-media teams must NOT issue public statements for media_statement injects
+    if (decisionForMedia?.decision) {
+      const triggerInjectData = (triggerEvent?.data as Record<string, unknown> | undefined)
+        ?.inject as Record<string, unknown> | undefined;
+      const triggerResponseType = (triggerInjectData?.response_type as string) ?? 'standard';
+      const isThisMediaTeam = /media|communi/i.test(teamName);
+
+      if (triggerResponseType === 'media_statement' && !isThisMediaTeam) {
+        const dText =
+          `${decisionForMedia.decision.title} ${decisionForMedia.decision.description}`.toLowerCase();
+        const looksLikeStatement =
+          /public statement|press release|media statement|official statement|we are informing|we can confirm to the press|we announce/i.test(
+            dText,
+          );
+        const looksLikeCoordination =
+          /communicate to media|coordinate with media|inform media team|advise media|relay to media|update media team/i.test(
+            dText,
+          );
+
+        if (looksLikeStatement && !looksLikeCoordination) {
+          return {
+            valid: false,
+            reason:
+              'Non-media teams must coordinate with the media team, not issue public statements directly. Frame as: "Communicate to media team: [your verified facts]"',
+          };
+        }
+      }
+    }
+
     // Check 5: Inject relevance — if responding to an inject, does the response match the content?
     if (triggerEvent?.type === 'inject.published') {
       const injectData = (triggerEvent.data as Record<string, unknown>)?.inject as
@@ -5587,6 +5828,18 @@ export class DemoAIAgentService {
           properties: {},
         });
 
+        // Auto-create paired perimeter for point placements
+        if (geometry.type === 'Point') {
+          await autoCreatePairedPerimeter(
+            session.sessionId,
+            teamName,
+            p.asset_type,
+            pLat,
+            pLng,
+            agent.persona.botUserId,
+          );
+        }
+
         // Track newly placed coordinate to avoid stacking within the same batch
         occupiedCoords.push({ lat: pLat, lng: pLng });
         existingTypes.add(p.asset_type);
@@ -5672,6 +5925,25 @@ export class DemoAIAgentService {
         const assetType = action.placement.asset_type;
         const isCordonLike = /cordon|perimeter|exclusion_zone/i.test(assetType);
 
+        // Skip if a perimeter with the same label already exists (e.g. auto-created)
+        if (isCordonLike && action.placement.label) {
+          const { data: dup } = await supabaseAdmin
+            .from('placed_assets')
+            .select('id')
+            .eq('session_id', sessionId)
+            .eq('team_name', teamName)
+            .eq('label', action.placement.label)
+            .eq('status', 'active')
+            .limit(1);
+          if (dup?.length) {
+            logger.info(
+              { botUserId, teamName, label: action.placement.label },
+              'AI agent: skipping perimeter — already exists (auto-paired)',
+            );
+            break;
+          }
+        }
+
         // Block cordon/perimeter placement until the team has at least one point asset
         if (isCordonLike && !ZONE_DECLARATION_TYPES.has(assetType)) {
           const { data: teamAssets } = await supabaseAdmin
@@ -5731,6 +6003,21 @@ export class DemoAIAgentService {
           geometry,
           properties: action.placement.properties,
         });
+
+        // Auto-create paired perimeter for point placements
+        if (!isCordonLike && geometry.type === 'Point') {
+          const coords = geometry.coordinates as number[];
+          if (coords?.length >= 2) {
+            await autoCreatePairedPerimeter(
+              sessionId,
+              teamName,
+              assetType,
+              coords[1],
+              coords[0],
+              botUserId,
+            );
+          }
+        }
         break;
       }
 

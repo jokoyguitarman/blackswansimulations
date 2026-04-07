@@ -712,7 +712,7 @@ export async function evaluateDecisionAgainstEnvironment(
   sessionId: string,
   decision: { id: string; title: string; description: string; type: string | null },
   openAiApiKey: string | undefined,
-  incident?: { title: string; description: string } | null,
+  incident?: { title: string; description: string; response_type?: string } | null,
   teamName?: string,
   qualityFailureCount?: number,
 ): Promise<EnvironmentalConsistencyResult> {
@@ -816,9 +816,10 @@ export async function evaluateDecisionAgainstEnvironment(
         buildFacilityChallengesContext(sessionId),
       ]);
 
+    const incidentResponseType = incident?.response_type ?? 'standard';
     const incidentUserBlock =
       incident?.title != null || incident?.description != null
-        ? `\nINCIDENT (this decision is in response to):\nTitle: ${incident.title ?? ''}\nDescription: ${incident.description ?? ''}\n\n`
+        ? `\nTRIGGER INJECT (this decision is in response to):\nTitle: ${incident.title ?? ''}\nDescription: ${incident.description ?? ''}\nresponse_type: ${incidentResponseType}\n\n`
         : '';
     const sectorStandardsLine = sectorStandards
       ? `Sector standards / team doctrines:\n${sectorStandards}\n\n`
@@ -859,6 +860,13 @@ Specificity requirements by team role:
   • MISINFORMATION RESPONSE: Must specifically name the false claim being rebutted and provide the correct information to counter it. Generic "we deny rumours" without specifics = not specific.
   • COORDINATION WITH OTHER TEAMS: Must state what information is being requested/shared and from/to which team. General "coordinate with teams" = not specific.
   Do NOT require spokesperson names, press conference locations, or update frequencies on EVERY media decision — these are foundational items established once, not repeated in every statement.
+
+UNAUTHORIZED PUBLIC COMMUNICATION (applies to ALL non-media teams):
+- If the responding team is NOT the media/communications team AND the trigger inject has response_type "media_statement" (shown in the TRIGGER INJECT section), check whether the decision text constitutes a direct public-facing statement (phrases like "we are informing the public", "we can confirm to the press", "our official statement is", "we are releasing a statement", "we announce to the media").
+- If a non-media team is issuing its own public statement instead of coordinating with the media team: set consistent: false, mismatch_kind: "protocol_violation", severity: "high".
+- Consequence narrative: describe conflicting messages from multiple sources undermining public trust and creating confusion.
+- The CORRECT response from a non-media team is to coordinate WITH the media team by providing them verified facts from their operational domain (e.g. "Communicate to media team: we have 23 patients in treatment, 4 critical").
+
 - Hazard Response: specific equipment type and class (e.g. "ABC dry chemical extinguisher" not just "water"), trained personnel to deploy it, approach method (upwind, from safe distance, etc.), safety perimeter, containment procedure, whether external services (fire brigade, HAZMAT) need to be called
 - Bomb Squad / EOD (suspicious package / explosive device response):
   CRITICAL FAILURES (set consistent: false, severity: "high", mismatch_kind: "contradiction"):

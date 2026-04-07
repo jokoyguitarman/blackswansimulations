@@ -16,6 +16,7 @@ import {
   updateTeamHeatMeter,
   generateDecisionConsequence,
   nudgePublicSentiment,
+  evaluateMediaScript,
 } from './heatMeterService.js';
 import { evaluateDecisionAgainstEnvironment } from './environmentalConsistencyService.js';
 import { evaluateEnvironmentalPrerequisite } from './environmentalPrerequisiteService.js';
@@ -358,6 +359,85 @@ export class DemoActionDispatcher {
         }
       } catch (err) {
         logger.warn({ error: err, decisionId }, 'Demo: pre-eval placement extraction failed');
+      }
+    }
+
+    // Media editorial review gate (bot decisions)
+    const isBotMediaTeam = teamName ? /media|communi/i.test(teamName) : false;
+    const botDecisionType = (decision.type as string) ?? null;
+    const botNeedsEditorial =
+      isBotMediaTeam &&
+      (botDecisionType === 'public_statement' ||
+        /public statement|press release|media statement|press briefing|official statement/i.test(
+          `${title} ${description}`,
+        ));
+
+    if (botNeedsEditorial && env.openAiApiKey && sessionScenarioId) {
+      try {
+        const { data: casRows } = await supabaseAdmin
+          .from('scenario_casualties')
+          .select('id')
+          .eq('scenario_id', sessionScenarioId);
+        const { data: hazRows } = await supabaseAdmin
+          .from('scenario_hazards')
+          .select('id')
+          .eq('scenario_id', sessionScenarioId);
+        const { data: sessState } = await supabaseAdmin
+          .from('sessions')
+          .select('current_state')
+          .eq('id', sessionId)
+          .single();
+        const cs = (sessState?.current_state as Record<string, unknown>) ?? {};
+        const ms = (cs.media_state as Record<string, unknown>) ?? {};
+        const ts = (cs.triage_state as Record<string, unknown>) ?? {};
+
+        const review = await evaluateMediaScript(
+          description,
+          null,
+          {
+            totalCasualties: casRows?.length ?? 0,
+            totalCrowdSize: 0,
+            hazardCount: hazRows?.length ?? 0,
+            deathsOnSite: (ts.deaths_on_site as number) ?? 0,
+            activeInjects: [],
+          },
+          [],
+          ms,
+          0,
+        );
+
+        await supabaseAdmin
+          .from('decisions')
+          .update({
+            evaluation_reasoning: {
+              editorial_review: review,
+              editorial_revision_count: review.verdict === 'approved' ? 0 : 1,
+            },
+          })
+          .eq('id', decisionId);
+
+        if (review.verdict !== 'approved') {
+          logger.info(
+            { decisionId, verdict: review.verdict, score: review.score, teamName },
+            'Bot media script rejected by editorial — feedback inject will fire',
+          );
+          await nudgePublicSentiment(
+            sessionId,
+            'rejected',
+            'Bot editorial revision',
+            review.feedback,
+          );
+        } else {
+          logger.info(
+            { decisionId, score: review.score, teamName },
+            'Bot media script approved by editorial',
+          );
+        }
+      } catch (editorialErr) {
+        logger.warn(
+          { err: editorialErr, decisionId },
+          'Bot media editorial review failed, continuing',
+        );
       }
     }
 

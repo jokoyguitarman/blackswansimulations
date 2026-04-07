@@ -51,6 +51,8 @@ interface Incident {
   requires_response?: boolean;
   /** Origin of the inject that created this incident */
   generation_source?: string | null;
+  /** Whether this incident requires a media statement or standard response */
+  response_type?: string;
 }
 
 interface IncidentsPanelProps {
@@ -61,6 +63,8 @@ interface IncidentsPanelProps {
   filterTeam?: string;
   /** Called when user clicks "Respond with Action" on an incident — triggers map action recording. */
   onRespondWithAction?: (incidentId: string, incidentTitle: string) => void;
+  /** Current player's team name, used to show correct response form variant */
+  teamName?: string;
 }
 
 export const IncidentsPanel = ({
@@ -69,6 +73,7 @@ export const IncidentsPanel = ({
   onIncidentSelect,
   isTrainer,
   filterTeam = 'none',
+  teamName,
   onRespondWithAction,
 }: IncidentsPanelProps) => {
   const { user } = useAuth();
@@ -491,22 +496,29 @@ export const IncidentsPanel = ({
         )}
       </div>
 
-      {showDecisionModal && decisionModalIncidentId && (
-        <CreateDecisionForm
-          sessionId={sessionId}
-          incidentId={decisionModalIncidentId}
-          onClose={() => {
-            setShowDecisionModal(false);
-            setDecisionModalIncidentId(null);
-          }}
-          onSuccess={() => {
-            loadIncidents();
-            loadIncidentDecisionsState();
-            setShowDecisionModal(false);
-            setDecisionModalIncidentId(null);
-          }}
-        />
-      )}
+      {showDecisionModal &&
+        decisionModalIncidentId &&
+        (() => {
+          const modalIncident = incidents.find((i) => i.id === decisionModalIncidentId);
+          return (
+            <CreateDecisionForm
+              sessionId={sessionId}
+              incidentId={decisionModalIncidentId}
+              responseType={modalIncident?.response_type}
+              teamName={teamName}
+              onClose={() => {
+                setShowDecisionModal(false);
+                setDecisionModalIncidentId(null);
+              }}
+              onSuccess={() => {
+                loadIncidents();
+                loadIncidentDecisionsState();
+                setShowDecisionModal(false);
+                setDecisionModalIncidentId(null);
+              }}
+            />
+          );
+        })()}
     </div>
   );
 };

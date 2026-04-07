@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, useMap, Polygon, Polyline } from 'react-leaflet';
+import {
+  MapContainer,
+  TileLayer,
+  useMap,
+  Polygon,
+  Polyline,
+  CircleMarker,
+  Tooltip,
+} from 'react-leaflet';
 import { Icon, Marker as LeafletMarker } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { IncidentMarker } from './IncidentMarker';
@@ -1730,18 +1738,49 @@ export const MapView = ({
                     fillColor: '#6b728020',
                   };
                   const positions = polygon.map((p) => [p[0], p[1]] as [number, number]);
+                  const radiusM = Number(conds.radius_m) || 0;
                   return (
-                    <Polygon
-                      key={`zl-${zl.id}`}
-                      positions={positions}
-                      pathOptions={{
-                        color: style.color,
-                        fillColor: style.fillColor,
-                        fillOpacity: 0.3,
-                        weight: 2,
-                        dashArray: '6 4',
-                      }}
-                    />
+                    <span key={`zl-${zl.id}`}>
+                      <Polygon
+                        positions={positions}
+                        pathOptions={{
+                          color: style.color,
+                          fillColor: style.fillColor,
+                          fillOpacity: 0.3,
+                          weight: 2,
+                          dashArray: '6 4',
+                        }}
+                      >
+                        <Tooltip direction="center" permanent={false}>
+                          {zoneType.toUpperCase()} ZONE{radiusM ? ` (${radiusM}m)` : ''}
+                        </Tooltip>
+                      </Polygon>
+                      <CircleMarker
+                        center={
+                          [zl.coordinates?.lat ?? 0, zl.coordinates?.lng ?? 0] as LatLngExpression
+                        }
+                        radius={5}
+                        pathOptions={{
+                          color: style.color,
+                          fillColor: style.color,
+                          fillOpacity: 0.9,
+                          weight: 1,
+                        }}
+                      >
+                        <Tooltip direction="top" offset={[0, -6]} permanent>
+                          <span
+                            style={{
+                              fontSize: 9,
+                              fontWeight: 700,
+                              letterSpacing: 0.5,
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            {zoneType} zone
+                          </span>
+                        </Tooltip>
+                      </CircleMarker>
+                    </span>
                   );
                 })
             : showAllPins &&

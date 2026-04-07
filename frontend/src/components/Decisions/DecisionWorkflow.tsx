@@ -36,6 +36,7 @@ interface Decision {
     role: string;
   };
   proposed_by?: string;
+  response_to_incident_id?: string;
   steps?: DecisionStep[];
   environmental_consistency?: {
     consistent?: boolean;
@@ -52,6 +53,15 @@ interface Decision {
   } | null;
   evaluation_reasoning?: {
     env_prerequisite?: string;
+    editorial_review?: {
+      verdict: string;
+      score: number;
+      feedback: string;
+      editor_name: string;
+      platform_notes?: string;
+      dimensions?: Record<string, number>;
+    };
+    editorial_revision_count?: number;
   } | null;
   ai_classification?: {
     category?: string;
@@ -79,6 +89,7 @@ export const DecisionWorkflow = ({
   const [selectedDecision, setSelectedDecision] = useState<Decision | null>(null);
   const [expandedDecisions, setExpandedDecisions] = useState<Set<string>>(new Set());
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [revisionDecision, setRevisionDecision] = useState<Decision | null>(null);
   const [userTeamMap, setUserTeamMap] = useState<Map<string, string>>(new Map());
 
   // Load team mappings for filtering
@@ -244,6 +255,30 @@ export const DecisionWorkflow = ({
         />
       )}
 
+      {revisionDecision && (
+        <CreateDecisionForm
+          sessionId={sessionId}
+          incidentId={revisionDecision.response_to_incident_id}
+          prefillDescription={revisionDecision.description}
+          editorialFeedback={
+            revisionDecision.evaluation_reasoning?.editorial_review
+              ? {
+                  editor_name: revisionDecision.evaluation_reasoning.editorial_review.editor_name,
+                  feedback: revisionDecision.evaluation_reasoning.editorial_review.feedback,
+                  score: revisionDecision.evaluation_reasoning.editorial_review.score,
+                  verdict: revisionDecision.evaluation_reasoning.editorial_review.verdict,
+                }
+              : undefined
+          }
+          responseType="media_statement"
+          onClose={() => setRevisionDecision(null)}
+          onSuccess={() => {
+            loadDecisions();
+            setRevisionDecision(null);
+          }}
+        />
+      )}
+
       <div className="space-y-3">
         {decisions
           .filter((decision) => {
@@ -346,6 +381,48 @@ export const DecisionWorkflow = ({
                     ⏳ Awaiting AI evaluation...
                   </div>
                 )}
+
+              {decision.evaluation_reasoning?.editorial_review &&
+                (() => {
+                  const er = decision.evaluation_reasoning.editorial_review;
+                  const revCount = decision.evaluation_reasoning.editorial_revision_count ?? 0;
+                  const borderClass =
+                    er.verdict === 'approved'
+                      ? 'border-green-500/30 bg-green-900/20 text-green-400'
+                      : er.verdict === 'rejected'
+                        ? 'border-red-500/30 bg-red-900/20 text-red-400'
+                        : 'border-amber-500/30 bg-amber-900/20 text-amber-400';
+                  const badge =
+                    er.verdict === 'approved'
+                      ? `✓ Approved (${er.score}/10)`
+                      : er.verdict === 'rejected'
+                        ? `✗ Rejected (${er.score}/10)`
+                        : `⚠ Revision Requested (${er.score}/10)`;
+                  return (
+                    <div className={`mt-2 p-2 rounded border text-xs terminal-text ${borderClass}`}>
+                      <span className="font-bold uppercase">{badge}</span>
+                      {revCount > 0 && (
+                        <span className="ml-2 opacity-70">[Revision #{revCount}]</span>
+                      )}
+                      <p className="mt-1 opacity-80 italic">{er.editor_name}</p>
+                      <p className="mt-1 opacity-90">{er.feedback}</p>
+                      {er.platform_notes && (
+                        <p className="mt-1 opacity-70">Platform: {er.platform_notes}</p>
+                      )}
+                      {er.verdict !== 'approved' && decision.proposed_by === user?.id && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRevisionDecision(decision);
+                          }}
+                          className="mt-2 px-3 py-1 text-xs terminal-text uppercase border border-amber-400 text-amber-400 hover:bg-amber-400/10"
+                        >
+                          [REVISE_STATEMENT]
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
 
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                 <div className="text-xs terminal-text text-robotic-yellow/50">

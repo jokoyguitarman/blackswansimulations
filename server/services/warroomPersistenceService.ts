@@ -148,6 +148,7 @@ export async function persistWarroomScenario(
           eligible_after_minutes: inj.eligible_after_minutes ?? null,
           objective_penalty: inj.objective_penalty ?? null,
           state_effect: inj.state_effect ?? null,
+          response_type: (inj as Record<string, unknown>).response_type ?? 'standard',
           ai_generated: true,
           generation_source: 'war_room',
         })
@@ -584,6 +585,7 @@ export async function persistWarroomScenario(
           eligible_after_minutes: inj.eligible_after_minutes ?? null,
           objective_penalty: inj.objective_penalty ?? null,
           state_effect: inj.state_effect ?? null,
+          response_type: (inj as Record<string, unknown>).response_type ?? 'standard',
           ai_generated: true,
           generation_source: 'war_room',
         });
@@ -618,6 +620,7 @@ export async function persistWarroomScenario(
           eligible_after_minutes: inj.eligible_after_minutes ?? null,
           objective_penalty: inj.objective_penalty ?? null,
           state_effect: inj.state_effect ?? null,
+          response_type: (inj as Record<string, unknown>).response_type ?? 'standard',
           ai_generated: true,
           generation_source: 'war_room',
         });

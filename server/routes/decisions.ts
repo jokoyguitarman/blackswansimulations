@@ -25,6 +25,7 @@ import {
   updateTeamHeatMeter,
   generateDecisionConsequence,
   nudgePublicSentiment,
+  evaluateMediaScript,
 } from '../services/heatMeterService.js';
 import { applyDecisionCasualtyEffects } from '../services/decisionCasualtyEffectsService.js';
 import { evaluateTransportOutcome } from '../services/transportOutcomeService.js';
@@ -875,17 +876,19 @@ async function processExecutedDecisionInBackground(
 
     const responseToIncidentIdForEnv = (decision as { response_to_incident_id?: string | null })
       .response_to_incident_id;
-    let incidentContext: { title: string; description: string } | null = null;
+    let incidentContext: { title: string; description: string; response_type?: string } | null =
+      null;
     if (responseToIncidentIdForEnv) {
       const { data: incidentForEnv } = await supabaseAdmin
         .from('incidents')
-        .select('title, description')
+        .select('title, description, response_type')
         .eq('id', responseToIncidentIdForEnv)
         .single();
       if (incidentForEnv) {
         incidentContext = {
           title: (incidentForEnv as { title?: string }).title ?? '',
           description: (incidentForEnv as { description?: string }).description ?? '',
+          response_type: (incidentForEnv as { response_type?: string }).response_type ?? 'standard',
         };
       }
     }
@@ -920,6 +923,196 @@ async function processExecutedDecisionInBackground(
         );
       } catch (extractErr) {
         logger.warn({ error: extractErr }, 'Pre-eval extraction failed for human player decision');
+      }
+    }
+
+    // --- Media editorial review gate ---
+    const isMediaTeam = authorTeamNames.some((t) => /media|communi/i.test(t));
+    const incidentResponseType = incidentContext?.response_type ?? 'standard';
+    const decisionType = (decision.type as string) ?? null;
+    const needsEditorialReview =
+      isMediaTeam &&
+      (incidentResponseType === 'media_statement' || decisionType === 'public_statement');
+
+    if (needsEditorialReview && env.openAiApiKey && sessionScenarioId) {
+      try {
+        const { data: casRows } = await supabaseAdmin
+          .from('scenario_casualties')
+          .select('id')
+          .eq('scenario_id', sessionScenarioId);
+        const { data: hazRows } = await supabaseAdmin
+          .from('scenario_hazards')
+          .select('id')
+          .eq('scenario_id', sessionScenarioId);
+        const { data: prevStmts } = await supabaseAdmin
+          .from('decisions')
+          .select('description')
+          .eq('session_id', sessionId)
+          .eq('status', 'executed')
+          .or('type.eq.public_statement')
+          .order('executed_at', { ascending: true })
+          .limit(10);
+        const { data: sessionState } = await supabaseAdmin
+          .from('sessions')
+          .select('current_state')
+          .eq('id', sessionId)
+          .single();
+        const cs = (sessionState?.current_state as Record<string, unknown>) ?? {};
+        const ms = (cs.media_state as Record<string, unknown>) ?? {};
+        const ts = (cs.triage_state as Record<string, unknown>) ?? {};
+
+        const { data: activeInjectEvents } = await supabaseAdmin
+          .from('session_events')
+          .select('metadata')
+          .eq('session_id', sessionId)
+          .eq('event_type', 'inject')
+          .order('created_at', { ascending: false })
+          .limit(5);
+        const activeInjectTitles = (activeInjectEvents ?? [])
+          .map((e) => ((e.metadata as Record<string, unknown>)?.title as string) ?? '')
+          .filter(Boolean);
+
+        const existingReasoning = (decision as Record<string, unknown>).evaluation_reasoning as
+          | Record<string, unknown>
+          | undefined;
+        const prevRevisionCount =
+          typeof (existingReasoning as Record<string, unknown> | undefined)
+            ?.editorial_revision_count === 'number'
+            ? ((existingReasoning as Record<string, unknown>).editorial_revision_count as number)
+            : 0;
+
+        const review = await evaluateMediaScript(
+          (decision.description as string) ?? '',
+          incidentContext ? `${incidentContext.title}: ${incidentContext.description}` : null,
+          {
+            totalCasualties: casRows?.length ?? 0,
+            totalCrowdSize: 0,
+            hazardCount: hazRows?.length ?? 0,
+            deathsOnSite: (ts.deaths_on_site as number) ?? 0,
+            activeInjects: activeInjectTitles,
+          },
+          (prevStmts ?? []).map((d) =>
+            ((d as { description?: string }).description ?? '').slice(0, 200),
+          ),
+          ms,
+          prevRevisionCount,
+        );
+
+        if (review.verdict !== 'approved') {
+          await supabaseAdmin
+            .from('decisions')
+            .update({
+              status: 'rejected',
+              evaluation_reasoning: {
+                ...((decision as Record<string, unknown>).evaluation_reasoning as
+                  | Record<string, unknown>
+                  | undefined),
+                editorial_review: review,
+                editorial_revision_count: prevRevisionCount + 1,
+              },
+            })
+            .eq('id', decisionId);
+
+          getWebSocketService().decisionRejected(sessionId, {
+            id: decisionId,
+            title: (decision.title as string) ?? '',
+            description: (decision.description as string) ?? '',
+            status: 'rejected',
+            editorial_review: review,
+          });
+
+          await nudgePublicSentiment(
+            sessionId,
+            'rejected',
+            'Editorial revision requested',
+            review.feedback,
+          );
+
+          if (sessionScenarioId && sessionTrainerId && io) {
+            const revisionInjectTitle =
+              review.verdict === 'rejected'
+                ? 'STATEMENT REJECTED — PUBLIC INFORMATION VACUUM'
+                : 'EDITORIAL REVIEW — REVISIONS REQUIRED';
+            const revisionInjectContent =
+              `${review.editor_name}: ${review.feedback}\n\n` +
+              (prevRevisionCount > 0
+                ? `This is the ${prevRevisionCount + 1}${prevRevisionCount === 1 ? 'nd' : prevRevisionCount === 2 ? 'rd' : 'th'} revision request. Delays in releasing an official statement are fueling public speculation and eroding trust.`
+                : 'Your draft statement requires revisions before it can be released. The public is waiting for an official update.');
+
+            const { data: feedbackInject } = await supabaseAdmin
+              .from('scenario_injects')
+              .insert({
+                scenario_id: sessionScenarioId,
+                session_id: sessionId,
+                trigger_time_minutes: null,
+                trigger_condition: null,
+                type: 'field_update',
+                title: revisionInjectTitle,
+                content: revisionInjectContent,
+                severity: review.verdict === 'rejected' ? 'critical' : 'high',
+                inject_scope: 'team_specific',
+                target_teams: authorTeamNames,
+                requires_response: true,
+                response_type: 'media_statement',
+                ai_generated: true,
+                generation_source: 'editorial_feedback',
+              })
+              .select('id')
+              .single();
+
+            if (feedbackInject?.id) {
+              await publishInjectToSession(
+                feedbackInject.id as string,
+                sessionId,
+                sessionTrainerId,
+                io,
+              );
+            }
+          }
+
+          logger.info(
+            {
+              decisionId,
+              verdict: review.verdict,
+              score: review.score,
+              revisionCount: prevRevisionCount + 1,
+            },
+            'Media script editorial review: revision requested',
+          );
+          return;
+        }
+
+        await supabaseAdmin
+          .from('decisions')
+          .update({
+            evaluation_reasoning: {
+              ...((decision as Record<string, unknown>).evaluation_reasoning as
+                | Record<string, unknown>
+                | undefined),
+              editorial_review: review,
+              editorial_revision_count: prevRevisionCount,
+            },
+          })
+          .eq('id', decisionId);
+
+        if (prevRevisionCount === 0) {
+          await nudgePublicSentiment(
+            sessionId,
+            'good',
+            'First-take approved statement',
+            'Statement approved on first submission — strong crisis communications.',
+          );
+        }
+
+        logger.info(
+          { decisionId, score: review.score, firstTake: prevRevisionCount === 0 },
+          'Media script editorial review: approved',
+        );
+      } catch (editorialErr) {
+        logger.warn(
+          { err: editorialErr, decisionId },
+          'Media editorial review failed, continuing with normal pipeline',
+        );
       }
     }
 

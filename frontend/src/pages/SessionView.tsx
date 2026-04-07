@@ -2221,6 +2221,7 @@ export const SessionView = () => {
                   isTrainer={isTrainer}
                   filterTeam={filterTeam}
                   onRespondWithAction={handleRespondWithAction}
+                  teamName={myTeams[0]?.team_name}
                 />
               </div>
             </div>
