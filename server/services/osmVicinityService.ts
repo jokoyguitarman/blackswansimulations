@@ -540,28 +540,75 @@ export async function fetchVenueBuilding(
 ): Promise<OsmBuilding[]> {
   const MAX_BUILDINGS = 5;
   const radius = Math.min(radiusMeters, 1000);
-  const TIMEOUT_S = 25;
-  const HTTP_TIMEOUT_MS = TIMEOUT_S * 1000 + 5000;
 
-  const query = `
-[out:json][timeout:${TIMEOUT_S}];
+  // Phase 1: try full geometry (best quality polygons)
+  try {
+    const GEOM_TIMEOUT_S = 12;
+    const geomQuery = `
+[out:json][timeout:${GEOM_TIMEOUT_S}];
 way["building"](around:${radius},${lat},${lng});
 out body geom center bb;
 `;
+    const elements = await runRawOverpassQuery(geomQuery, GEOM_TIMEOUT_S * 1000 + 3000);
+    const results = elements
+      .map((el) => parseOsmBuildingElement(el, lat, lng))
+      .filter(Boolean) as OsmBuilding[];
+    results.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
+    logger.info(
+      {
+        total: results.length,
+        returned: Math.min(results.length, MAX_BUILDINGS),
+        radius,
+        mode: 'geom',
+      },
+      'OSM venue buildings fetched (full geometry)',
+    );
+    return results.slice(0, MAX_BUILDINGS);
+  } catch (err) {
+    logger.warn(
+      { err, radius },
+      'OSM building full-geometry query failed; falling back to bounding-box',
+    );
+  }
 
-  const elements = await runRawOverpassQuery(query, HTTP_TIMEOUT_MS);
+  // Phase 2: bounding-box fallback — much lighter, no polygon geometry returned
+  const BB_TIMEOUT_S = 15;
+  const bbQuery = `
+[out:json][timeout:${BB_TIMEOUT_S}];
+way["building"](around:${radius},${lat},${lng});
+out body center bb;
+`;
+  const elements = await runRawOverpassQuery(bbQuery, BB_TIMEOUT_S * 1000 + 5000);
   const results: OsmBuilding[] = [];
 
   for (const el of elements) {
     const b = parseOsmBuildingElement(el, lat, lng);
-    if (b) results.push(b);
+    if (!b) continue;
+
+    // No geometry from this query — synthesize a rectangular polygon from the bounding box
+    if (!b.footprint_polygon && b.bounds) {
+      const { minlat, minlon, maxlat, maxlon } = b.bounds;
+      b.footprint_polygon = [
+        [minlat, minlon],
+        [minlat, maxlon],
+        [maxlat, maxlon],
+        [maxlat, minlon],
+        [minlat, minlon],
+      ];
+    }
+    results.push(b);
   }
 
   results.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
 
   logger.info(
-    { total: results.length, returned: Math.min(results.length, MAX_BUILDINGS), radius },
-    'OSM venue buildings fetched',
+    {
+      total: results.length,
+      returned: Math.min(results.length, MAX_BUILDINGS),
+      radius,
+      mode: 'bbox',
+    },
+    'OSM venue buildings fetched (bounding-box fallback)',
   );
   return results.slice(0, MAX_BUILDINGS);
 }
