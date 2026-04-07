@@ -538,84 +538,130 @@ export async function fetchVenueBuilding(
   lng: number,
   radiusMeters: number = 300,
 ): Promise<OsmBuilding[]> {
-  const radius = Math.min(radiusMeters, 1000);
-  const BUILDING_TIMEOUT_S = 30;
-  const query = `
-[out:json][timeout:${BUILDING_TIMEOUT_S}];
+  const MAX_BUILDINGS = 5;
+  const PHASE_TIMEOUT_S = 10;
+  const HTTP_TIMEOUT_MS = PHASE_TIMEOUT_S * 1000 + 5000;
+  const seenIds = new Set<number>();
+  const results: OsmBuilding[] = [];
+
+  // Phase 1: fast point-in-polygon lookup for the building at the exact coordinate
+  const isInQuery = `
+[out:json][timeout:${PHASE_TIMEOUT_S}];
+is_in(${lat},${lng})->.a;
+way(pivot.a)["building"];
+out body geom center bb;
+`;
+  try {
+    const phase1 = await runRawOverpassQuery(isInQuery, HTTP_TIMEOUT_MS);
+    for (const el of phase1) {
+      const b = parseOsmBuildingElement(el, lat, lng);
+      if (b) {
+        seenIds.add(el.id as number);
+        results.push(b);
+      }
+    }
+    logger.info({ count: results.length }, 'OSM venue building phase 1 (is_in) complete');
+  } catch (err) {
+    logger.warn({ err }, 'OSM venue building phase 1 (is_in) failed; trying radius fallback');
+  }
+
+  // Phase 2: small radius for neighboring buildings (skip already-found ones)
+  if (results.length < MAX_BUILDINGS) {
+    const neighborRadius = Math.min(radiusMeters, 100);
+    const radiusQuery = `
+[out:json][timeout:${PHASE_TIMEOUT_S}];
 (
-  way["building"](around:${radius},${lat},${lng});
-  relation["building"](around:${radius},${lat},${lng});
+  way["building"](around:${neighborRadius},${lat},${lng});
+  relation["building"](around:${neighborRadius},${lat},${lng});
 );
 out body geom center bb;
 `;
-
-  const elements = await runRawOverpassQuery(query, BUILDING_TIMEOUT_S * 1000 + 5000);
-  const results: OsmBuilding[] = [];
-
-  for (const el of elements) {
-    const tags = (el.tags as Record<string, string>) || {};
-    const pos = extractLatLng(el as Parameters<typeof extractLatLng>[0]);
-    if (!pos) continue;
-
-    const bounds =
-      (el as { bounds?: { minlat: number; minlon: number; maxlat: number; maxlon: number } })
-        .bounds ?? null;
-    const dist = Math.round(haversine(lat, lng, pos.lat, pos.lng));
-    const name = tags.name || null;
-
-    const building: OsmBuilding = {
-      name,
-      lat: pos.lat,
-      lng: pos.lng,
-      bounds,
-      distance_from_center_m: dist,
-    };
-
-    // Extract building footprint polygon — ways have top-level geometry,
-    // relations have members with role/geometry arrays.
-    const geometry = el.geometry as Array<{ lat: number; lon: number }> | undefined;
-    if (geometry?.length && geometry.length >= 3) {
-      building.footprint_polygon = geometry.map((pt) => [pt.lat, pt.lon] as [number, number]);
-    } else {
-      const members = (el as Record<string, unknown>).members as
-        | Array<{ role?: string; type?: string; geometry?: Array<{ lat: number; lon: number }> }>
-        | undefined;
-      if (members?.length) {
-        const outerPoints: [number, number][] = [];
-        for (const m of members) {
-          if (m.role === 'outer' && m.geometry?.length) {
-            for (const pt of m.geometry) {
-              outerPoints.push([pt.lat, pt.lon]);
-            }
-          }
-        }
-        if (outerPoints.length >= 3) {
-          building.footprint_polygon = outerPoints;
+    try {
+      const phase2 = await runRawOverpassQuery(radiusQuery, HTTP_TIMEOUT_MS);
+      for (const el of phase2) {
+        if (seenIds.has(el.id as number)) continue;
+        const b = parseOsmBuildingElement(el, lat, lng);
+        if (b) {
+          seenIds.add(el.id as number);
+          results.push(b);
         }
       }
+      logger.info(
+        { total: results.length, neighborRadius },
+        'OSM venue building phase 2 (radius) complete',
+      );
+    } catch (err) {
+      logger.warn(
+        { err },
+        'OSM venue building phase 2 (radius) failed; continuing with phase 1 results',
+      );
     }
-
-    if (tags['building:levels'])
-      building.building_levels = parseInt(tags['building:levels'], 10) || undefined;
-    if (tags['building:levels:underground'])
-      building.building_levels_underground =
-        parseInt(tags['building:levels:underground'], 10) || undefined;
-    if (tags['building:use'] || tags.building)
-      building.building_use =
-        tags['building:use'] || (tags.building !== 'yes' ? tags.building : undefined);
-    if (tags.height) building.height_m = parseFloat(tags.height) || undefined;
-
-    results.push(building);
   }
 
   results.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
 
-  const MAX_BUILDINGS = 5;
   logger.info(
-    { total: results.length, returned: Math.min(results.length, MAX_BUILDINGS), radius },
+    { total: results.length, returned: Math.min(results.length, MAX_BUILDINGS) },
     'OSM venue buildings fetched',
   );
   return results.slice(0, MAX_BUILDINGS);
+}
+
+function parseOsmBuildingElement(
+  el: Record<string, unknown>,
+  centerLat: number,
+  centerLng: number,
+): OsmBuilding | null {
+  const tags = (el.tags as Record<string, string>) || {};
+  const pos = extractLatLng(el as Parameters<typeof extractLatLng>[0]);
+  if (!pos) return null;
+
+  const bounds =
+    (el as { bounds?: { minlat: number; minlon: number; maxlat: number; maxlon: number } })
+      .bounds ?? null;
+  const dist = Math.round(haversine(centerLat, centerLng, pos.lat, pos.lng));
+
+  const building: OsmBuilding = {
+    name: tags.name || null,
+    lat: pos.lat,
+    lng: pos.lng,
+    bounds,
+    distance_from_center_m: dist,
+  };
+
+  const geometry = el.geometry as Array<{ lat: number; lon: number }> | undefined;
+  if (geometry?.length && geometry.length >= 3) {
+    building.footprint_polygon = geometry.map((pt) => [pt.lat, pt.lon] as [number, number]);
+  } else {
+    const members = (el as Record<string, unknown>).members as
+      | Array<{ role?: string; type?: string; geometry?: Array<{ lat: number; lon: number }> }>
+      | undefined;
+    if (members?.length) {
+      const outerPoints: [number, number][] = [];
+      for (const m of members) {
+        if (m.role === 'outer' && m.geometry?.length) {
+          for (const pt of m.geometry) {
+            outerPoints.push([pt.lat, pt.lon]);
+          }
+        }
+      }
+      if (outerPoints.length >= 3) {
+        building.footprint_polygon = outerPoints;
+      }
+    }
+  }
+
+  if (tags['building:levels'])
+    building.building_levels = parseInt(tags['building:levels'], 10) || undefined;
+  if (tags['building:levels:underground'])
+    building.building_levels_underground =
+      parseInt(tags['building:levels:underground'], 10) || undefined;
+  if (tags['building:use'] || tags.building)
+    building.building_use =
+      tags['building:use'] || (tags.building !== 'yes' ? tags.building : undefined);
+  if (tags.height) building.height_m = parseFloat(tags.height) || undefined;
+
+  return building;
 }
 
 /**
