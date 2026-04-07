@@ -11,6 +11,9 @@ import { resolveScenarioCenter } from './scenarioCenterService.js';
 const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass.openstreetmap.ru/api/interpreter',
+  'https://overpass.nchc.org.tw/api/interpreter',
 ];
 
 export interface OsmVicinity {
@@ -68,8 +71,8 @@ function getAddress(element: { tags?: Record<string, string> }): string | undefi
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
-const RETRIES_PER_ENDPOINT = 1;
-const BACKOFF_BASE_MS = 2000;
+const RETRIES_PER_ENDPOINT = 2;
+const BACKOFF_BASE_MS = 1500;
 
 /**
  * Send a query to the Overpass API. Each endpoint is tried up to
@@ -95,7 +98,19 @@ async function queryOverpass(
         });
 
         if (res.ok) {
-          const json = (await res.json()) as { elements?: Array<Record<string, unknown>> };
+          const json = (await res.json()) as {
+            elements?: Array<Record<string, unknown>>;
+            remark?: string;
+          };
+          if (
+            json.remark &&
+            (!json.elements || json.elements.length === 0) &&
+            /runtime|timeout|exceeded/i.test(json.remark)
+          ) {
+            lastError = new Error(`Overpass server-side timeout: ${json.remark} (${endpoint})`);
+            logger.warn({ endpoint, remark: json.remark }, 'Overpass server-side timeout detected');
+            break;
+          }
           return json.elements || [];
         }
 
@@ -541,7 +556,7 @@ export async function fetchVenueBuilding(
   const MAX_BUILDINGS = 5;
   const radius = Math.min(radiusMeters, 1000);
 
-  // Phase 1: try full geometry (best quality polygons)
+  // Phase 1: try full geometry in a single query (best quality, but heavy)
   try {
     const GEOM_TIMEOUT_S = 12;
     const geomQuery = `
@@ -550,45 +565,94 @@ way["building"](around:${radius},${lat},${lng});
 out body geom center bb;
 `;
     const elements = await runRawOverpassQuery(geomQuery, GEOM_TIMEOUT_S * 1000 + 3000);
-    const results = elements
-      .map((el) => parseOsmBuildingElement(el, lat, lng))
-      .filter(Boolean) as OsmBuilding[];
-    results.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
-    logger.info(
-      {
-        total: results.length,
-        returned: Math.min(results.length, MAX_BUILDINGS),
-        radius,
-        mode: 'geom',
-      },
-      'OSM venue buildings fetched (full geometry)',
-    );
-    return results.slice(0, MAX_BUILDINGS);
+    if (elements.length > 0) {
+      const results = elements
+        .map((el) => parseOsmBuildingElement(el, lat, lng))
+        .filter(Boolean) as OsmBuilding[];
+      results.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
+      logger.info(
+        {
+          total: results.length,
+          returned: Math.min(results.length, MAX_BUILDINGS),
+          radius,
+          mode: 'geom',
+        },
+        'OSM venue buildings fetched (full geometry)',
+      );
+      return results.slice(0, MAX_BUILDINGS);
+    }
   } catch (err) {
     logger.warn(
       { err, radius },
-      'OSM building full-geometry query failed; falling back to bounding-box',
+      'OSM building full-geometry query failed; trying lightweight approach',
     );
   }
 
-  // Phase 2: bounding-box fallback — much lighter, no polygon geometry returned
+  // Phase 2: lightweight bbox query to discover building IDs (no geometry = fast)
   const BB_TIMEOUT_S = 15;
   const bbQuery = `
 [out:json][timeout:${BB_TIMEOUT_S}];
 way["building"](around:${radius},${lat},${lng});
 out body center bb;
 `;
-  const elements = await runRawOverpassQuery(bbQuery, BB_TIMEOUT_S * 1000 + 5000);
+  const bbElements = await runRawOverpassQuery(bbQuery, BB_TIMEOUT_S * 1000 + 5000);
+
+  if (bbElements.length === 0) {
+    logger.info({ radius }, 'OSM building bbox query returned 0 buildings');
+    return [];
+  }
+
+  // Parse, sort by distance, pick the closest MAX_BUILDINGS
+  const candidates = bbElements
+    .map((el) => ({ el, parsed: parseOsmBuildingElement(el, lat, lng) }))
+    .filter((c) => c.parsed !== null)
+    .sort((a, b) => a.parsed!.distance_from_center_m - b.parsed!.distance_from_center_m)
+    .slice(0, MAX_BUILDINGS);
+
+  // Phase 3: fetch actual polygon geometry for just those specific way IDs
+  const wayIds = candidates.map((c) => c.el.id as number).filter(Boolean);
+
+  if (wayIds.length > 0) {
+    try {
+      const ID_TIMEOUT_S = 10;
+      const idQuery = `
+[out:json][timeout:${ID_TIMEOUT_S}];
+way(id:${wayIds.join(',')});
+out geom;
+`;
+      const geomElements = await runRawOverpassQuery(idQuery, ID_TIMEOUT_S * 1000 + 3000);
+
+      const geomById = new Map<number, Array<{ lat: number; lon: number }>>();
+      for (const el of geomElements) {
+        const geom = el.geometry as Array<{ lat: number; lon: number }> | undefined;
+        if (geom?.length && geom.length >= 3 && el.id) {
+          geomById.set(el.id as number, geom);
+        }
+      }
+
+      for (const c of candidates) {
+        const geom = geomById.get(c.el.id as number);
+        if (geom && c.parsed) {
+          c.parsed.footprint_polygon = geom.map((pt) => [pt.lat, pt.lon] as [number, number]);
+        }
+      }
+
+      logger.info(
+        { wayIds: wayIds.length, geomReturned: geomById.size, mode: 'bbox+id' },
+        'OSM venue buildings fetched (bbox discovery + ID geometry)',
+      );
+    } catch (err) {
+      logger.warn({ err }, 'OSM building ID-geometry query failed; using bbox rectangles');
+    }
+  }
+
+  // For any buildings that still lack polygon geometry, fall back to bbox rectangles
   const results: OsmBuilding[] = [];
-
-  for (const el of elements) {
-    const b = parseOsmBuildingElement(el, lat, lng);
-    if (!b) continue;
-
-    // No geometry from this query — synthesize a rectangular polygon from the bounding box
-    if (!b.footprint_polygon && b.bounds) {
-      const { minlat, minlon, maxlat, maxlon } = b.bounds;
-      b.footprint_polygon = [
+  for (const c of candidates) {
+    if (!c.parsed) continue;
+    if (!c.parsed.footprint_polygon && c.parsed.bounds) {
+      const { minlat, minlon, maxlat, maxlon } = c.parsed.bounds;
+      c.parsed.footprint_polygon = [
         [minlat, minlon],
         [minlat, maxlon],
         [maxlat, maxlon],
@@ -596,21 +660,14 @@ out body center bb;
         [minlat, minlon],
       ];
     }
-    results.push(b);
+    results.push(c.parsed);
   }
 
-  results.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
-
   logger.info(
-    {
-      total: results.length,
-      returned: Math.min(results.length, MAX_BUILDINGS),
-      radius,
-      mode: 'bbox',
-    },
-    'OSM venue buildings fetched (bounding-box fallback)',
+    { total: results.length, returned: results.length, radius },
+    'OSM venue buildings fetched',
   );
-  return results.slice(0, MAX_BUILDINGS);
+  return results;
 }
 
 function parseOsmBuildingElement(
