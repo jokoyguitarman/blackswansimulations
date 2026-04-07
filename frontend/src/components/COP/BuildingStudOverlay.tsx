@@ -30,7 +30,7 @@ interface BuildingStudOverlayProps {
   refreshKey?: number;
 }
 
-const MIN_ZOOM_TO_SHOW = 18;
+const MIN_ZOOM_TO_SHOW = 16;
 
 const ZONE_COLORS: Record<string, { color: string; fill: string }> = {
   kill: { color: '#ef4444', fill: '#f87171' },

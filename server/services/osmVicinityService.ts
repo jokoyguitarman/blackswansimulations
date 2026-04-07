@@ -25,6 +25,7 @@ export interface OsmVicinity {
     one_way?: boolean;
   }>;
   cctv_or_surveillance?: Array<{ location: string; lat: number; lng: number }>;
+  buildings?: OsmBuilding[];
 }
 
 function extractLatLng(element: {
@@ -67,8 +68,8 @@ function getAddress(element: { tags?: Record<string, string> }): string | undefi
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
-const RETRIES_PER_ENDPOINT = 2;
-const BACKOFF_BASE_MS = 4000;
+const RETRIES_PER_ENDPOINT = 1;
+const BACKOFF_BASE_MS = 2000;
 
 /**
  * Send a query to the Overpass API. Each endpoint is tried up to
@@ -87,7 +88,7 @@ async function queryOverpass(query: string): Promise<Array<Record<string, unknow
           method: 'POST',
           body: query,
           headers: { 'Content-Type': 'text/plain' },
-          signal: AbortSignal.timeout(45_000),
+          signal: AbortSignal.timeout(15_000),
         });
 
         if (res.ok) {
