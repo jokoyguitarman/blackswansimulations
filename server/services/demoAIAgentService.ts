@@ -10,6 +10,14 @@ import { DemoActionDispatcher, resolveBotUserId } from './demoActionDispatcher.j
 import { performSweep } from './bombSquadSweepService.js';
 import { resolveScenarioCenter } from './scenarioCenterService.js';
 import { haversineM, pointInPolygon } from './geoUtils.js';
+import {
+  generateStudGrids,
+  snapCoordinate,
+  getOccupiedStudIds,
+  getCachedGrids,
+  setCachedGrids,
+} from './buildingStudService.js';
+import type { OsmBuilding } from './osmVicinityService.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -181,6 +189,40 @@ async function classifyActionRequired(
   // If an inject is pending (not proactive), classify it
   if (!isProactive && injectText) {
     const classification = await classifyInjectWithAI(teamKey, injectText);
+
+    // Post-classification jurisdiction guard: if the AI classifier returned an
+    // action class outside this team's pin jurisdiction, remap to inject_situational
+    // so the bot writes a domain-appropriate decision instead of attempting pin ops.
+    const pinJurisdiction = TEAM_ALLOWED_PIN_TYPES[teamKey];
+    const isPinClass =
+      classification.actionClass === 'patient_response' ||
+      classification.actionClass === 'hazard_response' ||
+      classification.actionClass === 'crowd_response';
+    if (isPinClass && !pinJurisdiction) {
+      return {
+        actionClass: 'inject_situational',
+        reason: `Remapped from ${classification.actionClass}: ${teamKey} team has no pin jurisdiction — respond within your domain`,
+      };
+    }
+    if (classification.actionClass === 'patient_response' && !pinJurisdiction?.has('casualty')) {
+      return {
+        actionClass: 'inject_situational',
+        reason: `Remapped from patient_response: ${teamKey} team cannot interact with casualty pins — respond within your domain`,
+      };
+    }
+    if (classification.actionClass === 'hazard_response' && !pinJurisdiction?.has('hazard')) {
+      return {
+        actionClass: 'inject_situational',
+        reason: `Remapped from hazard_response: ${teamKey} team cannot interact with hazard pins — respond within your domain`,
+      };
+    }
+    if (classification.actionClass === 'crowd_response' && !pinJurisdiction?.has('crowd')) {
+      return {
+        actionClass: 'inject_situational',
+        reason: `Remapped from crowd_response: ${teamKey} team cannot interact with crowd pins — respond within your domain`,
+      };
+    }
+
     return classification;
   }
 
@@ -1151,40 +1193,6 @@ function getRequiredInfraFromBlueprint(teamKey: string): string[] {
   return [...new Set(priorityOne)];
 }
 
-// Inject keyword domains — if an inject's title/description contains these keywords,
-// only the listed team keys should react. Teams not listed ignore the inject.
-const INJECT_DOMAIN_KEYWORDS: Array<{ patterns: RegExp; teams: string[] }> = [
-  {
-    patterns: /media|press|journalist|reporter|camera|microphone|footage|interview|broadcast/i,
-    teams: ['media'],
-  },
-  {
-    patterns: /casualt|patient|injur|wound|bleed|triage|medical|ambulance|stretcher/i,
-    teams: ['triage', 'fire'],
-  },
-  {
-    patterns: /fire|blaze|smoke|flame|burn|hazmat|chemical|spill|toxic|gas|explosion/i,
-    teams: ['fire'],
-  },
-  {
-    patterns: /crowd|panic|stampede|evacuat|assembly|shelter|civilian/i,
-    teams: ['evacuation'],
-  },
-  {
-    patterns: /cordon|perimete|barricade|roadblock|checkpoint|secur|breach|intrud/i,
-    teams: ['evacuation'],
-  },
-  {
-    patterns: /sighting|suspect|adversary|pursuit|fugitive|shooter|armed|weapon/i,
-    teams: ['pursuit'],
-  },
-  { patterns: /negotiate|hostage|demand|surrender/i, teams: ['pursuit'] },
-  {
-    patterns: /bomb|explosive|device|detonate|ied|secondary/i,
-    teams: ['bomb_squad'],
-  },
-];
-
 function getTeamScopeKey(teamName: string): string | null {
   const t = teamName.toLowerCase();
 
@@ -1519,6 +1527,47 @@ function deconflictCoordinate(
  * - 'cold': between warmZoneRadius and coldZoneRadius
  * - 'boundary': near the hot/warm zone boundary
  */
+/**
+ * Load building stud grids for a scenario (cached), snap a coordinate to the
+ * nearest vacant stud if it falls inside a building, and return the result.
+ */
+async function snapIfInsideBuilding(
+  lat: number,
+  lng: number,
+  floor: string,
+  scenarioId: string,
+  sessionId: string,
+): Promise<{ lat: number; lng: number }> {
+  let grids = getCachedGrids(scenarioId);
+
+  if (!grids) {
+    try {
+      const { data: sc } = await supabaseAdmin
+        .from('scenarios')
+        .select('insider_knowledge')
+        .eq('id', scenarioId)
+        .single();
+
+      const ik = sc?.insider_knowledge as Record<string, unknown> | null;
+      const osmVicinity = ik?.osm_vicinity as Record<string, unknown> | undefined;
+      const buildings = osmVicinity?.buildings as OsmBuilding[] | undefined;
+
+      if (buildings?.length) {
+        grids = generateStudGrids(buildings);
+        setCachedGrids(scenarioId, grids);
+      }
+    } catch {
+      return { lat, lng };
+    }
+  }
+
+  if (!grids?.length) return { lat, lng };
+
+  const occupied = await getOccupiedStudIds(scenarioId, grids, sessionId);
+  const snapped = snapCoordinate(lat, lng, floor, grids, occupied);
+  return { lat: snapped.lat, lng: snapped.lng };
+}
+
 function randomCoordInZone(
   center: { lat: number; lng: number },
   zone: string,
@@ -1957,6 +2006,13 @@ export async function extractAndPlaceInfrastructureFromText(
       pointLng = zoneCoord.lng;
     }
 
+    // Snap point placements to building studs if inside a building
+    if (catalog.geometry === 'point') {
+      const snapped = await snapIfInsideBuilding(pointLat, pointLng, 'G', scenarioId, sessionId);
+      pointLat = snapped.lat;
+      pointLng = snapped.lng;
+    }
+
     let geometry: { type: string; coordinates: unknown };
     if (catalog.geometry === 'point') {
       geometry = { type: 'Point', coordinates: [pointLng, pointLat] };
@@ -2277,24 +2333,6 @@ async function autoCreatePairedPerimeter(
     }
   }
   return created;
-}
-
-function isInjectRelevantToTeam(
-  teamName: string,
-  injectTitle: string,
-  injectDescription: string,
-): boolean {
-  const text = `${injectTitle} ${injectDescription}`;
-  const teamKey = getTeamScopeKey(teamName);
-  if (!teamKey) return true;
-
-  for (const { patterns, teams } of INJECT_DOMAIN_KEYWORDS) {
-    if (patterns.test(text)) {
-      return teams.includes(teamKey);
-    }
-  }
-  // No domain keywords matched — universal inject, all teams react
-  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -2668,6 +2706,18 @@ export class DemoAIAgentService {
     const injectScope = (injectData?.inject_scope as string) ?? 'universal';
     const isUniversal = injectScope === 'universal' || targetTeams.length === 0;
 
+    // Feedback injects (consequence, specificity, editorial) bypass the cooldown
+    // throttle so the targeted team can respond immediately to its own feedback.
+    const FEEDBACK_SOURCES = new Set([
+      'specificity_feedback',
+      'decision_consequence',
+      'adversary_adaptation',
+      'editorial_feedback',
+      'protocol_violation',
+    ]);
+    const generationSource = (injectData?.generation_source as string) ?? '';
+    const isFeedbackInject = FEEDBACK_SOURCES.has(generationSource);
+
     // Sequential agent responses with staggered delays: each agent waits for the
     // previous to finish so it can see what was already done and avoid duplicating actions.
     const agentEntries = Array.from(session.agents.entries());
@@ -2676,7 +2726,19 @@ export class DemoAIAgentService {
       for (let i = 0; i < agentEntries.length; i++) {
         if (session.stopped) return;
         const [, agentState] = agentEntries[i];
-        if (!this.canAct(agentState, session)) continue;
+
+        // Feedback injects bypass throttle for the targeted team
+        const bypassThrottle =
+          isFeedbackInject &&
+          !isUniversal &&
+          targetTeams.some((t) => {
+            const tl = t.toLowerCase();
+            const teamLower = agentState.persona.teamName.toLowerCase();
+            return teamLower.includes(tl) || tl.includes(teamLower);
+          });
+
+        if (!bypassThrottle && !this.canAct(agentState, session)) continue;
+        if (bypassThrottle && agentState.pendingCooldown) continue;
 
         // Skip agents whose team is not targeted by this inject (unless universal)
         if (!isUniversal) {
@@ -2698,22 +2760,8 @@ export class DemoAIAgentService {
           }
         }
 
-        // Domain-relevance filter: only applies to universal/unscoped injects.
-        if (isUniversal) {
-          const injectTitle = (injectData?.title as string) ?? '';
-          const injectDesc = (injectData?.description as string) ?? '';
-          if (!isInjectRelevantToTeam(agentState.persona.teamName, injectTitle, injectDesc)) {
-            logger.debug(
-              {
-                botUserId: agentState.persona.botUserId,
-                team: agentState.persona.teamName,
-                injectTitle,
-              },
-              'AI agent: skipping universal inject outside team domain',
-            );
-            continue;
-          }
-        }
+        // Universal injects go to ALL teams — no domain keyword filter.
+        // Each team's classifier will determine the appropriate response for their domain.
 
         // Staggered delay between agents to avoid overloading
         if (responded > 0) {
@@ -5798,6 +5846,19 @@ export class DemoAIAgentService {
         const catalogEntry = ASSET_TYPE_CATALOG[p.asset_type];
         const shouldBePolygon =
           p.geometry_type === 'polygon' || catalogEntry?.geometry === 'polygon';
+
+        // Snap point placements to building studs if inside a building
+        if (!shouldBePolygon) {
+          const snapped = await snapIfInsideBuilding(
+            pLat,
+            pLng,
+            'G',
+            session.scenarioId,
+            session.sessionId,
+          );
+          pLat = snapped.lat;
+          pLng = snapped.lng;
+        }
 
         if (shouldBePolygon) {
           const radiusDeg = p.radius_deg || 30 / METERS_PER_DEG;

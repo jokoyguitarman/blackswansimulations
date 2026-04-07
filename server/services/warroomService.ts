@@ -1093,6 +1093,7 @@ export async function stageGenerateAndPersist(
     center_lat: finalCenterLat,
     center_lng: finalCenterLng,
     vicinity_radius_meters: finalCenterLat != null ? 10000 : undefined,
+    osmBuildings: geoResult.osmBuildings,
   });
 
   // Persist research cases and link them to the scenario (non-blocking)

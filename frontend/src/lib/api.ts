@@ -277,6 +277,29 @@ export const api = {
         }>;
       }>(await fetch(apiUrl(`/api/scenarios/${id}/floor-plans`), { headers }));
     },
+    getBuildingStuds: async (scenarioId: string, sessionId?: string, floor?: string) => {
+      const headers = await getAuthHeaders();
+      const params = new URLSearchParams();
+      if (sessionId) params.set('sessionId', sessionId);
+      if (floor) params.set('floor', floor);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      return handleResponse<{
+        grids: Array<{
+          buildingIndex: number;
+          buildingName: string | null;
+          polygon: [number, number][];
+          floors: string[];
+          spacingM: number;
+          studs: Array<{
+            id: string;
+            lat: number;
+            lng: number;
+            floor: string;
+            occupied: boolean;
+          }>;
+        }>;
+      }>(await fetch(apiUrl(`/api/scenarios/${scenarioId}/building-studs${qs}`), { headers }));
+    },
     getScenarioResearch: async (id: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{

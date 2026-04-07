@@ -7,7 +7,8 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { refreshOsmVicinityForScenario } from './osmVicinityService.js';
 import type { WarroomScenarioPayload } from './warroomAiService.js';
-import { haversineM, circleToPolygon } from './geoUtils.js';
+import { haversineM, circleToPolygon, pointInPolygon } from './geoUtils.js';
+import type { OsmBuilding } from './osmVicinityService.js';
 
 const VALID_INJECT_TYPES = [
   'media_report',
@@ -37,6 +38,7 @@ export interface PersistOptions {
   center_lat?: number;
   center_lng?: number;
   vicinity_radius_meters?: number;
+  osmBuildings?: OsmBuilding[];
 }
 
 /**
@@ -459,7 +461,7 @@ export async function persistWarroomScenario(
         'evacuee_group',
         'convergent_crowd',
       ]);
-      const spacedCasualties = enforceMinSpacing(casualties, 12);
+      const spacedCasualties = enforceMinSpacing(casualties, 12, options.osmBuildings);
       const { error: casError } = await supabaseAdmin.from('scenario_casualties').insert(
         spacedCasualties.map((c) => {
           return {
@@ -688,27 +690,43 @@ export async function persistWarroomScenario(
  * Nudge pins that are closer than `minMeters` apart so they don't overlap.
  * Iterates each pin; if it's too close to an already-placed pin, it gets
  * shifted by a small random offset until it's spaced out (up to 8 attempts).
+ *
+ * Pins inside a building footprint are assumed to be stud-snapped and are
+ * kept at their exact coordinates (no random nudging).
  */
 function enforceMinSpacing<T extends { location_lat: number; location_lng: number }>(
   pins: T[],
   minMeters: number,
+  osmBuildings?: OsmBuilding[],
 ): T[] {
   const placed: { lat: number; lng: number }[] = [];
   const METER_TO_DEG_LAT = 1 / 111_320;
+
+  const isInsideBuilding = (lat: number, lng: number): boolean => {
+    if (!osmBuildings?.length) return false;
+    for (const b of osmBuildings) {
+      if (b.footprint_polygon && b.footprint_polygon.length >= 3) {
+        if (pointInPolygon(lat, lng, b.footprint_polygon)) return true;
+      }
+    }
+    return false;
+  };
 
   return pins.map((pin) => {
     let lat = pin.location_lat;
     let lng = pin.location_lng;
 
-    for (let attempt = 0; attempt < 8; attempt++) {
-      const tooClose = placed.some((p) => haversineM(lat, lng, p.lat, p.lng) < minMeters);
-      if (!tooClose) break;
-      const angle = Math.random() * 2 * Math.PI;
-      const dist = minMeters + Math.random() * minMeters * 0.5;
-      lat = pin.location_lat + Math.cos(angle) * dist * METER_TO_DEG_LAT;
-      lng =
-        pin.location_lng +
-        Math.sin(angle) * dist * METER_TO_DEG_LAT * (1 / Math.cos((lat * Math.PI) / 180));
+    if (!isInsideBuilding(lat, lng)) {
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const tooClose = placed.some((p) => haversineM(lat, lng, p.lat, p.lng) < minMeters);
+        if (!tooClose) break;
+        const angle = Math.random() * 2 * Math.PI;
+        const dist = minMeters + Math.random() * minMeters * 0.5;
+        lat = pin.location_lat + Math.cos(angle) * dist * METER_TO_DEG_LAT;
+        lng =
+          pin.location_lng +
+          Math.sin(angle) * dist * METER_TO_DEG_LAT * (1 / Math.cos((lat * Math.PI) / 180));
+      }
     }
 
     placed.push({ lat, lng });

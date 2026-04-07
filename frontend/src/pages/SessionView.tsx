@@ -1400,6 +1400,7 @@ export const SessionView = () => {
         <div className={isGodView ? 'relative flex-1' : 'absolute inset-0'}>
           <MapView
             sessionId={id}
+            scenarioId={session?.scenarios?.id ?? session?.scenario_id}
             incidents={[]}
             resources={[]}
             isVisible={true}
@@ -2125,6 +2126,7 @@ export const SessionView = () => {
               {mapModuleReady && mapHasBeenOpened && (
                 <MapView
                   sessionId={id}
+                  scenarioId={session?.scenarios?.id ?? session?.scenario_id}
                   incidents={[]}
                   resources={[]}
                   isVisible={showMapModule}
@@ -2413,6 +2415,7 @@ export const SessionView = () => {
                 <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden">
                   <MapView
                     sessionId={id}
+                    scenarioId={session?.scenarios?.id ?? session?.scenario_id}
                     incidents={[]}
                     resources={[]}
                     isVisible={true}

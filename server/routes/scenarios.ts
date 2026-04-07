@@ -9,6 +9,13 @@ import { generateScenarioMaps } from '../services/scenarioMapImageService.js';
 import { uploadScenarioMap } from '../lib/storage.js';
 import { getConditionConfigForScenario } from '../services/scenarioConditionConfigService.js';
 import { circleToPolygon } from '../services/geoUtils.js';
+import {
+  generateStudGrids,
+  getOccupiedStudIds,
+  getCachedGrids,
+  setCachedGrids,
+} from '../services/buildingStudService.js';
+import type { OsmBuilding } from '../services/osmVicinityService.js';
 
 const router = Router();
 
@@ -2501,6 +2508,65 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     res.status(204).send();
   } catch (err) {
     logger.error({ error: err }, 'Error in DELETE /scenarios/:id');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /scenarios/:id/building-studs — stud grids with occupancy for frontend
+// ---------------------------------------------------------------------------
+
+router.get('/scenarios/:id/building-studs', requireAuth, async (req, res) => {
+  try {
+    const { id: scenarioId } = req.params;
+    const sessionId = req.query.sessionId as string | undefined;
+    const floor = (req.query.floor as string) || undefined;
+
+    let grids = getCachedGrids(scenarioId);
+
+    if (!grids) {
+      const { data: sc } = await supabaseAdmin
+        .from('scenarios')
+        .select('insider_knowledge')
+        .eq('id', scenarioId)
+        .single();
+
+      if (!sc) return res.status(404).json({ error: 'Scenario not found' });
+
+      const ik = sc.insider_knowledge as Record<string, unknown> | null;
+      const osmVicinity = ik?.osm_vicinity as Record<string, unknown> | undefined;
+      const buildings = osmVicinity?.buildings as OsmBuilding[] | undefined;
+
+      if (!buildings?.length) {
+        return res.json({ grids: [], occupiedStudIds: [] });
+      }
+
+      grids = generateStudGrids(buildings);
+      setCachedGrids(scenarioId, grids);
+    }
+
+    const occupied = await getOccupiedStudIds(scenarioId, grids, sessionId);
+
+    const responseGrids = grids.map((g) => ({
+      buildingIndex: g.buildingIndex,
+      buildingName: g.buildingName,
+      polygon: g.polygon,
+      floors: g.floors,
+      spacingM: g.spacingM,
+      studs: g.studs
+        .filter((s) => !floor || s.floor === floor)
+        .map((s) => ({
+          id: s.id,
+          lat: s.lat,
+          lng: s.lng,
+          floor: s.floor,
+          occupied: occupied.has(s.id),
+        })),
+    }));
+
+    res.json({ grids: responseGrids });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /scenarios/:id/building-studs');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

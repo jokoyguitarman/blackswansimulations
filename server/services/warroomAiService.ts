@@ -1056,6 +1056,13 @@ import {
   polygonCentroid,
   haversineM as geoHaversineM,
 } from './geoUtils.js';
+import {
+  generateStudGrids,
+  formatStudsForPrompt,
+  batchSnap,
+  batchSnapLocations,
+  type StudGrid,
+} from './buildingStudService.js';
 
 export interface WarroomScenarioPayload {
   scenario: {
@@ -1329,6 +1336,8 @@ export interface WarroomGenerateInput {
   secondary_devices_count?: number;
   /** How many of the secondary devices are real live bombs (rest are false alarms). */
   real_bombs_count?: number;
+  /** Pre-computed building stud grids for snap-to-slot placement. */
+  studGrids?: StudGrid[];
 }
 
 // ---------------------------------------------------------------------------
@@ -2746,6 +2755,11 @@ async function generateScenarioFixedPins(
       return `  ${i + 1}. ${nameStr} — ${boundsStr}, ${b.distance_from_center_m}m from incident`;
     });
     buildingBlock = `\nREAL BUILDING OUTLINES (from OpenStreetMap — use these to place exit pins at the actual building perimeter):\n${lines.join('\n')}`;
+
+    if (input.studGrids?.length) {
+      const studMenu = formatStudsForPrompt(input.studGrids, new Set(), 30);
+      if (studMenu) buildingBlock += '\n' + studMenu;
+    }
   }
 
   const narrativeBlock = narrative
@@ -3417,7 +3431,7 @@ ${minHazards >= 4 ? `- At least ${minEstablishmentLinked} hazard(s) must explici
 }
 
 Generate ${minHazards}-${maxHazards} hazards. ${minHazards === 0 ? 'Return 0 if the weapon cannot cause environmental hazards.' : 'Each hazard is a DISTINCT danger at a SPECIFIC location.'}
-
+${input.studGrids?.length ? formatStudsForPrompt(input.studGrids, new Set(), 30) : ''}
 Return ONLY valid JSON:
 {
   "hazards": [
@@ -4061,6 +4075,7 @@ async function generateCasualties(
     zoneSummaryBlock,
     narrative,
     openAiApiKey,
+    input.studGrids,
   );
   return placed?.length ? placed : undefined;
 }
@@ -4266,6 +4281,7 @@ async function placeVictimsOnMap(
   zoneSummaryBlock?: string,
   narrative?: { title?: string; description?: string; briefing?: string },
   openAiApiKey?: string,
+  studGrids?: StudGrid[],
 ): Promise<WarroomScenarioPayload['casualties']> {
   if (!openAiApiKey) return undefined;
 
@@ -4331,12 +4347,12 @@ ${hazardBlock}
 ${zoneSummaryBlock || ''}
 
 ${placementGuidance}
-
+${studGrids?.length ? formatStudsForPrompt(studGrids, new Set(), 30) : ''}
 VICTIM PROFILES TO PLACE:
 ${profileSummary}
 
 For EACH victim, assign:
-- location_lat, location_lng: realistic coordinates near the venue, based on their triage severity and the placement logic above
+- location_lat, location_lng: realistic coordinates near the venue, based on their triage severity and the placement logic above. If placement slots are listed above, use the nearest slot coordinate for victims inside a building.
 - floor_level: "G" for ground, "B1"/"B2" for basement, "1"/"2" for upper floors
 - accessibility: "open" | "behind_fire" | "under_debris" | "in_smoke" | "blocked_corridor"
 
@@ -7362,6 +7378,18 @@ export async function warroomGenerateScenario(
   const dedupedTimeInjects = await deduplicateInjectsByTheme(rawTimeInjects, openAiApiKey);
   const time_injects = normalizeInjectTiming(dedupedTimeInjects, durationMinutes);
 
+  // Generate building stud grids for snap-to-slot placement inside buildings
+  const studGrids = input.osmBuildings?.length ? generateStudGrids(input.osmBuildings) : [];
+  if (studGrids.length > 0) {
+    input.studGrids = studGrids;
+    const totalStuds = studGrids.reduce((s, g) => s + g.studs.length, 0);
+    logger.info(
+      { buildings: studGrids.length, totalStuds },
+      'Building stud grids generated for snap placement',
+    );
+  }
+  const occupiedStudIds = new Set<string>();
+
   // Phase 4a-1 (scenario-fixed pins) + POI enrichment run in PARALLEL
   const [scenarioFixedPins, poiPins] = await Promise.all([
     generateScenarioFixedPins(input, teamNames, openAiApiKey, onProgress, narrative),
@@ -7384,6 +7412,12 @@ export async function warroomGenerateScenario(
     ...(scenarioFixedPins ?? []),
     ...poiPins,
   ];
+
+  // Snap location pins to building studs
+  if (studGrids.length > 0 && mergedPins.length > 0) {
+    batchSnapLocations(mergedPins, studGrids, occupiedStudIds);
+  }
+
   const locations =
     mergedPins.length > 0
       ? validatePinTopology(
@@ -7512,6 +7546,11 @@ export async function warroomGenerateScenario(
   ]);
   const floorPlansResult = undefined;
 
+  // Snap hazard coordinates to building studs
+  if (studGrids.length > 0 && scenarioHazards?.length) {
+    batchSnap(scenarioHazards, studGrids, occupiedStudIds);
+  }
+
   // Generate unified incident zones as independent locations (draggable in preview)
   let unifiedZones: ZoneWithPolygon[] = [];
   if (scenarioHazards?.length) {
@@ -7559,6 +7598,12 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
     ...(crowdPins ?? []),
     ...(convergentPins ?? []),
   ];
+
+  // Snap casualty/crowd coordinates to building studs
+  if (studGrids.length > 0 && allCasualtyPins.length > 0) {
+    batchSnap(allCasualtyPins, studGrids, occupiedStudIds);
+  }
+
   const casualties: WarroomScenarioPayload['casualties'] =
     allCasualtyPins.length > 0 ? allCasualtyPins : undefined;
 

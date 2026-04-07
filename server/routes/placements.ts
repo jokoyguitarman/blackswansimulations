@@ -7,6 +7,14 @@ import { validatePlacement } from '../services/placementValidationService.js';
 import { evaluatePlacement } from '../services/spatialScoringService.js';
 import { evaluatePinResolution } from '../services/pinResolutionService.js';
 import { pointInGeoJSONPolygon } from '../services/geoUtils.js';
+import {
+  generateStudGrids,
+  snapCoordinate,
+  getOccupiedStudIds,
+  getCachedGrids,
+  setCachedGrids,
+} from '../services/buildingStudService.js';
+import type { OsmBuilding } from '../services/osmVicinityService.js';
 
 const router = Router();
 
@@ -279,6 +287,53 @@ router.post('/sessions/:id/placements', requireAuth, async (req, res) => {
 
     if (!session || session.status !== 'in_progress') {
       return res.status(400).json({ error: 'Session is not in progress' });
+    }
+
+    // Snap Point geometry to building stud if inside a building
+    if (
+      geometry?.type === 'Point' &&
+      Array.isArray(geometry.coordinates) &&
+      geometry.coordinates.length === 2
+    ) {
+      const { data: sessionFull } = await supabaseAdmin
+        .from('sessions')
+        .select('scenario_id')
+        .eq('id', sessionId)
+        .single();
+
+      if (sessionFull?.scenario_id) {
+        const scenarioId = sessionFull.scenario_id as string;
+        let grids = getCachedGrids(scenarioId);
+
+        if (!grids) {
+          const { data: sc } = await supabaseAdmin
+            .from('scenarios')
+            .select('insider_knowledge')
+            .eq('id', scenarioId)
+            .single();
+
+          const ik = sc?.insider_knowledge as Record<string, unknown> | null;
+          const osmVicinity = ik?.osm_vicinity as { buildings?: OsmBuilding[] } | undefined;
+          const buildings = (osmVicinity as Record<string, unknown>)?.buildings as
+            | OsmBuilding[]
+            | undefined;
+
+          if (buildings?.length) {
+            grids = generateStudGrids(buildings);
+            setCachedGrids(scenarioId, grids);
+          }
+        }
+
+        if (grids?.length) {
+          const [gLng, gLat] = geometry.coordinates;
+          const floor = ((properties as Record<string, unknown>)?.floor_level as string) ?? 'G';
+          const occupied = await getOccupiedStudIds(scenarioId, grids, sessionId);
+          const snapped = snapCoordinate(gLat, gLng, floor, grids, occupied);
+          if (snapped.studId) {
+            geometry.coordinates = [snapped.lng, snapped.lat];
+          }
+        }
+      }
     }
 
     // Run placement validation

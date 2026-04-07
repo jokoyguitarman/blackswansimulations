@@ -117,6 +117,7 @@ export async function publishInjectToSession(
     inject_scope: ((inject as Record<string, unknown>).inject_scope as string) || 'universal',
     target_teams: ((inject as Record<string, unknown>).target_teams as string[] | null) || null,
     response_type: ((inject as Record<string, unknown>).response_type as string) || 'standard',
+    generation_source: ((inject as Record<string, unknown>).generation_source as string) || null,
   });
 
   // Only review for escalation/de-escalation factors and pathways when the inject requires a response
@@ -144,6 +145,8 @@ export async function publishInjectToSession(
         affected_roles: inject.affected_roles || [],
         target_teams: inject.target_teams || null,
         response_type: ((inject as Record<string, unknown>).response_type as string) || 'standard',
+        generation_source:
+          ((inject as Record<string, unknown>).generation_source as string) || null,
       },
       timestamp: new Date().toISOString(),
     });

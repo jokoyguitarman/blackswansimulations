@@ -28,6 +28,7 @@ import { EntryExitPin, type EntryExitData } from './EntryExitPin';
 import { MapElementResponsePanel, type MapElementTarget } from './MapElementResponsePanel';
 import { FloorSelector, type FloorPlan } from './FloorSelector';
 import { FloorPlanOverlay } from './FloorPlanOverlay';
+import { BuildingStudOverlay } from './BuildingStudOverlay';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { api } from '../../lib/api';
 import type { LatLngExpression } from 'leaflet';
@@ -125,6 +126,8 @@ function getInsiderCategory(locationType: string, pinCategory?: string): string 
 
 interface MapViewProps {
   sessionId: string;
+  /** Scenario ID — needed for building stud overlay. */
+  scenarioId?: string;
   incidents?: Incident[];
   resources?: Resource[];
   onIncidentClick?: (incident: Incident) => void;
@@ -470,6 +473,7 @@ const FallbackUI = () => (
  */
 export const MapView = ({
   sessionId,
+  scenarioId,
   incidents = [],
   resources = [],
   onIncidentClick,
@@ -520,6 +524,7 @@ export const MapView = ({
   const [floorPlans, setFloorPlans] = useState<FloorPlan[]>([]);
   const [activeFloor, setActiveFloor] = useState('G');
   const [isContainerReady, setIsContainerReady] = useState(false);
+  const [studRefreshKey, setStudRefreshKey] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containmentAlert, setContainmentAlert] = useState<{
     type: 'held' | 'breach';
@@ -773,6 +778,7 @@ export const MapView = ({
             if (prev.some((p) => p.id === placement.id)) return prev;
             return [...prev, placement];
           });
+          setStudRefreshKey((k) => k + 1);
         }
       }
       if (event.type === 'placement.updated') {
@@ -785,6 +791,7 @@ export const MapView = ({
         const { placement } = event.data as { placement: PlacedAsset };
         if (placement) {
           setPlacedAssets((prev) => prev.filter((p) => p.id !== placement.id));
+          setStudRefreshKey((k) => k + 1);
         }
       }
       if (event.type === 'location.claimed') {
@@ -1594,6 +1601,16 @@ export const MapView = ({
                 label={loc.label}
               />
             ))}
+
+          {/* Building Stud Overlay — snap-point grid inside buildings */}
+          {scenarioId && (
+            <BuildingStudOverlay
+              scenarioId={scenarioId}
+              sessionId={sessionId}
+              floor={activeFloor}
+              refreshKey={studRefreshKey}
+            />
+          )}
 
           {/* Crowd Density Overlay */}
           {Array.isArray(environmentalState?.areas) && environmentalState.areas.length > 0 && (
