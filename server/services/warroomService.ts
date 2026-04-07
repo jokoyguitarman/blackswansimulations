@@ -13,6 +13,7 @@ import {
   fetchOsmOpenSpaces,
   fetchVenueBuilding,
   fetchRouteGeometries,
+  expandHospitalSearch,
 } from './osmVicinityService.js';
 import {
   parseFreeTextPrompt,
@@ -381,11 +382,27 @@ export async function stageParseAndGeocode(
     );
     try {
       const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      const INITIAL_RADIUS_M = 10000;
       const cachedVicinity = await findCachedOsmVicinity(geocodeResult.lat, geocodeResult.lng);
-      const vicinity =
+      let vicinity =
         cachedVicinity ??
-        (await fetchOsmVicinityByCoordinates(geocodeResult.lat, geocodeResult.lng, 5000));
+        (await fetchOsmVicinityByCoordinates(
+          geocodeResult.lat,
+          geocodeResult.lng,
+          INITIAL_RADIUS_M,
+        ));
       if (!cachedVicinity) await delay(1500);
+
+      // Tiered expansion: if fewer than 2 hospitals found, widen search
+      if ((vicinity.hospitals?.length ?? 0) < 2) {
+        onProgress?.('osm', 'Expanding hospital search radius...');
+        vicinity = await expandHospitalSearch(
+          vicinity,
+          geocodeResult.lat,
+          geocodeResult.lng,
+          INITIAL_RADIUS_M,
+        );
+      }
 
       const buildings = await fetchVenueBuilding(geocodeResult.lat, geocodeResult.lng, 300).catch(
         (err) => {
@@ -471,6 +488,67 @@ export async function stageParseAndGeocode(
       sensitiveInfrastructure = sensitive;
     } catch (err) {
       logger.warn({ err }, 'Structured research extraction failed; continuing without');
+    }
+  }
+
+  // Log hospital source comparison for diagnostics
+  const osmHospitalCount = osmVicinity?.hospitals?.length ?? 0;
+  const researchHospitalCount = areaStructured?.emergency_facilities?.hospitals?.length ?? 0;
+  if (osmHospitalCount > 0 || researchHospitalCount > 0) {
+    const level = osmHospitalCount === 0 && researchHospitalCount > 0 ? 'warn' : 'info';
+    logger[level](
+      {
+        osmHospitals: osmHospitalCount,
+        researchHospitals: researchHospitalCount,
+        osmNames: osmVicinity?.hospitals?.map((h) => h.name) ?? [],
+        researchNames: areaStructured?.emergency_facilities?.hospitals?.map((h) => h.name) ?? [],
+      },
+      'Hospital source comparison (OSM vs area research)',
+    );
+  }
+
+  // Fallback: if OSM still has no hospitals but area research found some,
+  // geocode the research hospital names and inject them into osmVicinity.
+  if (
+    osmVicinity &&
+    (osmVicinity.hospitals?.length ?? 0) === 0 &&
+    areaStructured?.emergency_facilities?.hospitals?.length
+  ) {
+    const researchHospitals = areaStructured.emergency_facilities.hospitals;
+    logger.warn(
+      {
+        osmHospitals: 0,
+        researchHospitals: researchHospitals.length,
+        names: researchHospitals.map((h) => h.name),
+      },
+      'OSM returned no hospitals but area research found some — geocoding research hospitals as fallback',
+    );
+
+    const fallbackHospitals: NonNullable<OsmVicinity['hospitals']> = [];
+    const locationHint = parsed.location || venueName || '';
+    for (const rh of researchHospitals.slice(0, 5)) {
+      try {
+        const query = `${rh.name}, ${locationHint}`;
+        const result = await geocode(query);
+        if (result) {
+          fallbackHospitals.push({
+            name: rh.name,
+            lat: result.lat,
+            lng: result.lng,
+          });
+        }
+        await new Promise((r) => setTimeout(r, 1200));
+      } catch {
+        logger.warn({ name: rh.name }, 'Research hospital geocoding failed; skipping');
+      }
+    }
+
+    if (fallbackHospitals.length > 0) {
+      osmVicinity.hospitals = fallbackHospitals;
+      logger.info(
+        { geocoded: fallbackHospitals.length },
+        'Research hospitals geocoded and added to osm_vicinity',
+      );
     }
   }
 

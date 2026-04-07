@@ -146,14 +146,20 @@ async function runOverpassQuery(
   lng: number,
   radiusMeters: number,
 ): Promise<{ elements: Array<Record<string, unknown>> }> {
-  const radius = Math.min(radiusMeters, 10000);
+  const radius = Math.min(radiusMeters, 50000);
   const query = `
-[out:json][timeout:30];
+[out:json][timeout:45];
 (
   node["amenity"="hospital"](around:${radius},${lat},${lng});
   way["amenity"="hospital"](around:${radius},${lat},${lng});
   node["healthcare"="hospital"](around:${radius},${lat},${lng});
   way["healthcare"="hospital"](around:${radius},${lat},${lng});
+  node["amenity"="clinic"](around:${radius},${lat},${lng});
+  way["amenity"="clinic"](around:${radius},${lat},${lng});
+  node["healthcare"="centre"](around:${radius},${lat},${lng});
+  way["healthcare"="centre"](around:${radius},${lat},${lng});
+  node["building"="hospital"](around:${radius},${lat},${lng});
+  way["building"="hospital"](around:${radius},${lat},${lng});
   node["amenity"="police"](around:${radius},${lat},${lng});
   way["amenity"="police"](around:${radius},${lat},${lng});
   node["amenity"="fire_station"](around:${radius},${lat},${lng});
@@ -166,6 +172,35 @@ out body center;
 `;
   const elements = await queryOverpass(query);
   return { elements };
+}
+
+/**
+ * Hospital-only Overpass query for tiered radius expansion.
+ * Only fetches hospital/clinic/healthcare facilities — lighter and faster.
+ */
+async function runHospitalOnlyOverpassQuery(
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+): Promise<Array<Record<string, unknown>>> {
+  const radius = Math.min(radiusMeters, 50000);
+  const query = `
+[out:json][timeout:30];
+(
+  node["amenity"="hospital"](around:${radius},${lat},${lng});
+  way["amenity"="hospital"](around:${radius},${lat},${lng});
+  node["healthcare"="hospital"](around:${radius},${lat},${lng});
+  way["healthcare"="hospital"](around:${radius},${lat},${lng});
+  node["amenity"="clinic"](around:${radius},${lat},${lng});
+  way["amenity"="clinic"](around:${radius},${lat},${lng});
+  node["healthcare"="centre"](around:${radius},${lat},${lng});
+  way["healthcare"="centre"](around:${radius},${lat},${lng});
+  node["building"="hospital"](around:${radius},${lat},${lng});
+  way["building"="hospital"](around:${radius},${lat},${lng});
+);
+out body center;
+`;
+  return queryOverpass(query);
 }
 
 /**
@@ -195,7 +230,13 @@ function normalizeToOsmVicinity(
 
     const key = `${pos.lat.toFixed(5)}-${pos.lng.toFixed(5)}`;
 
-    if (tags.amenity === 'hospital' || tags.healthcare === 'hospital') {
+    const isHospital =
+      tags.amenity === 'hospital' ||
+      tags.healthcare === 'hospital' ||
+      tags.amenity === 'clinic' ||
+      tags.healthcare === 'centre' ||
+      tags.building === 'hospital';
+    if (isHospital) {
       if (!seenHospitals.has(key)) {
         seenHospitals.add(key);
         hospitals.push({
@@ -580,6 +621,88 @@ export async function fetchOsmVicinityByCoordinates(
 ): Promise<OsmVicinity> {
   const { elements } = await runOverpassQuery(lat, lng, radiusMeters);
   return normalizeToOsmVicinity(elements, { lat, lng }, radiusMeters);
+}
+
+const MIN_HOSPITAL_COUNT = 2;
+const HOSPITAL_EXPANSION_TIERS_M = [15000, 25000, 40000];
+
+/**
+ * Tiered hospital expansion: if the initial vicinity has fewer than
+ * MIN_HOSPITAL_COUNT hospitals, run progressively wider hospital-only
+ * Overpass queries until we find enough or exhaust the tiers.
+ * Merges results into the existing vicinity in place and returns it.
+ */
+export async function expandHospitalSearch(
+  vicinity: OsmVicinity,
+  lat: number,
+  lng: number,
+  initialRadiusM: number,
+): Promise<OsmVicinity> {
+  const currentCount = vicinity.hospitals?.length ?? 0;
+  if (currentCount >= MIN_HOSPITAL_COUNT) return vicinity;
+
+  const seenKeys = new Set<string>();
+  for (const h of vicinity.hospitals ?? []) {
+    seenKeys.add(`${h.lat.toFixed(5)}-${h.lng.toFixed(5)}`);
+  }
+
+  for (const tierRadius of HOSPITAL_EXPANSION_TIERS_M) {
+    if (tierRadius <= initialRadiusM) continue;
+
+    logger.info(
+      { lat, lng, tierRadius, currentHospitals: vicinity.hospitals?.length ?? 0 },
+      'Expanding hospital search radius',
+    );
+
+    try {
+      await new Promise((r) => setTimeout(r, 2000));
+      const elements = await runHospitalOnlyOverpassQuery(lat, lng, tierRadius);
+
+      for (const el of elements) {
+        const tags = (el.tags as Record<string, string>) || {};
+        const pos = extractLatLng(el as Parameters<typeof extractLatLng>[0]);
+        if (!pos) continue;
+
+        const isHospital =
+          tags.amenity === 'hospital' ||
+          tags.healthcare === 'hospital' ||
+          tags.amenity === 'clinic' ||
+          tags.healthcare === 'centre' ||
+          tags.building === 'hospital';
+        if (!isHospital) continue;
+
+        const key = `${pos.lat.toFixed(5)}-${pos.lng.toFixed(5)}`;
+        if (seenKeys.has(key)) continue;
+        seenKeys.add(key);
+
+        if (!vicinity.hospitals) vicinity.hospitals = [];
+        vicinity.hospitals.push({
+          name: getName(el as { tags?: Record<string, string> }),
+          lat: pos.lat,
+          lng: pos.lng,
+          address: getAddress(el as { tags?: Record<string, string> }),
+        });
+      }
+
+      logger.info(
+        { tierRadius, hospitalsAfterExpansion: vicinity.hospitals?.length ?? 0 },
+        'Hospital expansion tier complete',
+      );
+
+      if ((vicinity.hospitals?.length ?? 0) >= MIN_HOSPITAL_COUNT) break;
+    } catch (err) {
+      logger.warn({ err, tierRadius }, 'Hospital expansion tier failed; continuing');
+    }
+  }
+
+  if ((vicinity.hospitals?.length ?? 0) === 0) {
+    logger.warn(
+      { lat, lng, maxRadius: HOSPITAL_EXPANSION_TIERS_M.at(-1) },
+      'No hospitals found even after expanding to maximum tier',
+    );
+  }
+
+  return vicinity;
 }
 
 /**
