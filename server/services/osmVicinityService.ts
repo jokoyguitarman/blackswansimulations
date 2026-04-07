@@ -76,7 +76,10 @@ const BACKOFF_BASE_MS = 2000;
  * RETRIES_PER_ENDPOINT times with exponential backoff. On exhaustion
  * of retries the next endpoint is attempted.
  */
-async function queryOverpass(query: string): Promise<Array<Record<string, unknown>>> {
+async function queryOverpass(
+  query: string,
+  timeoutMs: number = 15_000,
+): Promise<Array<Record<string, unknown>>> {
   let lastError: Error | null = null;
 
   for (let ep = 0; ep < OVERPASS_ENDPOINTS.length; ep++) {
@@ -88,7 +91,7 @@ async function queryOverpass(query: string): Promise<Array<Record<string, unknow
           method: 'POST',
           body: query,
           headers: { 'Content-Type': 'text/plain' },
-          signal: AbortSignal.timeout(15_000),
+          signal: AbortSignal.timeout(timeoutMs),
         });
 
         if (res.ok) {
@@ -319,8 +322,11 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
 // Generic Overpass runner (accepts arbitrary query text)
 // ---------------------------------------------------------------------------
 
-async function runRawOverpassQuery(query: string): Promise<Array<Record<string, unknown>>> {
-  return queryOverpass(query);
+async function runRawOverpassQuery(
+  query: string,
+  timeoutMs?: number,
+): Promise<Array<Record<string, unknown>>> {
+  return queryOverpass(query, timeoutMs);
 }
 
 // ---------------------------------------------------------------------------
@@ -533,8 +539,9 @@ export async function fetchVenueBuilding(
   radiusMeters: number = 300,
 ): Promise<OsmBuilding[]> {
   const radius = Math.min(radiusMeters, 1000);
+  const BUILDING_TIMEOUT_S = 30;
   const query = `
-[out:json][timeout:15];
+[out:json][timeout:${BUILDING_TIMEOUT_S}];
 (
   way["building"](around:${radius},${lat},${lng});
   relation["building"](around:${radius},${lat},${lng});
@@ -542,7 +549,7 @@ export async function fetchVenueBuilding(
 out body geom center bb;
 `;
 
-  const elements = await runRawOverpassQuery(query);
+  const elements = await runRawOverpassQuery(query, BUILDING_TIMEOUT_S * 1000 + 5000);
   const results: OsmBuilding[] = [];
 
   for (const el of elements) {
