@@ -21,12 +21,15 @@ import { logger } from '../lib/logger.js';
 export type BlastBand = 'kill' | 'critical' | 'serious' | 'minor' | 'outside';
 export type OperationalZone = 'hot' | 'warm' | 'cold' | 'outside';
 
+export type StudType = 'building' | 'outdoor';
+
 export interface BuildingStud {
   id: string;
   lat: number;
   lng: number;
   floor: string;
   buildingIndex: number;
+  studType: StudType;
   blastBand?: BlastBand;
   operationalZone?: OperationalZone;
   distFromIncidentM?: number;
@@ -110,6 +113,7 @@ export function generateStudsForPolygon(
           lng,
           floor,
           buildingIndex,
+          studType: 'building',
         });
       }
       col++;
@@ -161,6 +165,135 @@ export function generateStudGrids(
   }
 
   return grids;
+}
+
+// ---------------------------------------------------------------------------
+// Blast radius stud generation — outdoor studs beyond building walls
+// ---------------------------------------------------------------------------
+
+const BAND_SPACING_MULTIPLIER: Record<BlastBand, number> = {
+  kill: 1,
+  critical: 1.6,
+  serious: 2.4,
+  minor: 3,
+  outside: 3,
+};
+
+/**
+ * Generate a grid of outdoor studs across the blast radius area.
+ * Skips points inside any building polygon (those already have building studs).
+ * Uses adaptive spacing — finer near hazard center, coarser in outer bands.
+ */
+export function generateBlastRadiusStuds(
+  hazardCenters: Array<{ lat: number; lng: number }>,
+  blastBands: BlastBandConfig[],
+  buildingGrids: StudGrid[],
+  baseSpacingM = 5,
+): StudGrid | null {
+  if (hazardCenters.length === 0 || blastBands.length === 0) return null;
+
+  const sortedBands = [...blastBands].sort((a, b) => a.minM - b.minM);
+  const maxRadiusM = Math.max(...sortedBands.map((b) => b.maxM));
+  if (maxRadiusM <= 0) return null;
+
+  const buildingPolygons = buildingGrids.map((g) => g.polygon);
+
+  const studs: BuildingStud[] = [];
+  const usedKeys = new Set<string>();
+
+  for (let hi = 0; hi < hazardCenters.length; hi++) {
+    const hc = hazardCenters[hi];
+
+    // Use the finest spacing (kill zone) for the bounding box grid,
+    // then skip points that fall in coarser bands if they don't align
+    const dLatBase = baseSpacingM / 111_320;
+    const dLngBase = baseSpacingM / (111_320 * Math.cos((hc.lat * Math.PI) / 180));
+
+    const latExtent = maxRadiusM / 111_320;
+    const lngExtent = maxRadiusM / (111_320 * Math.cos((hc.lat * Math.PI) / 180));
+
+    let row = 0;
+    for (let lat = hc.lat - latExtent; lat <= hc.lat + latExtent; lat += dLatBase) {
+      let col = 0;
+      for (let lng = hc.lng - lngExtent; lng <= hc.lng + lngExtent; lng += dLngBase) {
+        const dist = haversineM(lat, lng, hc.lat, hc.lng);
+
+        if (dist > maxRadiusM) {
+          col++;
+          continue;
+        }
+
+        // Determine which band this point falls in
+        let band: BlastBand = 'outside';
+        for (const bc of sortedBands) {
+          if (dist >= bc.minM && dist < bc.maxM) {
+            band = bc.band;
+            break;
+          }
+        }
+        if (band === 'outside') {
+          col++;
+          continue;
+        }
+
+        // Adaptive spacing: skip points in outer bands to thin the grid
+        const multiplier = BAND_SPACING_MULTIPLIER[band];
+        if (multiplier > 1) {
+          const step = Math.round(multiplier);
+          if (row % step !== 0 || col % step !== 0) {
+            col++;
+            continue;
+          }
+        }
+
+        // Dedup across multiple hazard centers
+        const key = `${lat.toFixed(7)},${lng.toFixed(7)}`;
+        if (usedKeys.has(key)) {
+          col++;
+          continue;
+        }
+
+        // Skip points inside building polygons
+        let insideBuilding = false;
+        for (const poly of buildingPolygons) {
+          if (pointInPolygon(lat, lng, poly)) {
+            insideBuilding = true;
+            break;
+          }
+        }
+        if (insideBuilding) {
+          col++;
+          continue;
+        }
+
+        usedKeys.add(key);
+        studs.push({
+          id: `blast-${hi}-${row}-${col}`,
+          lat,
+          lng,
+          floor: 'G',
+          buildingIndex: -1,
+          studType: 'outdoor',
+          blastBand: band,
+          distFromIncidentM: Math.round(dist),
+        });
+
+        col++;
+      }
+      row++;
+    }
+  }
+
+  if (studs.length === 0) return null;
+
+  return {
+    buildingIndex: -1,
+    buildingName: 'Blast Radius',
+    polygon: [],
+    floors: ['G'],
+    studs,
+    spacingM: baseSpacingM,
+  };
 }
 
 // ---------------------------------------------------------------------------
