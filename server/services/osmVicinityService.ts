@@ -588,29 +588,66 @@ out body geom center bb;
     );
   }
 
-  // Phase 2: lightweight bbox query to discover building IDs (no geometry = fast)
+  // Phase 2: discover buildings — try with geometry first, fall back to bbox-only
+  let bbElements: Array<Record<string, unknown>> = [];
+  let phase2Mode = 'geom';
   const BB_TIMEOUT_S = 15;
-  const bbQuery = `
+
+  try {
+    const geom2Query = `
+[out:json][timeout:${BB_TIMEOUT_S}];
+way["building"](around:${radius},${lat},${lng});
+out body geom center bb;
+`;
+    bbElements = await runRawOverpassQuery(geom2Query, BB_TIMEOUT_S * 1000 + 5000);
+  } catch {
+    phase2Mode = 'bbox';
+  }
+
+  if (bbElements.length === 0 && phase2Mode === 'geom') {
+    phase2Mode = 'bbox';
+    try {
+      const bbQuery = `
 [out:json][timeout:${BB_TIMEOUT_S}];
 way["building"](around:${radius},${lat},${lng});
 out body center bb;
 `;
-  const bbElements = await runRawOverpassQuery(bbQuery, BB_TIMEOUT_S * 1000 + 5000);
+      bbElements = await runRawOverpassQuery(bbQuery, BB_TIMEOUT_S * 1000 + 5000);
+    } catch {
+      // both attempts failed
+    }
+  }
 
   if (bbElements.length === 0) {
-    logger.info({ radius }, 'OSM building bbox query returned 0 buildings');
+    logger.info({ radius, phase2Mode }, 'OSM building Phase 2 returned 0 buildings');
     return [];
   }
 
-  // Parse, sort by distance, pick the closest MAX_BUILDINGS
   const candidates = bbElements
     .map((el) => ({ el, parsed: parseOsmBuildingElement(el, lat, lng) }))
     .filter((c) => c.parsed !== null)
     .sort((a, b) => a.parsed!.distance_from_center_m - b.parsed!.distance_from_center_m)
     .slice(0, MAX_BUILDINGS);
 
-  // Phase 3: fetch actual polygon geometry for just those specific way IDs
-  const wayIds = candidates.map((c) => c.el.id as number).filter(Boolean);
+  const withGeomAlready = candidates.filter(
+    (c) => c.parsed!.footprint_polygon && c.parsed!.footprint_polygon.length >= 3,
+  ).length;
+
+  logger.info(
+    {
+      phase2Mode,
+      candidateCount: candidates.length,
+      withGeomAlready,
+      withBounds: candidates.filter((c) => c.parsed!.bounds != null).length,
+    },
+    'OSM building Phase 2 candidates',
+  );
+
+  // Phase 3: fetch polygon geometry for candidates that still lack it
+  const needsGeom = candidates.filter(
+    (c) => !c.parsed!.footprint_polygon || c.parsed!.footprint_polygon.length < 3,
+  );
+  const wayIds = needsGeom.map((c) => c.el.id as number).filter(Boolean);
 
   if (wayIds.length > 0) {
     try {
@@ -630,7 +667,7 @@ out geom;
         }
       }
 
-      for (const c of candidates) {
+      for (const c of needsGeom) {
         const geom = geomById.get(c.el.id as number);
         if (geom && c.parsed) {
           c.parsed.footprint_polygon = geom.map((pt) => [pt.lat, pt.lon] as [number, number]);
@@ -638,33 +675,49 @@ out geom;
       }
 
       logger.info(
-        { wayIds: wayIds.length, geomReturned: geomById.size, mode: 'bbox+id' },
-        'OSM venue buildings fetched (bbox discovery + ID geometry)',
+        {
+          requested: wayIds.length,
+          geomReturned: geomById.size,
+          mode: 'id-geom',
+        },
+        'OSM building Phase 3 geometry fetch',
       );
     } catch (err) {
-      logger.warn({ err }, 'OSM building ID-geometry query failed; using bbox rectangles');
+      logger.warn({ err, wayIds }, 'OSM building Phase 3 ID-geometry query failed');
     }
   }
 
-  // For any buildings that still lack polygon geometry, fall back to bbox rectangles
+  // Bbox rectangle fallback for buildings that still lack polygon geometry
   const results: OsmBuilding[] = [];
   for (const c of candidates) {
     if (!c.parsed) continue;
-    if (!c.parsed.footprint_polygon && c.parsed.bounds) {
-      const { minlat, minlon, maxlat, maxlon } = c.parsed.bounds;
-      c.parsed.footprint_polygon = [
-        [minlat, minlon],
-        [minlat, maxlon],
-        [maxlat, maxlon],
-        [maxlat, minlon],
-        [minlat, minlon],
-      ];
+    if (!c.parsed.footprint_polygon || c.parsed.footprint_polygon.length < 3) {
+      if (c.parsed.bounds) {
+        const { minlat, minlon, maxlat, maxlon } = c.parsed.bounds;
+        c.parsed.footprint_polygon = [
+          [minlat, minlon],
+          [minlat, maxlon],
+          [maxlat, maxlon],
+          [maxlat, minlon],
+          [minlat, minlon],
+        ];
+        logger.debug(
+          { name: c.parsed.name, id: c.el.id },
+          'Building polygon from bbox rectangle fallback',
+        );
+      } else {
+        logger.warn(
+          { name: c.parsed.name, id: c.el.id },
+          'Building has no polygon and no bounds — skipping',
+        );
+        continue;
+      }
     }
     results.push(c.parsed);
   }
 
   logger.info(
-    { total: results.length, returned: results.length, radius },
+    { total: results.length, withPolygon: results.length, radius, phase2Mode },
     'OSM venue buildings fetched',
   );
   return results;
