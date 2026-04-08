@@ -14,7 +14,7 @@ import { classifyDecision, shouldCancelScheduledInject } from '../services/aiSer
 import { evaluateAllObjectivesForSession } from '../services/objectiveTrackingService.js';
 // Gate evaluation imports removed — gates still evaluate on the scheduler for AAR,
 // but no longer drive player-facing inject publishing or objective skipping in the decision flow.
-import { evaluateDecisionAgainstEnvironment } from '../services/environmentalConsistencyService.js';
+import { orchestrateDecisionEvaluation } from '../services/decisionEvaluationOrchestrator.js';
 import { evaluateEnvironmentalPrerequisite } from '../services/environmentalPrerequisiteService.js';
 import {
   evaluateEnvironmentalManagementIntentAndUpdateState,
@@ -1116,9 +1116,9 @@ async function processExecutedDecisionInBackground(
       }
     }
 
-    // Run env consistency + env prerequisite in parallel (both are LLM calls)
+    // Run split evaluator orchestrator + env prerequisite in parallel
     const [aiEnvResult, prereqOut] = await Promise.all([
-      evaluateDecisionAgainstEnvironment(
+      orchestrateDecisionEvaluation(
         sessionId,
         {
           id: decision.id as string,

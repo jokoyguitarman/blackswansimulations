@@ -1222,6 +1222,7 @@ export interface WarroomScenarioPayload {
     sector_standards?: string;
     sector_standards_structured?: import('./warroomResearchService.js').StandardsFinding[];
     team_doctrines?: Record<string, import('./warroomResearchService.js').StandardsFinding[]>;
+    forbidden_actions?: Record<string, import('./warroomResearchService.js').ForbiddenAction[]>;
     layout_ground_truth?: Record<string, unknown>;
     site_areas?: Array<Record<string, unknown>>;
     custom_facts?: Array<{ topic: string; summary: string; detail?: string }>;
@@ -1265,6 +1266,8 @@ export interface WarroomResearchContext {
   standards_findings?: import('./warroomResearchService.js').StandardsFinding[];
   /** Pre-built per-team doctrine mapping from researchStandardsPerTeam */
   team_doctrines?: Record<string, import('./warroomResearchService.js').StandardsFinding[]>;
+  /** Per-team forbidden actions cheat sheet from researchForbiddenActionsPerTeam */
+  forbidden_actions?: Record<string, import('./warroomResearchService.js').ForbiddenAction[]>;
   similar_cases?: SimilarCase[];
   crowd_dynamics?: import('./warroomResearchService.js').CrowdDynamicsResearch;
 }
@@ -7716,6 +7719,13 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
     insiderKnowledge.team_doctrines = input.researchContext.team_doctrines;
   } else if (!insiderKnowledge.sector_standards && input.researchContext?.standards_summary) {
     insiderKnowledge.sector_standards = input.researchContext.standards_summary;
+  }
+
+  if (
+    input.researchContext?.forbidden_actions &&
+    Object.keys(input.researchContext.forbidden_actions).length > 0
+  ) {
+    insiderKnowledge.forbidden_actions = input.researchContext.forbidden_actions;
   }
 
   // Persist structured research artifacts for later inspection and regeneration.

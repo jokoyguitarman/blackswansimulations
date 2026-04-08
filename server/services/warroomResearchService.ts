@@ -607,6 +607,144 @@ Focus on: decision gates, time thresholds, role responsibilities, handover proce
   return { teamDoctrines, allFindings };
 }
 
+// ---------------------------------------------------------------------------
+// Forbidden actions per team (cheat sheet for safety guardrails evaluator)
+// ---------------------------------------------------------------------------
+
+export interface ForbiddenAction {
+  action: string;
+  why: string;
+  exception: string | null;
+}
+
+export async function researchForbiddenActionsPerTeam(
+  openAiApiKey: string,
+  scenarioType: string,
+  teams: TeamInput[],
+  narrative?: { title?: string; description?: string; briefing?: string },
+): Promise<Record<string, ForbiddenAction[]>> {
+  if (teams.length === 0) return {};
+
+  const narrativeBlock = narrative
+    ? `\nScenario: ${narrative.title || scenarioType}\nDescription: ${(narrative.description || '').slice(0, 800)}\nBriefing: ${(narrative.briefing || '').slice(0, 400)}`
+    : `\nScenario type: ${scenarioType}`;
+
+  const allTeamNames = teams
+    .map((t) => `${t.team_name}${t.team_description ? ` — ${t.team_description}` : ''}`)
+    .join('; ');
+
+  const result: Record<string, ForbiddenAction[]> = {};
+
+  await Promise.all(
+    teams.map(async (team) => {
+      const descLine = team.team_description ? `\nTeam description: ${team.team_description}` : '';
+
+      const prompt = `You are an expert in emergency management, crisis response, and operational safety.
+${narrativeBlock}
+
+All teams in this exercise: ${allTeamNames}
+
+FOCUS TEAM: ${team.team_name}${descLine}
+
+List 3-6 actions that this team must NEVER take during this type of incident. These are safety-critical forbidden actions specific to the team's role. Focus on:
+- Actions outside this team's jurisdiction that could endanger lives
+- Procedurally dangerous actions for this team's domain
+- Cross-team boundary violations specific to this team
+- Scenario-specific dangers given the incident type
+
+Do NOT include generic rules (like "don't harm civilians") — those are universal. Focus on role-specific prohibitions.
+
+Return ONLY valid JSON — an array:
+[
+  {
+    "action": "what the team must not do (concise, specific)",
+    "why": "why this is dangerous or prohibited (1-2 sentences)",
+    "exception": "any narrow exception where this might be acceptable, or null"
+  }
+]`;
+
+      try {
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${openAiApiKey}`,
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 2000,
+            temperature: 0.3,
+          }),
+        });
+
+        if (!res.ok) {
+          logger.warn(
+            { status: res.status, team: team.team_name },
+            'Per-team forbidden actions research failed',
+          );
+          return;
+        }
+
+        const data = await res.json();
+        const raw = data.choices?.[0]?.message?.content as string | undefined;
+        if (!raw) return;
+
+        let parsed: ForbiddenAction[] = [];
+        const jsonArrMatch = raw.match(/\[[\s\S]*\]/);
+        if (jsonArrMatch) {
+          parsed = JSON.parse(jsonArrMatch[0]) as ForbiddenAction[];
+        }
+
+        const valid = (Array.isArray(parsed) ? parsed : []).filter(
+          (f) => typeof f.action === 'string' && typeof f.why === 'string',
+        );
+        if (valid.length > 0) {
+          result[team.team_name] = valid;
+        }
+      } catch (err) {
+        logger.warn({ err, team: team.team_name }, 'Per-team forbidden actions research error');
+      }
+    }),
+  );
+
+  logger.info(
+    {
+      scenarioType,
+      teamCount: teams.length,
+      teamsWithForbiddenActions: Object.keys(result).length,
+    },
+    'Per-team forbidden actions research complete',
+  );
+
+  return result;
+}
+
+export function forbiddenActionsToPromptBlock(
+  forbiddenActions: Record<string, ForbiddenAction[]>,
+  teamName: string,
+): string {
+  const merged: ForbiddenAction[] = [];
+
+  const universal = forbiddenActions['_universal'];
+  if (Array.isArray(universal)) merged.push(...universal);
+
+  const teamSpecific = forbiddenActions[teamName];
+  if (Array.isArray(teamSpecific)) merged.push(...teamSpecific);
+
+  const scenarioSpecific = forbiddenActions['_scenario_specific'];
+  if (Array.isArray(scenarioSpecific)) merged.push(...scenarioSpecific);
+
+  if (merged.length === 0) return '';
+
+  const lines = merged.map((f) => {
+    let line = `- FORBIDDEN: ${f.action}\n  Why: ${f.why}`;
+    if (f.exception) line += `\n  Exception: ${f.exception}`;
+    return line;
+  });
+  return `FORBIDDEN ACTIONS FOR THIS TEAM:\n${lines.join('\n')}\n`;
+}
+
 /**
  * @deprecated Use researchStandardsPerTeam instead.
  * Legacy wrapper — converts string[] team names into TeamInput[] and delegates.

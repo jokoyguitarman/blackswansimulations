@@ -34,6 +34,7 @@ import { persistWarroomScenario } from './warroomPersistenceService.js';
 import {
   researchArea,
   researchStandardsPerTeam,
+  researchForbiddenActionsPerTeam,
   researchSimilarCases,
   researchCrowdDynamics,
   researchTeamWorkflows,
@@ -45,6 +46,7 @@ import {
   type StandardsFinding,
   type SimilarCase,
   type CrowdDynamicsResearch,
+  type ForbiddenAction,
   type TeamInput,
   type TeamWorkflow,
 } from './warroomResearchService.js';
@@ -273,6 +275,7 @@ export interface ParseAndGeocodeResult {
 export interface DoctrineResearchResult {
   standardsFindings: StandardsFinding[];
   perTeamDoctrines: Record<string, StandardsFinding[]>;
+  perTeamForbiddenActions: Record<string, ForbiddenAction[]>;
   teamWorkflows: Record<string, TeamWorkflow>;
 }
 
@@ -650,29 +653,42 @@ export async function stageResearchDoctrines(
 
   let standardsFindings: StandardsFinding[] = [];
   let perTeamDoctrines: Record<string, StandardsFinding[]> = {};
-  try {
-    const teamInputs: TeamInput[] =
-      userTeams && userTeams.length > 0
-        ? userTeams.map((t) => ({ team_name: t.team_name, team_description: t.team_description }))
-        : phase1Preview.teams.map((t) => ({
-            team_name: t.team_name,
-            team_description: t.team_description || undefined,
-          }));
+  let perTeamForbiddenActions: Record<string, ForbiddenAction[]> = {};
 
-    const result = await researchStandardsPerTeam(
-      openAiApiKey,
-      geoResult.parsed.scenario_type,
-      teamInputs,
-      {
-        title: phase1Preview.scenario.title,
-        description: phase1Preview.scenario.description,
-        briefing: phase1Preview.scenario.briefing,
-      },
-    );
-    standardsFindings = result.allFindings;
-    perTeamDoctrines = result.teamDoctrines;
+  const teamInputs: TeamInput[] =
+    userTeams && userTeams.length > 0
+      ? userTeams.map((t) => ({ team_name: t.team_name, team_description: t.team_description }))
+      : phase1Preview.teams.map((t) => ({
+          team_name: t.team_name,
+          team_description: t.team_description || undefined,
+        }));
+
+  const narrativeCtx = {
+    title: phase1Preview.scenario.title,
+    description: phase1Preview.scenario.description,
+    briefing: phase1Preview.scenario.briefing,
+  };
+
+  try {
+    const [standardsResult, forbiddenResult] = await Promise.all([
+      researchStandardsPerTeam(
+        openAiApiKey,
+        geoResult.parsed.scenario_type,
+        teamInputs,
+        narrativeCtx,
+      ),
+      researchForbiddenActionsPerTeam(
+        openAiApiKey,
+        geoResult.parsed.scenario_type,
+        teamInputs,
+        narrativeCtx,
+      ),
+    ]);
+    standardsFindings = standardsResult.allFindings;
+    perTeamDoctrines = standardsResult.teamDoctrines;
+    perTeamForbiddenActions = forbiddenResult;
   } catch (err) {
-    logger.warn({ err }, 'Standards research failed; continuing without');
+    logger.warn({ err }, 'Standards / forbidden actions research failed; continuing without');
   }
 
   const teamNames =
@@ -683,17 +699,13 @@ export async function stageResearchDoctrines(
       openAiApiKey,
       geoResult.parsed.scenario_type,
       teamNames,
-      {
-        title: phase1Preview.scenario.title,
-        description: phase1Preview.scenario.description,
-        briefing: phase1Preview.scenario.briefing,
-      },
+      narrativeCtx,
     );
   } catch (err) {
     logger.warn({ err }, 'Team workflow research failed; continuing without');
   }
 
-  return { standardsFindings, perTeamDoctrines, teamWorkflows };
+  return { standardsFindings, perTeamDoctrines, perTeamForbiddenActions, teamWorkflows };
 }
 
 /**
@@ -836,7 +848,7 @@ export async function stageGenerateAndPersist(
   onProgress?: WarroomProgressCallback,
 ): Promise<{ scenarioId: string; payload: WarroomScenarioPayload }> {
   const { parsed, geocodeResult, areaSummary, similarCases, crowdDynamics } = geoResult;
-  const { standardsFindings, perTeamDoctrines } = doctrines;
+  const { standardsFindings, perTeamDoctrines, perTeamForbiddenActions } = doctrines;
   const aiProgress = (msg: string) => onProgress?.('ai', msg);
 
   const payload = await warroomGenerateScenario(
@@ -869,7 +881,8 @@ export async function stageGenerateAndPersist(
         standardsFindings.length > 0 ||
         similarCases.length > 0 ||
         crowdDynamics ||
-        Object.keys(perTeamDoctrines).length > 0
+        Object.keys(perTeamDoctrines).length > 0 ||
+        Object.keys(perTeamForbiddenActions).length > 0
           ? {
               area_summary: areaSummary || undefined,
               area_structured: geoResult.areaStructured ?? undefined,
@@ -878,6 +891,10 @@ export async function stageGenerateAndPersist(
               standards_findings: standardsFindings.length > 0 ? standardsFindings : undefined,
               team_doctrines:
                 Object.keys(perTeamDoctrines).length > 0 ? perTeamDoctrines : undefined,
+              forbidden_actions:
+                Object.keys(perTeamForbiddenActions).length > 0
+                  ? perTeamForbiddenActions
+                  : undefined,
               similar_cases: similarCases.length > 0 ? similarCases : undefined,
               crowd_dynamics: crowdDynamics || undefined,
             }

@@ -18,7 +18,7 @@ import {
   nudgePublicSentiment,
   evaluateMediaScript,
 } from './heatMeterService.js';
-import { evaluateDecisionAgainstEnvironment } from './environmentalConsistencyService.js';
+import { orchestrateDecisionEvaluation } from './decisionEvaluationOrchestrator.js';
 import { evaluateEnvironmentalPrerequisite } from './environmentalPrerequisiteService.js';
 import {
   evaluateEnvironmentalManagementIntentAndUpdateState,
@@ -467,7 +467,7 @@ export class DemoActionDispatcher {
       };
 
       const [rawEnvResult, prereqOut] = await Promise.all([
-        evaluateDecisionAgainstEnvironment(
+        orchestrateDecisionEvaluation(
           sessionId,
           decisionForEval,
           env.openAiApiKey,

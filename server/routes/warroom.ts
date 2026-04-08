@@ -747,6 +747,9 @@ router.post(
         perTeamDoctrines: (valDoc?.perTeamDoctrines ??
           baseDoc.perTeamDoctrines ??
           {}) as DoctrineResearchResult['perTeamDoctrines'],
+        perTeamForbiddenActions: (valDoc?.perTeamForbiddenActions ??
+          baseDoc.perTeamForbiddenActions ??
+          {}) as DoctrineResearchResult['perTeamForbiddenActions'],
         teamWorkflows: (valDoc?.teamWorkflows ??
           baseDoc.teamWorkflows ??
           {}) as DoctrineResearchResult['teamWorkflows'],

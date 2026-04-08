@@ -19,7 +19,7 @@ import { haversineM, pointInPolygon, polygonBoundingBox } from './geoUtils.js';
  * partial substring match (e.g. "police" matches "Singapore Police Force").
  * Returns the findings array for the first match found, or [].
  */
-function resolveTeamDoctrines(
+export function resolveTeamDoctrines(
   teamDoctrines: Record<string, unknown[]>,
   teamName: string,
 ): unknown[] {
@@ -90,7 +90,7 @@ export interface EnvironmentalConsistencyResult {
  * Build a prompt block describing infrastructure deployed on the map by all teams,
  * and what the author's team could still deploy from their asset catalog.
  */
-async function buildInfrastructureContext(
+export async function buildInfrastructureContext(
   sessionId: string,
   authorTeamName?: string,
 ): Promise<string> {
@@ -223,7 +223,7 @@ async function buildInfrastructureContext(
  * and treatment ground truth, so the LLM can evaluate treatment decisions.
  * Only includes casualties that are not yet resolved/transported/deceased.
  */
-async function buildCasualtyContext(sessionId: string): Promise<string> {
+export async function buildCasualtyContext(sessionId: string): Promise<string> {
   const { data: session } = await supabaseAdmin
     .from('sessions')
     .select('scenario_id, start_time')
@@ -346,7 +346,7 @@ async function buildCasualtyContext(sessionId: string): Promise<string> {
   return lines.join('\n') + '\n';
 }
 
-const PPE_ASSET_TYPES = [
+export const PPE_ASSET_TYPES = [
   'breathing_apparatus',
   'hazmat_suit',
   'fire_protective_gear',
@@ -359,7 +359,7 @@ const PPE_ASSET_TYPES = [
   'gas_mask',
 ];
 
-const PERSONNEL_ASSET_TYPES = [
+export const PERSONNEL_ASSET_TYPES = [
   'medic',
   'paramedic',
   'doctor',
@@ -375,7 +375,7 @@ const PERSONNEL_ASSET_TYPES = [
   'security',
 ];
 
-interface ZoneGroundTruth {
+export interface ZoneGroundTruth {
   zone_type: string;
   radius_m: number;
   polygon?: [number, number][];
@@ -384,7 +384,7 @@ interface ZoneGroundTruth {
   activities: string[];
 }
 
-function classifyByZone(
+export function classifyByZone(
   dist: number,
   zones: ZoneGroundTruth[],
   assetLat?: number,
@@ -405,7 +405,7 @@ function classifyByZone(
  * Build a prompt block describing active hazards, zone ground truth, player-drawn zones,
  * and which personnel are in which zones with what PPE — for the LLM to evaluate.
  */
-async function buildHazardSafetyContext(sessionId: string): Promise<string> {
+export async function buildHazardSafetyContext(sessionId: string): Promise<string> {
   const { data: session } = await supabaseAdmin
     .from('sessions')
     .select('scenario_id, start_time')
@@ -644,7 +644,7 @@ interface FacilityChallenge {
   alternative?: string;
 }
 
-async function buildFacilityChallengesContext(sessionId: string): Promise<string> {
+export async function buildFacilityChallengesContext(sessionId: string): Promise<string> {
   const { data: session } = await supabaseAdmin
     .from('sessions')
     .select('scenario_id')
@@ -692,21 +692,12 @@ async function buildFacilityChallengesContext(sessionId: string): Promise<string
 }
 
 /**
- * Evaluate whether a decision meets professional response standards, sector doctrine,
+ * @deprecated Use orchestrateDecisionEvaluation from decisionEvaluationOrchestrator.ts instead.
+ *
+ * Monolithic evaluator — kept for fallback/comparison during rollout.
+ * Evaluates decisions against professional standards, sector doctrine,
  * hazard-specific requirements, operational specificity, infrastructure readiness,
- * and personnel safety.
- *
- * A single focused LLM call that checks:
- *  - Standards compliance (sector doctrine, hazard response requirements)
- *  - Operational specificity (enough detail to execute on the ground)
- *  - Infrastructure readiness (required facilities deployed on the map)
- *  - Casualty treatment adequacy (matching patient needs)
- *  - Personnel safety (PPE near hazards)
- *  - Safety guardrails (forbidden actions)
- *  - Facility environmental challenges (traffic, capacity, outages)
- *
- * Returns consistent: true when the decision meets standards.
- * On AI failure/timeout, returns consistent to avoid blocking execute.
+ * and personnel safety in a single LLM call.
  */
 export async function evaluateDecisionAgainstEnvironment(
   sessionId: string,
