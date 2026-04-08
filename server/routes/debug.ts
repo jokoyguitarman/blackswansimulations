@@ -15,6 +15,7 @@ import {
   type BlastBandConfig,
 } from '../services/buildingStudService.js';
 import { haversineM } from '../services/geoUtils.js';
+import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 
 const router = Router();
@@ -32,18 +33,21 @@ let lastGrids: StudGrid[] = [];
 /**
  * GET /api/debug/building-studs?lat=...&lng=...&radius=300
  *   &hazardLat=...&hazardLng=...&weaponClass=explosive
+ *   &scenarioId=...  (optional — loads cached buildings from DB instead of Overpass)
  *
- * Diagnostic endpoint: fetch building footprints from Overpass and generate
- * stud grids. When hazard params are provided, also generates blast radius
- * outdoor studs and classifies all studs with blast band metadata.
+ * Diagnostic endpoint: fetch building footprints from Overpass (or DB cache)
+ * and generate stud grids. When hazard params are provided, also generates
+ * blast radius outdoor studs and classifies all studs with blast band metadata.
  */
 router.get('/building-studs', requireAuth, async (req, res) => {
+  const scenarioId = (req.query.scenarioId as string) || undefined;
+
   const lat = parseFloat(req.query.lat as string);
   const lng = parseFloat(req.query.lng as string);
   const radius = parseInt(req.query.radius as string, 10) || 300;
 
-  if (Number.isNaN(lat) || Number.isNaN(lng)) {
-    return res.status(400).json({ error: 'lat and lng query params are required' });
+  if (!scenarioId && (Number.isNaN(lat) || Number.isNaN(lng))) {
+    return res.status(400).json({ error: 'lat and lng query params are required (or scenarioId)' });
   }
 
   const hazardLat = parseFloat(req.query.hazardLat as string);
@@ -54,14 +58,41 @@ router.get('/building-studs', requireAuth, async (req, res) => {
   const t0 = Date.now();
   let buildings: OsmBuilding[] = [];
   let fetchError: string | null = null;
+  let fetchSource: 'overpass' | 'scenario_cache' = 'overpass';
 
-  try {
-    buildings = await fetchVenueBuilding(lat, lng, radius);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.warn({ err, lat, lng, radius }, 'Debug building-studs fetch failed');
-    fetchError = msg;
-    buildings = [];
+  if (scenarioId) {
+    // Load cached building data from scenario's insider_knowledge
+    fetchSource = 'scenario_cache';
+    try {
+      const { data: sc } = await supabaseAdmin
+        .from('scenarios')
+        .select('insider_knowledge')
+        .eq('id', scenarioId)
+        .single();
+
+      if (!sc) {
+        return res.status(404).json({ error: `Scenario ${scenarioId} not found` });
+      }
+
+      const ik = sc.insider_knowledge as Record<string, unknown> | null;
+      const osmVicinity = ik?.osm_vicinity as Record<string, unknown> | undefined;
+      const cachedBuildings = osmVicinity?.buildings as OsmBuilding[] | undefined;
+      buildings = cachedBuildings ?? [];
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn({ err, scenarioId }, 'Debug building-studs scenario fetch failed');
+      fetchError = msg;
+      buildings = [];
+    }
+  } else {
+    try {
+      buildings = await fetchVenueBuilding(lat, lng, radius);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn({ err, lat, lng, radius }, 'Debug building-studs Overpass fetch failed');
+      fetchError = msg;
+      buildings = [];
+    }
   }
 
   const fetchMs = Date.now() - t0;
@@ -102,7 +133,7 @@ router.get('/building-studs', requireAuth, async (req, res) => {
   const totalStuds = buildingStuds + blastStudCount;
 
   // Cache grids for snap-test
-  lastGridsKey = `${lat},${lng},${radius}`;
+  lastGridsKey = scenarioId ? `scenario:${scenarioId}` : `${lat},${lng},${radius}`;
   lastGrids = grids;
 
   // Per-band counts
@@ -118,6 +149,7 @@ router.get('/building-studs', requireAuth, async (req, res) => {
   const payload = {
     stats: {
       fetchMs,
+      fetchSource,
       gridMs,
       buildingsReturned: buildings.length,
       buildingsWithPolygon: withPolygon.length,

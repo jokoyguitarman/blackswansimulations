@@ -67,6 +67,7 @@ interface BandInfo {
 
 interface Stats {
   fetchMs: number;
+  fetchSource: 'overpass' | 'scenario_cache';
   gridMs: number;
   buildingsReturned: number;
   buildingsWithPolygon: number;
@@ -173,6 +174,7 @@ export function DebugBuildingStuds() {
   const [lat, setLat] = useState('1.2989008');
   const [lng, setLng] = useState('103.855176');
   const [radius, setRadius] = useState('300');
+  const [scenarioId, setScenarioId] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DebugResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -250,7 +252,13 @@ export function DebugBuildingStuds() {
     setSnapResult(null);
     try {
       const headers = await getAuthHeaders();
-      const params = new URLSearchParams({ lat, lng, radius });
+      const params = new URLSearchParams();
+      if (scenarioId.trim()) {
+        params.set('scenarioId', scenarioId.trim());
+      }
+      if (lat) params.set('lat', lat);
+      if (lng) params.set('lng', lng);
+      if (radius) params.set('radius', radius);
       if (hazardLat != null && hazardLng != null) {
         params.set('hazardLat', hazardLat.toFixed(7));
         params.set('hazardLng', hazardLng.toFixed(7));
@@ -274,7 +282,7 @@ export function DebugBuildingStuds() {
     } finally {
       setLoading(false);
     }
-  }, [lat, lng, radius, activeFloor, hazardLat, hazardLng, weaponClass]);
+  }, [lat, lng, radius, scenarioId, activeFloor, hazardLat, hazardLng, weaponClass]);
 
   useEffect(() => {
     if (mapRef.current) {
@@ -330,6 +338,18 @@ export function DebugBuildingStuds() {
 
         {/* Controls row */}
         <div className="flex flex-wrap gap-3 mb-4 items-end">
+          <div>
+            <label className="block text-xs text-green-600 mb-1">
+              Scenario ID <span className="text-green-800">(optional — skips Overpass)</span>
+            </label>
+            <input
+              type="text"
+              value={scenarioId}
+              onChange={(e) => setScenarioId(e.target.value)}
+              placeholder="paste scenario UUID..."
+              className="bg-gray-900 border border-green-800 text-green-300 px-2 py-1 text-sm w-72 rounded placeholder:text-green-900"
+            />
+          </div>
           <div>
             <label className="block text-xs text-green-600 mb-1">Latitude</label>
             <input
@@ -488,6 +508,7 @@ export function DebugBuildingStuds() {
                     fillOpacity: 0.9,
                     weight: 3,
                   }}
+                  interactive={false}
                 />
               )}
 
@@ -505,6 +526,7 @@ export function DebugBuildingStuds() {
                       fillOpacity: 0,
                       dashArray: '5, 5',
                     }}
+                    interactive={false}
                   />
                 ))}
 
@@ -521,6 +543,7 @@ export function DebugBuildingStuds() {
                       fillOpacity: 0.08,
                       fillColor: '#818cf8',
                     }}
+                    interactive={false}
                   />
                 ))}
 
@@ -608,6 +631,8 @@ export function DebugBuildingStuds() {
               </h2>
               <p className="text-xs text-green-600 leading-relaxed">
                 1. Click map to set center coordinates, then &quot;Fetch &amp; Generate&quot;.
+                <br />
+                &nbsp;&nbsp;&nbsp;Or paste a Scenario ID to load cached buildings (skips Overpass).
                 <br />
                 2. Switch to &quot;Set Hazard Center&quot; and click map to place an explosion.
                 <br />
@@ -812,7 +837,19 @@ export function DebugBuildingStuds() {
                     Fetch Stats
                   </h2>
                   <div className="grid grid-cols-2 gap-y-1 text-xs">
-                    <span className="text-green-600">Overpass fetch:</span>
+                    <span className="text-green-600">Source:</span>
+                    <span
+                      className={
+                        result.stats.fetchSource === 'scenario_cache'
+                          ? 'text-cyan-400'
+                          : 'text-green-300'
+                      }
+                    >
+                      {result.stats.fetchSource === 'scenario_cache'
+                        ? 'Scenario Cache (DB)'
+                        : 'Overpass API'}
+                    </span>
+                    <span className="text-green-600">Fetch time:</span>
                     <span className={result.stats.fetchError ? 'text-red-400' : 'text-green-300'}>
                       {result.stats.fetchMs}ms
                       {result.stats.fetchError && ' (FAILED)'}
@@ -922,7 +959,11 @@ export function DebugBuildingStuds() {
 
             {loading && (
               <div className="bg-gray-900 border border-green-800 rounded p-3 text-center">
-                <p className="text-xs text-green-400 animate-pulse">Querying Overpass API...</p>
+                <p className="text-xs text-green-400 animate-pulse">
+                  {scenarioId.trim()
+                    ? 'Loading from scenario cache...'
+                    : 'Querying Overpass API...'}
+                </p>
               </div>
             )}
           </div>
