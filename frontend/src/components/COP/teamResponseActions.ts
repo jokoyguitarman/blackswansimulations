@@ -4,7 +4,7 @@ export interface TeamAction {
   description: string;
   icon: string;
   keywords: string[];
-  requiresElement?: ('hazard' | 'casualty' | 'crowd' | 'entry_exit')[];
+  requiresElement?: ('hazard' | 'casualty' | 'crowd' | 'entry_exit' | 'placed_asset')[];
 }
 
 const POLICE_ACTIONS: TeamAction[] = [
@@ -725,7 +725,7 @@ const TEAM_ACTION_REGISTRY: Record<string, TeamAction[]> = {
 
 export function getTeamActions(
   teamName: string,
-  elementType?: 'hazard' | 'casualty' | 'crowd' | 'entry_exit',
+  elementType?: 'hazard' | 'casualty' | 'crowd' | 'entry_exit' | 'placed_asset',
   _scenarioType?: string,
 ): TeamAction[] {
   const key = teamName.toLowerCase().replace(/[\s-]/g, '_');

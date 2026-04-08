@@ -29,6 +29,8 @@ interface PlacedAssetMarkerProps {
   drawingActive?: boolean;
   /** When true, applies entrance animations (drop-in for points, draw for lines/polygons). */
   isNew?: boolean;
+  /** Cross-team interaction callback (e.g. bomb squad sweep). Triggers the response panel. */
+  onInteract?: (asset: PlacedAsset) => void;
   onRemove?: (id: string) => void;
   onRelocate?: (id: string) => void;
   onDragEnd?: (id: string, newLat: number, newLng: number) => void;
@@ -214,6 +216,7 @@ export const PlacedAssetMarker = ({
   isDraggable = false,
   drawingActive = false,
   isNew = false,
+  onInteract,
   onRemove,
   onRelocate,
   onDragEnd,
@@ -298,6 +301,7 @@ export const PlacedAssetMarker = ({
                 <AssetPopupContent
                   asset={asset}
                   isOwnTeam={isOwnTeam}
+                  onInteract={onInteract}
                   onRemove={onRemove}
                   onRelocate={onRelocate}
                 />
@@ -383,6 +387,7 @@ export const PlacedAssetMarker = ({
                 <AssetPopupContent
                   asset={asset}
                   isOwnTeam={isOwnTeam}
+                  onInteract={onInteract}
                   onRemove={onRemove}
                   onRelocate={onRelocate}
                 />
@@ -462,6 +467,7 @@ export const PlacedAssetMarker = ({
                 <AssetPopupContent
                   asset={asset}
                   isOwnTeam={isOwnTeam}
+                  onInteract={onInteract}
                   onRemove={onRemove}
                   onRelocate={onRelocate}
                 />
@@ -521,6 +527,7 @@ export const PlacedAssetMarker = ({
           <AssetPopupContent
             asset={asset}
             isOwnTeam={isOwnTeam}
+            onInteract={onInteract}
             onRemove={onRemove}
             onRelocate={onRelocate}
           />
@@ -533,11 +540,13 @@ export const PlacedAssetMarker = ({
 function AssetPopupContent({
   asset,
   isOwnTeam,
+  onInteract,
   onRemove,
   onRelocate,
 }: {
   asset: PlacedAsset;
   isOwnTeam: boolean;
+  onInteract?: (asset: PlacedAsset) => void;
   onRemove?: (id: string) => void;
   onRelocate?: (id: string) => void;
 }) {
@@ -571,6 +580,17 @@ function AssetPopupContent({
               Remove
             </button>
           )}
+        </div>
+      )}
+
+      {onInteract && (
+        <div className="mt-2">
+          <button
+            onClick={() => onInteract(asset)}
+            className="w-full text-[10px] px-2 py-1 bg-amber-500/20 border border-amber-500/50 rounded text-amber-300 hover:bg-amber-500/30 font-semibold uppercase tracking-wide"
+          >
+            Sweep / Inspect
+          </button>
         </div>
       )}
     </div>

@@ -9,7 +9,7 @@ import { svg } from './mapIcons';
 import { getTeamActions } from './teamResponseActions';
 
 export interface MapElementTarget {
-  elementType: 'hazard' | 'casualty' | 'crowd' | 'entry_exit';
+  elementType: 'hazard' | 'casualty' | 'crowd' | 'entry_exit' | 'placed_asset';
   elementId: string;
   title: string;
   subtitle?: string;
@@ -127,6 +127,7 @@ const ELEMENT_TYPE_LABELS: Record<string, string> = {
   casualty: 'Casualty',
   crowd: 'Crowd',
   entry_exit: 'Location',
+  placed_asset: 'Asset Sweep',
 };
 
 /* ── Triage constants ── */

@@ -618,6 +618,28 @@ export const MapView = ({
     });
   }, []);
 
+  const isBombSquad = /bomb|eod|explosive/i.test(teamName ?? '');
+
+  const openPlacedAssetPanel = useCallback((asset: PlacedAsset) => {
+    const details: Array<{ label: string; value: string }> = [];
+    details.push({ label: 'Owning Team', value: asset.team_name });
+    details.push({ label: 'Asset Type', value: asset.asset_type.replace(/_/g, ' ') });
+    if (asset.properties?.capacity != null) {
+      details.push({
+        label: 'Capacity',
+        value: `${asset.properties.capacity} ${(asset.properties.capacity_unit as string) ?? 'units'}`,
+      });
+    }
+    setRespondToElement({
+      elementType: 'placed_asset',
+      elementId: asset.id,
+      title: asset.label,
+      subtitle: asset.team_name,
+      status: asset.status,
+      details,
+    });
+  }, []);
+
   // Fetch scenario locations (map pins) and which POI categories the user has asked the Insider about
   useEffect(() => {
     if (!sessionId || isMapDisabled) return;
@@ -1717,6 +1739,9 @@ export const MapView = ({
                 isDraggable={!!teamName && asset.team_name === teamName && !!isRecordingActions}
                 drawingActive={!!drawingAsset}
                 isNew={newPlacementIdsRef.current.has(asset.id)}
+                onInteract={
+                  isBombSquad && asset.team_name !== teamName ? openPlacedAssetPanel : undefined
+                }
                 onRemove={
                   teamName && asset.team_name === teamName ? handleRemovePlacement : undefined
                 }
