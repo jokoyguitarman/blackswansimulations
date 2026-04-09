@@ -153,6 +153,21 @@
       "team": "evacuation"
     },
     {
+      "key": "crowd_compliance_below_30",
+      "meaning": "Crowd compliance score is below 30% (near-panic)",
+      "team": "evacuation"
+    },
+    {
+      "key": "crowd_compliance_below_50",
+      "meaning": "Crowd compliance score is below 50% (poor control)",
+      "team": "evacuation"
+    },
+    {
+      "key": "crowd_compliance_above_70",
+      "meaning": "Crowd compliance score is above 70% (good control)",
+      "team": "evacuation"
+    },
+    {
       "key": "triage_zone_established_as_incident_location",
       "meaning": "Decision mentions triage zone",
       "team": "triage"

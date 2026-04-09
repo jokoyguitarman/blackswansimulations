@@ -369,6 +369,7 @@ export class InjectSchedulerService {
         still_inside: liveCounters.evacuation.still_inside,
         in_transit: liveCounters.evacuation.in_transit,
         convergent_crowds_count: liveCounters.evacuation.convergent_crowds_count,
+        crowd_compliance_score: liveCounters.evacuation.crowd_compliance_score,
       };
 
       // Merge triage counters

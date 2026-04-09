@@ -370,6 +370,16 @@ conditionRegistry.awaiting_triage_above_10 = (ctx) =>
 conditionRegistry.transported_above_0 = (ctx) =>
   ((getTriageState(ctx).transported as number) ?? 0) > 0;
 
+// Crowd compliance thresholds
+conditionRegistry.crowd_compliance_below_30 = (ctx) =>
+  ((getEvacuationState(ctx).crowd_compliance_score as number) ?? 1) < 0.3;
+
+conditionRegistry.crowd_compliance_below_50 = (ctx) =>
+  ((getEvacuationState(ctx).crowd_compliance_score as number) ?? 1) < 0.5;
+
+conditionRegistry.crowd_compliance_above_70 = (ctx) =>
+  ((getEvacuationState(ctx).crowd_compliance_score as number) ?? 1) >= 0.7;
+
 // ---------------------------------------------------------------------------
 // Internal: resolve one condition key (prefix rules + state_path + registry)
 // ---------------------------------------------------------------------------

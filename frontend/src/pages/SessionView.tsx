@@ -1793,6 +1793,16 @@ export const SessionView = () => {
               const atAssembly = Math.max(0, Number(state.civilians_at_assembly) || 0);
               const stillIn = Math.max(0, Number(state.still_inside) || 0);
               const transit = Math.max(0, Number(state.in_transit) || 0);
+              const complianceRaw = Number(state.crowd_compliance_score) || 0.7;
+              const compliancePct = Math.round(complianceRaw * 100);
+              const complianceColor =
+                compliancePct < 30
+                  ? '#ef4444'
+                  : compliancePct < 50
+                    ? '#eab308'
+                    : compliancePct < 70
+                      ? '#22c55e'
+                      : '#10b981';
               blocks.push(
                 <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
                   <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
@@ -1803,6 +1813,21 @@ export const SessionView = () => {
                     <div>Total evacuated: {totalEvac}</div>
                     <div>Still inside: {stillIn}</div>
                     <div>In transit: {transit}</div>
+                    <div className="pt-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <span>Crowd compliance:</span>
+                        <span style={{ color: complianceColor }}>{compliancePct}%</span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-robotic-gray-400 overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${compliancePct}%`,
+                            backgroundColor: complianceColor,
+                          }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>,
               );

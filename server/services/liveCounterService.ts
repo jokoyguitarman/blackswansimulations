@@ -8,6 +8,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { haversineM, pointInPolygon } from './geoUtils.js';
+import { BEHAVIOR_COMPLIANCE_WEIGHTS } from './peopleDeteriorationService.js';
 
 export interface AreaOccupancy {
   area_label: string;
@@ -31,6 +32,7 @@ export interface LiveCounters {
     still_inside: number;
     in_transit: number;
     convergent_crowds_count: number;
+    crowd_compliance_score: number;
   };
   triage: {
     awaiting_triage: number;
@@ -182,6 +184,23 @@ export async function computeLiveCounters(
   );
   const convergentCrowdsCount = convergentCrowds.reduce((sum, c) => sum + c.headcount, 0);
 
+  // --- Crowd compliance score (weighted average of active crowd behaviors) ---
+  const activeCrowds = crowds.filter(
+    (c) => !['at_assembly', 'resolved', 'deceased'].includes(c.status),
+  );
+  let crowdComplianceScore = 0.7; // default = calm
+  if (activeCrowds.length > 0) {
+    let weightedSum = 0;
+    let totalHead = 0;
+    for (const c of activeCrowds) {
+      const behavior = ((c.conditions as Record<string, unknown>)?.behavior as string) ?? 'calm';
+      const weight = BEHAVIOR_COMPLIANCE_WEIGHTS[behavior] ?? 0.7;
+      weightedSum += c.headcount * weight;
+      totalHead += c.headcount;
+    }
+    crowdComplianceScore = totalHead > 0 ? Math.round((weightedSum / totalHead) * 100) / 100 : 0.7;
+  }
+
   // --- Triage counters ---
   const patients = casualties.filter((c) => c.casualty_type === 'patient');
 
@@ -279,6 +298,7 @@ export async function computeLiveCounters(
       still_inside: stillInside,
       in_transit: inTransit,
       convergent_crowds_count: convergentCrowdsCount,
+      crowd_compliance_score: crowdComplianceScore,
     },
     triage: {
       awaiting_triage: awaitingTriage,

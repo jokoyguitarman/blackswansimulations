@@ -25,11 +25,15 @@ interface CrowdPinProps {
 }
 
 const BEHAVIOR_COLORS: Record<string, string> = {
+  compliant: '#10b981',
+  cooperative: '#14b8a6',
   calm: '#22c55e',
-  anxious: '#eab308',
-  panicking: '#ef4444',
   sheltering: '#3b82f6',
+  curious: '#a855f7',
+  anxious: '#eab308',
   fleeing: '#f97316',
+  hostile: '#dc2626',
+  panicking: '#ef4444',
 };
 
 const CONVERGENT_ORIGIN_ICONS: Record<string, string> = {
@@ -89,6 +93,7 @@ export const CrowdPin = ({ crowd, onClick, isDraggable = false, onDragEnd }: Cro
   const position: LatLngExpression = [crowd.location_lat, crowd.location_lng];
   const conds = crowd.conditions as Record<string, unknown>;
   const crowdOrigin = (conds.crowd_origin as string) ?? '';
+  const behavior = (conds.behavior as string) ?? 'calm';
 
   return (
     <Marker
@@ -110,7 +115,7 @@ export const CrowdPin = ({ crowd, onClick, isDraggable = false, onDragEnd }: Cro
           <div className="font-semibold">
             {crowd.casualty_type === 'convergent_crowd'
               ? `${crowdOrigin || 'Convergent'} — ${crowd.headcount}`
-              : `Crowd — ${crowd.headcount}`}
+              : `Crowd — ${crowd.headcount} (${behavior})`}
           </div>
           <div className="capitalize text-gray-500">{crowd.status}</div>
         </div>

@@ -151,6 +151,7 @@ export async function processExitFlow(sessionId: string): Promise<void> {
     ...((injEffects.evacuation_state as Record<string, unknown>) ?? {}),
   };
   const flowRateMod = Math.max(0.1, Number(evacState.flow_rate_modifier) || 1);
+  const complianceMod = Math.max(0.1, Number(evacState.crowd_compliance_score) || 1);
 
   // Count marshals for flow rate modifier
   const { data: marshalsNear } = await supabaseAdmin
@@ -167,7 +168,9 @@ export async function processExitFlow(sessionId: string): Promise<void> {
 
     const exitConds = (exit.conditions as Record<string, unknown>) ?? {};
     const flowRateBase = (exitConds.capacity_flow_per_min as number) ?? BASE_FLOW_RATE_PER_MIN;
-    const effectiveFlowRate = Math.floor(flowRateBase * marshalModifier * flowRateMod);
+    const effectiveFlowRate = Math.floor(
+      flowRateBase * marshalModifier * flowRateMod * complianceMod,
+    );
 
     // Find operational areas within 200m of this exit
     const nearbyPathways = (exitPathways ?? []).filter((p) => {

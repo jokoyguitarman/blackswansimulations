@@ -17,6 +17,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { placeOutsideZoneType } from './zonePlacementService.js';
+import { haversineM as haversineMeters } from './geoUtils.js';
 
 const TRIAGE_ESCALATION: Record<string, string> = {
   green: 'yellow',
@@ -27,6 +28,28 @@ const TRIAGE_ESCALATION: Record<string, string> = {
 const BEHAVIOR_ESCALATION: Record<string, string> = {
   calm: 'anxious',
   anxious: 'panicking',
+};
+
+const BEHAVIOR_DE_ESCALATION: Record<string, string> = {
+  panicking: 'anxious',
+  fleeing: 'anxious',
+  hostile: 'anxious',
+  anxious: 'calm',
+  curious: 'calm',
+  calm: 'cooperative',
+  cooperative: 'compliant',
+};
+
+export const BEHAVIOR_COMPLIANCE_WEIGHTS: Record<string, number> = {
+  panicking: 0.2,
+  hostile: 0.3,
+  fleeing: 0.35,
+  anxious: 0.5,
+  curious: 0.55,
+  sheltering: 0.6,
+  calm: 0.7,
+  cooperative: 0.85,
+  compliant: 1.0,
 };
 
 const DEMO_TRAINER_ID = 'a0000000-de00-b000-0001-000000000099';
@@ -97,6 +120,37 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
     .lte('appears_at_minutes', elapsedMinutes);
 
   if (!casualties?.length) return;
+
+  // Pre-fetch marshal-type assets for crowd de-escalation proximity checks
+  const { data: marshalAssets } = await supabaseAdmin
+    .from('placed_assets')
+    .select('asset_type, geometry')
+    .eq('session_id', sessionId)
+    .eq('status', 'active');
+
+  const marshalPositions: Array<{ lat: number; lng: number }> = [];
+  for (const asset of marshalAssets ?? []) {
+    const aType = (asset.asset_type as string).toLowerCase();
+    if (!aType.includes('marshal') && !aType.includes('steward') && !aType.includes('police'))
+      continue;
+    const geom = asset.geometry as Record<string, unknown>;
+    if (!geom) continue;
+    if ((geom.type as string) === 'Point') {
+      const coords = geom.coordinates as number[];
+      marshalPositions.push({ lat: coords[1], lng: coords[0] });
+    } else if ((geom.type as string) === 'Polygon') {
+      const coords = (geom.coordinates as number[][][])[0];
+      let latSum = 0,
+        lngSum = 0;
+      for (const c of coords) {
+        latSum += c[1];
+        lngSum += c[0];
+      }
+      marshalPositions.push({ lat: latSum / coords.length, lng: lngSum / coords.length });
+    }
+  }
+
+  const MARSHAL_PROXIMITY_M = 100;
 
   const injectsToCreate: Array<Record<string, unknown>> = [];
 
@@ -317,87 +371,118 @@ export async function runPeopleDeterioration(sessionId: string): Promise<void> {
         sinceLastDet >= escalationMin
       ) {
         const currentBehavior = (conds.behavior as string) ?? 'calm';
-        const newBehavior = BEHAVIOR_ESCALATION[currentBehavior];
 
-        if (newBehavior) {
-          conds.behavior = newBehavior;
-          conds.last_deterioration_at = new Date().toISOString();
-          updated = true;
+        // Check if any marshal-type asset is within proximity
+        const hasMarshalNearby = marshalPositions.some(
+          (m) =>
+            haversineMeters(cas.location_lat, cas.location_lng, m.lat, m.lng) <=
+            MARSHAL_PROXIMITY_M,
+        );
 
-          injectsToCreate.push({
-            scenario_id: session.scenario_id,
-            session_id: sessionId,
-            title: 'Crowd Behavior Escalation',
-            body: `A group of ${cas.headcount} civilians has escalated from ${currentBehavior} to ${newBehavior}. ${(conds.visible_description as string)?.slice(0, 100) || ''}`,
-            inject_type: 'deterioration',
-            trigger_type: 'time_based',
-            trigger_minutes: elapsedMinutes,
-            target_team: null,
-            generation_source: 'deterioration_cycle',
-          });
+        if (hasMarshalNearby) {
+          // De-escalate: marshals are calming the crowd
+          const deEscalated = BEHAVIOR_DE_ESCALATION[currentBehavior];
+          if (deEscalated) {
+            conds.behavior = deEscalated;
+            conds.last_deterioration_at = new Date().toISOString();
+            updated = true;
 
-          if (newBehavior === 'panicking' && cas.headcount > 20) {
-            const stampedeCasualties = Math.min(Math.floor(cas.headcount * 0.05), 3);
-            const crowdRef = { lat: cas.location_lat, lng: cas.location_lng };
-            for (let i = 0; i < stampedeCasualties; i++) {
-              const coord = await placeOutsideZoneType(
-                sessionId,
-                'hot',
-                crowdRef,
-                28,
-                undefined,
-                session.scenario_id as string,
-              );
-              await supabaseAdmin.from('scenario_casualties').insert({
-                scenario_id: session.scenario_id,
-                session_id: sessionId,
-                casualty_type: 'patient',
-                location_lat: coord.lat,
-                location_lng: coord.lng,
-                floor_level: cas.floor_level,
-                headcount: 1,
-                conditions: {
-                  injuries: [
-                    {
-                      type: 'crush_injury',
-                      severity: 'moderate',
-                      body_part: 'lower_body',
-                      visible_signs: 'Trampled during crowd panic',
-                    },
-                  ],
-                  triage_color: 'yellow',
-                  mobility: 'non_ambulatory',
-                  accessibility: 'open',
-                  consciousness: 'alert',
-                  breathing: 'normal',
-                  visible_description: 'Person trampled during crowd stampede, unable to walk',
-                },
-                status: 'identified',
-                appears_at_minutes: elapsedMinutes,
-              });
-            }
+            injectsToCreate.push({
+              scenario_id: session.scenario_id,
+              session_id: sessionId,
+              title: 'Crowd Calming Under Marshal Guidance',
+              body: `A group of ${cas.headcount} civilians is calming down from ${currentBehavior} to ${deEscalated} under marshal guidance. ${(conds.visible_description as string)?.slice(0, 100) || ''}`,
+              inject_type: 'deterioration',
+              trigger_type: 'time_based',
+              trigger_minutes: elapsedMinutes,
+              target_team: null,
+              generation_source: 'deterioration_cycle',
+            });
+          }
+        } else {
+          // Escalate: no marshals nearby, crowd worsens
+          const newBehavior = BEHAVIOR_ESCALATION[currentBehavior];
 
-            if (stampedeCasualties > 0) {
-              injectsToCreate.push({
-                scenario_id: session.scenario_id,
-                session_id: sessionId,
-                title: 'Stampede Injuries',
-                body: `${stampedeCasualties} people have been injured in a stampede caused by panicking crowd of ${cas.headcount}.`,
-                inject_type: 'deterioration',
-                trigger_type: 'time_based',
-                trigger_minutes: elapsedMinutes,
-                target_team: null,
-                generation_source: 'deterioration_cycle',
-              });
+          if (newBehavior) {
+            conds.behavior = newBehavior;
+            conds.last_deterioration_at = new Date().toISOString();
+            updated = true;
 
-              try {
-                getWebSocketService().broadcastToSession(sessionId, {
-                  type: 'casualty.created',
-                  data: { count: stampedeCasualties, cause: 'stampede' },
-                  timestamp: new Date().toISOString(),
+            injectsToCreate.push({
+              scenario_id: session.scenario_id,
+              session_id: sessionId,
+              title: 'Crowd Behavior Escalation',
+              body: `A group of ${cas.headcount} civilians has escalated from ${currentBehavior} to ${newBehavior}. ${(conds.visible_description as string)?.slice(0, 100) || ''}`,
+              inject_type: 'deterioration',
+              trigger_type: 'time_based',
+              trigger_minutes: elapsedMinutes,
+              target_team: null,
+              generation_source: 'deterioration_cycle',
+            });
+
+            if (newBehavior === 'panicking' && cas.headcount > 20) {
+              const stampedeCasualties = Math.min(Math.floor(cas.headcount * 0.05), 3);
+              const crowdRef = { lat: cas.location_lat, lng: cas.location_lng };
+              for (let i = 0; i < stampedeCasualties; i++) {
+                const coord = await placeOutsideZoneType(
+                  sessionId,
+                  'hot',
+                  crowdRef,
+                  28,
+                  undefined,
+                  session.scenario_id as string,
+                );
+                await supabaseAdmin.from('scenario_casualties').insert({
+                  scenario_id: session.scenario_id,
+                  session_id: sessionId,
+                  casualty_type: 'patient',
+                  location_lat: coord.lat,
+                  location_lng: coord.lng,
+                  floor_level: cas.floor_level,
+                  headcount: 1,
+                  conditions: {
+                    injuries: [
+                      {
+                        type: 'crush_injury',
+                        severity: 'moderate',
+                        body_part: 'lower_body',
+                        visible_signs: 'Trampled during crowd panic',
+                      },
+                    ],
+                    triage_color: 'yellow',
+                    mobility: 'non_ambulatory',
+                    accessibility: 'open',
+                    consciousness: 'alert',
+                    breathing: 'normal',
+                    visible_description: 'Person trampled during crowd stampede, unable to walk',
+                  },
+                  status: 'identified',
+                  appears_at_minutes: elapsedMinutes,
                 });
-              } catch {
-                /* ws not initialized */
+              }
+
+              if (stampedeCasualties > 0) {
+                injectsToCreate.push({
+                  scenario_id: session.scenario_id,
+                  session_id: sessionId,
+                  title: 'Stampede Injuries',
+                  body: `${stampedeCasualties} people have been injured in a stampede caused by panicking crowd of ${cas.headcount}.`,
+                  inject_type: 'deterioration',
+                  trigger_type: 'time_based',
+                  trigger_minutes: elapsedMinutes,
+                  target_team: null,
+                  generation_source: 'deterioration_cycle',
+                });
+
+                try {
+                  getWebSocketService().broadcastToSession(sessionId, {
+                    type: 'casualty.created',
+                    data: { count: stampedeCasualties, cause: 'stampede' },
+                    timestamp: new Date().toISOString(),
+                  });
+                } catch {
+                  /* ws not initialized */
+                }
               }
             }
           }
