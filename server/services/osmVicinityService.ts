@@ -548,15 +548,42 @@ out body geom;
   return results.slice(0, MAX_ROUTES);
 }
 
+export interface FetchLogEntry {
+  phase: string;
+  status: 'ok' | 'timeout' | 'error' | 'skipped' | 'empty';
+  latencyMs: number;
+  detail: string;
+}
+
+export interface FetchVenueBuildingResult {
+  buildings: OsmBuilding[];
+  fetchLog: FetchLogEntry[];
+}
+
 export async function fetchVenueBuilding(
   lat: number,
   lng: number,
-  radiusMeters: number = 300,
-): Promise<OsmBuilding[]> {
+  radiusMeters?: number,
+): Promise<OsmBuilding[]>;
+export async function fetchVenueBuilding(
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+  opts: { withLog: true },
+): Promise<FetchVenueBuildingResult>;
+export async function fetchVenueBuilding(
+  lat: number,
+  lng: number,
+  radiusMeters?: number,
+  opts?: { withLog?: boolean },
+): Promise<OsmBuilding[] | FetchVenueBuildingResult> {
   const MAX_BUILDINGS = 5;
-  const radius = Math.min(radiusMeters, 1000);
+  const radius = Math.min(radiusMeters ?? 300, 1000);
+  const fetchLog: FetchLogEntry[] = [];
+  const wantLog = opts?.withLog === true;
 
   // Phase 1: try full geometry in a single query (best quality, but heavy)
+  const p1Start = Date.now();
   try {
     const GEOM_TIMEOUT_S = 12;
     const geomQuery = `
@@ -570,18 +597,37 @@ out body geom center bb;
         .map((el) => parseOsmBuildingElement(el, lat, lng))
         .filter(Boolean) as OsmBuilding[];
       results.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
+      const slice = results.slice(0, MAX_BUILDINGS);
+      const withPoly = slice.filter(
+        (b) => b.footprint_polygon && b.footprint_polygon.length >= 3,
+      ).length;
+      fetchLog.push({
+        phase: 'phase1',
+        status: 'ok',
+        latencyMs: Date.now() - p1Start,
+        detail: `Full geometry query returned ${elements.length} elements → ${slice.length} buildings (${withPoly} with polygon)`,
+      });
       logger.info(
-        {
-          total: results.length,
-          returned: Math.min(results.length, MAX_BUILDINGS),
-          radius,
-          mode: 'geom',
-        },
+        { total: results.length, returned: slice.length, radius, mode: 'geom' },
         'OSM venue buildings fetched (full geometry)',
       );
-      return results.slice(0, MAX_BUILDINGS);
+      return wantLog ? { buildings: slice, fetchLog } : slice;
     }
+    fetchLog.push({
+      phase: 'phase1',
+      status: 'empty',
+      latencyMs: Date.now() - p1Start,
+      detail: 'Full geometry query returned 0 elements',
+    });
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isTimeout = /timeout|abort|timed/i.test(msg);
+    fetchLog.push({
+      phase: 'phase1',
+      status: isTimeout ? 'timeout' : 'error',
+      latencyMs: Date.now() - p1Start,
+      detail: `Full geometry query failed: ${msg.slice(0, 200)}`,
+    });
     logger.warn(
       { err, radius },
       'OSM building full-geometry query failed; trying lightweight approach',
@@ -593,6 +639,7 @@ out body geom center bb;
   let phase2Mode = 'geom';
   const BB_TIMEOUT_S = 15;
 
+  const p2Start = Date.now();
   try {
     const geom2Query = `
 [out:json][timeout:${BB_TIMEOUT_S}];
@@ -600,12 +647,29 @@ way["building"](around:${radius},${lat},${lng});
 out body geom center bb;
 `;
     bbElements = await runRawOverpassQuery(geom2Query, BB_TIMEOUT_S * 1000 + 5000);
-  } catch {
+    fetchLog.push({
+      phase: 'phase2_geom',
+      status: bbElements.length > 0 ? 'ok' : 'empty',
+      latencyMs: Date.now() - p2Start,
+      detail: `Geom discovery returned ${bbElements.length} elements`,
+    });
+  } catch (err) {
     phase2Mode = 'bbox';
+    const msg = err instanceof Error ? err.message : String(err);
+    fetchLog.push({
+      phase: 'phase2_geom',
+      status: /timeout|abort|timed/i.test(msg) ? 'timeout' : 'error',
+      latencyMs: Date.now() - p2Start,
+      detail: `Geom discovery failed: ${msg.slice(0, 200)}`,
+    });
   }
 
   if (bbElements.length === 0 && phase2Mode === 'geom') {
     phase2Mode = 'bbox';
+  }
+
+  if (bbElements.length === 0 && phase2Mode === 'bbox') {
+    const p2bStart = Date.now();
     try {
       const bbQuery = `
 [out:json][timeout:${BB_TIMEOUT_S}];
@@ -613,14 +677,32 @@ way["building"](around:${radius},${lat},${lng});
 out body center bb;
 `;
       bbElements = await runRawOverpassQuery(bbQuery, BB_TIMEOUT_S * 1000 + 5000);
-    } catch {
-      // both attempts failed
+      fetchLog.push({
+        phase: 'phase2_bbox',
+        status: bbElements.length > 0 ? 'ok' : 'empty',
+        latencyMs: Date.now() - p2bStart,
+        detail: `Bbox-only discovery returned ${bbElements.length} elements`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      fetchLog.push({
+        phase: 'phase2_bbox',
+        status: /timeout|abort|timed/i.test(msg) ? 'timeout' : 'error',
+        latencyMs: Date.now() - p2bStart,
+        detail: `Bbox-only discovery failed: ${msg.slice(0, 200)}`,
+      });
     }
   }
 
   if (bbElements.length === 0) {
+    fetchLog.push({
+      phase: 'result',
+      status: 'empty',
+      latencyMs: 0,
+      detail: 'All Overpass queries returned 0 buildings — no data available',
+    });
     logger.info({ radius, phase2Mode }, 'OSM building Phase 2 returned 0 buildings');
-    return [];
+    return wantLog ? { buildings: [], fetchLog } : [];
   }
 
   const candidates = bbElements
@@ -632,14 +714,17 @@ out body center bb;
   const withGeomAlready = candidates.filter(
     (c) => c.parsed!.footprint_polygon && c.parsed!.footprint_polygon.length >= 3,
   ).length;
+  const withBounds = candidates.filter((c) => c.parsed!.bounds != null).length;
+
+  fetchLog.push({
+    phase: 'phase2_parse',
+    status: 'ok',
+    latencyMs: 0,
+    detail: `Parsed ${candidates.length} candidates: ${withGeomAlready} with geometry, ${withBounds} with bounds`,
+  });
 
   logger.info(
-    {
-      phase2Mode,
-      candidateCount: candidates.length,
-      withGeomAlready,
-      withBounds: candidates.filter((c) => c.parsed!.bounds != null).length,
-    },
+    { phase2Mode, candidateCount: candidates.length, withGeomAlready, withBounds },
     'OSM building Phase 2 candidates',
   );
 
@@ -650,6 +735,7 @@ out body center bb;
   const wayIds = needsGeom.map((c) => c.el.id as number).filter(Boolean);
 
   if (wayIds.length > 0) {
+    const p3Start = Date.now();
     try {
       const ID_TIMEOUT_S = 10;
       const idQuery = `
@@ -674,21 +760,39 @@ out geom;
         }
       }
 
+      fetchLog.push({
+        phase: 'phase3',
+        status: 'ok',
+        latencyMs: Date.now() - p3Start,
+        detail: `Requested geometry for ${wayIds.length} IDs → got ${geomById.size} polygons`,
+      });
       logger.info(
-        {
-          requested: wayIds.length,
-          geomReturned: geomById.size,
-          mode: 'id-geom',
-        },
+        { requested: wayIds.length, geomReturned: geomById.size, mode: 'id-geom' },
         'OSM building Phase 3 geometry fetch',
       );
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      fetchLog.push({
+        phase: 'phase3',
+        status: /timeout|abort|timed/i.test(msg) ? 'timeout' : 'error',
+        latencyMs: Date.now() - p3Start,
+        detail: `ID geometry query failed for ${wayIds.length} IDs: ${msg.slice(0, 200)}`,
+      });
       logger.warn({ err, wayIds }, 'OSM building Phase 3 ID-geometry query failed');
     }
+  } else {
+    fetchLog.push({
+      phase: 'phase3',
+      status: 'skipped',
+      latencyMs: 0,
+      detail: 'All candidates already have geometry — Phase 3 skipped',
+    });
   }
 
   // Bbox rectangle fallback for buildings that still lack polygon geometry
   const results: OsmBuilding[] = [];
+  let bboxFallbackCount = 0;
+  let skippedNoBounds = 0;
   for (const c of candidates) {
     if (!c.parsed) continue;
     if (!c.parsed.footprint_polygon || c.parsed.footprint_polygon.length < 3) {
@@ -701,11 +805,13 @@ out geom;
           [maxlat, minlon],
           [minlat, minlon],
         ];
+        bboxFallbackCount++;
         logger.debug(
           { name: c.parsed.name, id: c.el.id },
           'Building polygon from bbox rectangle fallback',
         );
       } else {
+        skippedNoBounds++;
         logger.warn(
           { name: c.parsed.name, id: c.el.id },
           'Building has no polygon and no bounds — skipping',
@@ -716,11 +822,27 @@ out geom;
     results.push(c.parsed);
   }
 
+  if (bboxFallbackCount > 0 || skippedNoBounds > 0) {
+    fetchLog.push({
+      phase: 'fallback',
+      status: skippedNoBounds > 0 ? 'error' : 'ok',
+      latencyMs: 0,
+      detail: `Bbox rectangle fallback: ${bboxFallbackCount} buildings used bbox, ${skippedNoBounds} skipped (no bounds)`,
+    });
+  }
+
+  fetchLog.push({
+    phase: 'result',
+    status: results.length > 0 ? 'ok' : 'empty',
+    latencyMs: 0,
+    detail: `Final: ${results.length} buildings with polygon (mode: ${phase2Mode})`,
+  });
+
   logger.info(
     { total: results.length, withPolygon: results.length, radius, phase2Mode },
     'OSM venue buildings fetched',
   );
-  return results;
+  return wantLog ? { buildings: results, fetchLog } : results;
 }
 
 function parseOsmBuildingElement(

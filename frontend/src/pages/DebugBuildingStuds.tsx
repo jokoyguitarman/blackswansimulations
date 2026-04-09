@@ -65,6 +65,13 @@ interface BandInfo {
   maxM: number;
 }
 
+interface FetchLogEntry {
+  phase: string;
+  status: 'ok' | 'timeout' | 'error' | 'skipped' | 'empty';
+  latencyMs: number;
+  detail: string;
+}
+
 interface Stats {
   fetchMs: number;
   fetchSource: 'overpass' | 'scenario_cache';
@@ -84,6 +91,7 @@ interface Stats {
 
 interface DebugResult {
   stats: Stats;
+  fetchLog: FetchLogEntry[];
   buildings: BuildingSummary[];
   grids: GridItem[];
 }
@@ -869,6 +877,74 @@ export function DebugBuildingStuds() {
                     </div>
                   )}
                 </div>
+
+                {/* Fetch Log */}
+                {result.fetchLog && result.fetchLog.length > 0 && (
+                  <details className="bg-gray-900 border border-green-800 rounded">
+                    <summary className="text-sm text-green-500 p-3 cursor-pointer hover:bg-gray-800/50 select-none">
+                      Fetch Log ({result.fetchLog.length} steps)
+                    </summary>
+                    <div className="px-3 pb-3 space-y-1.5">
+                      {result.fetchLog.map((entry, i) => {
+                        const statusColor =
+                          entry.status === 'ok'
+                            ? 'text-green-400 border-green-700/50'
+                            : entry.status === 'skipped'
+                              ? 'text-gray-400 border-gray-700/50'
+                              : entry.status === 'empty'
+                                ? 'text-yellow-400 border-yellow-700/50'
+                                : entry.status === 'timeout'
+                                  ? 'text-orange-400 border-orange-700/50'
+                                  : 'text-red-400 border-red-700/50';
+                        const bgColor =
+                          entry.status === 'ok'
+                            ? 'bg-green-950/30'
+                            : entry.status === 'skipped'
+                              ? 'bg-gray-950/30'
+                              : entry.status === 'empty'
+                                ? 'bg-yellow-950/20'
+                                : entry.status === 'timeout'
+                                  ? 'bg-orange-950/20'
+                                  : 'bg-red-950/30';
+                        return (
+                          <div
+                            key={i}
+                            className={`text-xs rounded border px-2 py-1.5 ${bgColor} ${statusColor}`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-mono font-semibold uppercase">
+                                {entry.phase}
+                              </span>
+                              <span className="flex items-center gap-2 text-[10px]">
+                                {entry.latencyMs > 0 && (
+                                  <span className="text-gray-500">{entry.latencyMs}ms</span>
+                                )}
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                    entry.status === 'ok'
+                                      ? 'bg-green-900/50 text-green-300'
+                                      : entry.status === 'skipped'
+                                        ? 'bg-gray-800/50 text-gray-400'
+                                        : entry.status === 'empty'
+                                          ? 'bg-yellow-900/50 text-yellow-300'
+                                          : entry.status === 'timeout'
+                                            ? 'bg-orange-900/50 text-orange-300'
+                                            : 'bg-red-900/50 text-red-300'
+                                  }`}
+                                >
+                                  {entry.status}
+                                </span>
+                              </span>
+                            </div>
+                            <div className="mt-0.5 text-[11px] opacity-80 break-all">
+                              {entry.detail}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </details>
+                )}
 
                 {/* Stud counts */}
                 <div className="bg-gray-900 border border-green-800 rounded p-3">

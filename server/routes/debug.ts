@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
-import { fetchVenueBuilding, type OsmBuilding } from '../services/osmVicinityService.js';
+import {
+  fetchVenueBuilding,
+  type OsmBuilding,
+  type FetchLogEntry,
+} from '../services/osmVicinityService.js';
 import {
   generateStudGrids,
   generateBlastRadiusStuds,
@@ -59,9 +63,9 @@ router.get('/building-studs', requireAuth, async (req, res) => {
   let buildings: OsmBuilding[] = [];
   let fetchError: string | null = null;
   let fetchSource: 'overpass' | 'scenario_cache' = 'overpass';
+  let fetchLog: FetchLogEntry[] = [];
 
   if (scenarioId) {
-    // Load cached building data from scenario's insider_knowledge
     fetchSource = 'scenario_cache';
     try {
       const { data: sc } = await supabaseAdmin
@@ -78,20 +82,40 @@ router.get('/building-studs', requireAuth, async (req, res) => {
       const osmVicinity = ik?.osm_vicinity as Record<string, unknown> | undefined;
       const cachedBuildings = osmVicinity?.buildings as OsmBuilding[] | undefined;
       buildings = cachedBuildings ?? [];
+      fetchLog.push({
+        phase: 'scenario_cache',
+        status: buildings.length > 0 ? 'ok' : 'empty',
+        latencyMs: Date.now() - t0,
+        detail: `Loaded ${buildings.length} buildings from scenario insider_knowledge cache`,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.warn({ err, scenarioId }, 'Debug building-studs scenario fetch failed');
       fetchError = msg;
       buildings = [];
+      fetchLog.push({
+        phase: 'scenario_cache',
+        status: 'error',
+        latencyMs: Date.now() - t0,
+        detail: `Scenario cache fetch failed: ${msg}`,
+      });
     }
   } else {
     try {
-      buildings = await fetchVenueBuilding(lat, lng, radius);
+      const result = await fetchVenueBuilding(lat, lng, radius, { withLog: true });
+      buildings = result.buildings;
+      fetchLog = result.fetchLog;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.warn({ err, lat, lng, radius }, 'Debug building-studs Overpass fetch failed');
       fetchError = msg;
       buildings = [];
+      fetchLog.push({
+        phase: 'overpass',
+        status: 'error',
+        latencyMs: Date.now() - t0,
+        detail: `Top-level Overpass fetch failed: ${msg}`,
+      });
     }
   }
 
@@ -163,6 +187,7 @@ router.get('/building-studs', requireAuth, async (req, res) => {
       payloadSizeKB: Math.round(JSON.stringify(withPolygon).length / 1024),
       fetchError,
     },
+    fetchLog,
     buildings: withPolygon.map((b) => ({
       name: b.name,
       lat: b.lat,
