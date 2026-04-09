@@ -493,20 +493,52 @@ export function snapToNearestStudInZone(
  * then snap to nearest vacant stud.
  * Returns the original coordinates unchanged if no building is nearby.
  */
+export interface SnapResult {
+  lat: number;
+  lng: number;
+  studId: string | null;
+  blastBand: BlastBand | null;
+  operationalZone: OperationalZone | null;
+  distFromIncidentM: number | null;
+}
+
 export function snapCoordinate(
   lat: number,
   lng: number,
   floor: string,
   grids: StudGrid[],
   occupiedStudIds: Set<string>,
-): { lat: number; lng: number; studId: string | null } {
+): SnapResult {
   const grid = findContainingGrid(lat, lng, grids) ?? findNearestGrid(lat, lng, grids);
-  if (!grid) return { lat, lng, studId: null };
+  if (!grid)
+    return {
+      lat,
+      lng,
+      studId: null,
+      blastBand: null,
+      operationalZone: null,
+      distFromIncidentM: null,
+    };
 
   const stud = snapToNearestStud(grid.studs, lat, lng, floor, occupiedStudIds);
-  if (!stud) return { lat, lng, studId: null };
+  if (!stud)
+    return {
+      lat,
+      lng,
+      studId: null,
+      blastBand: null,
+      operationalZone: null,
+      distFromIncidentM: null,
+    };
 
-  return { lat: stud.lat, lng: stud.lng, studId: stud.id };
+  return {
+    lat: stud.lat,
+    lng: stud.lng,
+    studId: stud.id,
+    blastBand: stud.blastBand ?? null,
+    operationalZone: stud.operationalZone ?? null,
+    distFromIncidentM: stud.distFromIncidentM != null ? Math.round(stud.distFromIncidentM) : null,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -637,6 +669,89 @@ export function setCachedGrids(scenarioId: string, grids: StudGrid[]): void {
 
 export function invalidateGridCache(scenarioId: string): void {
   gridCache.delete(scenarioId);
+}
+
+// ---------------------------------------------------------------------------
+// Unified grid loader — builds building + outdoor studs, classifies zones
+// ---------------------------------------------------------------------------
+
+/**
+ * Load fully classified stud grids for a scenario. On cache miss it:
+ *  1. Reads buildings from insider_knowledge.osm_vicinity.buildings
+ *  2. Generates building stud grids
+ *  3. Reads hazard centers + weapon class from the DB
+ *  4. Generates outdoor blast radius studs around hazard centers
+ *  5. Classifies all studs with zone + blast band metadata
+ *  6. Caches the result
+ */
+export async function loadClassifiedGrids(scenarioId: string): Promise<StudGrid[]> {
+  const cached = getCachedGrids(scenarioId);
+  if (cached) return cached;
+
+  const { data: sc } = await supabaseAdmin
+    .from('scenarios')
+    .select('insider_knowledge')
+    .eq('id', scenarioId)
+    .single();
+
+  if (!sc) return [];
+
+  const ik = sc.insider_knowledge as Record<string, unknown> | null;
+  const osmVicinity = ik?.osm_vicinity as Record<string, unknown> | undefined;
+  const buildings = osmVicinity?.buildings as OsmBuilding[] | undefined;
+
+  if (!buildings?.length) return [];
+
+  const grids = generateStudGrids(buildings);
+
+  const [hazRes, locRes] = await Promise.all([
+    supabaseAdmin
+      .from('scenario_hazards')
+      .select('location_lat, location_lng, zones')
+      .eq('scenario_id', scenarioId),
+    supabaseAdmin
+      .from('scenario_locations')
+      .select('conditions')
+      .eq('scenario_id', scenarioId)
+      .eq('pin_category', 'incident_zone'),
+  ]);
+
+  const hazardCenters = (hazRes.data ?? [])
+    .filter((h: Record<string, unknown>) => h.location_lat != null && h.location_lng != null)
+    .map((h: Record<string, unknown>) => ({
+      lat: h.location_lat as number,
+      lng: h.location_lng as number,
+    }));
+
+  if (hazardCenters.length > 0) {
+    const threatProfile = ik?.threat_profile as Record<string, unknown> | undefined;
+    const weaponClass = threatProfile?.weapon_class as string | undefined;
+    const blastBands =
+      weaponClass === 'explosive'
+        ? BLAST_BANDS_EXPLOSIVE
+        : weaponClass?.startsWith('melee_')
+          ? BLAST_BANDS_MELEE
+          : BLAST_BANDS_DEFAULT;
+
+    const outdoorGrid = generateBlastRadiusStuds(hazardCenters, blastBands, grids);
+    if (outdoorGrid) grids.push(outdoorGrid);
+
+    const zonePolygons: Array<{ zone_type: string; polygon: [number, number][] }> = [];
+    for (const loc of locRes.data ?? []) {
+      const cond = loc.conditions as Record<string, unknown> | null;
+      if (cond?.zone_type && cond?.polygon) {
+        zonePolygons.push({
+          zone_type: cond.zone_type as string,
+          polygon: cond.polygon as [number, number][],
+        });
+      }
+    }
+
+    classifyStudZones(grids, hazardCenters, zonePolygons, blastBands);
+  }
+
+  setCachedGrids(scenarioId, grids);
+  return grids;
 }
 
 // ---------------------------------------------------------------------------

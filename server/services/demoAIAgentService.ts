@@ -11,13 +11,11 @@ import { performSweep } from './bombSquadSweepService.js';
 import { resolveScenarioCenter } from './scenarioCenterService.js';
 import { haversineM, pointInPolygon } from './geoUtils.js';
 import {
-  generateStudGrids,
   snapCoordinate,
   getOccupiedStudIds,
-  getCachedGrids,
-  setCachedGrids,
+  loadClassifiedGrids,
+  type SnapResult,
 } from './buildingStudService.js';
-import type { OsmBuilding } from './osmVicinityService.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1527,9 +1525,21 @@ function deconflictCoordinate(
  * - 'cold': between warmZoneRadius and coldZoneRadius
  * - 'boundary': near the hot/warm zone boundary
  */
+interface SnapIfResult {
+  lat: number;
+  lng: number;
+  studZone?: {
+    studId: string;
+    blastBand: string | null;
+    operationalZone: string | null;
+    distFromIncidentM: number | null;
+  };
+}
+
 /**
- * Load building stud grids for a scenario (cached), snap a coordinate to the
- * nearest vacant stud if it falls inside a building, and return the result.
+ * Load classified stud grids for a scenario (building + outdoor blast),
+ * snap a coordinate to the nearest vacant stud, and return coordinates
+ * along with zone metadata for the matched stud.
  */
 async function snapIfInsideBuilding(
   lat: number,
@@ -1537,35 +1547,31 @@ async function snapIfInsideBuilding(
   floor: string,
   scenarioId: string,
   sessionId: string,
-): Promise<{ lat: number; lng: number }> {
-  let grids = getCachedGrids(scenarioId);
-
-  if (!grids) {
-    try {
-      const { data: sc } = await supabaseAdmin
-        .from('scenarios')
-        .select('insider_knowledge')
-        .eq('id', scenarioId)
-        .single();
-
-      const ik = sc?.insider_knowledge as Record<string, unknown> | null;
-      const osmVicinity = ik?.osm_vicinity as Record<string, unknown> | undefined;
-      const buildings = osmVicinity?.buildings as OsmBuilding[] | undefined;
-
-      if (buildings?.length) {
-        grids = generateStudGrids(buildings);
-        setCachedGrids(scenarioId, grids);
-      }
-    } catch {
-      return { lat, lng };
-    }
+): Promise<SnapIfResult> {
+  let grids;
+  try {
+    grids = await loadClassifiedGrids(scenarioId);
+  } catch {
+    return { lat, lng };
   }
 
-  if (!grids?.length) return { lat, lng };
+  if (!grids.length) return { lat, lng };
 
   const occupied = await getOccupiedStudIds(scenarioId, grids, sessionId);
-  const snapped = snapCoordinate(lat, lng, floor, grids, occupied);
-  return { lat: snapped.lat, lng: snapped.lng };
+  const snapped: SnapResult = snapCoordinate(lat, lng, floor, grids, occupied);
+
+  if (!snapped.studId) return { lat, lng };
+
+  return {
+    lat: snapped.lat,
+    lng: snapped.lng,
+    studZone: {
+      studId: snapped.studId,
+      blastBand: snapped.blastBand,
+      operationalZone: snapped.operationalZone,
+      distFromIncidentM: snapped.distFromIncidentM,
+    },
+  };
 }
 
 function randomCoordInZone(
@@ -2006,11 +2012,13 @@ export async function extractAndPlaceInfrastructureFromText(
       pointLng = zoneCoord.lng;
     }
 
-    // Snap point placements to building studs if inside a building
+    // Snap point placements to nearest classified stud
+    let snapZone: SnapIfResult['studZone'];
     if (catalog.geometry === 'point') {
       const snapped = await snapIfInsideBuilding(pointLat, pointLng, 'G', scenarioId, sessionId);
       pointLat = snapped.lat;
       pointLng = snapped.lng;
+      snapZone = snapped.studZone;
     }
 
     let geometry: { type: string; coordinates: unknown };
@@ -2029,6 +2037,7 @@ export async function extractAndPlaceInfrastructureFromText(
 
     const label = p.label || `${teamName} ${p.asset_type.replace(/_/g, ' ')}`;
     const properties: Record<string, unknown> = {};
+    if (snapZone) properties.stud_zone = snapZone;
     if (personnel.length > 0) properties.personnel = personnel;
     if (equipment.length > 0) properties.equipment = equipment;
     if (directionIntent) properties.direction_intent = directionIntent;
@@ -5847,7 +5856,8 @@ export class DemoAIAgentService {
         const shouldBePolygon =
           p.geometry_type === 'polygon' || catalogEntry?.geometry === 'polygon';
 
-        // Snap point placements to building studs if inside a building
+        // Snap point placements to nearest classified stud
+        let snapZoneExtracted: SnapIfResult['studZone'];
         if (!shouldBePolygon) {
           const snapped = await snapIfInsideBuilding(
             pLat,
@@ -5858,6 +5868,7 @@ export class DemoAIAgentService {
           );
           pLat = snapped.lat;
           pLng = snapped.lng;
+          snapZoneExtracted = snapped.studZone;
         }
 
         if (shouldBePolygon) {
@@ -5875,6 +5886,8 @@ export class DemoAIAgentService {
         }
 
         const label = p.label || `${teamName} ${p.asset_type.replace(/_/g, ' ')}`;
+        const extractedProps: Record<string, unknown> = {};
+        if (snapZoneExtracted) extractedProps.stud_zone = snapZoneExtracted;
 
         logger.info(
           { botUserId: agent.persona.botUserId, assetType: p.asset_type, label },
@@ -5886,7 +5899,7 @@ export class DemoAIAgentService {
           asset_type: p.asset_type,
           label,
           geometry,
-          properties: {},
+          properties: extractedProps,
         });
 
         // Auto-create paired perimeter for point placements

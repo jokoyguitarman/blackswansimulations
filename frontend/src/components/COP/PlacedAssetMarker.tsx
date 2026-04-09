@@ -158,6 +158,13 @@ function createDragHandleIcon(color: string): DivIcon {
   });
 }
 
+const BLAST_BAND_COLORS: Record<string, string> = {
+  kill: '#ef4444',
+  critical: '#f97316',
+  serious: '#eab308',
+  minor: '#3b82f6',
+};
+
 function createPlacedAssetIcon(
   asset: PlacedAsset,
   isOwnTeam: boolean,
@@ -167,6 +174,24 @@ function createPlacedAssetIcon(
   const iconSvg = getAssetIcon(asset.asset_type);
   const scoreInd = getScoreIndicator(asset.placement_score);
   const opacity = isOwnTeam ? 1 : 0.75;
+
+  const studZone = asset.properties?.stud_zone as
+    | { blastBand?: string; operationalZone?: string }
+    | undefined;
+  const bandColor = studZone?.blastBand ? BLAST_BAND_COLORS[studZone.blastBand] : null;
+
+  const zoneBadge = bandColor
+    ? `<span style="
+        position: absolute;
+        bottom: -3px;
+        left: -3px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: ${bandColor};
+        border: 1.5px solid rgba(0,0,0,0.4);
+      " title="${(studZone?.blastBand ?? '').toUpperCase()} zone"></span>`
+    : '';
 
   return new DivIcon({
     className: `placed-asset-marker${isNew ? ' is-new' : ''}`,
@@ -202,6 +227,7 @@ function createPlacedAssetIcon(
           font-weight: bold;
           border: 1px solid rgba(0,0,0,0.3);
         ">${scoreInd.symbol}</span>
+        ${zoneBadge}
       </div>
     `,
     iconSize: [36, 36],

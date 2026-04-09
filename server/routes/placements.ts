@@ -8,13 +8,10 @@ import { evaluatePlacement } from '../services/spatialScoringService.js';
 import { evaluatePinResolution } from '../services/pinResolutionService.js';
 import { pointInGeoJSONPolygon } from '../services/geoUtils.js';
 import {
-  generateStudGrids,
   snapCoordinate,
   getOccupiedStudIds,
-  getCachedGrids,
-  setCachedGrids,
+  loadClassifiedGrids,
 } from '../services/buildingStudService.js';
-import type { OsmBuilding } from '../services/osmVicinityService.js';
 
 const router = Router();
 
@@ -272,7 +269,8 @@ router.post('/sessions/:id/placements', requireAuth, async (req, res) => {
     const user = (req as AuthenticatedRequest).user;
     if (!user?.id) return res.status(401).json({ error: 'Not authenticated' });
 
-    const { team_name, asset_type, label, geometry, properties } = req.body;
+    const { team_name, asset_type, label, geometry, properties: rawProperties } = req.body;
+    let properties = rawProperties as Record<string, unknown> | undefined;
 
     if (!team_name || !asset_type || !geometry) {
       return res.status(400).json({ error: 'team_name, asset_type, and geometry are required' });
@@ -289,7 +287,7 @@ router.post('/sessions/:id/placements', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Session is not in progress' });
     }
 
-    // Snap Point geometry to building stud if inside a building
+    // Snap Point geometry to nearest classified stud (building or outdoor blast zone)
     if (
       geometry?.type === 'Point' &&
       Array.isArray(geometry.coordinates) &&
@@ -303,34 +301,22 @@ router.post('/sessions/:id/placements', requireAuth, async (req, res) => {
 
       if (sessionFull?.scenario_id) {
         const scenarioId = sessionFull.scenario_id as string;
-        let grids = getCachedGrids(scenarioId);
+        const grids = await loadClassifiedGrids(scenarioId);
 
-        if (!grids) {
-          const { data: sc } = await supabaseAdmin
-            .from('scenarios')
-            .select('insider_knowledge')
-            .eq('id', scenarioId)
-            .single();
-
-          const ik = sc?.insider_knowledge as Record<string, unknown> | null;
-          const osmVicinity = ik?.osm_vicinity as { buildings?: OsmBuilding[] } | undefined;
-          const buildings = (osmVicinity as Record<string, unknown>)?.buildings as
-            | OsmBuilding[]
-            | undefined;
-
-          if (buildings?.length) {
-            grids = generateStudGrids(buildings);
-            setCachedGrids(scenarioId, grids);
-          }
-        }
-
-        if (grids?.length) {
+        if (grids.length > 0) {
           const [gLng, gLat] = geometry.coordinates;
           const floor = ((properties as Record<string, unknown>)?.floor_level as string) ?? 'G';
           const occupied = await getOccupiedStudIds(scenarioId, grids, sessionId);
           const snapped = snapCoordinate(gLat, gLng, floor, grids, occupied);
           if (snapped.studId) {
             geometry.coordinates = [snapped.lng, snapped.lat];
+            if (!properties) properties = {};
+            (properties as Record<string, unknown>).stud_zone = {
+              studId: snapped.studId,
+              blastBand: snapped.blastBand,
+              operationalZone: snapped.operationalZone,
+              distFromIncidentM: snapped.distFromIncidentM,
+            };
           }
         }
       }
@@ -425,7 +411,8 @@ router.patch('/sessions/:id/placements/:placementId', requireAuth, async (req, r
     const user = (req as AuthenticatedRequest).user;
     if (!user?.id) return res.status(401).json({ error: 'Not authenticated' });
 
-    const { geometry, properties, label, linked_decision_id } = req.body;
+    const { geometry, properties: rawPatchProps, label, linked_decision_id } = req.body;
+    let properties = rawPatchProps as Record<string, unknown> | undefined;
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (geometry) updates.geometry = geometry;
@@ -433,7 +420,7 @@ router.patch('/sessions/:id/placements/:placementId', requireAuth, async (req, r
     if (label) updates.label = label;
     if (linked_decision_id) updates.linked_decision_id = linked_decision_id;
 
-    // Snap relocated Point geometry to building stud if inside a building
+    // Snap relocated Point geometry to nearest classified stud
     if (
       geometry?.type === 'Point' &&
       Array.isArray(geometry.coordinates) &&
@@ -447,28 +434,9 @@ router.patch('/sessions/:id/placements/:placementId', requireAuth, async (req, r
 
       if (sessionFull?.scenario_id) {
         const scenarioId = sessionFull.scenario_id as string;
-        let grids = getCachedGrids(scenarioId);
+        const grids = await loadClassifiedGrids(scenarioId);
 
-        if (!grids) {
-          const { data: sc } = await supabaseAdmin
-            .from('scenarios')
-            .select('insider_knowledge')
-            .eq('id', scenarioId)
-            .single();
-
-          const ik = sc?.insider_knowledge as Record<string, unknown> | null;
-          const osmVicinity = ik?.osm_vicinity as { buildings?: OsmBuilding[] } | undefined;
-          const buildings = (osmVicinity as Record<string, unknown>)?.buildings as
-            | OsmBuilding[]
-            | undefined;
-
-          if (buildings?.length) {
-            grids = generateStudGrids(buildings);
-            setCachedGrids(scenarioId, grids);
-          }
-        }
-
-        if (grids?.length) {
+        if (grids.length > 0) {
           const [gLng, gLat] = geometry.coordinates;
           const floor = ((properties as Record<string, unknown>)?.floor_level as string) ?? 'G';
           const occupied = await getOccupiedStudIds(scenarioId, grids, sessionId);
@@ -476,6 +444,14 @@ router.patch('/sessions/:id/placements/:placementId', requireAuth, async (req, r
           if (snapped.studId) {
             geometry.coordinates = [snapped.lng, snapped.lat];
             updates.geometry = geometry;
+            if (!properties) properties = {};
+            (properties as Record<string, unknown>).stud_zone = {
+              studId: snapped.studId,
+              blastBand: snapped.blastBand,
+              operationalZone: snapped.operationalZone,
+              distFromIncidentM: snapped.distFromIncidentM,
+            };
+            updates.properties = properties;
           }
         }
       }

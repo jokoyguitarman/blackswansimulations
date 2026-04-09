@@ -1249,6 +1249,7 @@ export interface WarroomScenarioPayload {
         sop_checklist?: string[];
       }
     >;
+    threat_profile?: ThreatProfile;
   };
   sweep_device_pool?: Array<Record<string, unknown>>;
 }
@@ -7726,6 +7727,10 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
     Object.keys(input.researchContext.forbidden_actions).length > 0
   ) {
     insiderKnowledge.forbidden_actions = input.researchContext.forbidden_actions;
+  }
+
+  if (input.threat_profile) {
+    insiderKnowledge.threat_profile = input.threat_profile;
   }
 
   // Persist structured research artifacts for later inspection and regeneration.

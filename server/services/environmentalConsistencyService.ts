@@ -530,13 +530,23 @@ export async function buildHazardSafetyContext(sessionId: string): Promise<strin
       const isPPE = PPE_ASSET_TYPES.some((t) => assetLower.includes(t));
 
       if (isPersonnel) {
-        const zoneMatch = hasZoneData ? classifyByZone(dist, zones, assetLat, assetLng) : null;
+        const props = a.properties as Record<string, unknown> | null;
+        const studZone = props?.stud_zone as
+          | { operationalZone?: string; distFromIncidentM?: number }
+          | undefined;
+        let groundTruthZone: string;
+        if (studZone?.operationalZone) {
+          groundTruthZone = studZone.operationalZone;
+        } else {
+          const zoneMatch = hasZoneData ? classifyByZone(dist, zones, assetLat, assetLng) : null;
+          groundTruthZone = zoneMatch?.zoneName ?? (dist <= 120 ? 'unknown_proximity' : 'outside');
+        }
         personnelInZones.push({
           type: a.asset_type as string,
           label: a.label as string | null,
           team: a.team_name as string,
-          dist: Math.round(dist),
-          groundTruthZone: zoneMatch?.zoneName ?? (dist <= 120 ? 'unknown_proximity' : 'outside'),
+          dist: studZone?.distFromIncidentM ?? Math.round(dist),
+          groundTruthZone,
         });
       }
       if (isPPE) {
