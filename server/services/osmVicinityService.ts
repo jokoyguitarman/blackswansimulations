@@ -601,24 +601,39 @@ out body geom center bb;
       const withPoly = slice.filter(
         (b) => b.footprint_polygon && b.footprint_polygon.length >= 3,
       ).length;
+
+      if (withPoly > 0) {
+        fetchLog.push({
+          phase: 'phase1',
+          status: 'ok',
+          latencyMs: Date.now() - p1Start,
+          detail: `Full geometry query returned ${elements.length} elements → ${slice.length} buildings (${withPoly} with polygon)`,
+        });
+        logger.info(
+          { total: results.length, returned: slice.length, radius, mode: 'geom' },
+          'OSM venue buildings fetched (full geometry)',
+        );
+        return wantLog ? { buildings: slice, fetchLog } : slice;
+      }
+
       fetchLog.push({
         phase: 'phase1',
-        status: 'ok',
+        status: 'empty',
         latencyMs: Date.now() - p1Start,
-        detail: `Full geometry query returned ${elements.length} elements → ${slice.length} buildings (${withPoly} with polygon)`,
+        detail: `Full geometry query returned ${elements.length} elements → ${slice.length} buildings but 0 with polygon — falling through to Phase 2/3`,
       });
-      logger.info(
-        { total: results.length, returned: slice.length, radius, mode: 'geom' },
-        'OSM venue buildings fetched (full geometry)',
+      logger.warn(
+        { total: results.length, returned: slice.length, radius },
+        'OSM Phase 1 returned buildings without polygons; falling through to Phase 2/3',
       );
-      return wantLog ? { buildings: slice, fetchLog } : slice;
+    } else {
+      fetchLog.push({
+        phase: 'phase1',
+        status: 'empty',
+        latencyMs: Date.now() - p1Start,
+        detail: 'Full geometry query returned 0 elements',
+      });
     }
-    fetchLog.push({
-      phase: 'phase1',
-      status: 'empty',
-      latencyMs: Date.now() - p1Start,
-      detail: 'Full geometry query returned 0 elements',
-    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const isTimeout = /timeout|abort|timed/i.test(msg);
