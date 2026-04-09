@@ -5982,6 +5982,7 @@ export class DemoAIAgentService {
         await this.dispatcher.proposeAndExecuteDecision(sessionId, botUserId, {
           title: action.decision.title,
           description: action.decision.description,
+          trigger_response_type: (triggerInjectData?.response_type as string) || undefined,
         });
         break;
       }

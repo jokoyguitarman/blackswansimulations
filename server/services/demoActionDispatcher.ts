@@ -162,6 +162,7 @@ export class DemoActionDispatcher {
       description: string;
       decision_type?: string;
       response_to_incident_id?: string;
+      trigger_response_type?: string;
     },
   ): Promise<string | null> {
     try {
@@ -175,7 +176,7 @@ export class DemoActionDispatcher {
           response_to_incident_id: payload.response_to_incident_id || null,
           title,
           description: payload.description,
-          type: null,
+          type: payload.decision_type || null,
           status: 'proposed',
         })
         .select()
@@ -229,6 +230,11 @@ export class DemoActionDispatcher {
         },
         botUserId,
       ).catch(() => {});
+
+      // Attach trigger inject response_type so the editorial gate can use it
+      if (payload.trigger_response_type) {
+        (executed as Record<string, unknown>).trigger_response_type = payload.trigger_response_type;
+      }
 
       // Queue background processing sequentially to avoid OpenAI rate-limit flooding
       this.enqueueEvaluation(() => this.processDecisionBackground(decision.id, executed));
@@ -365,9 +371,12 @@ export class DemoActionDispatcher {
     // Media editorial review gate (bot decisions)
     const isBotMediaTeam = teamName ? /media|communi/i.test(teamName) : false;
     const botDecisionType = (decision.type as string) ?? null;
+    const triggerResponseType =
+      (decision.trigger_response_type as string) ?? (decision.response_type as string) ?? null;
     const botNeedsEditorial =
       isBotMediaTeam &&
       (botDecisionType === 'public_statement' ||
+        triggerResponseType === 'media_statement' ||
         /public statement|press release|media statement|press briefing|official statement/i.test(
           `${title} ${description}`,
         ));
