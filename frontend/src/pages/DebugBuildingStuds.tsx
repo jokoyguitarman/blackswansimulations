@@ -151,7 +151,7 @@ function getStudStyle(stud: StudItem, isSelected: boolean) {
 // Map click handler
 // ---------------------------------------------------------------------------
 
-type ClickMode = 'coordinates' | 'hazard' | 'snap';
+type ClickMode = 'coordinates' | 'hazard' | 'snap' | 'inspect';
 
 function ClickHandler({
   mode,
@@ -166,6 +166,7 @@ function ClickHandler({
 }) {
   useMapEvents({
     click(e) {
+      if (mode === 'inspect') return;
       if (mode === 'hazard') onHazardClick(e.latlng.lat, e.latlng.lng);
       else if (mode === 'snap') onSnapClick(e.latlng.lat, e.latlng.lng);
       else onCoordClick(e.latlng.lat, e.latlng.lng);
@@ -279,6 +280,7 @@ export function DebugBuildingStuds() {
       }
       const data: DebugResult = await res.json();
       setResult(data);
+      setClickMode('inspect');
       if (data.grids.length > 0) {
         const floors = [...new Set(data.grids.flatMap((g) => g.floors))];
         if (floors.length > 0 && !floors.includes(activeFloor)) {
@@ -328,6 +330,7 @@ export function DebugBuildingStuds() {
     coordinates: 'Set Coordinates',
     hazard: 'Set Hazard Center',
     snap: 'Snap Test',
+    inspect: 'Inspect Studs',
   };
 
   const modeButtonClass = (m: ClickMode) =>
@@ -440,6 +443,9 @@ export function DebugBuildingStuds() {
               onClick={() => {
                 setHazardLat(null);
                 setHazardLng(null);
+                setResult(null);
+                setSelectedStud(null);
+                setClickMode('coordinates');
               }}
               className="text-xs text-red-500 hover:text-red-400 underline ml-1"
             >
@@ -581,6 +587,7 @@ export function DebugBuildingStuds() {
                       weight: style.weight,
                     }}
                     interactive={true}
+                    bubblingMouseEvents={false}
                     eventHandlers={{
                       click: () => handleStudClick(stud),
                     }}
