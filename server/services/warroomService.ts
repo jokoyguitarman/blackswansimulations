@@ -407,12 +407,16 @@ export async function stageParseAndGeocode(
         );
       }
 
-      const buildings = await fetchVenueBuilding(geocodeResult.lat, geocodeResult.lng, 300).catch(
-        (err) => {
-          logger.warn({ err }, 'OSM venue building fetch failed; continuing without');
-          return [] as OsmBuilding[];
-        },
-      );
+      let buildings: OsmBuilding[] = [];
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          buildings = await fetchVenueBuilding(geocodeResult.lat, geocodeResult.lng, 300);
+          if (buildings.length > 0) break;
+        } catch (err) {
+          logger.warn({ err, attempt }, 'OSM venue building fetch failed');
+        }
+        if (attempt < 3) await delay(2000 * attempt);
+      }
       await delay(1500);
 
       const spaces = await fetchOsmOpenSpaces(geocodeResult.lat, geocodeResult.lng, 1500).catch(
