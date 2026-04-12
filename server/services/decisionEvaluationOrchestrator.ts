@@ -240,9 +240,6 @@ Non-EOD teams directly handling, detonating, disarming, or triggering explosive 
 
 TEAM ROLE: ${teamName || 'Unknown'}
 
-CRITICAL — OPERATIONAL DECISIONS ARE NEVER FORBIDDEN:
-Establishing, placing, or relocating operational infrastructure — cordons, barriers, perimeter lines, assembly points, marshal posts, triage areas, command posts, evacuation routes, staging areas — is NEVER a forbidden action, even if the chosen location is suboptimal, too close to the incident, or otherwise questionable. Location quality is evaluated by separate evaluators. Your job is ONLY to catch genuinely prohibited actions (handling explosives without EOD authority, impersonating services, deliberately harming people, unauthorized stand-down). Do NOT reject a decision because you think the location could be better or poses a risk — that is a quality issue, not a safety guardrail violation.
-
 If the decision proposes a forbidden action, set "rejected": true with an in-world "rejection_reason" explaining why this action cannot be carried out.
 If the decision is safe, set "rejected": false, "consistent": true, "specific": true.
 
@@ -982,17 +979,6 @@ export async function orchestrateDecisionEvaluation(
         escalationLevel,
       ),
     ]);
-
-    // Only the safety guardrails gate may reject; downgrade hallucinated
-    // rejections from other evaluators to consistent:false failures.
-    for (const r of parallelResults) {
-      if (r.rejected) {
-        r.rejected = false;
-        r.consistent = false;
-        r.severity = r.severity ?? 'high';
-        r.mismatch_kind = r.mismatch_kind ?? 'contradiction';
-      }
-    }
 
     const allResults = [guardrailResult, ...parallelResults];
 

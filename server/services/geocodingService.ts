@@ -19,6 +19,11 @@ interface NominatimResult {
   display_name?: string;
 }
 
+let lastNominatimCallMs = 0;
+const NOMINATIM_MIN_GAP_MS = 1200;
+const NOMINATIM_429_RETRIES = 3;
+const NOMINATIM_429_BACKOFF_MS = 2000;
+
 async function nominatimSearch(query: string, limit: number): Promise<NominatimResult[]> {
   const params = new URLSearchParams({
     q: query,
@@ -26,19 +31,43 @@ async function nominatimSearch(query: string, limit: number): Promise<NominatimR
     limit: String(limit),
   });
 
-  const res = await fetch(`${NOMINATIM_URL}?${params.toString()}`, {
-    headers: {
-      'User-Agent': 'BlackSwanSimulations/1.0 (warroom-geocoding)',
-    },
-  });
+  for (let attempt = 0; attempt <= NOMINATIM_429_RETRIES; attempt++) {
+    // Enforce minimum gap between Nominatim calls to respect rate limits
+    const elapsed = Date.now() - lastNominatimCallMs;
+    if (elapsed < NOMINATIM_MIN_GAP_MS) {
+      await new Promise((r) => setTimeout(r, NOMINATIM_MIN_GAP_MS - elapsed));
+    }
+    lastNominatimCallMs = Date.now();
 
-  if (!res.ok) {
-    logger.warn({ status: res.status, query }, 'Nominatim geocoding request failed');
-    return [];
+    const res = await fetch(`${NOMINATIM_URL}?${params.toString()}`, {
+      headers: {
+        'User-Agent': 'BlackSwanSimulations/1.0 (warroom-geocoding)',
+      },
+    });
+
+    if (res.status === 429) {
+      const wait = NOMINATIM_429_BACKOFF_MS * (attempt + 1);
+      logger.warn(
+        { query, attempt: attempt + 1, waitMs: wait },
+        'Nominatim rate-limited (429), backing off',
+      );
+      if (attempt < NOMINATIM_429_RETRIES) {
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      return [];
+    }
+
+    if (!res.ok) {
+      logger.warn({ status: res.status, query }, 'Nominatim geocoding request failed');
+      return [];
+    }
+
+    const data = await res.json();
+    return Array.isArray(data) ? (data as NominatimResult[]) : [];
   }
 
-  const data = await res.json();
-  return Array.isArray(data) ? (data as NominatimResult[]) : [];
+  return [];
 }
 
 function parseResult(item: NominatimResult, fallbackName: string): GeocodeResult | null {
@@ -102,9 +131,7 @@ export async function geocodeBest(
         const parsed = parseResult(r, q.trim());
         if (parsed) allResults.push(parsed);
       }
-      if (allResults.length > 0 && queries.indexOf(q) < queries.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 1100));
-      }
+      if (allResults.length >= 3) break;
     }
 
     if (allResults.length === 0) return null;
