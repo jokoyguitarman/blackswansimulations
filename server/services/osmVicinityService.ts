@@ -81,7 +81,7 @@ const BACKOFF_BASE_MS = 1500;
  */
 async function queryOverpass(
   query: string,
-  timeoutMs: number = 15_000,
+  timeoutMs: number = 50_000,
 ): Promise<Array<Record<string, unknown>>> {
   let lastError: Error | null = null;
 
