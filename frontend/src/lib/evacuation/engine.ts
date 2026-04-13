@@ -1,7 +1,8 @@
 import Matter from 'matter-js';
-import type { ExitDef, SimConfig } from './types';
+import type { ExitDef, PolygonSimConfig, Vec2 } from './types';
+import { isInsidePolygon, polygonBounds } from './geometry';
 
-const WALL_THICKNESS = 1.0;
+const WALL_THICKNESS = 0.8;
 const PED_CATEGORY = 0x0001;
 const WALL_CATEGORY = 0x0002;
 
@@ -31,24 +32,17 @@ interface PedLabel {
   targetExitId: string;
 }
 
-interface WallGap {
-  exitId: string;
-  wallSide: 'top' | 'bottom' | 'left' | 'right';
-  gapStart: number;
-  gapEnd: number;
-}
-
-export class EvacuationEngine {
+export class PolygonEvacuationEngine {
   private engine: Matter.Engine;
   private pedestrians: Matter.Body[] = [];
   private wallBodies: Matter.Body[] = [];
   private exits: ExitDef[] = [];
-  private config: SimConfig;
+  private config: PolygonSimConfig;
   private elapsed = 0;
   private exitCounts = new Map<string, number>();
   private pedIdCounter = 0;
 
-  constructor(config: SimConfig, exits: ExitDef[]) {
+  constructor(config: PolygonSimConfig, exits: ExitDef[]) {
     this.config = config;
     this.exits = exits;
 
@@ -62,53 +56,57 @@ export class EvacuationEngine {
   }
 
   private buildWalls() {
-    const { roomWidth: w, roomHeight: h } = this.config;
+    const { vertices } = this.config;
     const t = WALL_THICKNESS;
+    const n = vertices.length;
 
-    const gaps = this.computeGaps();
+    for (let i = 0; i < n; i++) {
+      const a = vertices[i];
+      const b = vertices[(i + 1) % n];
+      const edgeDx = b.x - a.x;
+      const edgeDy = b.y - a.y;
+      const edgeLen = Math.hypot(edgeDx, edgeDy);
+      if (edgeLen < 0.01) continue;
 
-    const sides: {
-      side: 'top' | 'bottom' | 'left' | 'right';
-      horizontal: boolean;
-      fixedCoord: number;
-      spanMin: number;
-      spanMax: number;
-    }[] = [
-      { side: 'top', horizontal: true, fixedCoord: 0, spanMin: 0, spanMax: w },
-      { side: 'bottom', horizontal: true, fixedCoord: h, spanMin: 0, spanMax: w },
-      { side: 'left', horizontal: false, fixedCoord: 0, spanMin: 0, spanMax: h },
-      { side: 'right', horizontal: false, fixedCoord: w, spanMin: 0, spanMax: h },
-    ];
+      const angle = Math.atan2(edgeDy, edgeDx);
 
-    for (const s of sides) {
-      const sideGaps = gaps
-        .filter((g) => g.wallSide === s.side)
-        .sort((a, b) => a.gapStart - b.gapStart);
+      // Collect exits on this edge, sorted by parametric t
+      const edgeExits = this.exits
+        .filter((ex) => ex.edgeIndex === i)
+        .map((ex) => {
+          const halfW = ex.width / 2;
+          const tCenter =
+            ((ex.center.x - a.x) * edgeDx + (ex.center.y - a.y) * edgeDy) / (edgeLen * edgeLen);
+          const tStart = Math.max(0, tCenter - halfW / edgeLen);
+          const tEnd = Math.min(1, tCenter + halfW / edgeLen);
+          return { tStart, tEnd };
+        })
+        .sort((x, y) => x.tStart - y.tStart);
 
-      const segments: { start: number; end: number }[] = [];
-      let cursor = s.spanMin;
-
-      for (const g of sideGaps) {
-        if (g.gapStart > cursor) {
-          segments.push({ start: cursor, end: g.gapStart });
+      // Build wall segments around exit gaps
+      const segments: { tStart: number; tEnd: number }[] = [];
+      let cursor = 0;
+      for (const gap of edgeExits) {
+        if (gap.tStart > cursor + 0.001) {
+          segments.push({ tStart: cursor, tEnd: gap.tStart });
         }
-        cursor = Math.max(cursor, g.gapEnd);
+        cursor = Math.max(cursor, gap.tEnd);
       }
-      if (cursor < s.spanMax) {
-        segments.push({ start: cursor, end: s.spanMax });
+      if (cursor < 1 - 0.001) {
+        segments.push({ tStart: cursor, tEnd: 1 });
       }
 
       for (const seg of segments) {
-        const len = seg.end - seg.start;
-        if (len < 0.01) continue;
-        const mid = (seg.start + seg.end) / 2;
+        const segLen = (seg.tEnd - seg.tStart) * edgeLen;
+        if (segLen < 0.05) continue;
+        const tMid = (seg.tStart + seg.tEnd) / 2;
+        const mx = a.x + tMid * edgeDx;
+        const my = a.y + tMid * edgeDy;
 
-        let body: Matter.Body;
-        if (s.horizontal) {
-          body = Matter.Bodies.rectangle(mid, s.fixedCoord, len, t, { isStatic: true });
-        } else {
-          body = Matter.Bodies.rectangle(s.fixedCoord, mid, t, len, { isStatic: true });
-        }
+        const body = Matter.Bodies.rectangle(mx, my, segLen, t, {
+          isStatic: true,
+          angle,
+        });
         body.collisionFilter = { group: 0, category: WALL_CATEGORY, mask: PED_CATEGORY };
         body.restitution = 0.1;
         body.friction = 0.05;
@@ -119,41 +117,21 @@ export class EvacuationEngine {
     Matter.Composite.add(this.engine.world, this.wallBodies);
   }
 
-  private computeGaps(): WallGap[] {
-    const { roomWidth: w, roomHeight: h } = this.config;
-    const result: WallGap[] = [];
-
-    for (const exit of this.exits) {
-      const half = exit.width / 2;
-      const cx = exit.center.x;
-      const cy = exit.center.y;
-      const tolerance = 0.5;
-
-      if (cy <= tolerance) {
-        result.push({ exitId: exit.id, wallSide: 'top', gapStart: cx - half, gapEnd: cx + half });
-      } else if (cy >= h - tolerance) {
-        result.push({
-          exitId: exit.id,
-          wallSide: 'bottom',
-          gapStart: cx - half,
-          gapEnd: cx + half,
-        });
-      } else if (cx <= tolerance) {
-        result.push({ exitId: exit.id, wallSide: 'left', gapStart: cy - half, gapEnd: cy + half });
-      } else if (cx >= w - tolerance) {
-        result.push({ exitId: exit.id, wallSide: 'right', gapStart: cy - half, gapEnd: cy + half });
-      }
-    }
-    return result;
-  }
-
   private spawnPedestrians() {
-    const { roomWidth: w, roomHeight: h, pedestrianCount, pedestrianRadius: r } = this.config;
-    const margin = WALL_THICKNESS + r * 3;
+    const { vertices, pedestrianCount, pedestrianRadius: r } = this.config;
+    const bounds = polygonBounds(vertices);
+    const margin = r * 2;
 
-    for (let i = 0; i < pedestrianCount; i++) {
-      const x = margin + Math.random() * (w - 2 * margin);
-      const y = margin + Math.random() * (h - 2 * margin);
+    let spawned = 0;
+    let attempts = 0;
+    const maxAttempts = pedestrianCount * 50;
+
+    while (spawned < pedestrianCount && attempts < maxAttempts) {
+      attempts++;
+      const x = bounds.minX + margin + Math.random() * (bounds.width - 2 * margin);
+      const y = bounds.minY + margin + Math.random() * (bounds.height - 2 * margin);
+
+      if (!isInsidePolygon(x, y, vertices)) continue;
 
       const body = Matter.Bodies.circle(x, y, r, {
         restitution: 0.05,
@@ -178,6 +156,7 @@ export class EvacuationEngine {
       (body as any).__ped = pedLabel;
 
       this.pedestrians.push(body);
+      spawned++;
     }
 
     Matter.Composite.add(this.engine.world, this.pedestrians);
@@ -201,7 +180,7 @@ export class EvacuationEngine {
   step() {
     const { dt, desiredSpeed, panicFactor } = this.config;
     const targetSpeed = desiredSpeed * (1 + panicFactor * 0.6);
-    const tau = 0.4; // relaxation time — lower = snappier steering
+    const tau = 0.4;
 
     for (const body of this.pedestrians) {
       const ped: PedLabel = (body as any).__ped;
@@ -219,18 +198,15 @@ export class EvacuationEngine {
       const nx = dx / dist;
       const ny = dy / dist;
 
-      // Desired velocity in m/step (Matter.js Verlet units)
       const vDesX = nx * targetSpeed * dt;
       const vDesY = ny * targetSpeed * dt;
 
-      // Blend current velocity toward desired (exponential relaxation)
       const blend = Math.min(1, dt / tau);
       const newVx = body.velocity.x + (vDesX - body.velocity.x) * blend;
       const newVy = body.velocity.y + (vDesY - body.velocity.y) * blend;
 
       Matter.Body.setVelocity(body, { x: newVx, y: newVy });
 
-      // Safety speed clamp
       const currentSpeed = Math.sqrt(body.velocity.x ** 2 + body.velocity.y ** 2);
       const maxSpeed = targetSpeed * dt * 1.3;
       if (currentSpeed > maxSpeed) {
@@ -244,7 +220,6 @@ export class EvacuationEngine {
 
     Matter.Engine.update(this.engine, dt * 1000);
 
-    // Check evacuations after physics resolve
     for (const body of this.pedestrians) {
       const ped: PedLabel = (body as any).__ped;
       if (!ped.evacuated) this.checkEvacuated(body, ped);
@@ -254,50 +229,64 @@ export class EvacuationEngine {
   }
 
   private checkEvacuated(body: Matter.Body, ped: PedLabel) {
-    const { roomWidth: w, roomHeight: h } = this.config;
-    const exit = this.exits.find((e) => e.id === ped.targetExitId);
-    if (!exit) return;
-
+    const { vertices } = this.config;
     const x = body.position.x;
     const y = body.position.y;
-    const pastWall = 0.6;
 
-    const outside = x < -pastWall || x > w + pastWall || y < -pastWall || y > h + pastWall;
-    if (!outside) return;
+    const inside = isInsidePolygon(x, y, vertices);
+    if (inside) return;
 
-    // Verify pedestrian is near their target exit (within exit width + buffer)
-    const dxe = Math.abs(x - exit.center.x);
-    const dye = Math.abs(y - exit.center.y);
-    const side = this.getExitSide(exit);
-    const halfW = exit.width / 2 + 0.5;
-    const nearExit =
-      side === 'top' || side === 'bottom'
-        ? dxe < halfW
-        : side === 'left' || side === 'right'
-          ? dye < halfW
-          : true;
-
-    if (outside && nearExit) {
-      ped.evacuated = true;
-      Matter.Composite.remove(this.engine.world, body);
-      const count = this.exitCounts.get(ped.targetExitId) ?? 0;
-      this.exitCounts.set(ped.targetExitId, count + 1);
-    } else if (outside) {
-      // Pushed outside but not through an exit — push back inside
-      const cx = Math.max(0.5, Math.min(w - 0.5, x));
-      const cy = Math.max(0.5, Math.min(h - 0.5, y));
-      Matter.Body.setPosition(body, { x: cx, y: cy });
-      Matter.Body.setVelocity(body, { x: 0, y: 0 });
+    // Outside polygon — check if near target exit
+    const exit = this.exits.find((e) => e.id === ped.targetExitId);
+    if (exit) {
+      const dToExit = Math.hypot(x - exit.center.x, y - exit.center.y);
+      if (dToExit < exit.width + 1.5) {
+        ped.evacuated = true;
+        Matter.Composite.remove(this.engine.world, body);
+        const count = this.exitCounts.get(ped.targetExitId) ?? 0;
+        this.exitCounts.set(ped.targetExitId, count + 1);
+        return;
+      }
     }
+
+    // Outside but not near exit — push back to nearest point inside
+    this.pushBackInside(body, vertices);
   }
 
-  private getExitSide(exit: ExitDef): string {
-    const { roomWidth: w, roomHeight: h } = this.config;
-    if (exit.center.y <= 0.5) return 'top';
-    if (exit.center.y >= h - 0.5) return 'bottom';
-    if (exit.center.x <= 0.5) return 'left';
-    if (exit.center.x >= w - 0.5) return 'right';
-    return 'unknown';
+  private pushBackInside(body: Matter.Body, vertices: Vec2[]) {
+    // Find closest point on any edge and push just inside
+    const x = body.position.x;
+    const y = body.position.y;
+    let bestPx = x;
+    let bestPy = y;
+    let bestDist = Infinity;
+
+    for (let i = 0; i < vertices.length; i++) {
+      const a = vertices[i];
+      const b = vertices[(i + 1) % vertices.length];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const lenSq = dx * dx + dy * dy;
+      if (lenSq < 1e-10) continue;
+
+      let t = ((x - a.x) * dx + (y - a.y) * dy) / lenSq;
+      t = Math.max(0, Math.min(1, t));
+      const px = a.x + t * dx;
+      const py = a.y + t * dy;
+      const d = Math.hypot(x - px, y - py);
+      if (d < bestDist) {
+        bestDist = d;
+        bestPx = px;
+        bestPy = py;
+      }
+    }
+
+    // Nudge 0.5m inside from the edge point
+    const cx = (bestPx + x) / 2;
+    const cy = (bestPy + y) / 2;
+    const inward = isInsidePolygon(cx, cy, vertices) ? { x: cx, y: cy } : { x: bestPx, y: bestPy };
+    Matter.Body.setPosition(body, inward);
+    Matter.Body.setVelocity(body, { x: 0, y: 0 });
   }
 
   getSnapshots(): PedSnapshot[] {
@@ -337,14 +326,8 @@ export class EvacuationEngine {
     };
   }
 
-  getWalls(): { x: number; y: number; width: number; height: number; angle: number }[] {
-    return this.wallBodies.map((b) => ({
-      x: b.position.x,
-      y: b.position.y,
-      width: b.bounds.max.x - b.bounds.min.x,
-      height: b.bounds.max.y - b.bounds.min.y,
-      angle: b.angle,
-    }));
+  getVertices() {
+    return this.config.vertices;
   }
 
   getExits() {
@@ -353,10 +336,6 @@ export class EvacuationEngine {
 
   getConfig() {
     return this.config;
-  }
-
-  getElapsed() {
-    return this.elapsed;
   }
 
   destroy() {
