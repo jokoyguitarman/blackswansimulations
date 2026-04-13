@@ -556,8 +556,15 @@ router.post(
       }
 
       const input = (draft.input ?? {}) as Record<string, unknown>;
-      const result = await stageParseAndGeocode(input, env.openAiApiKey);
-      applyWizardGeocodeOverride(result, input);
+      const override = input.geocode_override as
+        | { lat: number; lng: number; display_name?: string }
+        | undefined;
+      const validOverride =
+        override && typeof override.lat === 'number' && typeof override.lng === 'number'
+          ? override
+          : null;
+      const result = await stageParseAndGeocode(input, env.openAiApiKey, undefined, validOverride);
+      if (!validOverride) applyWizardGeocodeOverride(result, input);
 
       const { error: upErr } = await supabaseAdmin
         .from('warroom_wizard_drafts')
@@ -813,9 +820,21 @@ router.post(
         return res.status(500).json({ error: 'OpenAI API key not configured' });
       }
 
-      const geoResult = await stageParseAndGeocode(req.body, env.openAiApiKey);
+      const bodyOverride = req.body.geocode_override as
+        | { lat: number; lng: number; display_name?: string }
+        | undefined;
+      const bodyValidOverride =
+        bodyOverride && typeof bodyOverride.lat === 'number' && typeof bodyOverride.lng === 'number'
+          ? bodyOverride
+          : null;
+      const geoResult = await stageParseAndGeocode(
+        req.body,
+        env.openAiApiKey,
+        undefined,
+        bodyValidOverride,
+      );
 
-      if (req.body.geocode_override) {
+      if (!bodyValidOverride && req.body.geocode_override) {
         geoResult.geocodeResult = {
           lat: req.body.geocode_override.lat,
           lng: req.body.geocode_override.lng,

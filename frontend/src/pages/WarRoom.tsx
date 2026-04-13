@@ -3,6 +3,7 @@ import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
 import { VoiceMicButton } from '../components/VoiceMicButton';
+import { LocationPicker, type PickedLocation } from '../components/WarRoom/LocationPicker';
 
 type TeamEntry = {
   team_name: string;
@@ -392,6 +393,8 @@ export const WarRoom = () => {
   const [doctrinesLoading, setDoctrinesLoading] = useState(false);
   const [wizardScenarioId, setWizardScenarioId] = useState<string | null>(null);
   const [wizardDraftId, setWizardDraftId] = useState<string | null>(null);
+  const [manualCoords, setManualCoords] = useState<PickedLocation | null>(null);
+  const [locationPickerOpen, setLocationPickerOpen] = useState(false);
   const [deteriorationPreview, setDeteriorationPreview] = useState<Awaited<
     ReturnType<typeof api.warroom.wizardDeteriorationPreview>
   > | null>(null);
@@ -597,7 +600,7 @@ export const WarRoom = () => {
     setGeocodeLoading(true);
     try {
       const opts = buildOptions();
-      const inputPayload = {
+      const inputPayload: Record<string, unknown> = {
         ...opts,
         teams: teams.map((t) => ({
           team_name: t.team_name,
@@ -607,6 +610,14 @@ export const WarRoom = () => {
           is_investigative: t.is_investigative ?? false,
         })),
       };
+
+      if (manualCoords) {
+        inputPayload.geocode_override = {
+          lat: manualCoords.lat,
+          lng: manualCoords.lng,
+          display_name: manualCoords.display_name,
+        };
+      }
 
       let draftId = wizardDraftId;
       if (!draftId) {
@@ -627,7 +638,7 @@ export const WarRoom = () => {
     } finally {
       setGeocodeLoading(false);
     }
-  }, [teams, buildOptions, wizardDraftId]);
+  }, [teams, buildOptions, wizardDraftId, manualCoords]);
 
   const handleResearchDoctrines = useCallback(async () => {
     setError(null);
@@ -1348,6 +1359,44 @@ export const WarRoom = () => {
                 )}
               </p>
             </div>
+
+            {/* Location Picker — browser-side Nominatim search */}
+            {wizardMode && (
+              <div className="border border-robotic-yellow/30 p-4 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setLocationPickerOpen((v) => !v)}
+                  className="w-full text-left flex items-center justify-between"
+                >
+                  <h4 className="text-sm terminal-text uppercase text-robotic-yellow">
+                    [LOCATION SELECTION]
+                    {manualCoords && (
+                      <span className="text-robotic-green ml-2 text-[10px] normal-case">
+                        {manualCoords.lat.toFixed(4)}, {manualCoords.lng.toFixed(4)}
+                      </span>
+                    )}
+                  </h4>
+                  <span className="text-robotic-yellow/50 text-xs terminal-text">
+                    {locationPickerOpen ? '[-]' : '[+]'}
+                  </span>
+                </button>
+                {!locationPickerOpen && (
+                  <p className="text-[10px] terminal-text text-robotic-yellow/40 mt-1">
+                    {manualCoords
+                      ? 'Location set. Click to change.'
+                      : 'Optional — pre-select a location to skip server-side geocoding.'}
+                  </p>
+                )}
+                {locationPickerOpen && (
+                  <div className="mt-3">
+                    <LocationPicker
+                      onLocationChange={setManualCoords}
+                      initialLocation={manualCoords}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

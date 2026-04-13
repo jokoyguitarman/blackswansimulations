@@ -283,6 +283,7 @@ export async function stageParseAndGeocode(
   options: WarroomGenerateOptions,
   openAiApiKey: string,
   onProgress?: WarroomProgressCallback,
+  geocodeOverride?: { lat: number; lng: number; display_name?: string } | null,
 ): Promise<ParseAndGeocodeResult> {
   let parsed: ParsedWarroomInput;
 
@@ -318,27 +319,47 @@ export async function stageParseAndGeocode(
   const venueName = parsed.venue_name || parsed.location || parsed.setting;
   const threatProfile = parsed.threat_profile;
 
-  onProgress?.(
-    'geocoding',
-    parsed.location
-      ? `Resolving coordinates for "${parsed.location}"...`
-      : 'No location specified; skipping geocoding.',
-  );
+  const hasOverride =
+    geocodeOverride &&
+    typeof geocodeOverride.lat === 'number' &&
+    typeof geocodeOverride.lng === 'number';
+
+  if (hasOverride) {
+    onProgress?.('geocoding', 'Using pre-selected coordinates; skipping server-side geocoding.');
+    logger.info(
+      { lat: geocodeOverride!.lat, lng: geocodeOverride!.lng },
+      'Skipping Nominatim — using client-supplied geocode override',
+    );
+  } else {
+    onProgress?.(
+      'geocoding',
+      parsed.location
+        ? `Resolving coordinates for "${parsed.location}"...`
+        : 'No location specified; skipping geocoding.',
+    );
+  }
   onProgress?.('case_research', 'Researching similar real-world incidents...');
 
-  const geocodePromise = parsed.location
-    ? (() => {
-        const alternates: string[] = [];
-        if (parsed.venue_name && parsed.location) {
-          alternates.push(`${parsed.venue_name}, ${parsed.location}`);
-        }
-        if (alternates.length > 0) {
-          const hint = parsed.venue_name || parsed.location || '';
-          return geocodeBest(parsed.location, alternates, hint);
-        }
-        return geocode(parsed.location);
-      })()
-    : Promise.resolve(null);
+  const geocodePromise: Promise<{ lat: number; lng: number; display_name: string } | null> =
+    hasOverride
+      ? Promise.resolve({
+          lat: geocodeOverride!.lat,
+          lng: geocodeOverride!.lng,
+          display_name: geocodeOverride!.display_name || venueName,
+        })
+      : parsed.location
+        ? (() => {
+            const alternates: string[] = [];
+            if (parsed.venue_name && parsed.location) {
+              alternates.push(`${parsed.venue_name}, ${parsed.location}`);
+            }
+            if (alternates.length > 0) {
+              const hint = parsed.venue_name || parsed.location || '';
+              return geocodeBest(parsed.location, alternates, hint);
+            }
+            return geocode(parsed.location);
+          })()
+        : Promise.resolve(null);
 
   const [geocodeResult, similarCases, crowdDynamics] = await Promise.all([
     geocodePromise,
