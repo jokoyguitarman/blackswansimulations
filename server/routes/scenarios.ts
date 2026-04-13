@@ -2546,6 +2546,9 @@ router.get('/:id/building-studs', requireAuth, async (req, res) => {
           operationalZone: s.operationalZone ?? null,
           distFromIncidentM: s.distFromIncidentM != null ? Math.round(s.distFromIncidentM) : null,
           studType: s.studType ?? 'building',
+          spatialContext: s.spatialContext ?? 'open_air',
+          contextBuildingName: s.contextBuildingName ?? null,
+          contextRoadName: s.contextRoadName ?? null,
         })),
     }));
 

@@ -301,6 +301,9 @@ export const api = {
             operationalZone: string | null;
             distFromIncidentM: number | null;
             studType: string;
+            spatialContext: string;
+            contextBuildingName: string | null;
+            contextRoadName: string | null;
           }>;
         }>;
         roadPolylines: Array<{

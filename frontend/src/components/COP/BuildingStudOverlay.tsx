@@ -12,6 +12,9 @@ interface StudData {
   operationalZone: string | null;
   distFromIncidentM: number | null;
   studType: string;
+  spatialContext: string;
+  contextBuildingName: string | null;
+  contextRoadName: string | null;
 }
 
 interface GridData {
@@ -48,8 +51,6 @@ const ZONE_COLORS: Record<string, { color: string; fill: string }> = {
 };
 
 const OCCUPIED_STYLE = { color: '#94a3b8', fill: '#94a3b8' };
-const DEFAULT_STYLE = { color: '#6366f1', fill: '#818cf8' };
-const STREET_STYLE = { color: '#10b981', fill: '#34d399' };
 
 function getStudStyle(stud: StudData) {
   if (stud.occupied) {
@@ -62,22 +63,32 @@ function getStudStyle(stud: StudData) {
     };
   }
 
-  if (stud.studType === 'street') {
+  const zoneStyle = stud.blastBand ? ZONE_COLORS[stud.blastBand] : null;
+
+  if (stud.spatialContext === 'inside_building') {
     return {
-      color: STREET_STYLE.color,
-      fillColor: STREET_STYLE.fill,
+      color: zoneStyle?.color ?? '#6366f1',
+      fillColor: zoneStyle?.fill ?? '#818cf8',
+      fillOpacity: 0.15,
+      weight: 0.5,
+      radius: 2,
+    };
+  }
+
+  if (stud.spatialContext === 'road') {
+    return {
+      color: '#10b981',
+      fillColor: '#34d399',
       fillOpacity: 0.6,
       weight: 1,
       radius: 2.5,
     };
   }
 
-  const zoneStyle = stud.blastBand ? ZONE_COLORS[stud.blastBand] : null;
-  const colors = zoneStyle ?? DEFAULT_STYLE;
-
+  // open_air — zone-colored
   return {
-    color: colors.color,
-    fillColor: colors.fill,
+    color: zoneStyle?.color ?? '#6366f1',
+    fillColor: zoneStyle?.fill ?? '#818cf8',
     fillOpacity: 0.55,
     weight: 1,
     radius: 3,
@@ -136,7 +147,7 @@ export const BuildingStudOverlay = ({
         />
       ))}
 
-      {/* Building outlines — incident vs surrounding */}
+      {/* Building outlines — incident (orange solid) vs surrounding (gray dashed) */}
       {grids.map((grid) => {
         if (grid.polygon.length < 3) return null;
 
@@ -155,8 +166,8 @@ export const BuildingStudOverlay = ({
                   }
                 : {
                     color: '#64748b',
-                    weight: 1,
-                    fillOpacity: 0.12,
+                    weight: 1.5,
+                    fillOpacity: 0.15,
                     fillColor: '#475569',
                     dashArray: '4, 4',
                   }
@@ -165,7 +176,7 @@ export const BuildingStudOverlay = ({
         );
       })}
 
-      {/* Stud dots */}
+      {/* Stud dots — styled by spatial context */}
       {grids.flatMap((grid) =>
         grid.studs.map((stud) => {
           const style = getStudStyle(stud);
