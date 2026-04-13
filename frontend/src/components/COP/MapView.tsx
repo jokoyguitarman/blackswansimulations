@@ -199,6 +199,8 @@ interface MapViewProps {
   sessionStartTime?: string;
   /** Optional children rendered inside MapContainer (e.g. DemoMapAnimator). */
   children?: React.ReactNode;
+  /** When true, clicking near a stud shows an inspect popup with its metadata. */
+  inspectStuds?: boolean;
 }
 
 /**
@@ -502,6 +504,7 @@ export const MapView = ({
   scenarioType,
   sessionStartTime,
   children,
+  inspectStuds = false,
 }: MapViewProps) => {
   const mapDisabledByEnv = import.meta.env.VITE_DISABLE_MAP === 'true';
   const isMapDisabled = disabled || mapDisabledByEnv;
@@ -1637,6 +1640,7 @@ export const MapView = ({
               sessionId={sessionId}
               floor={activeFloor}
               refreshKey={studRefreshKey}
+              inspectable={inspectStuds}
             />
           )}
 

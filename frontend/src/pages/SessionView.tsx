@@ -707,6 +707,7 @@ export const SessionView = () => {
   const [locationsRefreshTrigger, setLocationsRefreshTrigger] = useState(0);
   const [backfillLoading, setBackfillLoading] = useState(false);
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
+  const [inspectStudsMode, setInspectStudsMode] = useState(false);
   const sessionContentRef = useRef<HTMLDivElement | null>(null);
   const [_incidents, setIncidents] = useState<
     Array<{
@@ -2466,6 +2467,16 @@ export const SessionView = () => {
                     >
                       {backfillLoading ? 'LOADING...' : '[BACKFILL_BUILDINGS]'}
                     </button>
+                    <button
+                      onClick={() => setInspectStudsMode((v) => !v)}
+                      className={`military-button px-3 py-1.5 text-[10px] terminal-text whitespace-nowrap ${
+                        inspectStudsMode
+                          ? 'border-amber-400 text-amber-400 bg-amber-400/20'
+                          : 'border-gray-500 text-gray-400 hover:bg-gray-400/10'
+                      }`}
+                    >
+                      {inspectStudsMode ? '[INSPECT: ON]' : '[INSPECT_STUDS]'}
+                    </button>
                     {backfillMsg && (
                       <span className="text-[10px] terminal-text text-green-400 max-w-[200px] truncate">
                         {backfillMsg}
@@ -2484,6 +2495,7 @@ export const SessionView = () => {
                     showAllPins
                     hidePrebuiltZones
                     bypassExitGate
+                    inspectStuds={inspectStudsMode}
                     locationsRefreshTrigger={locationsRefreshTrigger}
                     sessionStartTime={session?.start_time ?? undefined}
                     currentState={mergeInjectEffects(

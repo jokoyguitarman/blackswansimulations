@@ -1630,6 +1630,7 @@ const MapPinsTab = ({
   const [backfillLoading, setBackfillLoading] = useState(false);
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
   const [studRefreshKey, setStudRefreshKey] = useState(0);
+  const [inspectStudsMode, setInspectStudsMode] = useState(false);
   const [activeFloor, setActiveFloor] = useState('G');
 
   // Add-pin mode state
@@ -2266,6 +2267,16 @@ const MapPinsTab = ({
           className="ml-auto px-4 py-1.5 text-xs terminal-text bg-cyan-700 hover:bg-cyan-600 text-white rounded border border-cyan-500 disabled:opacity-50"
         >
           {backfillLoading ? 'LOADING...' : 'BACKFILL BUILDINGS'}
+        </button>
+        <button
+          onClick={() => setInspectStudsMode((v) => !v)}
+          className={`px-4 py-1.5 text-xs terminal-text rounded border ${
+            inspectStudsMode
+              ? 'bg-amber-600 border-amber-400 text-white'
+              : 'bg-gray-700 hover:bg-gray-600 border-gray-500 text-gray-200'
+          }`}
+        >
+          {inspectStudsMode ? 'INSPECT: ON' : 'INSPECT STUDS'}
         </button>
       </div>
       {backfillMsg && <div className="text-xs terminal-text text-green-400 p-1">{backfillMsg}</div>}
@@ -3144,6 +3155,7 @@ const MapPinsTab = ({
             scenarioId={scenarioId}
             floor={activeFloor}
             refreshKey={studRefreshKey}
+            inspectable={inspectStudsMode}
           />
         </MapContainer>
         {/* Floor Selector */}

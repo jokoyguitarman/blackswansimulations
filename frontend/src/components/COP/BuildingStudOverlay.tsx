@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
-import { CircleMarker, Polygon, Polyline, useMap } from 'react-leaflet';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { CircleMarker, Polygon, Polyline, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
 import { api } from '../../lib/api';
 
 interface StudData {
@@ -39,9 +40,12 @@ interface BuildingStudOverlayProps {
   floor?: string;
   /** Refresh trigger — increment to refetch occupancy (e.g. after a placement) */
   refreshKey?: number;
+  /** When true, clicking the map inspects the nearest stud */
+  inspectable?: boolean;
 }
 
 const MIN_ZOOM_TO_SHOW = 16;
+const INSPECT_SNAP_RADIUS_PX = 20;
 
 const ZONE_COLORS: Record<string, { color: string; fill: string }> = {
   kill: { color: '#ef4444', fill: '#f87171' },
@@ -51,6 +55,25 @@ const ZONE_COLORS: Record<string, { color: string; fill: string }> = {
 };
 
 const OCCUPIED_STYLE = { color: '#94a3b8', fill: '#94a3b8' };
+
+const CONTEXT_LABELS: Record<string, string> = {
+  inside_building: 'Inside Building',
+  road: 'Road',
+  open_air: 'Open Air',
+};
+
+const BAND_LABELS: Record<string, string> = {
+  kill: 'Kill Zone',
+  critical: 'Critical Zone',
+  serious: 'Serious Zone',
+  minor: 'Minor Zone',
+};
+
+const ZONE_LABELS: Record<string, string> = {
+  hot: 'Hot Zone',
+  warm: 'Warm Zone',
+  cold: 'Cold Zone',
+};
 
 function getStudStyle(stud: StudData) {
   if (stud.occupied) {
@@ -85,7 +108,6 @@ function getStudStyle(stud: StudData) {
     };
   }
 
-  // open_air — zone-colored
   return {
     color: zoneStyle?.color ?? '#6366f1',
     fillColor: zoneStyle?.fill ?? '#818cf8',
@@ -95,16 +117,80 @@ function getStudStyle(stud: StudData) {
   };
 }
 
+function StudInspectPopup({ stud, position }: { stud: StudData; position: [number, number] }) {
+  const contextLabel = CONTEXT_LABELS[stud.spatialContext] ?? stud.spatialContext;
+  const bandLabel = stud.blastBand ? (BAND_LABELS[stud.blastBand] ?? stud.blastBand) : null;
+  const zoneLabel = stud.operationalZone
+    ? (ZONE_LABELS[stud.operationalZone] ?? stud.operationalZone)
+    : null;
+
+  return (
+    <Popup position={position} autoPan={false}>
+      <div style={{ fontFamily: 'monospace', fontSize: 11, lineHeight: 1.6, minWidth: 180 }}>
+        <div
+          style={{
+            fontWeight: 700,
+            marginBottom: 4,
+            borderBottom: '1px solid #444',
+            paddingBottom: 3,
+          }}
+        >
+          STUD INSPECTOR
+        </div>
+        <div>
+          <strong>Context:</strong> {contextLabel}
+        </div>
+        {stud.contextBuildingName && (
+          <div>
+            <strong>Building:</strong> {stud.contextBuildingName}
+          </div>
+        )}
+        {stud.contextRoadName && (
+          <div>
+            <strong>Road:</strong> {stud.contextRoadName}
+          </div>
+        )}
+        {bandLabel && (
+          <div>
+            <strong>Blast Band:</strong> {bandLabel}
+          </div>
+        )}
+        {zoneLabel && (
+          <div>
+            <strong>Op Zone:</strong> {zoneLabel}
+          </div>
+        )}
+        {stud.distFromIncidentM != null && (
+          <div>
+            <strong>Dist from incident:</strong> {stud.distFromIncidentM}m
+          </div>
+        )}
+        <div>
+          <strong>Floor:</strong> {stud.floor}
+        </div>
+        <div>
+          <strong>Occupied:</strong> {stud.occupied ? 'Yes' : 'No'}
+        </div>
+        <div style={{ opacity: 0.5, fontSize: 9, marginTop: 3 }}>{stud.id}</div>
+      </div>
+    </Popup>
+  );
+}
+
 export const BuildingStudOverlay = ({
   scenarioId,
   sessionId,
   floor,
   refreshKey,
+  inspectable = false,
 }: BuildingStudOverlayProps) => {
   const map = useMap();
   const [grids, setGrids] = useState<GridData[]>([]);
   const [roads, setRoads] = useState<RoadPolyline[]>([]);
   const [zoom, setZoom] = useState(map.getZoom());
+  const [inspectedStud, setInspectedStud] = useState<StudData | null>(null);
+  const gridsRef = useRef(grids);
+  gridsRef.current = grids;
 
   const fetchStuds = useCallback(async () => {
     try {
@@ -112,7 +198,7 @@ export const BuildingStudOverlay = ({
       if (result?.grids) setGrids(result.grids);
       if (result?.roadPolylines) setRoads(result.roadPolylines);
     } catch {
-      // Non-critical — overlay just won't render
+      // Non-critical
     }
   }, [scenarioId, sessionId, floor]);
 
@@ -128,11 +214,49 @@ export const BuildingStudOverlay = ({
     };
   }, [map]);
 
+  // Click-to-inspect handler
+  useEffect(() => {
+    if (!inspectable) {
+      setInspectedStud(null);
+      return;
+    }
+
+    const onClick = (e: L.LeafletMouseEvent) => {
+      const clickPx = map.latLngToContainerPoint(e.latlng);
+      let nearest: StudData | null = null;
+      let nearestDistPx = Infinity;
+
+      for (const grid of gridsRef.current) {
+        for (const stud of grid.studs) {
+          const studPx = map.latLngToContainerPoint([stud.lat, stud.lng]);
+          const dx = clickPx.x - studPx.x;
+          const dy = clickPx.y - studPx.y;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d < nearestDistPx) {
+            nearestDistPx = d;
+            nearest = stud;
+          }
+        }
+      }
+
+      if (nearest && nearestDistPx <= INSPECT_SNAP_RADIUS_PX) {
+        setInspectedStud(nearest);
+      } else {
+        setInspectedStud(null);
+      }
+    };
+
+    map.on('click', onClick);
+    return () => {
+      map.off('click', onClick);
+    };
+  }, [inspectable, map]);
+
   if (zoom < MIN_ZOOM_TO_SHOW || (grids.length === 0 && roads.length === 0)) return null;
 
   return (
     <>
-      {/* Road polylines — rendered underneath everything */}
+      {/* Road polylines */}
       {roads.map((road, ri) => (
         <Polyline
           key={`road-${ri}`}
@@ -147,10 +271,9 @@ export const BuildingStudOverlay = ({
         />
       ))}
 
-      {/* Building outlines — incident (orange solid) vs surrounding (gray dashed) */}
+      {/* Building outlines */}
       {grids.map((grid) => {
         if (grid.polygon.length < 3) return null;
-
         const isIncident = grid.isIncidentBuilding;
         return (
           <Polygon
@@ -176,25 +299,31 @@ export const BuildingStudOverlay = ({
         );
       })}
 
-      {/* Stud dots — styled by spatial context */}
+      {/* Stud dots */}
       {grids.flatMap((grid) =>
         grid.studs.map((stud) => {
           const style = getStudStyle(stud);
+          const isSelected = inspectedStud?.id === stud.id;
           return (
             <CircleMarker
               key={stud.id}
               center={[stud.lat, stud.lng]}
-              radius={style.radius}
+              radius={isSelected ? style.radius + 3 : style.radius}
               pathOptions={{
-                color: style.color,
-                fillColor: style.fillColor,
-                fillOpacity: style.fillOpacity,
-                weight: style.weight,
+                color: isSelected ? '#ffffff' : style.color,
+                fillColor: isSelected ? '#f59e0b' : style.fillColor,
+                fillOpacity: isSelected ? 1 : style.fillOpacity,
+                weight: isSelected ? 2 : style.weight,
               }}
               interactive={false}
             />
           );
         }),
+      )}
+
+      {/* Inspect popup */}
+      {inspectedStud && (
+        <StudInspectPopup stud={inspectedStud} position={[inspectedStud.lat, inspectedStud.lng]} />
       )}
     </>
   );
