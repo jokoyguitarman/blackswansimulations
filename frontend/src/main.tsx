@@ -13,6 +13,7 @@ import { SessionView } from './pages/SessionView';
 import { JoinSessionPage } from './pages/JoinSessionPage';
 import { DemoLanding } from './pages/DemoLanding';
 import { DebugBuildingStuds } from './pages/DebugBuildingStuds';
+import { DebugEvacuationSim } from './pages/DebugEvacuationSim';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SupabaseConfigError } from './components/SupabaseConfigError';
 import './style.css';
@@ -103,6 +104,14 @@ const App = () => {
               element={
                 <ProtectedRoute>
                   <DebugBuildingStuds />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/debug/evacuation-sim"
+              element={
+                <ProtectedRoute>
+                  <DebugEvacuationSim />
                 </ProtectedRoute>
               }
             />
