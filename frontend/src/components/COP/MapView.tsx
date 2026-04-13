@@ -1630,6 +1630,7 @@ export const MapView = ({
                 innerCordonRadius={loc.conditions?.inner_cordon_radius_m as number | undefined}
                 outerCordonRadius={loc.conditions?.outer_cordon_radius_m as number | undefined}
                 label={loc.label}
+                nonInteractive={inspectStuds}
               />
             ))}
 
@@ -1802,10 +1803,13 @@ export const MapView = ({
                           weight: 2,
                           dashArray: '6 4',
                         }}
+                        interactive={!inspectStuds}
                       >
-                        <Tooltip direction="center" permanent={false}>
-                          {zoneType.toUpperCase()} ZONE{radiusM ? ` (${radiusM}m)` : ''}
-                        </Tooltip>
+                        {!inspectStuds && (
+                          <Tooltip direction="center" permanent={false}>
+                            {zoneType.toUpperCase()} ZONE{radiusM ? ` (${radiusM}m)` : ''}
+                          </Tooltip>
+                        )}
                       </Polygon>
                       <CircleMarker
                         center={
@@ -1865,6 +1869,7 @@ export const MapView = ({
                             weight: 2,
                             dashArray: '6 4',
                           }}
+                          interactive={!inspectStuds}
                         />
                       );
                     }),

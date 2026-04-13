@@ -7,6 +7,8 @@ interface BlastZoneOverlayProps {
   innerCordonRadius?: number;
   outerCordonRadius?: number;
   label?: string;
+  /** When true, circles are non-interactive so clicks pass through to studs. */
+  nonInteractive?: boolean;
 }
 
 export const BlastZoneOverlay = ({
@@ -15,6 +17,7 @@ export const BlastZoneOverlay = ({
   innerCordonRadius,
   outerCordonRadius,
   label,
+  nonInteractive = false,
 }: BlastZoneOverlayProps) => {
   return (
     <>
@@ -30,13 +33,16 @@ export const BlastZoneOverlay = ({
             weight: 2,
             dashArray: '12, 8',
           }}
+          interactive={!nonInteractive}
         >
-          <Popup>
-            <div className="p-2 text-xs terminal-text">
-              <p className="font-semibold text-purple-400">OUTER CORDON</p>
-              <p>Radius: {Math.round(outerCordonRadius * 3.28084)} ft</p>
-            </div>
-          </Popup>
+          {!nonInteractive && (
+            <Popup>
+              <div className="p-2 text-xs terminal-text">
+                <p className="font-semibold text-purple-400">OUTER CORDON</p>
+                <p>Radius: {Math.round(outerCordonRadius * 3.28084)} ft</p>
+              </div>
+            </Popup>
+          )}
         </Circle>
       )}
 
@@ -52,13 +58,16 @@ export const BlastZoneOverlay = ({
             weight: 2,
             dashArray: '8, 6',
           }}
+          interactive={!nonInteractive}
         >
-          <Popup>
-            <div className="p-2 text-xs terminal-text">
-              <p className="font-semibold text-orange-400">INNER CORDON</p>
-              <p>Radius: {Math.round(innerCordonRadius * 3.28084)} ft</p>
-            </div>
-          </Popup>
+          {!nonInteractive && (
+            <Popup>
+              <div className="p-2 text-xs terminal-text">
+                <p className="font-semibold text-orange-400">INNER CORDON</p>
+                <p>Radius: {Math.round(innerCordonRadius * 3.28084)} ft</p>
+              </div>
+            </Popup>
+          )}
         </Circle>
       )}
 
@@ -72,15 +81,18 @@ export const BlastZoneOverlay = ({
           fillOpacity: 0.15,
           weight: 3,
         }}
+        interactive={!nonInteractive}
       >
-        <Popup>
-          <div className="p-2 text-xs terminal-text">
-            <p className="font-semibold text-red-400">BLAST EXCLUSION ZONE</p>
-            <p>Radius: {Math.round(blastRadius * 3.28084)} ft</p>
-            {label && <p className="text-robotic-yellow/70 mt-1">{label}</p>}
-            <p className="text-red-300 mt-1 font-semibold">NO ENTRY — Asset placement blocked</p>
-          </div>
-        </Popup>
+        {!nonInteractive && (
+          <Popup>
+            <div className="p-2 text-xs terminal-text">
+              <p className="font-semibold text-red-400">BLAST EXCLUSION ZONE</p>
+              <p>Radius: {Math.round(blastRadius * 3.28084)} ft</p>
+              {label && <p className="text-robotic-yellow/70 mt-1">{label}</p>}
+              <p className="text-red-300 mt-1 font-semibold">NO ENTRY — Asset placement blocked</p>
+            </div>
+          </Popup>
+        )}
       </Circle>
 
       {/* Blast epicentre marker */}
@@ -93,6 +105,7 @@ export const BlastZoneOverlay = ({
           fillOpacity: 0.9,
           weight: 2,
         }}
+        interactive={!nonInteractive}
       />
     </>
   );

@@ -2753,80 +2753,85 @@ const MapPinsTab = ({
                           weight: 2,
                           dashArray: '6 4',
                         }}
+                        interactive={!inspectStudsMode}
                       >
-                        <Tooltip direction="center" permanent={false}>
-                          {zoneType.toUpperCase()} zone ({radiusM}m) — drag center marker to move
-                        </Tooltip>
-                        <Popup>
-                          <div
-                            style={{
-                              minWidth: 160,
-                              background: '#fff',
-                              color: '#222',
-                              padding: 8,
-                              borderRadius: 4,
-                            }}
-                          >
+                        {!inspectStudsMode && (
+                          <Tooltip direction="center" permanent={false}>
+                            {zoneType.toUpperCase()} zone ({radiusM}m) — drag center marker to move
+                          </Tooltip>
+                        )}
+                        {!inspectStudsMode && (
+                          <Popup>
                             <div
                               style={{
-                                fontWeight: 700,
-                                fontSize: 13,
-                                color: style.color,
-                                marginBottom: 6,
-                                textTransform: 'uppercase',
-                                letterSpacing: 1,
-                              }}
-                            >
-                              {zoneType} zone
-                            </div>
-                            <label
-                              style={{
-                                fontSize: 11,
-                                display: 'block',
-                                marginBottom: 2,
-                                color: '#555',
-                              }}
-                            >
-                              Radius (meters)
-                            </label>
-                            <input
-                              type="number"
-                              min={10}
-                              max={5000}
-                              step={5}
-                              defaultValue={radiusM}
-                              onBlur={(e) => {
-                                const val = parseInt(e.target.value, 10);
-                                if (!isNaN(val) && val >= 10 && val !== radiusM) {
-                                  onZoneLocationRadiusChange(zl.id, val);
-                                }
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                              }}
-                              style={{
-                                width: '100%',
-                                padding: '4px 6px',
-                                fontSize: 13,
-                                border: `1px solid ${style.color}`,
-                                borderRadius: 4,
-                                outline: 'none',
-                                background: '#f9f9f9',
+                                minWidth: 160,
+                                background: '#fff',
                                 color: '#222',
+                                padding: 8,
+                                borderRadius: 4,
                               }}
-                            />
-                            {(conds.ppe_required as string[] | undefined)?.length ? (
-                              <div style={{ marginTop: 6, fontSize: 10, color: '#666' }}>
-                                PPE: {(conds.ppe_required as string[]).join(', ')}
+                            >
+                              <div
+                                style={{
+                                  fontWeight: 700,
+                                  fontSize: 13,
+                                  color: style.color,
+                                  marginBottom: 6,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: 1,
+                                }}
+                              >
+                                {zoneType} zone
                               </div>
-                            ) : null}
-                            {(conds.allowed_teams as string[] | undefined)?.length ? (
-                              <div style={{ fontSize: 10, color: '#666' }}>
-                                Teams: {(conds.allowed_teams as string[]).join(', ')}
-                              </div>
-                            ) : null}
-                          </div>
-                        </Popup>
+                              <label
+                                style={{
+                                  fontSize: 11,
+                                  display: 'block',
+                                  marginBottom: 2,
+                                  color: '#555',
+                                }}
+                              >
+                                Radius (meters)
+                              </label>
+                              <input
+                                type="number"
+                                min={10}
+                                max={5000}
+                                step={5}
+                                defaultValue={radiusM}
+                                onBlur={(e) => {
+                                  const val = parseInt(e.target.value, 10);
+                                  if (!isNaN(val) && val >= 10 && val !== radiusM) {
+                                    onZoneLocationRadiusChange(zl.id, val);
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                }}
+                                style={{
+                                  width: '100%',
+                                  padding: '4px 6px',
+                                  fontSize: 13,
+                                  border: `1px solid ${style.color}`,
+                                  borderRadius: 4,
+                                  outline: 'none',
+                                  background: '#f9f9f9',
+                                  color: '#222',
+                                }}
+                              />
+                              {(conds.ppe_required as string[] | undefined)?.length ? (
+                                <div style={{ marginTop: 6, fontSize: 10, color: '#666' }}>
+                                  PPE: {(conds.ppe_required as string[]).join(', ')}
+                                </div>
+                              ) : null}
+                              {(conds.allowed_teams as string[] | undefined)?.length ? (
+                                <div style={{ fontSize: 10, color: '#666' }}>
+                                  Teams: {(conds.allowed_teams as string[]).join(', ')}
+                                </div>
+                              ) : null}
+                            </div>
+                          </Popup>
+                        )}
                       </Polygon>
                       <Marker
                         position={[zl.coordinates.lat, zl.coordinates.lng]}
@@ -2882,79 +2887,84 @@ const MapPinsTab = ({
                             weight: 2,
                             dashArray: '6 4',
                           }}
+                          interactive={!inspectStudsMode}
                         >
-                          <Tooltip direction="center" permanent={false}>
-                            {zone.zone_type.toUpperCase()} zone ({zone.radius_m}m)
-                          </Tooltip>
-                          <Popup>
-                            <div
-                              style={{
-                                minWidth: 160,
-                                background: '#fff',
-                                color: '#222',
-                                padding: 8,
-                                borderRadius: 4,
-                              }}
-                            >
+                          {!inspectStudsMode && (
+                            <Tooltip direction="center" permanent={false}>
+                              {zone.zone_type.toUpperCase()} zone ({zone.radius_m}m)
+                            </Tooltip>
+                          )}
+                          {!inspectStudsMode && (
+                            <Popup>
                               <div
                                 style={{
-                                  fontWeight: 700,
-                                  fontSize: 13,
-                                  color: style.color,
-                                  marginBottom: 6,
-                                  textTransform: 'uppercase',
-                                  letterSpacing: 1,
-                                }}
-                              >
-                                {zone.zone_type} zone
-                              </div>
-                              <label
-                                style={{
-                                  fontSize: 11,
-                                  display: 'block',
-                                  marginBottom: 2,
-                                  color: '#555',
-                                }}
-                              >
-                                Radius (meters)
-                              </label>
-                              <input
-                                type="number"
-                                min={10}
-                                max={5000}
-                                step={5}
-                                defaultValue={zone.radius_m}
-                                onBlur={(e) => {
-                                  const val = parseInt(e.target.value, 10);
-                                  if (!isNaN(val) && val >= 10 && val !== zone.radius_m)
-                                    onZoneRadiusChange(hazard.id, zone.zone_type, val);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                                }}
-                                style={{
-                                  width: '100%',
-                                  padding: '4px 6px',
-                                  fontSize: 13,
-                                  border: `1px solid ${style.color}`,
-                                  borderRadius: 4,
-                                  outline: 'none',
-                                  background: '#f9f9f9',
+                                  minWidth: 160,
+                                  background: '#fff',
                                   color: '#222',
+                                  padding: 8,
+                                  borderRadius: 4,
                                 }}
-                              />
-                              {zone.ppe_required?.length ? (
-                                <div style={{ marginTop: 6, fontSize: 10, color: '#666' }}>
-                                  PPE: {zone.ppe_required.join(', ')}
+                              >
+                                <div
+                                  style={{
+                                    fontWeight: 700,
+                                    fontSize: 13,
+                                    color: style.color,
+                                    marginBottom: 6,
+                                    textTransform: 'uppercase',
+                                    letterSpacing: 1,
+                                  }}
+                                >
+                                  {zone.zone_type} zone
                                 </div>
-                              ) : null}
-                              {zone.allowed_teams?.length ? (
-                                <div style={{ fontSize: 10, color: '#666' }}>
-                                  Teams: {zone.allowed_teams.join(', ')}
-                                </div>
-                              ) : null}
-                            </div>
-                          </Popup>
+                                <label
+                                  style={{
+                                    fontSize: 11,
+                                    display: 'block',
+                                    marginBottom: 2,
+                                    color: '#555',
+                                  }}
+                                >
+                                  Radius (meters)
+                                </label>
+                                <input
+                                  type="number"
+                                  min={10}
+                                  max={5000}
+                                  step={5}
+                                  defaultValue={zone.radius_m}
+                                  onBlur={(e) => {
+                                    const val = parseInt(e.target.value, 10);
+                                    if (!isNaN(val) && val >= 10 && val !== zone.radius_m)
+                                      onZoneRadiusChange(hazard.id, zone.zone_type, val);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    padding: '4px 6px',
+                                    fontSize: 13,
+                                    border: `1px solid ${style.color}`,
+                                    borderRadius: 4,
+                                    outline: 'none',
+                                    background: '#f9f9f9',
+                                    color: '#222',
+                                  }}
+                                />
+                                {zone.ppe_required?.length ? (
+                                  <div style={{ marginTop: 6, fontSize: 10, color: '#666' }}>
+                                    PPE: {zone.ppe_required.join(', ')}
+                                  </div>
+                                ) : null}
+                                {zone.allowed_teams?.length ? (
+                                  <div style={{ fontSize: 10, color: '#666' }}>
+                                    Teams: {zone.allowed_teams.join(', ')}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </Popup>
+                          )}
                         </Polygon>
                       );
                     }),
@@ -3005,62 +3015,67 @@ const MapPinsTab = ({
                     weight: 2,
                     dashArray: '4 6',
                   }}
+                  interactive={!inspectStudsMode}
                 >
-                  <Tooltip direction="center" permanent={false}>
-                    {bz.label} ({Math.round(radiusM * 3.28084)} ft)
-                  </Tooltip>
-                  <Popup>
-                    <div style={{ minWidth: 160, padding: 4 }}>
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          fontSize: 12,
-                          marginBottom: 6,
-                          color: style.color,
-                        }}
-                      >
-                        {BLAST_LABELS[blastType] || blastType.replace(/_/g, ' ')}
+                  {!inspectStudsMode && (
+                    <Tooltip direction="center" permanent={false}>
+                      {bz.label} ({Math.round(radiusM * 3.28084)} ft)
+                    </Tooltip>
+                  )}
+                  {!inspectStudsMode && (
+                    <Popup>
+                      <div style={{ minWidth: 160, padding: 4 }}>
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            fontSize: 12,
+                            marginBottom: 6,
+                            color: style.color,
+                          }}
+                        >
+                          {BLAST_LABELS[blastType] || blastType.replace(/_/g, ' ')}
+                        </div>
+                        <label
+                          style={{
+                            fontSize: 11,
+                            display: 'block',
+                            marginBottom: 2,
+                            color: '#555',
+                          }}
+                        >
+                          Radius (meters)
+                        </label>
+                        <input
+                          type="number"
+                          min={5}
+                          max={500}
+                          step={5}
+                          defaultValue={radiusM}
+                          onBlur={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            if (!isNaN(val) && val >= 5 && val !== radiusM)
+                              onZoneLocationRadiusChange(bz.id, val);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '4px 6px',
+                            fontSize: 13,
+                            border: `1px solid ${style.color}`,
+                            borderRadius: 4,
+                            outline: 'none',
+                            background: '#f9f9f9',
+                            color: '#222',
+                          }}
+                        />
+                        <div style={{ marginTop: 4, fontSize: 10, color: '#888' }}>
+                          {Math.round(radiusM * 3.28084)} ft
+                        </div>
                       </div>
-                      <label
-                        style={{
-                          fontSize: 11,
-                          display: 'block',
-                          marginBottom: 2,
-                          color: '#555',
-                        }}
-                      >
-                        Radius (meters)
-                      </label>
-                      <input
-                        type="number"
-                        min={5}
-                        max={500}
-                        step={5}
-                        defaultValue={radiusM}
-                        onBlur={(e) => {
-                          const val = parseInt(e.target.value, 10);
-                          if (!isNaN(val) && val >= 5 && val !== radiusM)
-                            onZoneLocationRadiusChange(bz.id, val);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                        }}
-                        style={{
-                          width: '100%',
-                          padding: '4px 6px',
-                          fontSize: 13,
-                          border: `1px solid ${style.color}`,
-                          borderRadius: 4,
-                          outline: 'none',
-                          background: '#f9f9f9',
-                          color: '#222',
-                        }}
-                      />
-                      <div style={{ marginTop: 4, fontSize: 10, color: '#888' }}>
-                        {Math.round(radiusM * 3.28084)} ft
-                      </div>
-                    </div>
-                  </Popup>
+                    </Popup>
+                  )}
                 </Polygon>
               );
             })}

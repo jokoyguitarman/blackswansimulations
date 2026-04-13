@@ -198,7 +198,11 @@ export function generateStudGrids(
       const allStuds: BuildingStud[] = [];
       for (const floor of floors) {
         const studs = generateStudsForPolygon(b.footprint_polygon, spacingM, floor, i);
-        for (const s of studs) s.isIncidentBuilding = true;
+        for (const s of studs) {
+          s.isIncidentBuilding = true;
+          s.spatialContext = 'inside_building';
+          s.contextBuildingName = b.name ?? undefined;
+        }
         allStuds.push(...studs);
       }
 
