@@ -1072,6 +1072,39 @@ export const WarRoom = () => {
             </div>
           )}
 
+          {/* Location Picker — browser-side Nominatim search */}
+          <div className="border border-robotic-yellow/30 p-4 mt-6">
+            <button
+              type="button"
+              onClick={() => setLocationPickerOpen((v) => !v)}
+              className="w-full text-left flex items-center justify-between"
+            >
+              <h4 className="text-sm terminal-text uppercase text-robotic-yellow">
+                [LOCATION SELECTION]
+                {manualCoords && (
+                  <span className="text-robotic-green ml-2 text-[10px] normal-case">
+                    {manualCoords.lat.toFixed(4)}, {manualCoords.lng.toFixed(4)}
+                  </span>
+                )}
+              </h4>
+              <span className="text-robotic-yellow/50 text-xs terminal-text">
+                {locationPickerOpen ? '[-]' : '[+]'}
+              </span>
+            </button>
+            {!locationPickerOpen && (
+              <p className="text-[10px] terminal-text text-robotic-yellow/40 mt-1">
+                {manualCoords
+                  ? 'Location set. Click to change.'
+                  : 'Optional — search and select a real-world location for your scenario.'}
+              </p>
+            )}
+            {locationPickerOpen && (
+              <div className="mt-3">
+                <LocationPicker onLocationChange={setManualCoords} initialLocation={manualCoords} />
+              </div>
+            )}
+          </div>
+
           <div className="mt-6">
             <label className="block text-xs terminal-text text-robotic-yellow/70 mb-2">
               [DURATION] Game length in minutes
@@ -1359,44 +1392,6 @@ export const WarRoom = () => {
                 )}
               </p>
             </div>
-
-            {/* Location Picker — browser-side Nominatim search */}
-            {wizardMode && (
-              <div className="border border-robotic-yellow/30 p-4 mt-4">
-                <button
-                  type="button"
-                  onClick={() => setLocationPickerOpen((v) => !v)}
-                  className="w-full text-left flex items-center justify-between"
-                >
-                  <h4 className="text-sm terminal-text uppercase text-robotic-yellow">
-                    [LOCATION SELECTION]
-                    {manualCoords && (
-                      <span className="text-robotic-green ml-2 text-[10px] normal-case">
-                        {manualCoords.lat.toFixed(4)}, {manualCoords.lng.toFixed(4)}
-                      </span>
-                    )}
-                  </h4>
-                  <span className="text-robotic-yellow/50 text-xs terminal-text">
-                    {locationPickerOpen ? '[-]' : '[+]'}
-                  </span>
-                </button>
-                {!locationPickerOpen && (
-                  <p className="text-[10px] terminal-text text-robotic-yellow/40 mt-1">
-                    {manualCoords
-                      ? 'Location set. Click to change.'
-                      : 'Optional — pre-select a location to skip server-side geocoding.'}
-                  </p>
-                )}
-                {locationPickerOpen && (
-                  <div className="mt-3">
-                    <LocationPicker
-                      onLocationChange={setManualCoords}
-                      initialLocation={manualCoords}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
 
