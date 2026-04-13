@@ -683,6 +683,12 @@ export const MapView = ({
     };
   }, [sessionId, isMapDisabled, locationsRefreshTrigger]);
 
+  useEffect(() => {
+    if (locationsRefreshTrigger > 0) {
+      setStudRefreshKey((k) => k + 1);
+    }
+  }, [locationsRefreshTrigger]);
+
   // Compute effective map center from incident site pin when scenario has no center_lat/lng
   const effectiveCenter = useMemo(() => {
     if (

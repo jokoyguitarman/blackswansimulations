@@ -705,6 +705,8 @@ export const SessionView = () => {
   const [mapHasBeenOpened, setMapHasBeenOpened] = useState(false);
   const [showMapDecisionForm, setShowMapDecisionForm] = useState(false);
   const [locationsRefreshTrigger, setLocationsRefreshTrigger] = useState(0);
+  const [backfillLoading, setBackfillLoading] = useState(false);
+  const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
   const sessionContentRef = useRef<HTMLDivElement | null>(null);
   const [_incidents, setIncidents] = useState<
     Array<{
@@ -2436,6 +2438,40 @@ export const SessionView = () => {
                   <h3 className="text-lg terminal-text uppercase">
                     [TRAINER MAP] All markings and pins
                   </h3>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={async () => {
+                        const scId = session?.scenarios?.id ?? session?.scenario_id;
+                        if (!scId) return;
+                        setBackfillLoading(true);
+                        setBackfillMsg(null);
+                        try {
+                          const res = await api.scenarios.backfillBuildings(scId);
+                          setBackfillMsg(
+                            res.status === 'backfilled'
+                              ? `Loaded ${res.buildingCount} buildings`
+                              : res.status === 'already_populated'
+                                ? `${res.buildingCount} buildings already loaded`
+                                : res.message,
+                          );
+                          setLocationsRefreshTrigger((t) => t + 1);
+                        } catch (err) {
+                          setBackfillMsg(err instanceof Error ? err.message : 'Backfill failed');
+                        } finally {
+                          setBackfillLoading(false);
+                        }
+                      }}
+                      disabled={backfillLoading}
+                      className="military-button px-3 py-1.5 text-[10px] terminal-text whitespace-nowrap border-cyan-400 text-cyan-400 hover:bg-cyan-400/10 disabled:opacity-50"
+                    >
+                      {backfillLoading ? 'LOADING...' : '[BACKFILL_BUILDINGS]'}
+                    </button>
+                    {backfillMsg && (
+                      <span className="text-[10px] terminal-text text-green-400 max-w-[200px] truncate">
+                        {backfillMsg}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden">
                   <MapView

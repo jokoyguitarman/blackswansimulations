@@ -303,6 +303,19 @@ export const api = {
         }>;
       }>(await fetch(apiUrl(`/api/scenarios/${scenarioId}/building-studs${qs}`), { headers }));
     },
+    backfillBuildings: async (scenarioId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        status: string;
+        buildingCount: number;
+        message: string;
+      }>(
+        await fetch(apiUrl(`/api/scenarios/${scenarioId}/backfill-buildings`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
     getScenarioResearch: async (id: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{

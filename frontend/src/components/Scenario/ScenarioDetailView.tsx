@@ -1627,6 +1627,9 @@ const MapPinsTab = ({
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [retryDetLoading, setRetryDetLoading] = useState(false);
   const [retryDetMsg, setRetryDetMsg] = useState<string | null>(null);
+  const [backfillLoading, setBackfillLoading] = useState(false);
+  const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
+  const [studRefreshKey, setStudRefreshKey] = useState(0);
   const [activeFloor, setActiveFloor] = useState('G');
 
   // Add-pin mode state
@@ -2233,6 +2236,39 @@ const MapPinsTab = ({
         </div>
       )}
       {retryDetMsg && <div className="text-xs terminal-text text-green-400 p-1">{retryDetMsg}</div>}
+
+      {/* Backfill buildings toolbar */}
+      <div className="flex items-center gap-3 p-2 military-border bg-cyan-900/10">
+        <div className="text-xs terminal-text text-robotic-yellow/70">
+          Missing building studs? Fetch buildings from OpenStreetMap.
+        </div>
+        <button
+          onClick={async () => {
+            setBackfillLoading(true);
+            setBackfillMsg(null);
+            try {
+              const res = await api.scenarios.backfillBuildings(scenarioId);
+              setBackfillMsg(
+                res.status === 'backfilled'
+                  ? `Loaded ${res.buildingCount} buildings`
+                  : res.status === 'already_populated'
+                    ? `${res.buildingCount} buildings already loaded`
+                    : res.message,
+              );
+              setStudRefreshKey((k) => k + 1);
+            } catch (err) {
+              setBackfillMsg(err instanceof Error ? err.message : 'Backfill failed');
+            } finally {
+              setBackfillLoading(false);
+            }
+          }}
+          disabled={backfillLoading}
+          className="ml-auto px-4 py-1.5 text-xs terminal-text bg-cyan-700 hover:bg-cyan-600 text-white rounded border border-cyan-500 disabled:opacity-50"
+        >
+          {backfillLoading ? 'LOADING...' : 'BACKFILL BUILDINGS'}
+        </button>
+      </div>
+      {backfillMsg && <div className="text-xs terminal-text text-green-400 p-1">{backfillMsg}</div>}
 
       {/* Add Pin toolbar */}
       <div className="flex flex-wrap items-center gap-2 p-2 military-border bg-black/30">
@@ -3104,7 +3140,11 @@ const MapPinsTab = ({
             ))}
 
           {/* Building Stud Overlay — snap-point grid inside buildings */}
-          <BuildingStudOverlay scenarioId={scenarioId} floor={activeFloor} />
+          <BuildingStudOverlay
+            scenarioId={scenarioId}
+            floor={activeFloor}
+            refreshKey={studRefreshKey}
+          />
         </MapContainer>
         {/* Floor Selector */}
         {floorPlans.length > 1 && (
