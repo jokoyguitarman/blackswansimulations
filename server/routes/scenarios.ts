@@ -2533,6 +2533,7 @@ router.get('/:id/building-studs', requireAuth, async (req, res) => {
       polygon: g.polygon,
       floors: g.floors,
       spacingM: g.spacingM,
+      isIncidentBuilding: g.isIncidentBuilding ?? false,
       studs: g.studs
         .filter((s) => !floor || s.floor === floor)
         .map((s) => ({
@@ -2544,10 +2545,25 @@ router.get('/:id/building-studs', requireAuth, async (req, res) => {
           blastBand: s.blastBand ?? null,
           operationalZone: s.operationalZone ?? null,
           distFromIncidentM: s.distFromIncidentM != null ? Math.round(s.distFromIncidentM) : null,
+          studType: s.studType ?? 'building',
         })),
     }));
 
-    res.json({ grids: responseGrids });
+    // Include road polylines from insider_knowledge for frontend rendering
+    const { data: scData } = await supabaseAdmin
+      .from('scenarios')
+      .select('insider_knowledge')
+      .eq('id', scenarioId)
+      .single();
+    const scIk = scData?.insider_knowledge as Record<string, unknown> | null;
+    const osmVic = scIk?.osm_vicinity as Record<string, unknown> | undefined;
+    const routeGeoms = (osmVic?.route_geometries ?? []) as Array<{
+      name: string;
+      highway_type: string;
+      coordinates: [number, number][];
+    }>;
+
+    res.json({ grids: responseGrids, roadPolylines: routeGeoms });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /scenarios/:id/building-studs');
     res.status(500).json({ error: 'Internal server error' });

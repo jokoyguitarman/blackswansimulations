@@ -290,6 +290,7 @@ export const api = {
           polygon: [number, number][];
           floors: string[];
           spacingM: number;
+          isIncidentBuilding: boolean;
           studs: Array<{
             id: string;
             lat: number;
@@ -299,7 +300,13 @@ export const api = {
             blastBand: string | null;
             operationalZone: string | null;
             distFromIncidentM: number | null;
+            studType: string;
           }>;
+        }>;
+        roadPolylines: Array<{
+          name: string;
+          highway_type: string;
+          coordinates: [number, number][];
         }>;
       }>(await fetch(apiUrl(`/api/scenarios/${scenarioId}/building-studs${qs}`), { headers }));
     },

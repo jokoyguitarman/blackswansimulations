@@ -144,6 +144,81 @@ export function polygonBoundingBox(ring: [number, number][]): {
 }
 
 // ---------------------------------------------------------------------------
+// Point-to-polyline distance (meters)
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimum distance from a point to a polyline (sequence of [lat,lng] vertices).
+ * Computes the perpendicular distance to each segment, or the endpoint distance
+ * when the projection falls outside the segment.
+ */
+export function distToPolylineM(lat: number, lng: number, polyline: [number, number][]): number {
+  if (polyline.length === 0) return Infinity;
+  if (polyline.length === 1) return haversineM(lat, lng, polyline[0][0], polyline[0][1]);
+
+  let minDist = Infinity;
+  const cosLat = Math.cos((lat * Math.PI) / 180);
+
+  for (let i = 0; i < polyline.length - 1; i++) {
+    const [aLat, aLng] = polyline[i];
+    const [bLat, bLng] = polyline[i + 1];
+
+    const dx = (bLng - aLng) * cosLat;
+    const dy = bLat - aLat;
+    const lenSq = dx * dx + dy * dy;
+
+    let projLat: number, projLng: number;
+
+    if (lenSq < 1e-16) {
+      projLat = aLat;
+      projLng = aLng;
+    } else {
+      const px = (lng - aLng) * cosLat;
+      const py = lat - aLat;
+      const t = Math.max(0, Math.min(1, (px * dx + py * dy) / lenSq));
+      projLat = aLat + t * dy;
+      projLng = aLng + t * (bLng - aLng);
+    }
+
+    const d = haversineM(lat, lng, projLat, projLng);
+    if (d < minDist) minDist = d;
+  }
+
+  return minDist;
+}
+
+/**
+ * Generate evenly spaced points along a polyline.
+ * Returns [lat, lng] pairs at `spacingM` meter intervals.
+ */
+export function samplePolyline(polyline: [number, number][], spacingM: number): [number, number][] {
+  if (polyline.length < 2) return [];
+
+  const points: [number, number][] = [];
+  let carry = 0;
+
+  for (let i = 0; i < polyline.length - 1; i++) {
+    const [aLat, aLng] = polyline[i];
+    const [bLat, bLng] = polyline[i + 1];
+    const segLen = haversineM(aLat, aLng, bLat, bLng);
+    if (segLen < 0.1) continue;
+
+    const dLat = bLat - aLat;
+    const dLng = bLng - aLng;
+    let along = carry > 0 ? spacingM - carry : 0;
+
+    while (along <= segLen) {
+      const t = along / segLen;
+      points.push([aLat + t * dLat, aLng + t * dLng]);
+      along += spacingM;
+    }
+    carry = along - segLen;
+  }
+
+  return points;
+}
+
+// ---------------------------------------------------------------------------
 // Random point-in-polygon with minimum spacing
 // ---------------------------------------------------------------------------
 

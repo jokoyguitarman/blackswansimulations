@@ -29,6 +29,7 @@ export interface OsmVicinity {
   }>;
   cctv_or_surveillance?: Array<{ location: string; lat: number; lng: number }>;
   buildings?: OsmBuilding[];
+  route_geometries?: OsmRouteGeometry[];
 }
 
 function extractLatLng(element: {

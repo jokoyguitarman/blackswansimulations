@@ -7703,6 +7703,10 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
     if (!insiderKnowledge.osm_vicinity) insiderKnowledge.osm_vicinity = {} as OsmVicinity;
     insiderKnowledge.osm_vicinity.buildings = input.osmBuildings;
   }
+  if (input.osmRouteGeometries?.length) {
+    if (!insiderKnowledge.osm_vicinity) insiderKnowledge.osm_vicinity = {} as OsmVicinity;
+    insiderKnowledge.osm_vicinity.route_geometries = input.osmRouteGeometries;
+  }
   if (
     input.researchContext?.standards_findings &&
     input.researchContext.standards_findings.length > 0

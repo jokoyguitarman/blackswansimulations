@@ -9,8 +9,14 @@
  * Coordinate convention: [lat, lng][] — same as OSM building footprints and geoUtils.
  */
 
-import { polygonBoundingBox, pointInPolygon, haversineM } from './geoUtils.js';
-import type { OsmBuilding } from './osmVicinityService.js';
+import {
+  polygonBoundingBox,
+  pointInPolygon,
+  haversineM,
+  distToPolylineM,
+  samplePolyline,
+} from './geoUtils.js';
+import type { OsmBuilding, OsmRouteGeometry } from './osmVicinityService.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 
@@ -21,7 +27,7 @@ import { logger } from '../lib/logger.js';
 export type BlastBand = 'kill' | 'critical' | 'serious' | 'minor' | 'outside';
 export type OperationalZone = 'hot' | 'warm' | 'cold' | 'outside';
 
-export type StudType = 'building' | 'outdoor';
+export type StudType = 'building' | 'outdoor' | 'street';
 
 export interface BuildingStud {
   id: string;
@@ -33,6 +39,8 @@ export interface BuildingStud {
   blastBand?: BlastBand;
   operationalZone?: OperationalZone;
   distFromIncidentM?: number;
+  /** True when this stud's building is the primary incident site. */
+  isIncidentBuilding?: boolean;
 }
 
 export interface BlastBandConfig {
@@ -69,6 +77,8 @@ export interface StudGrid {
   floors: string[];
   studs: BuildingStud[];
   spacingM: number;
+  /** True when this grid belongs to the primary incident building. */
+  isIncidentBuilding?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,6 +87,7 @@ export interface StudGrid {
 
 const DEFAULT_SPACING_M = 5;
 const SNAP_MATCH_TOLERANCE_M = 2;
+const ROAD_AVOIDANCE_M = 4;
 
 // ---------------------------------------------------------------------------
 // Stud generation
@@ -125,34 +136,74 @@ export function generateStudsForPolygon(
 }
 
 /**
- * Generate stud grids for all buildings with footprint polygons.
- * For multi-floor buildings, each floor gets its own copy of the grid
- * (same XY positions, different floor label and stud IDs).
+ * Identify which building index contains or is nearest to the hazard center.
+ * Returns the index into `osmBuildings`, or -1 if none found.
+ */
+function findIncidentBuildingIndex(
+  osmBuildings: OsmBuilding[],
+  hazardCenter: { lat: number; lng: number } | null,
+): number {
+  if (!hazardCenter) return -1;
+
+  for (let i = 0; i < osmBuildings.length; i++) {
+    const poly = osmBuildings[i].footprint_polygon;
+    if (poly && poly.length >= 3 && pointInPolygon(hazardCenter.lat, hazardCenter.lng, poly)) {
+      return i;
+    }
+  }
+
+  let bestIdx = -1;
+  let bestDist = Infinity;
+  for (let i = 0; i < osmBuildings.length; i++) {
+    const poly = osmBuildings[i].footprint_polygon;
+    if (!poly || poly.length < 3) continue;
+    const cLat = poly.reduce((s, p) => s + p[0], 0) / poly.length;
+    const cLng = poly.reduce((s, p) => s + p[1], 0) / poly.length;
+    const d = haversineM(hazardCenter.lat, hazardCenter.lng, cLat, cLng);
+    if (d < bestDist && d < 50) {
+      bestDist = d;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+/**
+ * Generate stud grids for buildings.
+ * - Interior studs are only generated for the incident building (the one
+ *   containing or nearest to `hazardCenter`).
+ * - Surrounding buildings are included as polygon-only grids (no studs)
+ *   so the frontend can render their outlines as exclusion zones.
  */
 export function generateStudGrids(
   osmBuildings: OsmBuilding[],
   spacingM = DEFAULT_SPACING_M,
+  hazardCenter?: { lat: number; lng: number } | null,
 ): StudGrid[] {
   const grids: StudGrid[] = [];
+  const incidentIdx = findIncidentBuildingIndex(osmBuildings, hazardCenter ?? null);
 
   for (let i = 0; i < osmBuildings.length; i++) {
     const b = osmBuildings[i];
     if (!b.footprint_polygon || b.footprint_polygon.length < 3) continue;
 
+    const isIncident = i === incidentIdx;
+
     const aboveGround = b.building_levels ?? 1;
     const underground = b.building_levels_underground ?? 0;
-
     const floors: string[] = [];
     for (let u = underground; u > 0; u--) floors.push(`B${u}`);
     floors.push('G');
     for (let l = 1; l < aboveGround; l++) floors.push(`L${l}`);
 
-    const allStuds: BuildingStud[] = [];
-    for (const floor of floors) {
-      allStuds.push(...generateStudsForPolygon(b.footprint_polygon, spacingM, floor, i));
-    }
+    if (isIncident) {
+      const allStuds: BuildingStud[] = [];
+      for (const floor of floors) {
+        const studs = generateStudsForPolygon(b.footprint_polygon, spacingM, floor, i);
+        for (const s of studs) s.isIncidentBuilding = true;
+        allStuds.push(...studs);
+      }
 
-    if (allStuds.length > 0) {
       grids.push({
         buildingIndex: i,
         buildingName: b.name,
@@ -160,6 +211,17 @@ export function generateStudGrids(
         floors,
         studs: allStuds,
         spacingM,
+        isIncidentBuilding: true,
+      });
+    } else {
+      grids.push({
+        buildingIndex: i,
+        buildingName: b.name,
+        polygon: b.footprint_polygon,
+        floors,
+        studs: [],
+        spacingM,
+        isIncidentBuilding: false,
       });
     }
   }
@@ -181,7 +243,7 @@ const BAND_SPACING_MULTIPLIER: Record<BlastBand, number> = {
 
 /**
  * Generate a grid of outdoor studs across the blast radius area.
- * Skips points inside any building polygon (those already have building studs).
+ * Skips points inside any building polygon and points on road surfaces.
  * Uses adaptive spacing — finer near hazard center, coarser in outer bands.
  */
 export function generateBlastRadiusStuds(
@@ -189,6 +251,7 @@ export function generateBlastRadiusStuds(
   blastBands: BlastBandConfig[],
   buildingGrids: StudGrid[],
   baseSpacingM = 5,
+  roadPolylines: [number, number][][] = [],
 ): StudGrid | null {
   if (hazardCenters.length === 0 || blastBands.length === 0) return null;
 
@@ -266,6 +329,19 @@ export function generateBlastRadiusStuds(
           continue;
         }
 
+        // Skip points on road surfaces (~4m from centerline)
+        let onRoad = false;
+        for (const roadLine of roadPolylines) {
+          if (distToPolylineM(lat, lng, roadLine) < ROAD_AVOIDANCE_M) {
+            onRoad = true;
+            break;
+          }
+        }
+        if (onRoad) {
+          col++;
+          continue;
+        }
+
         usedKeys.add(key);
         studs.push({
           id: `blast-${hi}-${row}-${col}`,
@@ -293,6 +369,78 @@ export function generateBlastRadiusStuds(
     floors: ['G'],
     studs,
     spacingM: baseSpacingM,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Street stud generation — studs following road centerlines
+// ---------------------------------------------------------------------------
+
+const STREET_STUD_SPACING_M = 5;
+
+/**
+ * Generate studs along road centerlines within the given radius of a center
+ * point. Skips points inside any building polygon.
+ */
+export function generateStreetStuds(
+  center: { lat: number; lng: number },
+  routeGeometries: OsmRouteGeometry[],
+  buildingGrids: StudGrid[],
+  radiusM: number = 300,
+  spacingM: number = STREET_STUD_SPACING_M,
+): StudGrid | null {
+  if (routeGeometries.length === 0) return null;
+
+  const buildingPolygons = buildingGrids.filter((g) => g.polygon.length >= 3).map((g) => g.polygon);
+
+  const studs: BuildingStud[] = [];
+  const usedKeys = new Set<string>();
+
+  for (let ri = 0; ri < routeGeometries.length; ri++) {
+    const route = routeGeometries[ri];
+    if (!route.coordinates || route.coordinates.length < 2) continue;
+
+    const samples = samplePolyline(route.coordinates, spacingM);
+
+    for (let si = 0; si < samples.length; si++) {
+      const [lat, lng] = samples[si];
+
+      if (haversineM(lat, lng, center.lat, center.lng) > radiusM) continue;
+
+      const key = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+      if (usedKeys.has(key)) continue;
+
+      let insideBuilding = false;
+      for (const poly of buildingPolygons) {
+        if (pointInPolygon(lat, lng, poly)) {
+          insideBuilding = true;
+          break;
+        }
+      }
+      if (insideBuilding) continue;
+
+      usedKeys.add(key);
+      studs.push({
+        id: `street-${ri}-${si}`,
+        lat,
+        lng,
+        floor: 'G',
+        buildingIndex: -2,
+        studType: 'street',
+        distFromIncidentM: Math.round(haversineM(lat, lng, center.lat, center.lng)),
+      });
+    }
+  }
+
+  if (studs.length === 0) return null;
+
+  return {
+    buildingIndex: -2,
+    buildingName: 'Street Network',
+    polygon: [],
+    floors: ['G'],
+    studs,
+    spacingM,
   };
 }
 
@@ -677,12 +825,13 @@ export function invalidateGridCache(scenarioId: string): void {
 
 /**
  * Load fully classified stud grids for a scenario. On cache miss it:
- *  1. Reads buildings from insider_knowledge.osm_vicinity.buildings
- *  2. Generates building stud grids
+ *  1. Reads buildings + routes from insider_knowledge.osm_vicinity
+ *  2. Generates building stud grids (interior studs only for incident building)
  *  3. Reads hazard centers + weapon class from the DB
- *  4. Generates outdoor blast radius studs around hazard centers
- *  5. Classifies all studs with zone + blast band metadata
- *  6. Caches the result
+ *  4. Generates outdoor blast radius studs (avoiding buildings + roads)
+ *  5. Generates street studs along road centerlines
+ *  6. Classifies all studs with zone + blast band metadata
+ *  7. Caches the result
  */
 export async function loadClassifiedGrids(scenarioId: string): Promise<StudGrid[]> {
   const cached = getCachedGrids(scenarioId);
@@ -702,7 +851,7 @@ export async function loadClassifiedGrids(scenarioId: string): Promise<StudGrid[
 
   if (!buildings?.length) return [];
 
-  const grids = generateStudGrids(buildings);
+  const routeGeometries = (osmVicinity?.route_geometries ?? []) as OsmRouteGeometry[];
 
   const [hazRes, locRes] = await Promise.all([
     supabaseAdmin
@@ -723,6 +872,13 @@ export async function loadClassifiedGrids(scenarioId: string): Promise<StudGrid[
       lng: h.location_lng as number,
     }));
 
+  const primaryHazard = hazardCenters[0] ?? null;
+  const grids = generateStudGrids(buildings, DEFAULT_SPACING_M, primaryHazard);
+
+  const roadPolylines: [number, number][][] = routeGeometries
+    .filter((r) => r.coordinates?.length >= 2)
+    .map((r) => r.coordinates);
+
   if (hazardCenters.length > 0) {
     const threatProfile = ik?.threat_profile as Record<string, unknown> | undefined;
     const weaponClass = threatProfile?.weapon_class as string | undefined;
@@ -733,7 +889,13 @@ export async function loadClassifiedGrids(scenarioId: string): Promise<StudGrid[
           ? BLAST_BANDS_MELEE
           : BLAST_BANDS_DEFAULT;
 
-    const outdoorGrid = generateBlastRadiusStuds(hazardCenters, blastBands, grids);
+    const outdoorGrid = generateBlastRadiusStuds(
+      hazardCenters,
+      blastBands,
+      grids,
+      DEFAULT_SPACING_M,
+      roadPolylines,
+    );
     if (outdoorGrid) grids.push(outdoorGrid);
 
     const zonePolygons: Array<{ zone_type: string; polygon: [number, number][] }> = [];
@@ -748,6 +910,12 @@ export async function loadClassifiedGrids(scenarioId: string): Promise<StudGrid[
     }
 
     classifyStudZones(grids, hazardCenters, zonePolygons, blastBands);
+  }
+
+  // Street studs along road centerlines
+  if (primaryHazard && routeGeometries.length > 0) {
+    const streetGrid = generateStreetStuds(primaryHazard, routeGeometries, grids, 300);
+    if (streetGrid) grids.push(streetGrid);
   }
 
   setCachedGrids(scenarioId, grids);

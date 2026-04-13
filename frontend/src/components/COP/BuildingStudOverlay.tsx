@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { CircleMarker, Polygon, useMap } from 'react-leaflet';
+import { CircleMarker, Polygon, Polyline, useMap } from 'react-leaflet';
 import { api } from '../../lib/api';
 
 interface StudData {
@@ -11,6 +11,7 @@ interface StudData {
   blastBand: string | null;
   operationalZone: string | null;
   distFromIncidentM: number | null;
+  studType: string;
 }
 
 interface GridData {
@@ -19,7 +20,14 @@ interface GridData {
   polygon: [number, number][];
   floors: string[];
   spacingM: number;
+  isIncidentBuilding: boolean;
   studs: StudData[];
+}
+
+interface RoadPolyline {
+  name: string;
+  highway_type: string;
+  coordinates: [number, number][];
 }
 
 interface BuildingStudOverlayProps {
@@ -41,6 +49,7 @@ const ZONE_COLORS: Record<string, { color: string; fill: string }> = {
 
 const OCCUPIED_STYLE = { color: '#94a3b8', fill: '#94a3b8' };
 const DEFAULT_STYLE = { color: '#6366f1', fill: '#818cf8' };
+const STREET_STYLE = { color: '#10b981', fill: '#34d399' };
 
 function getStudStyle(stud: StudData) {
   if (stud.occupied) {
@@ -49,6 +58,16 @@ function getStudStyle(stud: StudData) {
       fillColor: OCCUPIED_STYLE.fill,
       fillOpacity: 0.25,
       weight: 0.5,
+      radius: 2.5,
+    };
+  }
+
+  if (stud.studType === 'street') {
+    return {
+      color: STREET_STYLE.color,
+      fillColor: STREET_STYLE.fill,
+      fillOpacity: 0.6,
+      weight: 1,
       radius: 2.5,
     };
   }
@@ -73,12 +92,14 @@ export const BuildingStudOverlay = ({
 }: BuildingStudOverlayProps) => {
   const map = useMap();
   const [grids, setGrids] = useState<GridData[]>([]);
+  const [roads, setRoads] = useState<RoadPolyline[]>([]);
   const [zoom, setZoom] = useState(map.getZoom());
 
   const fetchStuds = useCallback(async () => {
     try {
       const result = await api.scenarios.getBuildingStuds(scenarioId, sessionId, floor);
       if (result?.grids) setGrids(result.grids);
+      if (result?.roadPolylines) setRoads(result.roadPolylines);
     } catch {
       // Non-critical — overlay just won't render
     }
@@ -96,22 +117,55 @@ export const BuildingStudOverlay = ({
     };
   }, [map]);
 
-  if (zoom < MIN_ZOOM_TO_SHOW || grids.length === 0) return null;
+  if (zoom < MIN_ZOOM_TO_SHOW || (grids.length === 0 && roads.length === 0)) return null;
 
   return (
     <>
-      {grids.map((grid) => (
-        <Polygon
-          key={`bldg-outline-${grid.buildingIndex}`}
-          positions={grid.polygon.map(([lat, lng]) => [lat, lng] as [number, number])}
+      {/* Road polylines — rendered underneath everything */}
+      {roads.map((road, ri) => (
+        <Polyline
+          key={`road-${ri}`}
+          positions={road.coordinates.map(([lat, lng]) => [lat, lng] as [number, number])}
           pathOptions={{
-            color: '#6366f1',
-            weight: 1,
-            fillOpacity: 0.03,
-            dashArray: '4, 4',
+            color: '#475569',
+            weight: 3,
+            opacity: 0.35,
+            dashArray: '6, 4',
           }}
+          interactive={false}
         />
       ))}
+
+      {/* Building outlines — incident vs surrounding */}
+      {grids.map((grid) => {
+        if (grid.polygon.length < 3) return null;
+
+        const isIncident = grid.isIncidentBuilding;
+        return (
+          <Polygon
+            key={`bldg-outline-${grid.buildingIndex}`}
+            positions={grid.polygon.map(([lat, lng]) => [lat, lng] as [number, number])}
+            pathOptions={
+              isIncident
+                ? {
+                    color: '#f97316',
+                    weight: 2,
+                    fillOpacity: 0.08,
+                    fillColor: '#f97316',
+                  }
+                : {
+                    color: '#64748b',
+                    weight: 1,
+                    fillOpacity: 0.12,
+                    fillColor: '#475569',
+                    dashArray: '4, 4',
+                  }
+            }
+          />
+        );
+      })}
+
+      {/* Stud dots */}
       {grids.flatMap((grid) =>
         grid.studs.map((stud) => {
           const style = getStudStyle(stud);
