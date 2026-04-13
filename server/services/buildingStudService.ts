@@ -85,7 +85,7 @@ export interface StudGrid {
 
 const DEFAULT_SPACING_M = 5;
 const SNAP_MATCH_TOLERANCE_M = 2;
-const ROAD_AVOIDANCE_M = 4;
+const ROAD_AVOIDANCE_M = 8;
 
 // ---------------------------------------------------------------------------
 // Stud generation
@@ -789,7 +789,7 @@ export async function loadClassifiedGrids(scenarioId: string): Promise<StudGrid[
 
   if (!buildings?.length) return [];
 
-  const routeGeometries = (osmVicinity?.route_geometries ?? []) as OsmRouteGeometry[];
+  let routeGeometries = (osmVicinity?.route_geometries ?? []) as OsmRouteGeometry[];
   let wideFootprints = (osmVicinity?.building_footprints ?? []) as BuildingFootprint[];
 
   const [hazRes, locRes] = await Promise.all([
@@ -814,43 +814,63 @@ export async function loadClassifiedGrids(scenarioId: string): Promise<StudGrid[
   const primaryHazard = hazardCenters[0] ?? null;
   const grids = generateStudGrids(buildings, DEFAULT_SPACING_M, primaryHazard);
 
-  const roadDataForClassify: RoadData[] = routeGeometries
-    .filter((r) => r.coordinates?.length >= 2)
-    .map((r) => ({ name: r.name, polyline: r.coordinates }));
-
-  // Fetch wide-area building footprints for classification if not cached
-  if (wideFootprints.length === 0 && hazardCenters.length > 0) {
+  // Auto-fetch missing route geometries and building footprints
+  if (hazardCenters.length > 0) {
     const centerLat = (sc.center_lat as number | null) ?? primaryHazard?.lat;
     const centerLng = (sc.center_lng as number | null) ?? primaryHazard?.lng;
-    if (centerLat != null && centerLng != null) {
-      try {
-        const { fetchBuildingFootprints } = await import('./osmVicinityService.js');
-        wideFootprints = await fetchBuildingFootprints(centerLat, centerLng, 8000);
-        if (wideFootprints.length > 0) {
-          const existingIk = (sc.insider_knowledge ?? {}) as Record<string, unknown>;
-          const existingOsm = (existingIk.osm_vicinity ?? {}) as Record<string, unknown>;
-          await supabaseAdmin
-            .from('scenarios')
-            .update({
-              insider_knowledge: {
-                ...existingIk,
-                osm_vicinity: {
-                  ...existingOsm,
-                  building_footprints: wideFootprints,
-                },
-              },
-            })
-            .eq('id', scenarioId);
+    const needRoutes = routeGeometries.length === 0;
+    const needFootprints = wideFootprints.length === 0;
+
+    if ((needRoutes || needFootprints) && centerLat != null && centerLng != null) {
+      const { fetchBuildingFootprints, fetchRouteGeometries } =
+        await import('./osmVicinityService.js');
+      const patchFields: Record<string, unknown> = {};
+
+      if (needRoutes) {
+        try {
+          routeGeometries = await fetchRouteGeometries(centerLat, centerLng, 8000);
+          if (routeGeometries.length > 0) patchFields.route_geometries = routeGeometries;
+          logger.info(
+            { scenarioId, routeCount: routeGeometries.length },
+            'Route geometries auto-fetched for stud classification',
+          );
+        } catch (err) {
+          logger.warn({ scenarioId, err }, 'Failed to auto-fetch route geometries');
+        }
+      }
+
+      if (needFootprints) {
+        try {
+          wideFootprints = await fetchBuildingFootprints(centerLat, centerLng, 8000);
+          if (wideFootprints.length > 0) patchFields.building_footprints = wideFootprints;
           logger.info(
             { scenarioId, footprintCount: wideFootprints.length },
-            'Wide-area building footprints fetched and persisted',
+            'Wide-area building footprints auto-fetched',
           );
+        } catch (err) {
+          logger.warn({ scenarioId, err }, 'Failed to auto-fetch building footprints');
         }
-      } catch (err) {
-        logger.warn({ scenarioId, err }, 'Failed to fetch wide-area building footprints');
+      }
+
+      if (Object.keys(patchFields).length > 0) {
+        const existingIk = (sc.insider_knowledge ?? {}) as Record<string, unknown>;
+        const existingOsm = (existingIk.osm_vicinity ?? {}) as Record<string, unknown>;
+        await supabaseAdmin
+          .from('scenarios')
+          .update({
+            insider_knowledge: {
+              ...existingIk,
+              osm_vicinity: { ...existingOsm, ...patchFields },
+            },
+          })
+          .eq('id', scenarioId);
       }
     }
   }
+
+  const roadDataForClassify: RoadData[] = routeGeometries
+    .filter((r) => r.coordinates?.length >= 2)
+    .map((r) => ({ name: r.name, polyline: r.coordinates }));
 
   if (hazardCenters.length > 0) {
     const threatProfile = ik?.threat_profile as Record<string, unknown> | undefined;
@@ -1277,7 +1297,7 @@ export async function backfillBuildingsForScenario(
   if (needRoutes) {
     try {
       logger.info({ scenarioId, lat, lng }, 'Backfill: fetching route geometries from Overpass');
-      routes = await fetchRouteGeometries(lat, lng, 1500);
+      routes = await fetchRouteGeometries(lat, lng, 8000);
       logger.info({ scenarioId, routeCount: routes.length }, 'Backfill: route geometries fetched');
     } catch (err) {
       logger.warn({ scenarioId, err }, 'Backfill: route geometries fetch failed (non-critical)');

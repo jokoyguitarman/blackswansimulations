@@ -503,29 +503,24 @@ export async function fetchRouteGeometries(
   lng: number,
   radiusMeters: number = 6000,
 ): Promise<OsmRouteGeometry[]> {
-  const radius = Math.min(radiusMeters, 8000);
+  const radius = Math.min(radiusMeters, 10000);
   const query = `
-[out:json][timeout:60];
+[out:json][timeout:90];
 (
-  way["highway"~"^(primary|secondary|tertiary|trunk|motorway|residential|unclassified)"](around:${radius},${lat},${lng});
+  way["highway"~"^(primary|secondary|tertiary|trunk|motorway|residential|unclassified|service|footway|pedestrian|path|cycleway|living_street|steps|track)"](around:${radius},${lat},${lng});
 );
 out body geom;
 `;
 
-  const elements = await runRawOverpassQuery(query);
-  const seen = new Set<string>();
+  const elements = await runRawOverpassQuery(query, 95000);
   const results: OsmRouteGeometry[] = [];
 
   for (const el of elements) {
     const tags = (el.tags as Record<string, string>) || {};
     const geometry = el.geometry as Array<{ lat: number; lon: number }> | undefined;
-    if (!geometry?.length) continue;
+    if (!geometry?.length || geometry.length < 2) continue;
 
     const name = tags.name || tags.ref || `${tags.highway} road`;
-    const dedup = `${name}-${tags.highway}`;
-    if (seen.has(dedup)) continue;
-    seen.add(dedup);
-
     const coordinates: [number, number][] = geometry.map((pt) => [pt.lat, pt.lon]);
     const midIdx = Math.floor(coordinates.length / 2);
     const midPt = coordinates[midIdx] ?? coordinates[0];
@@ -542,7 +537,7 @@ out body geom;
 
   results.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
 
-  const MAX_ROUTES = 40;
+  const MAX_ROUTES = 200;
   logger.info(
     { total: results.length, returned: Math.min(results.length, MAX_ROUTES), radius },
     'OSM route geometries fetched',
