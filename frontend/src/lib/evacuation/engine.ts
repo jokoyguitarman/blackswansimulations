@@ -1,7 +1,7 @@
 import Matter from 'matter-js';
 import type { ExitDef, SimConfig } from './types';
 
-const WALL_THICKNESS = 0.6;
+const WALL_THICKNESS = 1.0;
 const PED_CATEGORY = 0x0001;
 const WALL_CATEGORY = 0x0002;
 
@@ -149,7 +149,7 @@ export class EvacuationEngine {
 
   private spawnPedestrians() {
     const { roomWidth: w, roomHeight: h, pedestrianCount, pedestrianRadius: r } = this.config;
-    const margin = WALL_THICKNESS + r * 2;
+    const margin = WALL_THICKNESS + r * 3;
 
     for (let i = 0; i < pedestrianCount; i++) {
       const x = margin + Math.random() * (w - 2 * margin);
@@ -157,9 +157,9 @@ export class EvacuationEngine {
 
       const body = Matter.Bodies.circle(x, y, r, {
         restitution: 0.05,
-        friction: 0.1,
-        frictionAir: 0.08,
-        density: 0.002,
+        friction: 0.3,
+        frictionAir: 0.15,
+        density: 50,
         label: 'pedestrian',
       });
 
@@ -199,8 +199,9 @@ export class EvacuationEngine {
   }
 
   step() {
-    const { dt, desiredSpeed, panicFactor, exitForceScale } = this.config;
-    const speed = desiredSpeed * (1 + panicFactor * 0.6);
+    const { dt, desiredSpeed, panicFactor } = this.config;
+    const targetSpeed = desiredSpeed * (1 + panicFactor * 0.6);
+    const tau = 0.4; // relaxation time — lower = snappier steering
 
     for (const body of this.pedestrians) {
       const ped: PedLabel = (body as any).__ped;
@@ -218,42 +219,86 @@ export class EvacuationEngine {
       const nx = dx / dist;
       const ny = dy / dist;
 
-      const forceScale = exitForceScale * (1 + panicFactor * 0.3);
-      const fx = nx * speed * forceScale;
-      const fy = ny * speed * forceScale;
+      // Social-force velocity relaxation: F = m * (v_desired - v_current) / tau
+      const vDesX = nx * targetSpeed;
+      const vDesY = ny * targetSpeed;
+      const mass = body.mass;
+      const fx = (mass * (vDesX - body.velocity.x)) / tau;
+      const fy = (mass * (vDesY - body.velocity.y)) / tau;
 
-      Matter.Body.applyForce(body, body.position, { x: fx, y: fy });
+      Matter.Body.applyForce(body, body.position, {
+        x: fx * dt,
+        y: fy * dt,
+      });
 
+      // Hard speed clamp so nobody flies through walls
       const currentSpeed = Math.sqrt(body.velocity.x ** 2 + body.velocity.y ** 2);
-      const maxSpeed = speed * 1.3;
+      const maxSpeed = targetSpeed * 1.2;
       if (currentSpeed > maxSpeed) {
-        const scale = maxSpeed / currentSpeed;
+        const s = maxSpeed / currentSpeed;
         Matter.Body.setVelocity(body, {
-          x: body.velocity.x * scale,
-          y: body.velocity.y * scale,
+          x: body.velocity.x * s,
+          y: body.velocity.y * s,
         });
       }
-
-      this.checkEvacuated(body, ped);
     }
 
     Matter.Engine.update(this.engine, dt * 1000);
+
+    // Check evacuations after physics resolve
+    for (const body of this.pedestrians) {
+      const ped: PedLabel = (body as any).__ped;
+      if (!ped.evacuated) this.checkEvacuated(body, ped);
+    }
+
     this.elapsed += dt;
   }
 
   private checkEvacuated(body: Matter.Body, ped: PedLabel) {
     const { roomWidth: w, roomHeight: h } = this.config;
-    const margin = 1.0;
+    const exit = this.exits.find((e) => e.id === ped.targetExitId);
+    if (!exit) return;
+
     const x = body.position.x;
     const y = body.position.y;
+    const pastWall = 0.6;
 
-    if (x < -margin || x > w + margin || y < -margin || y > h + margin) {
+    const outside = x < -pastWall || x > w + pastWall || y < -pastWall || y > h + pastWall;
+    if (!outside) return;
+
+    // Verify pedestrian is near their target exit (within exit width + buffer)
+    const dxe = Math.abs(x - exit.center.x);
+    const dye = Math.abs(y - exit.center.y);
+    const side = this.getExitSide(exit);
+    const halfW = exit.width / 2 + 0.5;
+    const nearExit =
+      side === 'top' || side === 'bottom'
+        ? dxe < halfW
+        : side === 'left' || side === 'right'
+          ? dye < halfW
+          : true;
+
+    if (outside && nearExit) {
       ped.evacuated = true;
       Matter.Composite.remove(this.engine.world, body);
-
       const count = this.exitCounts.get(ped.targetExitId) ?? 0;
       this.exitCounts.set(ped.targetExitId, count + 1);
+    } else if (outside) {
+      // Pushed outside but not through an exit — push back inside
+      const cx = Math.max(0.5, Math.min(w - 0.5, x));
+      const cy = Math.max(0.5, Math.min(h - 0.5, y));
+      Matter.Body.setPosition(body, { x: cx, y: cy });
+      Matter.Body.setVelocity(body, { x: 0, y: 0 });
     }
+  }
+
+  private getExitSide(exit: ExitDef): string {
+    const { roomWidth: w, roomHeight: h } = this.config;
+    if (exit.center.y <= 0.5) return 'top';
+    if (exit.center.y >= h - 0.5) return 'bottom';
+    if (exit.center.x <= 0.5) return 'left';
+    if (exit.center.x >= w - 0.5) return 'right';
+    return 'unknown';
   }
 
   getSnapshots(): PedSnapshot[] {
