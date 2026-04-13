@@ -309,7 +309,7 @@ export class EvacuationEngine {
         y: body.position.y,
         vx: body.velocity.x,
         vy: body.velocity.y,
-        speed: Math.sqrt(body.velocity.x ** 2 + body.velocity.y ** 2),
+        speed: Math.sqrt(body.velocity.x ** 2 + body.velocity.y ** 2) / this.config.dt,
         evacuated: ped.evacuated,
       };
     });

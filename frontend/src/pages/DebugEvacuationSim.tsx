@@ -6,11 +6,10 @@ import { DEFAULT_CONFIG } from '../lib/evacuation/types';
 
 type InteractionMode = 'none' | 'place_exit' | 'resize_exit' | 'delete_exit';
 
-function speedColor(speed: number, maxSpeed: number): string {
-  const ratio = Math.min(speed / maxSpeed, 1);
-  if (ratio < 0.3) return '#ef4444';
-  if (ratio < 0.6) return '#f59e0b';
-  return '#22c55e';
+function speedColor(speedMs: number): string {
+  if (speedMs < 0.3) return '#ef4444'; // jammed / crushed
+  if (speedMs < 0.8) return '#f59e0b'; // congested
+  return '#22c55e'; // moving freely
 }
 
 const SCALE = 22; // px per meter
@@ -637,9 +636,7 @@ function draw(
   selectedExitId: string | null,
   mode: InteractionMode,
 ) {
-  const { roomWidth: w, roomHeight: h, desiredSpeed, panicFactor } = config;
-  const dt = config.dt;
-  const maxSpeed = desiredSpeed * (1 + panicFactor * 0.6) * dt * 1.3;
+  const { roomWidth: w, roomHeight: h } = config;
 
   const cw = w * SCALE + CANVAS_PAD * 2;
   const ch = h * SCALE + CANVAS_PAD * 2;
@@ -755,7 +752,7 @@ function draw(
   for (const ped of snapshots) {
     if (ped.evacuated) continue;
     const p = toCanvas(ped.x, ped.y);
-    const color = speedColor(ped.speed, maxSpeed);
+    const color = speedColor(ped.speed);
 
     ctx.beginPath();
     ctx.arc(p.cx, p.cy, Math.max(r, 2.5), 0, Math.PI * 2);
