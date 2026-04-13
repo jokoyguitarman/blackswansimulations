@@ -10,7 +10,7 @@
  */
 
 import { polygonBoundingBox, pointInPolygon, haversineM, distToPolylineM } from './geoUtils.js';
-import type { OsmBuilding, OsmRouteGeometry } from './osmVicinityService.js';
+import type { OsmBuilding, OsmRouteGeometry, BuildingFootprint } from './osmVicinityService.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 
@@ -255,6 +255,7 @@ export function generateBlastRadiusStuds(
   buildingGrids: StudGrid[],
   baseSpacingM = 5,
   roadData: RoadData[] = [],
+  classificationFootprints?: BuildingFootprint[],
 ): StudGrid | null {
   if (hazardCenters.length === 0 || blastBands.length === 0) return null;
 
@@ -262,9 +263,14 @@ export function generateBlastRadiusStuds(
   const maxRadiusM = Math.max(...sortedBands.map((b) => b.maxM));
   if (maxRadiusM <= 0) return null;
 
-  const buildingLookup = buildingGrids
-    .filter((g) => g.polygon.length >= 3)
-    .map((g) => ({ polygon: g.polygon, name: g.buildingName }));
+  // Use wide-area footprints for classification when available,
+  // falling back to the (limited) building grids
+  const buildingLookup: Array<{ polygon: [number, number][]; name: string | null }> =
+    classificationFootprints && classificationFootprints.length > 0
+      ? classificationFootprints.filter((f) => f.polygon.length >= 3)
+      : buildingGrids
+          .filter((g) => g.polygon.length >= 3)
+          .map((g) => ({ polygon: g.polygon, name: g.buildingName }));
 
   const studs: BuildingStud[] = [];
   const usedKeys = new Set<string>();
@@ -767,7 +773,7 @@ export async function loadClassifiedGrids(scenarioId: string): Promise<StudGrid[
 
   const { data: sc } = await supabaseAdmin
     .from('scenarios')
-    .select('insider_knowledge')
+    .select('center_lat, center_lng, insider_knowledge')
     .eq('id', scenarioId)
     .single();
 
@@ -780,6 +786,7 @@ export async function loadClassifiedGrids(scenarioId: string): Promise<StudGrid[
   if (!buildings?.length) return [];
 
   const routeGeometries = (osmVicinity?.route_geometries ?? []) as OsmRouteGeometry[];
+  let wideFootprints = (osmVicinity?.building_footprints ?? []) as BuildingFootprint[];
 
   const [hazRes, locRes] = await Promise.all([
     supabaseAdmin
@@ -807,6 +814,40 @@ export async function loadClassifiedGrids(scenarioId: string): Promise<StudGrid[
     .filter((r) => r.coordinates?.length >= 2)
     .map((r) => ({ name: r.name, polyline: r.coordinates }));
 
+  // Fetch wide-area building footprints for classification if not cached
+  if (wideFootprints.length === 0 && hazardCenters.length > 0) {
+    const centerLat = (sc.center_lat as number | null) ?? primaryHazard?.lat;
+    const centerLng = (sc.center_lng as number | null) ?? primaryHazard?.lng;
+    if (centerLat != null && centerLng != null) {
+      try {
+        const { fetchBuildingFootprints } = await import('./osmVicinityService.js');
+        wideFootprints = await fetchBuildingFootprints(centerLat, centerLng, 8000);
+        if (wideFootprints.length > 0) {
+          const existingIk = (sc.insider_knowledge ?? {}) as Record<string, unknown>;
+          const existingOsm = (existingIk.osm_vicinity ?? {}) as Record<string, unknown>;
+          await supabaseAdmin
+            .from('scenarios')
+            .update({
+              insider_knowledge: {
+                ...existingIk,
+                osm_vicinity: {
+                  ...existingOsm,
+                  building_footprints: wideFootprints,
+                },
+              },
+            })
+            .eq('id', scenarioId);
+          logger.info(
+            { scenarioId, footprintCount: wideFootprints.length },
+            'Wide-area building footprints fetched and persisted',
+          );
+        }
+      } catch (err) {
+        logger.warn({ scenarioId, err }, 'Failed to fetch wide-area building footprints');
+      }
+    }
+  }
+
   if (hazardCenters.length > 0) {
     const threatProfile = ik?.threat_profile as Record<string, unknown> | undefined;
     const weaponClass = threatProfile?.weapon_class as string | undefined;
@@ -823,6 +864,7 @@ export async function loadClassifiedGrids(scenarioId: string): Promise<StudGrid[
       grids,
       DEFAULT_SPACING_M,
       roadDataForClassify,
+      wideFootprints.length > 0 ? wideFootprints : undefined,
     );
     if (outdoorGrid) grids.push(outdoorGrid);
 
@@ -1138,7 +1180,8 @@ export async function backfillBuildingsForScenario(
   scenarioId: string,
   opts: { maxAttempts?: number; baseRadiusM?: number } = {},
 ): Promise<BackfillResult> {
-  const { fetchVenueBuilding, fetchRouteGeometries } = await import('./osmVicinityService.js');
+  const { fetchVenueBuilding, fetchRouteGeometries, fetchBuildingFootprints } =
+    await import('./osmVicinityService.js');
   const maxAttempts = opts.maxAttempts ?? 4;
   const baseRadius = opts.baseRadiusM ?? 300;
 
@@ -1157,15 +1200,17 @@ export async function backfillBuildingsForScenario(
 
   const existingBuildings = osmVicinity.buildings as unknown[] | undefined;
   const existingRoutes = osmVicinity.route_geometries as unknown[] | undefined;
+  const existingFootprints = osmVicinity.building_footprints as unknown[] | undefined;
   const needBuildings = !existingBuildings?.length;
   const needRoutes = !existingRoutes?.length;
+  const needFootprints = !existingFootprints?.length;
 
-  if (!needBuildings && !needRoutes) {
+  if (!needBuildings && !needRoutes && !needFootprints) {
     return {
       status: 'already_populated',
       buildingCount: existingBuildings!.length,
       routeCount: existingRoutes!.length,
-      message: 'Buildings and routes already exist in insider_knowledge',
+      message: 'Buildings, routes, and footprints already exist in insider_knowledge',
     };
   }
 
@@ -1236,6 +1281,21 @@ export async function backfillBuildingsForScenario(
     }
   }
 
+  // Fetch wide-area building footprints for stud classification
+  let footprints: import('./osmVicinityService.js').BuildingFootprint[] = [];
+  if (needFootprints) {
+    try {
+      logger.info({ scenarioId, lat, lng }, 'Backfill: fetching wide-area building footprints');
+      footprints = await fetchBuildingFootprints(lat, lng, 8000);
+      logger.info(
+        { scenarioId, footprintCount: footprints.length },
+        'Backfill: building footprints fetched',
+      );
+    } catch (err) {
+      logger.warn({ scenarioId, err }, 'Backfill: footprint fetch failed (non-critical)');
+    }
+  }
+
   if (needBuildings && buildings.length === 0 && needRoutes && routes.length === 0) {
     return {
       status: 'no_buildings_found',
@@ -1248,6 +1308,7 @@ export async function backfillBuildingsForScenario(
   const updatedOsmVicinity = { ...osmVicinity } as Record<string, unknown>;
   if (buildings.length > 0) updatedOsmVicinity.buildings = buildings;
   if (routes.length > 0) updatedOsmVicinity.route_geometries = routes;
+  if (footprints.length > 0) updatedOsmVicinity.building_footprints = footprints;
   const updatedIk = { ...ik, osm_vicinity: updatedOsmVicinity };
 
   const { error: updateErr } = await supabaseAdmin
@@ -1265,9 +1326,15 @@ export async function backfillBuildingsForScenario(
   const parts: string[] = [];
   if (needBuildings && buildings.length > 0) parts.push(`${buildings.length} buildings`);
   if (needRoutes && routes.length > 0) parts.push(`${routes.length} roads`);
+  if (needFootprints && footprints.length > 0) parts.push(`${footprints.length} footprints`);
 
   logger.info(
-    { scenarioId, buildingCount: buildings.length, routeCount: routes.length },
+    {
+      scenarioId,
+      buildingCount: buildings.length,
+      routeCount: routes.length,
+      footprintCount: footprints.length,
+    },
     'Backfill: successfully patched data into scenario',
   );
 

@@ -30,6 +30,7 @@ export interface OsmVicinity {
   cctv_or_surveillance?: Array<{ location: string; lat: number; lng: number }>;
   buildings?: OsmBuilding[];
   route_geometries?: OsmRouteGeometry[];
+  building_footprints?: BuildingFootprint[];
 }
 
 function extractLatLng(element: {
@@ -859,6 +860,60 @@ out geom;
     'OSM venue buildings fetched',
   );
   return wantLog ? { buildings: results, fetchLog } : results;
+}
+
+// ---------------------------------------------------------------------------
+// Wide-area building footprints — lightweight polygons for stud classification
+// ---------------------------------------------------------------------------
+
+export interface BuildingFootprint {
+  name: string | null;
+  polygon: [number, number][];
+}
+
+/**
+ * Fetch building footprint polygons within a large radius.
+ * Unlike fetchVenueBuilding (which returns detailed data for ~5 nearest buildings),
+ * this returns only polygon outlines for ALL buildings within the radius — used
+ * by the stud classification system to tag studs as inside_building / open_air.
+ */
+export async function fetchBuildingFootprints(
+  lat: number,
+  lng: number,
+  radiusMeters: number = 8000,
+): Promise<BuildingFootprint[]> {
+  const radius = Math.min(radiusMeters, 10000);
+  const TIMEOUT_S = 90;
+  const query = `
+[out:json][timeout:${TIMEOUT_S}];
+way["building"](around:${radius},${lat},${lng});
+out body geom;
+`;
+
+  try {
+    const elements = await runRawOverpassQuery(query, TIMEOUT_S * 1000 + 5000);
+    const footprints: BuildingFootprint[] = [];
+
+    for (const el of elements) {
+      const geometry = el.geometry as Array<{ lat: number; lon: number }> | undefined;
+      if (!geometry || geometry.length < 3) continue;
+
+      const tags = (el.tags as Record<string, string>) || {};
+      footprints.push({
+        name: tags.name || null,
+        polygon: geometry.map((pt) => [pt.lat, pt.lon] as [number, number]),
+      });
+    }
+
+    logger.info(
+      { total: footprints.length, radius },
+      'OSM building footprints fetched (wide-area)',
+    );
+    return footprints;
+  } catch (err) {
+    logger.warn({ err, radius }, 'Wide-area building footprint fetch failed');
+    return [];
+  }
 }
 
 function parseOsmBuildingElement(
