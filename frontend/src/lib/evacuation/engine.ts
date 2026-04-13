@@ -220,8 +220,8 @@ export class EvacuationEngine {
       const ny = dy / dist;
 
       // Social-force velocity relaxation: F = m * (v_desired - v_current) / tau
-      const vDesX = nx * targetSpeed;
-      const vDesY = ny * targetSpeed;
+      const vDesX = nx * targetSpeed * dt;
+      const vDesY = ny * targetSpeed * dt;
       const mass = body.mass;
       const fx = (mass * (vDesX - body.velocity.x)) / tau;
       const fy = (mass * (vDesY - body.velocity.y)) / tau;
@@ -233,7 +233,7 @@ export class EvacuationEngine {
 
       // Hard speed clamp so nobody flies through walls
       const currentSpeed = Math.sqrt(body.velocity.x ** 2 + body.velocity.y ** 2);
-      const maxSpeed = targetSpeed * 1.2;
+      const maxSpeed = targetSpeed * dt * 1.2;
       if (currentSpeed > maxSpeed) {
         const s = maxSpeed / currentSpeed;
         Matter.Body.setVelocity(body, {
