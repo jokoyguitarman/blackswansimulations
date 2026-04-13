@@ -315,6 +315,7 @@ export const api = {
       return handleResponse<{
         status: string;
         buildingCount: number;
+        routeCount: number;
         message: string;
       }>(
         await fetch(apiUrl(`/api/scenarios/${scenarioId}/backfill-buildings`), {

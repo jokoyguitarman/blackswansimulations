@@ -2449,9 +2449,9 @@ export const SessionView = () => {
                           const res = await api.scenarios.backfillBuildings(scId);
                           setBackfillMsg(
                             res.status === 'backfilled'
-                              ? `Loaded ${res.buildingCount} buildings`
+                              ? `Loaded ${res.buildingCount} buildings + ${res.routeCount} roads`
                               : res.status === 'already_populated'
-                                ? `${res.buildingCount} buildings already loaded`
+                                ? `${res.buildingCount} buildings + ${res.routeCount} roads already loaded`
                                 : res.message,
                           );
                           setLocationsRefreshTrigger((t) => t + 1);

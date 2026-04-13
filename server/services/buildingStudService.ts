@@ -1201,21 +1201,22 @@ export function batchSnapCasualties<
 export interface BackfillResult {
   status: 'already_populated' | 'backfilled' | 'no_buildings_found' | 'no_coordinates' | 'error';
   buildingCount: number;
+  routeCount: number;
   message: string;
 }
 
 /**
- * Retry building fetch for a scenario that has no buildings in
- * insider_knowledge, then patch them into the DB and invalidate caches.
+ * Fetch buildings and route geometries for a scenario that is missing them
+ * in insider_knowledge, then patch into the DB and invalidate caches.
  *
- * Retries `fetchVenueBuilding` up to `maxAttempts` times with exponential
- * backoff and an expanding search radius.
+ * If buildings already exist but route geometries are missing, it fetches
+ * only routes and patches them in (so the button is always useful).
  */
 export async function backfillBuildingsForScenario(
   scenarioId: string,
   opts: { maxAttempts?: number; baseRadiusM?: number } = {},
 ): Promise<BackfillResult> {
-  const { fetchVenueBuilding } = await import('./osmVicinityService.js');
+  const { fetchVenueBuilding, fetchRouteGeometries } = await import('./osmVicinityService.js');
   const maxAttempts = opts.maxAttempts ?? 4;
   const baseRadius = opts.baseRadiusM ?? 300;
 
@@ -1226,18 +1227,23 @@ export async function backfillBuildingsForScenario(
     .single();
 
   if (scErr || !sc) {
-    return { status: 'error', buildingCount: 0, message: 'Scenario not found' };
+    return { status: 'error', buildingCount: 0, routeCount: 0, message: 'Scenario not found' };
   }
 
   const ik = (sc.insider_knowledge ?? {}) as Record<string, unknown>;
   const osmVicinity = (ik.osm_vicinity ?? {}) as Record<string, unknown>;
 
   const existingBuildings = osmVicinity.buildings as unknown[] | undefined;
-  if (existingBuildings?.length) {
+  const existingRoutes = osmVicinity.route_geometries as unknown[] | undefined;
+  const needBuildings = !existingBuildings?.length;
+  const needRoutes = !existingRoutes?.length;
+
+  if (!needBuildings && !needRoutes) {
     return {
       status: 'already_populated',
-      buildingCount: existingBuildings.length,
-      message: 'Buildings already exist in insider_knowledge',
+      buildingCount: existingBuildings!.length,
+      routeCount: existingRoutes!.length,
+      message: 'Buildings and routes already exist in insider_knowledge',
     };
   }
 
@@ -1261,43 +1267,65 @@ export async function backfillBuildingsForScenario(
     return {
       status: 'no_coordinates',
       buildingCount: 0,
+      routeCount: 0,
       message: 'No coordinates available — scenario has no center and no hazards',
     };
   }
 
-  let buildings: import('./osmVicinityService.js').OsmBuilding[] = [];
-  const radii = [baseRadius, baseRadius * 1.5, baseRadius * 2, baseRadius * 3];
+  let buildings: import('./osmVicinityService.js').OsmBuilding[] =
+    (existingBuildings as import('./osmVicinityService.js').OsmBuilding[]) ?? [];
+  let routes: import('./osmVicinityService.js').OsmRouteGeometry[] =
+    (existingRoutes as import('./osmVicinityService.js').OsmRouteGeometry[]) ?? [];
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const radiusM = radii[Math.min(attempt, radii.length - 1)];
-    const delayMs = 3000 * Math.pow(2, attempt);
-    try {
-      logger.info(
-        { scenarioId, attempt: attempt + 1, radiusM },
-        'Backfill: fetching buildings from Overpass',
-      );
-      buildings = await fetchVenueBuilding(lat, lng, radiusM);
-      if (buildings.length > 0) break;
-    } catch (err) {
-      logger.warn(
-        { scenarioId, attempt: attempt + 1, err },
-        'Backfill: building fetch attempt failed',
-      );
-    }
-    if (attempt < maxAttempts - 1) {
-      await new Promise((r) => setTimeout(r, delayMs));
+  // Fetch buildings if missing
+  if (needBuildings) {
+    const radii = [baseRadius, baseRadius * 1.5, baseRadius * 2, baseRadius * 3];
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const radiusM = radii[Math.min(attempt, radii.length - 1)];
+      const delayMs = 3000 * Math.pow(2, attempt);
+      try {
+        logger.info(
+          { scenarioId, attempt: attempt + 1, radiusM },
+          'Backfill: fetching buildings from Overpass',
+        );
+        buildings = await fetchVenueBuilding(lat, lng, radiusM);
+        if (buildings.length > 0) break;
+      } catch (err) {
+        logger.warn(
+          { scenarioId, attempt: attempt + 1, err },
+          'Backfill: building fetch attempt failed',
+        );
+      }
+      if (attempt < maxAttempts - 1) {
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
     }
   }
 
-  if (buildings.length === 0) {
+  // Fetch route geometries if missing
+  if (needRoutes) {
+    try {
+      logger.info({ scenarioId, lat, lng }, 'Backfill: fetching route geometries from Overpass');
+      routes = await fetchRouteGeometries(lat, lng, 1500);
+      logger.info({ scenarioId, routeCount: routes.length }, 'Backfill: route geometries fetched');
+    } catch (err) {
+      logger.warn({ scenarioId, err }, 'Backfill: route geometries fetch failed (non-critical)');
+      routes = [];
+    }
+  }
+
+  if (needBuildings && buildings.length === 0 && needRoutes && routes.length === 0) {
     return {
       status: 'no_buildings_found',
       buildingCount: 0,
-      message: `Overpass returned 0 buildings after ${maxAttempts} attempts`,
+      routeCount: 0,
+      message: `Overpass returned 0 buildings and 0 routes after ${maxAttempts} attempts`,
     };
   }
 
-  const updatedOsmVicinity = { ...osmVicinity, buildings };
+  const updatedOsmVicinity = { ...osmVicinity } as Record<string, unknown>;
+  if (buildings.length > 0) updatedOsmVicinity.buildings = buildings;
+  if (routes.length > 0) updatedOsmVicinity.route_geometries = routes;
   const updatedIk = { ...ik, osm_vicinity: updatedOsmVicinity };
 
   const { error: updateErr } = await supabaseAdmin
@@ -1306,23 +1334,25 @@ export async function backfillBuildingsForScenario(
     .eq('id', scenarioId);
 
   if (updateErr) {
-    logger.error(
-      { error: updateErr, scenarioId },
-      'Backfill: failed to update insider_knowledge with buildings',
-    );
-    return { status: 'error', buildingCount: 0, message: 'DB update failed' };
+    logger.error({ error: updateErr, scenarioId }, 'Backfill: failed to update insider_knowledge');
+    return { status: 'error', buildingCount: 0, routeCount: 0, message: 'DB update failed' };
   }
 
   invalidateGridCache(scenarioId);
 
+  const parts: string[] = [];
+  if (needBuildings && buildings.length > 0) parts.push(`${buildings.length} buildings`);
+  if (needRoutes && routes.length > 0) parts.push(`${routes.length} roads`);
+
   logger.info(
-    { scenarioId, buildingCount: buildings.length },
-    'Backfill: successfully patched buildings into scenario',
+    { scenarioId, buildingCount: buildings.length, routeCount: routes.length },
+    'Backfill: successfully patched data into scenario',
   );
 
   return {
     status: 'backfilled',
     buildingCount: buildings.length,
-    message: `Backfilled ${buildings.length} buildings`,
+    routeCount: routes.length,
+    message: parts.length > 0 ? `Backfilled ${parts.join(' + ')}` : 'No new data found',
   };
 }
