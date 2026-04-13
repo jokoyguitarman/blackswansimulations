@@ -638,7 +638,8 @@ function draw(
   mode: InteractionMode,
 ) {
   const { roomWidth: w, roomHeight: h, desiredSpeed, panicFactor } = config;
-  const maxSpeed = desiredSpeed * (1 + panicFactor * 0.6) * 1.3;
+  const dt = config.dt;
+  const maxSpeed = desiredSpeed * (1 + panicFactor * 0.6) * dt * 1.3;
 
   const cw = w * SCALE + CANVAS_PAD * 2;
   const ch = h * SCALE + CANVAS_PAD * 2;
