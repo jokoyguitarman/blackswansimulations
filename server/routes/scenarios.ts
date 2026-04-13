@@ -4,10 +4,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
-import {
-  refreshOsmVicinityForScenario,
-  fetchVenueBuilding,
-} from '../services/osmVicinityService.js';
+import { refreshOsmVicinityForScenario } from '../services/osmVicinityService.js';
 import { generateScenarioMaps } from '../services/scenarioMapImageService.js';
 import { uploadScenarioMap } from '../lib/storage.js';
 import { getConditionConfigForScenario } from '../services/scenarioConditionConfigService.js';
@@ -15,7 +12,7 @@ import { circleToPolygon } from '../services/geoUtils.js';
 import {
   getOccupiedStudIds,
   loadClassifiedGrids,
-  invalidateGridCache,
+  backfillBuildingsForScenario,
 } from '../services/buildingStudService.js';
 
 const router = Router();
@@ -2566,98 +2563,18 @@ router.post('/:id/backfill-buildings', requireAuth, async (req, res) => {
     const { id: scenarioId } = req.params;
     const radiusM = Number(req.query.radius) || 300;
 
-    const { data: sc, error: scErr } = await supabaseAdmin
-      .from('scenarios')
-      .select('center_lat, center_lng, insider_knowledge')
-      .eq('id', scenarioId)
-      .single();
-
-    if (scErr || !sc) {
-      return res.status(404).json({ error: 'Scenario not found' });
-    }
-
-    const ik = (sc.insider_knowledge ?? {}) as Record<string, unknown>;
-    const osmVicinity = (ik.osm_vicinity ?? {}) as Record<string, unknown>;
-
-    const existingBuildings = osmVicinity.buildings as unknown[] | undefined;
-    if (existingBuildings?.length) {
-      return res.json({
-        status: 'already_populated',
-        buildingCount: existingBuildings.length,
-        message: 'Buildings already exist in insider_knowledge',
-      });
-    }
-
-    let lat = sc.center_lat as number | null;
-    let lng = sc.center_lng as number | null;
-
-    if (lat == null || lng == null) {
-      const { data: hazards } = await supabaseAdmin
-        .from('scenario_hazards')
-        .select('location_lat, location_lng')
-        .eq('scenario_id', scenarioId)
-        .limit(1);
-
-      if (hazards?.length) {
-        lat = hazards[0].location_lat as number;
-        lng = hazards[0].location_lng as number;
-      }
-    }
-
-    if (lat == null || lng == null) {
-      return res.status(400).json({
-        error: 'No coordinates available — scenario has no center_lat/center_lng and no hazards',
-      });
-    }
-
-    const buildings = await fetchVenueBuilding(lat, lng, radiusM);
-
-    if (buildings.length === 0) {
-      return res.json({
-        status: 'no_buildings_found',
-        buildingCount: 0,
-        lat,
-        lng,
-        radiusM,
-        message: 'Overpass returned 0 buildings at these coordinates',
-      });
-    }
-
-    const updatedOsmVicinity = { ...osmVicinity, buildings };
-    const updatedIk = { ...ik, osm_vicinity: updatedOsmVicinity };
-
-    const { error: updateErr } = await supabaseAdmin
-      .from('scenarios')
-      .update({ insider_knowledge: updatedIk })
-      .eq('id', scenarioId);
-
-    if (updateErr) {
-      logger.error(
-        { error: updateErr, scenarioId },
-        'Failed to update insider_knowledge with buildings',
-      );
-      return res.status(500).json({ error: 'Failed to save building data' });
-    }
-
-    invalidateGridCache(scenarioId);
-
-    logger.info(
-      { scenarioId, buildingCount: buildings.length, lat, lng, radiusM },
-      'Backfilled buildings for scenario',
-    );
-
-    return res.json({
-      status: 'backfilled',
-      buildingCount: buildings.length,
-      buildings: buildings.map((b) => ({
-        name: b.name,
-        hasPolygon: !!(b.footprint_polygon && b.footprint_polygon.length >= 3),
-        distance: Math.round(b.distance_from_center_m),
-      })),
-      lat,
-      lng,
-      radiusM,
+    const result = await backfillBuildingsForScenario(scenarioId, {
+      baseRadiusM: radiusM,
     });
+
+    if (result.status === 'no_coordinates') {
+      return res.status(400).json({ error: result.message });
+    }
+    if (result.status === 'error') {
+      return res.status(500).json({ error: result.message });
+    }
+
+    return res.json(result);
   } catch (err) {
     logger.error({ error: err }, 'Error in POST /scenarios/:id/backfill-buildings');
     return res.status(500).json({ error: 'Internal server error' });

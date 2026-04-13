@@ -1025,3 +1025,136 @@ export function batchSnapCasualties<
 
   return newlyOccupied;
 }
+
+// ---------------------------------------------------------------------------
+// Automated building backfill
+// ---------------------------------------------------------------------------
+
+export interface BackfillResult {
+  status: 'already_populated' | 'backfilled' | 'no_buildings_found' | 'no_coordinates' | 'error';
+  buildingCount: number;
+  message: string;
+}
+
+/**
+ * Retry building fetch for a scenario that has no buildings in
+ * insider_knowledge, then patch them into the DB and invalidate caches.
+ *
+ * Retries `fetchVenueBuilding` up to `maxAttempts` times with exponential
+ * backoff and an expanding search radius.
+ */
+export async function backfillBuildingsForScenario(
+  scenarioId: string,
+  opts: { maxAttempts?: number; baseRadiusM?: number } = {},
+): Promise<BackfillResult> {
+  const { fetchVenueBuilding } = await import('./osmVicinityService.js');
+  const maxAttempts = opts.maxAttempts ?? 4;
+  const baseRadius = opts.baseRadiusM ?? 300;
+
+  const { data: sc, error: scErr } = await supabaseAdmin
+    .from('scenarios')
+    .select('center_lat, center_lng, insider_knowledge')
+    .eq('id', scenarioId)
+    .single();
+
+  if (scErr || !sc) {
+    return { status: 'error', buildingCount: 0, message: 'Scenario not found' };
+  }
+
+  const ik = (sc.insider_knowledge ?? {}) as Record<string, unknown>;
+  const osmVicinity = (ik.osm_vicinity ?? {}) as Record<string, unknown>;
+
+  const existingBuildings = osmVicinity.buildings as unknown[] | undefined;
+  if (existingBuildings?.length) {
+    return {
+      status: 'already_populated',
+      buildingCount: existingBuildings.length,
+      message: 'Buildings already exist in insider_knowledge',
+    };
+  }
+
+  let lat = sc.center_lat as number | null;
+  let lng = sc.center_lng as number | null;
+
+  if (lat == null || lng == null) {
+    const { data: hazards } = await supabaseAdmin
+      .from('scenario_hazards')
+      .select('location_lat, location_lng')
+      .eq('scenario_id', scenarioId)
+      .limit(1);
+
+    if (hazards?.length) {
+      lat = hazards[0].location_lat as number;
+      lng = hazards[0].location_lng as number;
+    }
+  }
+
+  if (lat == null || lng == null) {
+    return {
+      status: 'no_coordinates',
+      buildingCount: 0,
+      message: 'No coordinates available — scenario has no center and no hazards',
+    };
+  }
+
+  let buildings: import('./osmVicinityService.js').OsmBuilding[] = [];
+  const radii = [baseRadius, baseRadius * 1.5, baseRadius * 2, baseRadius * 3];
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const radiusM = radii[Math.min(attempt, radii.length - 1)];
+    const delayMs = 3000 * Math.pow(2, attempt);
+    try {
+      logger.info(
+        { scenarioId, attempt: attempt + 1, radiusM },
+        'Backfill: fetching buildings from Overpass',
+      );
+      buildings = await fetchVenueBuilding(lat, lng, radiusM);
+      if (buildings.length > 0) break;
+    } catch (err) {
+      logger.warn(
+        { scenarioId, attempt: attempt + 1, err },
+        'Backfill: building fetch attempt failed',
+      );
+    }
+    if (attempt < maxAttempts - 1) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+
+  if (buildings.length === 0) {
+    return {
+      status: 'no_buildings_found',
+      buildingCount: 0,
+      message: `Overpass returned 0 buildings after ${maxAttempts} attempts`,
+    };
+  }
+
+  const updatedOsmVicinity = { ...osmVicinity, buildings };
+  const updatedIk = { ...ik, osm_vicinity: updatedOsmVicinity };
+
+  const { error: updateErr } = await supabaseAdmin
+    .from('scenarios')
+    .update({ insider_knowledge: updatedIk })
+    .eq('id', scenarioId);
+
+  if (updateErr) {
+    logger.error(
+      { error: updateErr, scenarioId },
+      'Backfill: failed to update insider_knowledge with buildings',
+    );
+    return { status: 'error', buildingCount: 0, message: 'DB update failed' };
+  }
+
+  invalidateGridCache(scenarioId);
+
+  logger.info(
+    { scenarioId, buildingCount: buildings.length },
+    'Backfill: successfully patched buildings into scenario',
+  );
+
+  return {
+    status: 'backfilled',
+    buildingCount: buildings.length,
+    message: `Backfilled ${buildings.length} buildings`,
+  };
+}

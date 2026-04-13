@@ -54,6 +54,7 @@ import {
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import type { OsmVicinity } from './osmVicinityService.js';
 import type { OsmOpenSpace, OsmBuilding, OsmRouteGeometry } from './osmVicinityService.js';
+import { backfillBuildingsForScenario } from './buildingStudService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -429,14 +430,16 @@ export async function stageParseAndGeocode(
       }
 
       let buildings: OsmBuilding[] = [];
-      for (let attempt = 1; attempt <= 3; attempt++) {
+      const buildingRadii = [300, 450, 600];
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        const radiusM = buildingRadii[Math.min(attempt - 1, buildingRadii.length - 1)];
         try {
-          buildings = await fetchVenueBuilding(geocodeResult.lat, geocodeResult.lng, 300);
+          buildings = await fetchVenueBuilding(geocodeResult.lat, geocodeResult.lng, radiusM);
           if (buildings.length > 0) break;
         } catch (err) {
-          logger.warn({ err, attempt }, 'OSM venue building fetch failed');
+          logger.warn({ err, attempt, radiusM }, 'OSM venue building fetch failed');
         }
-        if (attempt < 3) await delay(2000 * attempt);
+        if (attempt < 5) await delay(2000 * attempt);
       }
       await delay(1500);
 
@@ -1137,6 +1140,17 @@ export async function stageGenerateAndPersist(
     vicinity_radius_meters: finalCenterLat != null ? 10000 : undefined,
     osmBuildings: geoResult.osmBuildings,
   });
+
+  // If buildings were empty, schedule a background backfill (non-blocking)
+  if (!geoResult.osmBuildings?.length && finalCenterLat != null) {
+    const BACKFILL_DELAY_MS = 10_000;
+    setTimeout(() => {
+      logger.info({ scenarioId }, 'Starting deferred building backfill');
+      backfillBuildingsForScenario(scenarioId).catch((err) =>
+        logger.warn({ err, scenarioId }, 'Deferred building backfill failed (non-blocking)'),
+      );
+    }, BACKFILL_DELAY_MS);
+  }
 
   // Persist research cases and link them to the scenario (non-blocking)
   if (similarCases.length > 0) {
