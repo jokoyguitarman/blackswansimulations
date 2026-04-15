@@ -208,6 +208,14 @@ export function DebugRTSSim() {
   const [savedMaps, setSavedMaps] = useState<SavedMap[]>(() => loadSavedMaps());
   const [saveMapName, setSaveMapName] = useState('');
 
+  // ── Place search (Nominatim) ──────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<
+    Array<{ lat: string; lon: string; display_name: string }>
+  >([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
+
   // ── Wall inspection ───────────────────────────────────────────────────
   const [wallPoints, setWallPoints] = useState<WallInspectionPoint[]>([]);
   const [activeWallPoint, setActiveWallPoint] = useState<WallInspectionPoint | null>(null);
@@ -272,6 +280,52 @@ export function DebugRTSSim() {
       }
     },
     [phase],
+  );
+
+  // ── Place search (Nominatim) ────────────────────────────────────────
+  const handleSearchInput = useCallback((query: string) => {
+    setSearchQuery(query);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (query.trim().length < 3) {
+      setSearchResults([]);
+      return;
+    }
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({
+          q: query,
+          format: 'json',
+          limit: '6',
+          addressdetails: '0',
+        });
+        const resp = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
+          headers: { 'User-Agent': 'BlackSwanSimulations/1.0' },
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          setSearchResults(data);
+          setSearchOpen(true);
+        }
+      } catch {
+        setSearchResults([]);
+      }
+    }, 400);
+  }, []);
+
+  const handleSelectSearchResult = useCallback(
+    (result: { lat: string; lon: string; display_name: string }) => {
+      setLat(parseFloat(result.lat).toFixed(7));
+      setLng(parseFloat(result.lon).toFixed(7));
+      setSearchQuery(result.display_name);
+      setSearchOpen(false);
+      setSearchResults([]);
+      // Pan the map to the selected location
+      const map = leafletMapRef.current;
+      if (map) {
+        map.setView([parseFloat(result.lat), parseFloat(result.lon)], 18);
+      }
+    },
+    [],
   );
 
   // ── Save / load map handlers ────────────────────────────────────────
@@ -681,6 +735,33 @@ export function DebugRTSSim() {
       {/* MAP PHASE — controls bar */}
       {phase === 'map' && (
         <div className="flex flex-wrap gap-3 p-3 items-end border-b border-green-900 flex-shrink-0">
+          {/* Place search */}
+          <div className="relative">
+            <label className="block text-xs text-green-600 mb-1">Search Place</label>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => handleSearchInput(e.target.value)}
+              onFocus={() => {
+                if (searchResults.length > 0) setSearchOpen(true);
+              }}
+              placeholder="e.g. National Library Singapore"
+              className="bg-gray-900 border border-green-800 text-green-300 px-2 py-1 text-sm w-64 rounded"
+            />
+            {searchOpen && searchResults.length > 0 && (
+              <div className="absolute top-full left-0 w-80 mt-1 bg-gray-900 border border-green-700 rounded shadow-lg z-50 max-h-48 overflow-y-auto">
+                {searchResults.map((r, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleSelectSearchResult(r)}
+                    className="w-full text-left px-3 py-2 text-xs text-green-400 hover:bg-green-900/40 hover:text-green-300 border-b border-green-900/50 last:border-b-0"
+                  >
+                    {r.display_name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div>
             <label className="block text-xs text-green-600 mb-1">Latitude</label>
             <input
