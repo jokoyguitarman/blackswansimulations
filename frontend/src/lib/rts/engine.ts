@@ -1,4 +1,4 @@
-import type { Vec2 } from '../evacuation/types';
+import type { Vec2, ExitDef } from '../evacuation/types';
 import type {
   RTSUnit,
   RTSEquipment,
@@ -11,6 +11,7 @@ import type {
   InteractionMode,
 } from './types';
 import { UNIT_CATALOG, EQUIPMENT_CATALOG, PHASE_THRESHOLDS, createInitialGameState } from './types';
+import { computePathThroughExits, clampToWallExterior } from './pathfinding';
 
 let _idCounter = 0;
 function nextId(prefix: string): string {
@@ -20,6 +21,7 @@ function nextId(prefix: string): string {
 export class RTSEngine {
   state: RTSGameState;
   private buildingVerts: Vec2[] = [];
+  private exits: ExitDef[] = [];
 
   constructor() {
     this.state = createInitialGameState();
@@ -31,6 +33,14 @@ export class RTSEngine {
 
   getBuildingVertices(): Vec2[] {
     return this.buildingVerts;
+  }
+
+  setExits(exits: ExitDef[]) {
+    this.exits = exits;
+  }
+
+  getExits(): ExitDef[] {
+    return this.exits;
   }
 
   // ── Clock ─────────────────────────────────────────────────────────────
@@ -107,10 +117,14 @@ export class RTSEngine {
     for (const uid of unitIds) {
       const u = this.state.units.find((un) => un.id === uid);
       if (!u) continue;
+
+      // Compute path through exits if direct path crosses a wall
+      const path = computePathThroughExits(u.pos, target, this.buildingVerts, this.exits);
+
       if (queue) {
-        u.waypoints.push({ ...target });
+        u.waypoints.push(...path);
       } else {
-        u.waypoints = [{ ...target }];
+        u.waypoints = path;
       }
       u.state = 'moving';
     }
@@ -139,6 +153,8 @@ export class RTSEngine {
       const dist = Math.hypot(dx, dy);
       const step = u.def.speed * dt;
 
+      const prevPos = { x: u.pos.x, y: u.pos.y };
+
       if (dist <= step) {
         u.pos.x = wp.x;
         u.pos.y = wp.y;
@@ -147,6 +163,13 @@ export class RTSEngine {
       } else {
         u.pos.x += (dx / dist) * step;
         u.pos.y += (dy / dist) * step;
+      }
+
+      // Wall collision safety net: revert if we crossed a solid wall
+      if (this.buildingVerts.length >= 3) {
+        const clamped = clampToWallExterior(u.pos, prevPos, this.buildingVerts, this.exits);
+        u.pos.x = clamped.x;
+        u.pos.y = clamped.y;
       }
     }
   }

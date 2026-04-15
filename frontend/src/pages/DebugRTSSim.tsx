@@ -385,10 +385,11 @@ export function DebugRTSSim() {
       evacEngRef.current = null;
       rtsRef.current = new RTSEngine();
 
-      // Generate wall inspection points for this building
+      // Set building vertices for pathfinding
       const grid = fetchResult?.grids[gridIdx];
       if (grid && grid.polygon.length >= 3) {
         const verts = projectPolygon(grid.polygon);
+        rtsRef.current.setBuildingVertices(verts);
         const pts = generateWallPoints(grid.polygon, verts);
         setWallPoints(pts);
       } else {
@@ -424,8 +425,14 @@ export function DebugRTSSim() {
     };
     evacEngRef.current = new PolygonEvacuationEngine(config, exits);
     rtsRef.current.setBuildingVertices(projectedVerts);
+    rtsRef.current.setExits(exits);
     setPedestrians(evacEngRef.current.getSnapshots());
   }, [projectedVerts, exits, pedestrianCount]);
+
+  // Keep engine exits in sync when exits change (for pathfinding)
+  useEffect(() => {
+    rtsRef.current.setExits(exits);
+  }, [exits]);
 
   // ── Canvas toSim helper ───────────────────────────────────────────────
   const toSim = useCallback((cx: number, cy: number): Vec2 => {
