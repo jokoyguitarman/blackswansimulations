@@ -895,6 +895,7 @@ export function DebugRTSSim() {
                   width: canvasSize.w,
                   height: canvasSize.h,
                   pointerEvents: 'auto',
+                  zIndex: 1000,
                 }}
                 className="cursor-crosshair"
                 onMouseDown={handleCanvasMouseDown}
@@ -904,7 +905,10 @@ export function DebugRTSSim() {
                 onContextMenu={handleContextMenu}
               />
               {/* Mode indicator overlay */}
-              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/70 rounded px-3 py-1.5 text-xs text-green-400 pointer-events-none">
+              <div
+                className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/70 rounded px-3 py-1.5 text-xs text-green-400 pointer-events-none"
+                style={{ zIndex: 1001 }}
+              >
                 {gameState.interactionMode.type !== 'select' ? (
                   <span className="text-amber-400">
                     Mode: {gameState.interactionMode.type.replace(/_/g, ' ').toUpperCase()} — click
@@ -920,7 +924,10 @@ export function DebugRTSSim() {
 
               {/* ── Floating photo card ── */}
               {activeWallPoint && (
-                <div className="absolute top-4 right-4 w-[420px] bg-gray-900/95 border border-cyan-700 rounded-lg shadow-2xl z-50 overflow-hidden">
+                <div
+                  className="absolute top-4 right-4 w-[420px] bg-gray-900/95 border border-cyan-700 rounded-lg shadow-2xl overflow-hidden"
+                  style={{ zIndex: 1002 }}
+                >
                   {/* Card header */}
                   <div className="flex items-center justify-between px-3 py-2 bg-gray-800/80 border-b border-cyan-800">
                     <div className="text-xs text-cyan-300 font-bold">
