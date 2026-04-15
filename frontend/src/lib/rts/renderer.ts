@@ -1,6 +1,7 @@
 import type { Vec2, ExitDef } from '../evacuation/types';
 import type { PedSnapshot } from '../evacuation/engine';
 import type { RTSUnit, RTSEquipment, RTSGameState } from './types';
+import type { WallInspectionPoint } from './wallInspection';
 import { polygonBounds } from '../evacuation/geometry';
 import type { Bounds } from '../evacuation/geometry';
 
@@ -40,6 +41,8 @@ export function renderRTS(
   exits: ExitDef[],
   pedestrians: PedSnapshot[],
   transparentBg: boolean,
+  wallPoints?: WallInspectionPoint[],
+  activeWallPointId?: string | null,
 ) {
   ctx.clearRect(0, 0, w, h);
 
@@ -51,6 +54,10 @@ export function renderRTS(
 
   drawBuilding(ctx, buildingVerts, rc, transparentBg);
   drawExits(ctx, exits, buildingVerts, rc);
+
+  if (wallPoints && wallPoints.length > 0) {
+    drawWallInspectionPoints(ctx, wallPoints, rc, activeWallPointId ?? null);
+  }
 
   for (const eq of state.equipment) {
     drawEquipment(ctx, eq, rc);
@@ -334,6 +341,40 @@ function drawWaypoints(
     ctx.strokeStyle = unit.def.color + dotAlpha;
     ctx.lineWidth = 1.5;
     ctx.stroke();
+  }
+}
+
+// ── Wall inspection points ──────────────────────────────────────────────
+function drawWallInspectionPoints(
+  ctx: CanvasRenderingContext2D,
+  points: WallInspectionPoint[],
+  rc: RenderContext,
+  activeId: string | null,
+) {
+  for (const pt of points) {
+    const p = toCanvas(pt.simPos.x, pt.simPos.y, rc);
+    const isActive = pt.id === activeId;
+    const r = isActive ? 7 : 5;
+
+    // Outer ring
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, r + 2, 0, Math.PI * 2);
+    ctx.strokeStyle = isActive ? '#ffffff' : 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = isActive ? 2 : 1;
+    ctx.stroke();
+
+    // Fill
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = isActive ? '#38bdf8' : pt.cached ? '#0ea5e9' : 'rgba(14, 165, 233, 0.5)';
+    ctx.fill();
+
+    // Camera icon (small dot)
+    ctx.fillStyle = '#fff';
+    ctx.font = `${r}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('📷', p.cx, p.cy);
   }
 }
 

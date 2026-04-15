@@ -25,7 +25,21 @@ import {
   type EquipmentKind,
   type TeamId,
 } from '../lib/rts/types';
+import {
+  loadSavedMaps,
+  saveMap,
+  deleteSavedMap,
+  generateMapId,
+  type SavedMap,
+} from '../lib/rts/savedMaps';
+import {
+  generateWallPoints,
+  fetchStreetViewImage,
+  type WallInspectionPoint,
+} from '../lib/rts/wallInspection';
 import 'leaflet/dist/leaflet.css';
+
+const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 // ── API helpers ─────────────────────────────────────────────────────────
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
@@ -190,6 +204,17 @@ export function DebugRTSSim() {
   const [newExitWidth, setNewExitWidth] = useState(3);
   const [canvasSize, setCanvasSize] = useState({ w: 800, h: 600 });
 
+  // ── Saved maps ────────────────────────────────────────────────────────
+  const [savedMaps, setSavedMaps] = useState<SavedMap[]>(() => loadSavedMaps());
+  const [saveMapName, setSaveMapName] = useState('');
+
+  // ── Wall inspection ───────────────────────────────────────────────────
+  const [wallPoints, setWallPoints] = useState<WallInspectionPoint[]>([]);
+  const [activeWallPoint, setActiveWallPoint] = useState<WallInspectionPoint | null>(null);
+  const [wallPointImage, setWallPointImage] = useState<string | null>(null);
+  const [wallPointLoading, setWallPointLoading] = useState(false);
+  const [assessmentText, setAssessmentText] = useState('');
+
   // ── Projected polygon ─────────────────────────────────────────────────
   const selectedGrid = selectedGridIdx != null ? fetchResult?.grids[selectedGridIdx] : null;
 
@@ -249,16 +274,63 @@ export function DebugRTSSim() {
     [phase],
   );
 
-  // ── Select building → go to RTS ──────────────────────────────────────
-  const selectBuilding = useCallback((gridIdx: number) => {
-    setSelectedGridIdx(gridIdx);
-    setExits([]);
-    setPedestrians([]);
-    setPhase('rts');
-    evacEngRef.current?.destroy();
-    evacEngRef.current = null;
-    rtsRef.current = new RTSEngine();
+  // ── Save / load map handlers ────────────────────────────────────────
+  const handleSaveMap = useCallback(() => {
+    if (!fetchResult || !saveMapName.trim()) return;
+    const map: SavedMap = {
+      id: generateMapId(),
+      name: saveMapName.trim(),
+      lat,
+      lng,
+      radius,
+      savedAt: Date.now(),
+      grids: fetchResult.grids,
+      buildings: fetchResult.buildings,
+    };
+    saveMap(map);
+    setSavedMaps(loadSavedMaps());
+    setSaveMapName('');
+  }, [fetchResult, saveMapName, lat, lng, radius]);
+
+  const handleLoadSavedMap = useCallback((m: SavedMap) => {
+    setLat(m.lat);
+    setLng(m.lng);
+    setRadius(m.radius);
+    setFetchResult({ grids: m.grids, buildings: m.buildings });
+    setSelectedGridIdx(null);
   }, []);
+
+  const handleDeleteSavedMap = useCallback((id: string) => {
+    deleteSavedMap(id);
+    setSavedMaps(loadSavedMaps());
+  }, []);
+
+  // ── Select building → go to RTS ──────────────────────────────────────
+  const selectBuilding = useCallback(
+    (gridIdx: number) => {
+      setSelectedGridIdx(gridIdx);
+      setExits([]);
+      setPedestrians([]);
+      setPhase('rts');
+      setActiveWallPoint(null);
+      setWallPointImage(null);
+      setAssessmentText('');
+      evacEngRef.current?.destroy();
+      evacEngRef.current = null;
+      rtsRef.current = new RTSEngine();
+
+      // Generate wall inspection points for this building
+      const grid = fetchResult?.grids[gridIdx];
+      if (grid && grid.polygon.length >= 3) {
+        const verts = projectPolygon(grid.polygon);
+        const pts = generateWallPoints(grid.polygon, verts);
+        setWallPoints(pts);
+      } else {
+        setWallPoints([]);
+      }
+    },
+    [fetchResult],
+  );
 
   const backToMap = useCallback(() => {
     setPhase('map');
@@ -267,6 +339,9 @@ export function DebugRTSSim() {
     evacEngRef.current = null;
     rtsRef.current = new RTSEngine();
     setPedestrians([]);
+    setWallPoints([]);
+    setActiveWallPoint(null);
+    setWallPointImage(null);
   }, []);
 
   // ── Initialize evac engine ────────────────────────────────────────────
@@ -337,6 +412,8 @@ export function DebugRTSSim() {
             exits,
             pedestrians,
             true,
+            wallPoints,
+            activeWallPoint?.id ?? null,
           );
         }
       }
@@ -344,7 +421,7 @@ export function DebugRTSSim() {
       rerender();
       rafRef.current = requestAnimationFrame(loop);
     },
-    [projectedVerts, exits, pedestrians, rerender, updateRenderCtx],
+    [projectedVerts, exits, pedestrians, rerender, updateRenderCtx, wallPoints, activeWallPoint],
   );
 
   useEffect(() => {
@@ -353,6 +430,38 @@ export function DebugRTSSim() {
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
   }, [phase, loop]);
+
+  // ── Wall inspection point click ────────────────────────────────────────
+  const handleWallPointClick = useCallback(async (wp: WallInspectionPoint) => {
+    setActiveWallPoint(wp);
+    setAssessmentText('');
+
+    if (wp.cached && wp.imageUrl) {
+      setWallPointImage(wp.imageUrl);
+      return;
+    }
+
+    if (!GOOGLE_MAPS_KEY) {
+      setWallPointImage(null);
+      return;
+    }
+
+    setWallPointLoading(true);
+    setWallPointImage(null);
+    const dataUrl = await fetchStreetViewImage(wp, GOOGLE_MAPS_KEY);
+    if (dataUrl) {
+      wp.imageUrl = dataUrl;
+      wp.cached = true;
+      setWallPointImage(dataUrl);
+    }
+    setWallPointLoading(false);
+  }, []);
+
+  const closePhotoCard = useCallback(() => {
+    setActiveWallPoint(null);
+    setWallPointImage(null);
+    setAssessmentText('');
+  }, []);
 
   // ── Canvas mouse handlers ─────────────────────────────────────────────
   const dragStartRef = useRef<Vec2 | null>(null);
@@ -416,6 +525,18 @@ export function DebugRTSSim() {
         if (isDraggingRef.current && dragStartRef.current) {
           rts.selectUnitsInBox(dragStartRef.current, sim);
         } else {
+          // Check wall inspection points first
+          const hitWp = wallPoints.find(
+            (wp) => Math.hypot(wp.simPos.x - sim.x, wp.simPos.y - sim.y) < 3.0,
+          );
+          if (hitWp) {
+            handleWallPointClick(hitWp);
+            rts.state.selection.selectionBox = null;
+            dragStartRef.current = null;
+            isDraggingRef.current = false;
+            return;
+          }
+
           const unit = rts.findUnitAt(sim);
           if (unit) {
             rts.selectUnit(unit.id, e.shiftKey);
@@ -473,7 +594,7 @@ export function DebugRTSSim() {
         return;
       }
     },
-    [toSim, projectedVerts, exits, newExitWidth],
+    [toSim, projectedVerts, exits, newExitWidth, wallPoints, handleWallPointClick],
   );
 
   const handleCanvasWheel = useCallback((e: React.WheelEvent) => {
@@ -790,9 +911,84 @@ export function DebugRTSSim() {
                     to place, ESC to cancel
                   </span>
                 ) : (
-                  <span>Left: select · Drag: box select · Right: move · Scroll: zoom</span>
+                  <span>
+                    Left: select · Drag: box select · Right: move · Scroll: zoom · Click 📷 to
+                    inspect wall
+                  </span>
                 )}
               </div>
+
+              {/* ── Floating photo card ── */}
+              {activeWallPoint && (
+                <div className="absolute top-4 right-4 w-[420px] bg-gray-900/95 border border-cyan-700 rounded-lg shadow-2xl z-50 overflow-hidden">
+                  {/* Card header */}
+                  <div className="flex items-center justify-between px-3 py-2 bg-gray-800/80 border-b border-cyan-800">
+                    <div className="text-xs text-cyan-300 font-bold">
+                      Wall Inspection — Point {activeWallPoint.id}
+                    </div>
+                    <button
+                      onClick={closePhotoCard}
+                      className="text-gray-400 hover:text-white text-sm px-1"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Photo area */}
+                  <div className="relative bg-black" style={{ minHeight: 200 }}>
+                    {wallPointLoading && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="text-cyan-400 text-xs animate-pulse">
+                          Loading Street View...
+                        </div>
+                      </div>
+                    )}
+                    {wallPointImage && (
+                      <img
+                        src={wallPointImage}
+                        alt={`Street View at wall point ${activeWallPoint.id}`}
+                        className="w-full h-auto"
+                      />
+                    )}
+                    {!wallPointImage && !wallPointLoading && (
+                      <div className="flex items-center justify-center h-48 text-xs text-gray-500">
+                        {GOOGLE_MAPS_KEY
+                          ? 'No Street View image available for this location'
+                          : 'Set VITE_GOOGLE_MAPS_API_KEY to enable Street View'}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Coordinates */}
+                  <div className="px-3 py-1.5 text-xs text-gray-500 border-t border-gray-800 flex gap-3">
+                    <span>
+                      Wall: {activeWallPoint.lat.toFixed(6)}, {activeWallPoint.lng.toFixed(6)}
+                    </span>
+                    <span>Heading: {Math.round(activeWallPoint.heading)}°</span>
+                  </div>
+
+                  {/* Assessment input */}
+                  <div className="px-3 py-2 border-t border-gray-800">
+                    <label className="block text-xs text-cyan-400 mb-1">Assessment</label>
+                    <textarea
+                      value={assessmentText}
+                      onChange={(e) => setAssessmentText(e.target.value)}
+                      placeholder="Describe what you observe — suspicious items, structural damage, concealment points..."
+                      className="w-full bg-gray-800 border border-gray-700 text-green-300 text-xs rounded px-2 py-1.5 resize-none focus:border-cyan-500 focus:outline-none"
+                      rows={3}
+                    />
+                    <div className="flex justify-between items-center mt-1.5">
+                      <span className="text-xs text-gray-600">AI evaluation coming soon</span>
+                      <button
+                        disabled={!assessmentText.trim()}
+                        className="bg-cyan-800 hover:bg-cyan-700 disabled:opacity-30 text-cyan-100 px-3 py-1 text-xs rounded border border-cyan-600"
+                      >
+                        Submit Assessment
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -806,13 +1002,68 @@ export function DebugRTSSim() {
                 RTS Prototype
               </h2>
               <div className="text-xs text-green-700 space-y-1">
-                <p>1. Click the map to set coordinates</p>
+                <p>1. Click the map or load a saved map</p>
                 <p>2. Fetch buildings nearby</p>
                 <p>3. Click a building to enter the RTS scenario</p>
                 <p>4. Place exits, set staging area, deploy units</p>
                 <p>5. Hit DETONATE to start the exercise</p>
               </div>
             </div>
+
+            {/* Saved maps */}
+            <div className="bg-gray-900 border border-green-800 rounded p-3">
+              <h2 className="text-sm text-green-500 mb-2 border-b border-green-900 pb-1">
+                Saved Maps
+              </h2>
+              {savedMaps.length === 0 && (
+                <p className="text-xs text-green-800 italic">No saved maps yet</p>
+              )}
+              <div className="space-y-1.5 mb-2">
+                {savedMaps.map((m) => (
+                  <div key={m.id} className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleLoadSavedMap(m)}
+                      className="flex-1 text-left p-1.5 rounded border border-green-900 hover:border-green-700 text-xs text-green-500 hover:text-green-400 transition-colors"
+                    >
+                      <div className="font-bold">{m.name}</div>
+                      <div className="text-green-800">
+                        {m.grids.filter((g) => g.polygon.length >= 3).length} buildings
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteSavedMap(m.id)}
+                      className="text-red-700 hover:text-red-400 text-xs px-1"
+                      title="Delete saved map"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {fetchResult && (
+                <div className="flex gap-1 mt-2">
+                  <input
+                    type="text"
+                    value={saveMapName}
+                    onChange={(e) => setSaveMapName(e.target.value)}
+                    placeholder="Map name..."
+                    className="flex-1 bg-gray-800 border border-green-800 text-green-300 px-2 py-1 text-xs rounded"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveMap();
+                    }}
+                  />
+                  <button
+                    onClick={handleSaveMap}
+                    disabled={!saveMapName.trim()}
+                    className="bg-green-800 hover:bg-green-700 disabled:opacity-30 text-green-100 px-2 py-1 text-xs rounded border border-green-600"
+                  >
+                    Save
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Building list */}
             {fetchResult && (
               <div className="bg-gray-900 border border-green-800 rounded p-3">
                 <h2 className="text-sm text-green-500 mb-2 border-b border-green-900 pb-1">
