@@ -432,6 +432,18 @@ export function DebugRTSSim() {
     renderCtxRef.current = computeMapRenderContext(map, selectedGrid.polygon, projectedVerts);
   }, [selectedGrid, projectedVerts]);
 
+  // ── Refs for animation loop (avoid stale closures & constant recreation) ──
+  const exitsRef = useRef(exits);
+  exitsRef.current = exits;
+  const projectedVertsRef = useRef(projectedVerts);
+  projectedVertsRef.current = projectedVerts;
+  const wallPointsRef = useRef(wallPoints);
+  wallPointsRef.current = wallPoints;
+  const activeWallPointRef = useRef(activeWallPoint);
+  activeWallPointRef.current = activeWallPoint;
+  const pedestriansRef = useRef(pedestrians);
+  pedestriansRef.current = pedestrians;
+
   // ── Main animation loop ───────────────────────────────────────────────
   const loop = useCallback(
     (time: number) => {
@@ -445,10 +457,11 @@ export function DebugRTSSim() {
       if (evac && !rts.state.clock.paused && rts.state.clock.phase !== 'setup') {
         const stepsPerFrame = Math.max(1, Math.round(rts.state.clock.speed));
         for (let i = 0; i < stepsPerFrame; i++) evac.step();
-        setPedestrians(evac.getSnapshots());
+        const snaps = evac.getSnapshots();
+        pedestriansRef.current = snaps;
+        setPedestrians(snaps);
       }
 
-      // Recompute render context from map on each frame (handles zoom/pan)
       updateRenderCtx();
 
       const canvas = canvasRef.current;
@@ -462,12 +475,12 @@ export function DebugRTSSim() {
             canvas.height,
             rc,
             rts.state,
-            projectedVerts,
-            exits,
-            pedestrians,
+            projectedVertsRef.current,
+            exitsRef.current,
+            pedestriansRef.current,
             true,
-            wallPoints,
-            activeWallPoint?.id ?? null,
+            wallPointsRef.current,
+            activeWallPointRef.current?.id ?? null,
           );
         }
       }
@@ -475,7 +488,7 @@ export function DebugRTSSim() {
       rerender();
       rafRef.current = requestAnimationFrame(loop);
     },
-    [projectedVerts, exits, pedestrians, rerender, updateRenderCtx, wallPoints, activeWallPoint],
+    [rerender, updateRenderCtx],
   );
 
   useEffect(() => {
@@ -1300,15 +1313,16 @@ export function DebugRTSSim() {
                 <div>
                   <label className="block text-xs text-green-600 mb-1">Pedestrian Count</label>
                   <input
-                    type="range"
-                    min={20}
-                    max={500}
+                    type="number"
+                    min={1}
                     step={10}
                     value={pedestrianCount}
-                    onChange={(e) => setPedestrianCount(Number(e.target.value))}
-                    className="w-full"
+                    onChange={(e) => setPedestrianCount(Math.max(1, Number(e.target.value) || 1))}
+                    className="w-full bg-gray-800 border border-green-800 text-green-300 px-2 py-1 text-xs rounded"
                   />
-                  <span className="text-xs text-green-400">{pedestrianCount}</span>
+                  <span className="text-xs text-green-700 mt-0.5 block">
+                    Large counts (&gt;500) may slow the simulation
+                  </span>
                 </div>
                 <div className="text-xs text-green-700 mt-1">
                   Exits: {exits.length} · Staging: {gameState.stagingArea ? 'Set' : 'Not set'}
