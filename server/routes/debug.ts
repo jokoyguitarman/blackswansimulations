@@ -1,5 +1,5 @@
-import { Router } from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { Router, json } from 'express';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import {
   fetchVenueBuilding,
   type OsmBuilding,
@@ -21,6 +21,8 @@ import {
 import { haversineM } from '../services/geoUtils.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { evaluateBombSquadAssessment } from '../services/rtsVisionService.js';
+import { env } from '../env.js';
 
 const router = Router();
 
@@ -288,6 +290,36 @@ router.post('/snap-test', requireAuth, (req, res) => {
     studMetadata,
     gridsKey: lastGridsKey,
   });
+});
+
+// ── RTS Vision Assessment (GPT-5.1 / GPT-4.1) ─────────────────────────
+router.post('/rts-assess', requireAuth, json(), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!env.openAiApiKey) {
+      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    }
+
+    const { imageUrl, playerAction, plantedItem, context } = req.body;
+
+    if (!playerAction || typeof playerAction !== 'string') {
+      return res.status(400).json({ error: 'playerAction is required' });
+    }
+
+    const result = await evaluateBombSquadAssessment(
+      {
+        imageUrl: imageUrl || '',
+        playerAction,
+        plantedItem: plantedItem || null,
+        context: context || 'Bomb squad sweep of building perimeter during crisis exercise.',
+      },
+      env.openAiApiKey,
+    );
+
+    res.json({ data: result });
+  } catch (err) {
+    logger.error({ err }, 'Error in POST /debug/rts-assess');
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 export { router as debugRouter };

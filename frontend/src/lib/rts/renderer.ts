@@ -43,6 +43,8 @@ export function renderRTS(
   transparentBg: boolean,
   wallPoints?: WallInspectionPoint[],
   activeWallPointId?: string | null,
+  plantedWallPointIds?: Set<string>,
+  discoveredWallPointIds?: Set<string>,
 ) {
   ctx.clearRect(0, 0, w, h);
 
@@ -56,7 +58,14 @@ export function renderRTS(
   drawExits(ctx, exits, buildingVerts, rc);
 
   if (wallPoints && wallPoints.length > 0) {
-    drawWallInspectionPoints(ctx, wallPoints, rc, activeWallPointId ?? null);
+    drawWallInspectionPoints(
+      ctx,
+      wallPoints,
+      rc,
+      activeWallPointId ?? null,
+      plantedWallPointIds ?? new Set(),
+      discoveredWallPointIds ?? new Set(),
+    );
   }
 
   for (const eq of state.equipment) {
@@ -373,26 +382,52 @@ function drawWallInspectionPoints(
   points: WallInspectionPoint[],
   rc: RenderContext,
   activeId: string | null,
+  _plantedIds: Set<string>,
+  discoveredIds: Set<string>,
 ) {
   for (const pt of points) {
     const p = toCanvas(pt.simPos.x, pt.simPos.y, rc);
     const isActive = pt.id === activeId;
+    const isDiscovered = discoveredIds.has(pt.id);
     const r = isActive ? 7 : 5;
 
-    // Outer ring
+    if (isDiscovered) {
+      ctx.save();
+      ctx.shadowColor = '#ef4444';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, r + 4, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.25)';
+      ctx.fill();
+      ctx.restore();
+
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#dc2626';
+      ctx.fill();
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${Math.max(r + 2, 9)}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('⚠', p.cx, p.cy);
+      continue;
+    }
+
     ctx.beginPath();
     ctx.arc(p.cx, p.cy, r + 2, 0, Math.PI * 2);
     ctx.strokeStyle = isActive ? '#ffffff' : 'rgba(255, 255, 255, 0.3)';
     ctx.lineWidth = isActive ? 2 : 1;
     ctx.stroke();
 
-    // Fill
     ctx.beginPath();
     ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
     ctx.fillStyle = isActive ? '#38bdf8' : pt.cached ? '#0ea5e9' : 'rgba(14, 165, 233, 0.5)';
     ctx.fill();
 
-    // Camera icon (small dot)
     ctx.fillStyle = '#fff';
     ctx.font = `${r}px monospace`;
     ctx.textAlign = 'center';

@@ -24,6 +24,7 @@ import {
   type UnitKind,
   type EquipmentKind,
   type TeamId,
+  type PlantedItem,
 } from '../lib/rts/types';
 import {
   loadSavedMaps,
@@ -222,6 +223,17 @@ export function DebugRTSSim() {
   const [wallPointImage, setWallPointImage] = useState<string | null>(null);
   const [wallPointLoading, setWallPointLoading] = useState(false);
   const [assessmentText, setAssessmentText] = useState('');
+  const [assessmentLoading, setAssessmentLoading] = useState(false);
+  const [aiResponse, setAiResponse] = useState<string | null>(null);
+
+  // ── Planted items (trainer threats) ───────────────────────────────────
+  const [plantedItems, setPlantedItems] = useState<PlantedItem[]>([]);
+  const [plantDescription, setPlantDescription] = useState('');
+  const [plantThreatLevel, setPlantThreatLevel] =
+    useState<PlantedItem['threatLevel']>('real_device');
+  const [plantDifficulty, setPlantDifficulty] =
+    useState<PlantedItem['concealmentDifficulty']>('moderate');
+  const [isTrainerMode, setIsTrainerMode] = useState(true);
 
   // ── Projected polygon ─────────────────────────────────────────────────
   const selectedGrid = selectedGridIdx != null ? fetchResult?.grids[selectedGridIdx] : null;
@@ -443,6 +455,8 @@ export function DebugRTSSim() {
   activeWallPointRef.current = activeWallPoint;
   const pedestriansRef = useRef(pedestrians);
   pedestriansRef.current = pedestrians;
+  const plantedItemsRef = useRef(plantedItems);
+  plantedItemsRef.current = plantedItems;
 
   // ── Main animation loop ───────────────────────────────────────────────
   const loop = useCallback(
@@ -469,6 +483,10 @@ export function DebugRTSSim() {
       if (canvas && rc) {
         const ctx = canvas.getContext('2d');
         if (ctx) {
+          const planted = new Set(plantedItemsRef.current.map((p) => p.wallPointId));
+          const discovered = new Set(
+            plantedItemsRef.current.filter((p) => p.discovered).map((p) => p.wallPointId),
+          );
           renderRTS(
             ctx,
             canvas.width,
@@ -481,6 +499,8 @@ export function DebugRTSSim() {
             true,
             wallPointsRef.current,
             activeWallPointRef.current?.id ?? null,
+            planted,
+            discovered,
           );
         }
       }
@@ -528,7 +548,101 @@ export function DebugRTSSim() {
     setActiveWallPoint(null);
     setWallPointImage(null);
     setAssessmentText('');
+    setAiResponse(null);
   }, []);
+
+  // ── Plant a threat at the active wall point ───────────────────────────
+  const handlePlantItem = useCallback(() => {
+    if (!activeWallPoint || !plantDescription.trim()) return;
+    const item: PlantedItem = {
+      id: `planted-${Date.now()}`,
+      wallPointId: activeWallPoint.id,
+      description: plantDescription.trim(),
+      threatLevel: plantThreatLevel,
+      concealmentDifficulty: plantDifficulty,
+      discovered: false,
+      assessed: false,
+      assessmentCorrect: null,
+      aiResponse: null,
+      detonationTimer: null,
+    };
+    setPlantedItems((prev) => [...prev, item]);
+    setPlantDescription('');
+  }, [activeWallPoint, plantDescription, plantThreatLevel, plantDifficulty]);
+
+  const handleRemovePlantedItem = useCallback((itemId: string) => {
+    setPlantedItems((prev) => prev.filter((p) => p.id !== itemId));
+  }, []);
+
+  // ── Submit assessment to GPT vision ───────────────────────────────────
+  const handleSubmitAssessment = useCallback(async () => {
+    if (!activeWallPoint || !assessmentText.trim()) return;
+
+    setAssessmentLoading(true);
+    setAiResponse(null);
+
+    const plantedAtPoint = plantedItems.find(
+      (p) => p.wallPointId === activeWallPoint.id && !p.discovered,
+    );
+
+    try {
+      const headers = await getAuthHeaders();
+      const resp = await fetch(apiUrl('/api/debug/rts-assess'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          imageUrl: wallPointImage || '',
+          playerAction: assessmentText.trim(),
+          plantedItem: plantedAtPoint
+            ? {
+                description: plantedAtPoint.description,
+                threatLevel: plantedAtPoint.threatLevel,
+                concealmentDifficulty: plantedAtPoint.concealmentDifficulty,
+              }
+            : null,
+          context:
+            'Bomb squad sweep of building perimeter during crisis exercise. EOD technician is inspecting this section of the building exterior.',
+        }),
+      });
+
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        setAiResponse(`Error: ${body.error || resp.statusText}`);
+        setAssessmentLoading(false);
+        return;
+      }
+
+      const { data } = await resp.json();
+      setAiResponse(data.response);
+
+      if (data.found && plantedAtPoint) {
+        setPlantedItems((prev) =>
+          prev.map((p) =>
+            p.id === plantedAtPoint.id
+              ? {
+                  ...p,
+                  discovered: true,
+                  assessed: true,
+                  assessmentCorrect: true,
+                  aiResponse: data.response,
+                }
+              : p,
+          ),
+        );
+      } else if (plantedAtPoint) {
+        setPlantedItems((prev) =>
+          prev.map((p) =>
+            p.id === plantedAtPoint.id
+              ? { ...p, assessed: true, assessmentCorrect: false, aiResponse: data.response }
+              : p,
+          ),
+        );
+      }
+    } catch (err) {
+      setAiResponse('Failed to connect to assessment server.');
+    }
+    setAssessmentLoading(false);
+  }, [activeWallPoint, assessmentText, wallPointImage, plantedItems]);
 
   // ── Canvas mouse handlers ─────────────────────────────────────────────
   const dragStartRef = useRef<Vec2 | null>(null);
@@ -1081,23 +1195,135 @@ export function DebugRTSSim() {
                     <span>Heading: {Math.round(activeWallPoint.heading)}°</span>
                   </div>
 
-                  {/* Assessment input */}
+                  {/* Trainer: plant threat (setup mode only) */}
+                  {isTrainerMode && gameState.clock.phase === 'setup' && (
+                    <div className="px-3 py-2 border-t border-red-900/50 bg-red-950/20">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs text-red-400 font-bold">
+                          Plant Threat (Trainer)
+                        </label>
+                        {plantedItems.filter((p) => p.wallPointId === activeWallPoint.id).length >
+                          0 && (
+                          <span className="text-xs text-red-300 bg-red-900/40 px-1.5 py-0.5 rounded">
+                            {
+                              plantedItems.filter((p) => p.wallPointId === activeWallPoint.id)
+                                .length
+                            }{' '}
+                            planted
+                          </span>
+                        )}
+                      </div>
+                      {plantedItems
+                        .filter((p) => p.wallPointId === activeWallPoint.id)
+                        .map((p) => (
+                          <div
+                            key={p.id}
+                            className="flex items-start gap-1.5 mb-1.5 bg-red-900/20 rounded px-2 py-1"
+                          >
+                            <span className="text-xs text-red-300 flex-1">{p.description}</span>
+                            <span className="text-xs text-red-500">{p.threatLevel}</span>
+                            <button
+                              onClick={() => handleRemovePlantedItem(p.id)}
+                              className="text-red-600 hover:text-red-400 text-xs"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      <textarea
+                        value={plantDescription}
+                        onChange={(e) => setPlantDescription(e.target.value)}
+                        placeholder="Describe what is hidden here — e.g. 'Pipe bomb concealed inside the green recycling bin to the left of the entrance'"
+                        className="w-full bg-gray-800 border border-red-800 text-red-200 text-xs rounded px-2 py-1.5 resize-none focus:border-red-500 focus:outline-none"
+                        rows={2}
+                      />
+                      <div className="flex gap-2 mt-1.5">
+                        <select
+                          value={plantThreatLevel}
+                          onChange={(e) =>
+                            setPlantThreatLevel(e.target.value as PlantedItem['threatLevel'])
+                          }
+                          className="bg-gray-800 border border-red-800 text-red-300 text-xs rounded px-1 py-1 flex-1"
+                        >
+                          <option value="real_device">Real Device</option>
+                          <option value="secondary_device">Secondary Device</option>
+                          <option value="decoy">Decoy</option>
+                        </select>
+                        <select
+                          value={plantDifficulty}
+                          onChange={(e) =>
+                            setPlantDifficulty(
+                              e.target.value as PlantedItem['concealmentDifficulty'],
+                            )
+                          }
+                          className="bg-gray-800 border border-red-800 text-red-300 text-xs rounded px-1 py-1 flex-1"
+                        >
+                          <option value="easy">Easy</option>
+                          <option value="moderate">Moderate</option>
+                          <option value="hard">Hard</option>
+                        </select>
+                        <button
+                          onClick={handlePlantItem}
+                          disabled={!plantDescription.trim()}
+                          className="bg-red-800 hover:bg-red-700 disabled:opacity-30 text-white text-xs px-3 py-1 rounded border border-red-600"
+                        >
+                          Plant
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Player: assessment input */}
                   <div className="px-3 py-2 border-t border-gray-800">
-                    <label className="block text-xs text-cyan-400 mb-1">Assessment</label>
+                    <label className="block text-xs text-cyan-400 mb-1">
+                      {isTrainerMode
+                        ? 'Assessment (Player View Preview)'
+                        : 'What do you want to inspect?'}
+                    </label>
                     <textarea
                       value={assessmentText}
                       onChange={(e) => setAssessmentText(e.target.value)}
-                      placeholder="Describe what you observe — suspicious items, structural damage, concealment points..."
+                      placeholder="Be specific — name the objects you want to inspect (e.g. 'Inspect the recycling bin near the entrance and the concrete planter to the right')"
                       className="w-full bg-gray-800 border border-gray-700 text-green-300 text-xs rounded px-2 py-1.5 resize-none focus:border-cyan-500 focus:outline-none"
                       rows={3}
                     />
+
+                    {/* AI response */}
+                    {aiResponse && (
+                      <div
+                        className={`mt-2 px-2.5 py-2 rounded text-xs border ${
+                          plantedItems.find(
+                            (p) => p.wallPointId === activeWallPoint.id && p.discovered,
+                          )
+                            ? 'bg-red-900/30 border-red-700 text-red-200'
+                            : 'bg-gray-800 border-gray-700 text-green-300'
+                        }`}
+                      >
+                        <div className="text-gray-400 text-xs mb-1 font-bold">
+                          Exercise Observer:
+                        </div>
+                        {aiResponse}
+                      </div>
+                    )}
+
                     <div className="flex justify-between items-center mt-1.5">
-                      <span className="text-xs text-gray-600">AI evaluation coming soon</span>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-gray-600 flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isTrainerMode}
+                            onChange={(e) => setIsTrainerMode(e.target.checked)}
+                            className="rounded border-gray-600"
+                          />
+                          Trainer mode
+                        </label>
+                      </div>
                       <button
-                        disabled={!assessmentText.trim()}
+                        onClick={handleSubmitAssessment}
+                        disabled={!assessmentText.trim() || assessmentLoading}
                         className="bg-cyan-800 hover:bg-cyan-700 disabled:opacity-30 text-cyan-100 px-3 py-1 text-xs rounded border border-cyan-600"
                       >
-                        Submit Assessment
+                        {assessmentLoading ? 'Evaluating...' : 'Submit Assessment'}
                       </button>
                     </div>
                   </div>

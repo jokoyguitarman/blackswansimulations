@@ -469,6 +469,20 @@ export interface RTSGameState {
   stagingArea: Vec2 | null;
 }
 
+// ── Planted items (trainer threats) ────────────────────────────────────
+export interface PlantedItem {
+  id: string;
+  wallPointId: string;
+  description: string;
+  threatLevel: 'decoy' | 'real_device' | 'secondary_device';
+  concealmentDifficulty: 'easy' | 'moderate' | 'hard';
+  discovered: boolean;
+  assessed: boolean;
+  assessmentCorrect: boolean | null;
+  aiResponse: string | null;
+  detonationTimer: number | null;
+}
+
 export function createInitialGameState(): RTSGameState {
   return {
     clock: { elapsed: 0, speed: 1, paused: true, phase: 'setup' },
