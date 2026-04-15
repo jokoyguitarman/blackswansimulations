@@ -14,6 +14,7 @@ import { JoinSessionPage } from './pages/JoinSessionPage';
 import { DemoLanding } from './pages/DemoLanding';
 import { DebugBuildingStuds } from './pages/DebugBuildingStuds';
 import { DebugEvacuationSim } from './pages/DebugEvacuationSim';
+import { DebugRTSSim } from './pages/DebugRTSSim';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SupabaseConfigError } from './components/SupabaseConfigError';
 import './style.css';
@@ -112,6 +113,14 @@ const App = () => {
               element={
                 <ProtectedRoute>
                   <DebugEvacuationSim />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/debug/rts-sim"
+              element={
+                <ProtectedRoute>
+                  <DebugRTSSim />
                 </ProtectedRoute>
               }
             />

@@ -1,0 +1,1041 @@
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import {
+  MapContainer,
+  TileLayer,
+  Polygon,
+  Circle,
+  CircleMarker,
+  useMapEvents,
+} from 'react-leaflet';
+import L from 'leaflet';
+import { supabase } from '../lib/supabase';
+import { PolygonEvacuationEngine } from '../lib/evacuation/engine';
+import type { PedSnapshot } from '../lib/evacuation/engine';
+import type { ExitDef, PolygonSimConfig, Vec2 } from '../lib/evacuation/types';
+import { DEFAULT_POLYGON_CONFIG } from '../lib/evacuation/types';
+import { projectPolygon, nearestEdge, edgeLength } from '../lib/evacuation/geometry';
+import { RTSEngine } from '../lib/rts/engine';
+import { renderRTS, computeRenderContext } from '../lib/rts/renderer';
+import type { RenderContext } from '../lib/rts/renderer';
+import {
+  UNIT_CATALOG,
+  EQUIPMENT_CATALOG,
+  type UnitKind,
+  type EquipmentKind,
+  type TeamId,
+} from '../lib/rts/types';
+import 'leaflet/dist/leaflet.css';
+
+// ── API helpers (same as evac sim) ──────────────────────────────────────
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+function apiUrl(path: string): string {
+  return API_BASE ? `${API_BASE}${path}` : path;
+}
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  return {
+    'Content-Type': 'application/json',
+    Authorization: session ? `Bearer ${session.access_token}` : '',
+  };
+}
+
+// ── OSM types ───────────────────────────────────────────────────────────
+interface GridItem {
+  buildingIndex: number;
+  buildingName: string | null;
+  polygon: [number, number][];
+  floors: string[];
+  spacingM: number;
+}
+interface BuildingSummary {
+  name: string | null;
+  lat: number;
+  lng: number;
+  levels: number | null;
+  use: string | null;
+  polygonPoints: number;
+}
+interface FetchResult {
+  grids: GridItem[];
+  buildings: BuildingSummary[];
+}
+
+// ── Leaflet click handler ───────────────────────────────────────────────
+function ClickHandler({ onClick }: { onClick: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
+
+let exitIdCounter = 0;
+type PagePhase = 'map' | 'rts';
+
+// ── Team palette data ───────────────────────────────────────────────────
+const TEAM_UNITS: Record<TeamId, UnitKind[]> = {
+  ic: [],
+  evacuation: ['marshal'],
+  police: ['police_officer'],
+  medical: ['medic', 'paramedic'],
+  fire: ['rescue_officer', 'search_dog'],
+  bomb_squad: ['eod_tech'],
+  media: ['press_officer', 'family_liaison'],
+};
+
+const TEAM_EQUIPMENT: Record<TeamId, EquipmentKind[]> = {
+  ic: ['fcp'],
+  evacuation: ['assembly_point', 'directional_sign', 'megaphone'],
+  police: ['hard_barrier', 'tape_cordon', 'road_block', 'access_control_point'],
+  medical: [
+    'ccp_tent',
+    'treatment_area',
+    'ambulance_staging',
+    'minor_injuries_area',
+    'body_holding_area',
+  ],
+  fire: ['structural_prop', 'lighting_rig', 'ladder'],
+  bomb_squad: ['exclusion_zone', 'all_clear_marker', 'blast_blanket'],
+  media: ['media_briefing_point', 'family_reception_centre'],
+};
+
+const TEAM_COLORS: Record<TeamId, string> = {
+  ic: '#fcd34d',
+  evacuation: '#4ade80',
+  police: '#60a5fa',
+  medical: '#f87171',
+  fire: '#fbbf24',
+  bomb_squad: '#a78bfa',
+  media: '#e879f9',
+};
+
+const TEAM_LABELS: Record<TeamId, string> = {
+  ic: 'Incident Commander',
+  evacuation: 'Evacuation',
+  police: 'Police / Cordon',
+  medical: 'Triage / Medical',
+  fire: 'Fire / Rescue',
+  bomb_squad: 'Bomb Squad / EOD',
+  media: 'Media / Comms',
+};
+
+const ALL_TEAMS: TeamId[] = [
+  'ic',
+  'evacuation',
+  'police',
+  'medical',
+  'fire',
+  'bomb_squad',
+  'media',
+];
+
+// =====================================================================
+// Main component
+// =====================================================================
+export function DebugRTSSim() {
+  // ── Map phase state ───────────────────────────────────────────────────
+  const [lat, setLat] = useState('1.2989008');
+  const [lng, setLng] = useState('103.855176');
+  const [radius, setRadius] = useState('300');
+  const [loading, setLoading] = useState(false);
+  const [fetchResult, setFetchResult] = useState<FetchResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const [selectedGridIdx, setSelectedGridIdx] = useState<number | null>(null);
+  const [phase, setPhase] = useState<PagePhase>('map');
+
+  // ── RTS state ─────────────────────────────────────────────────────────
+  const rtsRef = useRef<RTSEngine>(new RTSEngine());
+  const evacEngRef = useRef<PolygonEvacuationEngine | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef = useRef(0);
+  const lastTimeRef = useRef(0);
+
+  const [exits, setExits] = useState<ExitDef[]>([]);
+  const [pedestrians, setPedestrians] = useState<PedSnapshot[]>([]);
+  const [_, forceRender] = useState(0);
+  const rerender = useCallback(() => forceRender((n) => n + 1), []);
+
+  const [pedestrianCount, setPedestrianCount] = useState(120);
+  const [newExitWidth, setNewExitWidth] = useState(3);
+
+  // ── Projected polygon ─────────────────────────────────────────────────
+  const projectedVerts = useMemo<Vec2[]>(() => {
+    if (selectedGridIdx == null || !fetchResult) return [];
+    const grid = fetchResult.grids[selectedGridIdx];
+    if (!grid) return [];
+    return projectPolygon(grid.polygon);
+  }, [fetchResult, selectedGridIdx]);
+
+  // Canvas size: fill available space
+  const CANVAS_W = 900;
+  const CANVAS_H = 700;
+
+  const renderCtx = useMemo<RenderContext | null>(() => {
+    if (projectedVerts.length < 3) return null;
+    return computeRenderContext(projectedVerts, CANVAS_W, CANVAS_H);
+  }, [projectedVerts]);
+
+  // ── Map phase handlers ────────────────────────────────────────────────
+  const handleFetch = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    setFetchResult(null);
+    setSelectedGridIdx(null);
+    try {
+      const headers = await getAuthHeaders();
+      const params = new URLSearchParams();
+      if (lat) params.set('lat', lat);
+      if (lng) params.set('lng', lng);
+      if (radius) params.set('radius', radius);
+      const res = await fetch(apiUrl(`/api/debug/building-studs?${params}`), { headers });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setFetchResult({ grids: data.grids ?? [], buildings: data.buildings ?? [] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [lat, lng, radius]);
+
+  const handleMapClick = useCallback((clickLat: number, clickLng: number) => {
+    setLat(clickLat.toFixed(7));
+    setLng(clickLng.toFixed(7));
+  }, []);
+
+  useEffect(() => {
+    if (mapRef.current) {
+      const pLat = parseFloat(lat);
+      const pLng = parseFloat(lng);
+      if (!Number.isNaN(pLat) && !Number.isNaN(pLng)) {
+        mapRef.current.setView([pLat, pLng], mapRef.current.getZoom());
+      }
+    }
+  }, [lat, lng]);
+
+  // ── Select building → go to RTS ──────────────────────────────────────
+  const selectBuilding = useCallback((gridIdx: number) => {
+    setSelectedGridIdx(gridIdx);
+    setExits([]);
+    setPedestrians([]);
+    setPhase('rts');
+    evacEngRef.current?.destroy();
+    evacEngRef.current = null;
+    rtsRef.current = new RTSEngine();
+  }, []);
+
+  const backToMap = useCallback(() => {
+    setPhase('map');
+    cancelAnimationFrame(rafRef.current);
+    evacEngRef.current?.destroy();
+    evacEngRef.current = null;
+    rtsRef.current = new RTSEngine();
+    setPedestrians([]);
+  }, []);
+
+  // ── Initialize evac engine when exits change during setup ─────────────
+  const initEvacEngine = useCallback(() => {
+    if (projectedVerts.length < 3 || exits.length === 0) return;
+    evacEngRef.current?.destroy();
+    const config: PolygonSimConfig = {
+      vertices: projectedVerts,
+      pedestrianCount,
+      pedestrianRadius: DEFAULT_POLYGON_CONFIG.pedestrianRadius,
+      desiredSpeed: DEFAULT_POLYGON_CONFIG.desiredSpeed,
+      panicFactor: DEFAULT_POLYGON_CONFIG.panicFactor,
+      dt: DEFAULT_POLYGON_CONFIG.dt,
+    };
+    evacEngRef.current = new PolygonEvacuationEngine(config, exits);
+    rtsRef.current.setBuildingVertices(projectedVerts);
+    setPedestrians(evacEngRef.current.getSnapshots());
+  }, [projectedVerts, exits, pedestrianCount]);
+
+  // ── Canvas toSim helper ───────────────────────────────────────────────
+  const toSim = useCallback(
+    (cx: number, cy: number): Vec2 => {
+      if (!renderCtx) return { x: 0, y: 0 };
+      return {
+        x: (cx - renderCtx.canvasPad) / renderCtx.scale + renderCtx.bounds.minX,
+        y: (cy - renderCtx.canvasPad) / renderCtx.scale + renderCtx.bounds.minY,
+      };
+    },
+    [renderCtx],
+  );
+
+  // ── Main animation loop ───────────────────────────────────────────────
+  const loop = useCallback(
+    (time: number) => {
+      const dt = lastTimeRef.current ? (time - lastTimeRef.current) / 1000 : 0;
+      lastTimeRef.current = time;
+
+      const rts = rtsRef.current;
+      rts.tick(dt);
+
+      // Step evac sim
+      const evac = evacEngRef.current;
+      if (evac && !rts.state.clock.paused && rts.state.clock.phase !== 'setup') {
+        const stepsPerFrame = Math.max(1, Math.round(rts.state.clock.speed));
+        for (let i = 0; i < stepsPerFrame; i++) evac.step();
+        setPedestrians(evac.getSnapshots());
+      }
+
+      // Render
+      const canvas = canvasRef.current;
+      if (canvas && renderCtx) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          renderRTS(
+            ctx,
+            CANVAS_W,
+            CANVAS_H,
+            renderCtx,
+            rts.state,
+            projectedVerts,
+            exits,
+            pedestrians,
+            false,
+          );
+        }
+      }
+
+      rerender();
+      rafRef.current = requestAnimationFrame(loop);
+    },
+    [renderCtx, projectedVerts, exits, pedestrians, rerender],
+  );
+
+  useEffect(() => {
+    if (phase !== 'rts') return;
+    lastTimeRef.current = 0;
+    rafRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [phase, loop]);
+
+  // ── Canvas mouse handlers ─────────────────────────────────────────────
+  const dragStartRef = useRef<Vec2 | null>(null);
+  const isDraggingRef = useRef(false);
+
+  const handleCanvasMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!renderCtx) return;
+      const rect = canvasRef.current!.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const sim = toSim(cx, cy);
+
+      const rts = rtsRef.current;
+      const mode = rts.state.interactionMode;
+
+      if (mode.type === 'select') {
+        if (e.button === 2) {
+          // Right-click → move selected units
+          e.preventDefault();
+          const selected = [...rts.state.selection.selectedUnitIds];
+          if (selected.length > 0) {
+            rts.issueMove(selected, sim, e.shiftKey);
+          }
+          return;
+        }
+        dragStartRef.current = sim;
+        isDraggingRef.current = false;
+      }
+    },
+    [renderCtx, toSim],
+  );
+
+  const handleCanvasMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!renderCtx) return;
+      const rect = canvasRef.current!.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const sim = toSim(cx, cy);
+
+      const rts = rtsRef.current;
+      if (dragStartRef.current && rts.state.interactionMode.type === 'select') {
+        isDraggingRef.current = true;
+        rts.state.selection.selectionBox = { start: dragStartRef.current, end: sim };
+      }
+    },
+    [renderCtx, toSim],
+  );
+
+  const handleCanvasMouseUp = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!renderCtx) return;
+      const rect = canvasRef.current!.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const sim = toSim(cx, cy);
+      const rts = rtsRef.current;
+      const mode = rts.state.interactionMode;
+
+      if (mode.type === 'select') {
+        if (isDraggingRef.current && dragStartRef.current) {
+          rts.selectUnitsInBox(dragStartRef.current, sim);
+        } else {
+          const unit = rts.findUnitAt(sim);
+          if (unit) {
+            rts.selectUnit(unit.id, e.shiftKey);
+          } else {
+            rts.deselectAll();
+          }
+        }
+        rts.state.selection.selectionBox = null;
+        dragStartRef.current = null;
+        isDraggingRef.current = false;
+        return;
+      }
+
+      if (mode.type === 'spawn_unit') {
+        const spawnPos = rts.state.stagingArea ?? sim;
+        const u = rts.spawnUnit(mode.unitKind, spawnPos);
+        if (rts.state.stagingArea) {
+          rts.issueMove([u.id], sim, false);
+        }
+        rts.setInteractionMode({ type: 'select' });
+        return;
+      }
+
+      if (mode.type === 'place_equipment') {
+        const selected = rts.getSelectedUnits();
+        const placer = selected.length > 0 ? selected[0].id : 'system';
+        rts.placeEquipment(mode.equipmentKind, sim, placer);
+        rts.setInteractionMode({ type: 'select' });
+        return;
+      }
+
+      if (mode.type === 'place_exit') {
+        if (projectedVerts.length < 3) return;
+        const snap = nearestEdge(sim.x, sim.y, projectedVerts);
+        const maxW = edgeLength(projectedVerts, snap.edgeIndex) * 0.9;
+        const w = Math.min(newExitWidth, maxW);
+        const id = `exit-${++exitIdCounter}`;
+        setExits((prev) => [
+          ...prev,
+          { id, center: snap.point, width: w, edgeIndex: snap.edgeIndex },
+        ]);
+        rts.setInteractionMode({ type: 'select' });
+        return;
+      }
+
+      if (mode.type === 'delete_exit') {
+        const hit = exits.find((ex) => {
+          const d = Math.hypot(ex.center.x - sim.x, ex.center.y - sim.y);
+          return d < ex.width;
+        });
+        if (hit) {
+          setExits((prev) => prev.filter((ex) => ex.id !== hit.id));
+        }
+        rts.setInteractionMode({ type: 'select' });
+        return;
+      }
+    },
+    [renderCtx, toSim, projectedVerts, exits, newExitWidth],
+  );
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+  }, []);
+
+  // ── Button helpers ────────────────────────────────────────────────────
+  const rts = rtsRef.current;
+  const gameState = rts.state;
+  const clockDisplay = rts.formatClock();
+  const phaseLabel = rts.phaseLabel();
+  const selectedGrid = selectedGridIdx != null ? fetchResult?.grids[selectedGridIdx] : null;
+  const parsedLat = parseFloat(lat);
+  const parsedLng = parseFloat(lng);
+  const parsedRadius = parseInt(radius, 10) || 300;
+
+  const handleDetonation = () => {
+    if (exits.length === 0) return;
+    initEvacEngine();
+    rts.startDetonation();
+  };
+
+  const handleSetStagingArea = () => {
+    rts.setInteractionMode({ type: 'select' });
+    // We'll use a special handler: next left click on canvas sets staging area
+    // For simplicity, prompt-style: staging area is placed via the interaction
+    const handleStaging = (e: MouseEvent) => {
+      const canvas = canvasRef.current;
+      if (!canvas || !renderCtx) return;
+      const rect = canvas.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const sim = toSim(cx, cy);
+      rts.setStagingArea(sim);
+      canvas.removeEventListener('click', handleStaging);
+      rerender();
+    };
+    canvasRef.current?.addEventListener('click', handleStaging, { once: true });
+  };
+
+  // =====================================================================
+  // RENDER
+  // =====================================================================
+  return (
+    <div className="min-h-screen bg-black text-green-400 font-mono flex flex-col">
+      {/* Header */}
+      <div className="border-b border-green-800 p-3 flex items-center justify-between">
+        <div>
+          <h1 className="text-lg tracking-wider text-amber-400">
+            [RTS CRISIS SIMULATION — PROTOTYPE]
+          </h1>
+          <p className="text-xs text-green-700 mt-0.5">
+            {phase === 'map'
+              ? 'Select a building to begin the scenario'
+              : `${selectedGrid?.buildingName || `Building #${selectedGridIdx}`} — ${phaseLabel}`}
+          </p>
+        </div>
+        <div className="flex gap-2 items-center">
+          {phase === 'rts' && (
+            <>
+              <span className="text-amber-300 text-sm font-bold">{clockDisplay}</span>
+              <button
+                onClick={backToMap}
+                className="text-xs text-green-600 hover:text-green-400 border border-green-800 rounded px-2 py-1"
+              >
+                ← Back to Map
+              </button>
+            </>
+          )}
+          <a
+            href="/debug/evacuation-sim"
+            className="text-xs text-green-600 hover:text-green-400 border border-green-800 rounded px-2 py-1"
+          >
+            Evac Sim
+          </a>
+        </div>
+      </div>
+
+      {/* ============================================================= */}
+      {/* MAP PHASE */}
+      {/* ============================================================= */}
+      {phase === 'map' && (
+        <div className="p-4 flex-1">
+          <div className="flex flex-wrap gap-3 mb-4 items-end">
+            <div>
+              <label className="block text-xs text-green-600 mb-1">Latitude</label>
+              <input
+                type="text"
+                value={lat}
+                onChange={(e) => setLat(e.target.value)}
+                className="bg-gray-900 border border-green-800 text-green-300 px-2 py-1 text-sm w-36 rounded"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-green-600 mb-1">Longitude</label>
+              <input
+                type="text"
+                value={lng}
+                onChange={(e) => setLng(e.target.value)}
+                className="bg-gray-900 border border-green-800 text-green-300 px-2 py-1 text-sm w-36 rounded"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-green-600 mb-1">Radius (m)</label>
+              <input
+                type="text"
+                value={radius}
+                onChange={(e) => setRadius(e.target.value)}
+                className="bg-gray-900 border border-green-800 text-green-300 px-2 py-1 text-sm w-20 rounded"
+              />
+            </div>
+            <button
+              onClick={handleFetch}
+              disabled={loading}
+              className="bg-green-800 hover:bg-green-700 disabled:opacity-50 text-green-100 px-4 py-1.5 text-sm rounded border border-green-600"
+            >
+              {loading ? 'Fetching...' : 'Fetch Buildings'}
+            </button>
+          </div>
+
+          {error && (
+            <div className="bg-red-900/40 border border-red-700 text-red-300 px-3 py-2 text-sm rounded mb-4">
+              {error}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4">
+            <div
+              className="rounded border border-green-800 overflow-hidden"
+              style={{ height: 600 }}
+            >
+              <MapContainer
+                center={[
+                  Number.isNaN(parsedLat) ? 1.3 : parsedLat,
+                  Number.isNaN(parsedLng) ? 103.8 : parsedLng,
+                ]}
+                zoom={18}
+                style={{ height: '100%', width: '100%' }}
+                ref={mapRef}
+              >
+                <TileLayer
+                  attribution="&copy; OSM"
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <ClickHandler onClick={handleMapClick} />
+                {!Number.isNaN(parsedLat) && !Number.isNaN(parsedLng) && (
+                  <Circle
+                    center={[parsedLat, parsedLng]}
+                    radius={parsedRadius}
+                    pathOptions={{
+                      color: '#22c55e',
+                      weight: 1,
+                      fillOpacity: 0.05,
+                      dashArray: '6, 4',
+                    }}
+                  />
+                )}
+                {!Number.isNaN(parsedLat) && !Number.isNaN(parsedLng) && (
+                  <CircleMarker
+                    center={[parsedLat, parsedLng]}
+                    radius={5}
+                    pathOptions={{
+                      color: '#22c55e',
+                      fillColor: '#4ade80',
+                      fillOpacity: 0.8,
+                      weight: 2,
+                    }}
+                  />
+                )}
+                {fetchResult?.grids
+                  .filter((g) => g.buildingIndex >= 0 && g.polygon.length >= 3)
+                  .map((grid, idx) => (
+                    <Polygon
+                      key={`bldg-${grid.buildingIndex}`}
+                      positions={grid.polygon.map(([la, ln]) => [la, ln] as [number, number])}
+                      pathOptions={{
+                        color: selectedGridIdx === idx ? '#22d3ee' : '#6366f1',
+                        weight: selectedGridIdx === idx ? 3 : 2,
+                        fillOpacity: selectedGridIdx === idx ? 0.2 : 0.08,
+                        fillColor: selectedGridIdx === idx ? '#22d3ee' : '#818cf8',
+                      }}
+                      eventHandlers={{ click: () => selectBuilding(idx) }}
+                    />
+                  ))}
+              </MapContainer>
+            </div>
+
+            <div className="space-y-3 overflow-y-auto max-h-[600px]">
+              <div className="bg-gray-900 border border-green-800 rounded p-3">
+                <h2 className="text-sm text-amber-400 mb-2 border-b border-green-900 pb-1">
+                  RTS Prototype
+                </h2>
+                <div className="text-xs text-green-700 space-y-1">
+                  <p>1. Click the map to set coordinates</p>
+                  <p>2. Fetch buildings nearby</p>
+                  <p>3. Click a building to enter the RTS scenario</p>
+                  <p>4. Place exits, set staging area, deploy units</p>
+                  <p>5. Hit DETONATE to start the exercise</p>
+                </div>
+              </div>
+              {fetchResult && (
+                <div className="bg-gray-900 border border-green-800 rounded p-3">
+                  <h2 className="text-sm text-green-500 mb-2 border-b border-green-900 pb-1">
+                    Buildings ({fetchResult.grids.filter((g) => g.polygon.length >= 3).length})
+                  </h2>
+                  <div className="space-y-1.5">
+                    {fetchResult.grids
+                      .map((grid, idx) => ({ grid, idx }))
+                      .filter(({ grid }) => grid.polygon.length >= 3)
+                      .map(({ grid, idx }) => (
+                        <button
+                          key={idx}
+                          onClick={() => selectBuilding(idx)}
+                          className={`w-full text-left p-2 rounded border text-xs transition-colors ${
+                            selectedGridIdx === idx
+                              ? 'border-cyan-500 bg-cyan-900/30 text-cyan-300'
+                              : 'border-green-900 hover:border-green-700 text-green-500 hover:text-green-400'
+                          }`}
+                        >
+                          <div className="font-bold">
+                            {grid.buildingName || `Building #${grid.buildingIndex}`}
+                          </div>
+                          <div className="text-green-700 mt-0.5">{grid.polygon.length} pts</div>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================= */}
+      {/* RTS PHASE */}
+      {/* ============================================================= */}
+      {phase === 'rts' && (
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left sidebar: team palette */}
+          <div className="w-56 border-r border-green-800 overflow-y-auto p-2 space-y-2 flex-shrink-0">
+            {/* Team selector */}
+            <div className="space-y-1">
+              <div className="text-xs text-green-600 uppercase tracking-wider">Active Team</div>
+              {ALL_TEAMS.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => {
+                    rts.setActiveTeam(t);
+                    rerender();
+                  }}
+                  className={`w-full text-left text-xs px-2 py-1.5 rounded border transition-colors ${
+                    gameState.activeTeam === t
+                      ? 'border-white/40 bg-white/10 text-white'
+                      : 'border-green-900 text-green-600 hover:text-green-400 hover:border-green-700'
+                  }`}
+                  style={
+                    gameState.activeTeam === t
+                      ? { borderColor: TEAM_COLORS[t] + '80', color: TEAM_COLORS[t] }
+                      : {}
+                  }
+                >
+                  {TEAM_LABELS[t]}
+                </button>
+              ))}
+            </div>
+
+            {/* Units for active team */}
+            <div className="space-y-1">
+              <div className="text-xs text-green-600 uppercase tracking-wider mt-3">Units</div>
+              {TEAM_UNITS[gameState.activeTeam].map((uk) => {
+                const def = UNIT_CATALOG[uk];
+                return (
+                  <button
+                    key={uk}
+                    onClick={() => {
+                      rts.setInteractionMode({ type: 'spawn_unit', unitKind: uk });
+                      rerender();
+                    }}
+                    className={`w-full text-left text-xs px-2 py-1.5 rounded border transition-colors ${
+                      gameState.interactionMode.type === 'spawn_unit' &&
+                      gameState.interactionMode.unitKind === uk
+                        ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300'
+                        : 'border-green-900 text-green-500 hover:text-green-400 hover:border-green-700'
+                    }`}
+                  >
+                    <span
+                      className="inline-block w-3 h-3 rounded-full mr-1.5"
+                      style={{ backgroundColor: def.color }}
+                    />
+                    {def.label}
+                    <span className="text-green-700 ml-1">({def.speed}m/s)</span>
+                  </button>
+                );
+              })}
+              {TEAM_UNITS[gameState.activeTeam].length === 0 && (
+                <div className="text-xs text-green-800 italic px-2">IC has no deployable units</div>
+              )}
+            </div>
+
+            {/* Equipment for active team */}
+            <div className="space-y-1">
+              <div className="text-xs text-green-600 uppercase tracking-wider mt-3">Equipment</div>
+              {TEAM_EQUIPMENT[gameState.activeTeam].map((ek) => {
+                const def = EQUIPMENT_CATALOG[ek];
+                return (
+                  <button
+                    key={ek}
+                    onClick={() => {
+                      rts.setInteractionMode({ type: 'place_equipment', equipmentKind: ek });
+                      rerender();
+                    }}
+                    className={`w-full text-left text-xs px-2 py-1.5 rounded border transition-colors ${
+                      gameState.interactionMode.type === 'place_equipment' &&
+                      gameState.interactionMode.equipmentKind === ek
+                        ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300'
+                        : 'border-green-900 text-green-500 hover:text-green-400 hover:border-green-700'
+                    }`}
+                  >
+                    <span className="mr-1.5">{def.icon}</span>
+                    {def.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Center: canvas */}
+          <div className="flex-1 flex flex-col items-center justify-center bg-gray-950 overflow-hidden">
+            <canvas
+              ref={canvasRef}
+              width={CANVAS_W}
+              height={CANVAS_H}
+              className="border border-green-900 cursor-crosshair"
+              onMouseDown={handleCanvasMouseDown}
+              onMouseMove={handleCanvasMouseMove}
+              onMouseUp={handleCanvasMouseUp}
+              onContextMenu={handleContextMenu}
+            />
+            {/* Interaction mode indicator */}
+            <div className="mt-2 text-xs text-green-600 flex gap-3">
+              {gameState.interactionMode.type !== 'select' && (
+                <span className="text-amber-400">
+                  Mode: {gameState.interactionMode.type.replace(/_/g, ' ').toUpperCase()} — click
+                  canvas to place, ESC to cancel
+                </span>
+              )}
+              {gameState.interactionMode.type === 'select' && (
+                <span>
+                  Left-click: select · Drag: box select · Right-click: move units · Shift+click: add
+                  to selection
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Right sidebar: controls & info */}
+          <div className="w-64 border-l border-green-800 overflow-y-auto p-3 space-y-3 flex-shrink-0">
+            {/* Clock & controls */}
+            <div className="bg-gray-900 border border-green-800 rounded p-3">
+              <div className="text-sm text-amber-400 font-bold mb-2">{phaseLabel}</div>
+              <div className="text-2xl text-amber-300 font-bold text-center mb-3">
+                {clockDisplay}
+              </div>
+              <div className="flex gap-2">
+                {gameState.clock.phase === 'setup' ? (
+                  <button
+                    onClick={handleDetonation}
+                    disabled={exits.length === 0}
+                    className="flex-1 bg-red-800 hover:bg-red-700 disabled:opacity-30 text-white text-xs px-2 py-2 rounded border border-red-600 font-bold"
+                  >
+                    💥 DETONATE
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => {
+                        rts.togglePause();
+                        rerender();
+                      }}
+                      className="flex-1 bg-gray-800 hover:bg-gray-700 text-green-300 text-xs px-2 py-1.5 rounded border border-green-800"
+                    >
+                      {gameState.clock.paused ? '▶ Resume' : '⏸ Pause'}
+                    </button>
+                  </>
+                )}
+              </div>
+              {gameState.clock.phase !== 'setup' && (
+                <div className="flex gap-1 mt-2">
+                  {[1, 2, 5, 10].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => {
+                        rts.setSpeed(s);
+                        rerender();
+                      }}
+                      className={`flex-1 text-xs py-1 rounded border ${
+                        gameState.clock.speed === s
+                          ? 'border-amber-400 bg-amber-900/30 text-amber-300'
+                          : 'border-green-900 text-green-600 hover:text-green-400'
+                      }`}
+                    >
+                      {s}x
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Setup tools */}
+            {gameState.clock.phase === 'setup' && (
+              <div className="bg-gray-900 border border-green-800 rounded p-3 space-y-2">
+                <div className="text-xs text-green-500 uppercase tracking-wider">Setup</div>
+                <div className="space-y-1.5">
+                  <button
+                    onClick={() => {
+                      rts.setInteractionMode({ type: 'place_exit' });
+                      rerender();
+                    }}
+                    className={`w-full text-xs text-left px-2 py-1.5 rounded border transition-colors ${
+                      gameState.interactionMode.type === 'place_exit'
+                        ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300'
+                        : 'border-green-900 text-green-500 hover:border-green-700'
+                    }`}
+                  >
+                    🚪 Place Exit
+                  </button>
+                  <button
+                    onClick={() => {
+                      rts.setInteractionMode({ type: 'delete_exit' });
+                      rerender();
+                    }}
+                    className={`w-full text-xs text-left px-2 py-1.5 rounded border transition-colors ${
+                      gameState.interactionMode.type === 'delete_exit'
+                        ? 'border-red-400 bg-red-900/30 text-red-300'
+                        : 'border-green-900 text-green-500 hover:border-green-700'
+                    }`}
+                  >
+                    ❌ Delete Exit
+                  </button>
+                  <button
+                    onClick={handleSetStagingArea}
+                    className="w-full text-xs text-left px-2 py-1.5 rounded border border-green-900 text-green-500 hover:border-green-700"
+                  >
+                    📍 Set Staging Area (click canvas)
+                  </button>
+                </div>
+                <div>
+                  <label className="block text-xs text-green-600 mb-1">Exit Width (m)</label>
+                  <input
+                    type="range"
+                    min={1}
+                    max={8}
+                    step={0.5}
+                    value={newExitWidth}
+                    onChange={(e) => setNewExitWidth(Number(e.target.value))}
+                    className="w-full"
+                  />
+                  <span className="text-xs text-green-400">{newExitWidth}m</span>
+                </div>
+                <div>
+                  <label className="block text-xs text-green-600 mb-1">Pedestrian Count</label>
+                  <input
+                    type="range"
+                    min={20}
+                    max={500}
+                    step={10}
+                    value={pedestrianCount}
+                    onChange={(e) => setPedestrianCount(Number(e.target.value))}
+                    className="w-full"
+                  />
+                  <span className="text-xs text-green-400">{pedestrianCount}</span>
+                </div>
+                <div className="text-xs text-green-700 mt-1">
+                  Exits: {exits.length} · Staging: {gameState.stagingArea ? 'Set' : 'Not set'}
+                </div>
+              </div>
+            )}
+
+            {/* Heat meter */}
+            <div className="bg-gray-900 border border-green-800 rounded p-3">
+              <div className="text-xs text-green-500 uppercase tracking-wider mb-2">Heat Meter</div>
+              <div className="w-full h-4 bg-gray-800 rounded overflow-hidden">
+                <div
+                  className="h-full transition-all duration-300"
+                  style={{
+                    width: `${(gameState.heat.value / 10) * 100}%`,
+                    backgroundColor:
+                      gameState.heat.value < 3
+                        ? '#22c55e'
+                        : gameState.heat.value < 6
+                          ? '#eab308'
+                          : gameState.heat.value < 8
+                            ? '#f97316'
+                            : '#ef4444',
+                  }}
+                />
+              </div>
+              <div className="text-xs text-green-600 mt-1 text-right">
+                {gameState.heat.value.toFixed(1)} / 10
+              </div>
+            </div>
+
+            {/* Unit info */}
+            {rts.getSelectedUnits().length > 0 && (
+              <div className="bg-gray-900 border border-green-800 rounded p-3">
+                <div className="text-xs text-green-500 uppercase tracking-wider mb-2">
+                  Selected ({rts.getSelectedUnits().length})
+                </div>
+                {rts
+                  .getSelectedUnits()
+                  .slice(0, 5)
+                  .map((u) => (
+                    <div
+                      key={u.id}
+                      className="text-xs text-green-400 flex items-center gap-1.5 mb-1"
+                    >
+                      <span
+                        className="inline-block w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: u.def.color }}
+                      />
+                      <span>{u.def.label}</span>
+                      <span className="text-green-700">· {u.state}</span>
+                    </div>
+                  ))}
+                {rts.getSelectedUnits().length > 5 && (
+                  <div className="text-xs text-green-700">
+                    +{rts.getSelectedUnits().length - 5} more
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Evacuation stats */}
+            {gameState.clock.phase !== 'setup' && evacEngRef.current && (
+              <div className="bg-gray-900 border border-green-800 rounded p-3">
+                <div className="text-xs text-green-500 uppercase tracking-wider mb-2">
+                  Evacuation
+                </div>
+                {(() => {
+                  const m = evacEngRef.current?.getMetrics();
+                  if (!m) return null;
+                  return (
+                    <div className="text-xs space-y-0.5">
+                      <div className="text-green-400">
+                        Remaining: <span className="text-amber-300">{m.remaining}</span>
+                      </div>
+                      <div className="text-green-400">
+                        Evacuated: <span className="text-cyan-300">{m.evacuated}</span>
+                      </div>
+                      <div className="text-green-400">Total: {m.totalPedestrians}</div>
+                      <div className="text-green-400">Avg Speed: {m.avgSpeed.toFixed(2)} m/s</div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Event log */}
+            <div className="bg-gray-900 border border-green-800 rounded p-3">
+              <div className="text-xs text-green-500 uppercase tracking-wider mb-2">Event Log</div>
+              <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                {gameState.heat.events.length === 0 && (
+                  <div className="text-xs text-green-800 italic">No events yet</div>
+                )}
+                {gameState.heat.events
+                  .slice(-10)
+                  .reverse()
+                  .map((evt, i) => (
+                    <div key={i} className="text-xs">
+                      <span className="text-green-700">{formatTime(evt.time)}</span>{' '}
+                      <span className={evt.delta > 0 ? 'text-red-400' : 'text-green-400'}>
+                        {evt.delta > 0 ? '+' : ''}
+                        {evt.delta.toFixed(1)}
+                      </span>{' '}
+                      <span className="text-green-500">{evt.reason}</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `T+${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+// ── Keyboard shortcuts ──────────────────────────────────────────────────
+if (typeof window !== 'undefined') {
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      // Global ESC to cancel interaction mode — page will pick this up via rerender
+    }
+  });
+}
