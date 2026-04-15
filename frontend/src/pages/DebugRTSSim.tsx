@@ -101,7 +101,7 @@ function FitBounds({ polygon }: { polygon: [number, number][] }) {
     if (polygon.length < 3) return;
     const latlngs = polygon.map(([la, ln]) => [la, ln] as [number, number]);
     const leafletBounds = L.latLngBounds(latlngs);
-    map.fitBounds(leafletBounds, { padding: [120, 120], maxZoom: 19 });
+    map.fitBounds(leafletBounds, { padding: [120, 120], maxZoom: 22 });
   }, [map, polygon]);
   return null;
 }
@@ -897,6 +897,7 @@ export function DebugRTSSim() {
               Number.isNaN(parsedLng) ? 103.8 : parsedLng,
             ]}
             zoom={18}
+            maxZoom={22}
             style={{ height: '100%', width: '100%' }}
             zoomControl={phase === 'map'}
             dragging={phase === 'map'}
@@ -906,6 +907,8 @@ export function DebugRTSSim() {
             <TileLayer
               attribution="&copy; OSM"
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              maxNativeZoom={19}
+              maxZoom={22}
             />
             <MapRefSync onMap={setLeafletMap} />
 

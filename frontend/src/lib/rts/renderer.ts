@@ -201,37 +201,60 @@ function pedColor(speedMs: number): string {
 function drawUnit(ctx: CanvasRenderingContext2D, unit: RTSUnit, rc: RenderContext) {
   const p = toCanvas(unit.pos.x, unit.pos.y, rc);
   const r = mToCanvas(unit.def.radius, rc);
-  const drawR = Math.max(r, 6);
+  const drawR = Math.max(r, 8);
 
+  // Outer glow (team color, large, semi-transparent)
+  ctx.save();
+  ctx.shadowColor = unit.def.color;
+  ctx.shadowBlur = 12;
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, drawR + 2, 0, Math.PI * 2);
+  ctx.fillStyle = unit.def.color + '40';
+  ctx.fill();
+  ctx.restore();
+
+  // Selection ring (white, outside everything)
   if (unit.selected) {
     ctx.beginPath();
-    ctx.arc(p.cx, p.cy, drawR + 3, 0, Math.PI * 2);
+    ctx.arc(p.cx, p.cy, drawR + 5, 0, Math.PI * 2);
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.stroke();
   }
 
+  // Dark border ring
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, drawR + 1.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#000000';
+  ctx.fill();
+
+  // Main colored fill
   ctx.beginPath();
   ctx.arc(p.cx, p.cy, drawR, 0, Math.PI * 2);
   ctx.fillStyle = unit.def.color;
   ctx.fill();
-  ctx.strokeStyle = unit.state === 'working' ? '#fbbf24' : 'rgba(255,255,255,0.4)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
 
+  // Inner highlight for depth
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy - drawR * 0.2, drawR * 0.6, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+  ctx.fill();
+
+  // Label letter
   const label = unit.def.label.charAt(0);
   ctx.fillStyle = '#000';
-  ctx.font = `bold ${Math.max(drawR, 9)}px monospace`;
+  ctx.font = `bold ${Math.max(drawR, 10)}px monospace`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(label, p.cx, p.cy);
 
+  // Work progress ring
   if (unit.state === 'working') {
     const progress = unit.workTimer > 0 ? 1 - unit.workTimer / 10 : 1;
     ctx.beginPath();
-    ctx.arc(p.cx, p.cy, drawR + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+    ctx.arc(p.cx, p.cy, drawR + 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
     ctx.strokeStyle = '#fbbf24';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.stroke();
   }
 }
