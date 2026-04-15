@@ -1042,10 +1042,20 @@ export function DebugRTSSim() {
                       />
                     )}
                     {!wallPointImage && !wallPointLoading && (
-                      <div className="flex items-center justify-center h-48 text-xs text-gray-500">
-                        {GOOGLE_MAPS_KEY
-                          ? 'No Street View image available for this location'
-                          : 'Set VITE_GOOGLE_MAPS_API_KEY to enable Street View'}
+                      <div className="flex flex-col items-center justify-center h-48 text-xs text-gray-500 px-4 text-center">
+                        {GOOGLE_MAPS_KEY ? (
+                          <>
+                            <span className="text-gray-400 mb-1">
+                              No outdoor Street View coverage here
+                            </span>
+                            <span className="text-gray-600">
+                              This wall section has no Google street-level imagery. Try a nearby
+                              point.
+                            </span>
+                          </>
+                        ) : (
+                          'Set VITE_GOOGLE_MAPS_API_KEY to enable Street View'
+                        )}
                       </div>
                     )}
                   </div>

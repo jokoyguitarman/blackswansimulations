@@ -74,7 +74,7 @@ export async function setCachedImage(key: string, dataUrl: string): Promise<void
 // ── Generate inspection points along building perimeter ─────────────────
 
 const POINT_SPACING_METERS = 12;
-const CAMERA_OFFSET_METERS = 15;
+const CAMERA_OFFSET_METERS = 28;
 
 /**
  * Generate wall inspection points at regular intervals along each edge
@@ -187,9 +187,9 @@ export function generateWallPoints(
 
 const STREETVIEW_SIZE = '600x400';
 const STREETVIEW_FOV = 90;
-const STREETVIEW_PITCH = 0;
+const STREETVIEW_PITCH = 5;
 
-export function getStreetViewUrl(point: WallInspectionPoint, apiKey: string): string {
+function getStreetViewUrl(point: WallInspectionPoint, apiKey: string): string {
   return (
     `https://maps.googleapis.com/maps/api/streetview` +
     `?size=${STREETVIEW_SIZE}` +
@@ -197,37 +197,65 @@ export function getStreetViewUrl(point: WallInspectionPoint, apiKey: string): st
     `&heading=${Math.round(point.heading)}` +
     `&pitch=${STREETVIEW_PITCH}` +
     `&fov=${STREETVIEW_FOV}` +
+    `&source=outdoor` +
+    `&key=${apiKey}`
+  );
+}
+
+function getMetadataUrl(point: WallInspectionPoint, apiKey: string): string {
+  return (
+    `https://maps.googleapis.com/maps/api/streetview/metadata` +
+    `?location=${point.cameraLat},${point.cameraLng}` +
+    `&source=outdoor` +
     `&key=${apiKey}`
   );
 }
 
 /**
+ * Check whether Google has outdoor Street View coverage at this point.
+ * The metadata API is free and tells us if imagery exists before we pay
+ * for the actual image fetch.
+ */
+async function hasOutdoorCoverage(point: WallInspectionPoint, apiKey: string): Promise<boolean> {
+  try {
+    const resp = await fetch(getMetadataUrl(point, apiKey));
+    if (!resp.ok) return false;
+    const data = await resp.json();
+    return data.status === 'OK';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Fetch a Street View image as a blob and convert to data URL for caching.
- * Returns the data URL, or null if the fetch failed.
+ * Returns the data URL, or null if no outdoor coverage exists or the fetch failed.
  */
 export async function fetchStreetViewImage(
   point: WallInspectionPoint,
   apiKey: string,
 ): Promise<string | null> {
-  const cacheKey = `sv_${point.cameraLat.toFixed(6)}_${point.cameraLng.toFixed(6)}_${Math.round(point.heading)}`;
+  const cacheKey = `sv_outdoor_${point.cameraLat.toFixed(6)}_${point.cameraLng.toFixed(6)}_${Math.round(point.heading)}`;
 
   // Check IndexedDB cache first
   const cached = await getCachedImage(cacheKey);
   if (cached) return cached;
 
-  // Fetch from Google
+  // Verify outdoor coverage exists (metadata API is free)
+  const hasCoverage = await hasOutdoorCoverage(point, apiKey);
+  if (!hasCoverage) return null;
+
+  // Fetch the actual image
   try {
     const url = getStreetViewUrl(point, apiKey);
     const resp = await fetch(url);
     if (!resp.ok) return null;
     const blob = await resp.blob();
 
-    // Convert to data URL
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onloadend = () => {
         const dataUrl = reader.result as string;
-        // Cache to IndexedDB (fire-and-forget)
         setCachedImage(cacheKey, dataUrl).catch(() => {});
         resolve(dataUrl);
       };
