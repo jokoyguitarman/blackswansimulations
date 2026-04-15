@@ -6,6 +6,7 @@ import {
   Circle,
   CircleMarker,
   useMapEvents,
+  useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
 import { supabase } from '../lib/supabase';
@@ -15,7 +16,7 @@ import type { ExitDef, PolygonSimConfig, Vec2 } from '../lib/evacuation/types';
 import { DEFAULT_POLYGON_CONFIG } from '../lib/evacuation/types';
 import { projectPolygon, nearestEdge, edgeLength } from '../lib/evacuation/geometry';
 import { RTSEngine } from '../lib/rts/engine';
-import { renderRTS, computeRenderContext } from '../lib/rts/renderer';
+import { renderRTS, computeMapRenderContext, toSim as rcToSim } from '../lib/rts/renderer';
 import type { RenderContext } from '../lib/rts/renderer';
 import {
   UNIT_CATALOG,
@@ -26,7 +27,7 @@ import {
 } from '../lib/rts/types';
 import 'leaflet/dist/leaflet.css';
 
-// ── API helpers (same as evac sim) ──────────────────────────────────────
+// ── API helpers ─────────────────────────────────────────────────────────
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 function apiUrl(path: string): string {
   return API_BASE ? `${API_BASE}${path}` : path;
@@ -62,13 +63,32 @@ interface FetchResult {
   buildings: BuildingSummary[];
 }
 
-// ── Leaflet click handler ───────────────────────────────────────────────
+// ── Leaflet helpers ─────────────────────────────────────────────────────
 function ClickHandler({ onClick }: { onClick: (lat: number, lng: number) => void }) {
   useMapEvents({
     click(e) {
       onClick(e.latlng.lat, e.latlng.lng);
     },
   });
+  return null;
+}
+
+function MapRefSync({ onMap }: { onMap: (map: L.Map) => void }) {
+  const map = useMap();
+  useEffect(() => {
+    onMap(map);
+  }, [map, onMap]);
+  return null;
+}
+
+function FitBounds({ polygon }: { polygon: [number, number][] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (polygon.length < 3) return;
+    const latlngs = polygon.map(([la, ln]) => [la, ln] as [number, number]);
+    const leafletBounds = L.latLngBounds(latlngs);
+    map.fitBounds(leafletBounds, { padding: [120, 120], maxZoom: 19 });
+  }, [map, polygon]);
   return null;
 }
 
@@ -136,23 +156,30 @@ const ALL_TEAMS: TeamId[] = [
 // Main component
 // =====================================================================
 export function DebugRTSSim() {
-  // ── Map phase state ───────────────────────────────────────────────────
+  // ── Map state ─────────────────────────────────────────────────────────
   const [lat, setLat] = useState('1.2989008');
   const [lng, setLng] = useState('103.855176');
   const [radius, setRadius] = useState('300');
   const [loading, setLoading] = useState(false);
   const [fetchResult, setFetchResult] = useState<FetchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const mapRef = useRef<L.Map | null>(null);
   const [selectedGridIdx, setSelectedGridIdx] = useState<number | null>(null);
   const [phase, setPhase] = useState<PagePhase>('map');
+
+  // ── Leaflet map ref ───────────────────────────────────────────────────
+  const leafletMapRef = useRef<L.Map | null>(null);
+  const setLeafletMap = useCallback((map: L.Map) => {
+    leafletMapRef.current = map;
+  }, []);
 
   // ── RTS state ─────────────────────────────────────────────────────────
   const rtsRef = useRef<RTSEngine>(new RTSEngine());
   const evacEngRef = useRef<PolygonEvacuationEngine | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef(0);
   const lastTimeRef = useRef(0);
+  const renderCtxRef = useRef<RenderContext | null>(null);
 
   const [exits, setExits] = useState<ExitDef[]>([]);
   const [pedestrians, setPedestrians] = useState<PedSnapshot[]>([]);
@@ -161,23 +188,30 @@ export function DebugRTSSim() {
 
   const [pedestrianCount, setPedestrianCount] = useState(120);
   const [newExitWidth, setNewExitWidth] = useState(3);
+  const [canvasSize, setCanvasSize] = useState({ w: 800, h: 600 });
 
   // ── Projected polygon ─────────────────────────────────────────────────
+  const selectedGrid = selectedGridIdx != null ? fetchResult?.grids[selectedGridIdx] : null;
+
   const projectedVerts = useMemo<Vec2[]>(() => {
-    if (selectedGridIdx == null || !fetchResult) return [];
-    const grid = fetchResult.grids[selectedGridIdx];
-    if (!grid) return [];
-    return projectPolygon(grid.polygon);
-  }, [fetchResult, selectedGridIdx]);
+    if (!selectedGrid) return [];
+    return projectPolygon(selectedGrid.polygon);
+  }, [selectedGrid]);
 
-  // Canvas size: fill available space
-  const CANVAS_W = 900;
-  const CANVAS_H = 700;
-
-  const renderCtx = useMemo<RenderContext | null>(() => {
-    if (projectedVerts.length < 3) return null;
-    return computeRenderContext(projectedVerts, CANVAS_W, CANVAS_H);
-  }, [projectedVerts]);
+  // ── Canvas resize tracking ────────────────────────────────────────────
+  useEffect(() => {
+    if (phase !== 'rts' || !containerRef.current) return;
+    const obs = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        setCanvasSize({ w: Math.round(width), h: Math.round(height) });
+      }
+    });
+    obs.observe(containerRef.current);
+    const rect = containerRef.current.getBoundingClientRect();
+    setCanvasSize({ w: Math.round(rect.width), h: Math.round(rect.height) });
+    return () => obs.disconnect();
+  }, [phase]);
 
   // ── Map phase handlers ────────────────────────────────────────────────
   const handleFetch = useCallback(async () => {
@@ -205,20 +239,15 @@ export function DebugRTSSim() {
     }
   }, [lat, lng, radius]);
 
-  const handleMapClick = useCallback((clickLat: number, clickLng: number) => {
-    setLat(clickLat.toFixed(7));
-    setLng(clickLng.toFixed(7));
-  }, []);
-
-  useEffect(() => {
-    if (mapRef.current) {
-      const pLat = parseFloat(lat);
-      const pLng = parseFloat(lng);
-      if (!Number.isNaN(pLat) && !Number.isNaN(pLng)) {
-        mapRef.current.setView([pLat, pLng], mapRef.current.getZoom());
+  const handleMapClick = useCallback(
+    (clickLat: number, clickLng: number) => {
+      if (phase === 'map') {
+        setLat(clickLat.toFixed(7));
+        setLng(clickLng.toFixed(7));
       }
-    }
-  }, [lat, lng]);
+    },
+    [phase],
+  );
 
   // ── Select building → go to RTS ──────────────────────────────────────
   const selectBuilding = useCallback((gridIdx: number) => {
@@ -240,7 +269,7 @@ export function DebugRTSSim() {
     setPedestrians([]);
   }, []);
 
-  // ── Initialize evac engine when exits change during setup ─────────────
+  // ── Initialize evac engine ────────────────────────────────────────────
   const initEvacEngine = useCallback(() => {
     if (projectedVerts.length < 3 || exits.length === 0) return;
     evacEngRef.current?.destroy();
@@ -258,16 +287,21 @@ export function DebugRTSSim() {
   }, [projectedVerts, exits, pedestrianCount]);
 
   // ── Canvas toSim helper ───────────────────────────────────────────────
-  const toSim = useCallback(
-    (cx: number, cy: number): Vec2 => {
-      if (!renderCtx) return { x: 0, y: 0 };
-      return {
-        x: (cx - renderCtx.canvasPad) / renderCtx.scale + renderCtx.bounds.minX,
-        y: (cy - renderCtx.canvasPad) / renderCtx.scale + renderCtx.bounds.minY,
-      };
-    },
-    [renderCtx],
-  );
+  const toSim = useCallback((cx: number, cy: number): Vec2 => {
+    const rc = renderCtxRef.current;
+    if (!rc) return { x: 0, y: 0 };
+    return rcToSim(cx, cy, rc);
+  }, []);
+
+  // ── Recompute render context from map ─────────────────────────────────
+  const updateRenderCtx = useCallback(() => {
+    const map = leafletMapRef.current;
+    if (!map || !selectedGrid || projectedVerts.length < 3) {
+      renderCtxRef.current = null;
+      return;
+    }
+    renderCtxRef.current = computeMapRenderContext(map, selectedGrid.polygon, projectedVerts);
+  }, [selectedGrid, projectedVerts]);
 
   // ── Main animation loop ───────────────────────────────────────────────
   const loop = useCallback(
@@ -278,7 +312,6 @@ export function DebugRTSSim() {
       const rts = rtsRef.current;
       rts.tick(dt);
 
-      // Step evac sim
       const evac = evacEngRef.current;
       if (evac && !rts.state.clock.paused && rts.state.clock.phase !== 'setup') {
         const stepsPerFrame = Math.max(1, Math.round(rts.state.clock.speed));
@@ -286,21 +319,24 @@ export function DebugRTSSim() {
         setPedestrians(evac.getSnapshots());
       }
 
-      // Render
+      // Recompute render context from map on each frame (handles zoom/pan)
+      updateRenderCtx();
+
       const canvas = canvasRef.current;
-      if (canvas && renderCtx) {
+      const rc = renderCtxRef.current;
+      if (canvas && rc) {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           renderRTS(
             ctx,
-            CANVAS_W,
-            CANVAS_H,
-            renderCtx,
+            canvas.width,
+            canvas.height,
+            rc,
             rts.state,
             projectedVerts,
             exits,
             pedestrians,
-            false,
+            true,
           );
         }
       }
@@ -308,7 +344,7 @@ export function DebugRTSSim() {
       rerender();
       rafRef.current = requestAnimationFrame(loop);
     },
-    [renderCtx, projectedVerts, exits, pedestrians, rerender],
+    [projectedVerts, exits, pedestrians, rerender, updateRenderCtx],
   );
 
   useEffect(() => {
@@ -324,7 +360,7 @@ export function DebugRTSSim() {
 
   const handleCanvasMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (!renderCtx) return;
+      if (!renderCtxRef.current) return;
       const rect = canvasRef.current!.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
@@ -335,7 +371,6 @@ export function DebugRTSSim() {
 
       if (mode.type === 'select') {
         if (e.button === 2) {
-          // Right-click → move selected units
           e.preventDefault();
           const selected = [...rts.state.selection.selectedUnitIds];
           if (selected.length > 0) {
@@ -347,12 +382,12 @@ export function DebugRTSSim() {
         isDraggingRef.current = false;
       }
     },
-    [renderCtx, toSim],
+    [toSim],
   );
 
   const handleCanvasMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (!renderCtx) return;
+      if (!renderCtxRef.current) return;
       const rect = canvasRef.current!.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
@@ -364,12 +399,12 @@ export function DebugRTSSim() {
         rts.state.selection.selectionBox = { start: dragStartRef.current, end: sim };
       }
     },
-    [renderCtx, toSim],
+    [toSim],
   );
 
   const handleCanvasMouseUp = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (!renderCtx) return;
+      if (!renderCtxRef.current) return;
       const rect = canvasRef.current!.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
@@ -438,19 +473,42 @@ export function DebugRTSSim() {
         return;
       }
     },
-    [renderCtx, toSim, projectedVerts, exits, newExitWidth],
+    [toSim, projectedVerts, exits, newExitWidth],
   );
+
+  const handleCanvasWheel = useCallback((e: React.WheelEvent) => {
+    const map = leafletMapRef.current;
+    if (!map) return;
+    if (e.deltaY < 0) map.zoomIn();
+    else map.zoomOut();
+  }, []);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
   }, []);
 
-  // ── Button helpers ────────────────────────────────────────────────────
+  // ── Staging area handler ──────────────────────────────────────────────
+  const handleSetStagingArea = () => {
+    rtsRef.current.setInteractionMode({ type: 'select' });
+    const handleStaging = (e: MouseEvent) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const sim = toSim(cx, cy);
+      rtsRef.current.setStagingArea(sim);
+      canvas.removeEventListener('click', handleStaging);
+      rerender();
+    };
+    canvasRef.current?.addEventListener('click', handleStaging, { once: true });
+  };
+
+  // ── Derived values ────────────────────────────────────────────────────
   const rts = rtsRef.current;
   const gameState = rts.state;
   const clockDisplay = rts.formatClock();
   const phaseLabel = rts.phaseLabel();
-  const selectedGrid = selectedGridIdx != null ? fetchResult?.grids[selectedGridIdx] : null;
   const parsedLat = parseFloat(lat);
   const parsedLng = parseFloat(lng);
   const parsedRadius = parseInt(radius, 10) || 300;
@@ -461,31 +519,13 @@ export function DebugRTSSim() {
     rts.startDetonation();
   };
 
-  const handleSetStagingArea = () => {
-    rts.setInteractionMode({ type: 'select' });
-    // We'll use a special handler: next left click on canvas sets staging area
-    // For simplicity, prompt-style: staging area is placed via the interaction
-    const handleStaging = (e: MouseEvent) => {
-      const canvas = canvasRef.current;
-      if (!canvas || !renderCtx) return;
-      const rect = canvas.getBoundingClientRect();
-      const cx = e.clientX - rect.left;
-      const cy = e.clientY - rect.top;
-      const sim = toSim(cx, cy);
-      rts.setStagingArea(sim);
-      canvas.removeEventListener('click', handleStaging);
-      rerender();
-    };
-    canvasRef.current?.addEventListener('click', handleStaging, { once: true });
-  };
-
   // =====================================================================
   // RENDER
   // =====================================================================
   return (
     <div className="min-h-screen bg-black text-green-400 font-mono flex flex-col">
       {/* Header */}
-      <div className="border-b border-green-800 p-3 flex items-center justify-between">
+      <div className="border-b border-green-800 p-3 flex items-center justify-between flex-shrink-0">
         <div>
           <h1 className="text-lg tracking-wider text-amber-400">
             [RTS CRISIS SIMULATION — PROTOTYPE]
@@ -517,169 +557,52 @@ export function DebugRTSSim() {
         </div>
       </div>
 
-      {/* ============================================================= */}
-      {/* MAP PHASE */}
-      {/* ============================================================= */}
+      {/* MAP PHASE — controls bar */}
       {phase === 'map' && (
-        <div className="p-4 flex-1">
-          <div className="flex flex-wrap gap-3 mb-4 items-end">
-            <div>
-              <label className="block text-xs text-green-600 mb-1">Latitude</label>
-              <input
-                type="text"
-                value={lat}
-                onChange={(e) => setLat(e.target.value)}
-                className="bg-gray-900 border border-green-800 text-green-300 px-2 py-1 text-sm w-36 rounded"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-green-600 mb-1">Longitude</label>
-              <input
-                type="text"
-                value={lng}
-                onChange={(e) => setLng(e.target.value)}
-                className="bg-gray-900 border border-green-800 text-green-300 px-2 py-1 text-sm w-36 rounded"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-green-600 mb-1">Radius (m)</label>
-              <input
-                type="text"
-                value={radius}
-                onChange={(e) => setRadius(e.target.value)}
-                className="bg-gray-900 border border-green-800 text-green-300 px-2 py-1 text-sm w-20 rounded"
-              />
-            </div>
-            <button
-              onClick={handleFetch}
-              disabled={loading}
-              className="bg-green-800 hover:bg-green-700 disabled:opacity-50 text-green-100 px-4 py-1.5 text-sm rounded border border-green-600"
-            >
-              {loading ? 'Fetching...' : 'Fetch Buildings'}
-            </button>
+        <div className="flex flex-wrap gap-3 p-3 items-end border-b border-green-900 flex-shrink-0">
+          <div>
+            <label className="block text-xs text-green-600 mb-1">Latitude</label>
+            <input
+              type="text"
+              value={lat}
+              onChange={(e) => setLat(e.target.value)}
+              className="bg-gray-900 border border-green-800 text-green-300 px-2 py-1 text-sm w-36 rounded"
+            />
           </div>
-
-          {error && (
-            <div className="bg-red-900/40 border border-red-700 text-red-300 px-3 py-2 text-sm rounded mb-4">
-              {error}
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4">
-            <div
-              className="rounded border border-green-800 overflow-hidden"
-              style={{ height: 600 }}
-            >
-              <MapContainer
-                center={[
-                  Number.isNaN(parsedLat) ? 1.3 : parsedLat,
-                  Number.isNaN(parsedLng) ? 103.8 : parsedLng,
-                ]}
-                zoom={18}
-                style={{ height: '100%', width: '100%' }}
-                ref={mapRef}
-              >
-                <TileLayer
-                  attribution="&copy; OSM"
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-                <ClickHandler onClick={handleMapClick} />
-                {!Number.isNaN(parsedLat) && !Number.isNaN(parsedLng) && (
-                  <Circle
-                    center={[parsedLat, parsedLng]}
-                    radius={parsedRadius}
-                    pathOptions={{
-                      color: '#22c55e',
-                      weight: 1,
-                      fillOpacity: 0.05,
-                      dashArray: '6, 4',
-                    }}
-                  />
-                )}
-                {!Number.isNaN(parsedLat) && !Number.isNaN(parsedLng) && (
-                  <CircleMarker
-                    center={[parsedLat, parsedLng]}
-                    radius={5}
-                    pathOptions={{
-                      color: '#22c55e',
-                      fillColor: '#4ade80',
-                      fillOpacity: 0.8,
-                      weight: 2,
-                    }}
-                  />
-                )}
-                {fetchResult?.grids
-                  .filter((g) => g.buildingIndex >= 0 && g.polygon.length >= 3)
-                  .map((grid, idx) => (
-                    <Polygon
-                      key={`bldg-${grid.buildingIndex}`}
-                      positions={grid.polygon.map(([la, ln]) => [la, ln] as [number, number])}
-                      pathOptions={{
-                        color: selectedGridIdx === idx ? '#22d3ee' : '#6366f1',
-                        weight: selectedGridIdx === idx ? 3 : 2,
-                        fillOpacity: selectedGridIdx === idx ? 0.2 : 0.08,
-                        fillColor: selectedGridIdx === idx ? '#22d3ee' : '#818cf8',
-                      }}
-                      eventHandlers={{ click: () => selectBuilding(idx) }}
-                    />
-                  ))}
-              </MapContainer>
-            </div>
-
-            <div className="space-y-3 overflow-y-auto max-h-[600px]">
-              <div className="bg-gray-900 border border-green-800 rounded p-3">
-                <h2 className="text-sm text-amber-400 mb-2 border-b border-green-900 pb-1">
-                  RTS Prototype
-                </h2>
-                <div className="text-xs text-green-700 space-y-1">
-                  <p>1. Click the map to set coordinates</p>
-                  <p>2. Fetch buildings nearby</p>
-                  <p>3. Click a building to enter the RTS scenario</p>
-                  <p>4. Place exits, set staging area, deploy units</p>
-                  <p>5. Hit DETONATE to start the exercise</p>
-                </div>
-              </div>
-              {fetchResult && (
-                <div className="bg-gray-900 border border-green-800 rounded p-3">
-                  <h2 className="text-sm text-green-500 mb-2 border-b border-green-900 pb-1">
-                    Buildings ({fetchResult.grids.filter((g) => g.polygon.length >= 3).length})
-                  </h2>
-                  <div className="space-y-1.5">
-                    {fetchResult.grids
-                      .map((grid, idx) => ({ grid, idx }))
-                      .filter(({ grid }) => grid.polygon.length >= 3)
-                      .map(({ grid, idx }) => (
-                        <button
-                          key={idx}
-                          onClick={() => selectBuilding(idx)}
-                          className={`w-full text-left p-2 rounded border text-xs transition-colors ${
-                            selectedGridIdx === idx
-                              ? 'border-cyan-500 bg-cyan-900/30 text-cyan-300'
-                              : 'border-green-900 hover:border-green-700 text-green-500 hover:text-green-400'
-                          }`}
-                        >
-                          <div className="font-bold">
-                            {grid.buildingName || `Building #${grid.buildingIndex}`}
-                          </div>
-                          <div className="text-green-700 mt-0.5">{grid.polygon.length} pts</div>
-                        </button>
-                      ))}
-                  </div>
-                </div>
-              )}
-            </div>
+          <div>
+            <label className="block text-xs text-green-600 mb-1">Longitude</label>
+            <input
+              type="text"
+              value={lng}
+              onChange={(e) => setLng(e.target.value)}
+              className="bg-gray-900 border border-green-800 text-green-300 px-2 py-1 text-sm w-36 rounded"
+            />
           </div>
+          <div>
+            <label className="block text-xs text-green-600 mb-1">Radius (m)</label>
+            <input
+              type="text"
+              value={radius}
+              onChange={(e) => setRadius(e.target.value)}
+              className="bg-gray-900 border border-green-800 text-green-300 px-2 py-1 text-sm w-20 rounded"
+            />
+          </div>
+          <button
+            onClick={handleFetch}
+            disabled={loading}
+            className="bg-green-800 hover:bg-green-700 disabled:opacity-50 text-green-100 px-4 py-1.5 text-sm rounded border border-green-600"
+          >
+            {loading ? 'Fetching...' : 'Fetch Buildings'}
+          </button>
+          {error && <span className="text-red-400 text-xs">{error}</span>}
         </div>
       )}
 
-      {/* ============================================================= */}
-      {/* RTS PHASE */}
-      {/* ============================================================= */}
-      {phase === 'rts' && (
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left sidebar: team palette */}
+      {/* MAIN AREA */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left sidebar: team palette (RTS only) */}
+        {phase === 'rts' && (
           <div className="w-56 border-r border-green-800 overflow-y-auto p-2 space-y-2 flex-shrink-0">
-            {/* Team selector */}
             <div className="space-y-1">
               <div className="text-xs text-green-600 uppercase tracking-wider">Active Team</div>
               {ALL_TEAMS.map((t) => (
@@ -705,7 +628,6 @@ export function DebugRTSSim() {
               ))}
             </div>
 
-            {/* Units for active team */}
             <div className="space-y-1">
               <div className="text-xs text-green-600 uppercase tracking-wider mt-3">Units</div>
               {TEAM_UNITS[gameState.activeTeam].map((uk) => {
@@ -738,7 +660,6 @@ export function DebugRTSSim() {
               )}
             </div>
 
-            {/* Equipment for active team */}
             <div className="space-y-1">
               <div className="text-xs text-green-600 uppercase tracking-wider mt-3">Equipment</div>
               {TEAM_EQUIPMENT[gameState.activeTeam].map((ek) => {
@@ -764,39 +685,167 @@ export function DebugRTSSim() {
               })}
             </div>
           </div>
+        )}
 
-          {/* Center: canvas */}
-          <div className="flex-1 flex flex-col items-center justify-center bg-gray-950 overflow-hidden">
-            <canvas
-              ref={canvasRef}
-              width={CANVAS_W}
-              height={CANVAS_H}
-              className="border border-green-900 cursor-crosshair"
-              onMouseDown={handleCanvasMouseDown}
-              onMouseMove={handleCanvasMouseMove}
-              onMouseUp={handleCanvasMouseUp}
-              onContextMenu={handleContextMenu}
+        {/* CENTER: Map (always visible) with canvas overlay in RTS mode */}
+        <div className="flex-1 relative overflow-hidden" ref={containerRef}>
+          <MapContainer
+            center={[
+              Number.isNaN(parsedLat) ? 1.3 : parsedLat,
+              Number.isNaN(parsedLng) ? 103.8 : parsedLng,
+            ]}
+            zoom={18}
+            style={{ height: '100%', width: '100%' }}
+            zoomControl={phase === 'map'}
+            dragging={phase === 'map'}
+            scrollWheelZoom={phase === 'map'}
+            doubleClickZoom={false}
+          >
+            <TileLayer
+              attribution="&copy; OSM"
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            {/* Interaction mode indicator */}
-            <div className="mt-2 text-xs text-green-600 flex gap-3">
-              {gameState.interactionMode.type !== 'select' && (
-                <span className="text-amber-400">
-                  Mode: {gameState.interactionMode.type.replace(/_/g, ' ').toUpperCase()} — click
-                  canvas to place, ESC to cancel
-                </span>
-              )}
-              {gameState.interactionMode.type === 'select' && (
-                <span>
-                  Left-click: select · Drag: box select · Right-click: move units · Shift+click: add
-                  to selection
-                </span>
-              )}
-            </div>
-          </div>
+            <MapRefSync onMap={setLeafletMap} />
 
-          {/* Right sidebar: controls & info */}
+            {phase === 'map' && <ClickHandler onClick={handleMapClick} />}
+
+            {/* Search radius (map phase only) */}
+            {phase === 'map' && !Number.isNaN(parsedLat) && !Number.isNaN(parsedLng) && (
+              <>
+                <Circle
+                  center={[parsedLat, parsedLng]}
+                  radius={parsedRadius}
+                  pathOptions={{
+                    color: '#22c55e',
+                    weight: 1,
+                    fillOpacity: 0.05,
+                    dashArray: '6, 4',
+                  }}
+                />
+                <CircleMarker
+                  center={[parsedLat, parsedLng]}
+                  radius={5}
+                  pathOptions={{
+                    color: '#22c55e',
+                    fillColor: '#4ade80',
+                    fillOpacity: 0.8,
+                    weight: 2,
+                  }}
+                />
+              </>
+            )}
+
+            {/* Building polygons */}
+            {fetchResult?.grids
+              .filter((g) => g.buildingIndex >= 0 && g.polygon.length >= 3)
+              .map((grid, idx) => {
+                const isSelected = selectedGridIdx === idx;
+                if (phase === 'rts' && !isSelected) return null;
+                return (
+                  <Polygon
+                    key={`bldg-${grid.buildingIndex}`}
+                    positions={grid.polygon.map(([la, ln]) => [la, ln] as [number, number])}
+                    pathOptions={{
+                      color: isSelected ? '#22d3ee' : '#6366f1',
+                      weight: isSelected ? 3 : 2,
+                      fillOpacity: phase === 'rts' ? 0 : isSelected ? 0.2 : 0.08,
+                      fillColor: isSelected ? '#22d3ee' : '#818cf8',
+                    }}
+                    eventHandlers={phase === 'map' ? { click: () => selectBuilding(idx) } : {}}
+                  />
+                );
+              })}
+
+            {/* In RTS mode, fit the map to the building */}
+            {phase === 'rts' && selectedGrid && <FitBounds polygon={selectedGrid.polygon} />}
+          </MapContainer>
+
+          {/* Canvas overlay (RTS mode) */}
+          {phase === 'rts' && (
+            <>
+              <canvas
+                ref={canvasRef}
+                width={canvasSize.w}
+                height={canvasSize.h}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: canvasSize.w,
+                  height: canvasSize.h,
+                  pointerEvents: 'auto',
+                }}
+                className="cursor-crosshair"
+                onMouseDown={handleCanvasMouseDown}
+                onMouseMove={handleCanvasMouseMove}
+                onMouseUp={handleCanvasMouseUp}
+                onWheel={handleCanvasWheel}
+                onContextMenu={handleContextMenu}
+              />
+              {/* Mode indicator overlay */}
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/70 rounded px-3 py-1.5 text-xs text-green-400 pointer-events-none">
+                {gameState.interactionMode.type !== 'select' ? (
+                  <span className="text-amber-400">
+                    Mode: {gameState.interactionMode.type.replace(/_/g, ' ').toUpperCase()} — click
+                    to place, ESC to cancel
+                  </span>
+                ) : (
+                  <span>Left: select · Drag: box select · Right: move · Scroll: zoom</span>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Right sidebar */}
+        {phase === 'map' ? (
+          /* Building list (map phase) */
+          <div className="w-80 border-l border-green-800 overflow-y-auto p-3 space-y-3 flex-shrink-0">
+            <div className="bg-gray-900 border border-green-800 rounded p-3">
+              <h2 className="text-sm text-amber-400 mb-2 border-b border-green-900 pb-1">
+                RTS Prototype
+              </h2>
+              <div className="text-xs text-green-700 space-y-1">
+                <p>1. Click the map to set coordinates</p>
+                <p>2. Fetch buildings nearby</p>
+                <p>3. Click a building to enter the RTS scenario</p>
+                <p>4. Place exits, set staging area, deploy units</p>
+                <p>5. Hit DETONATE to start the exercise</p>
+              </div>
+            </div>
+            {fetchResult && (
+              <div className="bg-gray-900 border border-green-800 rounded p-3">
+                <h2 className="text-sm text-green-500 mb-2 border-b border-green-900 pb-1">
+                  Buildings ({fetchResult.grids.filter((g) => g.polygon.length >= 3).length})
+                </h2>
+                <div className="space-y-1.5">
+                  {fetchResult.grids
+                    .map((grid, idx) => ({ grid, idx }))
+                    .filter(({ grid }) => grid.polygon.length >= 3)
+                    .map(({ grid, idx }) => (
+                      <button
+                        key={idx}
+                        onClick={() => selectBuilding(idx)}
+                        className={`w-full text-left p-2 rounded border text-xs transition-colors ${
+                          selectedGridIdx === idx
+                            ? 'border-cyan-500 bg-cyan-900/30 text-cyan-300'
+                            : 'border-green-900 hover:border-green-700 text-green-500 hover:text-green-400'
+                        }`}
+                      >
+                        <div className="font-bold">
+                          {grid.buildingName || `Building #${grid.buildingIndex}`}
+                        </div>
+                        <div className="text-green-700 mt-0.5">{grid.polygon.length} pts</div>
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* RTS controls (rts phase) */
           <div className="w-64 border-l border-green-800 overflow-y-auto p-3 space-y-3 flex-shrink-0">
-            {/* Clock & controls */}
+            {/* Clock */}
             <div className="bg-gray-900 border border-green-800 rounded p-3">
               <div className="text-sm text-amber-400 font-bold mb-2">{phaseLabel}</div>
               <div className="text-2xl text-amber-300 font-bold text-center mb-3">
@@ -812,17 +861,15 @@ export function DebugRTSSim() {
                     💥 DETONATE
                   </button>
                 ) : (
-                  <>
-                    <button
-                      onClick={() => {
-                        rts.togglePause();
-                        rerender();
-                      }}
-                      className="flex-1 bg-gray-800 hover:bg-gray-700 text-green-300 text-xs px-2 py-1.5 rounded border border-green-800"
-                    >
-                      {gameState.clock.paused ? '▶ Resume' : '⏸ Pause'}
-                    </button>
-                  </>
+                  <button
+                    onClick={() => {
+                      rts.togglePause();
+                      rerender();
+                    }}
+                    className="flex-1 bg-gray-800 hover:bg-gray-700 text-green-300 text-xs px-2 py-1.5 rounded border border-green-800"
+                  >
+                    {gameState.clock.paused ? '▶ Resume' : '⏸ Pause'}
+                  </button>
                 )}
               </div>
               {gameState.clock.phase !== 'setup' && (
@@ -882,7 +929,7 @@ export function DebugRTSSim() {
                     onClick={handleSetStagingArea}
                     className="w-full text-xs text-left px-2 py-1.5 rounded border border-green-900 text-green-500 hover:border-green-700"
                   >
-                    📍 Set Staging Area (click canvas)
+                    📍 Set Staging Area (click map)
                   </button>
                 </div>
                 <div>
@@ -1019,8 +1066,8 @@ export function DebugRTSSim() {
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -1029,13 +1076,4 @@ function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `T+${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-// ── Keyboard shortcuts ──────────────────────────────────────────────────
-if (typeof window !== 'undefined') {
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      // Global ESC to cancel interaction mode — page will pick this up via rerender
-    }
-  });
 }

@@ -7,13 +7,21 @@ import type { Bounds } from '../evacuation/geometry';
 export interface RenderContext {
   scale: number;
   bounds: Bounds;
-  canvasPad: number;
+  padX: number;
+  padY: number;
 }
 
 function toCanvas(mx: number, my: number, rc: RenderContext) {
   return {
-    cx: (mx - rc.bounds.minX) * rc.scale + rc.canvasPad,
-    cy: (my - rc.bounds.minY) * rc.scale + rc.canvasPad,
+    cx: (mx - rc.bounds.minX) * rc.scale + rc.padX,
+    cy: (my - rc.bounds.minY) * rc.scale + rc.padY,
+  };
+}
+
+function toSim(cx: number, cy: number, rc: RenderContext) {
+  return {
+    x: (cx - rc.padX) / rc.scale + rc.bounds.minX,
+    y: (cy - rc.padY) / rc.scale + rc.bounds.minY,
   };
 }
 
@@ -31,50 +39,40 @@ export function renderRTS(
   buildingVerts: Vec2[],
   exits: ExitDef[],
   pedestrians: PedSnapshot[],
-  _fogEnabled: boolean,
+  transparentBg: boolean,
 ) {
   ctx.clearRect(0, 0, w, h);
 
-  // Background
-  ctx.fillStyle = '#0a0a0a';
-  ctx.fillRect(0, 0, w, h);
+  if (!transparentBg) {
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, w, h);
+    drawGrid(ctx, w, h, rc);
+  }
 
-  // Grid
-  drawGrid(ctx, w, h, rc);
-
-  // Building outline
-  drawBuilding(ctx, buildingVerts, rc);
-
-  // Exits
+  drawBuilding(ctx, buildingVerts, rc, transparentBg);
   drawExits(ctx, exits, buildingVerts, rc);
 
-  // Equipment (behind units)
   for (const eq of state.equipment) {
     drawEquipment(ctx, eq, rc);
   }
 
-  // Staging area
   if (state.stagingArea) {
     drawStagingArea(ctx, state.stagingArea, rc);
   }
 
-  // Pedestrians (evacuation sim dots)
   for (const ped of pedestrians) {
     if (ped.evacuated) continue;
     drawPedestrian(ctx, ped, rc);
   }
 
-  // Units
   for (const unit of state.units) {
     drawUnit(ctx, unit, rc);
   }
 
-  // Selection box
   if (state.selection.selectionBox) {
     drawSelectionBox(ctx, state.selection.selectionBox, rc);
   }
 
-  // Waypoint lines for selected units
   for (const unit of state.units) {
     if (unit.selected && unit.waypoints.length > 0) {
       drawWaypoints(ctx, unit, rc);
@@ -84,15 +82,15 @@ export function renderRTS(
 
 // ── Grid ────────────────────────────────────────────────────────────────
 function drawGrid(ctx: CanvasRenderingContext2D, w: number, h: number, rc: RenderContext) {
-  const gridSpacing = 10; // meters
+  const gridSpacing = 10;
   const pxSpacing = mToCanvas(gridSpacing, rc);
   if (pxSpacing < 10) return;
 
   ctx.strokeStyle = '#1a1a2e';
   ctx.lineWidth = 0.5;
 
-  const startX = rc.canvasPad % pxSpacing;
-  const startY = rc.canvasPad % pxSpacing;
+  const startX = rc.padX % pxSpacing;
+  const startY = rc.padY % pxSpacing;
 
   for (let x = startX; x < w; x += pxSpacing) {
     ctx.beginPath();
@@ -109,7 +107,12 @@ function drawGrid(ctx: CanvasRenderingContext2D, w: number, h: number, rc: Rende
 }
 
 // ── Building ────────────────────────────────────────────────────────────
-function drawBuilding(ctx: CanvasRenderingContext2D, verts: Vec2[], rc: RenderContext) {
+function drawBuilding(
+  ctx: CanvasRenderingContext2D,
+  verts: Vec2[],
+  rc: RenderContext,
+  transparentBg: boolean,
+) {
   if (verts.length < 3) return;
 
   ctx.beginPath();
@@ -121,10 +124,10 @@ function drawBuilding(ctx: CanvasRenderingContext2D, verts: Vec2[], rc: RenderCo
   }
   ctx.closePath();
 
-  ctx.fillStyle = 'rgba(30, 30, 50, 0.6)';
+  ctx.fillStyle = transparentBg ? 'rgba(20, 20, 40, 0.55)' : 'rgba(30, 30, 50, 0.6)';
   ctx.fill();
-  ctx.strokeStyle = '#4a5568';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = transparentBg ? '#94a3b8' : '#4a5568';
+  ctx.lineWidth = 2.5;
   ctx.stroke();
 }
 
@@ -157,7 +160,6 @@ function drawExits(
     ctx.lineWidth = 4;
     ctx.stroke();
 
-    // Arrow outward
     const perpX = -ny;
     const perpY = nx;
     const center = toCanvas(ex.center.x, ex.center.y, rc);
@@ -194,7 +196,6 @@ function drawUnit(ctx: CanvasRenderingContext2D, unit: RTSUnit, rc: RenderContex
   const r = mToCanvas(unit.def.radius, rc);
   const drawR = Math.max(r, 6);
 
-  // Selection ring
   if (unit.selected) {
     ctx.beginPath();
     ctx.arc(p.cx, p.cy, drawR + 3, 0, Math.PI * 2);
@@ -203,16 +204,14 @@ function drawUnit(ctx: CanvasRenderingContext2D, unit: RTSUnit, rc: RenderContex
     ctx.stroke();
   }
 
-  // Unit body
   ctx.beginPath();
   ctx.arc(p.cx, p.cy, drawR, 0, Math.PI * 2);
   ctx.fillStyle = unit.def.color;
   ctx.fill();
-  ctx.strokeStyle = unit.state === 'working' ? '#fbbf24' : 'rgba(255,255,255,0.3)';
+  ctx.strokeStyle = unit.state === 'working' ? '#fbbf24' : 'rgba(255,255,255,0.4)';
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Label
   const label = unit.def.label.charAt(0);
   ctx.fillStyle = '#000';
   ctx.font = `bold ${Math.max(drawR, 9)}px monospace`;
@@ -220,7 +219,6 @@ function drawUnit(ctx: CanvasRenderingContext2D, unit: RTSUnit, rc: RenderContex
   ctx.textBaseline = 'middle';
   ctx.fillText(label, p.cx, p.cy);
 
-  // State indicator
   if (unit.state === 'working') {
     const progress = unit.workTimer > 0 ? 1 - unit.workTimer / 10 : 1;
     ctx.beginPath();
@@ -237,7 +235,6 @@ function drawEquipment(ctx: CanvasRenderingContext2D, eq: RTSEquipment, rc: Rend
   const r = mToCanvas(eq.def.radius, rc);
   const drawR = Math.max(r, 4);
 
-  // Radius circle
   ctx.beginPath();
   ctx.arc(p.cx, p.cy, drawR, 0, Math.PI * 2);
   ctx.fillStyle = eq.def.color + '20';
@@ -248,7 +245,6 @@ function drawEquipment(ctx: CanvasRenderingContext2D, eq: RTSEquipment, rc: Rend
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Icon
   ctx.fillStyle = eq.def.color;
   ctx.font = `${Math.max(Math.min(drawR * 0.8, 18), 10)}px monospace`;
   ctx.textAlign = 'center';
@@ -263,7 +259,7 @@ function drawStagingArea(ctx: CanvasRenderingContext2D, pos: Vec2, rc: RenderCon
 
   ctx.beginPath();
   ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(250, 204, 21, 0.08)';
+  ctx.fillStyle = 'rgba(250, 204, 21, 0.12)';
   ctx.fill();
   ctx.strokeStyle = '#facc15';
   ctx.lineWidth = 1.5;
@@ -272,7 +268,7 @@ function drawStagingArea(ctx: CanvasRenderingContext2D, pos: Vec2, rc: RenderCon
   ctx.setLineDash([]);
 
   ctx.fillStyle = '#facc15';
-  ctx.font = '11px monospace';
+  ctx.font = 'bold 11px monospace';
   ctx.textAlign = 'center';
   ctx.fillText('STAGING / RVP', p.cx, p.cy - r - 4);
 }
@@ -292,7 +288,7 @@ function drawSelectionBox(
   ctx.strokeRect(s.cx, s.cy, e.cx - s.cx, e.cy - s.cy);
   ctx.setLineDash([]);
 
-  ctx.fillStyle = 'rgba(34, 211, 238, 0.08)';
+  ctx.fillStyle = 'rgba(34, 211, 238, 0.1)';
   ctx.fillRect(s.cx, s.cy, e.cx - s.cx, e.cy - s.cy);
 }
 
@@ -313,7 +309,6 @@ function drawWaypoints(ctx: CanvasRenderingContext2D, unit: RTSUnit, rc: RenderC
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Waypoint dots
   for (const wp of unit.waypoints) {
     const p = toCanvas(wp.x, wp.y, rc);
     ctx.beginPath();
@@ -323,7 +318,7 @@ function drawWaypoints(ctx: CanvasRenderingContext2D, unit: RTSUnit, rc: RenderC
   }
 }
 
-// ── Utility: compute render context ─────────────────────────────────────
+// ── Utility: compute render context (standalone canvas mode) ────────────
 const CANVAS_PAD = 80;
 
 export function computeRenderContext(
@@ -338,7 +333,35 @@ export function computeRenderContext(
   const scaleY = (canvasHeight - totalPad * 2) / Math.max(bounds.height, 1);
   const scale = Math.min(scaleX, scaleY);
 
-  return { scale, bounds, canvasPad: totalPad };
+  return { scale, bounds, padX: totalPad, padY: totalPad };
 }
 
-export { toCanvas, mToCanvas, CANVAS_PAD };
+// ── Utility: compute render context from Leaflet map ────────────────────
+export function computeMapRenderContext(
+  map: L.Map,
+  originalPolygon: [number, number][],
+  projectedVerts: Vec2[],
+): RenderContext {
+  const bounds = polygonBounds(projectedVerts);
+
+  // Pick two widely-spaced vertices and compute pixel-per-meter scale
+  const idx0 = 0;
+  const idx1 = Math.floor(originalPolygon.length / 2);
+
+  const p0 = map.latLngToContainerPoint([originalPolygon[idx0][0], originalPolygon[idx0][1]]);
+  const p1 = map.latLngToContainerPoint([originalPolygon[idx1][0], originalPolygon[idx1][1]]);
+
+  const m0 = projectedVerts[idx0];
+  const m1 = projectedVerts[idx1];
+
+  const pxDist = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+  const mDist = Math.hypot(m1.x - m0.x, m1.y - m0.y);
+  const scale = mDist > 0.01 ? pxDist / mDist : 1;
+
+  const padX = p0.x - (m0.x - bounds.minX) * scale;
+  const padY = p0.y - (m0.y - bounds.minY) * scale;
+
+  return { scale, bounds, padX, padY };
+}
+
+export { toCanvas, toSim, mToCanvas, CANVAS_PAD };
