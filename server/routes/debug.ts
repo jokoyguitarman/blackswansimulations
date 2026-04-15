@@ -24,6 +24,7 @@ import { logger } from '../lib/logger.js';
 import { evaluateBombSquadAssessment } from '../services/rtsVisionService.js';
 import {
   generateCasualtySceneImage,
+  generateVictimImage,
   evaluateTriageAssessment,
 } from '../services/rtsCasualtyService.js';
 import { env } from '../env.js';
@@ -350,6 +351,35 @@ router.post('/rts-casualty-image', requireAuth, json(), async (req: Authenticate
     res.json({ data: { imageUrl } });
   } catch (err) {
     logger.error({ err }, 'Error in POST /debug/rts-casualty-image');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── RTS Individual Victim Image (DALL-E 3) ──────────────────────────────
+router.post('/rts-victim-image', requireAuth, json(), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!env.openAiApiKey) {
+      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    }
+
+    const { victim, sceneContext } = req.body;
+    if (!victim || !victim.description) {
+      return res.status(400).json({ error: 'victim with description is required' });
+    }
+
+    const imageUrl = await generateVictimImage(
+      victim,
+      sceneContext || 'Bombing aftermath near a building',
+      env.openAiApiKey,
+    );
+
+    if (!imageUrl) {
+      return res.status(502).json({ error: 'Victim image generation failed' });
+    }
+
+    res.json({ data: { imageUrl } });
+  } catch (err) {
+    logger.error({ err }, 'Error in POST /debug/rts-victim-image');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

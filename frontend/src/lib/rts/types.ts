@@ -499,6 +499,8 @@ export interface CasualtyVictim {
     mobility: string;
     bleeding: string;
   };
+  imageUrl: string | null;
+  imageGenerating: boolean;
   playerTag: TriageTag;
   taggedAt: number | null;
 }

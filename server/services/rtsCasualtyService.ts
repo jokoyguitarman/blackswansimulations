@@ -113,6 +113,59 @@ export async function generateCasualtySceneImage(
   }
 }
 
+// ── DALL-E 3 individual victim image ─────────────────────────────────────
+
+export async function generateVictimImage(
+  victim: VictimSpec,
+  sceneContext: string,
+  openAiApiKey: string,
+): Promise<string | null> {
+  const prompt =
+    `Photorealistic emergency medical training exercise photograph. ` +
+    `Close-up of a single training volunteer acting as a simulated casualty using professional moulage (theatrical injury makeup). ` +
+    `Scene context: ${sceneContext}. ` +
+    `This person: ${victim.description}. ` +
+    `Visible signs: Injuries — ${victim.observableSigns.visibleInjuries}. ` +
+    `Mobility — ${victim.observableSigns.mobility}. Bleeding — ${victim.observableSigns.bleeding}. ` +
+    `Consciousness — ${victim.observableSigns.consciousness}. ` +
+    `The person is on the ground near debris. Realistic moulage makeup with fake blood, prosthetic wounds. ` +
+    `Professional disaster drill photography. Slightly overhead angle, focused on this one person. ` +
+    `Well-lit. Training exercise — not real gore. Moulage and makeup only.`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'dall-e-3',
+        prompt,
+        n: 1,
+        size: '1024x1024',
+        quality: 'standard',
+        response_format: 'url',
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      logger.error({ status: response.status, body: errBody }, 'DALL-E 3 victim image failed');
+      return null;
+    }
+
+    const data = (await response.json()) as {
+      data?: Array<{ url?: string }>;
+    };
+
+    return data.data?.[0]?.url ?? null;
+  } catch (err) {
+    logger.error({ err }, 'Error generating victim image');
+    return null;
+  }
+}
+
 // ── GPT triage evaluation ───────────────────────────────────────────────
 
 const TRIAGE_SYSTEM_PROMPT = `You are evaluating a triage exercise for emergency medical training. You are scoring a player's triage tag assignments against the correct (ground truth) tags.

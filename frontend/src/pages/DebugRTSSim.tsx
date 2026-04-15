@@ -747,6 +747,74 @@ export function DebugRTSSim() {
     [casualtyClusters, activeCasualtyCluster],
   );
 
+  const handleGenerateVictimImages = useCallback(
+    async (clusterId: string) => {
+      const cluster = casualtyClusters.find((c) => c.id === clusterId);
+      if (!cluster) return;
+
+      for (const victim of cluster.victims) {
+        if (victim.imageUrl) continue;
+
+        // Mark generating
+        const updateVictim = (url: string | null, generating: boolean) => {
+          setCasualtyClusters((prev) =>
+            prev.map((c) =>
+              c.id === clusterId
+                ? {
+                    ...c,
+                    victims: c.victims.map((v) =>
+                      v.id === victim.id ? { ...v, imageUrl: url, imageGenerating: generating } : v,
+                    ),
+                  }
+                : c,
+            ),
+          );
+          if (activeCasualtyCluster?.id === clusterId) {
+            setActiveCasualtyCluster((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    victims: prev.victims.map((v) =>
+                      v.id === victim.id ? { ...v, imageUrl: url, imageGenerating: generating } : v,
+                    ),
+                  }
+                : prev,
+            );
+          }
+        };
+
+        updateVictim(null, true);
+
+        try {
+          const headers = await getAuthHeaders();
+          const resp = await fetch(apiUrl('/api/debug/rts-victim-image'), {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              victim: {
+                label: victim.label,
+                trueTag: victim.trueTag,
+                description: victim.description,
+                observableSigns: victim.observableSigns,
+              },
+              sceneContext: cluster.sceneDescription,
+            }),
+          });
+
+          if (resp.ok) {
+            const { data } = await resp.json();
+            updateVictim(data.imageUrl, false);
+          } else {
+            updateVictim(null, false);
+          }
+        } catch {
+          updateVictim(null, false);
+        }
+      }
+    },
+    [casualtyClusters, activeCasualtyCluster],
+  );
+
   const handleUpdateVictimTag = useCallback(
     (clusterId: string, victimId: string, tag: TriageTag) => {
       setCasualtyClusters((prev) =>
@@ -1597,60 +1665,108 @@ export function DebugRTSSim() {
                     {activeCasualtyCluster.sceneDescription}
                   </div>
 
-                  {/* Victim cards */}
+                  {/* Victim cards — image-first */}
                   <div className="px-3 py-2 border-t border-gray-800 space-y-2">
-                    <div className="text-xs text-red-400 font-bold mb-1">Triage Assessment</div>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-xs text-red-400 font-bold">Triage Assessment</div>
+                      {activeCasualtyCluster.victims.some(
+                        (v) => !v.imageUrl && !v.imageGenerating,
+                      ) && (
+                        <button
+                          onClick={() => handleGenerateVictimImages(activeCasualtyCluster.id)}
+                          className="bg-red-800 hover:bg-red-700 text-white text-xs px-2 py-0.5 rounded border border-red-600"
+                        >
+                          Generate Victim Photos
+                        </button>
+                      )}
+                    </div>
                     {activeCasualtyCluster.victims.map((v) => (
-                      <div key={v.id} className="bg-gray-800 rounded p-2 border border-gray-700">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs text-white font-bold">{v.label}</span>
+                      <div
+                        key={v.id}
+                        className="bg-gray-800 rounded overflow-hidden border border-gray-700"
+                      >
+                        {/* Victim image */}
+                        <div className="relative">
+                          {v.imageUrl ? (
+                            <img
+                              src={v.imageUrl}
+                              alt={v.label}
+                              className="w-full h-40 object-cover"
+                            />
+                          ) : v.imageGenerating ? (
+                            <div className="w-full h-32 flex items-center justify-center bg-gray-900 text-red-400 text-xs animate-pulse">
+                              Generating {v.label} image...
+                            </div>
+                          ) : (
+                            <div className="w-full h-24 flex items-center justify-center bg-gray-900 text-gray-600 text-xs">
+                              No photo — click "Generate Victim Photos" above
+                            </div>
+                          )}
+                          {/* Label overlay on image */}
+                          <div className="absolute top-1 left-1 bg-black/70 rounded px-1.5 py-0.5">
+                            <span className="text-xs text-white font-bold">{v.label}</span>
+                          </div>
                           {isTrainerMode && (
-                            <span
-                              className={`text-xs px-1.5 py-0.5 rounded ${
+                            <div
+                              className={`absolute top-1 right-1 rounded px-1.5 py-0.5 text-xs font-bold ${
                                 v.trueTag === 'red'
-                                  ? 'bg-red-900 text-red-300'
+                                  ? 'bg-red-700 text-white'
                                   : v.trueTag === 'yellow'
-                                    ? 'bg-yellow-900 text-yellow-300'
+                                    ? 'bg-yellow-600 text-white'
                                     : v.trueTag === 'green'
-                                      ? 'bg-green-900 text-green-300'
-                                      : 'bg-gray-700 text-gray-300'
+                                      ? 'bg-green-700 text-white'
+                                      : 'bg-gray-700 text-white'
                               }`}
                             >
-                              True: {v.trueTag.toUpperCase()}
-                            </span>
+                              {v.trueTag.toUpperCase()}
+                            </div>
+                          )}
+                          {/* Current tag overlay */}
+                          {v.playerTag !== 'untagged' && (
+                            <div
+                              className={`absolute bottom-1 right-1 rounded px-2 py-0.5 text-xs font-bold border ${
+                                v.playerTag === 'red'
+                                  ? 'bg-red-700 border-red-400 text-white'
+                                  : v.playerTag === 'yellow'
+                                    ? 'bg-yellow-600 border-yellow-400 text-white'
+                                    : v.playerTag === 'green'
+                                      ? 'bg-green-700 border-green-400 text-white'
+                                      : 'bg-gray-600 border-gray-400 text-white'
+                              }`}
+                            >
+                              Tagged: {v.playerTag.toUpperCase()}
+                            </div>
                           )}
                         </div>
-                        <div className="text-xs text-gray-400 mb-1.5">{v.description}</div>
-                        <div className="grid grid-cols-3 gap-1 text-xs text-gray-500 mb-2">
-                          <span>Breathing: {v.observableSigns.breathing}</span>
-                          <span>Pulse: {v.observableSigns.pulse}</span>
-                          <span>Consciousness: {v.observableSigns.consciousness}</span>
-                          <span>Injuries: {v.observableSigns.visibleInjuries}</span>
-                          <span>Mobility: {v.observableSigns.mobility}</span>
-                          <span>Bleeding: {v.observableSigns.bleeding}</span>
-                        </div>
-                        <div className="flex gap-1">
-                          {(['red', 'yellow', 'green', 'black'] as TriageTag[]).map((tag) => (
-                            <button
-                              key={tag}
-                              onClick={() =>
-                                handleUpdateVictimTag(activeCasualtyCluster.id, v.id, tag)
-                              }
-                              className={`flex-1 text-xs py-1.5 rounded border font-bold transition-colors ${
-                                v.playerTag === tag
-                                  ? tag === 'red'
-                                    ? 'bg-red-700 border-red-500 text-white'
-                                    : tag === 'yellow'
-                                      ? 'bg-yellow-700 border-yellow-500 text-white'
-                                      : tag === 'green'
-                                        ? 'bg-green-700 border-green-500 text-white'
-                                        : 'bg-gray-600 border-gray-400 text-white'
-                                  : 'border-gray-600 text-gray-400 hover:border-gray-400'
-                              }`}
-                            >
-                              {tag.toUpperCase()}
-                            </button>
-                          ))}
+                        {/* Observable signs (collapsed, secondary to the image) */}
+                        <div className="px-2 py-1.5">
+                          <div className="text-xs text-gray-500 leading-tight mb-1.5">
+                            {v.observableSigns.visibleInjuries} · {v.observableSigns.consciousness}{' '}
+                            · {v.observableSigns.bleeding}
+                          </div>
+                          <div className="flex gap-1">
+                            {(['red', 'yellow', 'green', 'black'] as TriageTag[]).map((tag) => (
+                              <button
+                                key={tag}
+                                onClick={() =>
+                                  handleUpdateVictimTag(activeCasualtyCluster.id, v.id, tag)
+                                }
+                                className={`flex-1 text-xs py-1.5 rounded border font-bold transition-colors ${
+                                  v.playerTag === tag
+                                    ? tag === 'red'
+                                      ? 'bg-red-700 border-red-500 text-white'
+                                      : tag === 'yellow'
+                                        ? 'bg-yellow-700 border-yellow-500 text-white'
+                                        : tag === 'green'
+                                          ? 'bg-green-700 border-green-500 text-white'
+                                          : 'bg-gray-600 border-gray-400 text-white'
+                                    : 'border-gray-600 text-gray-400 hover:border-gray-400'
+                                }`}
+                              >
+                                {tag.toUpperCase()}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1983,6 +2099,8 @@ export function DebugRTSSim() {
                           trueTag: p.trueTag,
                           description: p.desc,
                           observableSigns: p.signs,
+                          imageUrl: null,
+                          imageGenerating: false,
                           playerTag: 'untagged',
                           taggedAt: null,
                         }));
