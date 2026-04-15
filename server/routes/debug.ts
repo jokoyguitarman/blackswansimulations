@@ -22,6 +22,10 @@ import { haversineM } from '../services/geoUtils.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { evaluateBombSquadAssessment } from '../services/rtsVisionService.js';
+import {
+  generateCasualtySceneImage,
+  evaluateTriageAssessment,
+} from '../services/rtsCasualtyService.js';
 import { env } from '../env.js';
 
 const router = Router();
@@ -318,6 +322,62 @@ router.post('/rts-assess', requireAuth, json(), async (req: AuthenticatedRequest
     res.json({ data: result });
   } catch (err) {
     logger.error({ err }, 'Error in POST /debug/rts-assess');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── RTS Casualty Scene Image Generation (DALL-E 3) ─────────────────────
+router.post('/rts-casualty-image', requireAuth, json(), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!env.openAiApiKey) {
+      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    }
+
+    const { victims, sceneContext } = req.body;
+    if (!victims || !Array.isArray(victims) || victims.length === 0) {
+      return res.status(400).json({ error: 'victims array is required' });
+    }
+
+    const imageUrl = await generateCasualtySceneImage(
+      { victims, sceneContext: sceneContext || 'Bombing aftermath near a building entrance' },
+      env.openAiApiKey,
+    );
+
+    if (!imageUrl) {
+      return res.status(502).json({ error: 'Image generation failed' });
+    }
+
+    res.json({ data: { imageUrl } });
+  } catch (err) {
+    logger.error({ err }, 'Error in POST /debug/rts-casualty-image');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── RTS Triage Assessment Evaluation (GPT Vision) ───────────────────────
+router.post('/rts-triage-assess', requireAuth, json(), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!env.openAiApiKey) {
+      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    }
+
+    const { imageUrl, victims, sceneContext } = req.body;
+    if (!victims || !Array.isArray(victims) || victims.length === 0) {
+      return res.status(400).json({ error: 'victims array is required' });
+    }
+
+    const result = await evaluateTriageAssessment(
+      {
+        imageUrl: imageUrl || '',
+        victims,
+        sceneContext: sceneContext || 'Mass casualty triage exercise at bombing scene.',
+      },
+      env.openAiApiKey,
+    );
+
+    res.json({ data: result });
+  } catch (err) {
+    logger.error({ err }, 'Error in POST /debug/rts-triage-assess');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

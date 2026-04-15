@@ -1,0 +1,221 @@
+import { logger } from '../lib/logger.js';
+
+// ── Types ───────────────────────────────────────────────────────────────
+
+interface VictimSpec {
+  label: string;
+  trueTag: 'red' | 'yellow' | 'green' | 'black';
+  description: string;
+  observableSigns: {
+    breathing: string;
+    pulse: string;
+    consciousness: string;
+    visibleInjuries: string;
+    mobility: string;
+    bleeding: string;
+  };
+}
+
+interface GenerateSceneRequest {
+  victims: VictimSpec[];
+  sceneContext: string;
+}
+
+interface TriageAssessmentRequest {
+  imageUrl: string;
+  victims: Array<{
+    label: string;
+    trueTag: string;
+    description: string;
+    playerTag: string;
+  }>;
+  sceneContext: string;
+}
+
+interface TriageAssessmentResult {
+  overallScore: number;
+  maxScore: number;
+  evaluation: string;
+  perVictim: Array<{
+    label: string;
+    correct: boolean;
+    feedback: string;
+  }>;
+  criticalErrors: string[];
+}
+
+// ── DALL-E 3 scene image generation ─────────────────────────────────────
+
+function buildImagePrompt(victims: VictimSpec[], sceneContext: string): string {
+  const victimDescriptions = victims
+    .map(
+      (v, i) =>
+        `Person ${i + 1} (${v.label}): ${v.description}. Injuries: ${v.observableSigns.visibleInjuries}. ` +
+        `Mobility: ${v.observableSigns.mobility}. Bleeding: ${v.observableSigns.bleeding}.`,
+    )
+    .join(' ');
+
+  return (
+    `Realistic emergency training exercise photograph using moulage (theatrical injury makeup) for a crisis management simulation. ` +
+    `Scene: ${sceneContext}. ` +
+    `${victims.length} training volunteers are positioned as simulated casualties near a damaged building entrance. ` +
+    `${victimDescriptions} ` +
+    `The scene should look like a professional emergency response training exercise with realistic moulage makeup, fake blood, ` +
+    `and simulated injuries. Debris and dust visible. Overhead view slightly angled, showing all casualties in one frame. ` +
+    `Each person should have a visible number tag (1, 2, 3, etc.) attached to their clothing for identification. ` +
+    `Photorealistic training exercise photography style. Well-lit. No actual gore — this is training moulage.`
+  );
+}
+
+export async function generateCasualtySceneImage(
+  req: GenerateSceneRequest,
+  openAiApiKey: string,
+): Promise<string | null> {
+  const prompt = buildImagePrompt(req.victims, req.sceneContext);
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'dall-e-3',
+        prompt,
+        n: 1,
+        size: '1792x1024',
+        quality: 'standard',
+        response_format: 'url',
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      logger.error({ status: response.status, body: errBody }, 'DALL-E 3 generation failed');
+      return null;
+    }
+
+    const data = (await response.json()) as {
+      data?: Array<{ url?: string; revised_prompt?: string }>;
+    };
+
+    const imageUrl = data.data?.[0]?.url;
+    if (!imageUrl) {
+      logger.warn({ data }, 'DALL-E 3 returned no image URL');
+      return null;
+    }
+
+    return imageUrl;
+  } catch (err) {
+    logger.error({ err }, 'Error generating casualty scene image');
+    return null;
+  }
+}
+
+// ── GPT triage evaluation ───────────────────────────────────────────────
+
+const TRIAGE_SYSTEM_PROMPT = `You are evaluating a triage exercise for emergency medical training. You are scoring a player's triage tag assignments against the correct (ground truth) tags.
+
+Triage tags follow the START protocol:
+- RED (Immediate): Life-threatening but survivable with immediate intervention. Breathing problems, uncontrolled bleeding, altered consciousness.
+- YELLOW (Delayed): Serious injuries but can wait 1-4 hours. Fractures, controlled bleeding, burns without airway compromise.
+- GREEN (Minor): Walking wounded. Cuts, bruises, minor burns, psychological distress.
+- BLACK (Expectant/Deceased): Non-survivable injuries or already dead.
+
+Scoring rules:
+- Correct tag: +1 point
+- Off by one severity level (e.g., Red tagged as Yellow): 0 points, note as minor error
+- Survivable patient tagged as BLACK: -2 points — this is the most severe error (preventable death)
+- Non-survivable patient tagged as RED: -1 point — wasted treatment resources on unsaveable patient
+- GREEN patient tagged as RED: -1 point — CCP overwhelmed with minor cases
+
+Evaluate each victim's tag and provide feedback. Be concise but educational.
+
+Respond with JSON only:
+{
+  "overallScore": number,
+  "maxScore": number,
+  "evaluation": "Brief overall assessment of the player's triage performance",
+  "perVictim": [
+    { "label": "Victim 1", "correct": true/false, "feedback": "explanation" }
+  ],
+  "criticalErrors": ["description of any survivable-tagged-Black or similar critical mistakes"]
+}`;
+
+export async function evaluateTriageAssessment(
+  req: TriageAssessmentRequest,
+  openAiApiKey: string,
+): Promise<TriageAssessmentResult> {
+  const victimDetails = req.victims
+    .map(
+      (v) =>
+        `${v.label}: True severity = ${v.trueTag.toUpperCase()}. Description: ${v.description}. Player assigned: ${v.playerTag.toUpperCase()}.`,
+    )
+    .join('\n');
+
+  const userContent: Array<{ type: string; text?: string; image_url?: { url: string } }> = [];
+
+  if (req.imageUrl) {
+    userContent.push({
+      type: 'image_url',
+      image_url: { url: req.imageUrl },
+    });
+  }
+
+  userContent.push({
+    type: 'text',
+    text: `Scene context: ${req.sceneContext}\n\nVictim triage assignments to evaluate:\n${victimDetails}\n\nEvaluate each assignment. Respond with JSON only.`,
+  });
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4.1',
+        messages: [
+          { role: 'system', content: TRIAGE_SYSTEM_PROMPT },
+          { role: 'user', content: userContent },
+        ],
+        max_tokens: 800,
+        temperature: 0.2,
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      logger.error({ status: response.status, body: errBody }, 'GPT triage evaluation failed');
+      return defaultResult(req.victims.length);
+    }
+
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const raw = data.choices?.[0]?.message?.content?.trim() ?? '';
+
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      logger.warn({ raw }, 'GPT triage response was not valid JSON');
+      return defaultResult(req.victims.length);
+    }
+
+    return JSON.parse(jsonMatch[0]) as TriageAssessmentResult;
+  } catch (err) {
+    logger.error({ err }, 'Error evaluating triage assessment');
+    return defaultResult(req.victims.length);
+  }
+}
+
+function defaultResult(victimCount: number): TriageAssessmentResult {
+  return {
+    overallScore: 0,
+    maxScore: victimCount,
+    evaluation: 'Triage evaluation system temporarily unavailable.',
+    perVictim: [],
+    criticalErrors: [],
+  };
+}

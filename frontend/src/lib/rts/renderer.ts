@@ -1,6 +1,6 @@
 import type { Vec2, ExitDef } from '../evacuation/types';
 import type { PedSnapshot } from '../evacuation/engine';
-import type { RTSUnit, RTSEquipment, RTSGameState } from './types';
+import type { RTSUnit, RTSEquipment, RTSGameState, CasualtyCluster } from './types';
 import type { WallInspectionPoint } from './wallInspection';
 import { polygonBounds } from '../evacuation/geometry';
 import type { Bounds } from '../evacuation/geometry';
@@ -45,6 +45,8 @@ export function renderRTS(
   activeWallPointId?: string | null,
   plantedWallPointIds?: Set<string>,
   discoveredWallPointIds?: Set<string>,
+  casualtyClusters?: CasualtyCluster[],
+  activeCasualtyId?: string | null,
 ) {
   ctx.clearRect(0, 0, w, h);
 
@@ -74,6 +76,12 @@ export function renderRTS(
 
   if (state.stagingArea) {
     drawStagingArea(ctx, state.stagingArea, rc);
+  }
+
+  if (casualtyClusters && casualtyClusters.length > 0) {
+    for (const cluster of casualtyClusters) {
+      drawCasualtyCluster(ctx, cluster, rc, activeCasualtyId === cluster.id);
+    }
   }
 
   for (const ped of pedestrians) {
@@ -374,6 +382,84 @@ function drawWaypoints(
     ctx.lineWidth = 1.5;
     ctx.stroke();
   }
+}
+
+// ── Casualty clusters ───────────────────────────────────────────────────
+function drawCasualtyCluster(
+  ctx: CanvasRenderingContext2D,
+  cluster: CasualtyCluster,
+  rc: RenderContext,
+  isActive: boolean,
+) {
+  const p = toCanvas(cluster.pos.x, cluster.pos.y, rc);
+  const r = isActive ? 12 : 9;
+  const victimCount = cluster.victims.length;
+
+  // Glow
+  ctx.save();
+  ctx.shadowColor = cluster.triageComplete ? '#22c55e' : '#ef4444';
+  ctx.shadowBlur = isActive ? 16 : 8;
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, r + 4, 0, Math.PI * 2);
+  ctx.fillStyle = cluster.triageComplete ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.2)';
+  ctx.fill();
+  ctx.restore();
+
+  // Selection ring
+  if (isActive) {
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, r + 5, 0, Math.PI * 2);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Dark border
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, r + 1.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#000';
+  ctx.fill();
+
+  // Main circle
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = cluster.triageComplete ? '#15803d' : '#dc2626';
+  ctx.fill();
+
+  // Cross icon
+  const crossSize = r * 0.5;
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(p.cx - crossSize, p.cy);
+  ctx.lineTo(p.cx + crossSize, p.cy);
+  ctx.moveTo(p.cx, p.cy - crossSize);
+  ctx.lineTo(p.cx, p.cy + crossSize);
+  ctx.stroke();
+
+  // Victim count badge
+  ctx.fillStyle = '#000';
+  ctx.font = `bold 9px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const badgeX = p.cx + r + 2;
+  const badgeY = p.cy - r - 2;
+  ctx.beginPath();
+  ctx.arc(badgeX, badgeY, 7, 0, Math.PI * 2);
+  ctx.fillStyle = '#facc15';
+  ctx.fill();
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = '#000';
+  ctx.font = 'bold 8px monospace';
+  ctx.fillText(String(victimCount), badgeX, badgeY);
+
+  // Label
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 9px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('CASUALTIES', p.cx, p.cy + r + 12);
 }
 
 // ── Wall inspection points ──────────────────────────────────────────────

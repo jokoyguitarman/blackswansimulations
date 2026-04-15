@@ -25,6 +25,9 @@ import {
   type EquipmentKind,
   type TeamId,
   type PlantedItem,
+  type CasualtyCluster,
+  type CasualtyVictim,
+  type TriageTag,
 } from '../lib/rts/types';
 import {
   loadSavedMaps,
@@ -234,6 +237,12 @@ export function DebugRTSSim() {
   const [plantDifficulty, setPlantDifficulty] =
     useState<PlantedItem['concealmentDifficulty']>('moderate');
   const [isTrainerMode, setIsTrainerMode] = useState(true);
+
+  // ── Casualty clusters ─────────────────────────────────────────────────
+  const [casualtyClusters, setCasualtyClusters] = useState<CasualtyCluster[]>([]);
+  const [activeCasualtyCluster, setActiveCasualtyCluster] = useState<CasualtyCluster | null>(null);
+  const [triageLoading, setTriageLoading] = useState(false);
+  const [triageResult, setTriageResult] = useState<string | null>(null);
 
   // ── Projected polygon ─────────────────────────────────────────────────
   const selectedGrid = selectedGridIdx != null ? fetchResult?.grids[selectedGridIdx] : null;
@@ -464,6 +473,10 @@ export function DebugRTSSim() {
   pedestriansRef.current = pedestrians;
   const plantedItemsRef = useRef(plantedItems);
   plantedItemsRef.current = plantedItems;
+  const casualtyClustersRef = useRef(casualtyClusters);
+  casualtyClustersRef.current = casualtyClusters;
+  const activeCasualtyRef = useRef(activeCasualtyCluster);
+  activeCasualtyRef.current = activeCasualtyCluster;
 
   // ── Main animation loop ───────────────────────────────────────────────
   const loop = useCallback(
@@ -508,6 +521,8 @@ export function DebugRTSSim() {
             activeWallPointRef.current?.id ?? null,
             planted,
             discovered,
+            casualtyClustersRef.current,
+            activeCasualtyRef.current?.id ?? null,
           );
         }
       }
@@ -651,6 +666,173 @@ export function DebugRTSSim() {
     setAssessmentLoading(false);
   }, [activeWallPoint, assessmentText, wallPointImage, plantedItems]);
 
+  // ── Casualty cluster handlers ─────────────────────────────────────────
+  const handlePlaceCasualtyCluster = useCallback(
+    (pos: Vec2, victims: CasualtyVictim[], sceneDescription: string) => {
+      const cluster: CasualtyCluster = {
+        id: `cas-${Date.now()}`,
+        pos: { ...pos },
+        victims,
+        sceneDescription,
+        imageUrl: null,
+        imageGenerating: false,
+        discovered: true,
+        triageComplete: false,
+        aiEvaluation: null,
+      };
+      setCasualtyClusters((prev) => [...prev, cluster]);
+      return cluster;
+    },
+    [],
+  );
+
+  const handleCasualtyClusterClick = useCallback((cluster: CasualtyCluster) => {
+    setActiveCasualtyCluster(cluster);
+    setTriageResult(null);
+  }, []);
+
+  const closeCasualtyCard = useCallback(() => {
+    setActiveCasualtyCluster(null);
+    setTriageResult(null);
+  }, []);
+
+  const handleGenerateCasualtyImage = useCallback(
+    async (clusterId: string) => {
+      const cluster = casualtyClusters.find((c) => c.id === clusterId);
+      if (!cluster) return;
+
+      setCasualtyClusters((prev) =>
+        prev.map((c) => (c.id === clusterId ? { ...c, imageGenerating: true } : c)),
+      );
+
+      try {
+        const headers = await getAuthHeaders();
+        const resp = await fetch(apiUrl('/api/debug/rts-casualty-image'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            victims: cluster.victims.map((v) => ({
+              label: v.label,
+              trueTag: v.trueTag,
+              description: v.description,
+              observableSigns: v.observableSigns,
+            })),
+            sceneContext: cluster.sceneDescription,
+          }),
+        });
+
+        if (resp.ok) {
+          const { data } = await resp.json();
+          setCasualtyClusters((prev) =>
+            prev.map((c) =>
+              c.id === clusterId ? { ...c, imageUrl: data.imageUrl, imageGenerating: false } : c,
+            ),
+          );
+          if (activeCasualtyCluster?.id === clusterId) {
+            setActiveCasualtyCluster((prev) =>
+              prev ? { ...prev, imageUrl: data.imageUrl, imageGenerating: false } : prev,
+            );
+          }
+        } else {
+          setCasualtyClusters((prev) =>
+            prev.map((c) => (c.id === clusterId ? { ...c, imageGenerating: false } : c)),
+          );
+        }
+      } catch {
+        setCasualtyClusters((prev) =>
+          prev.map((c) => (c.id === clusterId ? { ...c, imageGenerating: false } : c)),
+        );
+      }
+    },
+    [casualtyClusters, activeCasualtyCluster],
+  );
+
+  const handleUpdateVictimTag = useCallback(
+    (clusterId: string, victimId: string, tag: TriageTag) => {
+      setCasualtyClusters((prev) =>
+        prev.map((c) =>
+          c.id === clusterId
+            ? {
+                ...c,
+                victims: c.victims.map((v) =>
+                  v.id === victimId ? { ...v, playerTag: tag, taggedAt: Date.now() } : v,
+                ),
+              }
+            : c,
+        ),
+      );
+      if (activeCasualtyCluster?.id === clusterId) {
+        setActiveCasualtyCluster((prev) =>
+          prev
+            ? {
+                ...prev,
+                victims: prev.victims.map((v) =>
+                  v.id === victimId ? { ...v, playerTag: tag, taggedAt: Date.now() } : v,
+                ),
+              }
+            : prev,
+        );
+      }
+    },
+    [activeCasualtyCluster],
+  );
+
+  const handleSubmitTriage = useCallback(async () => {
+    if (!activeCasualtyCluster) return;
+    const untagged = activeCasualtyCluster.victims.filter((v) => v.playerTag === 'untagged');
+    if (untagged.length > 0) return;
+
+    setTriageLoading(true);
+    setTriageResult(null);
+
+    try {
+      const headers = await getAuthHeaders();
+      const resp = await fetch(apiUrl('/api/debug/rts-triage-assess'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          imageUrl: activeCasualtyCluster.imageUrl || '',
+          victims: activeCasualtyCluster.victims.map((v) => ({
+            label: v.label,
+            trueTag: v.trueTag,
+            description: v.description,
+            playerTag: v.playerTag,
+          })),
+          sceneContext: activeCasualtyCluster.sceneDescription,
+        }),
+      });
+
+      if (resp.ok) {
+        const { data } = await resp.json();
+        const evalText = `Score: ${data.overallScore}/${data.maxScore}\n${data.evaluation}\n\n${data.perVictim
+          .map(
+            (pv: { label: string; correct: boolean; feedback: string }) =>
+              `${pv.label}: ${pv.correct ? '✓' : '✗'} ${pv.feedback}`,
+          )
+          .join(
+            '\n',
+          )}${data.criticalErrors.length > 0 ? `\n\nCRITICAL: ${data.criticalErrors.join(', ')}` : ''}`;
+
+        setTriageResult(evalText);
+        setCasualtyClusters((prev) =>
+          prev.map((c) =>
+            c.id === activeCasualtyCluster.id
+              ? { ...c, triageComplete: true, aiEvaluation: evalText }
+              : c,
+          ),
+        );
+        setActiveCasualtyCluster((prev) =>
+          prev ? { ...prev, triageComplete: true, aiEvaluation: evalText } : prev,
+        );
+      } else {
+        setTriageResult('Triage evaluation failed. Try again.');
+      }
+    } catch {
+      setTriageResult('Connection error. Try again.');
+    }
+    setTriageLoading(false);
+  }, [activeCasualtyCluster]);
+
   // ── Canvas mouse handlers ─────────────────────────────────────────────
   const dragStartRef = useRef<Vec2 | null>(null);
   const isDraggingRef = useRef(false);
@@ -713,7 +895,19 @@ export function DebugRTSSim() {
         if (isDraggingRef.current && dragStartRef.current) {
           rts.selectUnitsInBox(dragStartRef.current, sim);
         } else {
-          // Check wall inspection points first
+          // Check casualty clusters
+          const hitCas = casualtyClusters.find(
+            (c) => Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 5.0,
+          );
+          if (hitCas) {
+            handleCasualtyClusterClick(hitCas);
+            rts.state.selection.selectionBox = null;
+            dragStartRef.current = null;
+            isDraggingRef.current = false;
+            return;
+          }
+
+          // Check wall inspection points
           const hitWp = wallPoints.find(
             (wp) => Math.hypot(wp.simPos.x - sim.x, wp.simPos.y - sim.y) < 3.0,
           );
@@ -782,7 +976,16 @@ export function DebugRTSSim() {
         return;
       }
     },
-    [toSim, projectedVerts, exits, newExitWidth, wallPoints, handleWallPointClick],
+    [
+      toSim,
+      projectedVerts,
+      exits,
+      newExitWidth,
+      wallPoints,
+      handleWallPointClick,
+      casualtyClusters,
+      handleCasualtyClusterClick,
+    ],
   );
 
   const handleCanvasWheel = useCallback((e: React.WheelEvent) => {
@@ -1336,6 +1539,159 @@ export function DebugRTSSim() {
                   </div>
                 </div>
               )}
+
+              {/* ── Floating triage card ── */}
+              {activeCasualtyCluster && (
+                <div
+                  className="absolute top-4 bg-gray-900/95 border border-red-700 rounded-lg shadow-2xl overflow-hidden"
+                  style={{
+                    zIndex: 1002,
+                    left: 16,
+                    width: 480,
+                    maxHeight: 'calc(100% - 32px)',
+                    overflowY: 'auto',
+                  }}
+                >
+                  <div className="flex items-center justify-between px-3 py-2 bg-red-900/40 border-b border-red-800">
+                    <div className="text-xs text-red-300 font-bold">
+                      Casualty Cluster — {activeCasualtyCluster.victims.length} victims
+                    </div>
+                    <button
+                      onClick={closeCasualtyCard}
+                      className="text-gray-400 hover:text-white text-sm px-1"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Scene image */}
+                  <div className="relative bg-black" style={{ minHeight: 160 }}>
+                    {activeCasualtyCluster.imageUrl ? (
+                      <img
+                        src={activeCasualtyCluster.imageUrl}
+                        alt="Casualty scene"
+                        className="w-full h-auto"
+                      />
+                    ) : activeCasualtyCluster.imageGenerating ? (
+                      <div className="flex items-center justify-center h-40 text-red-400 text-xs animate-pulse">
+                        Generating scene image with DALL-E 3...
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-40 gap-2">
+                        <span className="text-xs text-gray-500">No scene image yet</span>
+                        <button
+                          onClick={() => handleGenerateCasualtyImage(activeCasualtyCluster.id)}
+                          className="bg-red-800 hover:bg-red-700 text-white text-xs px-3 py-1 rounded border border-red-600"
+                        >
+                          Generate Scene Image (DALL-E 3)
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Scene description */}
+                  <div className="px-3 py-1.5 text-xs text-gray-400 border-t border-gray-800">
+                    {activeCasualtyCluster.sceneDescription}
+                  </div>
+
+                  {/* Victim cards */}
+                  <div className="px-3 py-2 border-t border-gray-800 space-y-2">
+                    <div className="text-xs text-red-400 font-bold mb-1">Triage Assessment</div>
+                    {activeCasualtyCluster.victims.map((v) => (
+                      <div key={v.id} className="bg-gray-800 rounded p-2 border border-gray-700">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-white font-bold">{v.label}</span>
+                          {isTrainerMode && (
+                            <span
+                              className={`text-xs px-1.5 py-0.5 rounded ${
+                                v.trueTag === 'red'
+                                  ? 'bg-red-900 text-red-300'
+                                  : v.trueTag === 'yellow'
+                                    ? 'bg-yellow-900 text-yellow-300'
+                                    : v.trueTag === 'green'
+                                      ? 'bg-green-900 text-green-300'
+                                      : 'bg-gray-700 text-gray-300'
+                              }`}
+                            >
+                              True: {v.trueTag.toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-400 mb-1.5">{v.description}</div>
+                        <div className="grid grid-cols-3 gap-1 text-xs text-gray-500 mb-2">
+                          <span>Breathing: {v.observableSigns.breathing}</span>
+                          <span>Pulse: {v.observableSigns.pulse}</span>
+                          <span>Consciousness: {v.observableSigns.consciousness}</span>
+                          <span>Injuries: {v.observableSigns.visibleInjuries}</span>
+                          <span>Mobility: {v.observableSigns.mobility}</span>
+                          <span>Bleeding: {v.observableSigns.bleeding}</span>
+                        </div>
+                        <div className="flex gap-1">
+                          {(['red', 'yellow', 'green', 'black'] as TriageTag[]).map((tag) => (
+                            <button
+                              key={tag}
+                              onClick={() =>
+                                handleUpdateVictimTag(activeCasualtyCluster.id, v.id, tag)
+                              }
+                              className={`flex-1 text-xs py-1.5 rounded border font-bold transition-colors ${
+                                v.playerTag === tag
+                                  ? tag === 'red'
+                                    ? 'bg-red-700 border-red-500 text-white'
+                                    : tag === 'yellow'
+                                      ? 'bg-yellow-700 border-yellow-500 text-white'
+                                      : tag === 'green'
+                                        ? 'bg-green-700 border-green-500 text-white'
+                                        : 'bg-gray-600 border-gray-400 text-white'
+                                  : 'border-gray-600 text-gray-400 hover:border-gray-400'
+                              }`}
+                            >
+                              {tag.toUpperCase()}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* AI evaluation result */}
+                  {triageResult && (
+                    <div className="px-3 py-2 border-t border-gray-800 bg-gray-800/50">
+                      <div className="text-xs text-amber-400 font-bold mb-1">
+                        Exercise Observer — Triage Evaluation
+                      </div>
+                      <pre className="text-xs text-green-300 whitespace-pre-wrap">
+                        {triageResult}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Submit */}
+                  <div className="px-3 py-2 border-t border-gray-800 flex justify-between items-center">
+                    <span className="text-xs text-gray-600">
+                      {
+                        activeCasualtyCluster.victims.filter((v) => v.playerTag !== 'untagged')
+                          .length
+                      }
+                      /{activeCasualtyCluster.victims.length} tagged
+                    </span>
+                    <button
+                      onClick={handleSubmitTriage}
+                      disabled={
+                        activeCasualtyCluster.victims.some((v) => v.playerTag === 'untagged') ||
+                        triageLoading ||
+                        activeCasualtyCluster.triageComplete
+                      }
+                      className="bg-red-800 hover:bg-red-700 disabled:opacity-30 text-white text-xs px-4 py-1.5 rounded border border-red-600 font-bold"
+                    >
+                      {triageLoading
+                        ? 'Evaluating...'
+                        : activeCasualtyCluster.triageComplete
+                          ? 'Triage Complete'
+                          : 'Submit Triage'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -1529,6 +1885,118 @@ export function DebugRTSSim() {
                   >
                     📍 Set Staging Area (click map)
                   </button>
+                  <button
+                    onClick={() => {
+                      const handlePlace = (e: MouseEvent) => {
+                        const canvas = canvasRef.current;
+                        if (!canvas) return;
+                        const rect = canvas.getBoundingClientRect();
+                        const cx = e.clientX - rect.left;
+                        const cy = e.clientY - rect.top;
+                        const sim = toSim(cx, cy);
+                        const presets: Array<{
+                          trueTag: TriageTag;
+                          desc: string;
+                          signs: CasualtyVictim['observableSigns'];
+                        }> = [
+                          {
+                            trueTag: 'red',
+                            desc: 'Unconscious, penetrating chest wound, labored breathing',
+                            signs: {
+                              breathing: 'Rapid and shallow',
+                              pulse: 'Rapid and weak',
+                              consciousness: 'Unresponsive',
+                              visibleInjuries: 'Penetrating wound to chest, shrapnel',
+                              mobility: 'Immobile',
+                              bleeding: 'Uncontrolled from chest wound',
+                            },
+                          },
+                          {
+                            trueTag: 'yellow',
+                            desc: 'Conscious, compound fracture of left arm, controlled bleeding',
+                            signs: {
+                              breathing: 'Normal',
+                              pulse: 'Strong',
+                              consciousness: 'Alert, in pain',
+                              visibleInjuries: 'Compound fracture left forearm, lacerations',
+                              mobility: 'Cannot walk',
+                              bleeding: 'Controlled with pressure',
+                            },
+                          },
+                          {
+                            trueTag: 'green',
+                            desc: 'Walking wounded, minor cuts and abrasions, dazed',
+                            signs: {
+                              breathing: 'Normal',
+                              pulse: 'Strong',
+                              consciousness: 'Alert but dazed',
+                              visibleInjuries: 'Minor cuts on face and arms',
+                              mobility: 'Walking',
+                              bleeding: 'Minor oozing',
+                            },
+                          },
+                          {
+                            trueTag: 'red',
+                            desc: 'Unconscious, severe burns to face and arms, airway at risk',
+                            signs: {
+                              breathing: 'Irregular, wheezing',
+                              pulse: 'Thready',
+                              consciousness: 'Responds to pain only',
+                              visibleInjuries: 'Severe burns face/arms, singed hair',
+                              mobility: 'Immobile',
+                              bleeding: 'None visible',
+                            },
+                          },
+                          {
+                            trueTag: 'black',
+                            desc: 'No pulse, no breathing, massive trauma to head',
+                            signs: {
+                              breathing: 'Absent',
+                              pulse: 'Absent',
+                              consciousness: 'Unresponsive',
+                              visibleInjuries: 'Massive head trauma, unsurvivable',
+                              mobility: 'Immobile',
+                              bleeding: 'Not applicable',
+                            },
+                          },
+                          {
+                            trueTag: 'yellow',
+                            desc: 'Conscious, burns to legs, can speak but cannot walk',
+                            signs: {
+                              breathing: 'Normal',
+                              pulse: 'Rapid but strong',
+                              consciousness: 'Alert, distressed',
+                              visibleInjuries: 'Second-degree burns both legs',
+                              mobility: 'Cannot walk',
+                              bleeding: 'None',
+                            },
+                          },
+                        ];
+                        const count = 3 + Math.floor(Math.random() * 4);
+                        const shuffled = presets.sort(() => Math.random() - 0.5).slice(0, count);
+                        const victims: CasualtyVictim[] = shuffled.map((p, i) => ({
+                          id: `v-${Date.now()}-${i}`,
+                          label: `Victim ${i + 1}`,
+                          trueTag: p.trueTag,
+                          description: p.desc,
+                          observableSigns: p.signs,
+                          playerTag: 'untagged',
+                          taggedAt: null,
+                        }));
+                        handlePlaceCasualtyCluster(
+                          sim,
+                          victims,
+                          'Bombing aftermath — casualties found near building entrance amid debris and dust.',
+                        );
+                        canvas.removeEventListener('click', handlePlace);
+                        rerender();
+                      };
+                      canvasRef.current?.addEventListener('click', handlePlace, { once: true });
+                    }}
+                    className="w-full text-xs text-left px-2 py-1.5 rounded border border-red-900 text-red-400 hover:border-red-700"
+                  >
+                    🏥 Place Casualty Cluster (click map)
+                  </button>
                 </div>
                 <div>
                   <label className="block text-xs text-green-600 mb-1">Exit Width (m)</label>
@@ -1558,7 +2026,8 @@ export function DebugRTSSim() {
                   </span>
                 </div>
                 <div className="text-xs text-green-700 mt-1">
-                  Exits: {exits.length} · Staging: {gameState.stagingArea ? 'Set' : 'Not set'}
+                  Exits: {exits.length} · Staging: {gameState.stagingArea ? 'Set' : 'Not set'} ·
+                  Casualties: {casualtyClusters.length}
                 </div>
               </div>
             )}

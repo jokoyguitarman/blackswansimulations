@@ -483,6 +483,38 @@ export interface PlantedItem {
   detonationTimer: number | null;
 }
 
+// ── Casualty clusters (triage mechanic) ───────────────────────────────
+export type TriageTag = 'red' | 'yellow' | 'green' | 'black' | 'untagged';
+
+export interface CasualtyVictim {
+  id: string;
+  label: string;
+  trueTag: TriageTag;
+  description: string;
+  observableSigns: {
+    breathing: string;
+    pulse: string;
+    consciousness: string;
+    visibleInjuries: string;
+    mobility: string;
+    bleeding: string;
+  };
+  playerTag: TriageTag;
+  taggedAt: number | null;
+}
+
+export interface CasualtyCluster {
+  id: string;
+  pos: Vec2;
+  victims: CasualtyVictim[];
+  sceneDescription: string;
+  imageUrl: string | null;
+  imageGenerating: boolean;
+  discovered: boolean;
+  triageComplete: boolean;
+  aiEvaluation: string | null;
+}
+
 export function createInitialGameState(): RTSGameState {
   return {
     clock: { elapsed: 0, speed: 1, paused: true, phase: 'setup' },
