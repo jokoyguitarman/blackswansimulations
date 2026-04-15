@@ -1086,7 +1086,10 @@ export function DebugRTSSim() {
               className="bg-gray-900 border border-green-800 text-green-300 px-2 py-1 text-sm w-64 rounded"
             />
             {searchOpen && searchResults.length > 0 && (
-              <div className="absolute top-full left-0 w-80 mt-1 bg-gray-900 border border-green-700 rounded shadow-lg z-50 max-h-48 overflow-y-auto">
+              <div
+                className="absolute top-full left-0 w-80 mt-1 bg-gray-900 border border-green-700 rounded shadow-lg max-h-48 overflow-y-auto"
+                style={{ zIndex: 2000 }}
+              >
                 {searchResults.map((r, i) => (
                   <button
                     key={i}
