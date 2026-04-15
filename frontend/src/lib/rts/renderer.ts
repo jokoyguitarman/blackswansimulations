@@ -74,8 +74,8 @@ export function renderRTS(
   }
 
   for (const unit of state.units) {
-    if (unit.selected && unit.waypoints.length > 0) {
-      drawWaypoints(ctx, unit, rc);
+    if (unit.waypoints.length > 0) {
+      drawWaypoints(ctx, unit, rc, unit.selected);
     }
   }
 }
@@ -293,10 +293,18 @@ function drawSelectionBox(
 }
 
 // ── Waypoints ───────────────────────────────────────────────────────────
-function drawWaypoints(ctx: CanvasRenderingContext2D, unit: RTSUnit, rc: RenderContext) {
-  ctx.strokeStyle = unit.def.color + '80';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([3, 5]);
+function drawWaypoints(
+  ctx: CanvasRenderingContext2D,
+  unit: RTSUnit,
+  rc: RenderContext,
+  isSelected: boolean,
+) {
+  const alpha = isSelected ? 'cc' : '50';
+  const dotAlpha = isSelected ? 'ff' : '80';
+
+  ctx.strokeStyle = unit.def.color + alpha;
+  ctx.lineWidth = isSelected ? 1.5 : 1;
+  ctx.setLineDash([4, 4]);
   ctx.beginPath();
 
   const start = toCanvas(unit.pos.x, unit.pos.y, rc);
@@ -312,9 +320,20 @@ function drawWaypoints(ctx: CanvasRenderingContext2D, unit: RTSUnit, rc: RenderC
   for (const wp of unit.waypoints) {
     const p = toCanvas(wp.x, wp.y, rc);
     ctx.beginPath();
-    ctx.arc(p.cx, p.cy, 3, 0, Math.PI * 2);
-    ctx.fillStyle = unit.def.color;
+    ctx.arc(p.cx, p.cy, isSelected ? 4 : 3, 0, Math.PI * 2);
+    ctx.fillStyle = unit.def.color + dotAlpha;
     ctx.fill();
+  }
+
+  // Destination marker for the final waypoint
+  if (unit.waypoints.length > 0) {
+    const last = unit.waypoints[unit.waypoints.length - 1];
+    const lp = toCanvas(last.x, last.y, rc);
+    ctx.beginPath();
+    ctx.arc(lp.cx, lp.cy, isSelected ? 6 : 4, 0, Math.PI * 2);
+    ctx.strokeStyle = unit.def.color + dotAlpha;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
   }
 }
 

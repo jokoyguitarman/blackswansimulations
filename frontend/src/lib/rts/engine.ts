@@ -36,12 +36,19 @@ export class RTSEngine {
   // ── Clock ─────────────────────────────────────────────────────────────
   tick(dtReal: number) {
     const { clock } = this.state;
-    if (clock.paused || clock.phase === 'setup') return;
+
+    // Units always move during setup (at real-time speed for positioning).
+    // During active phases they move at game speed. Paused freezes everything.
+    if (clock.phase === 'setup') {
+      this.updateUnits(dtReal);
+      return;
+    }
+
+    if (clock.paused) return;
 
     const dt = dtReal * clock.speed;
     clock.elapsed += dt;
     clock.phase = this.computePhase(clock.elapsed);
-
     this.updateUnits(dt);
   }
 
@@ -202,7 +209,7 @@ export class RTSEngine {
     return this.state.units.filter((u) => u.selected);
   }
 
-  findUnitAt(pos: Vec2, radius: number = 1.5): RTSUnit | null {
+  findUnitAt(pos: Vec2, radius: number = 3.0): RTSUnit | null {
     let best: RTSUnit | null = null;
     let bestDist = radius;
     for (const u of this.state.units) {
