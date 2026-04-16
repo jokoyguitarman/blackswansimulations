@@ -253,6 +253,12 @@ export function DebugRTSSim() {
   // ── Blast site ─────────────────────────────────────────────────────────
   const [blastSite, setBlastSite] = useState<Vec2 | null>(null);
 
+  // ── Trainer GPS tracking ──────────────────────────────────────────────
+  const [gpsEnabled, setGpsEnabled] = useState(false);
+  const [gpsSimPos, setGpsSimPos] = useState<Vec2 | null>(null);
+  const [gpsAccuracy, setGpsAccuracy] = useState(0);
+  const gpsWatchIdRef = useRef<number | null>(null);
+
   // ── Interior elements ─────────────────────────────────────────────────
   const [interiorWalls, setInteriorWalls] = useState<InteriorWall[]>([]);
   const [hazardZones, setHazardZones] = useState<HazardZone[]>([]);
@@ -266,6 +272,52 @@ export function DebugRTSSim() {
     if (!selectedGrid) return [];
     return projectPolygon(selectedGrid.polygon);
   }, [selectedGrid]);
+
+  // ── GPS watcher ────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!gpsEnabled || !selectedGrid || !navigator.geolocation) {
+      if (gpsWatchIdRef.current != null) {
+        navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+        gpsWatchIdRef.current = null;
+      }
+      setGpsSimPos(null);
+      return;
+    }
+
+    const polygon = selectedGrid.polygon;
+    const n = polygon.length;
+    let refLat = 0,
+      refLng = 0;
+    for (const [la, ln] of polygon) {
+      refLat += la;
+      refLng += ln;
+    }
+    refLat /= n;
+    refLng /= n;
+    const metersPerDegLat = 111320;
+    const metersPerDegLng = 111320 * Math.cos((refLat * Math.PI) / 180);
+
+    gpsWatchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const simX = (pos.coords.longitude - refLng) * metersPerDegLng;
+        const simY = (refLat - pos.coords.latitude) * metersPerDegLat;
+        setGpsSimPos({ x: simX, y: simY });
+        setGpsAccuracy(pos.coords.accuracy);
+      },
+      (err) => {
+        console.warn('GPS error:', err.message);
+        setGpsSimPos(null);
+      },
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 },
+    );
+
+    return () => {
+      if (gpsWatchIdRef.current != null) {
+        navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+        gpsWatchIdRef.current = null;
+      }
+    };
+  }, [gpsEnabled, selectedGrid]);
 
   // ── Canvas resize tracking ────────────────────────────────────────────
   useEffect(() => {
@@ -518,6 +570,10 @@ export function DebugRTSSim() {
   const blastSiteRef = useRef(blastSite);
   blastSiteRef.current = blastSite;
   const hoverSimPosRef = useRef<Vec2 | null>(null);
+  const gpsSimPosRef = useRef(gpsSimPos);
+  gpsSimPosRef.current = gpsSimPos;
+  const gpsAccuracyRef = useRef(gpsAccuracy);
+  gpsAccuracyRef.current = gpsAccuracy;
 
   // ── Main animation loop ───────────────────────────────────────────────
   const loop = useCallback(
@@ -575,6 +631,9 @@ export function DebugRTSSim() {
               }
               return null;
             })(),
+            gpsSimPosRef.current
+              ? { pos: gpsSimPosRef.current, accuracy: gpsAccuracyRef.current }
+              : null,
           );
         }
       }
@@ -2518,6 +2577,22 @@ export function DebugRTSSim() {
                     }`}
                   >
                     💥 Place Blast Site {blastSite ? '(replace)' : '(click map)'}
+                  </button>
+                  <button
+                    onClick={() => setGpsEnabled((prev) => !prev)}
+                    className={`w-full text-xs text-left px-2 py-1.5 rounded border transition-colors ${
+                      gpsEnabled
+                        ? 'border-blue-400 bg-blue-900/30 text-blue-300'
+                        : 'border-green-900 text-green-500 hover:border-green-700'
+                    }`}
+                  >
+                    📍 {gpsEnabled ? 'GPS Tracking ON' : 'Show My Location'}
+                    {gpsEnabled && gpsSimPos && (
+                      <span className="text-blue-500 ml-1">(±{Math.round(gpsAccuracy)}m)</span>
+                    )}
+                    {gpsEnabled && !gpsSimPos && (
+                      <span className="text-yellow-500 ml-1 animate-pulse">(acquiring...)</span>
+                    )}
                   </button>
                   <button
                     onClick={() => {

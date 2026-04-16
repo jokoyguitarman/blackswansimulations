@@ -61,6 +61,7 @@ export function renderRTS(
   stairwells?: Stairwell[],
   blastSite?: Vec2 | null,
   wallDrawPreview?: { start: Vec2; cursor: Vec2 } | null,
+  trainerGps?: { pos: Vec2; accuracy: number } | null,
 ) {
   ctx.clearRect(0, 0, w, h);
 
@@ -134,6 +135,10 @@ export function renderRTS(
 
   if (wallDrawPreview) {
     drawWallDrawPreview(ctx, wallDrawPreview.start, wallDrawPreview.cursor, rc);
+  }
+
+  if (trainerGps) {
+    drawTrainerGps(ctx, trainerGps.pos, trainerGps.accuracy, rc);
   }
 }
 
@@ -462,6 +467,64 @@ function drawWallDrawPreview(
   ctx.font = 'bold 9px monospace';
   ctx.textAlign = 'center';
   ctx.fillText(`${dist.toFixed(1)}m`, mx, my - 8);
+}
+
+// ── Trainer GPS dot ─────────────────────────────────────────────────────
+function drawTrainerGps(
+  ctx: CanvasRenderingContext2D,
+  pos: Vec2,
+  accuracyM: number,
+  rc: RenderContext,
+) {
+  const p = toCanvas(pos.x, pos.y, rc);
+  const accR = mToCanvas(accuracyM, rc);
+
+  // Accuracy circle
+  if (accR > 3) {
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, accR, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(59, 130, 246, 0.08)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(59, 130, 246, 0.25)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // Outer pulse ring
+  const pulse = (Date.now() % 2000) / 2000;
+  const pulseR = 8 + pulse * 12;
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, pulseR, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(59, 130, 246, ${0.5 - pulse * 0.5})`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Dark border
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, 8, 0, Math.PI * 2);
+  ctx.fillStyle = '#1e3a5f';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // Blue center
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, 5, 0, Math.PI * 2);
+  ctx.fillStyle = '#3b82f6';
+  ctx.fill();
+
+  // Inner white dot
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy - 1.5, 2, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.fill();
+
+  // Label
+  ctx.fillStyle = '#3b82f6';
+  ctx.font = 'bold 9px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('YOU ARE HERE', p.cx, p.cy + 16);
 }
 
 // ── Blast site ──────────────────────────────────────────────────────────
