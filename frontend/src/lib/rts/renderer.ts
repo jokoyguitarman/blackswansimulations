@@ -60,6 +60,7 @@ export function renderRTS(
   hazardZones?: HazardZone[],
   stairwells?: Stairwell[],
   blastSite?: Vec2 | null,
+  wallDrawPreview?: { start: Vec2; cursor: Vec2 } | null,
 ) {
   ctx.clearRect(0, 0, w, h);
 
@@ -129,6 +130,10 @@ export function renderRTS(
     if (unit.waypoints.length > 0) {
       drawWaypoints(ctx, unit, rc, unit.selected);
     }
+  }
+
+  if (wallDrawPreview) {
+    drawWallDrawPreview(ctx, wallDrawPreview.start, wallDrawPreview.cursor, rc);
   }
 }
 
@@ -237,9 +242,11 @@ function drawPedestrian(ctx: CanvasRenderingContext2D, ped: PedSnapshot, rc: Ren
 }
 
 function pedColor(speedMs: number): string {
-  if (speedMs < 0.3) return '#ef4444';
-  if (speedMs < 0.8) return '#f59e0b';
-  return '#22c55e';
+  if (speedMs < 0.05) return '#ef4444'; // stuck/crushed — red
+  if (speedMs < 0.2) return '#f97316'; // severely slowed — orange
+  if (speedMs < 0.5) return '#eab308'; // congested — yellow
+  if (speedMs < 1.0) return '#84cc16'; // moving slowly — lime
+  return '#22c55e'; // free-flowing — green
 }
 
 // ── Unit ────────────────────────────────────────────────────────────────
@@ -410,6 +417,51 @@ function drawWaypoints(
     ctx.lineWidth = 1.5;
     ctx.stroke();
   }
+}
+
+// ── Wall draw preview ───────────────────────────────────────────────────
+function drawWallDrawPreview(
+  ctx: CanvasRenderingContext2D,
+  start: Vec2,
+  cursor: Vec2,
+  rc: RenderContext,
+) {
+  const s = toCanvas(start.x, start.y, rc);
+  const c = toCanvas(cursor.x, cursor.y, rc);
+
+  // Anchor circle at point A
+  ctx.beginPath();
+  ctx.arc(s.cx, s.cy, 6, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(148, 163, 184, 0.4)';
+  ctx.fill();
+  ctx.strokeStyle = '#94a3b8';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Dashed line from A to cursor
+  ctx.beginPath();
+  ctx.moveTo(s.cx, s.cy);
+  ctx.lineTo(c.cx, c.cy);
+  ctx.strokeStyle = '#94a3b8';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Small circle at cursor
+  ctx.beginPath();
+  ctx.arc(c.cx, c.cy, 4, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(148, 163, 184, 0.6)';
+  ctx.fill();
+
+  // Length label
+  const dist = Math.hypot(cursor.x - start.x, cursor.y - start.y);
+  const mx = (s.cx + c.cx) / 2;
+  const my = (s.cy + c.cy) / 2;
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = 'bold 9px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`${dist.toFixed(1)}m`, mx, my - 8);
 }
 
 // ── Blast site ──────────────────────────────────────────────────────────

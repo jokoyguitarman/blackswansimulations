@@ -447,11 +447,28 @@ export function DebugRTSSim() {
       panicFactor: DEFAULT_POLYGON_CONFIG.panicFactor,
       dt: DEFAULT_POLYGON_CONFIG.dt,
     };
-    evacEngRef.current = new PolygonEvacuationEngine(config, exits);
+    // Convert interior walls to engine format
+    const iwDefs = interiorWalls.map((w) => ({
+      startX: w.start.x,
+      startY: w.start.y,
+      endX: w.end.x,
+      endY: w.end.y,
+      hasDoor: w.hasDoor,
+      doorWidth: w.doorWidth,
+      doorPosition: w.doorPosition,
+    }));
+
+    // Collect obstacle points (hazards + casualty clusters)
+    const obstacles = [
+      ...hazardZones.map((hz) => ({ x: hz.pos.x, y: hz.pos.y, radius: hz.radius })),
+      ...casualtyClusters.map((c) => ({ x: c.pos.x, y: c.pos.y, radius: 3 })),
+    ];
+
+    evacEngRef.current = new PolygonEvacuationEngine(config, exits, iwDefs, obstacles);
     rtsRef.current.setBuildingVertices(projectedVerts);
     rtsRef.current.setExits(exits);
     setPedestrians(evacEngRef.current.getSnapshots());
-  }, [projectedVerts, exits, pedestrianCount]);
+  }, [projectedVerts, exits, pedestrianCount, interiorWalls, hazardZones, casualtyClusters]);
 
   // Keep engine exits in sync when exits change (for pathfinding)
   useEffect(() => {
@@ -500,6 +517,7 @@ export function DebugRTSSim() {
   stairwellsRef.current = stairwells;
   const blastSiteRef = useRef(blastSite);
   blastSiteRef.current = blastSite;
+  const hoverSimPosRef = useRef<Vec2 | null>(null);
 
   // ── Main animation loop ───────────────────────────────────────────────
   const loop = useCallback(
@@ -550,6 +568,13 @@ export function DebugRTSSim() {
             hazardZonesRef.current,
             stairwellsRef.current,
             blastSiteRef.current,
+            (() => {
+              const mode = rtsRef.current.state.interactionMode;
+              if (mode.type === 'draw_wall' && mode.startPoint && hoverSimPosRef.current) {
+                return { start: mode.startPoint, cursor: hoverSimPosRef.current };
+              }
+              return null;
+            })(),
           );
         }
       }
@@ -1040,6 +1065,7 @@ export function DebugRTSSim() {
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
       const sim = toSim(cx, cy);
+      hoverSimPosRef.current = sim;
 
       // Element dragging
       if (elementDragRef.current && dragStartRef.current) {

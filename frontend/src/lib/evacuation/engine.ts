@@ -32,6 +32,22 @@ interface PedLabel {
   targetExitId: string;
 }
 
+export interface ObstaclePoint {
+  x: number;
+  y: number;
+  radius: number;
+}
+
+export interface InteriorWallDef {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  hasDoor: boolean;
+  doorWidth: number;
+  doorPosition: number;
+}
+
 export class PolygonEvacuationEngine {
   private engine: Matter.Engine;
   private pedestrians: Matter.Body[] = [];
@@ -41,10 +57,17 @@ export class PolygonEvacuationEngine {
   private elapsed = 0;
   private exitCounts = new Map<string, number>();
   private pedIdCounter = 0;
+  private obstacles: ObstaclePoint[] = [];
 
-  constructor(config: PolygonSimConfig, exits: ExitDef[]) {
+  constructor(
+    config: PolygonSimConfig,
+    exits: ExitDef[],
+    interiorWalls?: InteriorWallDef[],
+    obstacles?: ObstaclePoint[],
+  ) {
     this.config = config;
     this.exits = exits;
+    this.obstacles = obstacles ?? [];
 
     this.engine = Matter.Engine.create({
       gravity: { x: 0, y: 0, scale: 1 },
@@ -52,6 +75,7 @@ export class PolygonEvacuationEngine {
     this.engine.timing.timeScale = 1;
 
     this.buildWalls();
+    if (interiorWalls) this.buildInteriorWalls(interiorWalls);
     this.spawnPedestrians();
   }
 
@@ -115,6 +139,56 @@ export class PolygonEvacuationEngine {
     }
 
     Matter.Composite.add(this.engine.world, this.wallBodies);
+  }
+
+  private buildInteriorWalls(walls: InteriorWallDef[]) {
+    const t = WALL_THICKNESS;
+    const interiorBodies: Matter.Body[] = [];
+
+    for (const wall of walls) {
+      const dx = wall.endX - wall.startX;
+      const dy = wall.endY - wall.startY;
+      const len = Math.hypot(dx, dy);
+      if (len < 0.1) continue;
+      const angle = Math.atan2(dy, dx);
+
+      if (wall.hasDoor) {
+        const doorCenter = wall.doorPosition * len;
+        const halfDoor = wall.doorWidth / 2;
+        const seg1Len = doorCenter - halfDoor;
+        const seg2Start = doorCenter + halfDoor;
+        const seg2Len = len - seg2Start;
+
+        if (seg1Len > 0.1) {
+          const mid1 = seg1Len / 2;
+          const mx = wall.startX + (dx / len) * mid1;
+          const my = wall.startY + (dy / len) * mid1;
+          const body = Matter.Bodies.rectangle(mx, my, seg1Len, t, { isStatic: true, angle });
+          body.collisionFilter = { group: 0, category: WALL_CATEGORY, mask: PED_CATEGORY };
+          body.restitution = 0.1;
+          interiorBodies.push(body);
+        }
+        if (seg2Len > 0.1) {
+          const mid2 = seg2Start + seg2Len / 2;
+          const mx = wall.startX + (dx / len) * mid2;
+          const my = wall.startY + (dy / len) * mid2;
+          const body = Matter.Bodies.rectangle(mx, my, seg2Len, t, { isStatic: true, angle });
+          body.collisionFilter = { group: 0, category: WALL_CATEGORY, mask: PED_CATEGORY };
+          body.restitution = 0.1;
+          interiorBodies.push(body);
+        }
+      } else {
+        const mx = (wall.startX + wall.endX) / 2;
+        const my = (wall.startY + wall.endY) / 2;
+        const body = Matter.Bodies.rectangle(mx, my, len, t, { isStatic: true, angle });
+        body.collisionFilter = { group: 0, category: WALL_CATEGORY, mask: PED_CATEGORY };
+        body.restitution = 0.1;
+        interiorBodies.push(body);
+      }
+    }
+
+    this.wallBodies.push(...interiorBodies);
+    Matter.Composite.add(this.engine.world, interiorBodies);
   }
 
   private spawnPedestrians() {
@@ -201,9 +275,23 @@ export class PolygonEvacuationEngine {
       const vDesX = nx * targetSpeed * dt;
       const vDesY = ny * targetSpeed * dt;
 
+      // Repulsion from obstacles (hazards, casualties)
+      let repX = 0;
+      let repY = 0;
+      for (const obs of this.obstacles) {
+        const odx = body.position.x - obs.x;
+        const ody = body.position.y - obs.y;
+        const oDist = Math.hypot(odx, ody);
+        if (oDist < obs.radius && oDist > 0.01) {
+          const strength = ((obs.radius - oDist) / obs.radius) * targetSpeed * dt * 2;
+          repX += (odx / oDist) * strength;
+          repY += (ody / oDist) * strength;
+        }
+      }
+
       const blend = Math.min(1, dt / tau);
-      const newVx = body.velocity.x + (vDesX - body.velocity.x) * blend;
-      const newVy = body.velocity.y + (vDesY - body.velocity.y) * blend;
+      const newVx = body.velocity.x + (vDesX + repX - body.velocity.x) * blend;
+      const newVy = body.velocity.y + (vDesY + repY - body.velocity.y) * blend;
 
       Matter.Body.setVelocity(body, { x: newVx, y: newVy });
 
