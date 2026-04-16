@@ -250,6 +250,74 @@ export function DebugRTSSim() {
   const [triageLoading, setTriageLoading] = useState(false);
   const [triageResult, setTriageResult] = useState<string | null>(null);
 
+  // ── Draw building tool ─────────────────────────────────────────────────
+  const [drawingBuilding, setDrawingBuilding] = useState(false);
+  const [drawnVertices, setDrawnVertices] = useState<[number, number][]>([]);
+  const [drawnBuildingName, setDrawnBuildingName] = useState('Custom Building');
+
+  const handleDrawMapClick = useCallback(
+    (clickLat: number, clickLng: number) => {
+      if (!drawingBuilding) return;
+      setDrawnVertices((prev) => [...prev, [clickLat, clickLng]]);
+    },
+    [drawingBuilding],
+  );
+
+  const handleFinishDrawing = useCallback(() => {
+    if (drawnVertices.length < 3) return;
+
+    const polygon = drawnVertices;
+    let cLat = 0,
+      cLng = 0;
+    for (const [la, ln] of polygon) {
+      cLat += la;
+      cLng += ln;
+    }
+    cLat /= polygon.length;
+    cLng /= polygon.length;
+
+    const newGrid: GridItem = {
+      buildingIndex: fetchResult ? fetchResult.grids.length : 0,
+      buildingName: drawnBuildingName || 'Custom Building',
+      polygon,
+      floors: ['Ground'],
+      spacingM: 3,
+    };
+
+    const newBuilding: BuildingSummary = {
+      name: drawnBuildingName || 'Custom Building',
+      lat: cLat,
+      lng: cLng,
+      levels: 1,
+      use: 'custom',
+      polygonPoints: polygon.length,
+    };
+
+    if (fetchResult) {
+      setFetchResult({
+        grids: [...fetchResult.grids, newGrid],
+        buildings: [...fetchResult.buildings, newBuilding],
+      });
+    } else {
+      setFetchResult({
+        grids: [newGrid],
+        buildings: [newBuilding],
+      });
+    }
+
+    setDrawingBuilding(false);
+    setDrawnVertices([]);
+  }, [drawnVertices, drawnBuildingName, fetchResult]);
+
+  const handleCancelDrawing = useCallback(() => {
+    setDrawingBuilding(false);
+    setDrawnVertices([]);
+  }, []);
+
+  const handleUndoVertex = useCallback(() => {
+    setDrawnVertices((prev) => prev.slice(0, -1));
+  }, []);
+
   // ── Blast site ─────────────────────────────────────────────────────────
   const [blastSite, setBlastSite] = useState<Vec2 | null>(null);
 
@@ -363,11 +431,15 @@ export function DebugRTSSim() {
   const handleMapClick = useCallback(
     (clickLat: number, clickLng: number) => {
       if (phase === 'map') {
-        setLat(clickLat.toFixed(7));
-        setLng(clickLng.toFixed(7));
+        if (drawingBuilding) {
+          handleDrawMapClick(clickLat, clickLng);
+        } else {
+          setLat(clickLat.toFixed(7));
+          setLng(clickLng.toFixed(7));
+        }
       }
     },
-    [phase],
+    [phase, drawingBuilding, handleDrawMapClick],
   );
 
   // ── Place search (Nominatim) ────────────────────────────────────────
@@ -1736,7 +1808,58 @@ export function DebugRTSSim() {
           >
             {loading ? 'Fetching...' : 'Fetch Buildings'}
           </button>
+          <button
+            onClick={() => {
+              if (drawingBuilding) {
+                handleCancelDrawing();
+              } else {
+                setDrawingBuilding(true);
+                setDrawnVertices([]);
+              }
+            }}
+            className={`px-4 py-1.5 text-sm rounded border transition-colors ${
+              drawingBuilding
+                ? 'bg-amber-800 hover:bg-amber-700 text-amber-100 border-amber-600'
+                : 'bg-gray-800 hover:bg-gray-700 text-amber-300 border-amber-800'
+            }`}
+          >
+            {drawingBuilding ? 'Cancel Drawing' : '✏️ Draw Building'}
+          </button>
           {error && <span className="text-red-400 text-xs">{error}</span>}
+          {drawingBuilding && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-amber-400">
+                Click map to add vertices ({drawnVertices.length} placed)
+                {drawnVertices.length === 0 && ' — start with first corner'}
+                {drawnVertices.length >= 1 && drawnVertices.length < 3 && ' — need at least 3'}
+              </span>
+              {drawnVertices.length > 0 && (
+                <button
+                  onClick={handleUndoVertex}
+                  className="text-xs text-amber-500 hover:text-amber-300 border border-amber-800 rounded px-2 py-0.5"
+                >
+                  Undo
+                </button>
+              )}
+              {drawnVertices.length >= 3 && (
+                <>
+                  <input
+                    type="text"
+                    value={drawnBuildingName}
+                    onChange={(e) => setDrawnBuildingName(e.target.value)}
+                    placeholder="Building name"
+                    className="bg-gray-800 border border-amber-800 text-amber-300 px-2 py-0.5 text-xs rounded w-32"
+                  />
+                  <button
+                    onClick={handleFinishDrawing}
+                    className="bg-green-800 hover:bg-green-700 text-green-100 text-xs px-3 py-0.5 rounded border border-green-600"
+                  >
+                    Finish Drawing
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1900,6 +2023,34 @@ export function DebugRTSSim() {
                   />
                 );
               })}
+
+            {/* Drawing polygon preview */}
+            {drawingBuilding && drawnVertices.length >= 2 && (
+              <Polygon
+                positions={drawnVertices.map(([la, ln]) => [la, ln] as [number, number])}
+                pathOptions={{
+                  color: '#f59e0b',
+                  weight: 3,
+                  fillOpacity: 0.1,
+                  fillColor: '#f59e0b',
+                  dashArray: '8, 6',
+                }}
+              />
+            )}
+            {drawingBuilding &&
+              drawnVertices.map(([la, ln], i) => (
+                <CircleMarker
+                  key={`dv-${i}`}
+                  center={[la, ln]}
+                  radius={4}
+                  pathOptions={{
+                    color: '#f59e0b',
+                    fillColor: i === 0 ? '#ef4444' : '#fbbf24',
+                    fillOpacity: 1,
+                    weight: 2,
+                  }}
+                />
+              ))}
 
             {/* In RTS mode, fit the map to the building */}
             {phase === 'rts' && selectedGrid && <FitBounds polygon={selectedGrid.polygon} />}
