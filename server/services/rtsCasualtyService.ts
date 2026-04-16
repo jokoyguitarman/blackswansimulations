@@ -46,24 +46,30 @@ interface TriageAssessmentResult {
 
 // ── DALL-E 3 scene image generation ─────────────────────────────────────
 
+function victimPose(v: VictimSpec): string {
+  const mob = v.observableSigns.mobility.toLowerCase();
+  if (mob.includes('walk')) return 'sitting upright, alert, with minor cosmetic makeup on face';
+  if (
+    mob.includes('immobile') &&
+    v.observableSigns.consciousness.toLowerCase().includes('unresponsive')
+  )
+    return 'lying flat on the ground, eyes closed, arms at sides';
+  if (mob.includes('cannot'))
+    return 'seated on the ground leaning against a wall, holding one arm, grimacing';
+  return 'lying on side on the ground';
+}
+
 function buildImagePrompt(victims: VictimSpec[], sceneContext: string): string {
-  const victimDescriptions = victims
-    .map(
-      (v, i) =>
-        `Person ${i + 1} (${v.label}): ${v.description}. Injuries: ${v.observableSigns.visibleInjuries}. ` +
-        `Mobility: ${v.observableSigns.mobility}. Bleeding: ${v.observableSigns.bleeding}.`,
-    )
-    .join(' ');
+  const poses = victims.map((v, i) => `Person ${i + 1}: ${victimPose(v)}.`).join(' ');
+  const context = sceneContext.replace(/bomb|explos|blast|detona/gi, 'incident');
 
   return (
-    `Realistic emergency training exercise photograph using moulage (theatrical injury makeup) for a crisis management simulation. ` +
-    `Scene: ${sceneContext}. ` +
-    `${victims.length} training volunteers are positioned as simulated casualties near a damaged building entrance. ` +
-    `${victimDescriptions} ` +
-    `The scene should look like a professional emergency response training exercise with realistic moulage makeup, fake blood, ` +
-    `and simulated injuries. Debris and dust visible. Overhead view slightly angled, showing all casualties in one frame. ` +
-    `Each person should have a visible number tag (1, 2, 3, etc.) attached to their clothing for identification. ` +
-    `Photorealistic training exercise photography style. Well-lit. No actual gore — this is training moulage.`
+    `A wide-angle photograph of an emergency response training drill. Setting: ${context}. ` +
+    `${victims.length} volunteer actors are positioned in various poses to simulate an incident scene. ` +
+    `${poses} ` +
+    `Scattered dust and small debris on the pavement. Each actor wears a numbered vest (1, 2, 3, etc.). ` +
+    `Professional training exercise photography, overhead angle, well-lit daytime scene. ` +
+    `The actors have theatrical stage makeup to indicate their role in the drill. Clean, documentary style.`
   );
 }
 
@@ -120,17 +126,15 @@ export async function generateVictimImage(
   sceneContext: string,
   openAiApiKey: string,
 ): Promise<string | null> {
+  const pose = victimPose(victim);
+  const context = sceneContext.replace(/bomb|explos|blast|detona/gi, 'incident');
   const prompt =
-    `Photorealistic emergency medical training exercise photograph. ` +
-    `Close-up of a single training volunteer acting as a simulated casualty using professional moulage (theatrical injury makeup). ` +
-    `Scene context: ${sceneContext}. ` +
-    `This person: ${victim.description}. ` +
-    `Visible signs: Injuries — ${victim.observableSigns.visibleInjuries}. ` +
-    `Mobility — ${victim.observableSigns.mobility}. Bleeding — ${victim.observableSigns.bleeding}. ` +
-    `Consciousness — ${victim.observableSigns.consciousness}. ` +
-    `The person is on the ground near debris. Realistic moulage makeup with fake blood, prosthetic wounds. ` +
-    `Professional disaster drill photography. Slightly overhead angle, focused on this one person. ` +
-    `Well-lit. Training exercise — not real gore. Moulage and makeup only.`;
+    `A close-up photograph from an emergency response training drill. Setting: ${context}. ` +
+    `A single volunteer actor is ${pose}. ` +
+    `They are on a concrete surface with scattered dust and small debris around them. ` +
+    `The actor wears everyday clothing with theatrical stage makeup applied to indicate their role in the exercise. ` +
+    `The lighting is bright and natural. Documentary photography style, slightly overhead angle, focused on this one person. ` +
+    `Professional disaster preparedness training photo. Clean composition.`;
 
   try {
     const response = await fetch('https://api.openai.com/v1/images/generations', {
