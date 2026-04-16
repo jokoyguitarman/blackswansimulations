@@ -1,6 +1,15 @@
 import type { Vec2, ExitDef } from '../evacuation/types';
 import type { PedSnapshot } from '../evacuation/engine';
-import type { RTSUnit, RTSEquipment, RTSGameState, CasualtyCluster } from './types';
+import type {
+  RTSUnit,
+  RTSEquipment,
+  RTSGameState,
+  CasualtyCluster,
+  InteriorWall,
+  HazardZone,
+  Stairwell,
+} from './types';
+import { HAZARD_DEFS } from './types';
 import type { WallInspectionPoint } from './wallInspection';
 import { polygonBounds } from '../evacuation/geometry';
 import type { Bounds } from '../evacuation/geometry';
@@ -47,6 +56,9 @@ export function renderRTS(
   discoveredWallPointIds?: Set<string>,
   casualtyClusters?: CasualtyCluster[],
   activeCasualtyId?: string | null,
+  interiorWalls?: InteriorWall[],
+  hazardZones?: HazardZone[],
+  stairwells?: Stairwell[],
 ) {
   ctx.clearRect(0, 0, w, h);
 
@@ -57,6 +69,17 @@ export function renderRTS(
   }
 
   drawBuilding(ctx, buildingVerts, rc, transparentBg);
+
+  if (interiorWalls && interiorWalls.length > 0) {
+    for (const wall of interiorWalls) drawInteriorWall(ctx, wall, rc);
+  }
+  if (hazardZones && hazardZones.length > 0) {
+    for (const hz of hazardZones) drawHazardZone(ctx, hz, rc);
+  }
+  if (stairwells && stairwells.length > 0) {
+    for (const sw of stairwells) drawStairwell(ctx, sw, rc);
+  }
+
   drawExits(ctx, exits, buildingVerts, rc);
 
   if (wallPoints && wallPoints.length > 0) {
@@ -380,6 +403,132 @@ function drawWaypoints(
     ctx.arc(lp.cx, lp.cy, isSelected ? 6 : 4, 0, Math.PI * 2);
     ctx.strokeStyle = unit.def.color + dotAlpha;
     ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+}
+
+// ── Interior walls ──────────────────────────────────────────────────────
+function drawInteriorWall(ctx: CanvasRenderingContext2D, wall: InteriorWall, rc: RenderContext) {
+  const s = toCanvas(wall.start.x, wall.start.y, rc);
+  const e = toCanvas(wall.end.x, wall.end.y, rc);
+
+  if (wall.hasDoor) {
+    const dx = e.cx - s.cx;
+    const dy = e.cy - s.cy;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) return;
+    const nx = dx / len;
+    const ny = dy / len;
+    const doorPx = mToCanvas(wall.doorWidth, rc);
+    const doorCenter = wall.doorPosition * len;
+    const doorStart = doorCenter - doorPx / 2;
+    const doorEnd = doorCenter + doorPx / 2;
+
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 3;
+
+    ctx.beginPath();
+    ctx.moveTo(s.cx, s.cy);
+    ctx.lineTo(s.cx + nx * doorStart, s.cy + ny * doorStart);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(s.cx + nx * doorEnd, s.cy + ny * doorEnd);
+    ctx.lineTo(e.cx, e.cy);
+    ctx.stroke();
+
+    // Door gap indicator
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(s.cx + nx * doorStart, s.cy + ny * doorStart);
+    ctx.lineTo(s.cx + nx * doorEnd, s.cy + ny * doorEnd);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(s.cx, s.cy);
+    ctx.lineTo(e.cx, e.cy);
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+}
+
+// ── Hazard zones ────────────────────────────────────────────────────────
+function drawHazardZone(ctx: CanvasRenderingContext2D, hz: HazardZone, rc: RenderContext) {
+  const p = toCanvas(hz.pos.x, hz.pos.y, rc);
+  const r = mToCanvas(hz.radius, rc);
+  const drawR = Math.max(r, 10);
+  const def = HAZARD_DEFS[hz.hazardType];
+
+  const alpha = hz.severity === 'high' ? '40' : hz.severity === 'medium' ? '25' : '15';
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, drawR, 0, Math.PI * 2);
+  ctx.fillStyle = def.color + alpha;
+  ctx.fill();
+
+  ctx.strokeStyle = def.color + '80';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = def.color;
+  ctx.font = `${Math.min(drawR * 0.6, 16)}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(def.icon, p.cx, p.cy);
+
+  ctx.fillStyle = def.color;
+  ctx.font = 'bold 8px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(def.label.toUpperCase(), p.cx, p.cy + drawR + 8);
+}
+
+// ── Stairwells ──────────────────────────────────────────────────────────
+function drawStairwell(ctx: CanvasRenderingContext2D, sw: Stairwell, rc: RenderContext) {
+  const p = toCanvas(sw.pos.x, sw.pos.y, rc);
+  const r = 10;
+
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, r + 1.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#000';
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = sw.blocked ? '#991b1b' : '#1e3a5f';
+  ctx.fill();
+  ctx.strokeStyle = sw.blocked ? '#ef4444' : '#60a5fa';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Stair icon (zigzag)
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(p.cx - 4, p.cy + 3);
+  ctx.lineTo(p.cx - 4, p.cy);
+  ctx.lineTo(p.cx, p.cy);
+  ctx.lineTo(p.cx, p.cy - 3);
+  ctx.lineTo(p.cx + 4, p.cy - 3);
+  ctx.stroke();
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 7px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(sw.label || 'STAIRS', p.cx, p.cy + r + 8);
+
+  if (sw.blocked) {
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(p.cx - 6, p.cy - 6);
+    ctx.lineTo(p.cx + 6, p.cy + 6);
+    ctx.moveTo(p.cx + 6, p.cy - 6);
+    ctx.lineTo(p.cx - 6, p.cy + 6);
     ctx.stroke();
   }
 }

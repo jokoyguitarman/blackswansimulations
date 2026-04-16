@@ -517,6 +517,52 @@ export interface CasualtyCluster {
   aiEvaluation: string | null;
 }
 
+// ── Interior elements (trainer-placed building internals) ─────────────
+export interface InteriorWall {
+  id: string;
+  start: Vec2;
+  end: Vec2;
+  hasDoor: boolean;
+  doorWidth: number;
+  doorPosition: number;
+}
+
+export type HazardType =
+  | 'combustible'
+  | 'chemical'
+  | 'structural'
+  | 'fire'
+  | 'electrical'
+  | 'debris'
+  | 'smoke';
+
+export interface HazardZone {
+  id: string;
+  pos: Vec2;
+  radius: number;
+  hazardType: HazardType;
+  severity: 'low' | 'medium' | 'high';
+  label: string;
+}
+
+export interface Stairwell {
+  id: string;
+  pos: Vec2;
+  connectsFloors: [number, number];
+  blocked: boolean;
+  label: string;
+}
+
+export const HAZARD_DEFS: Record<HazardType, { label: string; color: string; icon: string }> = {
+  combustible: { label: 'Combustible', color: '#f97316', icon: '🔥' },
+  chemical: { label: 'Chemical', color: '#a855f7', icon: '☣' },
+  structural: { label: 'Structural Weakness', color: '#eab308', icon: '⚠' },
+  fire: { label: 'Active Fire', color: '#ef4444', icon: '🔥' },
+  electrical: { label: 'Electrical', color: '#3b82f6', icon: '⚡' },
+  debris: { label: 'Debris / Collapse', color: '#78716c', icon: '🧱' },
+  smoke: { label: 'Smoke / Low Vis', color: '#6b7280', icon: '🌫' },
+};
+
 export function createInitialGameState(): RTSGameState {
   return {
     clock: { elapsed: 0, speed: 1, paused: true, phase: 'setup' },

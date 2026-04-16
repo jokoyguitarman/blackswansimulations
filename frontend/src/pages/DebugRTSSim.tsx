@@ -28,6 +28,11 @@ import {
   type CasualtyCluster,
   type CasualtyVictim,
   type TriageTag,
+  type InteriorWall,
+  type HazardZone,
+  type HazardType,
+  type Stairwell,
+  HAZARD_DEFS,
 } from '../lib/rts/types';
 import {
   loadSavedMaps,
@@ -243,6 +248,12 @@ export function DebugRTSSim() {
   const [activeCasualtyCluster, setActiveCasualtyCluster] = useState<CasualtyCluster | null>(null);
   const [triageLoading, setTriageLoading] = useState(false);
   const [triageResult, setTriageResult] = useState<string | null>(null);
+
+  // ── Interior elements ─────────────────────────────────────────────────
+  const [interiorWalls, setInteriorWalls] = useState<InteriorWall[]>([]);
+  const [hazardZones, setHazardZones] = useState<HazardZone[]>([]);
+  const [stairwells, setStairwells] = useState<Stairwell[]>([]);
+  const [, setWallDrawStart] = useState<Vec2 | null>(null);
 
   // ── Projected polygon ─────────────────────────────────────────────────
   const selectedGrid = selectedGridIdx != null ? fetchResult?.grids[selectedGridIdx] : null;
@@ -477,6 +488,12 @@ export function DebugRTSSim() {
   casualtyClustersRef.current = casualtyClusters;
   const activeCasualtyRef = useRef(activeCasualtyCluster);
   activeCasualtyRef.current = activeCasualtyCluster;
+  const interiorWallsRef = useRef(interiorWalls);
+  interiorWallsRef.current = interiorWalls;
+  const hazardZonesRef = useRef(hazardZones);
+  hazardZonesRef.current = hazardZones;
+  const stairwellsRef = useRef(stairwells);
+  stairwellsRef.current = stairwells;
 
   // ── Main animation loop ───────────────────────────────────────────────
   const loop = useCallback(
@@ -523,6 +540,9 @@ export function DebugRTSSim() {
             discovered,
             casualtyClustersRef.current,
             activeCasualtyRef.current?.id ?? null,
+            interiorWallsRef.current,
+            hazardZonesRef.current,
+            stairwellsRef.current,
           );
         }
       }
@@ -1089,6 +1109,185 @@ export function DebugRTSSim() {
     e.preventDefault();
   }, []);
 
+  // ── Touch support ─────────────────────────────────────────────────────
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchPinchDistRef = useRef<number | null>(null);
+
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      if (e.touches.length === 2) {
+        // Pinch zoom start
+        const dx = e.touches[1].clientX - e.touches[0].clientX;
+        const dy = e.touches[1].clientY - e.touches[0].clientY;
+        touchPinchDistRef.current = Math.hypot(dx, dy);
+        return;
+      }
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+
+      const touch = e.touches[0];
+      const rect = canvasRef.current!.getBoundingClientRect();
+      const cx = touch.clientX - rect.left;
+      const cy = touch.clientY - rect.top;
+      const sim = toSim(cx, cy);
+
+      touchStartRef.current = { x: cx, y: cy, time: Date.now() };
+      dragStartRef.current = sim;
+      isDraggingRef.current = false;
+
+      // Long press = move command (replaces right-click)
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = setTimeout(() => {
+        const rts = rtsRef.current;
+        const selected = [...rts.state.selection.selectedUnitIds];
+        if (selected.length > 0 && rts.state.interactionMode.type === 'select') {
+          rts.issueMove(selected, sim, false);
+          touchStartRef.current = null;
+          dragStartRef.current = null;
+          rerender();
+        }
+      }, 500);
+    },
+    [toSim, rerender],
+  );
+
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      if (e.touches.length === 2 && touchPinchDistRef.current != null) {
+        // Pinch zoom
+        const dx = e.touches[1].clientX - e.touches[0].clientX;
+        const dy = e.touches[1].clientY - e.touches[0].clientY;
+        const dist = Math.hypot(dx, dy);
+        const delta = dist - touchPinchDistRef.current;
+        const map = leafletMapRef.current;
+        if (map && Math.abs(delta) > 20) {
+          if (delta > 0) map.zoomIn();
+          else map.zoomOut();
+          touchPinchDistRef.current = dist;
+        }
+        return;
+      }
+      if (e.touches.length !== 1 || !touchStartRef.current) return;
+
+      const touch = e.touches[0];
+      const rect = canvasRef.current!.getBoundingClientRect();
+      const cx = touch.clientX - rect.left;
+      const cy = touch.clientY - rect.top;
+      const moved = Math.hypot(cx - touchStartRef.current.x, cy - touchStartRef.current.y);
+
+      if (moved > 10) {
+        // Cancel long press on significant movement
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+        isDraggingRef.current = true;
+        const sim = toSim(cx, cy);
+        const rts = rtsRef.current;
+        if (dragStartRef.current && rts.state.interactionMode.type === 'select') {
+          rts.state.selection.selectionBox = { start: dragStartRef.current, end: sim };
+        }
+      }
+    },
+    [toSim],
+  );
+
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      touchPinchDistRef.current = null;
+
+      if (!touchStartRef.current) return;
+      const elapsed = Date.now() - touchStartRef.current.time;
+
+      const rect = canvasRef.current!.getBoundingClientRect();
+      const lastTouch = e.changedTouches[0];
+      const cx = lastTouch.clientX - rect.left;
+      const cy = lastTouch.clientY - rect.top;
+      const sim = toSim(cx, cy);
+      const rts = rtsRef.current;
+      const mode = rts.state.interactionMode;
+
+      if (isDraggingRef.current && dragStartRef.current) {
+        // Drag end = box select
+        rts.selectUnitsInBox(dragStartRef.current, sim);
+        rts.state.selection.selectionBox = null;
+      } else if (elapsed < 300) {
+        // Short tap = click action
+        if (mode.type === 'select') {
+          const hitCas = casualtyClusters.find(
+            (c) => Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 5.0,
+          );
+          if (hitCas) {
+            handleCasualtyClusterClick(hitCas);
+          } else {
+            const hitWp = wallPoints.find(
+              (wp) => Math.hypot(wp.simPos.x - sim.x, wp.simPos.y - sim.y) < 3.0,
+            );
+            if (hitWp) {
+              handleWallPointClick(hitWp);
+            } else {
+              const unit = rts.findUnitAt(sim);
+              if (unit) {
+                rts.selectUnit(unit.id, false);
+              } else {
+                rts.deselectAll();
+              }
+            }
+          }
+        } else if (mode.type === 'spawn_unit') {
+          const spawnPos = rts.state.stagingArea ?? sim;
+          const u = rts.spawnUnit(mode.unitKind, spawnPos);
+          if (rts.state.stagingArea) rts.issueMove([u.id], sim, false);
+          rts.setInteractionMode({ type: 'select' });
+        } else if (mode.type === 'place_equipment') {
+          const selected = rts.getSelectedUnits();
+          const placer = selected.length > 0 ? selected[0].id : 'system';
+          rts.placeEquipment(mode.equipmentKind, sim, placer);
+          rts.setInteractionMode({ type: 'select' });
+        } else if (mode.type === 'place_exit') {
+          if (projectedVerts.length >= 3) {
+            const snap = nearestEdge(sim.x, sim.y, projectedVerts);
+            const maxW = edgeLength(projectedVerts, snap.edgeIndex) * 0.9;
+            const w = Math.min(newExitWidth, maxW);
+            const id = `exit-${++exitIdCounter}`;
+            setExits((prev) => [
+              ...prev,
+              { id, center: snap.point, width: w, edgeIndex: snap.edgeIndex },
+            ]);
+          }
+          rts.setInteractionMode({ type: 'select' });
+        } else if (mode.type === 'delete_exit') {
+          const hit = exits.find(
+            (ex) => Math.hypot(ex.center.x - sim.x, ex.center.y - sim.y) < ex.width,
+          );
+          if (hit) setExits((prev) => prev.filter((ex) => ex.id !== hit.id));
+          rts.setInteractionMode({ type: 'select' });
+        }
+      }
+
+      touchStartRef.current = null;
+      dragStartRef.current = null;
+      isDraggingRef.current = false;
+      rerender();
+    },
+    [
+      toSim,
+      rerender,
+      casualtyClusters,
+      wallPoints,
+      projectedVerts,
+      exits,
+      newExitWidth,
+      handleCasualtyClusterClick,
+      handleWallPointClick,
+    ],
+  );
+
   // ── Staging area handler ──────────────────────────────────────────────
   const handleSetStagingArea = () => {
     rtsRef.current.setInteractionMode({ type: 'select' });
@@ -1417,6 +1616,9 @@ export function DebugRTSSim() {
                 onMouseUp={handleCanvasMouseUp}
                 onWheel={handleCanvasWheel}
                 onContextMenu={handleContextMenu}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
               />
               {/* Mode indicator overlay */}
               <div
@@ -1430,8 +1632,8 @@ export function DebugRTSSim() {
                   </span>
                 ) : (
                   <span>
-                    Left: select · Drag: box select · Right: move · Scroll: zoom · Click 📷 to
-                    inspect wall
+                    Mouse: click select · drag box · right-click move · scroll zoom | Touch: tap
+                    select · long-press move · drag box · pinch zoom
                   </span>
                 )}
               </div>
@@ -2211,6 +2413,152 @@ export function DebugRTSSim() {
                   >
                     📸 Add Custom Photo Point (click wall)
                   </button>
+                </div>
+
+                {/* Interior elements */}
+                <div className="space-y-1.5 border-t border-green-900 pt-2">
+                  <div className="text-xs text-green-500 uppercase tracking-wider">
+                    Interior Elements
+                  </div>
+                  <button
+                    onClick={() => {
+                      let firstClick: Vec2 | null = null;
+                      const handleClick = (e: MouseEvent) => {
+                        const canvas = canvasRef.current;
+                        if (!canvas) return;
+                        const rect = canvas.getBoundingClientRect();
+                        const sim = toSim(e.clientX - rect.left, e.clientY - rect.top);
+                        if (!firstClick) {
+                          firstClick = sim;
+                          setWallDrawStart(sim);
+                        } else {
+                          setInteriorWalls((prev) => [
+                            ...prev,
+                            {
+                              id: `iw-${Date.now()}`,
+                              start: firstClick!,
+                              end: sim,
+                              hasDoor: false,
+                              doorWidth: 1.5,
+                              doorPosition: 0.5,
+                            },
+                          ]);
+                          setWallDrawStart(null);
+                          firstClick = null;
+                          canvas.removeEventListener('click', handleClick);
+                        }
+                      };
+                      canvasRef.current?.addEventListener('click', handleClick);
+                    }}
+                    className="w-full text-xs text-left px-2 py-1.5 rounded border border-gray-700 text-gray-300 hover:border-gray-500"
+                  >
+                    🧱 Draw Interior Wall (click start → click end)
+                  </button>
+                  <button
+                    onClick={() => {
+                      const handleClick = (e: MouseEvent) => {
+                        const canvas = canvasRef.current;
+                        if (!canvas) return;
+                        const rect = canvas.getBoundingClientRect();
+                        const sim = toSim(e.clientX - rect.left, e.clientY - rect.top);
+                        // Find nearest interior wall and add a door
+                        let bestIdx = -1;
+                        let bestDist = 5;
+                        for (let i = 0; i < interiorWalls.length; i++) {
+                          const w = interiorWalls[i];
+                          const mx = (w.start.x + w.end.x) / 2;
+                          const my = (w.start.y + w.end.y) / 2;
+                          const d = Math.hypot(sim.x - mx, sim.y - my);
+                          if (d < bestDist) {
+                            bestDist = d;
+                            bestIdx = i;
+                          }
+                        }
+                        if (bestIdx >= 0) {
+                          setInteriorWalls((prev) =>
+                            prev.map((w, i) => (i === bestIdx ? { ...w, hasDoor: true } : w)),
+                          );
+                        }
+                        canvas.removeEventListener('click', handleClick);
+                        rerender();
+                      };
+                      canvasRef.current?.addEventListener('click', handleClick, { once: true });
+                    }}
+                    className="w-full text-xs text-left px-2 py-1.5 rounded border border-gray-700 text-gray-300 hover:border-gray-500"
+                  >
+                    🚪 Add Door to Interior Wall (click near wall)
+                  </button>
+                  {/* Hazards */}
+                  <div className="text-xs text-gray-500 mt-1">Hazard Zones:</div>
+                  <div className="grid grid-cols-2 gap-1">
+                    {(Object.keys(HAZARD_DEFS) as HazardType[]).map((ht) => {
+                      const def = HAZARD_DEFS[ht];
+                      return (
+                        <button
+                          key={ht}
+                          onClick={() => {
+                            const handleClick = (e: MouseEvent) => {
+                              const canvas = canvasRef.current;
+                              if (!canvas) return;
+                              const rect = canvas.getBoundingClientRect();
+                              const sim = toSim(e.clientX - rect.left, e.clientY - rect.top);
+                              setHazardZones((prev) => [
+                                ...prev,
+                                {
+                                  id: `hz-${Date.now()}`,
+                                  pos: sim,
+                                  radius: 5,
+                                  hazardType: ht,
+                                  severity: 'medium',
+                                  label: def.label,
+                                },
+                              ]);
+                              canvas.removeEventListener('click', handleClick);
+                              rerender();
+                            };
+                            canvasRef.current?.addEventListener('click', handleClick, {
+                              once: true,
+                            });
+                          }}
+                          className="text-xs px-1.5 py-1 rounded border border-gray-700 hover:border-gray-500 text-left"
+                          style={{ color: def.color }}
+                        >
+                          {def.icon} {def.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {/* Stairwell */}
+                  <button
+                    onClick={() => {
+                      const handleClick = (e: MouseEvent) => {
+                        const canvas = canvasRef.current;
+                        if (!canvas) return;
+                        const rect = canvas.getBoundingClientRect();
+                        const sim = toSim(e.clientX - rect.left, e.clientY - rect.top);
+                        setStairwells((prev) => [
+                          ...prev,
+                          {
+                            id: `sw-${Date.now()}`,
+                            pos: sim,
+                            connectsFloors: [0, 1],
+                            blocked: false,
+                            label: `Stair ${prev.length + 1}`,
+                          },
+                        ]);
+                        canvas.removeEventListener('click', handleClick);
+                        rerender();
+                      };
+                      canvasRef.current?.addEventListener('click', handleClick, { once: true });
+                    }}
+                    className="w-full text-xs text-left px-2 py-1.5 rounded border border-gray-700 text-gray-300 hover:border-gray-500"
+                  >
+                    🪜 Place Stairwell (click inside building)
+                  </button>
+                  <div className="text-xs text-green-700">
+                    Walls: {interiorWalls.length} · Hazards: {hazardZones.length} · Stairs:{' '}
+                    {stairwells.length}
+                  </div>
                 </div>
 
                 {/* Polygon enhancement */}
