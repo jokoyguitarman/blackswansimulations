@@ -2119,6 +2119,71 @@ export function DebugRTSSim() {
                     🏥 Place Casualty Cluster (click map)
                   </button>
                 </div>
+
+                {/* Polygon enhancement */}
+                <div className="space-y-1.5 border-t border-green-900 pt-2">
+                  <div className="text-xs text-green-500 uppercase tracking-wider">
+                    Building Polygon
+                  </div>
+                  <div className="text-xs text-green-700">
+                    {projectedVerts.length} vertices
+                    {selectedGrid?.polygon && selectedGrid.polygon.length <= 5 && (
+                      <span className="text-amber-500 ml-1">
+                        ⚠ Simple shape — may need enhancement
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (!selectedGrid) return;
+                      const cLat =
+                        selectedGrid.polygon.reduce((s, p) => s + p[0], 0) /
+                        selectedGrid.polygon.length;
+                      const cLng =
+                        selectedGrid.polygon.reduce((s, p) => s + p[1], 0) /
+                        selectedGrid.polygon.length;
+                      try {
+                        const headers = await getAuthHeaders();
+                        const resp = await fetch(apiUrl('/api/debug/enhance-building'), {
+                          method: 'POST',
+                          headers,
+                          body: JSON.stringify({
+                            lat: cLat,
+                            lng: cLng,
+                            polygon: selectedGrid.polygon,
+                            radius: 200,
+                          }),
+                        });
+                        if (resp.ok) {
+                          const { data } = await resp.json();
+                          if (data.enhanced && fetchResult && selectedGridIdx != null) {
+                            const newGrids = [...fetchResult.grids];
+                            newGrids[selectedGridIdx] = {
+                              ...newGrids[selectedGridIdx],
+                              polygon: data.polygon,
+                            };
+                            setFetchResult({ ...fetchResult, grids: newGrids });
+                            // Re-project and update engine
+                            const verts = projectPolygon(data.polygon);
+                            rtsRef.current.setBuildingVertices(verts);
+                            const pts = generateWallPoints(data.polygon, verts);
+                            setWallPoints(pts);
+                            rerender();
+                            alert(`Polygon enhanced: ${data.reason}`);
+                          } else {
+                            alert(`Not enhanced: ${data.reason}`);
+                          }
+                        }
+                      } catch {
+                        alert('Enhancement request failed');
+                      }
+                    }}
+                    className="w-full text-xs text-left px-2 py-1.5 rounded border border-amber-900 text-amber-400 hover:border-amber-700"
+                  >
+                    🔍 Enhance with Microsoft Footprints
+                  </button>
+                </div>
+
                 <div>
                   <label className="block text-xs text-green-600 mb-1">Exit Width (m)</label>
                   <input

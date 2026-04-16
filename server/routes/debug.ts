@@ -23,6 +23,11 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { evaluateBombSquadAssessment } from '../services/rtsVisionService.js';
 import {
+  queryMsBuildingFootprints,
+  findBestMatch,
+  isLikelyCrudeRectangle,
+} from '../services/msBuildingFootprints.js';
+import {
   generateCasualtySceneImage,
   generateVictimImage,
   evaluateTriageAssessment,
@@ -223,6 +228,81 @@ router.get('/building-studs', requireAuth, async (req, res) => {
   };
 
   return res.json(payload);
+});
+
+/**
+ * POST /api/debug/enhance-building
+ *
+ * Given a building's lat/lng and its current polygon, check if the polygon
+ * looks like a crude rectangle. If so, query Microsoft Building Footprints
+ * for a better outline. Returns the enhanced polygon or the original.
+ */
+router.post('/enhance-building', requireAuth, json(), async (req: AuthenticatedRequest, res) => {
+  try {
+    const { lat, lng, polygon, radius } = req.body;
+
+    if (!lat || !lng || !polygon || !Array.isArray(polygon)) {
+      return res.status(400).json({ error: 'lat, lng, and polygon are required' });
+    }
+
+    const isCrude = isLikelyCrudeRectangle(polygon);
+
+    if (!isCrude) {
+      return res.json({
+        data: {
+          enhanced: false,
+          reason: 'Polygon already has good detail',
+          polygon,
+          source: 'original',
+        },
+      });
+    }
+
+    const searchRadius = radius || 200;
+    const footprints = await queryMsBuildingFootprints(lat, lng, searchRadius);
+
+    if (footprints.length === 0) {
+      return res.json({
+        data: {
+          enhanced: false,
+          reason: 'No Microsoft Building Footprints available for this area',
+          polygon,
+          source: 'original',
+        },
+      });
+    }
+
+    const match = findBestMatch(lat, lng, footprints);
+
+    if (!match) {
+      return res.json({
+        data: {
+          enhanced: false,
+          reason: 'No matching building found in Microsoft data within 50m',
+          polygon,
+          source: 'original',
+        },
+      });
+    }
+
+    logger.info(
+      { lat, lng, originalVerts: polygon.length, enhancedVerts: match.polygon.length },
+      'Building polygon enhanced with Microsoft footprint',
+    );
+
+    return res.json({
+      data: {
+        enhanced: true,
+        reason: `Replaced crude rectangle (${polygon.length} pts) with Microsoft footprint (${match.polygon.length} pts)`,
+        polygon: match.polygon,
+        source: 'microsoft',
+        allFootprints: footprints.length,
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, 'Error in POST /debug/enhance-building');
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 /**
