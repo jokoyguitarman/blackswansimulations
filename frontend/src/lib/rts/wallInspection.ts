@@ -2,23 +2,20 @@ import type { Vec2 } from '../evacuation/types';
 
 // ── Types ───────────────────────────────────────────────────────────────
 
+export type ImageSource = 'streetview' | 'custom' | 'none';
+
 export interface WallInspectionPoint {
   id: string;
   wallIndex: number;
-  /** Position on the building wall (lat/lng) */
   lat: number;
   lng: number;
-  /** Position slightly outside the wall for Street View camera */
   cameraLat: number;
   cameraLng: number;
-  /** Compass heading from camera toward the wall */
   heading: number;
-  /** Position in sim-meter coordinates (for canvas rendering) */
   simPos: Vec2;
-  /** Cached Street View image — data URL from IndexedDB, or API URL */
   imageUrl: string | null;
-  /** Whether the image has been fetched and cached */
   cached: boolean;
+  imageSource: ImageSource;
 }
 
 // ── IndexedDB cache ─────────────────────────────────────────────────────
@@ -176,6 +173,7 @@ export function generateWallPoints(
         simPos: { x: pMx, y: pMy },
         imageUrl: null,
         cached: false,
+        imageSource: 'none',
       });
     }
   }

@@ -561,6 +561,7 @@ export function DebugRTSSim() {
     if (dataUrl) {
       wp.imageUrl = dataUrl;
       wp.cached = true;
+      wp.imageSource = 'streetview';
       setWallPointImage(dataUrl);
     }
     setWallPointLoading(false);
@@ -572,6 +573,27 @@ export function DebugRTSSim() {
     setAssessmentText('');
     setAiResponse(null);
   }, []);
+
+  const photoUploadRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoUpload = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file || !activeWallPoint) return;
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        activeWallPoint.imageUrl = dataUrl;
+        activeWallPoint.cached = true;
+        activeWallPoint.imageSource = 'custom';
+        setWallPointImage(dataUrl);
+        rerender();
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+    },
+    [activeWallPoint, rerender],
+  );
 
   // ── Plant a threat at the active wall point ───────────────────────────
   const handlePlantItem = useCallback(() => {
@@ -1468,6 +1490,32 @@ export function DebugRTSSim() {
                     )}
                   </div>
 
+                  {/* Upload / replace photo (trainer mode) */}
+                  {isTrainerMode && gameState.clock.phase === 'setup' && (
+                    <div className="px-3 py-1.5 border-t border-gray-800 flex gap-2 items-center">
+                      <input
+                        ref={photoUploadRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handlePhotoUpload}
+                      />
+                      <button
+                        onClick={() => photoUploadRef.current?.click()}
+                        className="bg-amber-800 hover:bg-amber-700 text-amber-100 text-xs px-3 py-1 rounded border border-amber-600"
+                      >
+                        {wallPointImage ? '📸 Replace Photo' : '📸 Upload Photo'}
+                      </button>
+                      <span className="text-xs text-gray-600">
+                        {activeWallPoint.imageSource === 'custom'
+                          ? 'Custom photo'
+                          : activeWallPoint.imageSource === 'streetview'
+                            ? 'Google Street View'
+                            : 'No photo'}
+                      </span>
+                    </div>
+                  )}
+
                   {/* Coordinates */}
                   <div className="px-3 py-1.5 text-xs text-gray-500 border-t border-gray-800 flex gap-3">
                     <span>
@@ -2117,6 +2165,51 @@ export function DebugRTSSim() {
                     className="w-full text-xs text-left px-2 py-1.5 rounded border border-red-900 text-red-400 hover:border-red-700"
                   >
                     🏥 Place Casualty Cluster (click map)
+                  </button>
+                  <button
+                    onClick={() => {
+                      const handlePlace = (e: MouseEvent) => {
+                        const canvas = canvasRef.current;
+                        if (!canvas || projectedVerts.length < 3) return;
+                        const rect = canvas.getBoundingClientRect();
+                        const cx = e.clientX - rect.left;
+                        const cy = e.clientY - rect.top;
+                        const sim = toSim(cx, cy);
+                        const snap = nearestEdge(sim.x, sim.y, projectedVerts);
+                        const grid = selectedGrid;
+                        if (!grid) return;
+                        const n = grid.polygon.length;
+                        const a = grid.polygon[snap.edgeIndex];
+                        const b = grid.polygon[(snap.edgeIndex + 1) % n];
+                        const pLat = a[0] + snap.t * (b[0] - a[0]);
+                        const pLng = a[1] + snap.t * (b[1] - a[1]);
+                        const metersPerDegLat = 111320;
+                        const metersPerDegLng = 111320 * Math.cos((pLat * Math.PI) / 180);
+                        const edgeDx = snap.point.x - sim.x;
+                        const edgeDy = snap.point.y - sim.y;
+                        const newPoint: WallInspectionPoint = {
+                          id: `custom-${Date.now()}`,
+                          wallIndex: snap.edgeIndex,
+                          lat: pLat,
+                          lng: pLng,
+                          cameraLat: pLat + (edgeDy * 28) / metersPerDegLat,
+                          cameraLng: pLng + (edgeDx * 28) / metersPerDegLng,
+                          heading: 0,
+                          simPos: { x: snap.point.x, y: snap.point.y },
+                          imageUrl: null,
+                          cached: false,
+                          imageSource: 'custom',
+                        };
+                        setWallPoints((prev) => [...prev, newPoint]);
+                        handleWallPointClick(newPoint);
+                        canvas.removeEventListener('click', handlePlace);
+                        rerender();
+                      };
+                      canvasRef.current?.addEventListener('click', handlePlace, { once: true });
+                    }}
+                    className="w-full text-xs text-left px-2 py-1.5 rounded border border-amber-900 text-amber-400 hover:border-amber-700"
+                  >
+                    📸 Add Custom Photo Point (click wall)
                   </button>
                 </div>
 

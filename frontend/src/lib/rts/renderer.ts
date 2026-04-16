@@ -503,22 +503,34 @@ function drawWallInspectionPoints(
       continue;
     }
 
+    const isCustom = pt.imageSource === 'custom';
+
     ctx.beginPath();
     ctx.arc(p.cx, p.cy, r + 2, 0, Math.PI * 2);
-    ctx.strokeStyle = isActive ? '#ffffff' : 'rgba(255, 255, 255, 0.3)';
+    ctx.strokeStyle = isActive
+      ? '#ffffff'
+      : isCustom
+        ? 'rgba(250, 204, 21, 0.5)'
+        : 'rgba(255, 255, 255, 0.3)';
     ctx.lineWidth = isActive ? 2 : 1;
     ctx.stroke();
 
     ctx.beginPath();
     ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = isActive ? '#38bdf8' : pt.cached ? '#0ea5e9' : 'rgba(14, 165, 233, 0.5)';
+    ctx.fillStyle = isActive
+      ? '#38bdf8'
+      : isCustom
+        ? '#d97706'
+        : pt.cached
+          ? '#0ea5e9'
+          : 'rgba(14, 165, 233, 0.5)';
     ctx.fill();
 
     ctx.fillStyle = '#fff';
     ctx.font = `${r}px monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('📷', p.cx, p.cy);
+    ctx.fillText(isCustom ? '📸' : '📷', p.cx, p.cy);
   }
 }
 
