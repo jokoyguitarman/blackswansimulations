@@ -455,7 +455,11 @@ export type InteractionMode =
   | { type: 'spawn_unit'; unitKind: UnitKind }
   | { type: 'place_equipment'; equipmentKind: EquipmentKind }
   | { type: 'place_exit' }
-  | { type: 'delete_exit' };
+  | { type: 'delete_exit' }
+  | { type: 'draw_wall'; startPoint: Vec2 | null }
+  | { type: 'place_door' }
+  | { type: 'place_hazard'; hazardType: HazardType }
+  | { type: 'place_stairwell' };
 
 // ── Full game state ───────────────────────────────────────────────────────
 export interface RTSGameState {

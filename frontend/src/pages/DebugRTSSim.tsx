@@ -253,7 +253,7 @@ export function DebugRTSSim() {
   const [interiorWalls, setInteriorWalls] = useState<InteriorWall[]>([]);
   const [hazardZones, setHazardZones] = useState<HazardZone[]>([]);
   const [stairwells, setStairwells] = useState<Stairwell[]>([]);
-  const [, setWallDrawStart] = useState<Vec2 | null>(null);
+  // wallDrawStart state removed — now tracked in InteractionMode
 
   // ── Projected polygon ─────────────────────────────────────────────────
   const selectedGrid = selectedGridIdx != null ? fetchResult?.grids[selectedGridIdx] : null;
@@ -1085,11 +1085,85 @@ export function DebugRTSSim() {
         rts.setInteractionMode({ type: 'select' });
         return;
       }
+
+      if (mode.type === 'draw_wall') {
+        if (!mode.startPoint) {
+          rts.setInteractionMode({ type: 'draw_wall', startPoint: sim });
+        } else {
+          setInteriorWalls((prev) => [
+            ...prev,
+            {
+              id: `iw-${Date.now()}`,
+              start: mode.startPoint!,
+              end: sim,
+              hasDoor: false,
+              doorWidth: 1.5,
+              doorPosition: 0.5,
+            },
+          ]);
+          rts.setInteractionMode({ type: 'draw_wall', startPoint: null });
+        }
+        return;
+      }
+
+      if (mode.type === 'place_door') {
+        let bestIdx = -1;
+        let bestDist = 8;
+        for (let i = 0; i < interiorWalls.length; i++) {
+          const w = interiorWalls[i];
+          const mx = (w.start.x + w.end.x) / 2;
+          const my = (w.start.y + w.end.y) / 2;
+          const d = Math.hypot(sim.x - mx, sim.y - my);
+          if (d < bestDist) {
+            bestDist = d;
+            bestIdx = i;
+          }
+        }
+        if (bestIdx >= 0) {
+          setInteriorWalls((prev) =>
+            prev.map((w, i) => (i === bestIdx ? { ...w, hasDoor: true } : w)),
+          );
+        }
+        rts.setInteractionMode({ type: 'select' });
+        return;
+      }
+
+      if (mode.type === 'place_hazard') {
+        setHazardZones((prev) => [
+          ...prev,
+          {
+            id: `hz-${Date.now()}`,
+            pos: sim,
+            radius: 5,
+            hazardType: mode.hazardType,
+            severity: 'medium',
+            label: HAZARD_DEFS[mode.hazardType].label,
+          },
+        ]);
+        rts.setInteractionMode({ type: 'select' });
+        return;
+      }
+
+      if (mode.type === 'place_stairwell') {
+        setStairwells((prev) => [
+          ...prev,
+          {
+            id: `sw-${Date.now()}`,
+            pos: sim,
+            connectsFloors: [0, 1],
+            blocked: false,
+            label: `Stair ${prev.length + 1}`,
+          },
+        ]);
+        rts.setInteractionMode({ type: 'select' });
+        return;
+      }
     },
     [
       toSim,
       projectedVerts,
       exits,
+      interiorWalls,
       newExitWidth,
       wallPoints,
       handleWallPointClick,
@@ -1267,6 +1341,67 @@ export function DebugRTSSim() {
           );
           if (hit) setExits((prev) => prev.filter((ex) => ex.id !== hit.id));
           rts.setInteractionMode({ type: 'select' });
+        } else if (mode.type === 'draw_wall') {
+          if (!mode.startPoint) {
+            rts.setInteractionMode({ type: 'draw_wall', startPoint: sim });
+          } else {
+            setInteriorWalls((prev) => [
+              ...prev,
+              {
+                id: `iw-${Date.now()}`,
+                start: mode.startPoint!,
+                end: sim,
+                hasDoor: false,
+                doorWidth: 1.5,
+                doorPosition: 0.5,
+              },
+            ]);
+            rts.setInteractionMode({ type: 'draw_wall', startPoint: null });
+          }
+        } else if (mode.type === 'place_door') {
+          let bestIdx = -1;
+          let bestDist = 8;
+          for (let i = 0; i < interiorWalls.length; i++) {
+            const w = interiorWalls[i];
+            const d = Math.hypot(
+              sim.x - (w.start.x + w.end.x) / 2,
+              sim.y - (w.start.y + w.end.y) / 2,
+            );
+            if (d < bestDist) {
+              bestDist = d;
+              bestIdx = i;
+            }
+          }
+          if (bestIdx >= 0)
+            setInteriorWalls((prev) =>
+              prev.map((w, i) => (i === bestIdx ? { ...w, hasDoor: true } : w)),
+            );
+          rts.setInteractionMode({ type: 'select' });
+        } else if (mode.type === 'place_hazard') {
+          setHazardZones((prev) => [
+            ...prev,
+            {
+              id: `hz-${Date.now()}`,
+              pos: sim,
+              radius: 5,
+              hazardType: mode.hazardType,
+              severity: 'medium',
+              label: HAZARD_DEFS[mode.hazardType].label,
+            },
+          ]);
+          rts.setInteractionMode({ type: 'select' });
+        } else if (mode.type === 'place_stairwell') {
+          setStairwells((prev) => [
+            ...prev,
+            {
+              id: `sw-${Date.now()}`,
+              pos: sim,
+              connectsFloors: [0, 1],
+              blocked: false,
+              label: `Stair ${prev.length + 1}`,
+            },
+          ]);
+          rts.setInteractionMode({ type: 'select' });
         }
       }
 
@@ -1281,6 +1416,7 @@ export function DebugRTSSim() {
       casualtyClusters,
       wallPoints,
       projectedVerts,
+      interiorWalls,
       exits,
       newExitWidth,
       handleCasualtyClusterClick,
@@ -2422,73 +2558,34 @@ export function DebugRTSSim() {
                   </div>
                   <button
                     onClick={() => {
-                      let firstClick: Vec2 | null = null;
-                      const handleClick = (e: MouseEvent) => {
-                        const canvas = canvasRef.current;
-                        if (!canvas) return;
-                        const rect = canvas.getBoundingClientRect();
-                        const sim = toSim(e.clientX - rect.left, e.clientY - rect.top);
-                        if (!firstClick) {
-                          firstClick = sim;
-                          setWallDrawStart(sim);
-                        } else {
-                          setInteriorWalls((prev) => [
-                            ...prev,
-                            {
-                              id: `iw-${Date.now()}`,
-                              start: firstClick!,
-                              end: sim,
-                              hasDoor: false,
-                              doorWidth: 1.5,
-                              doorPosition: 0.5,
-                            },
-                          ]);
-                          setWallDrawStart(null);
-                          firstClick = null;
-                          canvas.removeEventListener('click', handleClick);
-                        }
-                      };
-                      canvasRef.current?.addEventListener('click', handleClick);
+                      rts.setInteractionMode({ type: 'draw_wall', startPoint: null });
+                      rerender();
                     }}
-                    className="w-full text-xs text-left px-2 py-1.5 rounded border border-gray-700 text-gray-300 hover:border-gray-500"
+                    className={`w-full text-xs text-left px-2 py-1.5 rounded border transition-colors ${
+                      gameState.interactionMode.type === 'draw_wall'
+                        ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300'
+                        : 'border-gray-700 text-gray-300 hover:border-gray-500'
+                    }`}
                   >
-                    🧱 Draw Interior Wall (click start → click end)
+                    🧱 Draw Interior Wall{' '}
+                    {gameState.interactionMode.type === 'draw_wall' &&
+                    gameState.interactionMode.startPoint
+                      ? '(click end point)'
+                      : '(click start → click end)'}
                   </button>
                   <button
                     onClick={() => {
-                      const handleClick = (e: MouseEvent) => {
-                        const canvas = canvasRef.current;
-                        if (!canvas) return;
-                        const rect = canvas.getBoundingClientRect();
-                        const sim = toSim(e.clientX - rect.left, e.clientY - rect.top);
-                        // Find nearest interior wall and add a door
-                        let bestIdx = -1;
-                        let bestDist = 5;
-                        for (let i = 0; i < interiorWalls.length; i++) {
-                          const w = interiorWalls[i];
-                          const mx = (w.start.x + w.end.x) / 2;
-                          const my = (w.start.y + w.end.y) / 2;
-                          const d = Math.hypot(sim.x - mx, sim.y - my);
-                          if (d < bestDist) {
-                            bestDist = d;
-                            bestIdx = i;
-                          }
-                        }
-                        if (bestIdx >= 0) {
-                          setInteriorWalls((prev) =>
-                            prev.map((w, i) => (i === bestIdx ? { ...w, hasDoor: true } : w)),
-                          );
-                        }
-                        canvas.removeEventListener('click', handleClick);
-                        rerender();
-                      };
-                      canvasRef.current?.addEventListener('click', handleClick, { once: true });
+                      rts.setInteractionMode({ type: 'place_door' });
+                      rerender();
                     }}
-                    className="w-full text-xs text-left px-2 py-1.5 rounded border border-gray-700 text-gray-300 hover:border-gray-500"
+                    className={`w-full text-xs text-left px-2 py-1.5 rounded border transition-colors ${
+                      gameState.interactionMode.type === 'place_door'
+                        ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300'
+                        : 'border-gray-700 text-gray-300 hover:border-gray-500'
+                    }`}
                   >
                     🚪 Add Door to Interior Wall (click near wall)
                   </button>
-                  {/* Hazards */}
                   <div className="text-xs text-gray-500 mt-1">Hazard Zones:</div>
                   <div className="grid grid-cols-2 gap-1">
                     {(Object.keys(HAZARD_DEFS) as HazardType[]).map((ht) => {
@@ -2497,30 +2594,15 @@ export function DebugRTSSim() {
                         <button
                           key={ht}
                           onClick={() => {
-                            const handleClick = (e: MouseEvent) => {
-                              const canvas = canvasRef.current;
-                              if (!canvas) return;
-                              const rect = canvas.getBoundingClientRect();
-                              const sim = toSim(e.clientX - rect.left, e.clientY - rect.top);
-                              setHazardZones((prev) => [
-                                ...prev,
-                                {
-                                  id: `hz-${Date.now()}`,
-                                  pos: sim,
-                                  radius: 5,
-                                  hazardType: ht,
-                                  severity: 'medium',
-                                  label: def.label,
-                                },
-                              ]);
-                              canvas.removeEventListener('click', handleClick);
-                              rerender();
-                            };
-                            canvasRef.current?.addEventListener('click', handleClick, {
-                              once: true,
-                            });
+                            rts.setInteractionMode({ type: 'place_hazard', hazardType: ht });
+                            rerender();
                           }}
-                          className="text-xs px-1.5 py-1 rounded border border-gray-700 hover:border-gray-500 text-left"
+                          className={`text-xs px-1.5 py-1 rounded border text-left transition-colors ${
+                            gameState.interactionMode.type === 'place_hazard' &&
+                            gameState.interactionMode.hazardType === ht
+                              ? 'border-cyan-400 bg-cyan-900/30'
+                              : 'border-gray-700 hover:border-gray-500'
+                          }`}
                           style={{ color: def.color }}
                         >
                           {def.icon} {def.label}
@@ -2528,30 +2610,16 @@ export function DebugRTSSim() {
                       );
                     })}
                   </div>
-                  {/* Stairwell */}
                   <button
                     onClick={() => {
-                      const handleClick = (e: MouseEvent) => {
-                        const canvas = canvasRef.current;
-                        if (!canvas) return;
-                        const rect = canvas.getBoundingClientRect();
-                        const sim = toSim(e.clientX - rect.left, e.clientY - rect.top);
-                        setStairwells((prev) => [
-                          ...prev,
-                          {
-                            id: `sw-${Date.now()}`,
-                            pos: sim,
-                            connectsFloors: [0, 1],
-                            blocked: false,
-                            label: `Stair ${prev.length + 1}`,
-                          },
-                        ]);
-                        canvas.removeEventListener('click', handleClick);
-                        rerender();
-                      };
-                      canvasRef.current?.addEventListener('click', handleClick, { once: true });
+                      rts.setInteractionMode({ type: 'place_stairwell' });
+                      rerender();
                     }}
-                    className="w-full text-xs text-left px-2 py-1.5 rounded border border-gray-700 text-gray-300 hover:border-gray-500"
+                    className={`w-full text-xs text-left px-2 py-1.5 rounded border transition-colors ${
+                      gameState.interactionMode.type === 'place_stairwell'
+                        ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300'
+                        : 'border-gray-700 text-gray-300 hover:border-gray-500'
+                    }`}
                   >
                     🪜 Place Stairwell (click inside building)
                   </button>
