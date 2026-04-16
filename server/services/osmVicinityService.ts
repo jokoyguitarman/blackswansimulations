@@ -579,16 +579,19 @@ export async function fetchVenueBuilding(
   const fetchLog: FetchLogEntry[] = [];
   const wantLog = opts?.withLog === true;
 
-  // Phase 1: try full geometry in a single query (best quality, but heavy)
+  // Phase 1: try full geometry for ways AND relations (best quality)
   const p1Start = Date.now();
   try {
-    const GEOM_TIMEOUT_S = 12;
+    const GEOM_TIMEOUT_S = 25;
     const geomQuery = `
 [out:json][timeout:${GEOM_TIMEOUT_S}];
-way["building"](around:${radius},${lat},${lng});
+(
+  way["building"](around:${radius},${lat},${lng});
+  relation["building"](around:${radius},${lat},${lng});
+);
 out body geom center bb;
 `;
-    const elements = await runRawOverpassQuery(geomQuery, GEOM_TIMEOUT_S * 1000 + 3000);
+    const elements = await runRawOverpassQuery(geomQuery, GEOM_TIMEOUT_S * 1000 + 5000);
     if (elements.length > 0) {
       const results = elements
         .map((el) => parseOsmBuildingElement(el, lat, lng))
@@ -646,16 +649,19 @@ out body geom center bb;
     );
   }
 
-  // Phase 2: discover buildings — try with geometry first, fall back to bbox-only
+  // Phase 2: discover buildings — always request full geometry (including relations)
   let bbElements: Array<Record<string, unknown>> = [];
   let phase2Mode = 'geom';
-  const BB_TIMEOUT_S = 15;
+  const BB_TIMEOUT_S = 30;
 
   const p2Start = Date.now();
   try {
     const geom2Query = `
 [out:json][timeout:${BB_TIMEOUT_S}];
-way["building"](around:${radius},${lat},${lng});
+(
+  way["building"](around:${radius},${lat},${lng});
+  relation["building"](around:${radius},${lat},${lng});
+);
 out body geom center bb;
 `;
     bbElements = await runRawOverpassQuery(geom2Query, BB_TIMEOUT_S * 1000 + 5000);
@@ -666,7 +672,7 @@ out body geom center bb;
       detail: `Geom discovery returned ${bbElements.length} elements`,
     });
   } catch (err) {
-    phase2Mode = 'bbox';
+    phase2Mode = 'bbox_fallback';
     const msg = err instanceof Error ? err.message : String(err);
     fetchLog.push({
       phase: 'phase2_geom',
@@ -676,16 +682,17 @@ out body geom center bb;
     });
   }
 
-  if (bbElements.length === 0 && phase2Mode === 'geom') {
-    phase2Mode = 'bbox';
-  }
-
-  if (bbElements.length === 0 && phase2Mode === 'bbox') {
+  // Phase 2b: only if geom query completely failed, try bbox as last resort for discovery
+  if (bbElements.length === 0) {
+    phase2Mode = 'bbox_fallback';
     const p2bStart = Date.now();
     try {
       const bbQuery = `
 [out:json][timeout:${BB_TIMEOUT_S}];
-way["building"](around:${radius},${lat},${lng});
+(
+  way["building"](around:${radius},${lat},${lng});
+  relation["building"](around:${radius},${lat},${lng});
+);
 out body center bb;
 `;
       bbElements = await runRawOverpassQuery(bbQuery, BB_TIMEOUT_S * 1000 + 5000);
@@ -693,7 +700,7 @@ out body center bb;
         phase: 'phase2_bbox',
         status: bbElements.length > 0 ? 'ok' : 'empty',
         latencyMs: Date.now() - p2bStart,
-        detail: `Bbox-only discovery returned ${bbElements.length} elements`,
+        detail: `Bbox-only discovery returned ${bbElements.length} elements (will attempt geometry in Phase 3)`,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -744,24 +751,51 @@ out body center bb;
   const needsGeom = candidates.filter(
     (c) => !c.parsed!.footprint_polygon || c.parsed!.footprint_polygon.length < 3,
   );
-  const wayIds = needsGeom.map((c) => c.el.id as number).filter(Boolean);
+  const wayIds = needsGeom
+    .filter((c) => (c.el.type as string) !== 'relation')
+    .map((c) => c.el.id as number)
+    .filter(Boolean);
+  const relIds = needsGeom
+    .filter((c) => (c.el.type as string) === 'relation')
+    .map((c) => c.el.id as number)
+    .filter(Boolean);
 
-  if (wayIds.length > 0) {
+  if (wayIds.length > 0 || relIds.length > 0) {
     const p3Start = Date.now();
     try {
-      const ID_TIMEOUT_S = 10;
+      const ID_TIMEOUT_S = 15;
+      const parts: string[] = [];
+      if (wayIds.length > 0) parts.push(`way(id:${wayIds.join(',')});`);
+      if (relIds.length > 0) parts.push(`relation(id:${relIds.join(',')});`);
       const idQuery = `
 [out:json][timeout:${ID_TIMEOUT_S}];
-way(id:${wayIds.join(',')});
+(
+  ${parts.join('\n  ')}
+);
 out geom;
 `;
-      const geomElements = await runRawOverpassQuery(idQuery, ID_TIMEOUT_S * 1000 + 3000);
+      const geomElements = await runRawOverpassQuery(idQuery, ID_TIMEOUT_S * 1000 + 5000);
 
       const geomById = new Map<number, Array<{ lat: number; lon: number }>>();
       for (const el of geomElements) {
         const geom = el.geometry as Array<{ lat: number; lon: number }> | undefined;
         if (geom?.length && geom.length >= 3 && el.id) {
           geomById.set(el.id as number, geom);
+        }
+        // Handle relation members (multipolygon buildings)
+        const members = (el as Record<string, unknown>).members as
+          | Array<{ role?: string; geometry?: Array<{ lat: number; lon: number }> }>
+          | undefined;
+        if (members?.length && !geomById.has(el.id as number)) {
+          const outerPoints: Array<{ lat: number; lon: number }> = [];
+          for (const m of members) {
+            if (m.role === 'outer' && m.geometry?.length) {
+              outerPoints.push(...m.geometry);
+            }
+          }
+          if (outerPoints.length >= 3) {
+            geomById.set(el.id as number, outerPoints);
+          }
         }
       }
 
@@ -776,10 +810,10 @@ out geom;
         phase: 'phase3',
         status: 'ok',
         latencyMs: Date.now() - p3Start,
-        detail: `Requested geometry for ${wayIds.length} IDs → got ${geomById.size} polygons`,
+        detail: `Requested geometry for ${wayIds.length} ways + ${relIds.length} relations → got ${geomById.size} polygons`,
       });
       logger.info(
-        { requested: wayIds.length, geomReturned: geomById.size, mode: 'id-geom' },
+        { wayIds: wayIds.length, relIds: relIds.length, geomReturned: geomById.size },
         'OSM building Phase 3 geometry fetch',
       );
     } catch (err) {
@@ -788,9 +822,9 @@ out geom;
         phase: 'phase3',
         status: /timeout|abort|timed/i.test(msg) ? 'timeout' : 'error',
         latencyMs: Date.now() - p3Start,
-        detail: `ID geometry query failed for ${wayIds.length} IDs: ${msg.slice(0, 200)}`,
+        detail: `ID geometry query failed: ${msg.slice(0, 200)}`,
       });
-      logger.warn({ err, wayIds }, 'OSM building Phase 3 ID-geometry query failed');
+      logger.warn({ err, wayIds, relIds }, 'OSM building Phase 3 ID-geometry query failed');
     }
   } else {
     fetchLog.push({
@@ -801,7 +835,7 @@ out geom;
     });
   }
 
-  // Bbox rectangle fallback for buildings that still lack polygon geometry
+  // Bbox rectangle fallback for buildings that still lack polygon geometry after Phase 3
   const results: OsmBuilding[] = [];
   let bboxFallbackCount = 0;
   let skippedNoBounds = 0;
@@ -818,9 +852,9 @@ out geom;
           [minlat, minlon],
         ];
         bboxFallbackCount++;
-        logger.debug(
-          { name: c.parsed.name, id: c.el.id },
-          'Building polygon from bbox rectangle fallback',
+        logger.warn(
+          { name: c.parsed.name, id: c.el.id, type: c.el.type },
+          'Building polygon from bbox rectangle fallback — all geometry queries failed for this building',
         );
       } else {
         skippedNoBounds++;
