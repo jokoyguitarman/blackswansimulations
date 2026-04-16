@@ -59,6 +59,7 @@ export function renderRTS(
   interiorWalls?: InteriorWall[],
   hazardZones?: HazardZone[],
   stairwells?: Stairwell[],
+  blastSite?: Vec2 | null,
 ) {
   ctx.clearRect(0, 0, w, h);
 
@@ -66,6 +67,10 @@ export function renderRTS(
     ctx.fillStyle = '#0a0a0a';
     ctx.fillRect(0, 0, w, h);
     drawGrid(ctx, w, h, rc);
+  }
+
+  if (blastSite) {
+    drawBlastSite(ctx, blastSite, rc);
   }
 
   drawBuilding(ctx, buildingVerts, rc, transparentBg);
@@ -405,6 +410,67 @@ function drawWaypoints(
     ctx.lineWidth = 1.5;
     ctx.stroke();
   }
+}
+
+// ── Blast site ──────────────────────────────────────────────────────────
+function drawBlastSite(ctx: CanvasRenderingContext2D, pos: Vec2, rc: RenderContext) {
+  const p = toCanvas(pos.x, pos.y, rc);
+
+  const rings = [
+    { radius: 10, color: '#ef4444', label: '10m' },
+    { radius: 20, color: '#f97316', label: '20m' },
+    { radius: 40, color: '#eab308', label: '40m' },
+    { radius: 70, color: '#84cc16', label: '70m' },
+    { radius: 100, color: '#22d3ee', label: '100m' },
+  ];
+
+  for (const ring of rings.reverse()) {
+    const r = mToCanvas(ring.radius, rc);
+    if (r < 5) continue;
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = ring.color + '40';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = ring.color + '80';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(ring.label, p.cx + r + 3, p.cy + 3);
+  }
+
+  // Blast center
+  ctx.save();
+  ctx.shadowColor = '#ef4444';
+  ctx.shadowBlur = 18;
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, 10, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
+  ctx.fill();
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, 8, 0, Math.PI * 2);
+  ctx.fillStyle = '#000';
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#dc2626';
+  ctx.fill();
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('💥', p.cx, p.cy);
+
+  ctx.fillStyle = '#ef4444';
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('BLAST SITE', p.cx, p.cy + 18);
 }
 
 // ── Interior walls ──────────────────────────────────────────────────────

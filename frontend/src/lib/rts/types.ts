@@ -459,7 +459,8 @@ export type InteractionMode =
   | { type: 'draw_wall'; startPoint: Vec2 | null }
   | { type: 'place_door' }
   | { type: 'place_hazard'; hazardType: HazardType }
-  | { type: 'place_stairwell' };
+  | { type: 'place_stairwell' }
+  | { type: 'place_blast_site' };
 
 // ── Full game state ───────────────────────────────────────────────────────
 export interface RTSGameState {

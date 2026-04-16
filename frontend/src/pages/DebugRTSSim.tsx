@@ -46,6 +46,7 @@ import {
   fetchStreetViewImage,
   type WallInspectionPoint,
 } from '../lib/rts/wallInspection';
+import { generateBlastCasualties } from '../lib/rts/casualtyPresets';
 import 'leaflet/dist/leaflet.css';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
@@ -248,6 +249,9 @@ export function DebugRTSSim() {
   const [activeCasualtyCluster, setActiveCasualtyCluster] = useState<CasualtyCluster | null>(null);
   const [triageLoading, setTriageLoading] = useState(false);
   const [triageResult, setTriageResult] = useState<string | null>(null);
+
+  // ── Blast site ─────────────────────────────────────────────────────────
+  const [blastSite, setBlastSite] = useState<Vec2 | null>(null);
 
   // ── Interior elements ─────────────────────────────────────────────────
   const [interiorWalls, setInteriorWalls] = useState<InteriorWall[]>([]);
@@ -494,6 +498,8 @@ export function DebugRTSSim() {
   hazardZonesRef.current = hazardZones;
   const stairwellsRef = useRef(stairwells);
   stairwellsRef.current = stairwells;
+  const blastSiteRef = useRef(blastSite);
+  blastSiteRef.current = blastSite;
 
   // ── Main animation loop ───────────────────────────────────────────────
   const loop = useCallback(
@@ -543,6 +549,7 @@ export function DebugRTSSim() {
             interiorWallsRef.current,
             hazardZonesRef.current,
             stairwellsRef.current,
+            blastSiteRef.current,
           );
         }
       }
@@ -946,6 +953,48 @@ export function DebugRTSSim() {
   // ── Canvas mouse handlers ─────────────────────────────────────────────
   const dragStartRef = useRef<Vec2 | null>(null);
   const isDraggingRef = useRef(false);
+  const elementDragRef = useRef<{ type: string; id: string } | null>(null);
+
+  // Hit-test draggable elements in setup mode
+  const findDraggableAt = useCallback(
+    (sim: Vec2): { type: string; id: string } | null => {
+      const state = rtsRef.current.state;
+      if (state.clock.phase !== 'setup' || !isTrainerMode) return null;
+      if (blastSite && Math.hypot(sim.x - blastSite.x, sim.y - blastSite.y) < 4)
+        return { type: 'blastSite', id: 'blast' };
+      if (
+        state.stagingArea &&
+        Math.hypot(sim.x - state.stagingArea.x, sim.y - state.stagingArea.y) < 5
+      )
+        return { type: 'stagingArea', id: 'staging' };
+      for (const c of casualtyClusters) {
+        if (Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 5) return { type: 'casualty', id: c.id };
+      }
+      for (const hz of hazardZones) {
+        if (Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < hz.radius)
+          return { type: 'hazard', id: hz.id };
+      }
+      for (const sw of stairwells) {
+        if (Math.hypot(sw.pos.x - sim.x, sw.pos.y - sim.y) < 5)
+          return { type: 'stairwell', id: sw.id };
+      }
+      return null;
+    },
+    [isTrainerMode, blastSite, casualtyClusters, hazardZones, stairwells],
+  );
+
+  const applyElementDrag = useCallback((drag: { type: string; id: string }, sim: Vec2) => {
+    if (drag.type === 'blastSite') setBlastSite(sim);
+    else if (drag.type === 'stagingArea') rtsRef.current.setStagingArea(sim);
+    else if (drag.type === 'casualty')
+      setCasualtyClusters((prev) =>
+        prev.map((c) => (c.id === drag.id ? { ...c, pos: { ...sim } } : c)),
+      );
+    else if (drag.type === 'hazard')
+      setHazardZones((prev) => prev.map((h) => (h.id === drag.id ? { ...h, pos: { ...sim } } : h)));
+    else if (drag.type === 'stairwell')
+      setStairwells((prev) => prev.map((s) => (s.id === drag.id ? { ...s, pos: { ...sim } } : s)));
+  }, []);
 
   const handleCanvasMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -967,11 +1016,21 @@ export function DebugRTSSim() {
           }
           return;
         }
+
+        // Check for draggable element
+        const hit = findDraggableAt(sim);
+        if (hit) {
+          elementDragRef.current = hit;
+          isDraggingRef.current = false;
+          dragStartRef.current = sim;
+          return;
+        }
+
         dragStartRef.current = sim;
         isDraggingRef.current = false;
       }
     },
-    [toSim],
+    [toSim, findDraggableAt],
   );
 
   const handleCanvasMouseMove = useCallback(
@@ -982,13 +1041,23 @@ export function DebugRTSSim() {
       const cy = e.clientY - rect.top;
       const sim = toSim(cx, cy);
 
+      // Element dragging
+      if (elementDragRef.current && dragStartRef.current) {
+        const moved = Math.hypot(sim.x - dragStartRef.current.x, sim.y - dragStartRef.current.y);
+        if (moved > 1) {
+          isDraggingRef.current = true;
+          applyElementDrag(elementDragRef.current, sim);
+        }
+        return;
+      }
+
       const rts = rtsRef.current;
       if (dragStartRef.current && rts.state.interactionMode.type === 'select') {
         isDraggingRef.current = true;
         rts.state.selection.selectionBox = { start: dragStartRef.current, end: sim };
       }
     },
-    [toSim],
+    [toSim, applyElementDrag],
   );
 
   const handleCanvasMouseUp = useCallback(
@@ -1000,6 +1069,17 @@ export function DebugRTSSim() {
       const sim = toSim(cx, cy);
       const rts = rtsRef.current;
       const mode = rts.state.interactionMode;
+
+      // Finalize element drag
+      if (elementDragRef.current) {
+        if (isDraggingRef.current) {
+          applyElementDrag(elementDragRef.current, sim);
+        }
+        elementDragRef.current = null;
+        dragStartRef.current = null;
+        isDraggingRef.current = false;
+        return;
+      }
 
       if (mode.type === 'select') {
         if (isDraggingRef.current && dragStartRef.current) {
@@ -1158,6 +1238,12 @@ export function DebugRTSSim() {
         rts.setInteractionMode({ type: 'select' });
         return;
       }
+
+      if (mode.type === 'place_blast_site') {
+        setBlastSite(sim);
+        rts.setInteractionMode({ type: 'select' });
+        return;
+      }
     },
     [
       toSim,
@@ -1169,6 +1255,7 @@ export function DebugRTSSim() {
       handleWallPointClick,
       casualtyClusters,
       handleCasualtyClusterClick,
+      applyElementDrag,
     ],
   );
 
@@ -1401,6 +1488,9 @@ export function DebugRTSSim() {
               label: `Stair ${prev.length + 1}`,
             },
           ]);
+          rts.setInteractionMode({ type: 'select' });
+        } else if (mode.type === 'place_blast_site') {
+          setBlastSite(sim);
           rts.setInteractionMode({ type: 'select' });
         }
       }
@@ -2392,6 +2482,19 @@ export function DebugRTSSim() {
                   </button>
                   <button
                     onClick={() => {
+                      rts.setInteractionMode({ type: 'place_blast_site' });
+                      rerender();
+                    }}
+                    className={`w-full text-xs text-left px-2 py-1.5 rounded border transition-colors ${
+                      gameState.interactionMode.type === 'place_blast_site'
+                        ? 'border-red-400 bg-red-900/30 text-red-300'
+                        : 'border-red-900 text-red-400 hover:border-red-700'
+                    }`}
+                  >
+                    💥 Place Blast Site {blastSite ? '(replace)' : '(click map)'}
+                  </button>
+                  <button
+                    onClick={() => {
                       const handlePlace = (e: MouseEvent) => {
                         const canvas = canvasRef.current;
                         if (!canvas) return;
@@ -2399,102 +2502,13 @@ export function DebugRTSSim() {
                         const cx = e.clientX - rect.left;
                         const cy = e.clientY - rect.top;
                         const sim = toSim(cx, cy);
-                        const presets: Array<{
-                          trueTag: TriageTag;
-                          desc: string;
-                          signs: CasualtyVictim['observableSigns'];
-                        }> = [
-                          {
-                            trueTag: 'red',
-                            desc: 'Unconscious, penetrating chest wound, labored breathing',
-                            signs: {
-                              breathing: 'Rapid and shallow',
-                              pulse: 'Rapid and weak',
-                              consciousness: 'Unresponsive',
-                              visibleInjuries: 'Penetrating wound to chest, shrapnel',
-                              mobility: 'Immobile',
-                              bleeding: 'Uncontrolled from chest wound',
-                            },
-                          },
-                          {
-                            trueTag: 'yellow',
-                            desc: 'Conscious, compound fracture of left arm, controlled bleeding',
-                            signs: {
-                              breathing: 'Normal',
-                              pulse: 'Strong',
-                              consciousness: 'Alert, in pain',
-                              visibleInjuries: 'Compound fracture left forearm, lacerations',
-                              mobility: 'Cannot walk',
-                              bleeding: 'Controlled with pressure',
-                            },
-                          },
-                          {
-                            trueTag: 'green',
-                            desc: 'Walking wounded, minor cuts and abrasions, dazed',
-                            signs: {
-                              breathing: 'Normal',
-                              pulse: 'Strong',
-                              consciousness: 'Alert but dazed',
-                              visibleInjuries: 'Minor cuts on face and arms',
-                              mobility: 'Walking',
-                              bleeding: 'Minor oozing',
-                            },
-                          },
-                          {
-                            trueTag: 'red',
-                            desc: 'Unconscious, severe burns to face and arms, airway at risk',
-                            signs: {
-                              breathing: 'Irregular, wheezing',
-                              pulse: 'Thready',
-                              consciousness: 'Responds to pain only',
-                              visibleInjuries: 'Severe burns face/arms, singed hair',
-                              mobility: 'Immobile',
-                              bleeding: 'None visible',
-                            },
-                          },
-                          {
-                            trueTag: 'black',
-                            desc: 'No pulse, no breathing, massive trauma to head',
-                            signs: {
-                              breathing: 'Absent',
-                              pulse: 'Absent',
-                              consciousness: 'Unresponsive',
-                              visibleInjuries: 'Massive head trauma, unsurvivable',
-                              mobility: 'Immobile',
-                              bleeding: 'Not applicable',
-                            },
-                          },
-                          {
-                            trueTag: 'yellow',
-                            desc: 'Conscious, burns to legs, can speak but cannot walk',
-                            signs: {
-                              breathing: 'Normal',
-                              pulse: 'Rapid but strong',
-                              consciousness: 'Alert, distressed',
-                              visibleInjuries: 'Second-degree burns both legs',
-                              mobility: 'Cannot walk',
-                              bleeding: 'None',
-                            },
-                          },
-                        ];
-                        const count = 3 + Math.floor(Math.random() * 4);
-                        const shuffled = presets.sort(() => Math.random() - 0.5).slice(0, count);
-                        const victims: CasualtyVictim[] = shuffled.map((p, i) => ({
-                          id: `v-${Date.now()}-${i}`,
-                          label: `Victim ${i + 1}`,
-                          trueTag: p.trueTag,
-                          description: p.desc,
-                          observableSigns: p.signs,
-                          imageUrl: null,
-                          imageGenerating: false,
-                          playerTag: 'untagged',
-                          taggedAt: null,
-                        }));
-                        handlePlaceCasualtyCluster(
-                          sim,
-                          victims,
-                          'Bombing aftermath — casualties found near building entrance amid debris and dust.',
-                        );
+
+                        let distance = 50;
+                        if (blastSite) {
+                          distance = Math.hypot(sim.x - blastSite.x, sim.y - blastSite.y);
+                        }
+                        const { victims, sceneDescription } = generateBlastCasualties(distance);
+                        handlePlaceCasualtyCluster(sim, victims, sceneDescription);
                         canvas.removeEventListener('click', handlePlace);
                         rerender();
                       };
@@ -2502,7 +2516,8 @@ export function DebugRTSSim() {
                     }}
                     className="w-full text-xs text-left px-2 py-1.5 rounded border border-red-900 text-red-400 hover:border-red-700"
                   >
-                    🏥 Place Casualty Cluster (click map)
+                    🏥 Place Casualty Cluster{' '}
+                    {blastSite ? '(auto-generates by blast distance)' : '(click map)'}
                   </button>
                   <button
                     onClick={() => {
@@ -2721,8 +2736,8 @@ export function DebugRTSSim() {
                   </span>
                 </div>
                 <div className="text-xs text-green-700 mt-1">
-                  Exits: {exits.length} · Staging: {gameState.stagingArea ? 'Set' : 'Not set'} ·
-                  Casualties: {casualtyClusters.length}
+                  Exits: {exits.length} · Staging: {gameState.stagingArea ? '✓' : '—'} · Blast:{' '}
+                  {blastSite ? '✓' : '—'} · Casualties: {casualtyClusters.length}
                 </div>
               </div>
             )}
