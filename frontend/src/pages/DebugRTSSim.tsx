@@ -2218,6 +2218,14 @@ export function DebugRTSSim() {
                         ref={photoUploadRef}
                         type="file"
                         accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={handlePhotoUpload}
+                      />
+                      <input
+                        id="photo-gallery-input"
+                        type="file"
+                        accept="image/*"
                         className="hidden"
                         onChange={handlePhotoUpload}
                       />
@@ -2225,14 +2233,20 @@ export function DebugRTSSim() {
                         onClick={() => photoUploadRef.current?.click()}
                         className="bg-amber-800 hover:bg-amber-700 text-amber-100 text-xs px-3 py-1 rounded border border-amber-600"
                       >
-                        {wallPointImage ? '📸 Replace Photo' : '📸 Upload Photo'}
+                        📷 Take Photo
+                      </button>
+                      <button
+                        onClick={() => document.getElementById('photo-gallery-input')?.click()}
+                        className="bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs px-3 py-1 rounded border border-gray-600"
+                      >
+                        📁 Gallery
                       </button>
                       <span className="text-xs text-gray-600">
                         {activeWallPoint.imageSource === 'custom'
-                          ? 'Custom photo'
+                          ? 'Custom'
                           : activeWallPoint.imageSource === 'streetview'
-                            ? 'Google Street View'
-                            : 'No photo'}
+                            ? 'Street View'
+                            : 'None'}
                       </span>
                     </div>
                   )}
