@@ -659,11 +659,14 @@ router.post(
         env.openAiApiKey,
       );
 
+      const sceneCtx = (input.scene_context as Record<string, unknown>) ?? null;
       const doctrines = await stageResearchDoctrines(
         phase1Preview,
         geoResult as unknown as Parameters<typeof stageResearchDoctrines>[1],
         userTeams,
         env.openAiApiKey,
+        undefined,
+        sceneCtx,
       );
 
       await supabaseAdmin

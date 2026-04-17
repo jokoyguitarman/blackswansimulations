@@ -4,6 +4,8 @@ import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
 import { VoiceMicButton } from '../components/VoiceMicButton';
 import { LocationPicker, type PickedLocation } from '../components/WarRoom/LocationPicker';
+import { SceneSetup, type SceneSetupResult } from '../components/WarRoom/SceneSetup';
+import { createSceneConfig } from '../lib/rts/sceneConfigApi';
 
 type TeamEntry = {
   team_name: string;
@@ -375,7 +377,7 @@ export const WarRoom = () => {
   const [useStructured, setUseStructured] = useState(false);
   const [progressPhase, setProgressPhase] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState<string>('');
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 35 | 4 | 5>(1);
   const [teams, setTeams] = useState<TeamEntry[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [resolvedScenarioType, setResolvedScenarioType] = useState<string | null>(null);
@@ -401,6 +403,8 @@ export const WarRoom = () => {
   const [deteriorationLoading, setDeteriorationLoading] = useState(false);
   /** First-time persist from step 4→5 (avoid full-screen loading so spawn UI stays visible). */
   const [wizardScenarioPersisting, setWizardScenarioPersisting] = useState(false);
+  const [sceneConfig, setSceneConfig] = useState<SceneSetupResult | null>(null);
+  const [rtsSceneId, setRtsSceneId] = useState<string | null>(null);
 
   const [searchParams] = useSearchParams();
   const draftResumeLoadedRef = useRef<string | null>(null);
@@ -666,6 +670,25 @@ export const WarRoom = () => {
           display_name: geocodeData.display_name,
         };
       }
+      if (sceneConfig) {
+        inputPayload.scene_context = {
+          building_name: sceneConfig.buildingName,
+          exits_count: sceneConfig.exits.length,
+          interior_walls_count: sceneConfig.interiorWalls.length,
+          hazard_zones: sceneConfig.hazardZones.map(
+            (hz: { hazardType: string; severity: string }) => `${hz.hazardType} (${hz.severity})`,
+          ),
+          stairwells_count: sceneConfig.stairwells.length,
+          has_blast_site: !!sceneConfig.blastSite,
+          casualty_clusters: sceneConfig.casualtyClusters.length,
+          total_casualties: sceneConfig.casualtyClusters.reduce(
+            (sum: number, c: { victims: unknown[] }) => sum + c.victims.length,
+            0,
+          ),
+          pedestrian_count: sceneConfig.pedestrianCount,
+          rts_scene_id: rtsSceneId,
+        };
+      }
       await api.warroom.wizardDraftPatch(wizardDraftId, { input: inputPayload });
       const { data } = await api.warroom.wizardDraftResearchDoctrines(wizardDraftId);
       setDoctrines({
@@ -678,7 +701,7 @@ export const WarRoom = () => {
     } finally {
       setDoctrinesLoading(false);
     }
-  }, [teams, buildOptions, geocodeData, wizardDraftId]);
+  }, [teams, buildOptions, geocodeData, wizardDraftId, sceneConfig, rtsSceneId]);
 
   const handleDeteriorationPreview = useCallback(async () => {
     setError(null);
@@ -1562,6 +1585,81 @@ export const WarRoom = () => {
           </div>
         )}
 
+        {/* Step 3.5: Scene Setup (wizard only) */}
+        {wizardMode && step === 35 && (
+          <div className="military-border p-6 mb-6">
+            <h3 className="text-lg terminal-text uppercase mb-4">[SCENE SETUP]</h3>
+            <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
+              Set up the physical scene for the exercise. Place exits, the blast site, hazards,
+              casualties, and interior elements on the building.
+            </p>
+            {geocodeData ? (
+              <SceneSetup
+                buildingPolygon={
+                  sceneConfig?.buildingPolygon ?? [[geocodeData.lat, geocodeData.lng]]
+                }
+                buildingName={sceneConfig?.buildingName ?? geocodeData.display_name}
+                centerLat={geocodeData.lat}
+                centerLng={geocodeData.lng}
+                initialConfig={sceneConfig ?? undefined}
+                onSave={async (config) => {
+                  setSceneConfig(config);
+                  try {
+                    let cLat = 0,
+                      cLng = 0;
+                    for (const [la, ln] of config.buildingPolygon) {
+                      cLat += la;
+                      cLng += ln;
+                    }
+                    cLat /= config.buildingPolygon.length;
+                    cLng /= config.buildingPolygon.length;
+                    const { id } = await createSceneConfig({
+                      name: config.buildingName ?? 'Exercise Scene',
+                      buildingPolygon: config.buildingPolygon,
+                      buildingName: config.buildingName ?? undefined,
+                      centerLat: cLat,
+                      centerLng: cLng,
+                      exits: config.exits,
+                      interiorWalls: config.interiorWalls,
+                      hazardZones: config.hazardZones,
+                      stairwells: config.stairwells,
+                      blastSite: config.blastSite,
+                      casualtyClusters: config.casualtyClusters,
+                      plantedItems: config.plantedItems,
+                      wallInspectionPoints: config.wallInspectionPoints,
+                      pedestrianCount: config.pedestrianCount,
+                    });
+                    setRtsSceneId(id);
+                  } catch (err) {
+                    console.error('Failed to save scene config:', err);
+                  }
+                }}
+              />
+            ) : (
+              <div className="text-sm terminal-text text-robotic-yellow/50">
+                No location data available. Validate the location in the previous step first.
+                <br />
+                <button
+                  onClick={() => setStep(3)}
+                  className="mt-2 text-xs terminal-text uppercase border border-robotic-yellow/30 px-3 py-1 hover:border-robotic-yellow/50"
+                >
+                  [BACK TO MAP VALIDATION]
+                </button>
+              </div>
+            )}
+            {sceneConfig && (
+              <div className="mt-3 text-xs terminal-text text-robotic-yellow/50">
+                Scene saved: {sceneConfig.exits.length} exits · Blast:{' '}
+                {sceneConfig.blastSite ? '✓' : '—'} · {sceneConfig.casualtyClusters.length} casualty
+                clusters · {sceneConfig.hazardZones.length} hazards
+                {rtsSceneId && (
+                  <span className="text-green-500 ml-2">(DB: {rtsSceneId.slice(0, 8)}...)</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Step 4: Doctrine Review (wizard only) */}
         {wizardMode && step === 4 && (
           <div className="military-border p-6 mb-6">
@@ -1961,6 +2059,23 @@ export const WarRoom = () => {
                 [BACK: TEAMS]
               </button>
               <button
+                onClick={() => setStep(35)}
+                disabled={loading}
+                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                [NEXT: SCENE SETUP]
+              </button>
+            </>
+          ) : step === 35 ? (
+            <>
+              <button
+                onClick={() => setStep(3)}
+                disabled={loading}
+                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              >
+                [BACK: MAP]
+              </button>
+              <button
                 onClick={handleResearchDoctrines}
                 disabled={loading || doctrinesLoading}
                 className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1971,11 +2086,11 @@ export const WarRoom = () => {
           ) : step === 4 ? (
             <>
               <button
-                onClick={() => setStep(3)}
+                onClick={() => setStep(35)}
                 disabled={loading}
                 className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
               >
-                [BACK: MAP]
+                [BACK: SCENE]
               </button>
               <button
                 onClick={handleDeteriorationPreview}

@@ -673,6 +673,7 @@ export async function stageResearchDoctrines(
   userTeams: ReturnType<typeof buildUserTeams>,
   openAiApiKey: string,
   onProgress?: WarroomProgressCallback,
+  sceneContext?: Record<string, unknown> | null,
 ): Promise<DoctrineResearchResult> {
   onProgress?.(
     'standards_research',
@@ -691,9 +692,27 @@ export async function stageResearchDoctrines(
           team_description: t.team_description || undefined,
         }));
 
+  let sceneDescription = '';
+  if (sceneContext) {
+    const parts: string[] = [];
+    if (sceneContext.building_name) parts.push(`Building: ${sceneContext.building_name}`);
+    if (sceneContext.exits_count) parts.push(`${sceneContext.exits_count} exits`);
+    if (sceneContext.stairwells_count) parts.push(`${sceneContext.stairwells_count} stairwells`);
+    if (sceneContext.has_blast_site) parts.push('blast site established');
+    if (sceneContext.total_casualties)
+      parts.push(
+        `${sceneContext.total_casualties} total casualties across ${sceneContext.casualty_clusters} clusters`,
+      );
+    if (sceneContext.pedestrian_count) parts.push(`${sceneContext.pedestrian_count} evacuees`);
+    if (Array.isArray(sceneContext.hazard_zones) && sceneContext.hazard_zones.length > 0) {
+      parts.push(`Hazards: ${(sceneContext.hazard_zones as string[]).join(', ')}`);
+    }
+    if (parts.length > 0) sceneDescription = `\n\nPhysical scene setup: ${parts.join('. ')}.`;
+  }
+
   const narrativeCtx = {
     title: phase1Preview.scenario.title,
-    description: phase1Preview.scenario.description,
+    description: phase1Preview.scenario.description + sceneDescription,
     briefing: phase1Preview.scenario.briefing,
   };
 
