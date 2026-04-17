@@ -254,6 +254,7 @@ export function DebugRTSSim() {
   const [drawingBuilding, setDrawingBuilding] = useState(false);
   const [drawnVertices, setDrawnVertices] = useState<[number, number][]>([]);
   const [drawnBuildingName, setDrawnBuildingName] = useState('Custom Building');
+  const [redrawIndex, setRedrawIndex] = useState<number | null>(null);
 
   const handleDrawMapClick = useCallback(
     (clickLat: number, clickLng: number) => {
@@ -276,42 +277,60 @@ export function DebugRTSSim() {
     cLat /= polygon.length;
     cLng /= polygon.length;
 
-    const newGrid: GridItem = {
-      buildingIndex: fetchResult ? fetchResult.grids.length : 0,
-      buildingName: drawnBuildingName || 'Custom Building',
-      polygon,
-      floors: ['Ground'],
-      spacingM: 3,
-    };
-
-    const newBuilding: BuildingSummary = {
-      name: drawnBuildingName || 'Custom Building',
-      lat: cLat,
-      lng: cLng,
-      levels: 1,
-      use: 'custom',
-      polygonPoints: polygon.length,
-    };
-
-    if (fetchResult) {
-      setFetchResult({
-        grids: [...fetchResult.grids, newGrid],
-        buildings: [...fetchResult.buildings, newBuilding],
-      });
+    if (redrawIndex != null && fetchResult) {
+      const existingGrid = fetchResult.grids[redrawIndex];
+      const updatedGrids = [...fetchResult.grids];
+      updatedGrids[redrawIndex] = {
+        ...existingGrid,
+        polygon,
+        buildingName: drawnBuildingName || existingGrid.buildingName,
+      };
+      const updatedBuildings = [...fetchResult.buildings];
+      if (updatedBuildings[redrawIndex]) {
+        updatedBuildings[redrawIndex] = {
+          ...updatedBuildings[redrawIndex],
+          lat: cLat,
+          lng: cLng,
+          polygonPoints: polygon.length,
+          name: drawnBuildingName || updatedBuildings[redrawIndex].name,
+        };
+      }
+      setFetchResult({ grids: updatedGrids, buildings: updatedBuildings });
     } else {
-      setFetchResult({
-        grids: [newGrid],
-        buildings: [newBuilding],
-      });
+      const newGrid: GridItem = {
+        buildingIndex: fetchResult ? fetchResult.grids.length : 0,
+        buildingName: drawnBuildingName || 'Custom Building',
+        polygon,
+        floors: ['Ground'],
+        spacingM: 3,
+      };
+      const newBuilding: BuildingSummary = {
+        name: drawnBuildingName || 'Custom Building',
+        lat: cLat,
+        lng: cLng,
+        levels: 1,
+        use: 'custom',
+        polygonPoints: polygon.length,
+      };
+      if (fetchResult) {
+        setFetchResult({
+          grids: [...fetchResult.grids, newGrid],
+          buildings: [...fetchResult.buildings, newBuilding],
+        });
+      } else {
+        setFetchResult({ grids: [newGrid], buildings: [newBuilding] });
+      }
     }
 
     setDrawingBuilding(false);
     setDrawnVertices([]);
-  }, [drawnVertices, drawnBuildingName, fetchResult]);
+    setRedrawIndex(null);
+  }, [drawnVertices, drawnBuildingName, fetchResult, redrawIndex]);
 
   const handleCancelDrawing = useCallback(() => {
     setDrawingBuilding(false);
     setDrawnVertices([]);
+    setRedrawIndex(null);
   }, []);
 
   const handleUndoVertex = useCallback(() => {
@@ -1829,6 +1848,7 @@ export function DebugRTSSim() {
           {drawingBuilding && (
             <div className="flex items-center gap-2">
               <span className="text-xs text-amber-400">
+                {redrawIndex != null ? `Redrawing "${drawnBuildingName}" — ` : ''}
                 Click map to add vertices ({drawnVertices.length} placed)
                 {drawnVertices.length === 0 && ' — start with first corner'}
                 {drawnVertices.length >= 1 && drawnVertices.length < 3 && ' — need at least 3'}
@@ -2608,20 +2628,40 @@ export function DebugRTSSim() {
                     .map((grid, idx) => ({ grid, idx }))
                     .filter(({ grid }) => grid.polygon.length >= 3)
                     .map(({ grid, idx }) => (
-                      <button
-                        key={idx}
-                        onClick={() => selectBuilding(idx)}
-                        className={`w-full text-left p-2 rounded border text-xs transition-colors ${
-                          selectedGridIdx === idx
-                            ? 'border-cyan-500 bg-cyan-900/30 text-cyan-300'
-                            : 'border-green-900 hover:border-green-700 text-green-500 hover:text-green-400'
-                        }`}
-                      >
-                        <div className="font-bold">
-                          {grid.buildingName || `Building #${grid.buildingIndex}`}
-                        </div>
-                        <div className="text-green-700 mt-0.5">{grid.polygon.length} pts</div>
-                      </button>
+                      <div key={idx} className="flex gap-1">
+                        <button
+                          onClick={() => selectBuilding(idx)}
+                          className={`flex-1 text-left p-2 rounded border text-xs transition-colors ${
+                            selectedGridIdx === idx
+                              ? 'border-cyan-500 bg-cyan-900/30 text-cyan-300'
+                              : 'border-green-900 hover:border-green-700 text-green-500 hover:text-green-400'
+                          }`}
+                        >
+                          <div className="font-bold">
+                            {grid.buildingName || `Building #${grid.buildingIndex}`}
+                          </div>
+                          <div className="text-green-700 mt-0.5">
+                            {grid.polygon.length} pts
+                            {grid.polygon.length <= 5 && (
+                              <span className="text-amber-500 ml-1">⚠</span>
+                            )}
+                          </div>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setRedrawIndex(idx);
+                            setDrawnBuildingName(
+                              grid.buildingName || `Building #${grid.buildingIndex}`,
+                            );
+                            setDrawnVertices([]);
+                            setDrawingBuilding(true);
+                          }}
+                          title="Redraw this building's outline"
+                          className="px-2 rounded border border-amber-900 text-amber-500 hover:text-amber-300 hover:border-amber-700 text-xs"
+                        >
+                          ✏️
+                        </button>
+                      </div>
                     ))}
                 </div>
               </div>
