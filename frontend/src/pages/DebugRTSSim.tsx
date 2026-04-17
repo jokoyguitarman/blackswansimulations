@@ -483,10 +483,12 @@ export function DebugRTSSim() {
         const { width, height } = entry.contentRect;
         setCanvasSize({ w: Math.round(width), h: Math.round(height) });
       }
+      leafletMapRef.current?.invalidateSize();
     });
     obs.observe(containerRef.current);
     const rect = containerRef.current.getBoundingClientRect();
     setCanvasSize({ w: Math.round(rect.width), h: Math.round(rect.height) });
+    leafletMapRef.current?.invalidateSize();
     return () => obs.disconnect();
   }, [phase]);
 
@@ -656,6 +658,7 @@ export function DebugRTSSim() {
     setWallPoints([]);
     setActiveWallPoint(null);
     setWallPointImage(null);
+    setTimeout(() => leafletMapRef.current?.invalidateSize(), 100);
   }, []);
 
   // ── Scene config save/load ──────────────────────────────────────────
@@ -946,6 +949,8 @@ export function DebugRTSSim() {
   useEffect(() => {
     if (phase !== 'rts') return;
     lastTimeRef.current = 0;
+    // Leaflet needs to recalculate after layout shift
+    setTimeout(() => leafletMapRef.current?.invalidateSize(), 100);
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
   }, [phase, loop]);
@@ -2144,10 +2149,10 @@ export function DebugRTSSim() {
       )}
 
       {/* MAIN AREA */}
-      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 overflow-auto md:overflow-hidden">
         {/* Left sidebar: team palette (RTS only) — below map on mobile */}
         {phase === 'rts' && (
-          <div className="order-3 lg:order-1 w-full lg:w-56 border-t lg:border-t-0 lg:border-r border-green-800 overflow-y-auto p-2 space-y-2 flex-shrink-0 max-h-[40vh] lg:max-h-none">
+          <div className="order-3 md:order-1 w-full md:w-56 border-t md:border-t-0 md:border-r border-green-800 overflow-y-auto p-2 space-y-2 flex-shrink-0">
             <div className="space-y-1">
               <div className="text-xs text-green-600 uppercase tracking-wider">Active Team</div>
               {ALL_TEAMS.map((t) => (
@@ -2258,7 +2263,7 @@ export function DebugRTSSim() {
 
         {/* CENTER: Map (always visible) with canvas overlay in RTS mode */}
         <div
-          className="order-1 lg:order-2 flex-1 relative overflow-hidden min-h-[50vh] lg:min-h-0"
+          className="order-1 md:order-2 relative overflow-hidden h-[55vh] md:h-auto md:flex-1"
           ref={containerRef}
           style={{ touchAction: 'none' }}
         >
@@ -2858,7 +2863,7 @@ export function DebugRTSSim() {
         {/* Right sidebar */}
         {phase === 'map' ? (
           /* Building list (map phase) */
-          <div className="order-2 lg:order-3 w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-green-800 overflow-y-auto p-3 space-y-3 flex-shrink-0 max-h-[40vh] lg:max-h-none">
+          <div className="order-2 md:order-3 w-full md:w-80 border-t md:border-t-0 md:border-l border-green-800 overflow-y-auto p-3 space-y-3 flex-shrink-0">
             <div className="bg-gray-900 border border-green-800 rounded p-3">
               <h2 className="text-sm text-amber-400 mb-2 border-b border-green-900 pb-1">
                 RTS Prototype
@@ -3017,7 +3022,7 @@ export function DebugRTSSim() {
           </div>
         ) : (
           /* RTS controls (rts phase) */
-          <div className="order-2 lg:order-3 w-full lg:w-64 border-t lg:border-t-0 lg:border-l border-green-800 overflow-y-auto p-3 space-y-3 flex-shrink-0 max-h-[40vh] lg:max-h-none">
+          <div className="order-2 md:order-3 w-full md:w-64 border-t md:border-t-0 md:border-l border-green-800 overflow-y-auto p-3 space-y-3 flex-shrink-0">
             {/* Clock */}
             <div className="bg-gray-900 border border-green-800 rounded p-3">
               <div className="text-sm text-amber-400 font-bold mb-2">{phaseLabel}</div>
