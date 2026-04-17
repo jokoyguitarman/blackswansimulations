@@ -1349,36 +1349,33 @@ export function DebugRTSSim() {
   const mapPanRef = useRef<{ startX: number; startY: number } | null>(null);
 
   // Hit-test draggable elements in setup mode
-  const findDraggableAt = useCallback(
-    (sim: Vec2): { type: string; id: string } | null => {
-      const state = rtsRef.current.state;
+  const findDraggableAt = useCallback((sim: Vec2): { type: string; id: string } | null => {
+    const state = rtsRef.current.state;
 
-      // Staging area is always draggable (IC action) when it exists
-      if (
-        state.stagingArea &&
-        Math.hypot(sim.x - state.stagingArea.x, sim.y - state.stagingArea.y) < 5
-      )
-        return { type: 'stagingArea', id: 'staging' };
+    // Staging area is always draggable (IC action) when it exists
+    if (
+      state.stagingArea &&
+      Math.hypot(sim.x - state.stagingArea.x, sim.y - state.stagingArea.y) < 5
+    )
+      return { type: 'stagingArea', id: 'staging' };
 
-      // Other elements only draggable in trainer setup mode
-      if (state.clock.phase !== 'setup' || !isTrainerMode) return null;
-      if (blastSite && Math.hypot(sim.x - blastSite.x, sim.y - blastSite.y) < 4)
-        return { type: 'blastSite', id: 'blast' };
-      for (const c of casualtyClusters) {
-        if (Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 8) return { type: 'casualty', id: c.id };
-      }
-      for (const hz of hazardZones) {
-        if (Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < Math.max(hz.radius, 8))
-          return { type: 'hazard', id: hz.id };
-      }
-      for (const sw of stairwells) {
-        if (Math.hypot(sw.pos.x - sim.x, sw.pos.y - sim.y) < 5)
-          return { type: 'stairwell', id: sw.id };
-      }
-      return null;
-    },
-    [isTrainerMode, blastSite, casualtyClusters, hazardZones, stairwells],
-  );
+    // Other elements only draggable in trainer setup mode
+    if (state.clock.phase !== 'setup') return null;
+    const bs = blastSiteRef.current;
+    if (bs && Math.hypot(sim.x - bs.x, sim.y - bs.y) < 4) return { type: 'blastSite', id: 'blast' };
+    for (const c of casualtyClustersRef.current) {
+      if (Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 8) return { type: 'casualty', id: c.id };
+    }
+    for (const hz of hazardZonesRef.current) {
+      if (Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < Math.max(hz.radius, 8))
+        return { type: 'hazard', id: hz.id };
+    }
+    for (const sw of stairwellsRef.current) {
+      if (Math.hypot(sw.pos.x - sim.x, sw.pos.y - sim.y) < 5)
+        return { type: 'stairwell', id: sw.id };
+    }
+    return null;
+  }, []);
 
   const applyElementDrag = useCallback((drag: { type: string; id: string }, sim: Vec2) => {
     if (drag.type === 'blastSite') setBlastSite(sim);
