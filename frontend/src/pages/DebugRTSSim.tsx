@@ -1739,6 +1739,7 @@ export function DebugRTSSim() {
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchPinchDistRef = useRef<number | null>(null);
   const touchPanCenterRef = useRef<{ x: number; y: number } | null>(null);
+  const wallDrawTouchRef = useRef<Vec2 | null>(null);
 
   const handleTouchStart = useCallback(
     (e: React.TouchEvent<HTMLCanvasElement>) => {
@@ -1766,6 +1767,14 @@ export function DebugRTSSim() {
       dragStartRef.current = sim;
       isDraggingRef.current = false;
       hoverSimPosRef.current = sim;
+
+      // Wall draw: touch-and-drag mode — capture start point
+      const currentMode = rtsRef.current.state.interactionMode;
+      if (currentMode.type === 'draw_wall') {
+        wallDrawTouchRef.current = sim;
+        rtsRef.current.setInteractionMode({ type: 'draw_wall', startPoint: sim });
+        return;
+      }
 
       // Check for draggable element
       const hit = findDraggableAt(sim);
@@ -1819,13 +1828,18 @@ export function DebugRTSSim() {
         }
         return;
       }
-      if (e.touches.length !== 1 || !touchStartRef.current) return;
+      if (e.touches.length !== 1) return;
 
       const touch = e.touches[0];
       const rect = canvasRef.current!.getBoundingClientRect();
       const cx = touch.clientX - rect.left;
       const cy = touch.clientY - rect.top;
       hoverSimPosRef.current = toSim(cx, cy);
+
+      // Wall draw drag: just update hover for the preview line
+      if (wallDrawTouchRef.current) return;
+
+      if (!touchStartRef.current) return;
       const moved = Math.hypot(cx - touchStartRef.current.x, cy - touchStartRef.current.y);
 
       if (moved > 10) {
@@ -1859,6 +1873,33 @@ export function DebugRTSSim() {
       }
       touchPinchDistRef.current = null;
       touchPanCenterRef.current = null;
+
+      // Finalize wall draw on touch (drag-to-draw)
+      if (wallDrawTouchRef.current) {
+        const rect0 = canvasRef.current!.getBoundingClientRect();
+        const lt = e.changedTouches[0];
+        const endSim = toSim(lt.clientX - rect0.left, lt.clientY - rect0.top);
+        const startSim = wallDrawTouchRef.current;
+        const wallLen = Math.hypot(endSim.x - startSim.x, endSim.y - startSim.y);
+        if (wallLen > 1) {
+          setInteriorWalls((prev) => [
+            ...prev,
+            {
+              id: `iw-${Date.now()}`,
+              start: startSim,
+              end: endSim,
+              hasDoor: false,
+              doorWidth: 1.5,
+              doorPosition: 0.5,
+            },
+          ]);
+        }
+        wallDrawTouchRef.current = null;
+        rtsRef.current.setInteractionMode({ type: 'draw_wall', startPoint: null });
+        hoverSimPosRef.current = null;
+        rerender();
+        return;
+      }
 
       // Finalize element drag on touch
       if (elementDragRef.current) {
