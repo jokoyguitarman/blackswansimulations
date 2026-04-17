@@ -35,6 +35,7 @@ import floorPlansRouter from './routes/floorPlans.js';
 import { voiceRouter } from './routes/voice.js';
 import { demoRouter } from './routes/demo.js';
 import { debugRouter } from './routes/debug.js';
+import { rtsScenesRouter } from './routes/rtsScenes.js';
 import { setupWebSocket } from './websocket/index.js';
 import { initializeWebSocketService } from './services/websocketService.js';
 import { initializeInjectScheduler } from './services/injectSchedulerService.js';
@@ -193,6 +194,7 @@ app.use('/api', floorPlansRouter);
 app.use('/api/voice', voiceRouter);
 app.use('/api/demo', demoRouter);
 app.use('/api/debug', debugRouter);
+app.use('/api/rts-scenes', rtsScenesRouter);
 
 // 404 handler
 app.use((req, res) => {

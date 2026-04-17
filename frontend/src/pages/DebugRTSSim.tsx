@@ -47,6 +47,14 @@ import {
   type WallInspectionPoint,
 } from '../lib/rts/wallInspection';
 import { generateBlastCasualties } from '../lib/rts/casualtyPresets';
+import {
+  createSceneConfig,
+  loadSceneConfig,
+  updateSceneConfig,
+  listSceneConfigs,
+  deleteSceneConfig,
+  type SceneConfigSummary,
+} from '../lib/rts/sceneConfigApi';
 import 'leaflet/dist/leaflet.css';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
@@ -217,6 +225,11 @@ export function DebugRTSSim() {
   // ── Saved maps ────────────────────────────────────────────────────────
   const [savedMaps, setSavedMaps] = useState<SavedMap[]>(() => loadSavedMaps());
   const [saveMapName, setSaveMapName] = useState('');
+
+  // ── Scene config (DB persistence) ─────────────────────────────────────
+  const [sceneConfigId, setSceneConfigId] = useState<string | null>(null);
+  const [dbScenes, setDbScenes] = useState<SceneConfigSummary[]>([]);
+  const [savingScene, setSavingScene] = useState(false);
 
   // ── Place search (Nominatim) ──────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
@@ -606,6 +619,134 @@ export function DebugRTSSim() {
     setActiveWallPoint(null);
     setWallPointImage(null);
   }, []);
+
+  // ── Scene config save/load ──────────────────────────────────────────
+  const handleSaveSceneToDb = useCallback(async () => {
+    if (!selectedGrid || projectedVerts.length < 3) return;
+    setSavingScene(true);
+    try {
+      const polygon = selectedGrid.polygon;
+      let cLat = 0,
+        cLng = 0;
+      for (const [la, ln] of polygon) {
+        cLat += la;
+        cLng += ln;
+      }
+      cLat /= polygon.length;
+      cLng /= polygon.length;
+
+      const payload = {
+        name: selectedGrid.buildingName || 'Untitled Scene',
+        buildingPolygon: polygon,
+        buildingName: selectedGrid.buildingName ?? undefined,
+        centerLat: cLat,
+        centerLng: cLng,
+        exits,
+        interiorWalls,
+        hazardZones,
+        stairwells,
+        blastSite,
+        casualtyClusters,
+        plantedItems,
+        wallInspectionPoints: wallPoints,
+        pedestrianCount,
+      };
+
+      if (sceneConfigId) {
+        await updateSceneConfig(sceneConfigId, payload);
+      } else {
+        const { id } = await createSceneConfig(payload);
+        setSceneConfigId(id);
+      }
+    } catch (err) {
+      console.error('Failed to save scene:', err);
+    }
+    setSavingScene(false);
+  }, [
+    selectedGrid,
+    projectedVerts,
+    exits,
+    interiorWalls,
+    hazardZones,
+    stairwells,
+    blastSite,
+    casualtyClusters,
+    plantedItems,
+    wallPoints,
+    pedestrianCount,
+    sceneConfigId,
+  ]);
+
+  const handleLoadSceneFromDb = useCallback(async (id: string) => {
+    try {
+      const sc = await loadSceneConfig(id);
+      setSceneConfigId(sc.id);
+
+      const grid: GridItem = {
+        buildingIndex: 0,
+        buildingName: sc.building_name,
+        polygon: sc.building_polygon,
+        floors: ['Ground'],
+        spacingM: 3,
+      };
+      setFetchResult({
+        grids: [grid],
+        buildings: [
+          {
+            name: sc.building_name,
+            lat: sc.center_lat ?? 0,
+            lng: sc.center_lng ?? 0,
+            levels: 1,
+            use: 'custom',
+            polygonPoints: sc.building_polygon.length,
+          },
+        ],
+      });
+      setSelectedGridIdx(0);
+      setExits(sc.exits as ExitDef[]);
+      setInteriorWalls(sc.interior_walls as InteriorWall[]);
+      setHazardZones(sc.hazard_zones as HazardZone[]);
+      setStairwells(sc.stairwells as Stairwell[]);
+      setBlastSite(sc.blast_site);
+      setCasualtyClusters(sc.casualty_clusters as CasualtyCluster[]);
+      setPlantedItems(sc.planted_items as PlantedItem[]);
+      setPedestrianCount(sc.pedestrian_count);
+
+      const verts = projectPolygon(sc.building_polygon);
+      rtsRef.current = new RTSEngine();
+      rtsRef.current.setBuildingVertices(verts);
+      rtsRef.current.setExits(sc.exits as ExitDef[]);
+
+      const pts = generateWallPoints(sc.building_polygon, verts);
+      setWallPoints(pts);
+
+      setPhase('rts');
+    } catch (err) {
+      console.error('Failed to load scene:', err);
+    }
+  }, []);
+
+  const handleLoadDbSceneList = useCallback(async () => {
+    try {
+      const scenes = await listSceneConfigs();
+      setDbScenes(scenes);
+    } catch (err) {
+      console.error('Failed to list scenes:', err);
+    }
+  }, []);
+
+  const handleDeleteDbScene = useCallback(
+    async (id: string) => {
+      try {
+        await deleteSceneConfig(id);
+        setDbScenes((prev) => prev.filter((s) => s.id !== id));
+        if (sceneConfigId === id) setSceneConfigId(null);
+      } catch (err) {
+        console.error('Failed to delete scene:', err);
+      }
+    },
+    [sceneConfigId],
+  );
 
   // ── Initialize evac engine ────────────────────────────────────────────
   const initEvacEngine = useCallback(() => {
@@ -2742,6 +2883,46 @@ export function DebugRTSSim() {
               )}
             </div>
 
+            {/* Saved Scenes (DB) */}
+            <div className="bg-gray-900 border border-blue-800 rounded p-3">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-sm text-blue-400 border-b border-blue-900 pb-1">
+                  Saved Scenes (DB)
+                </h2>
+                <button
+                  onClick={handleLoadDbSceneList}
+                  className="text-xs text-blue-500 hover:text-blue-300"
+                >
+                  Refresh
+                </button>
+              </div>
+              {dbScenes.length === 0 && (
+                <p className="text-xs text-blue-800 italic">Click Refresh to load saved scenes</p>
+              )}
+              <div className="space-y-1.5">
+                {dbScenes.map((sc) => (
+                  <div key={sc.id} className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleLoadSceneFromDb(sc.id)}
+                      className="flex-1 text-left p-1.5 rounded border border-blue-900 hover:border-blue-700 text-xs text-blue-400 hover:text-blue-300"
+                    >
+                      <div className="font-bold">{sc.name || sc.building_name || 'Untitled'}</div>
+                      <div className="text-blue-700">
+                        {new Date(sc.updated_at).toLocaleDateString()}
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteDbScene(sc.id)}
+                      className="text-red-700 hover:text-red-400 text-xs px-1"
+                      title="Delete"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Building list */}
             {fetchResult && (
               <div className="bg-gray-900 border border-green-800 rounded p-3">
@@ -3150,6 +3331,22 @@ export function DebugRTSSim() {
                   Exits: {exits.length} · Blast: {blastSite ? '✓' : '—'} · Casualties:{' '}
                   {casualtyClusters.length}
                 </div>
+                <button
+                  onClick={handleSaveSceneToDb}
+                  disabled={savingScene}
+                  className="w-full mt-2 bg-blue-800 hover:bg-blue-700 disabled:opacity-50 text-blue-100 text-xs px-3 py-1.5 rounded border border-blue-600"
+                >
+                  {savingScene
+                    ? 'Saving...'
+                    : sceneConfigId
+                      ? '💾 Update Scene in DB'
+                      : '💾 Save Scene to DB'}
+                </button>
+                {sceneConfigId && (
+                  <div className="text-xs text-blue-500 mt-0.5">
+                    Saved: {sceneConfigId.slice(0, 8)}...
+                  </div>
+                )}
               </div>
             )}
 
