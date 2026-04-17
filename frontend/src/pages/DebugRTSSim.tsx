@@ -1158,6 +1158,7 @@ export function DebugRTSSim() {
   const dragStartRef = useRef<Vec2 | null>(null);
   const isDraggingRef = useRef(false);
   const elementDragRef = useRef<{ type: string; id: string } | null>(null);
+  const mapPanRef = useRef<{ startX: number; startY: number } | null>(null);
 
   // Hit-test draggable elements in setup mode
   const findDraggableAt = useCallback(
@@ -1211,6 +1212,13 @@ export function DebugRTSSim() {
       const rts = rtsRef.current;
       const mode = rts.state.interactionMode;
 
+      // Middle mouse button = pan map
+      if (e.button === 1) {
+        e.preventDefault();
+        mapPanRef.current = { startX: e.clientX, startY: e.clientY };
+        return;
+      }
+
       if (mode.type === 'select') {
         if (e.button === 2) {
           e.preventDefault();
@@ -1246,6 +1254,18 @@ export function DebugRTSSim() {
       const sim = toSim(cx, cy);
       hoverSimPosRef.current = sim;
 
+      // Map panning (middle mouse button)
+      if (mapPanRef.current) {
+        const map = leafletMapRef.current;
+        if (map) {
+          const dx = e.clientX - mapPanRef.current.startX;
+          const dy = e.clientY - mapPanRef.current.startY;
+          map.panBy([-dx, -dy], { animate: false });
+          mapPanRef.current = { startX: e.clientX, startY: e.clientY };
+        }
+        return;
+      }
+
       // Element dragging
       if (elementDragRef.current && dragStartRef.current) {
         const moved = Math.hypot(sim.x - dragStartRef.current.x, sim.y - dragStartRef.current.y);
@@ -1267,6 +1287,12 @@ export function DebugRTSSim() {
 
   const handleCanvasMouseUp = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
+      // End map pan
+      if (mapPanRef.current) {
+        mapPanRef.current = null;
+        return;
+      }
+
       if (!renderCtxRef.current) return;
       const rect = canvasRef.current!.getBoundingClientRect();
       const cx = e.clientX - rect.left;
@@ -1481,6 +1507,7 @@ export function DebugRTSSim() {
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchPinchDistRef = useRef<number | null>(null);
+  const touchPanCenterRef = useRef<{ x: number; y: number } | null>(null);
 
   const handleTouchStart = useCallback(
     (e: React.TouchEvent<HTMLCanvasElement>) => {
@@ -1489,6 +1516,10 @@ export function DebugRTSSim() {
         const dx = e.touches[1].clientX - e.touches[0].clientX;
         const dy = e.touches[1].clientY - e.touches[0].clientY;
         touchPinchDistRef.current = Math.hypot(dx, dy);
+        touchPanCenterRef.current = {
+          x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+          y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+        };
         return;
       }
       if (e.touches.length !== 1) return;
@@ -1524,16 +1555,29 @@ export function DebugRTSSim() {
     (e: React.TouchEvent<HTMLCanvasElement>) => {
       e.preventDefault();
       if (e.touches.length === 2 && touchPinchDistRef.current != null) {
-        // Pinch zoom
         const dx = e.touches[1].clientX - e.touches[0].clientX;
         const dy = e.touches[1].clientY - e.touches[0].clientY;
         const dist = Math.hypot(dx, dy);
-        const delta = dist - touchPinchDistRef.current;
         const map = leafletMapRef.current;
-        if (map && Math.abs(delta) > 20) {
-          if (delta > 0) map.zoomIn();
+
+        // Pinch zoom
+        const pinchDelta = dist - touchPinchDistRef.current;
+        if (map && Math.abs(pinchDelta) > 20) {
+          if (pinchDelta > 0) map.zoomIn();
           else map.zoomOut();
           touchPinchDistRef.current = dist;
+        }
+
+        // Two-finger pan
+        if (map && touchPanCenterRef.current) {
+          const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+          const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+          const panDx = cx - touchPanCenterRef.current.x;
+          const panDy = cy - touchPanCenterRef.current.y;
+          if (Math.abs(panDx) > 2 || Math.abs(panDy) > 2) {
+            map.panBy([-panDx, -panDy], { animate: false });
+            touchPanCenterRef.current = { x: cx, y: cy };
+          }
         }
         return;
       }
@@ -1569,6 +1613,7 @@ export function DebugRTSSim() {
         longPressTimerRef.current = null;
       }
       touchPinchDistRef.current = null;
+      touchPanCenterRef.current = null;
 
       if (!touchStartRef.current) return;
       const elapsed = Date.now() - touchStartRef.current.time;
@@ -2151,8 +2196,9 @@ export function DebugRTSSim() {
                   </span>
                 ) : (
                   <span>
-                    Mouse: click select · drag box · right-click move · scroll zoom | Touch: tap
-                    select · long-press move · drag box · pinch zoom
+                    Mouse: click select · drag box · right-click move · scroll zoom · middle-drag
+                    pan | Touch: tap select · long-press move · drag box · pinch zoom · 2-finger
+                    drag pan
                   </span>
                 )}
               </div>
