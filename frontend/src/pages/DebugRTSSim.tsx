@@ -1367,6 +1367,10 @@ export function DebugRTSSim() {
       for (const c of casualtyClusters) {
         if (Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 8) return { type: 'casualty', id: c.id };
       }
+      for (const hz of hazardZones) {
+        if (Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < Math.max(hz.radius, 8))
+          return { type: 'hazard', id: hz.id };
+      }
       for (const sw of stairwells) {
         if (Math.hypot(sw.pos.x - sim.x, sw.pos.y - sim.y) < 5)
           return { type: 'stairwell', id: sw.id };
@@ -1466,8 +1470,11 @@ export function DebugRTSSim() {
 
       const rts = rtsRef.current;
       if (dragStartRef.current && rts.state.interactionMode.type === 'select') {
-        isDraggingRef.current = true;
-        rts.state.selection.selectionBox = { start: dragStartRef.current, end: sim };
+        const dragDist = Math.hypot(sim.x - dragStartRef.current.x, sim.y - dragStartRef.current.y);
+        if (dragDist > 2) {
+          isDraggingRef.current = true;
+          rts.state.selection.selectionBox = { start: dragStartRef.current, end: sim };
+        }
       }
     },
     [toSim, applyElementDrag],
@@ -1504,6 +1511,13 @@ export function DebugRTSSim() {
         dragStartRef.current = null;
         isDraggingRef.current = false;
 
+        if (clickedElement.type === 'hazard') {
+          const hz = hazardZones.find((h) => h.id === clickedElement.id);
+          if (hz) {
+            setActiveHazard(hz);
+            return;
+          }
+        }
         if (clickedElement.type === 'casualty') {
           const cas = casualtyClusters.find((c) => c.id === clickedElement.id);
           if (cas) {
@@ -1863,7 +1877,10 @@ export function DebugRTSSim() {
         // No movement — treat as click
         const clickedEl = elementDragRef.current;
         elementDragRef.current = null;
-        if (clickedEl.type === 'casualty') {
+        if (clickedEl.type === 'hazard') {
+          const hz = hazardZones.find((h) => h.id === clickedEl.id);
+          if (hz) setActiveHazard(hz);
+        } else if (clickedEl.type === 'casualty') {
           const cas = casualtyClusters.find((c) => c.id === clickedEl.id);
           if (cas) handleCasualtyClusterClick(cas);
         }
