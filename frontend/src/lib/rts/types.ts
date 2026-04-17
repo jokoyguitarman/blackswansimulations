@@ -548,6 +548,8 @@ export interface HazardZone {
   hazardType: HazardType;
   severity: 'low' | 'medium' | 'high';
   label: string;
+  description: string;
+  photos: string[];
 }
 
 export interface Stairwell {

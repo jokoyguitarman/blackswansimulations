@@ -392,6 +392,10 @@ export function DebugRTSSim() {
   const [stairwells, setStairwells] = useState<Stairwell[]>([]);
   // wallDrawStart state removed — now tracked in InteractionMode
 
+  // ── Hazard detail card ────────────────────────────────────────────────
+  const [activeHazard, setActiveHazard] = useState<HazardZone | null>(null);
+  const hazardPhotoRef = useRef<HTMLInputElement>(null);
+
   // ── Projected polygon ─────────────────────────────────────────────────
   const selectedGrid = selectedGridIdx != null ? fetchResult?.grids[selectedGridIdx] : null;
 
@@ -1516,6 +1520,18 @@ export function DebugRTSSim() {
             return;
           }
 
+          // Check hazard zones (click to inspect)
+          const hitHz = hazardZones.find(
+            (hz) => Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < hz.radius,
+          );
+          if (hitHz && isTrainerMode && rtsRef.current.state.clock.phase === 'setup') {
+            setActiveHazard(hitHz);
+            rts.state.selection.selectionBox = null;
+            dragStartRef.current = null;
+            isDraggingRef.current = false;
+            return;
+          }
+
           // Check wall inspection points
           const hitWp = wallPoints.find(
             (wp) => Math.hypot(wp.simPos.x - sim.x, wp.simPos.y - sim.y) < 3.0,
@@ -1637,6 +1653,8 @@ export function DebugRTSSim() {
             hazardType: mode.hazardType,
             severity: 'medium',
             label: HAZARD_DEFS[mode.hazardType].label,
+            description: '',
+            photos: [],
           },
         ]);
         rts.setInteractionMode({ type: 'select' });
@@ -1915,6 +1933,8 @@ export function DebugRTSSim() {
               hazardType: mode.hazardType,
               severity: 'medium',
               label: HAZARD_DEFS[mode.hazardType].label,
+              description: '',
+              photos: [],
             },
           ]);
           rts.setInteractionMode({ type: 'select' });
@@ -2853,6 +2873,180 @@ export function DebugRTSSim() {
                           ? 'Triage Complete'
                           : 'Submit Triage'}
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Floating hazard detail card ── */}
+              {activeHazard && (
+                <div
+                  className="absolute top-4 bg-gray-900/95 border border-orange-700 rounded-lg shadow-2xl overflow-hidden"
+                  style={{
+                    zIndex: 1002,
+                    right: 16,
+                    width: 380,
+                    maxHeight: 'calc(100% - 32px)',
+                    overflowY: 'auto',
+                  }}
+                >
+                  <div className="flex items-center justify-between px-3 py-2 bg-orange-900/40 border-b border-orange-800">
+                    <div
+                      className="text-xs font-bold"
+                      style={{ color: HAZARD_DEFS[activeHazard.hazardType].color }}
+                    >
+                      {HAZARD_DEFS[activeHazard.hazardType].icon} {activeHazard.label}
+                    </div>
+                    <button
+                      onClick={() => setActiveHazard(null)}
+                      className="text-gray-400 hover:text-white text-sm px-1"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Hazard type & severity */}
+                  <div className="px-3 py-2 flex gap-2 items-center border-b border-gray-800">
+                    <select
+                      value={activeHazard.severity}
+                      onChange={(e) => {
+                        const sev = e.target.value as HazardZone['severity'];
+                        setHazardZones((prev) =>
+                          prev.map((h) => (h.id === activeHazard.id ? { ...h, severity: sev } : h)),
+                        );
+                        setActiveHazard((prev) => (prev ? { ...prev, severity: sev } : prev));
+                      }}
+                      className="bg-gray-800 border border-orange-800 text-orange-300 text-xs rounded px-2 py-1"
+                    >
+                      <option value="low">Low Severity</option>
+                      <option value="medium">Medium Severity</option>
+                      <option value="high">High Severity</option>
+                    </select>
+                    <div className="flex-1" />
+                    <span className="text-xs text-gray-500">Radius: {activeHazard.radius}m</span>
+                  </div>
+
+                  {/* Description */}
+                  <div className="px-3 py-2 border-b border-gray-800">
+                    <label className="block text-xs text-orange-400 mb-1">Description</label>
+                    <textarea
+                      value={activeHazard.description}
+                      onChange={(e) => {
+                        const desc = e.target.value;
+                        setHazardZones((prev) =>
+                          prev.map((h) =>
+                            h.id === activeHazard.id ? { ...h, description: desc } : h,
+                          ),
+                        );
+                        setActiveHazard((prev) => (prev ? { ...prev, description: desc } : prev));
+                      }}
+                      placeholder="Describe the hazard — chemical type, material, risk level, containment needs..."
+                      className="w-full bg-gray-800 border border-gray-700 text-green-300 text-xs rounded px-2 py-1.5 resize-none focus:border-orange-500 focus:outline-none"
+                      rows={3}
+                    />
+                  </div>
+
+                  {/* Photos */}
+                  <div className="px-3 py-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs text-orange-400">
+                        Photos ({activeHazard.photos.length})
+                      </label>
+                      <div className="flex gap-1">
+                        <input
+                          ref={hazardPhotoRef}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file || !activeHazard) return;
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              const url = reader.result as string;
+                              const updated = [...activeHazard.photos, url];
+                              setHazardZones((prev) =>
+                                prev.map((h) =>
+                                  h.id === activeHazard.id ? { ...h, photos: updated } : h,
+                                ),
+                              );
+                              setActiveHazard((prev) =>
+                                prev ? { ...prev, photos: updated } : prev,
+                              );
+                            };
+                            reader.readAsDataURL(file);
+                            e.target.value = '';
+                          }}
+                        />
+                        <button
+                          onClick={() => hazardPhotoRef.current?.click()}
+                          className="bg-orange-800 hover:bg-orange-700 text-orange-100 text-xs px-2 py-0.5 rounded border border-orange-600"
+                        >
+                          📷 Take Photo
+                        </button>
+                        <button
+                          onClick={() => {
+                            const input = document.createElement('input');
+                            input.type = 'file';
+                            input.accept = 'image/*';
+                            input.onchange = (ev) => {
+                              const file = (ev.target as HTMLInputElement).files?.[0];
+                              if (!file || !activeHazard) return;
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                const url = reader.result as string;
+                                const updated = [...activeHazard.photos, url];
+                                setHazardZones((prev) =>
+                                  prev.map((h) =>
+                                    h.id === activeHazard.id ? { ...h, photos: updated } : h,
+                                  ),
+                                );
+                                setActiveHazard((prev) =>
+                                  prev ? { ...prev, photos: updated } : prev,
+                                );
+                              };
+                              reader.readAsDataURL(file);
+                            };
+                            input.click();
+                          }}
+                          className="bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs px-2 py-0.5 rounded border border-gray-600"
+                        >
+                          📁 Gallery
+                        </button>
+                      </div>
+                    </div>
+                    {activeHazard.photos.length === 0 && (
+                      <p className="text-xs text-gray-600 italic">
+                        No photos yet — add photos of the potential hazard
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {activeHazard.photos.map((photo, i) => (
+                        <div key={i} className="relative group">
+                          <img
+                            src={photo}
+                            alt={`Hazard photo ${i + 1}`}
+                            className="w-full h-24 object-cover rounded border border-gray-700"
+                          />
+                          <button
+                            onClick={() => {
+                              const updated = activeHazard.photos.filter((_, idx) => idx !== i);
+                              setHazardZones((prev) =>
+                                prev.map((h) =>
+                                  h.id === activeHazard.id ? { ...h, photos: updated } : h,
+                                ),
+                              );
+                              setActiveHazard((prev) =>
+                                prev ? { ...prev, photos: updated } : prev,
+                              );
+                            }}
+                            className="absolute top-0.5 right-0.5 bg-red-800 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}

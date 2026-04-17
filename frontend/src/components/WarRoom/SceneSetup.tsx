@@ -229,6 +229,8 @@ export function SceneSetup({
             hazardType: ht,
             severity: 'medium',
             label: HAZARD_DEFS[ht].label,
+            description: '',
+            photos: [],
           },
         ]);
         setActiveMode('select');
