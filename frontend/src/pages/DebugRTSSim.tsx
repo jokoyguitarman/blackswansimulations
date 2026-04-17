@@ -1365,11 +1365,7 @@ export function DebugRTSSim() {
       if (blastSite && Math.hypot(sim.x - blastSite.x, sim.y - blastSite.y) < 4)
         return { type: 'blastSite', id: 'blast' };
       for (const c of casualtyClusters) {
-        if (Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 5) return { type: 'casualty', id: c.id };
-      }
-      for (const hz of hazardZones) {
-        if (Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < hz.radius)
-          return { type: 'hazard', id: hz.id };
+        if (Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 8) return { type: 'casualty', id: c.id };
       }
       for (const sw of stairwells) {
         if (Math.hypot(sw.pos.x - sim.x, sw.pos.y - sim.y) < 5)
@@ -1508,13 +1504,6 @@ export function DebugRTSSim() {
         dragStartRef.current = null;
         isDraggingRef.current = false;
 
-        if (clickedElement.type === 'hazard') {
-          const hz = hazardZones.find((h) => h.id === clickedElement.id);
-          if (hz) {
-            setActiveHazard(hz);
-            return;
-          }
-        }
         if (clickedElement.type === 'casualty') {
           const cas = casualtyClusters.find((c) => c.id === clickedElement.id);
           if (cas) {
@@ -1542,9 +1531,9 @@ export function DebugRTSSim() {
             return;
           }
 
-          // Check hazard zones (click to inspect — trainer can edit, player sees read-only)
+          // Check hazard zones (click to inspect)
           const hitHz = hazardZones.find(
-            (hz) => Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < hz.radius,
+            (hz) => Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < Math.max(hz.radius, 8),
           );
           if (hitHz) {
             setActiveHazard(hitHz);
@@ -1874,10 +1863,7 @@ export function DebugRTSSim() {
         // No movement — treat as click
         const clickedEl = elementDragRef.current;
         elementDragRef.current = null;
-        if (clickedEl.type === 'hazard') {
-          const hz = hazardZones.find((h) => h.id === clickedEl.id);
-          if (hz) setActiveHazard(hz);
-        } else if (clickedEl.type === 'casualty') {
+        if (clickedEl.type === 'casualty') {
           const cas = casualtyClusters.find((c) => c.id === clickedEl.id);
           if (cas) handleCasualtyClusterClick(cas);
         }
@@ -1912,17 +1898,24 @@ export function DebugRTSSim() {
           if (hitCas) {
             handleCasualtyClusterClick(hitCas);
           } else {
-            const hitWp = wallPoints.find(
-              (wp) => Math.hypot(wp.simPos.x - sim.x, wp.simPos.y - sim.y) < 3.0,
+            const hitHz2 = hazardZones.find(
+              (hz) => Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < Math.max(hz.radius, 8),
             );
-            if (hitWp) {
-              handleWallPointClick(hitWp);
+            if (hitHz2) {
+              setActiveHazard(hitHz2);
             } else {
-              const unit = rts.findUnitAt(sim);
-              if (unit) {
-                rts.selectUnit(unit.id, false);
+              const hitWp = wallPoints.find(
+                (wp) => Math.hypot(wp.simPos.x - sim.x, wp.simPos.y - sim.y) < 3.0,
+              );
+              if (hitWp) {
+                handleWallPointClick(hitWp);
               } else {
-                rts.deselectAll();
+                const unit = rts.findUnitAt(sim);
+                if (unit) {
+                  rts.selectUnit(unit.id, false);
+                } else {
+                  rts.deselectAll();
+                }
               }
             }
           }
