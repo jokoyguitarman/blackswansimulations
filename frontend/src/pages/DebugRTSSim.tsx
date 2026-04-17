@@ -1493,14 +1493,36 @@ export function DebugRTSSim() {
       const rts = rtsRef.current;
       const mode = rts.state.interactionMode;
 
-      // Finalize element drag
+      // Finalize element drag — if no actual movement, fall through to click handling
       if (elementDragRef.current) {
         if (isDraggingRef.current) {
           applyElementDrag(elementDragRef.current, sim);
+          elementDragRef.current = null;
+          dragStartRef.current = null;
+          isDraggingRef.current = false;
+          return;
         }
+        // No movement — treat as a click on the element
+        const clickedElement = elementDragRef.current;
         elementDragRef.current = null;
         dragStartRef.current = null;
         isDraggingRef.current = false;
+
+        if (clickedElement.type === 'hazard') {
+          const hz = hazardZones.find((h) => h.id === clickedElement.id);
+          if (hz) {
+            setActiveHazard(hz);
+            return;
+          }
+        }
+        if (clickedElement.type === 'casualty') {
+          const cas = casualtyClusters.find((c) => c.id === clickedElement.id);
+          if (cas) {
+            handleCasualtyClusterClick(cas);
+            return;
+          }
+        }
+        // For other elements (blast, staging, stairwell) — just deselect
         return;
       }
 
@@ -1520,11 +1542,11 @@ export function DebugRTSSim() {
             return;
           }
 
-          // Check hazard zones (click to inspect)
+          // Check hazard zones (click to inspect — trainer can edit, player sees read-only)
           const hitHz = hazardZones.find(
             (hz) => Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < hz.radius,
           );
-          if (hitHz && isTrainerMode && rtsRef.current.state.clock.phase === 'setup') {
+          if (hitHz) {
             setActiveHazard(hitHz);
             rts.state.selection.selectionBox = null;
             dragStartRef.current = null;
