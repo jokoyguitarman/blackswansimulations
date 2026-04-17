@@ -1164,14 +1164,18 @@ export function DebugRTSSim() {
   const findDraggableAt = useCallback(
     (sim: Vec2): { type: string; id: string } | null => {
       const state = rtsRef.current.state;
-      if (state.clock.phase !== 'setup' || !isTrainerMode) return null;
-      if (blastSite && Math.hypot(sim.x - blastSite.x, sim.y - blastSite.y) < 4)
-        return { type: 'blastSite', id: 'blast' };
+
+      // Staging area is always draggable (IC action) when it exists
       if (
         state.stagingArea &&
         Math.hypot(sim.x - state.stagingArea.x, sim.y - state.stagingArea.y) < 5
       )
         return { type: 'stagingArea', id: 'staging' };
+
+      // Other elements only draggable in trainer setup mode
+      if (state.clock.phase !== 'setup' || !isTrainerMode) return null;
+      if (blastSite && Math.hypot(sim.x - blastSite.x, sim.y - blastSite.y) < 4)
+        return { type: 'blastSite', id: 'blast' };
       for (const c of casualtyClusters) {
         if (Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 5) return { type: 'casualty', id: c.id };
       }
@@ -2046,6 +2050,30 @@ export function DebugRTSSim() {
                 );
               })}
             </div>
+
+            {/* IC-specific actions */}
+            {gameState.activeTeam === 'ic' && gameState.clock.phase !== 'setup' && (
+              <div className="space-y-1">
+                <div className="text-xs text-green-600 uppercase tracking-wider mt-3">
+                  IC Actions
+                </div>
+                <button
+                  onClick={handleSetStagingArea}
+                  className={`w-full text-left text-xs px-2 py-1.5 rounded border transition-colors ${
+                    gameState.stagingArea
+                      ? 'border-green-700 bg-green-900/20 text-green-400'
+                      : 'border-amber-800 text-amber-400 hover:border-amber-600'
+                  }`}
+                >
+                  📍 {gameState.stagingArea ? 'Relocate Staging Area' : 'Set Staging Area (RVP)'}
+                </button>
+                {!gameState.stagingArea && (
+                  <div className="text-xs text-amber-600 px-2 italic">
+                    Units spawn at click location until a staging area is set
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -2656,7 +2684,7 @@ export function DebugRTSSim() {
                 <p>1. Click the map or load a saved map</p>
                 <p>2. Fetch buildings nearby</p>
                 <p>3. Click a building to enter the RTS scenario</p>
-                <p>4. Place exits, set staging area, deploy units</p>
+                <p>4. Place exits, blast site, hazards, casualties</p>
                 <p>5. Hit DETONATE to start the exercise</p>
               </div>
             </div>
@@ -2846,12 +2874,6 @@ export function DebugRTSSim() {
                     }`}
                   >
                     ❌ Delete Exit
-                  </button>
-                  <button
-                    onClick={handleSetStagingArea}
-                    className="w-full text-xs text-left px-2 py-1.5 rounded border border-green-900 text-green-500 hover:border-green-700"
-                  >
-                    📍 Set Staging Area (click map)
                   </button>
                   <button
                     onClick={() => {
@@ -3125,8 +3147,8 @@ export function DebugRTSSim() {
                   </span>
                 </div>
                 <div className="text-xs text-green-700 mt-1">
-                  Exits: {exits.length} · Staging: {gameState.stagingArea ? '✓' : '—'} · Blast:{' '}
-                  {blastSite ? '✓' : '—'} · Casualties: {casualtyClusters.length}
+                  Exits: {exits.length} · Blast: {blastSite ? '✓' : '—'} · Casualties:{' '}
+                  {casualtyClusters.length}
                 </div>
               </div>
             )}
