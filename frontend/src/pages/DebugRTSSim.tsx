@@ -2129,7 +2129,7 @@ export function DebugRTSSim() {
   // RENDER
   // =====================================================================
   return (
-    <div className="min-h-screen bg-black text-green-400 font-mono flex flex-col">
+    <div className="h-screen bg-black text-green-400 font-mono flex flex-col overflow-hidden">
       {/* Header */}
       <div className="border-b border-green-800 p-3 flex items-center justify-between flex-shrink-0">
         <div>
@@ -2287,10 +2287,10 @@ export function DebugRTSSim() {
       )}
 
       {/* MAIN AREA */}
-      <div className="flex flex-col md:flex-row flex-1 overflow-auto md:overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* Left sidebar: team palette (RTS only) — below map on mobile */}
         {phase === 'rts' && (
-          <div className="order-3 md:order-1 w-full md:w-56 border-t md:border-t-0 md:border-r border-green-800 overflow-y-auto p-2 space-y-2 flex-shrink-0">
+          <div className="order-3 md:order-1 w-full md:w-56 border-t md:border-t-0 md:border-r border-green-800 overflow-y-auto p-2 space-y-2 min-h-0 md:flex-shrink-0">
             <div className="space-y-1">
               <div className="text-xs text-green-600 uppercase tracking-wider">Active Team</div>
               {ALL_TEAMS.map((t) => (
@@ -2401,7 +2401,7 @@ export function DebugRTSSim() {
 
         {/* CENTER: Map (always visible) with canvas overlay in RTS mode */}
         <div
-          className="order-1 md:order-2 relative overflow-hidden h-[55vh] md:h-auto md:flex-1"
+          className="order-1 md:order-2 relative overflow-hidden flex-shrink-0 h-[55vh] md:h-auto md:flex-1 md:flex-shrink"
           ref={containerRef}
           style={{ touchAction: 'none' }}
         >
@@ -3175,7 +3175,7 @@ export function DebugRTSSim() {
         {/* Right sidebar */}
         {phase === 'map' ? (
           /* Building list (map phase) */
-          <div className="order-2 md:order-3 w-full md:w-80 border-t md:border-t-0 md:border-l border-green-800 overflow-y-auto p-3 space-y-3 flex-shrink-0">
+          <div className="order-2 md:order-3 w-full md:w-80 border-t md:border-t-0 md:border-l border-green-800 overflow-y-auto p-3 space-y-3 min-h-0 md:flex-shrink-0">
             <div className="bg-gray-900 border border-green-800 rounded p-3">
               <h2 className="text-sm text-amber-400 mb-2 border-b border-green-900 pb-1">
                 RTS Prototype
@@ -3334,7 +3334,7 @@ export function DebugRTSSim() {
           </div>
         ) : (
           /* RTS controls (rts phase) */
-          <div className="order-2 md:order-3 w-full md:w-64 border-t md:border-t-0 md:border-l border-green-800 overflow-y-auto p-3 space-y-3 flex-shrink-0">
+          <div className="order-2 md:order-3 w-full md:w-64 border-t md:border-t-0 md:border-l border-green-800 overflow-y-auto p-3 space-y-3 min-h-0 md:flex-shrink-0">
             {/* Clock */}
             <div className="bg-gray-900 border border-green-800 rounded p-3">
               <div className="text-sm text-amber-400 font-bold mb-2">{phaseLabel}</div>
