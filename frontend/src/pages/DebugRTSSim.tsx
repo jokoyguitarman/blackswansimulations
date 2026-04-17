@@ -189,14 +189,41 @@ const ALL_TEAMS: TeamId[] = [
 // =====================================================================
 export function DebugRTSSim() {
   // ── Map state ─────────────────────────────────────────────────────────
-  const [lat, setLat] = useState('1.2989008');
-  const [lng, setLng] = useState('103.855176');
+  const [lat, setLat] = useState('');
+  const [lng, setLng] = useState('');
   const [radius, setRadius] = useState('300');
   const [loading, setLoading] = useState(false);
   const [fetchResult, setFetchResult] = useState<FetchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedGridIdx, setSelectedGridIdx] = useState<number | null>(null);
   const [phase, setPhase] = useState<PagePhase>('map');
+
+  // ── User geolocation (for map centering + search bias) ────────────────
+  const [userGeoPos, setUserGeoPos] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setLat('1.2989008');
+      setLng('103.855176');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const gLat = pos.coords.latitude;
+        const gLng = pos.coords.longitude;
+        setUserGeoPos({ lat: gLat, lng: gLng });
+        setLat(gLat.toFixed(7));
+        setLng(gLng.toFixed(7));
+        const map = leafletMapRef.current;
+        if (map) map.setView([gLat, gLng], 18);
+      },
+      () => {
+        setLat('1.2989008');
+        setLng('103.855176');
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
+    );
+  }, []);
 
   // ── Leaflet map ref ───────────────────────────────────────────────────
   const leafletMapRef = useRef<L.Map | null>(null);
@@ -504,34 +531,45 @@ export function DebugRTSSim() {
   );
 
   // ── Place search (Nominatim) ────────────────────────────────────────
-  const handleSearchInput = useCallback((query: string) => {
-    setSearchQuery(query);
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (query.trim().length < 3) {
-      setSearchResults([]);
-      return;
-    }
-    searchTimerRef.current = setTimeout(async () => {
-      try {
-        const params = new URLSearchParams({
-          q: query,
-          format: 'json',
-          limit: '6',
-          addressdetails: '0',
-        });
-        const resp = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
-          headers: { 'User-Agent': 'BlackSwanSimulations/1.0' },
-        });
-        if (resp.ok) {
-          const data = await resp.json();
-          setSearchResults(data);
-          setSearchOpen(true);
-        }
-      } catch {
+  const handleSearchInput = useCallback(
+    (query: string) => {
+      setSearchQuery(query);
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+      if (query.trim().length < 3) {
         setSearchResults([]);
+        return;
       }
-    }, 400);
-  }, []);
+      searchTimerRef.current = setTimeout(async () => {
+        try {
+          const params = new URLSearchParams({
+            q: query,
+            format: 'json',
+            limit: '8',
+            addressdetails: '0',
+          });
+          if (userGeoPos) {
+            const bias = 0.5;
+            params.set(
+              'viewbox',
+              `${userGeoPos.lng - bias},${userGeoPos.lat + bias},${userGeoPos.lng + bias},${userGeoPos.lat - bias}`,
+            );
+            params.set('bounded', '0');
+          }
+          const resp = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
+            headers: { 'User-Agent': 'BlackSwanSimulations/1.0' },
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            setSearchResults(data);
+            setSearchOpen(true);
+          }
+        } catch {
+          setSearchResults([]);
+        }
+      }, 400);
+    },
+    [userGeoPos],
+  );
 
   const handleSelectSearchResult = useCallback(
     (result: { lat: string; lon: string; display_name: string }) => {
@@ -2106,10 +2144,10 @@ export function DebugRTSSim() {
       )}
 
       {/* MAIN AREA */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left sidebar: team palette (RTS only) */}
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+        {/* Left sidebar: team palette (RTS only) — below map on mobile */}
         {phase === 'rts' && (
-          <div className="w-56 border-r border-green-800 overflow-y-auto p-2 space-y-2 flex-shrink-0">
+          <div className="order-3 lg:order-1 w-full lg:w-56 border-t lg:border-t-0 lg:border-r border-green-800 overflow-y-auto p-2 space-y-2 flex-shrink-0 max-h-[40vh] lg:max-h-none">
             <div className="space-y-1">
               <div className="text-xs text-green-600 uppercase tracking-wider">Active Team</div>
               {ALL_TEAMS.map((t) => (
@@ -2220,7 +2258,7 @@ export function DebugRTSSim() {
 
         {/* CENTER: Map (always visible) with canvas overlay in RTS mode */}
         <div
-          className="flex-1 relative overflow-hidden"
+          className="order-1 lg:order-2 flex-1 relative overflow-hidden min-h-[50vh] lg:min-h-0"
           ref={containerRef}
           style={{ touchAction: 'none' }}
         >
@@ -2820,7 +2858,7 @@ export function DebugRTSSim() {
         {/* Right sidebar */}
         {phase === 'map' ? (
           /* Building list (map phase) */
-          <div className="w-80 border-l border-green-800 overflow-y-auto p-3 space-y-3 flex-shrink-0">
+          <div className="order-2 lg:order-3 w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-green-800 overflow-y-auto p-3 space-y-3 flex-shrink-0 max-h-[40vh] lg:max-h-none">
             <div className="bg-gray-900 border border-green-800 rounded p-3">
               <h2 className="text-sm text-amber-400 mb-2 border-b border-green-900 pb-1">
                 RTS Prototype
@@ -2979,7 +3017,7 @@ export function DebugRTSSim() {
           </div>
         ) : (
           /* RTS controls (rts phase) */
-          <div className="w-64 border-l border-green-800 overflow-y-auto p-3 space-y-3 flex-shrink-0">
+          <div className="order-2 lg:order-3 w-full lg:w-64 border-t lg:border-t-0 lg:border-l border-green-800 overflow-y-auto p-3 space-y-3 flex-shrink-0 max-h-[40vh] lg:max-h-none">
             {/* Clock */}
             <div className="bg-gray-900 border border-green-800 rounded p-3">
               <div className="text-sm text-amber-400 font-bold mb-2">{phaseLabel}</div>
