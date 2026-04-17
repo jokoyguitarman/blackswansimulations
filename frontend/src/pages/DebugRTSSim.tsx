@@ -1763,7 +1763,13 @@ export function DebugRTSSim() {
       dragStartRef.current = sim;
       isDraggingRef.current = false;
 
-      // Long press = move command (replaces right-click)
+      // Check for draggable element
+      const hit = findDraggableAt(sim);
+      if (hit) {
+        elementDragRef.current = hit;
+      }
+
+      // Long press = move command (replaces right-click) — only if not dragging an element
       if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = setTimeout(() => {
         const rts = rtsRef.current;
@@ -1818,13 +1824,19 @@ export function DebugRTSSim() {
       const moved = Math.hypot(cx - touchStartRef.current.x, cy - touchStartRef.current.y);
 
       if (moved > 10) {
-        // Cancel long press on significant movement
         if (longPressTimerRef.current) {
           clearTimeout(longPressTimerRef.current);
           longPressTimerRef.current = null;
         }
         isDraggingRef.current = true;
         const sim = toSim(cx, cy);
+
+        // Element dragging (hazards, casualties, etc.)
+        if (elementDragRef.current) {
+          applyElementDrag(elementDragRef.current, sim);
+          return;
+        }
+
         const rts = rtsRef.current;
         if (dragStartRef.current && rts.state.interactionMode.type === 'select') {
           rts.state.selection.selectionBox = { start: dragStartRef.current, end: sim };
@@ -1842,6 +1854,39 @@ export function DebugRTSSim() {
       }
       touchPinchDistRef.current = null;
       touchPanCenterRef.current = null;
+
+      // Finalize element drag on touch
+      if (elementDragRef.current) {
+        if (isDraggingRef.current) {
+          const rect2 = canvasRef.current!.getBoundingClientRect();
+          const lt = e.changedTouches[0];
+          applyElementDrag(
+            elementDragRef.current,
+            toSim(lt.clientX - rect2.left, lt.clientY - rect2.top),
+          );
+          elementDragRef.current = null;
+          touchStartRef.current = null;
+          dragStartRef.current = null;
+          isDraggingRef.current = false;
+          rerender();
+          return;
+        }
+        // No movement — treat as click
+        const clickedEl = elementDragRef.current;
+        elementDragRef.current = null;
+        if (clickedEl.type === 'hazard') {
+          const hz = hazardZones.find((h) => h.id === clickedEl.id);
+          if (hz) setActiveHazard(hz);
+        } else if (clickedEl.type === 'casualty') {
+          const cas = casualtyClusters.find((c) => c.id === clickedEl.id);
+          if (cas) handleCasualtyClusterClick(cas);
+        }
+        touchStartRef.current = null;
+        dragStartRef.current = null;
+        isDraggingRef.current = false;
+        rerender();
+        return;
+      }
 
       if (!touchStartRef.current) return;
       const elapsed = Date.now() - touchStartRef.current.time;
