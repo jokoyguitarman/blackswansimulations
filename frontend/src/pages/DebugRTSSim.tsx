@@ -1512,14 +1512,14 @@ export function DebugRTSSim() {
         isDraggingRef.current = false;
 
         if (clickedElement.type === 'hazard') {
-          const hz = hazardZones.find((h) => h.id === clickedElement.id);
+          const hz = hazardZonesRef.current.find((h) => h.id === clickedElement.id);
           if (hz) {
             setActiveHazard(hz);
             return;
           }
         }
         if (clickedElement.type === 'casualty') {
-          const cas = casualtyClusters.find((c) => c.id === clickedElement.id);
+          const cas = casualtyClustersRef.current.find((c) => c.id === clickedElement.id);
           if (cas) {
             handleCasualtyClusterClick(cas);
             return;
@@ -1534,8 +1534,8 @@ export function DebugRTSSim() {
           rts.selectUnitsInBox(dragStartRef.current, sim);
         } else {
           // Check casualty clusters
-          const hitCas = casualtyClusters.find(
-            (c) => Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 5.0,
+          const hitCas = casualtyClustersRef.current.find(
+            (c) => Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 8,
           );
           if (hitCas) {
             handleCasualtyClusterClick(hitCas);
@@ -1545,8 +1545,8 @@ export function DebugRTSSim() {
             return;
           }
 
-          // Check hazard zones (click to inspect)
-          const hitHz = hazardZones.find(
+          // Check hazard pins (click to inspect)
+          const hitHz = hazardZonesRef.current.find(
             (hz) => Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < Math.max(hz.radius, 8),
           );
           if (hitHz) {
@@ -1878,10 +1878,10 @@ export function DebugRTSSim() {
         const clickedEl = elementDragRef.current;
         elementDragRef.current = null;
         if (clickedEl.type === 'hazard') {
-          const hz = hazardZones.find((h) => h.id === clickedEl.id);
+          const hz = hazardZonesRef.current.find((h) => h.id === clickedEl.id);
           if (hz) setActiveHazard(hz);
         } else if (clickedEl.type === 'casualty') {
-          const cas = casualtyClusters.find((c) => c.id === clickedEl.id);
+          const cas = casualtyClustersRef.current.find((c) => c.id === clickedEl.id);
           if (cas) handleCasualtyClusterClick(cas);
         }
         touchStartRef.current = null;
@@ -1903,19 +1903,17 @@ export function DebugRTSSim() {
       const mode = rts.state.interactionMode;
 
       if (isDraggingRef.current && dragStartRef.current) {
-        // Drag end = box select
         rts.selectUnitsInBox(dragStartRef.current, sim);
         rts.state.selection.selectionBox = null;
       } else if (elapsed < 300) {
-        // Short tap = click action
         if (mode.type === 'select') {
-          const hitCas = casualtyClusters.find(
-            (c) => Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 5.0,
+          const hitCas = casualtyClustersRef.current.find(
+            (c) => Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 8,
           );
           if (hitCas) {
             handleCasualtyClusterClick(hitCas);
           } else {
-            const hitHz2 = hazardZones.find(
+            const hitHz2 = hazardZonesRef.current.find(
               (hz) => Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < Math.max(hz.radius, 8),
             );
             if (hitHz2) {
