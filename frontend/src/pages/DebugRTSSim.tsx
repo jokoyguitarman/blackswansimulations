@@ -932,8 +932,11 @@ export function DebugRTSSim() {
             blastSiteRef.current,
             (() => {
               const mode = rtsRef.current.state.interactionMode;
-              if (mode.type === 'draw_wall' && mode.startPoint && hoverSimPosRef.current) {
-                return { start: mode.startPoint, cursor: hoverSimPosRef.current };
+              if (mode.type === 'draw_wall' && mode.startPoint) {
+                return {
+                  start: mode.startPoint,
+                  cursor: hoverSimPosRef.current ?? mode.startPoint,
+                };
               }
               return null;
             })(),
@@ -1762,6 +1765,7 @@ export function DebugRTSSim() {
       touchStartRef.current = { x: cx, y: cy, time: Date.now() };
       dragStartRef.current = sim;
       isDraggingRef.current = false;
+      hoverSimPosRef.current = sim;
 
       // Check for draggable element
       const hit = findDraggableAt(sim);
@@ -1821,6 +1825,7 @@ export function DebugRTSSim() {
       const rect = canvasRef.current!.getBoundingClientRect();
       const cx = touch.clientX - rect.left;
       const cy = touch.clientY - rect.top;
+      hoverSimPosRef.current = toSim(cx, cy);
       const moved = Math.hypot(cx - touchStartRef.current.x, cy - touchStartRef.current.y);
 
       if (moved > 10) {

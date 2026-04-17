@@ -433,15 +433,43 @@ function drawWallDrawPreview(
 ) {
   const s = toCanvas(start.x, start.y, rc);
   const c = toCanvas(cursor.x, cursor.y, rc);
+  const isSamePoint = Math.abs(s.cx - c.cx) < 2 && Math.abs(s.cy - c.cy) < 2;
+
+  // Pulsing glow at anchor
+  const pulse = (Date.now() % 1500) / 1500;
+  ctx.save();
+  ctx.shadowColor = '#94a3b8';
+  ctx.shadowBlur = 8 + pulse * 8;
+  ctx.beginPath();
+  ctx.arc(s.cx, s.cy, 8 + pulse * 4, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(148, 163, 184, ${0.3 - pulse * 0.2})`;
+  ctx.fill();
+  ctx.restore();
 
   // Anchor circle at point A
   ctx.beginPath();
-  ctx.arc(s.cx, s.cy, 6, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(148, 163, 184, 0.4)';
+  ctx.arc(s.cx, s.cy, 7, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(148, 163, 184, 0.5)';
   ctx.fill();
-  ctx.strokeStyle = '#94a3b8';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.lineWidth = 2.5;
   ctx.stroke();
+
+  // "A" label
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 9px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('A', s.cx, s.cy);
+
+  if (isSamePoint) {
+    // Only anchor placed — show "tap to set point B" hint
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Tap endpoint (B)', s.cx, s.cy + 18);
+    return;
+  }
 
   // Dashed line from A to cursor
   ctx.beginPath();
@@ -453,11 +481,14 @@ function drawWallDrawPreview(
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Small circle at cursor
+  // Small circle at cursor (point B)
   ctx.beginPath();
-  ctx.arc(c.cx, c.cy, 4, 0, Math.PI * 2);
+  ctx.arc(c.cx, c.cy, 5, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(148, 163, 184, 0.6)';
   ctx.fill();
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
 
   // Length label
   const dist = Math.hypot(cursor.x - start.x, cursor.y - start.y);
