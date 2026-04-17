@@ -360,6 +360,35 @@ export function DebugRTSSim() {
     return projectPolygon(selectedGrid.polygon);
   }, [selectedGrid]);
 
+  // ── Prevent browser zoom on canvas/map area ────────────────────────────
+  useEffect(() => {
+    if (phase !== 'rts') return;
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const preventWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+      }
+    };
+    const preventGesture = (e: Event) => {
+      e.preventDefault();
+    };
+
+    canvas.addEventListener('wheel', preventWheel, { passive: false });
+    container.addEventListener('wheel', preventWheel, { passive: false });
+    document.addEventListener('gesturestart', preventGesture);
+    document.addEventListener('gesturechange', preventGesture);
+
+    return () => {
+      canvas.removeEventListener('wheel', preventWheel);
+      container.removeEventListener('wheel', preventWheel);
+      document.removeEventListener('gesturestart', preventGesture);
+      document.removeEventListener('gesturechange', preventGesture);
+    };
+  }, [phase]);
+
   // ── GPS watcher ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!gpsEnabled || !selectedGrid || !navigator.geolocation) {
@@ -1436,6 +1465,8 @@ export function DebugRTSSim() {
   );
 
   const handleCanvasWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     const map = leafletMapRef.current;
     if (!map) return;
     if (e.deltaY < 0) map.zoomIn();
@@ -1453,8 +1484,8 @@ export function DebugRTSSim() {
 
   const handleTouchStart = useCallback(
     (e: React.TouchEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
       if (e.touches.length === 2) {
-        // Pinch zoom start
         const dx = e.touches[1].clientX - e.touches[0].clientX;
         const dy = e.touches[1].clientY - e.touches[0].clientY;
         touchPinchDistRef.current = Math.hypot(dx, dy);
@@ -1491,6 +1522,7 @@ export function DebugRTSSim() {
 
   const handleTouchMove = useCallback(
     (e: React.TouchEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
       if (e.touches.length === 2 && touchPinchDistRef.current != null) {
         // Pinch zoom
         const dx = e.touches[1].clientX - e.touches[0].clientX;
@@ -1973,7 +2005,11 @@ export function DebugRTSSim() {
         )}
 
         {/* CENTER: Map (always visible) with canvas overlay in RTS mode */}
-        <div className="flex-1 relative overflow-hidden" ref={containerRef}>
+        <div
+          className="flex-1 relative overflow-hidden"
+          ref={containerRef}
+          style={{ touchAction: 'none' }}
+        >
           <MapContainer
             center={[
               Number.isNaN(parsedLat) ? 1.3 : parsedLat,
@@ -2091,6 +2127,7 @@ export function DebugRTSSim() {
                   height: canvasSize.h,
                   pointerEvents: 'auto',
                   zIndex: 1000,
+                  touchAction: 'none',
                 }}
                 className="cursor-crosshair"
                 onMouseDown={handleCanvasMouseDown}
