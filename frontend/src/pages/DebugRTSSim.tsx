@@ -2289,7 +2289,11 @@ export function DebugRTSSim() {
                       fillOpacity: phase === 'rts' ? 0 : isSelected ? 0.2 : 0.08,
                       fillColor: isSelected ? '#22d3ee' : '#818cf8',
                     }}
-                    eventHandlers={phase === 'map' ? { click: () => selectBuilding(idx) } : {}}
+                    eventHandlers={
+                      phase === 'map' && !drawingBuilding
+                        ? { click: () => selectBuilding(idx) }
+                        : {}
+                    }
                   />
                 );
               })}
