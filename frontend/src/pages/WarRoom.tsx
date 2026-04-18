@@ -1200,7 +1200,7 @@ export const WarRoom = () => {
           </div>
         </div>
 
-        {step === 2 && (
+        {(step === 2 || step === 13) && (
           <div className="military-border p-6 mb-6">
             <h3 className="text-lg terminal-text uppercase mb-4">[CONFIGURE TEAMS]</h3>
             <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
@@ -2090,63 +2090,7 @@ export const WarRoom = () => {
           </div>
         )}
 
-        {/* Manual Step 3: Teams */}
-        {!wizardMode && step === 13 && (
-          <div className="military-border p-6 mb-6">
-            <h3 className="text-lg terminal-text uppercase mb-4">[TEAMS]</h3>
-            <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
-              Configure the teams for the exercise.
-            </p>
-            <div className="space-y-3">
-              {teams.length === 0 && (
-                <div className="text-xs terminal-text text-robotic-yellow/50">
-                  No teams configured yet. Click "Suggest Teams" or add manually.
-                </div>
-              )}
-              {teams.map((t, i) => (
-                <div key={i} className="border border-robotic-gray-200 p-3 space-y-2">
-                  <input
-                    value={t.team_name}
-                    onChange={(e) => {
-                      const c = [...teams];
-                      c[i] = { ...c[i], team_name: e.target.value };
-                      setTeams(c);
-                    }}
-                    className="w-full p-1.5 bg-black/50 border border-robotic-yellow/30 text-robotic-yellow text-xs terminal-text"
-                    placeholder="Team name"
-                  />
-                  <textarea
-                    value={t.team_description}
-                    onChange={(e) => {
-                      const c = [...teams];
-                      c[i] = { ...c[i], team_description: e.target.value };
-                      setTeams(c);
-                    }}
-                    className="w-full p-1.5 bg-black/50 border border-robotic-yellow/30 text-robotic-yellow text-xs terminal-text resize-none"
-                    rows={2}
-                    placeholder="Team description"
-                  />
-                </div>
-              ))}
-              <button
-                onClick={() =>
-                  setTeams((prev) => [
-                    ...prev,
-                    {
-                      team_name: '',
-                      team_description: '',
-                      min_participants: 1,
-                      max_participants: 4,
-                    },
-                  ])
-                }
-                className="text-xs terminal-text text-robotic-yellow/50 border border-robotic-yellow/30 px-3 py-1 hover:border-robotic-yellow/50"
-              >
-                + Add Team
-              </button>
-            </div>
-          </div>
-        )}
+        {/* Manual Step 3: Teams — reuses wizard Step 2 UI (shown above when step === 2) */}
 
         {/* Manual Step 4: Location Validation */}
         {!wizardMode && step === 14 && (
