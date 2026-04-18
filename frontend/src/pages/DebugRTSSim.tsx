@@ -246,6 +246,16 @@ export function DebugRTSSim() {
         setLng(gLng.toFixed(7));
         const map = leafletMapRef.current;
         if (map) map.setView([gLat, gLng], 18);
+        // Detect country from GPS
+        fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${gLat}&lon=${gLng}&format=json&zoom=3`,
+          { headers: { 'User-Agent': 'BlackSwanSimulations/1.0' } },
+        )
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => {
+            if (d?.address?.country_code) setSearchCountry(d.address.country_code.toUpperCase());
+          })
+          .catch(() => {});
       },
       () => {
         setLat('1.2989008');
@@ -294,6 +304,7 @@ export function DebugRTSSim() {
     Array<{ lat: string; lon: string; display_name: string }>
   >([]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchCountry, setSearchCountry] = useState('');
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   // ── Wall inspection ───────────────────────────────────────────────────
@@ -425,6 +436,14 @@ export function DebugRTSSim() {
   // ── Hazard detail card ────────────────────────────────────────────────
   const [activeHazard, setActiveHazard] = useState<HazardZone | null>(null);
   const hazardPhotoRef = useRef<HTMLInputElement>(null);
+
+  // ── Exit detail card ──────────────────────────────────────────────────
+  const [activeExit, setActiveExit] = useState<ExitDef | null>(null);
+  const exitPhotoRef = useRef<HTMLInputElement>(null);
+
+  // ── Wall detail card ──────────────────────────────────────────────────
+  const [activeWall, setActiveWall] = useState<InteriorWall | null>(null);
+  const wallPhotoRef = useRef<HTMLInputElement>(null);
 
   // ── Projected polygon ─────────────────────────────────────────────────
   const selectedGrid = selectedGridIdx != null ? fetchResult?.grids[selectedGridIdx] : null;
@@ -590,6 +609,9 @@ export function DebugRTSSim() {
             limit: '8',
             addressdetails: '0',
           });
+          if (searchCountry) {
+            params.set('countrycodes', searchCountry.toLowerCase());
+          }
           if (userGeoPos) {
             const bias = 0.5;
             params.set(
@@ -611,7 +633,7 @@ export function DebugRTSSim() {
         }
       }, 400);
     },
-    [userGeoPos],
+    [userGeoPos, searchCountry],
   );
 
   const handleSelectSearchResult = useCallback(
@@ -1595,6 +1617,32 @@ export function DebugRTSSim() {
             return;
           }
 
+          // Check exits (click to inspect)
+          const hitExit = exitsRef.current.find(
+            (ex) => Math.hypot(ex.center.x - sim.x, ex.center.y - sim.y) < Math.max(ex.width, 4),
+          );
+          if (hitExit) {
+            setActiveExit(hitExit);
+            rts.state.selection.selectionBox = null;
+            dragStartRef.current = null;
+            isDraggingRef.current = false;
+            return;
+          }
+
+          // Check interior walls (click to inspect)
+          const hitWall = interiorWallsRef.current.find((w) => {
+            const mx = (w.start.x + w.end.x) / 2;
+            const my = (w.start.y + w.end.y) / 2;
+            return Math.hypot(mx - sim.x, my - sim.y) < 5;
+          });
+          if (hitWall) {
+            setActiveWall(hitWall);
+            rts.state.selection.selectionBox = null;
+            dragStartRef.current = null;
+            isDraggingRef.current = false;
+            return;
+          }
+
           // Check wall inspection points
           const hitWp = wallPoints.find(
             (wp) => Math.hypot(wp.simPos.x - sim.x, wp.simPos.y - sim.y) < 3.0,
@@ -2237,7 +2285,83 @@ export function DebugRTSSim() {
       {/* MAP PHASE — controls bar */}
       {phase === 'map' && (
         <div className="flex flex-wrap gap-3 p-3 items-end border-b border-green-900 flex-shrink-0">
-          {/* Place search */}
+          {/* Place search with country dropdown */}
+          <div>
+            <label className="block text-xs text-green-600 mb-1">Country</label>
+            <select
+              value={searchCountry}
+              onChange={(e) => setSearchCountry(e.target.value)}
+              className="bg-gray-900 border border-green-800 text-green-300 px-2 py-1 text-sm rounded w-28"
+            >
+              <option value="">All</option>
+              <option value="AF">Afghanistan</option>
+              <option value="AL">Albania</option>
+              <option value="DZ">Algeria</option>
+              <option value="AR">Argentina</option>
+              <option value="AU">Australia</option>
+              <option value="AT">Austria</option>
+              <option value="BD">Bangladesh</option>
+              <option value="BE">Belgium</option>
+              <option value="BR">Brazil</option>
+              <option value="BN">Brunei</option>
+              <option value="KH">Cambodia</option>
+              <option value="CA">Canada</option>
+              <option value="CN">China</option>
+              <option value="CO">Colombia</option>
+              <option value="CZ">Czech Republic</option>
+              <option value="DK">Denmark</option>
+              <option value="EG">Egypt</option>
+              <option value="FI">Finland</option>
+              <option value="FR">France</option>
+              <option value="DE">Germany</option>
+              <option value="GR">Greece</option>
+              <option value="HK">Hong Kong</option>
+              <option value="HU">Hungary</option>
+              <option value="IN">India</option>
+              <option value="ID">Indonesia</option>
+              <option value="IQ">Iraq</option>
+              <option value="IE">Ireland</option>
+              <option value="IL">Israel</option>
+              <option value="IT">Italy</option>
+              <option value="JP">Japan</option>
+              <option value="JO">Jordan</option>
+              <option value="KZ">Kazakhstan</option>
+              <option value="KE">Kenya</option>
+              <option value="KR">South Korea</option>
+              <option value="KW">Kuwait</option>
+              <option value="LA">Laos</option>
+              <option value="LB">Lebanon</option>
+              <option value="MY">Malaysia</option>
+              <option value="MX">Mexico</option>
+              <option value="MM">Myanmar</option>
+              <option value="NL">Netherlands</option>
+              <option value="NZ">New Zealand</option>
+              <option value="NG">Nigeria</option>
+              <option value="NO">Norway</option>
+              <option value="PK">Pakistan</option>
+              <option value="PH">Philippines</option>
+              <option value="PL">Poland</option>
+              <option value="PT">Portugal</option>
+              <option value="QA">Qatar</option>
+              <option value="RO">Romania</option>
+              <option value="RU">Russia</option>
+              <option value="SA">Saudi Arabia</option>
+              <option value="SG">Singapore</option>
+              <option value="ZA">South Africa</option>
+              <option value="ES">Spain</option>
+              <option value="LK">Sri Lanka</option>
+              <option value="SE">Sweden</option>
+              <option value="CH">Switzerland</option>
+              <option value="TW">Taiwan</option>
+              <option value="TH">Thailand</option>
+              <option value="TR">Turkey</option>
+              <option value="AE">UAE</option>
+              <option value="UA">Ukraine</option>
+              <option value="GB">United Kingdom</option>
+              <option value="US">United States</option>
+              <option value="VN">Vietnam</option>
+            </select>
+          </div>
           <div className="relative">
             <label className="block text-xs text-green-600 mb-1">Search Place</label>
             <input
@@ -3276,6 +3400,313 @@ export function DebugRTSSim() {
                       className="w-full bg-red-900/40 hover:bg-red-800 text-red-300 text-xs px-3 py-1.5 rounded border border-red-700"
                     >
                       Delete This Hazard
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Floating exit detail card ── */}
+              {activeExit && (
+                <div
+                  className="absolute top-4 bg-gray-900/95 border border-cyan-700 rounded-lg shadow-2xl overflow-hidden"
+                  style={{
+                    zIndex: 1002,
+                    right: 16,
+                    width: 360,
+                    maxHeight: 'calc(100% - 32px)',
+                    overflowY: 'auto',
+                  }}
+                >
+                  <div className="flex items-center justify-between px-3 py-2 bg-cyan-900/40 border-b border-cyan-800">
+                    <div className="text-xs text-cyan-300 font-bold">Exit — {activeExit.id}</div>
+                    <button
+                      onClick={() => setActiveExit(null)}
+                      className="text-gray-400 hover:text-white text-sm px-1"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="px-3 py-2 space-y-2">
+                    <div>
+                      <label className="block text-xs text-cyan-400 mb-1">Status</label>
+                      <select
+                        value={activeExit.status}
+                        onChange={(e) => {
+                          const s = e.target.value as ExitDef['status'];
+                          setExits((prev) =>
+                            prev.map((ex) => (ex.id === activeExit.id ? { ...ex, status: s } : ex)),
+                          );
+                          setActiveExit((prev) => (prev ? { ...prev, status: s } : prev));
+                        }}
+                        className="w-full bg-gray-800 border border-gray-700 text-cyan-300 text-xs rounded px-2 py-1"
+                      >
+                        <option value="open">Open</option>
+                        <option value="blocked">Blocked</option>
+                        <option value="congested">Congested</option>
+                        <option value="unknown">Unknown</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-cyan-400 mb-1">Description</label>
+                      <textarea
+                        value={activeExit.description}
+                        onChange={(e) => {
+                          const d = e.target.value;
+                          setExits((prev) =>
+                            prev.map((ex) =>
+                              ex.id === activeExit.id ? { ...ex, description: d } : ex,
+                            ),
+                          );
+                          setActiveExit((prev) => (prev ? { ...prev, description: d } : prev));
+                        }}
+                        placeholder="Describe this exit — is it clear? Obstructed? What does it look like?"
+                        className="w-full bg-gray-800 border border-gray-700 text-green-300 text-xs rounded px-2 py-1.5 resize-none"
+                        rows={3}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-cyan-400 mb-1">
+                        Width: {activeExit.width.toFixed(1)}m
+                      </label>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-cyan-400">
+                        Photos ({activeExit.photos.length})
+                      </label>
+                      <div className="flex gap-1">
+                        <input
+                          ref={exitPhotoRef}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file || !activeExit) return;
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              const url = reader.result as string;
+                              const updated = [...activeExit.photos, url];
+                              setExits((prev) =>
+                                prev.map((ex) =>
+                                  ex.id === activeExit.id ? { ...ex, photos: updated } : ex,
+                                ),
+                              );
+                              setActiveExit((prev) => (prev ? { ...prev, photos: updated } : prev));
+                            };
+                            reader.readAsDataURL(file);
+                            e.target.value = '';
+                          }}
+                        />
+                        <button
+                          onClick={() => exitPhotoRef.current?.click()}
+                          className="bg-cyan-800 hover:bg-cyan-700 text-cyan-100 text-xs px-2 py-0.5 rounded border border-cyan-600"
+                        >
+                          📷 Photo
+                        </button>
+                      </div>
+                    </div>
+                    {activeExit.photos.length > 0 && (
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {activeExit.photos.map((p, i) => (
+                          <div key={i} className="relative group">
+                            <img
+                              src={p}
+                              alt={`Exit photo ${i + 1}`}
+                              className="w-full h-20 object-cover rounded border border-gray-700"
+                            />
+                            <button
+                              onClick={() => {
+                                const updated = activeExit.photos.filter((_, idx) => idx !== i);
+                                setExits((prev) =>
+                                  prev.map((ex) =>
+                                    ex.id === activeExit.id ? { ...ex, photos: updated } : ex,
+                                  ),
+                                );
+                                setActiveExit((prev) =>
+                                  prev ? { ...prev, photos: updated } : prev,
+                                );
+                              }}
+                              className="absolute top-0.5 right-0.5 bg-red-800 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="px-3 py-2 border-t border-gray-800">
+                    <button
+                      onClick={() => {
+                        setExits((prev) => prev.filter((ex) => ex.id !== activeExit.id));
+                        setActiveExit(null);
+                      }}
+                      className="w-full bg-red-900/40 hover:bg-red-800 text-red-300 text-xs px-3 py-1.5 rounded border border-red-700"
+                    >
+                      Delete This Exit
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Floating wall detail card ── */}
+              {activeWall && (
+                <div
+                  className="absolute top-4 bg-gray-900/95 border border-gray-500 rounded-lg shadow-2xl overflow-hidden"
+                  style={{
+                    zIndex: 1002,
+                    right: 16,
+                    width: 360,
+                    maxHeight: 'calc(100% - 32px)',
+                    overflowY: 'auto',
+                  }}
+                >
+                  <div className="flex items-center justify-between px-3 py-2 bg-gray-700/40 border-b border-gray-600">
+                    <div className="text-xs text-gray-200 font-bold">
+                      Interior Wall — {activeWall.id}
+                    </div>
+                    <button
+                      onClick={() => setActiveWall(null)}
+                      className="text-gray-400 hover:text-white text-sm px-1"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="px-3 py-2 space-y-2">
+                    <div>
+                      <label className="block text-xs text-gray-300 mb-1">Material</label>
+                      <input
+                        value={activeWall.material}
+                        onChange={(e) => {
+                          const m = e.target.value;
+                          setInteriorWalls((prev) =>
+                            prev.map((w) => (w.id === activeWall.id ? { ...w, material: m } : w)),
+                          );
+                          setActiveWall((prev) => (prev ? { ...prev, material: m } : prev));
+                        }}
+                        placeholder="e.g. Concrete, Drywall, Glass, Metal"
+                        className="w-full bg-gray-800 border border-gray-700 text-green-300 text-xs rounded px-2 py-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-300 mb-1">Description</label>
+                      <textarea
+                        value={activeWall.description}
+                        onChange={(e) => {
+                          const d = e.target.value;
+                          setInteriorWalls((prev) =>
+                            prev.map((w) =>
+                              w.id === activeWall.id ? { ...w, description: d } : w,
+                            ),
+                          );
+                          setActiveWall((prev) => (prev ? { ...prev, description: d } : prev));
+                        }}
+                        placeholder="Describe this wall section — thickness, condition, any openings..."
+                        className="w-full bg-gray-800 border border-gray-700 text-green-300 text-xs rounded px-2 py-1.5 resize-none"
+                        rows={3}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-gray-400 flex items-center gap-1">
+                        <input
+                          type="checkbox"
+                          checked={activeWall.hasDoor}
+                          onChange={(e) => {
+                            const v = e.target.checked;
+                            setInteriorWalls((prev) =>
+                              prev.map((w) => (w.id === activeWall.id ? { ...w, hasDoor: v } : w)),
+                            );
+                            setActiveWall((prev) => (prev ? { ...prev, hasDoor: v } : prev));
+                          }}
+                        />{' '}
+                        Has Door
+                      </label>
+                      <span className="text-xs text-gray-600">
+                        Length:{' '}
+                        {Math.hypot(
+                          activeWall.end.x - activeWall.start.x,
+                          activeWall.end.y - activeWall.start.y,
+                        ).toFixed(1)}
+                        m
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-gray-300">
+                        Photos ({activeWall.photos.length})
+                      </label>
+                      <div className="flex gap-1">
+                        <input
+                          ref={wallPhotoRef}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file || !activeWall) return;
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              const url = reader.result as string;
+                              const updated = [...activeWall.photos, url];
+                              setInteriorWalls((prev) =>
+                                prev.map((w) =>
+                                  w.id === activeWall.id ? { ...w, photos: updated } : w,
+                                ),
+                              );
+                              setActiveWall((prev) => (prev ? { ...prev, photos: updated } : prev));
+                            };
+                            reader.readAsDataURL(file);
+                            e.target.value = '';
+                          }}
+                        />
+                        <button
+                          onClick={() => wallPhotoRef.current?.click()}
+                          className="bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs px-2 py-0.5 rounded border border-gray-600"
+                        >
+                          📷 Photo
+                        </button>
+                      </div>
+                    </div>
+                    {activeWall.photos.length > 0 && (
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {activeWall.photos.map((p, i) => (
+                          <div key={i} className="relative group">
+                            <img
+                              src={p}
+                              alt={`Wall photo ${i + 1}`}
+                              className="w-full h-20 object-cover rounded border border-gray-700"
+                            />
+                            <button
+                              onClick={() => {
+                                const updated = activeWall.photos.filter((_, idx) => idx !== i);
+                                setInteriorWalls((prev) =>
+                                  prev.map((w) =>
+                                    w.id === activeWall.id ? { ...w, photos: updated } : w,
+                                  ),
+                                );
+                                setActiveWall((prev) =>
+                                  prev ? { ...prev, photos: updated } : prev,
+                                );
+                              }}
+                              className="absolute top-0.5 right-0.5 bg-red-800 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="px-3 py-2 border-t border-gray-800">
+                    <button
+                      onClick={() => {
+                        setInteriorWalls((prev) => prev.filter((w) => w.id !== activeWall.id));
+                        setActiveWall(null);
+                      }}
+                      className="w-full bg-red-900/40 hover:bg-red-800 text-red-300 text-xs px-3 py-1.5 rounded border border-red-700"
+                    >
+                      Delete This Wall
                     </button>
                   </div>
                 </div>
