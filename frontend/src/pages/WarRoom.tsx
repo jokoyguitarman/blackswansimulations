@@ -1494,7 +1494,7 @@ export const WarRoom = () => {
         )}
 
         {/* Step 3: Map Validation (wizard only) */}
-        {wizardMode && step === 3 && (
+        {(step === 3 || step === 14) && (
           <div className="military-border p-6 mb-6">
             <h3 className="text-lg terminal-text uppercase mb-4">[MAP VALIDATION]</h3>
             {geocodeLoading ? (
@@ -2092,47 +2092,7 @@ export const WarRoom = () => {
 
         {/* Manual Step 3: Teams — reuses wizard Step 2 UI (shown above when step === 2) */}
 
-        {/* Manual Step 4: Location Validation */}
-        {!wizardMode && step === 14 && (
-          <div className="military-border p-6 mb-6">
-            <h3 className="text-lg terminal-text uppercase mb-4">[LOCATION VALIDATION]</h3>
-            {geocodeLoading ? (
-              <p className="text-sm terminal-text text-robotic-yellow/70 animate-pulse">
-                Validating location and fetching map data...
-              </p>
-            ) : geocodeData ? (
-              <div className="space-y-3">
-                <div>
-                  <p className="text-xs terminal-text text-robotic-yellow/70 mb-1">
-                    RESOLVED LOCATION
-                  </p>
-                  <p className="text-sm terminal-text text-robotic-yellow">
-                    {geocodeData.display_name}
-                  </p>
-                  <p className="text-xs terminal-text text-robotic-yellow/50 mt-1">
-                    {geocodeData.lat.toFixed(6)}, {geocodeData.lng.toFixed(6)}
-                  </p>
-                </div>
-                {osmVicinity && (
-                  <div>
-                    <p className="text-xs terminal-text text-robotic-yellow/70 mb-1">
-                      NEARBY FACILITIES
-                    </p>
-                    <div className="text-xs terminal-text text-robotic-yellow/80 space-y-0.5">
-                      <p>Hospitals: {osmVicinity.hospitals?.length ?? 0}</p>
-                      <p>Police: {osmVicinity.police?.length ?? 0}</p>
-                      <p>Fire Stations: {osmVicinity.fire_stations?.length ?? 0}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm terminal-text text-robotic-yellow/50">
-                Click "Validate Location" to proceed.
-              </p>
-            )}
-          </div>
-        )}
+        {/* Manual Step 4: Location Validation — reuses wizard Step 3 UI (shown above when step === 3) */}
 
         {/* Manual Step 5: Scene Design */}
         {!wizardMode && step === 15 && geocodeData && (
