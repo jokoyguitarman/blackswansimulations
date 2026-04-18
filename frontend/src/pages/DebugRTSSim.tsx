@@ -445,6 +445,30 @@ export function DebugRTSSim() {
   const [activeWall, setActiveWall] = useState<InteriorWall | null>(null);
   const wallPhotoRef = useRef<HTMLInputElement>(null);
 
+  // ── AI Enrichment ──────────────────────────────────────────────────────
+  const [enriching, setEnriching] = useState(false);
+  const [enrichResult, setEnrichResult] = useState<{
+    enrichedCasualties: Array<{ id: string; description: string; trueTag: string }>;
+    generatedCasualties: Array<{ id: string; description: string; trueTag: string }>;
+    hazardAnalysis: Array<{
+      hazardId: string;
+      identifiedMaterial: string;
+      riskLevel: string;
+      blastInteraction: string;
+      secondaryEffects: string[];
+      responderGuidance: string;
+      generatedDescription: string;
+    }>;
+    overallAssessment: string;
+    sceneSynthesis: {
+      chainReactions: string[];
+      escalationTimeline: string;
+      keyChallenges: string[];
+      casualtyDeteriorationRisks: string[];
+    };
+  } | null>(null);
+  const [enrichExpanded, setEnrichExpanded] = useState(false);
+
   // ── Projected polygon ─────────────────────────────────────────────────
   const selectedGrid = selectedGridIdx != null ? fetchResult?.grids[selectedGridIdx] : null;
 
@@ -779,6 +803,100 @@ export function DebugRTSSim() {
     wallPoints,
     pedestrianCount,
     sceneConfigId,
+  ]);
+
+  const handleEnrichScene = useCallback(async () => {
+    if (enriching) return;
+    setEnriching(true);
+    setEnrichResult(null);
+    try {
+      const headers = await getAuthHeaders();
+      const resp = await fetch(apiUrl('/api/debug/rts-enrich-scene'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          incidentDescription: isWarroomMode ? 'Explosion at building' : 'Explosion at building',
+          blastRadius: 20,
+          blastSite: blastSite,
+          casualtyPins: casualtyClusters.map((c) => ({
+            id: c.id,
+            pos: c.pos,
+            description: c.sceneDescription || '',
+            trueTag: c.victims[0]?.trueTag || 'untagged',
+            photos: c.imageUrl ? [c.imageUrl] : [],
+          })),
+          hazards: hazardZones.map((h) => ({
+            id: h.id,
+            pos: h.pos,
+            hazardType: h.hazardType,
+            severity: h.severity,
+            description: h.description || '',
+            photos: h.photos || [],
+          })),
+          exits: exits.map((e) => ({
+            id: e.id,
+            status: e.status || 'open',
+            description: e.description || '',
+            width: e.width,
+          })),
+          wallMaterials: interiorWalls.map((w) => w.material).filter(Boolean),
+          gameZones: [],
+          buildingName: selectedGrid?.buildingName || null,
+          pedestrianCount,
+        }),
+      });
+      if (resp.ok) {
+        const { data } = await resp.json();
+        setEnrichResult(data);
+        setEnrichExpanded(true);
+
+        // Auto-merge enriched descriptions into hazards that had none
+        if (data.hazardAnalysis?.length) {
+          setHazardZones((prev) =>
+            prev.map((hz) => {
+              const analysis = data.hazardAnalysis.find(
+                (a: { hazardId: string; generatedDescription: string }) => a.hazardId === hz.id,
+              );
+              if (analysis && !hz.description && analysis.generatedDescription) {
+                return { ...hz, description: analysis.generatedDescription };
+              }
+              return hz;
+            }),
+          );
+        }
+
+        // Auto-merge enriched descriptions into casualties that had none
+        if (data.enrichedCasualties?.length) {
+          setCasualtyClusters((prev) =>
+            prev.map((cc) => {
+              const enriched = data.enrichedCasualties.find((e: { id: string }) => e.id === cc.id);
+              if (enriched && !cc.sceneDescription) {
+                return { ...cc, sceneDescription: enriched.description };
+              }
+              return cc;
+            }),
+          );
+        }
+      } else {
+        const errText = await resp.text();
+        console.error('Enrichment failed:', errText);
+        alert('Scene enrichment failed — check console');
+      }
+    } catch (err) {
+      console.error('Enrichment error:', err);
+      alert('Scene enrichment error — check console');
+    }
+    setEnriching(false);
+  }, [
+    enriching,
+    blastSite,
+    casualtyClusters,
+    hazardZones,
+    exits,
+    interiorWalls,
+    selectedGrid,
+    pedestrianCount,
+    isWarroomMode,
   ]);
 
   const handleLoadSceneFromDb = useCallback(async (id: string) => {
@@ -4232,6 +4350,114 @@ export function DebugRTSSim() {
                   Exits: {exits.length} · Blast: {blastSite ? '✓' : '—'} · Casualties:{' '}
                   {casualtyClusters.length}
                 </div>
+
+                {/* AI Enrichment */}
+                <div className="space-y-1.5 border-t border-green-900 pt-2">
+                  <div className="text-xs text-green-500 uppercase tracking-wider">
+                    AI Enrichment
+                  </div>
+                  <button
+                    onClick={handleEnrichScene}
+                    disabled={enriching}
+                    className="w-full bg-purple-800 hover:bg-purple-700 disabled:opacity-50 text-purple-100 text-xs px-3 py-2 rounded border border-purple-600 font-bold"
+                  >
+                    {enriching ? '⏳ Enriching Scene...' : '🧠 Enrich Scene with AI'}
+                  </button>
+                  <div className="text-xs text-green-800">
+                    GPT-5.1 analyzes each hazard and casualty individually, then synthesizes
+                    cross-element interactions
+                  </div>
+                  {enriching && (
+                    <div className="text-xs text-purple-400 animate-pulse">
+                      Running {hazardZones.length + casualtyClusters.length + 1} parallel AI
+                      calls...
+                    </div>
+                  )}
+                  {enrichResult && (
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => setEnrichExpanded(!enrichExpanded)}
+                        className="w-full text-xs text-left text-purple-300 hover:text-purple-200 flex items-center gap-1"
+                      >
+                        <span>{enrichExpanded ? '▼' : '▶'}</span>
+                        <span>
+                          Results: {enrichResult.hazardAnalysis.length} hazards,{' '}
+                          {enrichResult.enrichedCasualties.length} casualties
+                        </span>
+                      </button>
+                      {enrichExpanded && (
+                        <div className="bg-gray-950 border border-purple-900 rounded p-2 space-y-2 max-h-60 overflow-y-auto">
+                          <div className="text-xs text-purple-300 font-bold">Assessment</div>
+                          <div className="text-xs text-green-400">
+                            {enrichResult.overallAssessment}
+                          </div>
+
+                          {enrichResult.sceneSynthesis.keyChallenges.length > 0 && (
+                            <>
+                              <div className="text-xs text-purple-300 font-bold mt-1">
+                                Key Challenges
+                              </div>
+                              {enrichResult.sceneSynthesis.keyChallenges.map((ch, i) => (
+                                <div key={i} className="text-xs text-amber-400">
+                                  • {ch}
+                                </div>
+                              ))}
+                            </>
+                          )}
+
+                          {enrichResult.sceneSynthesis.chainReactions.length > 0 && (
+                            <>
+                              <div className="text-xs text-purple-300 font-bold mt-1">
+                                Chain Reactions
+                              </div>
+                              {enrichResult.sceneSynthesis.chainReactions.map((cr, i) => (
+                                <div key={i} className="text-xs text-red-400">
+                                  ⚠ {cr}
+                                </div>
+                              ))}
+                            </>
+                          )}
+
+                          {enrichResult.hazardAnalysis.length > 0 && (
+                            <>
+                              <div className="text-xs text-purple-300 font-bold mt-1">
+                                Hazard Analyses
+                              </div>
+                              {enrichResult.hazardAnalysis.map((ha) => (
+                                <div
+                                  key={ha.hazardId}
+                                  className="text-xs border-l-2 border-purple-800 pl-2 mb-1"
+                                >
+                                  <div className="text-amber-300">
+                                    {ha.identifiedMaterial} ({ha.riskLevel})
+                                  </div>
+                                  <div className="text-green-600">{ha.blastInteraction}</div>
+                                  {ha.secondaryEffects.length > 0 && (
+                                    <div className="text-red-500 text-[10px]">
+                                      Effects: {ha.secondaryEffects.join(', ')}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </>
+                          )}
+
+                          {enrichResult.sceneSynthesis.escalationTimeline && (
+                            <>
+                              <div className="text-xs text-purple-300 font-bold mt-1">
+                                Escalation Timeline
+                              </div>
+                              <div className="text-xs text-green-500 whitespace-pre-wrap">
+                                {enrichResult.sceneSynthesis.escalationTimeline}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <button
                   onClick={handleSaveSceneToDb}
                   disabled={savingScene}

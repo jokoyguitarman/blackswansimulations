@@ -693,16 +693,29 @@ export const WarRoom = () => {
           exits_count: sceneConfig.exits.length,
           interior_walls_count: sceneConfig.interiorWalls.length,
           hazard_zones: sceneConfig.hazardZones.map(
-            (hz: { hazardType: string; severity: string }) => `${hz.hazardType} (${hz.severity})`,
+            (hz: { hazardType: string; severity: string; description: string }) =>
+              `${hz.hazardType} (${hz.severity})${hz.description ? ': ' + hz.description : ''}`,
           ),
           stairwells_count: sceneConfig.stairwells.length,
           has_blast_site: !!sceneConfig.blastSite,
+          blast_radius: (sceneConfig as unknown as Record<string, unknown>).blastRadius || 20,
           casualty_clusters: sceneConfig.casualtyClusters.length,
+          casualty_count: sceneConfig.casualtyClusters.reduce(
+            (sum: number, c: { victims: unknown[] }) => sum + c.victims.length,
+            0,
+          ),
           total_casualties: sceneConfig.casualtyClusters.reduce(
             (sum: number, c: { victims: unknown[] }) => sum + c.victims.length,
             0,
           ),
           pedestrian_count: sceneConfig.pedestrianCount,
+          exit_statuses: sceneConfig.exits.map(
+            (e: { id: string; status: string; description: string }) =>
+              `${e.id}: ${e.status}${e.description ? ' — ' + e.description : ''}`,
+          ),
+          wall_materials: sceneConfig.interiorWalls
+            .map((w: { material: string }) => w.material)
+            .filter(Boolean),
           rts_scene_id: rtsSceneId,
         };
       }
@@ -2446,6 +2459,7 @@ export const WarRoom = () => {
                       scene_context: {
                         building_name: manualSceneResult.buildingName,
                         exits_count: manualSceneResult.exits.length,
+                        interior_walls_count: manualSceneResult.interiorWalls?.length || 0,
                         stairwells_count: manualSceneResult.stairwells.length,
                         has_blast_site: !!manualSceneResult.blastSite,
                         blast_radius: manualSceneResult.blastRadius,
@@ -2458,6 +2472,16 @@ export const WarRoom = () => {
                         game_zones: manualSceneResult.gameZones.map(
                           (gz) => `${gz.type}: ${gz.radius}m`,
                         ),
+                        exit_statuses: manualSceneResult.exits.map(
+                          (e: { id: string; status?: string; description?: string }) =>
+                            `${e.id}: ${e.status || 'open'}${e.description ? ' — ' + e.description : ''}`,
+                        ),
+                        wall_materials: (manualSceneResult.interiorWalls || [])
+                          .map((w: { material?: string }) => w.material || '')
+                          .filter(Boolean),
+                        rts_scene_id:
+                          (manualSceneResult as unknown as Record<string, unknown>).rtsSceneId ||
+                          null,
                       },
                     };
                     if (geocodeData) {

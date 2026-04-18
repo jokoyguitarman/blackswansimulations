@@ -698,16 +698,76 @@ export async function stageResearchDoctrines(
     if (sceneContext.building_name) parts.push(`Building: ${sceneContext.building_name}`);
     if (sceneContext.exits_count) parts.push(`${sceneContext.exits_count} exits`);
     if (sceneContext.stairwells_count) parts.push(`${sceneContext.stairwells_count} stairwells`);
+    if (sceneContext.interior_walls_count)
+      parts.push(`${sceneContext.interior_walls_count} interior walls`);
     if (sceneContext.has_blast_site) parts.push('blast site established');
+    if (sceneContext.blast_radius) parts.push(`blast radius: ${sceneContext.blast_radius}m`);
     if (sceneContext.total_casualties)
       parts.push(
         `${sceneContext.total_casualties} total casualties across ${sceneContext.casualty_clusters} clusters`,
       );
+    if (sceneContext.casualty_count) parts.push(`${sceneContext.casualty_count} casualty pins`);
     if (sceneContext.pedestrian_count) parts.push(`${sceneContext.pedestrian_count} evacuees`);
+
+    // Game zones
+    if (Array.isArray(sceneContext.game_zones) && sceneContext.game_zones.length > 0) {
+      parts.push(`Operational zones: ${(sceneContext.game_zones as string[]).join(', ')}`);
+    }
+
+    // Basic hazard list
     if (Array.isArray(sceneContext.hazard_zones) && sceneContext.hazard_zones.length > 0) {
       parts.push(`Hazards: ${(sceneContext.hazard_zones as string[]).join(', ')}`);
     }
+
     if (parts.length > 0) sceneDescription = `\n\nPhysical scene setup: ${parts.join('. ')}.`;
+
+    // Enrichment results — deep hazard analyses
+    if (Array.isArray(sceneContext.hazard_analyses)) {
+      const analyses = sceneContext.hazard_analyses as Array<Record<string, unknown>>;
+      if (analyses.length > 0) {
+        const hazardDetails = analyses
+          .map(
+            (h) =>
+              `  - ${h.material || h.id}: Risk=${h.risk}. ${h.blast_interaction || ''} Secondary effects: ${Array.isArray(h.secondary_effects) ? (h.secondary_effects as string[]).join(', ') : 'none'}. Chain reaction risk: ${h.chain_risk || 'none'}.`,
+          )
+          .join('\n');
+        sceneDescription += `\n\nDetailed hazard analysis:\n${hazardDetails}`;
+      }
+    }
+
+    // Enrichment synthesis
+    if (sceneContext.scene_synthesis) {
+      const syn = sceneContext.scene_synthesis as Record<string, unknown>;
+      if (Array.isArray(syn.chainReactions) && syn.chainReactions.length > 0) {
+        sceneDescription += `\n\nChain reaction risks: ${(syn.chainReactions as string[]).join('; ')}`;
+      }
+      if (syn.escalationTimeline) {
+        sceneDescription += `\n\nEscalation timeline: ${syn.escalationTimeline}`;
+      }
+      if (Array.isArray(syn.keyChallenges) && syn.keyChallenges.length > 0) {
+        sceneDescription += `\n\nKey challenges: ${(syn.keyChallenges as string[]).join('; ')}`;
+      }
+    }
+
+    // Overall enrichment assessment
+    if (sceneContext.enrichment_assessment) {
+      sceneDescription += `\n\nScene assessment: ${sceneContext.enrichment_assessment}`;
+    }
+
+    // Casualty profiles
+    if (Array.isArray(sceneContext.casualty_profiles)) {
+      const profiles = sceneContext.casualty_profiles as Array<Record<string, unknown>>;
+      if (profiles.length > 0) {
+        const casDetails = profiles
+          .slice(0, 15)
+          .map(
+            (c) =>
+              `  - ${c.id}: ${((c.tag as string) || '').toUpperCase()} — ${c.description || 'no description'}`,
+          )
+          .join('\n');
+        sceneDescription += `\n\nCasualty profiles:\n${casDetails}`;
+      }
+    }
   }
 
   const narrativeCtx = {

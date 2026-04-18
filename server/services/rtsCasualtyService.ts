@@ -233,12 +233,12 @@ export async function evaluateTriageAssessment(
         Authorization: `Bearer ${openAiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4.1',
+        model: 'gpt-5.1',
         messages: [
           { role: 'system', content: TRIAGE_SYSTEM_PROMPT },
           { role: 'user', content: userContent },
         ],
-        max_tokens: 800,
+        max_tokens: 16000,
         temperature: 0.2,
       }),
     });

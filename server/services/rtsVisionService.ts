@@ -73,12 +73,12 @@ export async function evaluateBombSquadAssessment(
         Authorization: `Bearer ${openAiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4.1',
+        model: 'gpt-5.1',
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userContent },
         ],
-        max_tokens: 500,
+        max_tokens: 16000,
         temperature: 0.3,
       }),
     });

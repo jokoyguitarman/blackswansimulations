@@ -17,6 +17,7 @@ import {
   type ParseAndGeocodeResult,
   type WarroomTeamInput,
 } from '../services/warroomService.js';
+import { enrichScene, type SceneEnrichmentResult } from '../services/rtsSceneEnrichmentService.js';
 
 function applyWizardGeocodeOverride(
   geoResult: ParseAndGeocodeResult,
@@ -660,6 +661,98 @@ router.post(
       );
 
       const sceneCtx = (input.scene_context as Record<string, unknown>) ?? null;
+
+      // Auto-enrich scene when rts_scene_id is present
+      let enrichmentResult: SceneEnrichmentResult | null = null;
+      const rtsSceneId = sceneCtx?.rts_scene_id as string | undefined;
+      if (rtsSceneId && env.openAiApiKey) {
+        try {
+          const { data: sceneRow } = await supabaseAdmin
+            .from('rts_scene_configs')
+            .select('*')
+            .eq('id', rtsSceneId)
+            .single();
+
+          if (sceneRow) {
+            const hazards = (sceneRow.hazard_zones as Array<Record<string, unknown>>) || [];
+            const casualties = (sceneRow.casualty_clusters as Array<Record<string, unknown>>) || [];
+            const exits = (sceneRow.exits as Array<Record<string, unknown>>) || [];
+            const walls = (sceneRow.interior_walls as Array<Record<string, unknown>>) || [];
+
+            enrichmentResult = await enrichScene(
+              {
+                incidentDescription:
+                  (input.scenario_type as string) ||
+                  phase1Preview.scenario.title ||
+                  'Explosion at building',
+                blastRadius:
+                  ((sceneRow.blast_site as Record<string, unknown>)?.radius as number) ?? 20,
+                blastSite: (sceneRow.blast_site as { x: number; y: number } | null) ?? null,
+                casualtyPins: casualties.map((c) => ({
+                  id: (c.id as string) || `cas-${Math.random().toString(36).slice(2, 8)}`,
+                  pos: (c.pos as { x: number; y: number }) || { x: 0, y: 0 },
+                  description: (c.description as string) || '',
+                  trueTag: (c.trueTag as string) || 'untagged',
+                  photos: (c.photos as string[]) || [],
+                })),
+                hazards: hazards.map((h) => ({
+                  id: (h.id as string) || `haz-${Math.random().toString(36).slice(2, 8)}`,
+                  pos: (h.pos as { x: number; y: number }) || { x: 0, y: 0 },
+                  hazardType: (h.hazardType as string) || 'unknown',
+                  severity: (h.severity as string) || 'medium',
+                  description: (h.description as string) || '',
+                  photos: (h.photos as string[]) || [],
+                })),
+                exits: exits.map((e) => ({
+                  id: (e.id as string) || 'exit',
+                  status: (e.status as string) || 'open',
+                  description: (e.description as string) || '',
+                  width: (e.width as number) || 2,
+                })),
+                wallMaterials: walls.map((w) => (w.material as string) || '').filter(Boolean),
+                gameZones: [],
+                buildingName: (sceneRow.building_name as string) || null,
+                pedestrianCount: (sceneRow.pedestrian_count as number) || 120,
+              },
+              env.openAiApiKey,
+            );
+
+            logger.info(
+              {
+                rtsSceneId,
+                enrichedCasualties: enrichmentResult.enrichedCasualties.length,
+                hazardAnalyses: enrichmentResult.hazardAnalysis.length,
+              },
+              'Auto-enrichment complete for WarRoom scene',
+            );
+          }
+        } catch (enrichErr) {
+          logger.warn({ err: enrichErr, rtsSceneId }, 'Auto-enrichment failed; continuing without');
+        }
+      }
+
+      // Merge enrichment into scene context for doctrine research
+      if (enrichmentResult && sceneCtx) {
+        sceneCtx.enrichment_assessment = enrichmentResult.overallAssessment;
+        sceneCtx.hazard_analyses = enrichmentResult.hazardAnalysis.map((h) => ({
+          id: h.hazardId,
+          material: h.identifiedMaterial,
+          risk: h.riskLevel,
+          blast_interaction: h.blastInteraction,
+          secondary_effects: h.secondaryEffects,
+          timeline: h.progressionTimeline,
+          chain_risk: h.chainReactionRisk,
+        }));
+        sceneCtx.scene_synthesis = enrichmentResult.sceneSynthesis;
+        if (enrichmentResult.enrichedCasualties.length) {
+          sceneCtx.casualty_profiles = enrichmentResult.enrichedCasualties.map((c) => ({
+            id: c.id,
+            tag: c.trueTag,
+            description: c.description,
+          }));
+        }
+      }
+
       const doctrines = await stageResearchDoctrines(
         phase1Preview,
         geoResult as unknown as Parameters<typeof stageResearchDoctrines>[1],

@@ -506,10 +506,11 @@ router.post('/rts-enrich-scene', requireAuth, json(), async (req: AuthenticatedR
       blastSite,
       casualtyPins,
       hazards,
+      exits,
+      wallMaterials,
+      gameZones,
       buildingName,
       pedestrianCount,
-      exitsCount,
-      stairwellsCount,
     } = req.body;
 
     const result = await enrichScene(
@@ -519,10 +520,11 @@ router.post('/rts-enrich-scene', requireAuth, json(), async (req: AuthenticatedR
         blastSite: blastSite || null,
         casualtyPins: casualtyPins || [],
         hazards: hazards || [],
+        exits: exits || [],
+        wallMaterials: wallMaterials || [],
+        gameZones: gameZones || [],
         buildingName: buildingName || null,
         pedestrianCount: pedestrianCount || 120,
-        exitsCount: exitsCount || 0,
-        stairwellsCount: stairwellsCount || 0,
       },
       env.openAiApiKey,
     );
