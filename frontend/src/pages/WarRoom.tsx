@@ -5,7 +5,7 @@ import { api } from '../lib/api';
 import { VoiceMicButton } from '../components/VoiceMicButton';
 import { LocationPicker, type PickedLocation } from '../components/WarRoom/LocationPicker';
 import { SceneSetup, type SceneSetupResult } from '../components/WarRoom/SceneSetup';
-import { SceneDesigner, type SceneDesignerResult } from '../components/WarRoom/SceneDesigner';
+import type { SceneDesignerResult } from '../components/WarRoom/SceneDesigner';
 import { createSceneConfig } from '../lib/rts/sceneConfigApi';
 
 type TeamEntry = {
@@ -408,7 +408,7 @@ export const WarRoom = () => {
   const [rtsSceneId, setRtsSceneId] = useState<string | null>(null);
 
   // ── Manual Design mode state ──────────────────────────────────────────
-  const [manualSceneResult, setManualSceneResult] = useState<SceneDesignerResult | null>(null);
+  const [manualSceneResult] = useState<SceneDesignerResult | null>(null);
   const [aiEnrichmentLoading, setAiEnrichmentLoading] = useState(false);
   const [aiEnrichmentResult, setAiEnrichmentResult] = useState<string | null>(null);
 
@@ -2094,21 +2094,41 @@ export const WarRoom = () => {
 
         {/* Manual Step 4: Location Validation — reuses wizard Step 3 UI (shown above when step === 3) */}
 
-        {/* Manual Step 5: Scene Design */}
+        {/* Manual Step 5: Scene Design — full-page RTS-sim experience */}
         {!wizardMode && step === 15 && geocodeData && (
-          <div
-            className="military-border mb-6"
-            style={{ height: 'calc(100vh - 280px)', minHeight: 500 }}
-          >
-            <SceneDesigner
-              centerLat={geocodeData.lat}
-              centerLng={geocodeData.lng}
-              radius={300}
-              initialConfig={manualSceneResult ?? undefined}
-              onSave={(config) => {
-                setManualSceneResult(config);
-              }}
-            />
+          <div className="military-border p-6 mb-6">
+            <h3 className="text-lg terminal-text uppercase mb-4">[SCENE DESIGN]</h3>
+            <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
+              Design the physical scene for the exercise. Place buildings, exits, hazards,
+              casualties, and blast zones using the full scene editor.
+            </p>
+            <div className="flex gap-3 items-center">
+              <button
+                onClick={() => {
+                  const params = new URLSearchParams({
+                    warroom: '1',
+                    lat: String(geocodeData.lat),
+                    lng: String(geocodeData.lng),
+                  });
+                  if (wizardDraftId) params.set('draftId', wizardDraftId);
+                  if (rtsSceneId) params.set('sceneId', rtsSceneId);
+                  window.location.href = `/debug/rts-sim?${params}`;
+                }}
+                className="military-button px-6 py-3 text-sm"
+              >
+                [OPEN SCENE EDITOR]
+              </button>
+              {rtsSceneId && (
+                <span className="text-xs terminal-text text-green-500">
+                  Scene saved (ID: {rtsSceneId.slice(0, 8)}...)
+                </span>
+              )}
+            </div>
+            {!rtsSceneId && (
+              <p className="text-xs terminal-text text-robotic-yellow/40 mt-3">
+                Open the scene editor, design your scene, and save it. Then return here to proceed.
+              </p>
+            )}
           </div>
         )}
 
@@ -2423,7 +2443,7 @@ export const WarRoom = () => {
               </button>
               <button
                 onClick={() => setStep(16)}
-                disabled={loading || !manualSceneResult}
+                disabled={loading || (!manualSceneResult && !rtsSceneId)}
                 className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 [NEXT: AI RESEARCH]

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   MapContainer,
   TileLayer,
@@ -205,10 +206,16 @@ function useIsPortrait() {
 
 export function DebugRTSSim() {
   const isPortrait = useIsPortrait();
+  const [searchParams] = useSearchParams();
+  const isWarroomMode = searchParams.get('warroom') === '1';
+  const warroomLat = searchParams.get('lat');
+  const warroomLng = searchParams.get('lng');
+  const warroomDraftId = searchParams.get('draftId');
+  // warroomSceneId available via searchParams.get('sceneId') if needed
 
   // ── Map state ─────────────────────────────────────────────────────────
-  const [lat, setLat] = useState('');
-  const [lng, setLng] = useState('');
+  const [lat, setLat] = useState(warroomLat || '');
+  const [lng, setLng] = useState(warroomLng || '');
   const [radius, setRadius] = useState('300');
   const [loading, setLoading] = useState(false);
   const [fetchResult, setFetchResult] = useState<FetchResult | null>(null);
@@ -220,6 +227,11 @@ export function DebugRTSSim() {
   const [userGeoPos, setUserGeoPos] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
+    // Skip auto-geolocate if warroom provided coordinates
+    if (warroomLat && warroomLng) {
+      setUserGeoPos({ lat: parseFloat(warroomLat), lng: parseFloat(warroomLng) });
+      return;
+    }
     if (!navigator.geolocation) {
       setLat('1.2989008');
       setLng('103.855176');
@@ -539,6 +551,13 @@ export function DebugRTSSim() {
       setLoading(false);
     }
   }, [lat, lng, radius]);
+
+  // Auto-fetch buildings in warroom mode
+  useEffect(() => {
+    if (isWarroomMode && warroomLat && warroomLng && !fetchResult && lat && lng) {
+      handleFetch();
+    }
+  }, [isWarroomMode, warroomLat, warroomLng, fetchResult, lat, lng, handleFetch]);
 
   const handleMapClick = useCallback(
     (clickLat: number, clickLng: number) => {
@@ -2153,7 +2172,7 @@ export function DebugRTSSim() {
       <div className="border-b border-green-800 p-3 flex items-center justify-between flex-shrink-0">
         <div>
           <h1 className="text-lg tracking-wider text-amber-400">
-            [RTS CRISIS SIMULATION — PROTOTYPE]
+            {isWarroomMode ? '[SCENE DESIGNER — WAR ROOM]' : '[RTS CRISIS SIMULATION — PROTOTYPE]'}
           </h1>
           <p className="text-xs text-green-700 mt-0.5">
             {phase === 'map'
@@ -2173,12 +2192,26 @@ export function DebugRTSSim() {
               </button>
             </>
           )}
-          <a
-            href="/debug/evacuation-sim"
-            className="text-xs text-green-600 hover:text-green-400 border border-green-800 rounded px-2 py-1"
-          >
-            Evac Sim
-          </a>
+          {isWarroomMode ? (
+            <button
+              onClick={() => {
+                const params = new URLSearchParams();
+                if (warroomDraftId) params.set('draft', warroomDraftId);
+                if (sceneConfigId) params.set('sceneId', sceneConfigId);
+                window.location.href = `/warroom?${params}`;
+              }}
+              className="text-xs text-amber-400 hover:text-amber-300 border border-amber-700 rounded px-3 py-1 font-bold"
+            >
+              ← Return to WarRoom
+            </button>
+          ) : (
+            <a
+              href="/debug/evacuation-sim"
+              className="text-xs text-green-600 hover:text-green-400 border border-green-800 rounded px-2 py-1"
+            >
+              Evac Sim
+            </a>
+          )}
         </div>
       </div>
 
@@ -2307,8 +2340,8 @@ export function DebugRTSSim() {
 
       {/* MAIN AREA */}
       <div className={`flex ${isPortrait ? 'flex-col' : 'flex-row'} flex-1 overflow-hidden`}>
-        {/* Left sidebar: team palette (RTS only) — below map on mobile */}
-        {phase === 'rts' && (
+        {/* Left sidebar: team palette (RTS only, hidden in warroom mode) — below map on mobile */}
+        {phase === 'rts' && !isWarroomMode && (
           <div
             className={`${isPortrait ? 'order-3 w-full border-t' : 'order-1 w-56 border-r flex-shrink-0'} border-green-800 overflow-y-auto p-2 space-y-2 min-h-0`}
           >
@@ -2394,29 +2427,31 @@ export function DebugRTSSim() {
               })}
             </div>
 
-            {/* IC-specific actions */}
-            {gameState.activeTeam === 'ic' && gameState.clock.phase !== 'setup' && (
-              <div className="space-y-1">
-                <div className="text-xs text-green-600 uppercase tracking-wider mt-3">
-                  IC Actions
-                </div>
-                <button
-                  onClick={handleSetStagingArea}
-                  className={`w-full text-left text-xs px-2 py-1.5 rounded border transition-colors ${
-                    gameState.stagingArea
-                      ? 'border-green-700 bg-green-900/20 text-green-400'
-                      : 'border-amber-800 text-amber-400 hover:border-amber-600'
-                  }`}
-                >
-                  📍 {gameState.stagingArea ? 'Relocate Staging Area' : 'Set Staging Area (RVP)'}
-                </button>
-                {!gameState.stagingArea && (
-                  <div className="text-xs text-amber-600 px-2 italic">
-                    Units spawn at click location until a staging area is set
+            {/* IC-specific actions (hidden in warroom scene design mode) */}
+            {!isWarroomMode &&
+              gameState.activeTeam === 'ic' &&
+              gameState.clock.phase !== 'setup' && (
+                <div className="space-y-1">
+                  <div className="text-xs text-green-600 uppercase tracking-wider mt-3">
+                    IC Actions
                   </div>
-                )}
-              </div>
-            )}
+                  <button
+                    onClick={handleSetStagingArea}
+                    className={`w-full text-left text-xs px-2 py-1.5 rounded border transition-colors ${
+                      gameState.stagingArea
+                        ? 'border-green-700 bg-green-900/20 text-green-400'
+                        : 'border-amber-800 text-amber-400 hover:border-amber-600'
+                    }`}
+                  >
+                    📍 {gameState.stagingArea ? 'Relocate Staging Area' : 'Set Staging Area (RVP)'}
+                  </button>
+                  {!gameState.stagingArea && (
+                    <div className="text-xs text-amber-600 px-2 italic">
+                      Units spawn at click location until a staging area is set
+                    </div>
+                  )}
+                </div>
+              )}
           </div>
         )}
 
