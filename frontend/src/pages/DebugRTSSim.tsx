@@ -3938,7 +3938,11 @@ export function DebugRTSSim() {
                 <div className="space-y-1.5">
                   <button
                     onClick={() => {
-                      rts.setInteractionMode({ type: 'place_exit' });
+                      rts.setInteractionMode(
+                        gameState.interactionMode.type === 'place_exit'
+                          ? { type: 'select' }
+                          : { type: 'place_exit' },
+                      );
                       rerender();
                     }}
                     className={`w-full text-xs text-left px-2 py-1.5 rounded border transition-colors ${
@@ -3951,7 +3955,11 @@ export function DebugRTSSim() {
                   </button>
                   <button
                     onClick={() => {
-                      rts.setInteractionMode({ type: 'delete_exit' });
+                      rts.setInteractionMode(
+                        gameState.interactionMode.type === 'delete_exit'
+                          ? { type: 'select' }
+                          : { type: 'delete_exit' },
+                      );
                       rerender();
                     }}
                     className={`w-full text-xs text-left px-2 py-1.5 rounded border transition-colors ${
@@ -3964,7 +3972,11 @@ export function DebugRTSSim() {
                   </button>
                   <button
                     onClick={() => {
-                      rts.setInteractionMode({ type: 'place_blast_site' });
+                      rts.setInteractionMode(
+                        gameState.interactionMode.type === 'place_blast_site'
+                          ? { type: 'select' }
+                          : { type: 'place_blast_site' },
+                      );
                       rerender();
                     }}
                     className={`w-full text-xs text-left px-2 py-1.5 rounded border transition-colors ${
@@ -4071,7 +4083,11 @@ export function DebugRTSSim() {
                   </div>
                   <button
                     onClick={() => {
-                      rts.setInteractionMode({ type: 'draw_wall', startPoint: null });
+                      rts.setInteractionMode(
+                        gameState.interactionMode.type === 'draw_wall'
+                          ? { type: 'select' }
+                          : { type: 'draw_wall', startPoint: null },
+                      );
                       rerender();
                     }}
                     className={`w-full text-xs text-left px-2 py-1.5 rounded border transition-colors ${
@@ -4088,7 +4104,11 @@ export function DebugRTSSim() {
                   </button>
                   <button
                     onClick={() => {
-                      rts.setInteractionMode({ type: 'place_door' });
+                      rts.setInteractionMode(
+                        gameState.interactionMode.type === 'place_door'
+                          ? { type: 'select' }
+                          : { type: 'place_door' },
+                      );
                       rerender();
                     }}
                     className={`w-full text-xs text-left px-2 py-1.5 rounded border transition-colors ${
@@ -4107,7 +4127,13 @@ export function DebugRTSSim() {
                         <button
                           key={ht}
                           onClick={() => {
-                            rts.setInteractionMode({ type: 'place_hazard', hazardType: ht });
+                            rts.setInteractionMode(
+                              gameState.interactionMode.type === 'place_hazard' &&
+                                (gameState.interactionMode as { hazardType?: string })
+                                  .hazardType === ht
+                                ? { type: 'select' }
+                                : { type: 'place_hazard', hazardType: ht },
+                            );
                             rerender();
                           }}
                           className={`text-xs px-1.5 py-1 rounded border text-left transition-colors ${
@@ -4125,7 +4151,11 @@ export function DebugRTSSim() {
                   </div>
                   <button
                     onClick={() => {
-                      rts.setInteractionMode({ type: 'place_stairwell' });
+                      rts.setInteractionMode(
+                        gameState.interactionMode.type === 'place_stairwell'
+                          ? { type: 'select' }
+                          : { type: 'place_stairwell' },
+                      );
                       rerender();
                     }}
                     className={`w-full text-xs text-left px-2 py-1.5 rounded border transition-colors ${
