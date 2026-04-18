@@ -378,7 +378,7 @@ export const WarRoom = () => {
   const [useStructured, setUseStructured] = useState(false);
   const [progressPhase, setProgressPhase] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState<string>('');
-  const [step, setStep] = useState<1 | 2 | 3 | 35 | 4 | 5 | 11 | 12 | 13 | 14 | 15 | 16>(11);
+  const [step, setStep] = useState<1 | 2 | 3 | 35 | 4 | 5 | 11 | 12 | 13 | 14 | 15>(11);
   const [teams, setTeams] = useState<TeamEntry[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [resolvedScenarioType, setResolvedScenarioType] = useState<string | null>(null);
@@ -414,6 +414,17 @@ export const WarRoom = () => {
 
   const [searchParams] = useSearchParams();
   const draftResumeLoadedRef = useRef<string | null>(null);
+
+  // Restore state when returning from RTS-sim scene editor
+  useEffect(() => {
+    const sceneIdParam = searchParams.get('sceneId');
+    const draftIdParam = searchParams.get('draft');
+    if (sceneIdParam && !wizardMode) {
+      setRtsSceneId(sceneIdParam);
+      if (draftIdParam) setWizardDraftId(draftIdParam);
+      setStep(13);
+    }
+  }, [searchParams, wizardMode]);
 
   useEffect(() => {
     const draftParam = searchParams.get('draft');
@@ -1200,7 +1211,7 @@ export const WarRoom = () => {
           </div>
         </div>
 
-        {(step === 2 || step === 13) && (
+        {(step === 2 || step === 12) && (
           <div className="military-border p-6 mb-6">
             <h3 className="text-lg terminal-text uppercase mb-4">[CONFIGURE TEAMS]</h3>
             <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
@@ -2068,34 +2079,12 @@ export const WarRoom = () => {
           </div>
         )}
 
-        {/* Manual Step 2: Location */}
-        {!wizardMode && step === 12 && (
-          <div className="military-border p-6 mb-6">
-            <h3 className="text-lg terminal-text uppercase mb-4">[LOCATION]</h3>
-            <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
-              Choose the location for the exercise. Your current position is used as the default.
-            </p>
-            <div className="space-y-4">
-              <LocationPicker
-                onLocationChange={(loc) => setManualCoords(loc)}
-                initialLocation={manualCoords}
-              />
-              {manualCoords && (
-                <div className="text-xs terminal-text text-robotic-yellow/50">
-                  Selected: {manualCoords.display_name} ({manualCoords.lat.toFixed(6)},{' '}
-                  {manualCoords.lng.toFixed(6)})
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Manual Step 3: Teams — reuses wizard Step 2 UI (shown above when step === 2) */}
 
         {/* Manual Step 4: Location Validation — reuses wizard Step 3 UI (shown above when step === 3) */}
 
-        {/* Manual Step 5: Scene Design — full-page RTS-sim experience */}
-        {!wizardMode && step === 15 && geocodeData && (
+        {/* Manual Step 3: Scene Design — full-page RTS-sim experience */}
+        {!wizardMode && step === 13 && (
           <div className="military-border p-6 mb-6">
             <h3 className="text-lg terminal-text uppercase mb-4">[SCENE DESIGN]</h3>
             <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
@@ -2105,11 +2094,7 @@ export const WarRoom = () => {
             <div className="flex gap-3 items-center">
               <button
                 onClick={() => {
-                  const params = new URLSearchParams({
-                    warroom: '1',
-                    lat: String(geocodeData.lat),
-                    lng: String(geocodeData.lng),
-                  });
+                  const params = new URLSearchParams({ warroom: '1' });
                   if (wizardDraftId) params.set('draftId', wizardDraftId);
                   if (rtsSceneId) params.set('sceneId', rtsSceneId);
                   window.location.href = `/debug/rts-sim?${params}`;
@@ -2133,7 +2118,7 @@ export const WarRoom = () => {
         )}
 
         {/* Manual Step 6: AI Research + Enrichment */}
-        {!wizardMode && step === 16 && (
+        {!wizardMode && step === 15 && (
           <div className="military-border p-6 mb-6">
             <h3 className="text-lg terminal-text uppercase mb-4">[AI RESEARCH & ENRICHMENT]</h3>
             <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
@@ -2298,42 +2283,15 @@ export const WarRoom = () => {
               </button>
             </>
           ) : step === 11 ? (
-            /* Manual Step 1: Incident Type */
+            /* Manual Step 1: Incident Type → Next: Teams */
             <>
-              <button
-                onClick={() => setStep(12)}
-                disabled={loading || !prompt.trim()}
-                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                [NEXT: CHOOSE LOCATION]
-              </button>
-              <Link
-                to="/scenarios"
-                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
-              >
-                [CANCEL]
-              </Link>
-            </>
-          ) : step === 12 ? (
-            /* Manual Step 2: Location */
-            <>
-              <button
-                onClick={() => setStep(11)}
-                disabled={loading}
-                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
-              >
-                [BACK]
-              </button>
               <button
                 onClick={async () => {
-                  if (!manualCoords) return;
+                  if (!prompt.trim()) return;
                   setTeamsLoading(true);
                   setError(null);
                   try {
                     const opts = buildOptions();
-                    if (manualCoords) {
-                      (opts as Record<string, unknown>).location = manualCoords.display_name;
-                    }
                     const { data } = await api.warroom.suggestTeams(opts);
                     const mappedTeams = data.suggested_teams.map((t: Record<string, unknown>) => ({
                       team_name: t.team_name as string,
@@ -2346,52 +2304,82 @@ export const WarRoom = () => {
                     if (data.scenario_type) setResolvedScenarioType(data.scenario_type);
                     if (data.threat_profile?.weapon_class)
                       setResolvedWeaponClass(data.threat_profile.weapon_class);
-                    setStep(13);
+                    setStep(12);
                   } catch (err) {
                     setError(err instanceof Error ? err.message : 'Failed to suggest teams');
                   } finally {
                     setTeamsLoading(false);
                   }
                 }}
-                disabled={loading || teamsLoading || !manualCoords}
+                disabled={loading || teamsLoading || !prompt.trim()}
                 className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {teamsLoading ? '[SUGGESTING TEAMS...]' : '[NEXT: CONFIGURE TEAMS]'}
               </button>
+              <Link
+                to="/scenarios"
+                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              >
+                [CANCEL]
+              </Link>
+            </>
+          ) : step === 12 ? (
+            /* Manual Step 2: Teams → Next: Scene Design */
+            <>
+              <button
+                onClick={() => setStep(11)}
+                disabled={loading}
+                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              >
+                [BACK: INCIDENT]
+              </button>
+              <button
+                onClick={() => setStep(13)}
+                disabled={loading || teams.length === 0}
+                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                [NEXT: DESIGN SCENE]
+              </button>
             </>
           ) : step === 13 ? (
-            /* Manual Step 3: Teams */
+            /* Manual Step 3: Scene Design → Next: Validate Location */
             <>
               <button
                 onClick={() => setStep(12)}
                 disabled={loading}
                 className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
               >
-                [BACK: LOCATION]
+                [BACK: TEAMS]
               </button>
               <button
                 onClick={async () => {
-                  if (!manualCoords) return;
+                  if (!rtsSceneId) {
+                    setError('Save your scene in the editor first.');
+                    return;
+                  }
                   setGeocodeLoading(true);
+                  setError(null);
                   try {
                     let draftId = wizardDraftId;
                     if (!draftId) {
                       const opts = buildOptions();
+                      const draftInput: Record<string, unknown> = {
+                        ...opts,
+                        teams: teams.map((t) => ({
+                          team_name: t.team_name,
+                          team_description: t.team_description,
+                          min_participants: t.min_participants,
+                          max_participants: t.max_participants,
+                        })),
+                      };
+                      if (manualCoords)
+                        draftInput.geocode_override = {
+                          lat: manualCoords.lat,
+                          lng: manualCoords.lng,
+                          display_name: manualCoords.display_name,
+                        };
                       const { data: draftRes } = await api.warroom.wizardDraftCreate({
-                        input: {
-                          ...opts,
-                          teams: teams.map((t) => ({
-                            team_name: t.team_name,
-                            team_description: t.team_description,
-                            min_participants: t.min_participants,
-                            max_participants: t.max_participants,
-                          })),
-                          geocode_override: {
-                            lat: manualCoords.lat,
-                            lng: manualCoords.lng,
-                            display_name: manualCoords.display_name,
-                          },
-                        },
+                        input: draftInput,
                       });
                       draftId = draftRes.draft_id;
                       setWizardDraftId(draftId);
@@ -2402,62 +2390,44 @@ export const WarRoom = () => {
                     setAreaSummary(data.areaSummary);
                     setStep(14);
                   } catch (err) {
-                    setError(err instanceof Error ? err.message : 'Validation failed');
+                    setError(err instanceof Error ? err.message : 'Location validation failed');
                   } finally {
                     setGeocodeLoading(false);
                   }
                 }}
-                disabled={loading || geocodeLoading || teams.length === 0}
+                disabled={loading || geocodeLoading || !rtsSceneId}
                 className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {geocodeLoading ? '[VALIDATING...]' : '[NEXT: VALIDATE LOCATION]'}
+                {geocodeLoading ? '[VALIDATING LOCATION...]' : '[NEXT: VALIDATE LOCATION]'}
               </button>
             </>
           ) : step === 14 ? (
-            /* Manual Step 4: Validation */
+            /* Manual Step 4: Location Validation → Next: AI Research */
             <>
               <button
                 onClick={() => setStep(13)}
                 disabled={loading}
                 className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
               >
-                [BACK: TEAMS]
+                [BACK: SCENE]
               </button>
               <button
                 onClick={() => setStep(15)}
                 disabled={loading || !geocodeData}
                 className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                [NEXT: DESIGN SCENE]
+                [NEXT: AI RESEARCH]
               </button>
             </>
           ) : step === 15 ? (
-            /* Manual Step 5: Scene Design */
+            /* Manual Step 5: AI Research */
             <>
               <button
                 onClick={() => setStep(14)}
                 disabled={loading}
                 className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
               >
-                [BACK: VALIDATION]
-              </button>
-              <button
-                onClick={() => setStep(16)}
-                disabled={loading || (!manualSceneResult && !rtsSceneId)}
-                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                [NEXT: AI RESEARCH]
-              </button>
-            </>
-          ) : step === 16 ? (
-            /* Manual Step 6: AI Research */
-            <>
-              <button
-                onClick={() => setStep(15)}
-                disabled={loading}
-                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
-              >
-                [BACK: SCENE]
+                [BACK: LOCATION]
               </button>
               <button
                 onClick={async () => {
