@@ -194,6 +194,9 @@ export function SceneSetup({
             center: snap.point,
             width: w,
             edgeIndex: snap.edgeIndex,
+            description: '',
+            status: 'unknown' as const,
+            photos: [],
           },
         ]);
         setActiveMode('select');

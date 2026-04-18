@@ -567,16 +567,18 @@ export interface InteriorWall {
   hasDoor: boolean;
   doorWidth: number;
   doorPosition: number;
+  description: string;
+  material: string;
+  photos: string[];
 }
 
 export type HazardType =
   | 'combustible'
-  | 'chemical'
-  | 'structural'
-  | 'fire'
+  | 'ignitable'
+  | 'debris_risk'
+  | 'falling_object'
   | 'electrical'
-  | 'debris'
-  | 'smoke';
+  | 'chemical';
 
 export interface HazardZone {
   id: string;
@@ -599,12 +601,11 @@ export interface Stairwell {
 
 export const HAZARD_DEFS: Record<HazardType, { label: string; color: string; icon: string }> = {
   combustible: { label: 'Combustible', color: '#f97316', icon: '🔥' },
-  chemical: { label: 'Chemical', color: '#a855f7', icon: '☣' },
-  structural: { label: 'Structural Weakness', color: '#eab308', icon: '⚠' },
-  fire: { label: 'Active Fire', color: '#ef4444', icon: '🔥' },
+  ignitable: { label: 'Ignitable', color: '#ef4444', icon: '💥' },
+  debris_risk: { label: 'Debris Risk', color: '#78716c', icon: '🧱' },
+  falling_object: { label: 'Falling Object Risk', color: '#eab308', icon: '⚠' },
   electrical: { label: 'Electrical', color: '#3b82f6', icon: '⚡' },
-  debris: { label: 'Debris / Collapse', color: '#78716c', icon: '🧱' },
-  smoke: { label: 'Smoke / Low Vis', color: '#6b7280', icon: '🌫' },
+  chemical: { label: 'Chemical', color: '#a855f7', icon: '☣' },
 };
 
 export function createInitialGameState(): RTSGameState {

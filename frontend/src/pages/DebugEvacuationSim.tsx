@@ -331,7 +331,15 @@ export function DebugEvacuationSim() {
         const id = `exit-${++exitIdCounter}`;
         setExits((prev) => [
           ...prev,
-          { id, center: snap.point, width: w, edgeIndex: snap.edgeIndex },
+          {
+            id,
+            center: snap.point,
+            width: w,
+            edgeIndex: snap.edgeIndex,
+            description: '',
+            status: 'unknown' as const,
+            photos: [],
+          },
         ]);
         setMode('none');
         return;

@@ -8,6 +8,9 @@ export interface ExitDef {
   center: Vec2;
   width: number; // meters
   edgeIndex: number; // which polygon edge (or -1 for rectangle mode)
+  description: string;
+  status: 'open' | 'blocked' | 'congested' | 'unknown';
+  photos: string[];
 }
 
 export interface SimConfig {

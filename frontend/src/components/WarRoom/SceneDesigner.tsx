@@ -294,6 +294,9 @@ export function SceneDesigner({
             center: snap.point,
             width: Math.min(newExitWidth, maxW),
             edgeIndex: snap.edgeIndex,
+            description: '',
+            status: 'unknown' as const,
+            photos: [],
           },
         ]);
         setActiveMode('select');

@@ -1646,9 +1646,16 @@ export function DebugRTSSim() {
         const id = `exit-${++exitIdCounter}`;
         setExits((prev) => [
           ...prev,
-          { id, center: snap.point, width: w, edgeIndex: snap.edgeIndex },
+          {
+            id,
+            center: snap.point,
+            width: w,
+            edgeIndex: snap.edgeIndex,
+            description: '',
+            status: 'unknown' as const,
+            photos: [],
+          },
         ]);
-        rts.setInteractionMode({ type: 'select' });
         return;
       }
 
@@ -1677,6 +1684,9 @@ export function DebugRTSSim() {
               hasDoor: false,
               doorWidth: 1.5,
               doorPosition: 0.5,
+              description: '',
+              material: '',
+              photos: [],
             },
           ]);
           rts.setInteractionMode({ type: 'draw_wall', startPoint: null });
@@ -1720,7 +1730,6 @@ export function DebugRTSSim() {
             photos: [],
           },
         ]);
-        rts.setInteractionMode({ type: 'select' });
         return;
       }
 
@@ -1735,7 +1744,6 @@ export function DebugRTSSim() {
             label: `Stair ${prev.length + 1}`,
           },
         ]);
-        rts.setInteractionMode({ type: 'select' });
         return;
       }
 
@@ -1929,6 +1937,9 @@ export function DebugRTSSim() {
               hasDoor: false,
               doorWidth: 1.5,
               doorPosition: 0.5,
+              description: '',
+              material: '',
+              photos: [],
             },
           ]);
         }
@@ -2033,10 +2044,17 @@ export function DebugRTSSim() {
             const id = `exit-${++exitIdCounter}`;
             setExits((prev) => [
               ...prev,
-              { id, center: snap.point, width: w, edgeIndex: snap.edgeIndex },
+              {
+                id,
+                center: snap.point,
+                width: w,
+                edgeIndex: snap.edgeIndex,
+                description: '',
+                status: 'unknown' as const,
+                photos: [],
+              },
             ]);
           }
-          rts.setInteractionMode({ type: 'select' });
         } else if (mode.type === 'delete_exit') {
           const hit = exits.find(
             (ex) => Math.hypot(ex.center.x - sim.x, ex.center.y - sim.y) < ex.width,
@@ -2056,6 +2074,9 @@ export function DebugRTSSim() {
                 hasDoor: false,
                 doorWidth: 1.5,
                 doorPosition: 0.5,
+                description: '',
+                material: '',
+                photos: [],
               },
             ]);
             rts.setInteractionMode({ type: 'draw_wall', startPoint: null });
@@ -2093,7 +2114,6 @@ export function DebugRTSSim() {
               photos: [],
             },
           ]);
-          rts.setInteractionMode({ type: 'select' });
         } else if (mode.type === 'place_stairwell') {
           setStairwells((prev) => [
             ...prev,
@@ -2105,7 +2125,6 @@ export function DebugRTSSim() {
               label: `Stair ${prev.length + 1}`,
             },
           ]);
-          rts.setInteractionMode({ type: 'select' });
         } else if (mode.type === 'place_blast_site') {
           setBlastSite(sim);
           rts.setInteractionMode({ type: 'select' });
@@ -2461,6 +2480,17 @@ export function DebugRTSSim() {
           ref={containerRef}
           style={{ touchAction: 'none' }}
         >
+          {/* GPS loading overlay */}
+          {!userGeoPos && !warroomLat && (
+            <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-[500] pointer-events-none">
+              <div className="text-center">
+                <div className="text-amber-400 text-sm font-mono animate-pulse mb-1">
+                  Locating you...
+                </div>
+                <div className="text-green-700 text-xs font-mono">Acquiring GPS position</div>
+              </div>
+            </div>
+          )}
           <MapContainer
             center={[
               Number.isNaN(parsedLat) ? 1.3 : parsedLat,
@@ -3048,6 +3078,19 @@ export function DebugRTSSim() {
                           : 'Submit Triage'}
                     </button>
                   </div>
+                  <div className="px-3 py-2 border-t border-gray-800">
+                    <button
+                      onClick={() => {
+                        setCasualtyClusters((prev) =>
+                          prev.filter((c) => c.id !== activeCasualtyCluster.id),
+                        );
+                        setActiveCasualtyCluster(null);
+                      }}
+                      className="w-full bg-red-900/40 hover:bg-red-800 text-red-300 text-xs px-3 py-1.5 rounded border border-red-700"
+                    >
+                      Delete This Casualty Cluster
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -3221,6 +3264,19 @@ export function DebugRTSSim() {
                         </div>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Delete hazard */}
+                  <div className="px-3 py-2 border-t border-gray-800">
+                    <button
+                      onClick={() => {
+                        setHazardZones((prev) => prev.filter((h) => h.id !== activeHazard.id));
+                        setActiveHazard(null);
+                      }}
+                      className="w-full bg-red-900/40 hover:bg-red-800 text-red-300 text-xs px-3 py-1.5 rounded border border-red-700"
+                    >
+                      Delete This Hazard
+                    </button>
                   </div>
                 </div>
               )}
