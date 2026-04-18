@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import { VoiceMicButton } from '../components/VoiceMicButton';
 import { LocationPicker, type PickedLocation } from '../components/WarRoom/LocationPicker';
 import { SceneSetup, type SceneSetupResult } from '../components/WarRoom/SceneSetup';
+import { SceneDesigner, type SceneDesignerResult } from '../components/WarRoom/SceneDesigner';
 import { createSceneConfig } from '../lib/rts/sceneConfigApi';
 
 type TeamEntry = {
@@ -377,7 +378,7 @@ export const WarRoom = () => {
   const [useStructured, setUseStructured] = useState(false);
   const [progressPhase, setProgressPhase] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState<string>('');
-  const [step, setStep] = useState<1 | 2 | 3 | 35 | 4 | 5>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 35 | 4 | 5 | 11 | 12 | 13 | 14 | 15 | 16>(11);
   const [teams, setTeams] = useState<TeamEntry[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [resolvedScenarioType, setResolvedScenarioType] = useState<string | null>(null);
@@ -386,7 +387,7 @@ export const WarRoom = () => {
   const [realBombsCount, setRealBombsCount] = useState(0);
 
   // Wizard mode
-  const [wizardMode, setWizardMode] = useState(true);
+  const [wizardMode, setWizardMode] = useState(false);
   const [geocodeData, setGeocodeData] = useState<GeocodeData | null>(null);
   const [osmVicinity, setOsmVicinity] = useState<OsmVicinityData | null>(null);
   const [areaSummary, setAreaSummary] = useState<string | null>(null);
@@ -405,6 +406,11 @@ export const WarRoom = () => {
   const [wizardScenarioPersisting, setWizardScenarioPersisting] = useState(false);
   const [sceneConfig, setSceneConfig] = useState<SceneSetupResult | null>(null);
   const [rtsSceneId, setRtsSceneId] = useState<string | null>(null);
+
+  // ── Manual Design mode state ──────────────────────────────────────────
+  const [manualSceneResult, setManualSceneResult] = useState<SceneDesignerResult | null>(null);
+  const [aiEnrichmentLoading, setAiEnrichmentLoading] = useState(false);
+  const [aiEnrichmentResult, setAiEnrichmentResult] = useState<string | null>(null);
 
   const [searchParams] = useSearchParams();
   const draftResumeLoadedRef = useRef<string | null>(null);
@@ -950,26 +956,43 @@ export const WarRoom = () => {
             <h1 className="text-2xl terminal-text uppercase tracking-wider">
               [WAR_ROOM] Scenario Generator
             </h1>
-            <button
-              onClick={() => {
-                if (wizardMode) setWizardDraftId(null);
-                setWizardMode((prev) => !prev);
-                if (step > 2) setStep(2);
-              }}
-              disabled={loading}
-              className={`px-4 py-1.5 text-[10px] terminal-text uppercase tracking-wider border transition-all ${
-                wizardMode
-                  ? 'border-cyan-500 bg-cyan-500/15 text-cyan-300'
-                  : 'border-robotic-yellow/30 text-robotic-yellow/50 hover:border-robotic-yellow/60'
-              }`}
-            >
-              {wizardMode ? '[SWITCH TO QUICK GENERATE]' : '[SWITCH TO WIZARD MODE]'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setWizardMode(false);
+                  setStep(11);
+                }}
+                disabled={loading}
+                className={`px-3 py-1 text-[10px] terminal-text uppercase tracking-wider border transition-all ${
+                  !wizardMode && step >= 11
+                    ? 'border-cyan-500 bg-cyan-500/15 text-cyan-300'
+                    : 'border-robotic-yellow/30 text-robotic-yellow/50 hover:border-robotic-yellow/60'
+                }`}
+              >
+                [MANUAL DESIGN]
+              </button>
+              <button
+                onClick={() => {
+                  setWizardMode(true);
+                  setStep(1);
+                }}
+                disabled={loading}
+                className={`px-3 py-1 text-[10px] terminal-text uppercase tracking-wider border transition-all ${
+                  wizardMode
+                    ? 'border-cyan-500 bg-cyan-500/15 text-cyan-300'
+                    : 'border-robotic-yellow/30 text-robotic-yellow/50 hover:border-robotic-yellow/60'
+                }`}
+              >
+                [QUICK SETUP]
+              </button>
+            </div>
           </div>
           <p className="text-xs terminal-text text-robotic-yellow/70">
             {wizardMode
-              ? 'You are in Wizard Mode: validate location, review doctrines, then generate.'
-              : 'You are in Quick Generate: enter inputs and generate immediately (fewer review steps).'}
+              ? 'Quick Setup: AI-assisted wizard with automated doctrine research and deterioration preview.'
+              : step >= 11
+                ? 'Manual Design: hands-on scene design with full control over buildings, hazards, casualties, and blast zones.'
+                : 'Quick Generate: enter inputs and generate immediately.'}
           </p>
         </div>
 
@@ -1996,6 +2019,235 @@ export const WarRoom = () => {
           </div>
         )}
 
+        {/* ============================================================= */}
+        {/* MANUAL DESIGN STEPS */}
+        {/* ============================================================= */}
+
+        {/* Manual Step 1: Incident Type */}
+        {!wizardMode && step === 11 && (
+          <div className="military-border p-6 mb-6">
+            <h3 className="text-lg terminal-text uppercase mb-4">[INCIDENT TYPE]</h3>
+            <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
+              Describe the incident or select a type from the list.
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs terminal-text text-robotic-yellow/70 block mb-1">
+                  Incident Description
+                </label>
+                <textarea
+                  value={
+                    typeof (window as unknown as Record<string, unknown>).__wrPrompt === 'string'
+                      ? ''
+                      : prompt
+                  }
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="e.g. A bomb has detonated in the ground floor lobby of a shopping mall during peak hours..."
+                  className="w-full p-3 bg-black/50 border border-robotic-yellow/30 text-robotic-yellow text-sm terminal-text resize-none focus:border-robotic-yellow/60 focus:outline-none"
+                  rows={4}
+                />
+              </div>
+              <div>
+                <label className="text-xs terminal-text text-robotic-yellow/70 block mb-1">
+                  Scenario Type
+                </label>
+                <select
+                  value={resolvedScenarioType || ''}
+                  onChange={(e) => setResolvedScenarioType(e.target.value || null)}
+                  className="w-full p-2 bg-black/50 border border-robotic-yellow/30 text-robotic-yellow text-xs terminal-text"
+                >
+                  <option value="">Auto-detect from description</option>
+                  {SCENARIO_TYPES.map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {st.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Manual Step 2: Location */}
+        {!wizardMode && step === 12 && (
+          <div className="military-border p-6 mb-6">
+            <h3 className="text-lg terminal-text uppercase mb-4">[LOCATION]</h3>
+            <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
+              Choose the location for the exercise. Your current position is used as the default.
+            </p>
+            <div className="space-y-4">
+              <LocationPicker
+                onLocationChange={(loc) => setManualCoords(loc)}
+                initialLocation={manualCoords}
+              />
+              {manualCoords && (
+                <div className="text-xs terminal-text text-robotic-yellow/50">
+                  Selected: {manualCoords.display_name} ({manualCoords.lat.toFixed(6)},{' '}
+                  {manualCoords.lng.toFixed(6)})
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Manual Step 3: Teams */}
+        {!wizardMode && step === 13 && (
+          <div className="military-border p-6 mb-6">
+            <h3 className="text-lg terminal-text uppercase mb-4">[TEAMS]</h3>
+            <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
+              Configure the teams for the exercise.
+            </p>
+            <div className="space-y-3">
+              {teams.length === 0 && (
+                <div className="text-xs terminal-text text-robotic-yellow/50">
+                  No teams configured yet. Click "Suggest Teams" or add manually.
+                </div>
+              )}
+              {teams.map((t, i) => (
+                <div key={i} className="border border-robotic-gray-200 p-3 space-y-2">
+                  <input
+                    value={t.team_name}
+                    onChange={(e) => {
+                      const c = [...teams];
+                      c[i] = { ...c[i], team_name: e.target.value };
+                      setTeams(c);
+                    }}
+                    className="w-full p-1.5 bg-black/50 border border-robotic-yellow/30 text-robotic-yellow text-xs terminal-text"
+                    placeholder="Team name"
+                  />
+                  <textarea
+                    value={t.team_description}
+                    onChange={(e) => {
+                      const c = [...teams];
+                      c[i] = { ...c[i], team_description: e.target.value };
+                      setTeams(c);
+                    }}
+                    className="w-full p-1.5 bg-black/50 border border-robotic-yellow/30 text-robotic-yellow text-xs terminal-text resize-none"
+                    rows={2}
+                    placeholder="Team description"
+                  />
+                </div>
+              ))}
+              <button
+                onClick={() =>
+                  setTeams((prev) => [
+                    ...prev,
+                    {
+                      team_name: '',
+                      team_description: '',
+                      min_participants: 1,
+                      max_participants: 4,
+                    },
+                  ])
+                }
+                className="text-xs terminal-text text-robotic-yellow/50 border border-robotic-yellow/30 px-3 py-1 hover:border-robotic-yellow/50"
+              >
+                + Add Team
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Manual Step 4: Location Validation */}
+        {!wizardMode && step === 14 && (
+          <div className="military-border p-6 mb-6">
+            <h3 className="text-lg terminal-text uppercase mb-4">[LOCATION VALIDATION]</h3>
+            {geocodeLoading ? (
+              <p className="text-sm terminal-text text-robotic-yellow/70 animate-pulse">
+                Validating location and fetching map data...
+              </p>
+            ) : geocodeData ? (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs terminal-text text-robotic-yellow/70 mb-1">
+                    RESOLVED LOCATION
+                  </p>
+                  <p className="text-sm terminal-text text-robotic-yellow">
+                    {geocodeData.display_name}
+                  </p>
+                  <p className="text-xs terminal-text text-robotic-yellow/50 mt-1">
+                    {geocodeData.lat.toFixed(6)}, {geocodeData.lng.toFixed(6)}
+                  </p>
+                </div>
+                {osmVicinity && (
+                  <div>
+                    <p className="text-xs terminal-text text-robotic-yellow/70 mb-1">
+                      NEARBY FACILITIES
+                    </p>
+                    <div className="text-xs terminal-text text-robotic-yellow/80 space-y-0.5">
+                      <p>Hospitals: {osmVicinity.hospitals?.length ?? 0}</p>
+                      <p>Police: {osmVicinity.police?.length ?? 0}</p>
+                      <p>Fire Stations: {osmVicinity.fire_stations?.length ?? 0}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm terminal-text text-robotic-yellow/50">
+                Click "Validate Location" to proceed.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Manual Step 5: Scene Design */}
+        {!wizardMode && step === 15 && geocodeData && (
+          <div
+            className="military-border mb-6"
+            style={{ height: 'calc(100vh - 280px)', minHeight: 500 }}
+          >
+            <SceneDesigner
+              centerLat={geocodeData.lat}
+              centerLng={geocodeData.lng}
+              radius={300}
+              initialConfig={manualSceneResult ?? undefined}
+              onSave={(config) => {
+                setManualSceneResult(config);
+              }}
+            />
+          </div>
+        )}
+
+        {/* Manual Step 6: AI Research + Enrichment */}
+        {!wizardMode && step === 16 && (
+          <div className="military-border p-6 mb-6">
+            <h3 className="text-lg terminal-text uppercase mb-4">[AI RESEARCH & ENRICHMENT]</h3>
+            <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
+              The AI will analyze your scene setup and research relevant doctrines, hazard
+              interactions, casualty profiles, and response protocols.
+            </p>
+            {manualSceneResult && (
+              <div className="text-xs terminal-text text-robotic-yellow/50 mb-4 space-y-0.5">
+                <p>Building: {manualSceneResult.buildingName || 'Custom'}</p>
+                <p>
+                  Exits: {manualSceneResult.exits.length} · Casualties:{' '}
+                  {manualSceneResult.casualtyPins.length} · Hazards:{' '}
+                  {manualSceneResult.hazardZones.length}
+                </p>
+                <p>
+                  Blast site:{' '}
+                  {manualSceneResult.blastSite
+                    ? `Set (${manualSceneResult.blastRadius}m radius)`
+                    : 'Not set'}
+                </p>
+                <p>Pedestrians: {manualSceneResult.pedestrianCount}</p>
+              </div>
+            )}
+            {aiEnrichmentLoading && (
+              <p className="text-sm terminal-text text-robotic-yellow/70 animate-pulse">
+                AI is analyzing scene and researching doctrines...
+              </p>
+            )}
+            {aiEnrichmentResult && (
+              <div className="bg-black/50 border border-robotic-yellow/30 p-4 mt-4">
+                <pre className="text-xs terminal-text text-robotic-yellow/80 whitespace-pre-wrap">
+                  {aiEnrichmentResult}
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex gap-4">
           {step === 1 ? (
             <>
@@ -2120,6 +2372,214 @@ export const WarRoom = () => {
               >
                 {loading ? '[LOADING...]' : '[OPEN SCENARIOS]'}
               </button>
+            </>
+          ) : step === 11 ? (
+            /* Manual Step 1: Incident Type */
+            <>
+              <button
+                onClick={() => setStep(12)}
+                disabled={loading || !prompt.trim()}
+                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                [NEXT: CHOOSE LOCATION]
+              </button>
+              <Link
+                to="/scenarios"
+                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              >
+                [CANCEL]
+              </Link>
+            </>
+          ) : step === 12 ? (
+            /* Manual Step 2: Location */
+            <>
+              <button
+                onClick={() => setStep(11)}
+                disabled={loading}
+                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              >
+                [BACK]
+              </button>
+              <button
+                onClick={() => setStep(13)}
+                disabled={loading || !manualCoords}
+                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                [NEXT: CONFIGURE TEAMS]
+              </button>
+            </>
+          ) : step === 13 ? (
+            /* Manual Step 3: Teams */
+            <>
+              <button
+                onClick={() => setStep(12)}
+                disabled={loading}
+                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              >
+                [BACK: LOCATION]
+              </button>
+              <button
+                onClick={async () => {
+                  if (!manualCoords) return;
+                  setGeocodeLoading(true);
+                  try {
+                    let draftId = wizardDraftId;
+                    if (!draftId) {
+                      const opts = buildOptions();
+                      const { data: draftRes } = await api.warroom.wizardDraftCreate({
+                        input: {
+                          ...opts,
+                          teams: teams.map((t) => ({
+                            team_name: t.team_name,
+                            team_description: t.team_description,
+                            min_participants: t.min_participants,
+                            max_participants: t.max_participants,
+                          })),
+                          geocode_override: {
+                            lat: manualCoords.lat,
+                            lng: manualCoords.lng,
+                            display_name: manualCoords.display_name,
+                          },
+                        },
+                      });
+                      draftId = draftRes.draft_id;
+                      setWizardDraftId(draftId);
+                    }
+                    const { data } = await api.warroom.wizardDraftGeocodeValidate(draftId);
+                    setGeocodeData(data.geocode);
+                    setOsmVicinity(data.osmVicinity);
+                    setAreaSummary(data.areaSummary);
+                    setStep(14);
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : 'Validation failed');
+                  } finally {
+                    setGeocodeLoading(false);
+                  }
+                }}
+                disabled={loading || geocodeLoading || teams.length === 0}
+                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {geocodeLoading ? '[VALIDATING...]' : '[NEXT: VALIDATE LOCATION]'}
+              </button>
+            </>
+          ) : step === 14 ? (
+            /* Manual Step 4: Validation */
+            <>
+              <button
+                onClick={() => setStep(13)}
+                disabled={loading}
+                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              >
+                [BACK: TEAMS]
+              </button>
+              <button
+                onClick={() => setStep(15)}
+                disabled={loading || !geocodeData}
+                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                [NEXT: DESIGN SCENE]
+              </button>
+            </>
+          ) : step === 15 ? (
+            /* Manual Step 5: Scene Design */
+            <>
+              <button
+                onClick={() => setStep(14)}
+                disabled={loading}
+                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              >
+                [BACK: VALIDATION]
+              </button>
+              <button
+                onClick={() => setStep(16)}
+                disabled={loading || !manualSceneResult}
+                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                [NEXT: AI RESEARCH]
+              </button>
+            </>
+          ) : step === 16 ? (
+            /* Manual Step 6: AI Research */
+            <>
+              <button
+                onClick={() => setStep(15)}
+                disabled={loading}
+                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              >
+                [BACK: SCENE]
+              </button>
+              <button
+                onClick={async () => {
+                  if (!manualSceneResult || !wizardDraftId) return;
+                  setAiEnrichmentLoading(true);
+                  try {
+                    const opts = buildOptions();
+                    const inputPayload: Record<string, unknown> = {
+                      ...opts,
+                      teams: teams.map((t) => ({
+                        team_name: t.team_name,
+                        team_description: t.team_description,
+                        min_participants: t.min_participants,
+                        max_participants: t.max_participants,
+                      })),
+                      scene_context: {
+                        building_name: manualSceneResult.buildingName,
+                        exits_count: manualSceneResult.exits.length,
+                        stairwells_count: manualSceneResult.stairwells.length,
+                        has_blast_site: !!manualSceneResult.blastSite,
+                        blast_radius: manualSceneResult.blastRadius,
+                        casualty_count: manualSceneResult.casualtyPins.length,
+                        pedestrian_count: manualSceneResult.pedestrianCount,
+                        hazard_zones: manualSceneResult.hazardZones.map(
+                          (hz) =>
+                            `${hz.hazardType} (${hz.severity}): ${hz.description || 'no description'}`,
+                        ),
+                        game_zones: manualSceneResult.gameZones.map(
+                          (gz) => `${gz.type}: ${gz.radius}m`,
+                        ),
+                      },
+                    };
+                    if (geocodeData) {
+                      inputPayload.geocode_override = {
+                        lat: geocodeData.lat,
+                        lng: geocodeData.lng,
+                        display_name: geocodeData.display_name,
+                      };
+                    }
+                    await api.warroom.wizardDraftPatch(wizardDraftId, { input: inputPayload });
+                    const { data } = await api.warroom.wizardDraftResearchDoctrines(wizardDraftId);
+                    setDoctrines({
+                      perTeamDoctrines: data.doctrines.perTeamDoctrines,
+                      teamWorkflows: data.doctrines.teamWorkflows,
+                    });
+                    setAiEnrichmentResult(
+                      `Doctrine research complete.\n\nTeams analyzed: ${Object.keys(data.doctrines.perTeamDoctrines).length}\n` +
+                        Object.entries(data.doctrines.perTeamDoctrines)
+                          .map(
+                            ([team, findings]) =>
+                              `\n--- ${team} ---\n${(findings as Array<{ domain: string; key_points: string[] }>).map((f) => `  • ${f.domain}: ${f.key_points?.[0] || ''}`).join('\n')}`,
+                          )
+                          .join(''),
+                    );
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : 'AI research failed');
+                  } finally {
+                    setAiEnrichmentLoading(false);
+                  }
+                }}
+                disabled={loading || aiEnrichmentLoading || !manualSceneResult}
+                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {aiEnrichmentLoading ? '[RESEARCHING...]' : '[RUN AI RESEARCH]'}
+              </button>
+              {doctrines && (
+                <button
+                  onClick={() => navigate('/scenarios')}
+                  className="military-button px-8 py-3"
+                >
+                  [OPEN SCENARIOS]
+                </button>
+              )}
             </>
           ) : null}
         </div>
