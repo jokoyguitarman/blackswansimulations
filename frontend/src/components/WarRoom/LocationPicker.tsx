@@ -273,6 +273,53 @@ export function LocationPicker({ onLocationChange, initialLocation }: Props) {
     );
   }, [onLocationChange]);
 
+  // Auto-geolocate on mount and detect country
+  const autoGeoTriggered = useRef(false);
+  useEffect(() => {
+    if (autoGeoTriggered.current || picked) return;
+    autoGeoTriggered.current = true;
+    if (!navigator.geolocation) return;
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const loc: PickedLocation = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          display_name: `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`,
+        };
+        setPicked(loc);
+        onLocationChange(loc);
+        setGpsLoading(false);
+
+        // Reverse geocode to detect country
+        try {
+          const resp = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json&zoom=3`,
+            { headers: { 'User-Agent': 'BlackSwanSimulations/1.0' } },
+          );
+          if (resp.ok) {
+            const data = await resp.json();
+            const cc = data.address?.country_code?.toUpperCase();
+            if (cc && COUNTRIES.some(([code]) => code === cc)) {
+              setCountryCode(cc);
+            }
+            if (data.display_name) {
+              const updatedLoc = { ...loc, display_name: data.display_name };
+              setPicked(updatedLoc);
+              onLocationChange(updatedLoc);
+            }
+          }
+        } catch {
+          /* ignore reverse geocode failure */
+        }
+      },
+      () => {
+        setGpsLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
+    );
+  }, [picked, onLocationChange]);
+
   const handleClear = useCallback(() => {
     setPicked(null);
     onLocationChange(null);
