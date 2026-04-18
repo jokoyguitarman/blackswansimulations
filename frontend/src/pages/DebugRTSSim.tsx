@@ -1707,18 +1707,6 @@ export function DebugRTSSim() {
         return;
       }
 
-      if (mode.type === 'delete_exit') {
-        const hit = exits.find((ex) => {
-          const d = Math.hypot(ex.center.x - sim.x, ex.center.y - sim.y);
-          return d < ex.width;
-        });
-        if (hit) {
-          setExits((prev) => prev.filter((ex) => ex.id !== hit.id));
-        }
-        rts.setInteractionMode({ type: 'select' });
-        return;
-      }
-
       if (mode.type === 'draw_wall') {
         if (!mode.startPoint) {
           rts.setInteractionMode({ type: 'draw_wall', startPoint: sim });
@@ -2103,12 +2091,6 @@ export function DebugRTSSim() {
               },
             ]);
           }
-        } else if (mode.type === 'delete_exit') {
-          const hit = exits.find(
-            (ex) => Math.hypot(ex.center.x - sim.x, ex.center.y - sim.y) < ex.width,
-          );
-          if (hit) setExits((prev) => prev.filter((ex) => ex.id !== hit.id));
-          rts.setInteractionMode({ type: 'select' });
         } else if (mode.type === 'draw_wall') {
           if (!mode.startPoint) {
             rts.setInteractionMode({ type: 'draw_wall', startPoint: sim });
@@ -3956,23 +3938,6 @@ export function DebugRTSSim() {
                   <button
                     onClick={() => {
                       rts.setInteractionMode(
-                        gameState.interactionMode.type === 'delete_exit'
-                          ? { type: 'select' }
-                          : { type: 'delete_exit' },
-                      );
-                      rerender();
-                    }}
-                    className={`w-full text-xs text-left px-2 py-1.5 rounded border transition-colors ${
-                      gameState.interactionMode.type === 'delete_exit'
-                        ? 'border-red-400 bg-red-900/30 text-red-300'
-                        : 'border-green-900 text-green-500 hover:border-green-700'
-                    }`}
-                  >
-                    ❌ Delete Exit
-                  </button>
-                  <button
-                    onClick={() => {
-                      rts.setInteractionMode(
                         gameState.interactionMode.type === 'place_blast_site'
                           ? { type: 'select' }
                           : { type: 'place_blast_site' },
@@ -4285,30 +4250,6 @@ export function DebugRTSSim() {
                 )}
               </div>
             )}
-
-            {/* Heat meter */}
-            <div className="bg-gray-900 border border-green-800 rounded p-3">
-              <div className="text-xs text-green-500 uppercase tracking-wider mb-2">Heat Meter</div>
-              <div className="w-full h-4 bg-gray-800 rounded overflow-hidden">
-                <div
-                  className="h-full transition-all duration-300"
-                  style={{
-                    width: `${(gameState.heat.value / 10) * 100}%`,
-                    backgroundColor:
-                      gameState.heat.value < 3
-                        ? '#22c55e'
-                        : gameState.heat.value < 6
-                          ? '#eab308'
-                          : gameState.heat.value < 8
-                            ? '#f97316'
-                            : '#ef4444',
-                  }}
-                />
-              </div>
-              <div className="text-xs text-green-600 mt-1 text-right">
-                {gameState.heat.value.toFixed(1)} / 10
-              </div>
-            </div>
 
             {/* Unit info */}
             {rts.getSelectedUnits().length > 0 && (
