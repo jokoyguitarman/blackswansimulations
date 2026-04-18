@@ -2401,11 +2401,38 @@ export const WarRoom = () => {
                 [BACK]
               </button>
               <button
-                onClick={() => setStep(13)}
-                disabled={loading || !manualCoords}
+                onClick={async () => {
+                  if (!manualCoords) return;
+                  setTeamsLoading(true);
+                  setError(null);
+                  try {
+                    const opts = buildOptions();
+                    if (manualCoords) {
+                      (opts as Record<string, unknown>).location = manualCoords.display_name;
+                    }
+                    const { data } = await api.warroom.suggestTeams(opts);
+                    const mappedTeams = data.suggested_teams.map((t: Record<string, unknown>) => ({
+                      team_name: t.team_name as string,
+                      team_description: (t.team_description as string) || '',
+                      min_participants: (t.min_participants as number) ?? 1,
+                      max_participants: (t.max_participants as number) ?? 10,
+                      is_investigative: (t.is_investigative as boolean) ?? false,
+                    }));
+                    setTeams(mappedTeams);
+                    if (data.scenario_type) setResolvedScenarioType(data.scenario_type);
+                    if (data.threat_profile?.weapon_class)
+                      setResolvedWeaponClass(data.threat_profile.weapon_class);
+                    setStep(13);
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : 'Failed to suggest teams');
+                  } finally {
+                    setTeamsLoading(false);
+                  }
+                }}
+                disabled={loading || teamsLoading || !manualCoords}
                 className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                [NEXT: CONFIGURE TEAMS]
+                {teamsLoading ? '[SUGGESTING TEAMS...]' : '[NEXT: CONFIGURE TEAMS]'}
               </button>
             </>
           ) : step === 13 ? (
