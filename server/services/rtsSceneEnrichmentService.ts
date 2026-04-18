@@ -180,7 +180,7 @@ Perform a thorough analysis and return JSON only.`;
           { role: 'system', content: HAZARD_SYSTEM_PROMPT },
           { role: 'user', content: userContent },
         ],
-        max_tokens: MAX_TOKENS,
+        max_completion_tokens: MAX_TOKENS,
         temperature: 0.3,
       }),
     });
@@ -301,7 +301,7 @@ Return JSON only.`;
           { role: 'system', content: CASUALTY_SYSTEM_PROMPT },
           { role: 'user', content: userContent },
         ],
-        max_tokens: MAX_TOKENS,
+        max_completion_tokens: MAX_TOKENS,
         temperature: 0.3,
       }),
     });
@@ -424,7 +424,7 @@ Synthesize all findings into a unified scene analysis. Return JSON only.`;
           { role: 'system', content: SYNTHESIS_SYSTEM_PROMPT },
           { role: 'user', content: promptText },
         ],
-        max_tokens: MAX_TOKENS,
+        max_completion_tokens: MAX_TOKENS,
         temperature: 0.3,
       }),
     });

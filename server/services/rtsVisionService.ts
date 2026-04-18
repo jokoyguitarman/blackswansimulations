@@ -78,7 +78,7 @@ export async function evaluateBombSquadAssessment(
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userContent },
         ],
-        max_tokens: 16000,
+        max_completion_tokens: 16000,
         temperature: 0.3,
       }),
     });
