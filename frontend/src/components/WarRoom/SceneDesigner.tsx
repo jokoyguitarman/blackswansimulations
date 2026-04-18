@@ -640,9 +640,54 @@ export function SceneDesigner({
             )}
           </div>
 
-          <div className="text-xs terminal-text text-robotic-yellow/40 border-t border-robotic-gray-200 pt-2">
-            Exits: {exits.length} · Casualties: {casualtyPins.length} · Hazards:{' '}
-            {hazardZones.length} · Walls: {interiorWalls.length}
+          <div className="border-t border-robotic-gray-200 pt-2 space-y-1.5">
+            <button
+              onClick={async () => {
+                if (!selectedGrid) return;
+                const cLat =
+                  selectedGrid.polygon.reduce((s: number, p: [number, number]) => s + p[0], 0) /
+                  selectedGrid.polygon.length;
+                const cLng =
+                  selectedGrid.polygon.reduce((s: number, p: [number, number]) => s + p[1], 0) /
+                  selectedGrid.polygon.length;
+                try {
+                  const headers = await getAuthHeaders();
+                  const params = new URLSearchParams({
+                    lat: String(cLat),
+                    lng: String(cLng),
+                    radius: '300',
+                  });
+                  if (blastSite) {
+                    params.set('hazardLat', String(cLat));
+                    params.set('hazardLng', String(cLng));
+                    params.set('weaponClass', 'explosive');
+                  }
+                  const resp = await fetch(apiUrl(`/api/debug/building-studs?${params}`), {
+                    headers,
+                  });
+                  if (resp.ok) {
+                    const data = await resp.json();
+                    const totalStuds =
+                      data.grids?.reduce(
+                        (s: number, g: { studs: unknown[] }) => s + g.studs.length,
+                        0,
+                      ) ?? 0;
+                    alert(
+                      `Studs loaded: ${totalStuds} total across ${data.grids?.length ?? 0} grids`,
+                    );
+                  }
+                } catch {
+                  alert('Failed to load studs');
+                }
+              }}
+              className="w-full text-left text-xs px-2 py-1.5 border rounded terminal-text border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+            >
+              Load Studs
+            </button>
+            <div className="text-xs terminal-text text-robotic-yellow/40">
+              Exits: {exits.length} · Casualties: {casualtyPins.length} · Hazards:{' '}
+              {hazardZones.length} · Walls: {interiorWalls.length}
+            </div>
           </div>
         </div>
 

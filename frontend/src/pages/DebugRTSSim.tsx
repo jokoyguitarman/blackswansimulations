@@ -948,6 +948,7 @@ export function DebugRTSSim() {
             hazardZonesRef.current,
             stairwellsRef.current,
             blastSiteRef.current,
+            undefined,
             (() => {
               const mode = rtsRef.current.state.interactionMode;
               if (mode.type === 'draw_wall' && mode.startPoint) {

@@ -27,6 +27,7 @@ import {
   findBestMatch,
   isLikelyCrudeRectangle,
 } from '../services/msBuildingFootprints.js';
+import { enrichScene } from '../services/rtsSceneEnrichmentService.js';
 import {
   generateCasualtySceneImage,
   generateVictimImage,
@@ -488,6 +489,47 @@ router.post('/rts-triage-assess', requireAuth, json(), async (req: Authenticated
     res.json({ data: result });
   } catch (err) {
     logger.error({ err }, 'Error in POST /debug/rts-triage-assess');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── RTS Scene Enrichment (AI casualty + hazard analysis) ────────────────
+router.post('/rts-enrich-scene', requireAuth, json(), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!env.openAiApiKey) {
+      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    }
+
+    const {
+      incidentDescription,
+      blastRadius,
+      blastSite,
+      casualtyPins,
+      hazards,
+      buildingName,
+      pedestrianCount,
+      exitsCount,
+      stairwellsCount,
+    } = req.body;
+
+    const result = await enrichScene(
+      {
+        incidentDescription: incidentDescription || 'Explosion at building',
+        blastRadius: blastRadius || 20,
+        blastSite: blastSite || null,
+        casualtyPins: casualtyPins || [],
+        hazards: hazards || [],
+        buildingName: buildingName || null,
+        pedestrianCount: pedestrianCount || 120,
+        exitsCount: exitsCount || 0,
+        stairwellsCount: stairwellsCount || 0,
+      },
+      env.openAiApiKey,
+    );
+
+    res.json({ data: result });
+  } catch (err) {
+    logger.error({ err }, 'Error in POST /debug/rts-enrich-scene');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
