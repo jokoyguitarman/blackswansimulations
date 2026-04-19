@@ -177,6 +177,7 @@ export function generateStudGrids(
   osmBuildings: OsmBuilding[],
   spacingM = DEFAULT_SPACING_M,
   hazardCenter?: { lat: number; lng: number } | null,
+  generateStudsForAll = false,
 ): StudGrid[] {
   const grids: StudGrid[] = [];
   const incidentIdx = findIncidentBuildingIndex(osmBuildings, hazardCenter ?? null);
@@ -186,6 +187,7 @@ export function generateStudGrids(
     if (!b.footprint_polygon || b.footprint_polygon.length < 3) continue;
 
     const isIncident = i === incidentIdx;
+    const shouldGenerateStuds = isIncident || generateStudsForAll;
 
     const aboveGround = b.building_levels ?? 1;
     const underground = b.building_levels_underground ?? 0;
@@ -194,12 +196,12 @@ export function generateStudGrids(
     floors.push('G');
     for (let l = 1; l < aboveGround; l++) floors.push(`L${l}`);
 
-    if (isIncident) {
+    if (shouldGenerateStuds) {
       const allStuds: BuildingStud[] = [];
       for (const floor of floors) {
         const studs = generateStudsForPolygon(b.footprint_polygon, spacingM, floor, i);
         for (const s of studs) {
-          s.isIncidentBuilding = true;
+          if (isIncident) s.isIncidentBuilding = true;
           s.spatialContext = 'inside_building';
           s.contextBuildingName = b.name ?? undefined;
         }
@@ -213,7 +215,7 @@ export function generateStudGrids(
         floors,
         studs: allStuds,
         spacingM,
-        isIncidentBuilding: true,
+        isIncidentBuilding: isIncident,
       });
     } else {
       grids.push({

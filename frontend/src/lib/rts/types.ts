@@ -520,6 +520,9 @@ export interface CasualtyCluster {
   discovered: boolean;
   triageComplete: boolean;
   aiEvaluation: string | null;
+  studId?: string;
+  insideBuilding?: boolean;
+  spatialContext?: 'inside_building' | 'road' | 'open_air';
 }
 
 // ── Individual casualty pins (manual scene design) ────────────────────
@@ -570,6 +573,9 @@ export interface InteriorWall {
   description: string;
   material: string;
   photos: string[];
+  studId?: string;
+  insideBuilding?: boolean;
+  spatialContext?: 'inside_building' | 'road' | 'open_air';
 }
 
 export type HazardType =
@@ -589,6 +595,9 @@ export interface HazardZone {
   label: string;
   description: string;
   photos: string[];
+  studId?: string;
+  insideBuilding?: boolean;
+  spatialContext?: 'inside_building' | 'road' | 'open_air';
 }
 
 export interface Stairwell {
@@ -597,6 +606,9 @@ export interface Stairwell {
   connectsFloors: [number, number];
   blocked: boolean;
   label: string;
+  studId?: string;
+  insideBuilding?: boolean;
+  spatialContext?: 'inside_building' | 'road' | 'open_air';
 }
 
 export const HAZARD_DEFS: Record<HazardType, { label: string; color: string; icon: string }> = {

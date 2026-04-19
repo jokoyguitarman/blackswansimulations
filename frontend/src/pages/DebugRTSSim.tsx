@@ -76,12 +76,27 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 // ── OSM types ───────────────────────────────────────────────────────────
+interface StudPoint {
+  id: string;
+  lat: number;
+  lng: number;
+  floor: string;
+  studType: 'building' | 'outdoor' | 'street';
+  blastBand: string | null;
+  operationalZone: string | null;
+  distFromIncidentM: number | null;
+  spatialContext: 'inside_building' | 'road' | 'open_air' | null;
+}
+interface SimStud extends StudPoint {
+  simPos: Vec2;
+}
 interface GridItem {
   buildingIndex: number;
   buildingName: string | null;
   polygon: [number, number][];
   floors: string[];
   spacingM: number;
+  studs: StudPoint[];
 }
 interface BuildingSummary {
   name: string | null;
@@ -384,6 +399,7 @@ export function DebugRTSSim() {
         polygon,
         floors: ['Ground'],
         spacingM: 3,
+        studs: [],
       };
       const newBuilding: BuildingSummary = {
         name: drawnBuildingName || 'Custom Building',
@@ -469,6 +485,9 @@ export function DebugRTSSim() {
   } | null>(null);
   const [enrichExpanded, setEnrichExpanded] = useState(false);
 
+  // ── Stud grid toggle ────────────────────────────────────────────────
+  const [showStudGrid, setShowStudGrid] = useState(true);
+
   // ── Projected polygon ─────────────────────────────────────────────────
   const selectedGrid = selectedGridIdx != null ? fetchResult?.grids[selectedGridIdx] : null;
 
@@ -476,6 +495,92 @@ export function DebugRTSSim() {
     if (!selectedGrid) return [];
     return projectPolygon(selectedGrid.polygon);
   }, [selectedGrid]);
+
+  // ── Convert studs to sim-space ────────────────────────────────────────
+  const simStuds = useMemo<SimStud[]>(() => {
+    if (!selectedGrid || !selectedGrid.studs || selectedGrid.studs.length === 0) return [];
+    const poly = selectedGrid.polygon;
+    if (poly.length === 0) return [];
+
+    let sumLat = 0,
+      sumLng = 0;
+    for (const [la, ln] of poly) {
+      sumLat += la;
+      sumLng += ln;
+    }
+    const refLat = sumLat / poly.length;
+    const refLng = sumLng / poly.length;
+    const mPerDegLat = 111_320;
+    const mPerDegLng = 111_320 * Math.cos((refLat * Math.PI) / 180);
+
+    return selectedGrid.studs
+      .filter((s) => s.floor === 'G')
+      .map((s) => ({
+        ...s,
+        simPos: {
+          x: (s.lng - refLng) * mPerDegLng,
+          y: (refLat - s.lat) * mPerDegLat,
+        },
+      }));
+  }, [selectedGrid]);
+
+  // Also convert studs from all OTHER grids (outdoor context)
+  const allSimStuds = useMemo<SimStud[]>(() => {
+    if (!fetchResult || !selectedGrid) return simStuds;
+    const poly = selectedGrid.polygon;
+    if (poly.length === 0) return simStuds;
+
+    let sumLat = 0,
+      sumLng = 0;
+    for (const [la, ln] of poly) {
+      sumLat += la;
+      sumLng += ln;
+    }
+    const refLat = sumLat / poly.length;
+    const refLng = sumLng / poly.length;
+    const mPerDegLat = 111_320;
+    const mPerDegLng = 111_320 * Math.cos((refLat * Math.PI) / 180);
+
+    const otherStuds: SimStud[] = [];
+    for (const grid of fetchResult.grids) {
+      if (grid.buildingIndex === selectedGrid.buildingIndex) continue;
+      if (!grid.studs) continue;
+      for (const s of grid.studs) {
+        if (s.floor !== 'G') continue;
+        otherStuds.push({
+          ...s,
+          simPos: {
+            x: (s.lng - refLng) * mPerDegLng,
+            y: (refLat - s.lat) * mPerDegLat,
+          },
+        });
+      }
+    }
+    return [...simStuds, ...otherStuds];
+  }, [fetchResult, selectedGrid, simStuds]);
+
+  const simStudsRef = useRef(allSimStuds);
+  simStudsRef.current = allSimStuds;
+
+  const snapToStud = useCallback((simPos: Vec2): { pos: Vec2; stud: SimStud | null } => {
+    const studs = simStudsRef.current;
+    if (studs.length === 0) return { pos: simPos, stud: null };
+
+    let best: SimStud | null = null;
+    let bestDist = Infinity;
+    for (const s of studs) {
+      const d = Math.hypot(s.simPos.x - simPos.x, s.simPos.y - simPos.y);
+      if (d < bestDist) {
+        bestDist = d;
+        best = s;
+      }
+    }
+
+    if (best && bestDist < 8) {
+      return { pos: best.simPos, stud: best };
+    }
+    return { pos: simPos, stud: null };
+  }, []);
 
   // ── Prevent browser zoom on canvas/map area ────────────────────────────
   useEffect(() => {
@@ -698,7 +803,10 @@ export function DebugRTSSim() {
     setLat(m.lat);
     setLng(m.lng);
     setRadius(m.radius);
-    setFetchResult({ grids: m.grids, buildings: m.buildings });
+    setFetchResult({
+      grids: m.grids.map((g) => ({ ...g, studs: (g as GridItem).studs ?? [] })),
+      buildings: m.buildings,
+    });
     setSelectedGridIdx(null);
   }, []);
 
@@ -824,6 +932,7 @@ export function DebugRTSSim() {
             description: c.sceneDescription || '',
             trueTag: c.victims[0]?.trueTag || 'untagged',
             photos: c.imageUrl ? [c.imageUrl] : [],
+            insideBuilding: c.insideBuilding ?? false,
           })),
           hazards: hazardZones.map((h) => ({
             id: h.id,
@@ -832,6 +941,7 @@ export function DebugRTSSim() {
             severity: h.severity,
             description: h.description || '',
             photos: h.photos || [],
+            insideBuilding: h.insideBuilding ?? false,
           })),
           exits: exits.map((e) => ({
             id: e.id,
@@ -910,6 +1020,7 @@ export function DebugRTSSim() {
         polygon: sc.building_polygon,
         floors: ['Ground'],
         spacingM: 3,
+        studs: [],
       };
       setFetchResult({
         grids: [grid],
@@ -1057,6 +1168,8 @@ export function DebugRTSSim() {
   gpsSimPosRef.current = gpsSimPos;
   const gpsAccuracyRef = useRef(gpsAccuracy);
   gpsAccuracyRef.current = gpsAccuracy;
+  const showStudGridRef = useRef(showStudGrid);
+  showStudGridRef.current = showStudGrid;
 
   // ── Main animation loop ───────────────────────────────────────────────
   const loop = useCallback(
@@ -1121,6 +1234,7 @@ export function DebugRTSSim() {
             gpsSimPosRef.current
               ? { pos: gpsSimPosRef.current, accuracy: gpsAccuracyRef.current }
               : null,
+            showStudGridRef.current ? simStudsRef.current : null,
           );
         }
       }
@@ -1558,18 +1672,34 @@ export function DebugRTSSim() {
     return null;
   }, []);
 
-  const applyElementDrag = useCallback((drag: { type: string; id: string }, sim: Vec2) => {
-    if (drag.type === 'blastSite') setBlastSite(sim);
-    else if (drag.type === 'stagingArea') rtsRef.current.setStagingArea(sim);
-    else if (drag.type === 'casualty')
-      setCasualtyClusters((prev) =>
-        prev.map((c) => (c.id === drag.id ? { ...c, pos: { ...sim } } : c)),
-      );
-    else if (drag.type === 'hazard')
-      setHazardZones((prev) => prev.map((h) => (h.id === drag.id ? { ...h, pos: { ...sim } } : h)));
-    else if (drag.type === 'stairwell')
-      setStairwells((prev) => prev.map((s) => (s.id === drag.id ? { ...s, pos: { ...sim } } : s)));
-  }, []);
+  const applyElementDrag = useCallback(
+    (drag: { type: string; id: string }, sim: Vec2) => {
+      const snapped = snapToStud(sim);
+      const sp = snapped.pos;
+      const studMeta = snapped.stud
+        ? {
+            studId: snapped.stud.id,
+            insideBuilding: snapped.stud.spatialContext === 'inside_building',
+            spatialContext: snapped.stud.spatialContext ?? undefined,
+          }
+        : {};
+      if (drag.type === 'blastSite') setBlastSite(sp);
+      else if (drag.type === 'stagingArea') rtsRef.current.setStagingArea(sp);
+      else if (drag.type === 'casualty')
+        setCasualtyClusters((prev) =>
+          prev.map((c) => (c.id === drag.id ? { ...c, pos: { ...sp }, ...studMeta } : c)),
+        );
+      else if (drag.type === 'hazard')
+        setHazardZones((prev) =>
+          prev.map((h) => (h.id === drag.id ? { ...h, pos: { ...sp }, ...studMeta } : h)),
+        );
+      else if (drag.type === 'stairwell')
+        setStairwells((prev) =>
+          prev.map((s) => (s.id === drag.id ? { ...s, pos: { ...sp }, ...studMeta } : s)),
+        );
+    },
+    [snapToStud],
+  );
 
   const handleCanvasMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1826,21 +1956,25 @@ export function DebugRTSSim() {
       }
 
       if (mode.type === 'draw_wall') {
+        const snapped = snapToStud(sim);
         if (!mode.startPoint) {
-          rts.setInteractionMode({ type: 'draw_wall', startPoint: sim });
+          rts.setInteractionMode({ type: 'draw_wall', startPoint: snapped.pos });
         } else {
           setInteriorWalls((prev) => [
             ...prev,
             {
               id: `iw-${Date.now()}`,
               start: mode.startPoint!,
-              end: sim,
+              end: snapped.pos,
               hasDoor: false,
               doorWidth: 1.5,
               doorPosition: 0.5,
               description: '',
               material: '',
               photos: [],
+              studId: snapped.stud?.id,
+              insideBuilding: snapped.stud?.spatialContext === 'inside_building',
+              spatialContext: snapped.stud?.spatialContext ?? undefined,
             },
           ]);
           rts.setInteractionMode({ type: 'draw_wall', startPoint: null });
@@ -1871,38 +2005,47 @@ export function DebugRTSSim() {
       }
 
       if (mode.type === 'place_hazard') {
+        const snapped = snapToStud(sim);
         setHazardZones((prev) => [
           ...prev,
           {
             id: `hz-${Date.now()}`,
-            pos: sim,
+            pos: snapped.pos,
             radius: 5,
             hazardType: mode.hazardType,
             severity: 'medium',
             label: HAZARD_DEFS[mode.hazardType].label,
             description: '',
             photos: [],
+            studId: snapped.stud?.id,
+            insideBuilding: snapped.stud?.spatialContext === 'inside_building',
+            spatialContext: snapped.stud?.spatialContext ?? undefined,
           },
         ]);
         return;
       }
 
       if (mode.type === 'place_stairwell') {
+        const snapped = snapToStud(sim);
         setStairwells((prev) => [
           ...prev,
           {
             id: `sw-${Date.now()}`,
-            pos: sim,
+            pos: snapped.pos,
             connectsFloors: [0, 1],
             blocked: false,
             label: `Stair ${prev.length + 1}`,
+            studId: snapped.stud?.id,
+            insideBuilding: snapped.stud?.spatialContext === 'inside_building',
+            spatialContext: snapped.stud?.spatialContext ?? undefined,
           },
         ]);
         return;
       }
 
       if (mode.type === 'place_blast_site') {
-        setBlastSite(sim);
+        const snapped = snapToStud(sim);
+        setBlastSite(snapped.pos);
         rts.setInteractionMode({ type: 'select' });
         return;
       }
@@ -2210,21 +2353,25 @@ export function DebugRTSSim() {
             ]);
           }
         } else if (mode.type === 'draw_wall') {
+          const snapped = snapToStud(sim);
           if (!mode.startPoint) {
-            rts.setInteractionMode({ type: 'draw_wall', startPoint: sim });
+            rts.setInteractionMode({ type: 'draw_wall', startPoint: snapped.pos });
           } else {
             setInteriorWalls((prev) => [
               ...prev,
               {
                 id: `iw-${Date.now()}`,
                 start: mode.startPoint!,
-                end: sim,
+                end: snapped.pos,
                 hasDoor: false,
                 doorWidth: 1.5,
                 doorPosition: 0.5,
                 description: '',
                 material: '',
                 photos: [],
+                studId: snapped.stud?.id,
+                insideBuilding: snapped.stud?.spatialContext === 'inside_building',
+                spatialContext: snapped.stud?.spatialContext ?? undefined,
               },
             ]);
             rts.setInteractionMode({ type: 'draw_wall', startPoint: null });
@@ -2249,32 +2396,41 @@ export function DebugRTSSim() {
             );
           rts.setInteractionMode({ type: 'select' });
         } else if (mode.type === 'place_hazard') {
+          const snapped = snapToStud(sim);
           setHazardZones((prev) => [
             ...prev,
             {
               id: `hz-${Date.now()}`,
-              pos: sim,
+              pos: snapped.pos,
               radius: 5,
               hazardType: mode.hazardType,
               severity: 'medium',
               label: HAZARD_DEFS[mode.hazardType].label,
               description: '',
               photos: [],
+              studId: snapped.stud?.id,
+              insideBuilding: snapped.stud?.spatialContext === 'inside_building',
+              spatialContext: snapped.stud?.spatialContext ?? undefined,
             },
           ]);
         } else if (mode.type === 'place_stairwell') {
+          const snapped = snapToStud(sim);
           setStairwells((prev) => [
             ...prev,
             {
               id: `sw-${Date.now()}`,
-              pos: sim,
+              pos: snapped.pos,
               connectsFloors: [0, 1],
               blocked: false,
               label: `Stair ${prev.length + 1}`,
+              studId: snapped.stud?.id,
+              insideBuilding: snapped.stud?.spatialContext === 'inside_building',
+              spatialContext: snapped.stud?.spatialContext ?? undefined,
             },
           ]);
         } else if (mode.type === 'place_blast_site') {
-          setBlastSite(sim);
+          const snapped = snapToStud(sim);
+          setBlastSite(snapped.pos);
           rts.setInteractionMode({ type: 'select' });
         }
       }
@@ -4253,6 +4409,20 @@ export function DebugRTSSim() {
                     Walls: {interiorWalls.length} · Hazards: {hazardZones.length} · Stairs:{' '}
                     {stairwells.length}
                   </div>
+                </div>
+
+                {/* Stud grid toggle */}
+                <div className="border-t border-green-900 pt-2">
+                  <label className="flex items-center gap-2 text-xs text-green-500 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showStudGrid}
+                      onChange={(e) => setShowStudGrid(e.target.checked)}
+                      className="rounded border-green-700"
+                    />
+                    Show stud grid
+                    <span className="text-green-800">({allSimStuds.length} studs)</span>
+                  </label>
                 </div>
 
                 {/* Polygon enhancement */}

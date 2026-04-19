@@ -141,7 +141,7 @@ router.get('/building-studs', requireAuth, async (req, res) => {
   let gridMs = 0;
   if (withPolygon.length > 0) {
     const t1 = Date.now();
-    grids.push(...generateStudGrids(withPolygon));
+    grids.push(...generateStudGrids(withPolygon, undefined, undefined, true));
     gridMs = Date.now() - t1;
   }
 
@@ -224,6 +224,7 @@ router.get('/building-studs', requireAuth, async (req, res) => {
         blastBand: s.blastBand ?? null,
         operationalZone: s.operationalZone ?? null,
         distFromIncidentM: s.distFromIncidentM != null ? Math.round(s.distFromIncidentM) : null,
+        spatialContext: s.spatialContext ?? null,
       })),
     })),
   };
