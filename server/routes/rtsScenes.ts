@@ -144,6 +144,7 @@ router.patch('/:id', requireAuth, json(), async (req: AuthenticatedRequest, res)
       'wall_photo_urls',
       'casualty_image_urls',
       'pedestrian_count',
+      'enrichment_result',
     ];
 
     const fieldMap: Record<string, string> = {
@@ -161,6 +162,7 @@ router.patch('/:id', requireAuth, json(), async (req: AuthenticatedRequest, res)
       wallPhotoUrls: 'wall_photo_urls',
       casualtyImageUrls: 'casualty_image_urls',
       pedestrianCount: 'pedestrian_count',
+      enrichmentResult: 'enrichment_result',
     };
 
     for (const [key, value] of Object.entries(req.body)) {

@@ -83,6 +83,10 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 // ── Client-side stud generation for drawn/loaded buildings ──────────────
+const INTERIOR_SPACING_M = 3;
+const EXTERIOR_SPACING_M = 5;
+const EXTERIOR_PADDING_M = 150;
+
 function generateStudsForPolygon(
   polygon: [number, number][],
   spacingM: number,
@@ -102,14 +106,15 @@ function generateStudsForPolygon(
   }
 
   const midLat = (minLat + maxLat) / 2;
-  const dLat = spacingM / 111_320;
-  const dLng = spacingM / (111_320 * Math.cos((midLat * Math.PI) / 180));
-
   const studs: StudPoint[] = [];
+
+  // Interior studs (denser grid)
+  const iDLat = INTERIOR_SPACING_M / 111_320;
+  const iDLng = INTERIOR_SPACING_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
   let row = 0;
-  for (let lat = minLat + dLat / 2; lat <= maxLat; lat += dLat) {
+  for (let lat = minLat + iDLat / 2; lat <= maxLat; lat += iDLat) {
     let col = 0;
-    for (let lng = minLng + dLng / 2; lng <= maxLng; lng += dLng) {
+    for (let lng = minLng + iDLng / 2; lng <= maxLng; lng += iDLng) {
       if (pointInPolygonLatLng(lat, lng, polygon)) {
         studs.push({
           id: `bldg-${buildingIndex}-G-${row}-${col}`,
@@ -127,6 +132,36 @@ function generateStudsForPolygon(
     }
     row++;
   }
+
+  // Exterior studs (coarser grid, covers area around the building)
+  const extPadLat = EXTERIOR_PADDING_M / 111_320;
+  const extPadLng = EXTERIOR_PADDING_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
+  const eDLat = (spacingM > 0 ? spacingM : EXTERIOR_SPACING_M) / 111_320;
+  const eDLng =
+    (spacingM > 0 ? spacingM : EXTERIOR_SPACING_M) / (111_320 * Math.cos((midLat * Math.PI) / 180));
+
+  let eRow = 0;
+  for (let lat = minLat - extPadLat; lat <= maxLat + extPadLat; lat += eDLat) {
+    let eCol = 0;
+    for (let lng = minLng - extPadLng; lng <= maxLng + extPadLng; lng += eDLng) {
+      if (!pointInPolygonLatLng(lat, lng, polygon)) {
+        studs.push({
+          id: `ext-${buildingIndex}-${eRow}-${eCol}`,
+          lat,
+          lng,
+          floor: 'G',
+          studType: 'outdoor',
+          blastBand: null,
+          operationalZone: null,
+          distFromIncidentM: null,
+          spatialContext: 'open_air',
+        });
+      }
+      eCol++;
+    }
+    eRow++;
+  }
+
   return studs;
 }
 
@@ -1053,6 +1088,10 @@ export function DebugRTSSim() {
         setEnrichResult(data);
         setEnrichExpanded(true);
 
+        if (sceneConfigId) {
+          updateSceneConfig(sceneConfigId, { enrichmentResult: data }).catch(() => {});
+        }
+
         // Auto-merge enriched descriptions into hazards that had none
         if (data.hazardAnalysis?.length) {
           setHazardZones((prev) =>
@@ -1145,6 +1184,11 @@ export function DebugRTSSim() {
 
       const pts = generateWallPoints(sc.building_polygon, verts);
       setWallPoints(pts);
+
+      if (sc.enrichment_result) {
+        setEnrichResult(sc.enrichment_result as typeof enrichResult);
+        setEnrichExpanded(true);
+      }
 
       setPhase('rts');
     } catch (err) {
@@ -4198,7 +4242,7 @@ export function DebugRTSSim() {
         {phase === 'map' ? (
           /* Building list (map phase) */
           <div
-            className={`${isPortrait ? 'order-2 w-full border-t' : 'order-3 w-80 border-l flex-shrink-0'} border-green-800 overflow-y-auto p-3 space-y-3 min-h-0`}
+            className={`${isPortrait ? 'order-2 w-full border-t' : 'order-3 w-[28rem] border-l flex-shrink-0'} border-green-800 overflow-y-auto p-3 space-y-3 min-h-0`}
           >
             <div className="bg-gray-900 border border-green-800 rounded p-3">
               <h2 className="text-sm text-amber-400 mb-2 border-b border-green-900 pb-1">
@@ -4359,7 +4403,7 @@ export function DebugRTSSim() {
         ) : (
           /* RTS controls (rts phase) */
           <div
-            className={`${isPortrait ? 'order-2 w-full border-t' : 'order-3 w-64 border-l flex-shrink-0'} border-green-800 overflow-y-auto p-3 space-y-3 min-h-0`}
+            className={`${isPortrait ? 'order-2 w-full border-t' : 'order-3 w-[28rem] border-l flex-shrink-0'} border-green-800 overflow-y-auto p-3 space-y-3 min-h-0`}
           >
             {/* Clock */}
             <div className="bg-gray-900 border border-green-800 rounded p-3">

@@ -45,6 +45,7 @@ export interface SceneConfigFull {
   wall_photo_urls: Record<string, string>;
   casualty_image_urls: Record<string, string>;
   pedestrian_count: number;
+  enrichment_result: unknown | null;
   created_by: string;
   created_at: string;
   updated_at: string;
