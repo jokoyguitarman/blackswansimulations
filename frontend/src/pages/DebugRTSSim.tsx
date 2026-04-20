@@ -82,6 +82,66 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   };
 }
 
+// ── Client-side stud generation for drawn/loaded buildings ──────────────
+function generateStudsForPolygon(
+  polygon: [number, number][],
+  spacingM: number,
+  buildingIndex: number,
+): StudPoint[] {
+  if (polygon.length < 3) return [];
+
+  let minLat = Infinity,
+    maxLat = -Infinity,
+    minLng = Infinity,
+    maxLng = -Infinity;
+  for (const [la, ln] of polygon) {
+    if (la < minLat) minLat = la;
+    if (la > maxLat) maxLat = la;
+    if (ln < minLng) minLng = ln;
+    if (ln > maxLng) maxLng = ln;
+  }
+
+  const midLat = (minLat + maxLat) / 2;
+  const dLat = spacingM / 111_320;
+  const dLng = spacingM / (111_320 * Math.cos((midLat * Math.PI) / 180));
+
+  const studs: StudPoint[] = [];
+  let row = 0;
+  for (let lat = minLat + dLat / 2; lat <= maxLat; lat += dLat) {
+    let col = 0;
+    for (let lng = minLng + dLng / 2; lng <= maxLng; lng += dLng) {
+      if (pointInPolygonLatLng(lat, lng, polygon)) {
+        studs.push({
+          id: `bldg-${buildingIndex}-G-${row}-${col}`,
+          lat,
+          lng,
+          floor: 'G',
+          studType: 'building',
+          blastBand: null,
+          operationalZone: null,
+          distFromIncidentM: null,
+          spatialContext: 'inside_building',
+        });
+      }
+      col++;
+    }
+    row++;
+  }
+  return studs;
+}
+
+function pointInPolygonLatLng(lat: number, lng: number, polygon: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [yi, xi] = polygon[i];
+    const [yj, xj] = polygon[j];
+    if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 // ── OSM types ───────────────────────────────────────────────────────────
 interface StudPoint {
   id: string;
@@ -387,6 +447,7 @@ export function DebugRTSSim() {
         ...existingGrid,
         polygon,
         buildingName: drawnBuildingName || existingGrid.buildingName,
+        studs: generateStudsForPolygon(polygon, 5, existingGrid.buildingIndex),
       };
       const updatedBuildings = [...fetchResult.buildings];
       if (updatedBuildings[redrawIndex]) {
@@ -400,13 +461,14 @@ export function DebugRTSSim() {
       }
       setFetchResult({ grids: updatedGrids, buildings: updatedBuildings });
     } else {
+      const bIdx = fetchResult ? fetchResult.grids.length : 0;
       const newGrid: GridItem = {
-        buildingIndex: fetchResult ? fetchResult.grids.length : 0,
+        buildingIndex: bIdx,
         buildingName: drawnBuildingName || 'Custom Building',
         polygon,
         floors: ['Ground'],
-        spacingM: 3,
-        studs: [],
+        spacingM: 5,
+        studs: generateStudsForPolygon(polygon, 5, bIdx),
       };
       const newBuilding: BuildingSummary = {
         name: drawnBuildingName || 'Custom Building',
@@ -826,7 +888,16 @@ export function DebugRTSSim() {
     setLng(m.lng);
     setRadius(m.radius);
     setFetchResult({
-      grids: m.grids.map((g) => ({ ...g, studs: (g as GridItem).studs ?? [] })),
+      grids: m.grids.map((g, i) => {
+        const existing = (g as GridItem).studs;
+        return {
+          ...g,
+          studs:
+            existing && existing.length > 0
+              ? existing
+              : generateStudsForPolygon(g.polygon, 5, g.buildingIndex ?? i),
+        };
+      }),
       buildings: m.buildings,
     });
     setSelectedGridIdx(null);
@@ -1041,8 +1112,8 @@ export function DebugRTSSim() {
         buildingName: sc.building_name,
         polygon: sc.building_polygon,
         floors: ['Ground'],
-        spacingM: 3,
-        studs: [],
+        spacingM: 5,
+        studs: generateStudsForPolygon(sc.building_polygon, 5, 0),
       };
       setFetchResult({
         grids: [grid],
