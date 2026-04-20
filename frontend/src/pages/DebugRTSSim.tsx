@@ -48,7 +48,13 @@ import {
   type WallInspectionPoint,
 } from '../lib/rts/wallInspection';
 import { generateBlastCasualties } from '../lib/rts/casualtyPresets';
-import { FireSimulation, type FireParams, type FireStudState } from '../lib/rts/fireSimulation';
+import { type FireParams } from '../lib/rts/fireSimulation';
+import {
+  SpatialEffectsEngine,
+  type StudEffectState,
+  type HazardPhase,
+  type HazardEvent,
+} from '../lib/rts/spatialEffects';
 import {
   createSceneConfig,
   loadSceneConfig,
@@ -475,6 +481,21 @@ export function DebugRTSSim() {
       secondaryEffects: string[];
       responderGuidance: string;
       generatedDescription: string;
+      events?: Array<{
+        triggerTimeSec: number;
+        eventType: string;
+        spreadType: string | null;
+        spreadRadius: number;
+        spreadRate: number;
+        description: string;
+        severity: string;
+      }>;
+      hazardStates?: {
+        initial: string;
+        triggered: string;
+        worsening: string;
+        critical: string;
+      };
     }>;
     overallAssessment: string;
     sceneSynthesis: {
@@ -1173,13 +1194,18 @@ export function DebugRTSSim() {
   showStudGridRef.current = showStudGrid;
 
   // ── Fire simulation ────────────────────────────────────────────────────
-  const fireSimRef = useRef<FireSimulation | null>(null);
-  const [fireStates, setFireStates] = useState<Map<string, FireStudState> | null>(null);
-  const fireStatesRef = useRef(fireStates);
-  fireStatesRef.current = fireStates;
-  const [firePreviewTime, setFirePreviewTime] = useState(300);
-  const [fireCalibrating, setFireCalibrating] = useState(false);
+  const effectsEngineRef = useRef<SpatialEffectsEngine | null>(null);
+  const [effectStates, setEffectStates] = useState<Map<string, StudEffectState> | null>(null);
+  const effectStatesRef = useRef(effectStates);
+  effectStatesRef.current = effectStates;
+  const [hazardRuntimeStates, setHazardRuntimeStates] = useState<Map<
+    string,
+    { phase: HazardPhase; phaseDescription: string }
+  > | null>(null);
+  const [effectPreviewTime, setEffectPreviewTime] = useState(300);
+  const [effectCalibrating, setEffectCalibrating] = useState(false);
   const [fireParams, setFireParams] = useState<(FireParams & { reasoning?: string }) | null>(null);
+  const [detonationLoading, setDetonationLoading] = useState(false);
 
   // ── Main animation loop ───────────────────────────────────────────────
   const loop = useCallback(
@@ -1199,11 +1225,11 @@ export function DebugRTSSim() {
         setPedestrians(snaps);
       }
 
-      const fireSim = fireSimRef.current;
-      if (fireSim && !rts.state.clock.paused && rts.state.clock.phase !== 'setup') {
-        const fireDt = dt * rts.state.clock.speed;
-        fireSim.step(fireDt, interiorWallsRef.current, hazardZonesRef.current);
-        fireStatesRef.current = new Map(fireSim.states);
+      const effectsEng = effectsEngineRef.current;
+      if (effectsEng && !rts.state.clock.paused && rts.state.clock.phase !== 'setup') {
+        const effectDt = dt * rts.state.clock.speed;
+        effectsEng.step(effectDt, interiorWallsRef.current, hazardZonesRef.current);
+        effectStatesRef.current = new Map(effectsEng.studStates);
       }
 
       updateRenderCtx();
@@ -1252,7 +1278,7 @@ export function DebugRTSSim() {
               ? { pos: gpsSimPosRef.current, accuracy: gpsAccuracyRef.current }
               : null,
             showStudGridRef.current ? simStudsRef.current : null,
-            fireStatesRef.current,
+            effectStatesRef.current,
           );
         }
       }
@@ -2498,22 +2524,93 @@ export function DebugRTSSim() {
   const parsedLng = parseFloat(lng);
   const parsedRadius = parseInt(radius, 10) || 300;
 
-  const handleDetonation = () => {
+  const initEffectsEngine = useCallback(() => {
+    const studs = simStudsRef.current;
+    if (studs.length === 0 || !blastSite) return;
+
+    const engine = new SpatialEffectsEngine(fireParams ?? undefined);
+    engine.init(
+      studs.map((s) => ({ id: s.id, simPos: s.simPos, spatialContext: s.spatialContext })),
+    );
+
+    if (enrichResult?.hazardAnalysis) {
+      for (const ha of enrichResult.hazardAnalysis) {
+        if ((ha.events && ha.events.length > 0) || ha.hazardStates) {
+          engine.registerHazard(
+            ha.hazardId,
+            (ha.events ?? []) as HazardEvent[],
+            ha.hazardStates ?? {
+              initial: 'Unknown',
+              triggered: 'Unknown',
+              worsening: 'Unknown',
+              critical: 'Unknown',
+            },
+          );
+        }
+      }
+    }
+
+    const hasAnyEvents = enrichResult?.hazardAnalysis?.some(
+      (ha) => ha.events && ha.events.length > 0,
+    );
+    if (!hasAnyEvents) {
+      engine.registerHazard(
+        'blast-direct',
+        [
+          {
+            triggerTimeSec: 0,
+            eventType: 'explode',
+            spreadType: 'fire',
+            spreadRadius: 15,
+            spreadRate: 10,
+            description: 'Direct blast ignition',
+            severity: 'critical',
+          },
+        ],
+        {
+          initial: 'Pre-detonation',
+          triggered: 'Blast wave',
+          worsening: 'Fire spreading',
+          critical: 'Engulfed',
+        },
+      );
+
+      const blastHazard = { id: 'blast-direct', pos: blastSite } as HazardZone;
+      hazardZonesRef.current = [
+        ...hazardZonesRef.current.filter((h) => h.id !== 'blast-direct'),
+        blastHazard,
+      ];
+    }
+
+    effectsEngineRef.current = engine;
+    setEffectStates(new Map(engine.studStates));
+    setHazardRuntimeStates(
+      new Map(
+        Array.from(engine.hazardStates.entries()).map(([k, v]) => [
+          k,
+          { phase: v.phase, phaseDescription: v.phaseDescription },
+        ]),
+      ),
+    );
+  }, [blastSite, fireParams, enrichResult]);
+
+  const handleDetonation = useCallback(async () => {
     if (exits.length === 0) return;
+
+    if (!enrichResult && hazardZones.length > 0) {
+      setDetonationLoading(true);
+      try {
+        await handleEnrichScene();
+      } catch {
+        // Continue without enrichment
+      }
+      setDetonationLoading(false);
+    }
+
     initEvacEngine();
     rts.startDetonation();
-
-    const studs = simStudsRef.current;
-    if (studs.length > 0 && blastSite) {
-      const fireSim = new FireSimulation(fireParams ?? undefined);
-      fireSim.init(
-        studs.map((s) => ({ id: s.id, simPos: s.simPos, spatialContext: s.spatialContext })),
-      );
-      fireSim.igniteRadius(blastSite, 15);
-      fireSimRef.current = fireSim;
-      setFireStates(new Map(fireSim.states));
-    }
-  };
+    initEffectsEngine();
+  }, [exits, enrichResult, hazardZones, handleEnrichScene, initEvacEngine, initEffectsEngine]);
 
   // =====================================================================
   // RENDER
@@ -3530,6 +3627,32 @@ export function DebugRTSSim() {
                     </button>
                   </div>
 
+                  {/* Runtime hazard state (during gameplay) */}
+                  {hazardRuntimeStates?.has(activeHazard.id) &&
+                    gameState.clock.phase !== 'setup' &&
+                    (() => {
+                      const rs = hazardRuntimeStates.get(activeHazard.id)!;
+                      const phaseColors: Record<string, string> = {
+                        stable: 'bg-green-800 text-green-200',
+                        triggered: 'bg-yellow-800 text-yellow-200',
+                        worsening: 'bg-orange-800 text-orange-200',
+                        critical: 'bg-red-800 text-red-200',
+                        resolved: 'bg-gray-700 text-gray-300',
+                      };
+                      return (
+                        <div className="px-3 py-2 border-b border-gray-800">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span
+                              className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${phaseColors[rs.phase] || 'bg-gray-700 text-gray-300'}`}
+                            >
+                              {rs.phase}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-300">{rs.phaseDescription}</div>
+                        </div>
+                      );
+                    })()}
+
                   {/* Hazard type & severity */}
                   <div className="px-3 py-2 flex gap-2 items-center border-b border-gray-800">
                     <select
@@ -4177,10 +4300,10 @@ export function DebugRTSSim() {
                 {gameState.clock.phase === 'setup' ? (
                   <button
                     onClick={handleDetonation}
-                    disabled={exits.length === 0}
+                    disabled={exits.length === 0 || detonationLoading}
                     className="flex-1 bg-red-800 hover:bg-red-700 disabled:opacity-30 text-white text-xs px-2 py-2 rounded border border-red-600 font-bold"
                   >
-                    💥 DETONATE
+                    {detonationLoading ? '⏳ Enriching...' : '💥 DETONATE'}
                   </button>
                 ) : (
                   <button
@@ -4550,29 +4673,31 @@ export function DebugRTSSim() {
                   {casualtyClusters.length}
                 </div>
 
-                {/* Fire Spread Simulation */}
+                {/* Hazard Effects Simulation */}
                 <div className="space-y-1.5 border-t border-green-900 pt-2">
-                  <div className="text-xs text-green-500 uppercase tracking-wider">Fire Spread</div>
+                  <div className="text-xs text-green-500 uppercase tracking-wider">
+                    Hazard Effects
+                  </div>
                   {blastSite && allSimStuds.length > 0 && gameState.clock.phase === 'setup' && (
                     <>
                       <div>
                         <label className="block text-xs text-green-600 mb-1">
-                          Preview Time: {Math.round(firePreviewTime / 60)}min
+                          Preview Time: {Math.round(effectPreviewTime / 60)}min
                         </label>
                         <input
                           type="range"
                           min={60}
                           max={3600}
                           step={60}
-                          value={firePreviewTime}
-                          onChange={(e) => setFirePreviewTime(Number(e.target.value))}
+                          value={effectPreviewTime}
+                          onChange={(e) => setEffectPreviewTime(Number(e.target.value))}
                           className="w-full"
                         />
                       </div>
                       <button
                         onClick={() => {
                           if (!blastSite) return;
-                          const preview = new FireSimulation(fireParams ?? undefined);
+                          const preview = new SpatialEffectsEngine(fireParams ?? undefined);
                           preview.init(
                             allSimStuds.map((s) => ({
                               id: s.id,
@@ -4580,31 +4705,75 @@ export function DebugRTSSim() {
                               spatialContext: s.spatialContext,
                             })),
                           );
-                          preview.igniteRadius(blastSite, 15);
-                          preview.runPreview(firePreviewTime, interiorWalls, hazardZones);
-                          fireSimRef.current = preview;
-                          setFireStates(new Map(preview.states));
+
+                          if (enrichResult?.hazardAnalysis) {
+                            for (const ha of enrichResult.hazardAnalysis) {
+                              if ((ha.events && ha.events.length > 0) || ha.hazardStates) {
+                                preview.registerHazard(
+                                  ha.hazardId,
+                                  (ha.events ?? []) as HazardEvent[],
+                                  ha.hazardStates ?? {
+                                    initial: 'Unknown',
+                                    triggered: 'Unknown',
+                                    worsening: 'Unknown',
+                                    critical: 'Unknown',
+                                  },
+                                );
+                              }
+                            }
+                          }
+
+                          const hasEvents = enrichResult?.hazardAnalysis?.some(
+                            (ha) => ha.events && ha.events.length > 0,
+                          );
+                          if (!hasEvents) {
+                            preview.registerHazard(
+                              'blast-direct',
+                              [
+                                {
+                                  triggerTimeSec: 0,
+                                  eventType: 'explode',
+                                  spreadType: 'fire',
+                                  spreadRadius: 15,
+                                  spreadRate: 10,
+                                  description: 'Direct blast ignition',
+                                  severity: 'critical',
+                                },
+                              ],
+                              {
+                                initial: 'Pre-detonation',
+                                triggered: 'Blast wave',
+                                worsening: 'Fire spreading',
+                                critical: 'Engulfed',
+                              },
+                            );
+                          }
+
+                          preview.runPreview(effectPreviewTime, interiorWalls, hazardZones);
+                          effectsEngineRef.current = preview;
+                          setEffectStates(new Map(preview.studStates));
                         }}
                         className="w-full bg-orange-800 hover:bg-orange-700 text-orange-100 text-xs px-3 py-1.5 rounded border border-orange-600 font-bold"
                       >
-                        Preview Fire Spread
+                        Preview Hazard Effects
                       </button>
-                      {fireStates && (
+                      {effectStates && (
                         <button
                           onClick={() => {
-                            fireSimRef.current = null;
-                            setFireStates(null);
+                            effectsEngineRef.current = null;
+                            setEffectStates(null);
+                            setHazardRuntimeStates(null);
                           }}
                           className="w-full text-xs text-orange-500 hover:text-orange-300 px-2 py-1"
                         >
-                          Clear Fire Preview
+                          Clear Preview
                         </button>
                       )}
                     </>
                   )}
                   {!blastSite && (
                     <div className="text-xs text-green-800 italic">
-                      Place a blast site to enable fire simulation
+                      Place a blast site to enable hazard simulation
                     </div>
                   )}
                   {allSimStuds.length === 0 && blastSite && (
@@ -4612,28 +4781,42 @@ export function DebugRTSSim() {
                       No studs available — fetch buildings first
                     </div>
                   )}
-                  {fireStates &&
+                  {effectStates &&
                     (() => {
-                      const sim = fireSimRef.current;
-                      if (!sim) return null;
-                      const stats = sim.getStats();
+                      const eng = effectsEngineRef.current;
+                      if (!eng) return null;
+                      const stats = eng.getStats();
                       return (
                         <div className="text-xs space-y-0.5 bg-gray-950 border border-orange-900 rounded p-2">
                           <div className="text-orange-300">
-                            Time: {Math.round(sim.elapsed / 60)}min
+                            Time: {Math.round(eng.elapsed / 60)}min
                           </div>
-                          <div className="text-red-400">Burning: {stats.burning}</div>
-                          <div className="text-orange-400">Heating: {stats.heating}</div>
-                          <div className="text-gray-500">Burnt out: {stats.burntOut}</div>
-                          <div className="text-green-600">Unaffected: {stats.none}</div>
+                          <div className="text-red-400">
+                            Fire: {stats.fire.burning} burning, {stats.fire.heating} heating
+                          </div>
+                          <div className="text-lime-400">Gas: {stats.gasAffected} studs</div>
+                          <div className="text-blue-400">Flood: {stats.floodAffected} studs</div>
+                          <div className="text-red-300">
+                            Structural risk: {stats.structAffected} studs
+                          </div>
+                          <div className="mt-1 text-[10px] text-gray-600 space-x-3">
+                            <span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-0.5" />
+                            Fire
+                            <span className="inline-block w-2 h-2 rounded-full bg-lime-400 mr-0.5" />
+                            Gas
+                            <span className="inline-block w-2 h-2 rounded-full bg-blue-400 mr-0.5" />
+                            Flood
+                            <span className="inline-block w-2 h-2 rounded-full bg-red-300 mr-0.5 border border-dashed border-red-500" />
+                            Structural
+                          </div>
                         </div>
                       );
                     })()}
 
-                  {/* AI Fire Calibration */}
+                  {/* AI Effect Calibration */}
                   <button
                     onClick={async () => {
-                      setFireCalibrating(true);
+                      setEffectCalibrating(true);
                       try {
                         const headers = await getAuthHeaders();
                         const resp = await fetch(apiUrl('/api/debug/rts-fire-params'), {
@@ -4656,24 +4839,24 @@ export function DebugRTSSim() {
                           const { data } = await resp.json();
                           setFireParams(data);
                         } else {
-                          console.error('Fire calibration failed');
+                          console.error('Effect calibration failed');
                         }
                       } catch (err) {
-                        console.error('Fire calibration error:', err);
+                        console.error('Effect calibration error:', err);
                       }
-                      setFireCalibrating(false);
+                      setEffectCalibrating(false);
                     }}
-                    disabled={fireCalibrating}
+                    disabled={effectCalibrating}
                     className="w-full bg-purple-800 hover:bg-purple-700 disabled:opacity-50 text-purple-100 text-xs px-3 py-1.5 rounded border border-purple-600"
                   >
-                    {fireCalibrating
+                    {effectCalibrating
                       ? 'Calibrating...'
                       : fireParams
-                        ? 'Re-Calibrate Fire (AI)'
-                        : 'AI Calibrate Fire'}
+                        ? 'Re-Calibrate Effects (AI)'
+                        : 'AI Calibrate Effects'}
                   </button>
                   <div className="text-xs text-green-800">
-                    GPT-5.1 calibrates spread rates for your specific hazards and materials
+                    GPT-5.1 calibrates fire, gas, flood, and structural spread for your materials
                   </div>
                   {fireParams?.reasoning && (
                     <div className="text-xs text-purple-400 bg-gray-950 border border-purple-900 rounded p-2">

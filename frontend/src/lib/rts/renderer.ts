@@ -69,7 +69,10 @@ export function renderRTS(
     spatialContext: string | null;
     id: string;
   }> | null,
-  fireStates?: Map<string, { state: string; timer: number }> | null,
+  effectStates?: Map<
+    string,
+    { fire: { state: string }; gas: number; flood: number; structural: number }
+  > | null,
 ) {
   ctx.clearRect(0, 0, w, h);
 
@@ -80,7 +83,7 @@ export function renderRTS(
   }
 
   if (studGrid && studGrid.length > 0) {
-    drawStudGrid(ctx, studGrid, rc, fireStates ?? null);
+    drawStudGrid(ctx, studGrid, rc, effectStates ?? null);
   }
 
   if (blastSite) {
@@ -162,7 +165,10 @@ function drawStudGrid(
   ctx: CanvasRenderingContext2D,
   studs: Array<{ simPos: Vec2; studType: string; spatialContext: string | null; id: string }>,
   rc: RenderContext,
-  fireStates: Map<string, { state: string; timer: number }> | null,
+  effectStates: Map<
+    string,
+    { fire: { state: string }; gas: number; flood: number; structural: number }
+  > | null,
 ) {
   const baseR = Math.max(1.5, mToCanvas(0.4, rc));
 
@@ -170,12 +176,51 @@ function drawStudGrid(
     const { cx, cy } = toCanvas(s.simPos.x, s.simPos.y, rc);
     if (cx < -5 || cy < -5 || cx > 4000 || cy > 4000) continue;
 
-    const fs = fireStates?.get(s.id);
+    const es = effectStates?.get(s.id);
+    let drawn = false;
 
-    if (fs && fs.state !== 'none') {
-      ctx.beginPath();
-      if (fs.state === 'burning') {
+    if (es) {
+      // Structural collapse zone (bottom layer)
+      if (es.structural > 0.05) {
+        const r = baseR * (1.5 + es.structural);
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(220, 38, 38, ${0.12 + es.structural * 0.2})`;
+        ctx.fill();
+        if (es.structural > 0.5) {
+          ctx.setLineDash([2, 2]);
+          ctx.strokeStyle = `rgba(220, 38, 38, ${es.structural * 0.4})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        drawn = true;
+      }
+
+      // Flood (second layer)
+      if (es.flood > 0.05) {
+        const r = baseR * (1.3 + es.flood * 0.8);
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(59, 130, 246, ${0.1 + es.flood * 0.4})`;
+        ctx.fill();
+        drawn = true;
+      }
+
+      // Gas cloud (third layer)
+      if (es.gas > 0.05) {
+        const r = baseR * (1.5 + es.gas * 1.2);
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(163, 230, 53, ${0.08 + es.gas * 0.35})`;
+        ctx.fill();
+        drawn = true;
+      }
+
+      // Fire (top layer — most visible)
+      if (es.fire.state === 'burning') {
         const r = baseR * 2.5;
+        ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(239, 68, 68, 0.7)';
         ctx.fill();
@@ -183,18 +228,25 @@ function drawStudGrid(
         ctx.arc(cx, cy, r * 0.6, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(251, 146, 60, 0.9)';
         ctx.fill();
-      } else if (fs.state === 'heating') {
+        drawn = true;
+      } else if (es.fire.state === 'heating') {
         const r = baseR * 1.8;
+        ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(251, 146, 60, 0.45)';
         ctx.fill();
-      } else if (fs.state === 'burnt_out') {
+        drawn = true;
+      } else if (es.fire.state === 'burnt_out') {
         const r = baseR * 1.5;
+        ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(75, 75, 75, 0.35)';
         ctx.fill();
+        drawn = true;
       }
-    } else {
+    }
+
+    if (!drawn) {
       ctx.beginPath();
       ctx.arc(cx, cy, baseR, 0, Math.PI * 2);
       if (s.spatialContext === 'inside_building' || s.studType === 'building') {

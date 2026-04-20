@@ -70,6 +70,23 @@ export interface EnrichedCasualty {
   };
 }
 
+export interface HazardEvent {
+  triggerTimeSec: number;
+  eventType: 'ignite' | 'rupture' | 'collapse' | 'flood' | 'arc' | 'explode';
+  spreadType: 'fire' | 'gas' | 'flood' | 'structural_zone' | null;
+  spreadRadius: number;
+  spreadRate: number;
+  description: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+}
+
+export interface HazardStateProgression {
+  initial: string;
+  triggered: string;
+  worsening: string;
+  critical: string;
+}
+
 export interface HazardAnalysis {
   hazardId: string;
   identifiedMaterial: string;
@@ -80,6 +97,8 @@ export interface HazardAnalysis {
   chainReactionRisk: string;
   responderGuidance: string;
   generatedDescription: string;
+  events: HazardEvent[];
+  hazardStates: HazardStateProgression;
 }
 
 export interface SceneEnrichmentResult {
@@ -110,6 +129,14 @@ Analyze this hazard thoroughly considering:
 
 If photos are provided, analyze them carefully to identify the specific material, quantity, storage conditions, and containment state. Be specific — "20kg propane cylinder with valve exposed" is far better than "combustible material."
 
+CRITICALLY IMPORTANT — determine EXACTLY what events this hazard will experience after the blast:
+- At what second does the blast wave reach this hazard? (use distance / 340 m/s for blast wave, then add secondary effect delays)
+- Does it rupture, ignite, collapse, flood, or arc?
+- What spatial effect does each event produce? Options: "fire" (flame spread), "gas" (toxic/flammable gas cloud), "flood" (water/liquid release), "structural_zone" (collapse debris zone), or null (no spatial spread)
+- How fast does that effect spread (meters per minute)?
+- What initial radius does it affect?
+- What are the state transitions this hazard goes through over time?
+
 Return JSON only:
 {
   "identifiedMaterial": "specific identification from photo or best inference from type",
@@ -119,7 +146,24 @@ Return JSON only:
   "riskLevel": "critical|high|medium|low",
   "chainReactionRisk": "analysis of chain reaction potential with nearby hazards",
   "responderGuidance": "specific guidance for response teams approaching this hazard",
-  "generatedDescription": "if trainer description was empty, a rich description of what this hazard is based on all available evidence"
+  "generatedDescription": "if trainer description was empty, a rich description of what this hazard is based on all available evidence",
+  "events": [
+    {
+      "triggerTimeSec": 0,
+      "eventType": "ignite|rupture|collapse|flood|arc|explode",
+      "spreadType": "fire|gas|flood|structural_zone|null",
+      "spreadRadius": 5,
+      "spreadRate": 10,
+      "description": "what happens at this moment",
+      "severity": "low|medium|high|critical"
+    }
+  ],
+  "hazardStates": {
+    "initial": "state before blast (e.g. intact propane cylinder)",
+    "triggered": "state immediately after blast interaction (e.g. valve sheared, gas venting)",
+    "worsening": "state as situation deteriorates (e.g. gas cloud ignited, fireball)",
+    "critical": "worst-case state (e.g. BLEVE imminent, tank failure)"
+  }
 }`;
 
 async function analyzeHazard(
@@ -221,6 +265,13 @@ function defaultHazardAnalysis(hazardId: string): HazardAnalysis {
     chainReactionRisk: 'Analysis unavailable',
     responderGuidance: 'Standard precautions — analysis unavailable',
     generatedDescription: '',
+    events: [],
+    hazardStates: {
+      initial: 'Unknown',
+      triggered: 'Unknown',
+      worsening: 'Unknown',
+      critical: 'Unknown',
+    },
   };
 }
 
