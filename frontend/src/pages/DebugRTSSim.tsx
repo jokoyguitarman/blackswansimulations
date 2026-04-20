@@ -83,13 +83,12 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 // ── Client-side stud generation for drawn/loaded buildings ──────────────
-const INTERIOR_SPACING_M = 3;
-const EXTERIOR_SPACING_M = 5;
+const STUD_SPACING_M = 3;
 const EXTERIOR_PADDING_M = 150;
 
 function generateStudsForPolygon(
   polygon: [number, number][],
-  spacingM: number,
+  _spacingM: number,
   buildingIndex: number,
 ): StudPoint[] {
   if (polygon.length < 3) return [];
@@ -108,58 +107,30 @@ function generateStudsForPolygon(
   const midLat = (minLat + maxLat) / 2;
   const studs: StudPoint[] = [];
 
-  // Interior studs (denser grid)
-  const iDLat = INTERIOR_SPACING_M / 111_320;
-  const iDLng = INTERIOR_SPACING_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
+  const dLat = STUD_SPACING_M / 111_320;
+  const dLng = STUD_SPACING_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
+  const extPadLat = EXTERIOR_PADDING_M / 111_320;
+  const extPadLng = EXTERIOR_PADDING_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
+
   let row = 0;
-  for (let lat = minLat + iDLat / 2; lat <= maxLat; lat += iDLat) {
+  for (let lat = minLat - extPadLat + dLat / 2; lat <= maxLat + extPadLat; lat += dLat) {
     let col = 0;
-    for (let lng = minLng + iDLng / 2; lng <= maxLng; lng += iDLng) {
-      if (pointInPolygonLatLng(lat, lng, polygon)) {
-        studs.push({
-          id: `bldg-${buildingIndex}-G-${row}-${col}`,
-          lat,
-          lng,
-          floor: 'G',
-          studType: 'building',
-          blastBand: null,
-          operationalZone: null,
-          distFromIncidentM: null,
-          spatialContext: 'inside_building',
-        });
-      }
+    for (let lng = minLng - extPadLng + dLng / 2; lng <= maxLng + extPadLng; lng += dLng) {
+      const inside = pointInPolygonLatLng(lat, lng, polygon);
+      studs.push({
+        id: inside ? `bldg-${buildingIndex}-G-${row}-${col}` : `ext-${buildingIndex}-${row}-${col}`,
+        lat,
+        lng,
+        floor: 'G',
+        studType: inside ? 'building' : 'outdoor',
+        blastBand: null,
+        operationalZone: null,
+        distFromIncidentM: null,
+        spatialContext: inside ? 'inside_building' : 'open_air',
+      });
       col++;
     }
     row++;
-  }
-
-  // Exterior studs (coarser grid, covers area around the building)
-  const extPadLat = EXTERIOR_PADDING_M / 111_320;
-  const extPadLng = EXTERIOR_PADDING_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
-  const eDLat = (spacingM > 0 ? spacingM : EXTERIOR_SPACING_M) / 111_320;
-  const eDLng =
-    (spacingM > 0 ? spacingM : EXTERIOR_SPACING_M) / (111_320 * Math.cos((midLat * Math.PI) / 180));
-
-  let eRow = 0;
-  for (let lat = minLat - extPadLat; lat <= maxLat + extPadLat; lat += eDLat) {
-    let eCol = 0;
-    for (let lng = minLng - extPadLng; lng <= maxLng + extPadLng; lng += eDLng) {
-      if (!pointInPolygonLatLng(lat, lng, polygon)) {
-        studs.push({
-          id: `ext-${buildingIndex}-${eRow}-${eCol}`,
-          lat,
-          lng,
-          floor: 'G',
-          studType: 'outdoor',
-          blastBand: null,
-          operationalZone: null,
-          distFromIncidentM: null,
-          spatialContext: 'open_air',
-        });
-      }
-      eCol++;
-    }
-    eRow++;
   }
 
   return studs;

@@ -121,7 +121,7 @@ const HAZARD_SYSTEM_PROMPT = `You are an expert in hazardous materials, blast ef
 Analyze this hazard thoroughly considering:
 1. What the material/substance is (identify from photos if available, or infer from the hazard type and environment)
 2. How a blast wave at the given distance would interact with this hazard
-3. What secondary effects would occur (fire spread, toxic fumes, structural collapse, etc.)
+3. How THIS SPECIFIC material would behave after blast interaction — only effects this material can physically produce
 4. How the hazard would progress over time (minutes, hours)
 5. Whether nearby hazards could cause chain reactions
 6. What this means for responders — approach distance, PPE, decontamination needs
@@ -129,7 +129,18 @@ Analyze this hazard thoroughly considering:
 
 If photos are provided, analyze them carefully to identify the specific material, quantity, storage conditions, and containment state. Be specific — "20kg propane cylinder with valve exposed" is far better than "combustible material."
 
-CRITICALLY IMPORTANT — determine EXACTLY what events this hazard will experience after the blast:
+STRICT CONSTRAINT ON EVENTS — You must ONLY generate events and spread effects that the IDENTIFIED MATERIAL can physically produce:
+- Wooden benches, paper, fabric, plastic → "fire" spread ONLY. These materials do NOT produce gas clouds, flooding, or structural collapse.
+- Pressurized gas cylinders (propane, LPG, acetylene) → "gas" cloud first (from venting), then "fire" if ignited. NOT flooding or structural collapse.
+- Chemical containers (acids, solvents, industrial chemicals) → "gas" (toxic fumes) and/or "fire". NOT flooding unless the chemical is a liquid in large volume.
+- Water pipes, tanks, sprinkler systems → "flood" ONLY. NOT fire or gas.
+- Load-bearing structural elements, heavy objects, weakened masonry → "structural_zone" ONLY. NOT fire or gas.
+- Electrical panels, wiring, transformers → "fire" from arcing. NOT gas or flooding unless combined with water.
+- DO NOT invent effects that require materials or conditions not present in this hazard.
+- DO NOT add structural collapse zones unless this hazard IS a structural element.
+- DO NOT add gas effects unless this hazard contains pressurized gas or volatile chemicals.
+
+Determine what events this hazard will experience after the blast:
 - At what second does the blast wave reach this hazard? (use distance / 340 m/s for blast wave, then add secondary effect delays)
 - Does it rupture, ignite, collapse, flood, or arc?
 - What spatial effect does each event produce? Options: "fire" (flame spread), "gas" (toxic/flammable gas cloud), "flood" (water/liquid release), "structural_zone" (collapse debris zone), or null (no spatial spread)

@@ -266,12 +266,18 @@ export class SpatialEffectsEngine {
     const gasEffects = this.activeEffects.filter((e) => e.type === 'gas');
     if (gasEffects.length === 0) return;
 
+    const MAX_GAS_RADIUS = 80;
     for (const effect of gasEffects) {
-      effect.currentRadius += (effect.spreadRate / 60) * dt;
+      if (effect.currentRadius < MAX_GAS_RADIUS) {
+        effect.currentRadius = Math.min(
+          MAX_GAS_RADIUS,
+          effect.currentRadius + (effect.spreadRate / 60) * dt,
+        );
+      }
     }
 
     const spreadAmount = dt * 0.02;
-    const decayRate = dt * 0.001;
+    const decayRate = dt * 0.005;
     const toSpread: Array<{ id: string; amount: number }> = [];
 
     for (const [id, state] of this.studStates) {
@@ -327,8 +333,14 @@ export class SpatialEffectsEngine {
     const floodEffects = this.activeEffects.filter((e) => e.type === 'flood');
     if (floodEffects.length === 0) return;
 
+    const MAX_FLOOD_RADIUS = 60;
     for (const effect of floodEffects) {
-      effect.currentRadius += (effect.spreadRate / 60) * dt;
+      if (effect.currentRadius < MAX_FLOOD_RADIUS) {
+        effect.currentRadius = Math.min(
+          MAX_FLOOD_RADIUS,
+          effect.currentRadius + (effect.spreadRate / 60) * dt,
+        );
+      }
     }
 
     const spreadAmount = dt * 0.015;
@@ -378,12 +390,18 @@ export class SpatialEffectsEngine {
     }
   }
 
-  private stepStructural(dt: number) {
+  private stepStructural(_dt: number) {
     const structEffects = this.activeEffects.filter((e) => e.type === 'structural_zone');
     if (structEffects.length === 0) return;
 
+    const MAX_STRUCTURAL_RADIUS = 30;
     for (const effect of structEffects) {
-      effect.currentRadius += (effect.spreadRate / 60) * dt;
+      if (effect.currentRadius < MAX_STRUCTURAL_RADIUS) {
+        effect.currentRadius = Math.min(
+          MAX_STRUCTURAL_RADIUS,
+          effect.currentRadius + (effect.spreadRate / 60) * _dt,
+        );
+      }
     }
 
     for (const effect of structEffects) {
