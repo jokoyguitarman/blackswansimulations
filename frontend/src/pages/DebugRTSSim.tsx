@@ -5017,8 +5017,20 @@ export function DebugRTSSim() {
                       {enrichExpanded && (
                         <div className="bg-gray-950 border border-purple-900 rounded p-2 space-y-2 max-h-60 overflow-y-auto">
                           <div className="text-xs text-purple-300 font-bold">Assessment</div>
-                          <div className="text-xs text-green-400">
-                            {enrichResult.overallAssessment}
+                          <div className="text-xs text-green-400 whitespace-pre-wrap">
+                            {typeof enrichResult.overallAssessment === 'string'
+                              ? enrichResult.overallAssessment
+                              : typeof enrichResult.overallAssessment === 'object' &&
+                                  enrichResult.overallAssessment
+                                ? Object.entries(
+                                    enrichResult.overallAssessment as Record<string, string>,
+                                  ).map(([k, v]) => (
+                                    <div key={k} className="mb-1">
+                                      <span className="text-purple-400 font-semibold">{k}: </span>
+                                      {String(v)}
+                                    </div>
+                                  ))
+                                : String(enrichResult.overallAssessment)}
                           </div>
 
                           {enrichResult.sceneSynthesis.keyChallenges.length > 0 && (
@@ -5077,7 +5089,13 @@ export function DebugRTSSim() {
                                 Escalation Timeline
                               </div>
                               <div className="text-xs text-green-500 whitespace-pre-wrap">
-                                {enrichResult.sceneSynthesis.escalationTimeline}
+                                {typeof enrichResult.sceneSynthesis.escalationTimeline === 'string'
+                                  ? enrichResult.sceneSynthesis.escalationTimeline
+                                  : JSON.stringify(
+                                      enrichResult.sceneSynthesis.escalationTimeline,
+                                      null,
+                                      2,
+                                    )}
                               </div>
                             </>
                           )}
