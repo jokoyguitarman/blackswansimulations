@@ -63,7 +63,13 @@ export function renderRTS(
   gameZones?: Array<{ type: string; radius: number }>,
   wallDrawPreview?: { start: Vec2; cursor: Vec2 } | null,
   trainerGps?: { pos: Vec2; accuracy: number } | null,
-  studGrid?: Array<{ simPos: Vec2; studType: string; spatialContext: string | null }> | null,
+  studGrid?: Array<{
+    simPos: Vec2;
+    studType: string;
+    spatialContext: string | null;
+    id: string;
+  }> | null,
+  fireStates?: Map<string, { state: string; timer: number }> | null,
 ) {
   ctx.clearRect(0, 0, w, h);
 
@@ -74,7 +80,7 @@ export function renderRTS(
   }
 
   if (studGrid && studGrid.length > 0) {
-    drawStudGrid(ctx, studGrid, rc);
+    drawStudGrid(ctx, studGrid, rc, fireStates ?? null);
   }
 
   if (blastSite) {
@@ -154,23 +160,52 @@ export function renderRTS(
 // ── Stud Grid ────────────────────────────────────────────────────────────
 function drawStudGrid(
   ctx: CanvasRenderingContext2D,
-  studs: Array<{ simPos: Vec2; studType: string; spatialContext: string | null }>,
+  studs: Array<{ simPos: Vec2; studType: string; spatialContext: string | null; id: string }>,
   rc: RenderContext,
+  fireStates: Map<string, { state: string; timer: number }> | null,
 ) {
-  const r = Math.max(1.5, mToCanvas(0.4, rc));
+  const baseR = Math.max(1.5, mToCanvas(0.4, rc));
+
   for (const s of studs) {
     const { cx, cy } = toCanvas(s.simPos.x, s.simPos.y, rc);
     if (cx < -5 || cy < -5 || cx > 4000 || cy > 4000) continue;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    if (s.spatialContext === 'inside_building' || s.studType === 'building') {
-      ctx.fillStyle = 'rgba(34, 197, 94, 0.18)';
-    } else if (s.studType === 'street') {
-      ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
+
+    const fs = fireStates?.get(s.id);
+
+    if (fs && fs.state !== 'none') {
+      ctx.beginPath();
+      if (fs.state === 'burning') {
+        const r = baseR * 2.5;
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.7)';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 0.6, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(251, 146, 60, 0.9)';
+        ctx.fill();
+      } else if (fs.state === 'heating') {
+        const r = baseR * 1.8;
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(251, 146, 60, 0.45)';
+        ctx.fill();
+      } else if (fs.state === 'burnt_out') {
+        const r = baseR * 1.5;
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(75, 75, 75, 0.35)';
+        ctx.fill();
+      }
     } else {
-      ctx.fillStyle = 'rgba(156, 163, 175, 0.12)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, baseR, 0, Math.PI * 2);
+      if (s.spatialContext === 'inside_building' || s.studType === 'building') {
+        ctx.fillStyle = 'rgba(34, 197, 94, 0.18)';
+      } else if (s.studType === 'street') {
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
+      } else {
+        ctx.fillStyle = 'rgba(156, 163, 175, 0.12)';
+      }
+      ctx.fill();
     }
-    ctx.fill();
   }
 }
 

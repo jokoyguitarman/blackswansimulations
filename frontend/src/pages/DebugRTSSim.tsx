@@ -48,6 +48,7 @@ import {
   type WallInspectionPoint,
 } from '../lib/rts/wallInspection';
 import { generateBlastCasualties } from '../lib/rts/casualtyPresets';
+import { FireSimulation, type FireParams, type FireStudState } from '../lib/rts/fireSimulation';
 import {
   createSceneConfig,
   loadSceneConfig,
@@ -1171,6 +1172,15 @@ export function DebugRTSSim() {
   const showStudGridRef = useRef(showStudGrid);
   showStudGridRef.current = showStudGrid;
 
+  // ── Fire simulation ────────────────────────────────────────────────────
+  const fireSimRef = useRef<FireSimulation | null>(null);
+  const [fireStates, setFireStates] = useState<Map<string, FireStudState> | null>(null);
+  const fireStatesRef = useRef(fireStates);
+  fireStatesRef.current = fireStates;
+  const [firePreviewTime, setFirePreviewTime] = useState(300);
+  const [fireCalibrating, setFireCalibrating] = useState(false);
+  const [fireParams, setFireParams] = useState<(FireParams & { reasoning?: string }) | null>(null);
+
   // ── Main animation loop ───────────────────────────────────────────────
   const loop = useCallback(
     (time: number) => {
@@ -1187,6 +1197,13 @@ export function DebugRTSSim() {
         const snaps = evac.getSnapshots();
         pedestriansRef.current = snaps;
         setPedestrians(snaps);
+      }
+
+      const fireSim = fireSimRef.current;
+      if (fireSim && !rts.state.clock.paused && rts.state.clock.phase !== 'setup') {
+        const fireDt = dt * rts.state.clock.speed;
+        fireSim.step(fireDt, interiorWallsRef.current, hazardZonesRef.current);
+        fireStatesRef.current = new Map(fireSim.states);
       }
 
       updateRenderCtx();
@@ -1235,6 +1252,7 @@ export function DebugRTSSim() {
               ? { pos: gpsSimPosRef.current, accuracy: gpsAccuracyRef.current }
               : null,
             showStudGridRef.current ? simStudsRef.current : null,
+            fireStatesRef.current,
           );
         }
       }
@@ -2484,6 +2502,17 @@ export function DebugRTSSim() {
     if (exits.length === 0) return;
     initEvacEngine();
     rts.startDetonation();
+
+    const studs = simStudsRef.current;
+    if (studs.length > 0 && blastSite) {
+      const fireSim = new FireSimulation(fireParams ?? undefined);
+      fireSim.init(
+        studs.map((s) => ({ id: s.id, simPos: s.simPos, spatialContext: s.spatialContext })),
+      );
+      fireSim.igniteRadius(blastSite, 15);
+      fireSimRef.current = fireSim;
+      setFireStates(new Map(fireSim.states));
+    }
   };
 
   // =====================================================================
@@ -4519,6 +4548,138 @@ export function DebugRTSSim() {
                 <div className="text-xs text-green-700 mt-1">
                   Exits: {exits.length} · Blast: {blastSite ? '✓' : '—'} · Casualties:{' '}
                   {casualtyClusters.length}
+                </div>
+
+                {/* Fire Spread Simulation */}
+                <div className="space-y-1.5 border-t border-green-900 pt-2">
+                  <div className="text-xs text-green-500 uppercase tracking-wider">Fire Spread</div>
+                  {blastSite && allSimStuds.length > 0 && gameState.clock.phase === 'setup' && (
+                    <>
+                      <div>
+                        <label className="block text-xs text-green-600 mb-1">
+                          Preview Time: {Math.round(firePreviewTime / 60)}min
+                        </label>
+                        <input
+                          type="range"
+                          min={60}
+                          max={3600}
+                          step={60}
+                          value={firePreviewTime}
+                          onChange={(e) => setFirePreviewTime(Number(e.target.value))}
+                          className="w-full"
+                        />
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (!blastSite) return;
+                          const preview = new FireSimulation(fireParams ?? undefined);
+                          preview.init(
+                            allSimStuds.map((s) => ({
+                              id: s.id,
+                              simPos: s.simPos,
+                              spatialContext: s.spatialContext,
+                            })),
+                          );
+                          preview.igniteRadius(blastSite, 15);
+                          preview.runPreview(firePreviewTime, interiorWalls, hazardZones);
+                          fireSimRef.current = preview;
+                          setFireStates(new Map(preview.states));
+                        }}
+                        className="w-full bg-orange-800 hover:bg-orange-700 text-orange-100 text-xs px-3 py-1.5 rounded border border-orange-600 font-bold"
+                      >
+                        Preview Fire Spread
+                      </button>
+                      {fireStates && (
+                        <button
+                          onClick={() => {
+                            fireSimRef.current = null;
+                            setFireStates(null);
+                          }}
+                          className="w-full text-xs text-orange-500 hover:text-orange-300 px-2 py-1"
+                        >
+                          Clear Fire Preview
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {!blastSite && (
+                    <div className="text-xs text-green-800 italic">
+                      Place a blast site to enable fire simulation
+                    </div>
+                  )}
+                  {allSimStuds.length === 0 && blastSite && (
+                    <div className="text-xs text-green-800 italic">
+                      No studs available — fetch buildings first
+                    </div>
+                  )}
+                  {fireStates &&
+                    (() => {
+                      const sim = fireSimRef.current;
+                      if (!sim) return null;
+                      const stats = sim.getStats();
+                      return (
+                        <div className="text-xs space-y-0.5 bg-gray-950 border border-orange-900 rounded p-2">
+                          <div className="text-orange-300">
+                            Time: {Math.round(sim.elapsed / 60)}min
+                          </div>
+                          <div className="text-red-400">Burning: {stats.burning}</div>
+                          <div className="text-orange-400">Heating: {stats.heating}</div>
+                          <div className="text-gray-500">Burnt out: {stats.burntOut}</div>
+                          <div className="text-green-600">Unaffected: {stats.none}</div>
+                        </div>
+                      );
+                    })()}
+
+                  {/* AI Fire Calibration */}
+                  <button
+                    onClick={async () => {
+                      setFireCalibrating(true);
+                      try {
+                        const headers = await getAuthHeaders();
+                        const resp = await fetch(apiUrl('/api/debug/rts-fire-params'), {
+                          method: 'POST',
+                          headers,
+                          body: JSON.stringify({
+                            incidentDescription: 'Explosion at building',
+                            buildingName: selectedGrid?.buildingName || null,
+                            hazards: hazardZones.map((h) => ({
+                              hazardType: h.hazardType,
+                              severity: h.severity,
+                              description: h.description || '',
+                              photos: h.photos || [],
+                            })),
+                            wallMaterials: interiorWalls.map((w) => w.material).filter(Boolean),
+                            blastRadius: 20,
+                          }),
+                        });
+                        if (resp.ok) {
+                          const { data } = await resp.json();
+                          setFireParams(data);
+                        } else {
+                          console.error('Fire calibration failed');
+                        }
+                      } catch (err) {
+                        console.error('Fire calibration error:', err);
+                      }
+                      setFireCalibrating(false);
+                    }}
+                    disabled={fireCalibrating}
+                    className="w-full bg-purple-800 hover:bg-purple-700 disabled:opacity-50 text-purple-100 text-xs px-3 py-1.5 rounded border border-purple-600"
+                  >
+                    {fireCalibrating
+                      ? 'Calibrating...'
+                      : fireParams
+                        ? 'Re-Calibrate Fire (AI)'
+                        : 'AI Calibrate Fire'}
+                  </button>
+                  <div className="text-xs text-green-800">
+                    GPT-5.1 calibrates spread rates for your specific hazards and materials
+                  </div>
+                  {fireParams?.reasoning && (
+                    <div className="text-xs text-purple-400 bg-gray-950 border border-purple-900 rounded p-2">
+                      {fireParams.reasoning}
+                    </div>
+                  )}
                 </div>
 
                 {/* AI Enrichment */}

@@ -615,3 +615,142 @@ export async function enrichScene(
     },
   };
 }
+
+// ── Fire parameter calibration ──────────────────────────────────────────
+
+export interface FireCalibrationRequest {
+  incidentDescription: string;
+  buildingName: string | null;
+  hazards: Array<{
+    hazardType: string;
+    severity: string;
+    description: string;
+    photos: string[];
+  }>;
+  wallMaterials: string[];
+  blastRadius: number;
+}
+
+export interface CalibratedFireParams {
+  baseSpreadRate: number;
+  burnDuration: number;
+  heatTransferRate: number;
+  wallResistance: Record<string, number>;
+  hazardAcceleration: Record<string, number>;
+  reasoning: string;
+}
+
+const FIRE_CALIBRATION_PROMPT = `You are a fire engineering expert calibrating a fire spread simulation for a crisis management training scenario. Based on the scene description, hazardous materials, and building construction, generate realistic fire spread parameters.
+
+Consider:
+1. The specific materials present (identified from descriptions/photos) — propane spreads fire differently than paper
+2. Building construction and ventilation characteristics
+3. Interaction between multiple hazards (e.g. accelerants near ignition sources)
+4. Fire engineering research (NFPA, ISO 834 standards)
+
+Return JSON only:
+{
+  "baseSpreadRate": <seconds for fire to spread 5m to a neighbor cell in a furnished building>,
+  "burnDuration": <seconds a 5m cell burns before exhausting fuel>,
+  "heatTransferRate": <seconds of radiant heat exposure before ignition>,
+  "wallResistance": {
+    "<material>": <seconds of fire resistance, use 999999 for fireproof materials>
+  },
+  "hazardAcceleration": {
+    "<hazardType>": <multiplier: 1.0 = normal, higher = faster ignition>
+  },
+  "reasoning": "Brief explanation of why these parameters were chosen for this specific scene"
+}`;
+
+export async function calibrateFireParams(
+  req: FireCalibrationRequest,
+  openAiApiKey: string,
+): Promise<CalibratedFireParams> {
+  const userContent: Array<{
+    type: string;
+    text?: string;
+    image_url?: { url: string; detail?: string };
+  }> = [];
+
+  for (const h of req.hazards) {
+    for (const photoUrl of h.photos) {
+      if (photoUrl) {
+        userContent.push({ type: 'image_url', image_url: { url: photoUrl, detail: 'high' } });
+      }
+    }
+  }
+
+  const hazardList = req.hazards.length
+    ? req.hazards
+        .map(
+          (h) => `- ${h.hazardType} (${h.severity}): ${h.description || 'no description provided'}`,
+        )
+        .join('\n')
+    : '  No hazards placed';
+
+  const promptText = `INCIDENT: ${req.incidentDescription}
+BUILDING: ${req.buildingName || 'Unknown structure'}
+BLAST RADIUS: ${req.blastRadius}m
+
+HAZARDOUS MATERIALS ON SCENE:
+${hazardList}
+
+WALL MATERIALS IN BUILDING: ${req.wallMaterials.length ? req.wallMaterials.join(', ') : 'Unknown'}
+
+Calibrate fire spread parameters for this specific scene. Return JSON only.`;
+
+  userContent.push({ type: 'text', text: promptText });
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
+      body: JSON.stringify({
+        model: AI_MODEL,
+        messages: [
+          { role: 'system', content: FIRE_CALIBRATION_PROMPT },
+          { role: 'user', content: userContent },
+        ],
+        max_completion_tokens: MAX_TOKENS,
+        temperature: 0.2,
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text();
+      logger.error({ status: response.status, body: errBody }, 'Fire calibration API failed');
+      return defaultFireParams();
+    }
+
+    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const raw = data.choices?.[0]?.message?.content?.trim() ?? '';
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      logger.warn({ raw }, 'Fire calibration response was not valid JSON');
+      return defaultFireParams();
+    }
+
+    return JSON.parse(jsonMatch[0]) as CalibratedFireParams;
+  } catch (err) {
+    logger.error({ err }, 'Error in fire parameter calibration');
+    return defaultFireParams();
+  }
+}
+
+function defaultFireParams(): CalibratedFireParams {
+  return {
+    baseSpreadRate: 30,
+    burnDuration: 300,
+    heatTransferRate: 15,
+    wallResistance: {
+      concrete: 999999,
+      drywall: 1200,
+      glass: 120,
+      wood: 600,
+      metal: 1800,
+      '': 900,
+    },
+    hazardAcceleration: { combustible: 3, ignitable: 5, chemical: 4, electrical: 2 },
+    reasoning: 'Default parameters — AI calibration unavailable.',
+  };
+}

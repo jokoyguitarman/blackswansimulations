@@ -27,7 +27,7 @@ import {
   findBestMatch,
   isLikelyCrudeRectangle,
 } from '../services/msBuildingFootprints.js';
-import { enrichScene } from '../services/rtsSceneEnrichmentService.js';
+import { enrichScene, calibrateFireParams } from '../services/rtsSceneEnrichmentService.js';
 import {
   generateCasualtySceneImage,
   generateVictimImage,
@@ -533,6 +533,33 @@ router.post('/rts-enrich-scene', requireAuth, json(), async (req: AuthenticatedR
     res.json({ data: result });
   } catch (err) {
     logger.error({ err }, 'Error in POST /debug/rts-enrich-scene');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── RTS Fire Parameter Calibration (GPT-5.1) ───────────────────────────
+router.post('/rts-fire-params', requireAuth, json(), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!env.openAiApiKey) {
+      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    }
+
+    const { incidentDescription, buildingName, hazards, wallMaterials, blastRadius } = req.body;
+
+    const result = await calibrateFireParams(
+      {
+        incidentDescription: incidentDescription || 'Explosion at building',
+        buildingName: buildingName || null,
+        hazards: hazards || [],
+        wallMaterials: wallMaterials || [],
+        blastRadius: blastRadius || 20,
+      },
+      env.openAiApiKey,
+    );
+
+    res.json({ data: result });
+  } catch (err) {
+    logger.error({ err }, 'Error in POST /debug/rts-fire-params');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
