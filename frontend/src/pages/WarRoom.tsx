@@ -2274,7 +2274,7 @@ export const WarRoom = () => {
                           ))}
                         </div>
                       )}
-                    {(sceneEnrichment.sceneSynthesis as Record<string, unknown>)
+                    {!!(sceneEnrichment.sceneSynthesis as Record<string, unknown>)
                       .escalationTimeline && (
                       <div className="mb-3">
                         <div className="text-xs terminal-text text-amber-400 font-bold mb-1">

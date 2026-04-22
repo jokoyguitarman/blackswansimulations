@@ -1714,6 +1714,12 @@ export const api = {
               }
             >;
           };
+          enrichment: {
+            hazardAnalysis: Array<Record<string, unknown>>;
+            sceneSynthesis: Record<string, unknown>;
+            overallAssessment: string;
+            generatedCasualties: Array<Record<string, unknown>>;
+          } | null;
           geocode: { lat: number; lng: number; display_name: string } | null;
           areaSummary: string | null;
         };
