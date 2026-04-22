@@ -836,6 +836,14 @@ router.post(
             perTeamDoctrines: doctrines.perTeamDoctrines,
             teamWorkflows: doctrines.teamWorkflows,
           },
+          enrichment: enrichmentResult
+            ? {
+                hazardAnalysis: enrichmentResult.hazardAnalysis,
+                sceneSynthesis: enrichmentResult.sceneSynthesis,
+                overallAssessment: enrichmentResult.overallAssessment,
+                generatedCasualties: enrichmentResult.generatedCasualties,
+              }
+            : null,
           geocode: (geoResult as unknown as Record<string, unknown>).geocodeResult ?? null,
           areaSummary: (geoResult as unknown as Record<string, unknown>).areaSummary ?? null,
         },

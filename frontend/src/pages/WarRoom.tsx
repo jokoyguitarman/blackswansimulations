@@ -409,6 +409,11 @@ export const WarRoom = () => {
   // ── Manual Design mode state ──────────────────────────────────────────
   const [aiEnrichmentLoading, setAiEnrichmentLoading] = useState(false);
   const [aiEnrichmentResult, setAiEnrichmentResult] = useState<string | null>(null);
+  const [sceneEnrichment, setSceneEnrichment] = useState<{
+    hazardAnalysis: Array<Record<string, unknown>>;
+    sceneSynthesis: Record<string, unknown>;
+    overallAssessment: string;
+  } | null>(null);
 
   const [searchParams] = useSearchParams();
   const draftResumeLoadedRef = useRef<string | null>(null);
@@ -2188,11 +2193,159 @@ export const WarRoom = () => {
                 AI is analyzing scene and researching doctrines...
               </p>
             )}
-            {aiEnrichmentResult && (
-              <div className="bg-black/50 border border-robotic-yellow/30 p-4 mt-4">
-                <pre className="text-xs terminal-text text-robotic-yellow/80 whitespace-pre-wrap">
-                  {aiEnrichmentResult}
-                </pre>
+
+            {/* Scene Enrichment Results */}
+            {sceneEnrichment && (
+              <div className="space-y-4 mt-4">
+                {sceneEnrichment.overallAssessment && (
+                  <div className="bg-black/50 border border-cyan-500/30 p-4">
+                    <h4 className="text-sm terminal-text text-cyan-400 uppercase mb-2">
+                      Scene Assessment
+                    </h4>
+                    <p className="text-xs terminal-text text-robotic-yellow/80 whitespace-pre-wrap">
+                      {sceneEnrichment.overallAssessment}
+                    </p>
+                  </div>
+                )}
+
+                {sceneEnrichment.hazardAnalysis?.length > 0 && (
+                  <div className="bg-black/50 border border-red-500/30 p-4">
+                    <h4 className="text-sm terminal-text text-red-400 uppercase mb-2">
+                      Hazard Analysis ({sceneEnrichment.hazardAnalysis.length})
+                    </h4>
+                    <div className="space-y-3">
+                      {sceneEnrichment.hazardAnalysis.map((h, i) => (
+                        <div key={i} className="border-l-2 border-red-800 pl-3">
+                          <div className="text-xs terminal-text text-amber-400 font-bold">
+                            {(h.identifiedMaterial as string) || `Hazard ${i + 1}`} — Risk:{' '}
+                            {(h.riskLevel as string) || 'unknown'}
+                          </div>
+                          <div className="text-xs terminal-text text-robotic-yellow/70 mt-1">
+                            {(h.blastInteraction as string) || ''}
+                          </div>
+                          {Array.isArray(h.secondaryEffects) &&
+                            (h.secondaryEffects as string[]).length > 0 && (
+                              <div className="text-xs terminal-text text-red-400/80 mt-1">
+                                Secondary effects: {(h.secondaryEffects as string[]).join(', ')}
+                              </div>
+                            )}
+                          {(h.progressionTimeline as string) && (
+                            <div className="text-xs terminal-text text-robotic-yellow/60 mt-1">
+                              {h.progressionTimeline as string}
+                            </div>
+                          )}
+                          {(h.responderGuidance as string) && (
+                            <div className="text-xs terminal-text text-cyan-400/70 mt-1">
+                              Responder guidance: {h.responderGuidance as string}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {sceneEnrichment.sceneSynthesis && (
+                  <div className="bg-black/50 border border-amber-500/30 p-4">
+                    <h4 className="text-sm terminal-text text-amber-400 uppercase mb-2">
+                      Scene Synthesis
+                    </h4>
+                    {Array.isArray(
+                      (sceneEnrichment.sceneSynthesis as Record<string, unknown>).chainReactions,
+                    ) &&
+                      (
+                        (sceneEnrichment.sceneSynthesis as Record<string, unknown>)
+                          .chainReactions as string[]
+                      ).length > 0 && (
+                        <div className="mb-3">
+                          <div className="text-xs terminal-text text-red-400 font-bold mb-1">
+                            Chain Reactions:
+                          </div>
+                          {(
+                            (sceneEnrichment.sceneSynthesis as Record<string, unknown>)
+                              .chainReactions as string[]
+                          ).map((cr, i) => (
+                            <div
+                              key={i}
+                              className="text-xs terminal-text text-robotic-yellow/70 ml-2"
+                            >
+                              - {cr}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    {(sceneEnrichment.sceneSynthesis as Record<string, unknown>)
+                      .escalationTimeline && (
+                      <div className="mb-3">
+                        <div className="text-xs terminal-text text-amber-400 font-bold mb-1">
+                          Escalation Timeline:
+                        </div>
+                        <p className="text-xs terminal-text text-robotic-yellow/70 whitespace-pre-wrap">
+                          {String(
+                            (sceneEnrichment.sceneSynthesis as Record<string, unknown>)
+                              .escalationTimeline,
+                          )}
+                        </p>
+                      </div>
+                    )}
+                    {Array.isArray(
+                      (sceneEnrichment.sceneSynthesis as Record<string, unknown>).keyChallenges,
+                    ) &&
+                      (
+                        (sceneEnrichment.sceneSynthesis as Record<string, unknown>)
+                          .keyChallenges as string[]
+                      ).length > 0 && (
+                        <div className="mb-3">
+                          <div className="text-xs terminal-text text-amber-400 font-bold mb-1">
+                            Key Challenges:
+                          </div>
+                          {(
+                            (sceneEnrichment.sceneSynthesis as Record<string, unknown>)
+                              .keyChallenges as string[]
+                          ).map((ch, i) => (
+                            <div
+                              key={i}
+                              className="text-xs terminal-text text-robotic-yellow/70 ml-2"
+                            >
+                              - {ch}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Doctrine Research Results */}
+            {aiEnrichmentResult && doctrines && (
+              <div className="space-y-4 mt-4">
+                <h4 className="text-sm terminal-text text-robotic-yellow uppercase">
+                  Doctrine Research ({Object.keys(doctrines.perTeamDoctrines).length} teams)
+                </h4>
+                {Object.entries(doctrines.perTeamDoctrines).map(([team, findings]) => (
+                  <div key={team} className="bg-black/50 border border-robotic-yellow/20 p-4">
+                    <h5 className="text-xs terminal-text text-robotic-yellow font-bold uppercase mb-2">
+                      {team}
+                    </h5>
+                    <div className="space-y-2">
+                      {(findings as Array<{ domain: string; key_points: string[] }>).map((f, i) => (
+                        <div key={i}>
+                          <div className="text-xs terminal-text text-cyan-400/90 font-bold">
+                            {f.domain}
+                          </div>
+                          <div className="ml-2 space-y-0.5">
+                            {f.key_points?.map((kp, j) => (
+                              <div key={j} className="text-xs terminal-text text-robotic-yellow/70">
+                                - {kp}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -2501,15 +2654,10 @@ export const WarRoom = () => {
                       perTeamDoctrines: data.doctrines.perTeamDoctrines,
                       teamWorkflows: data.doctrines.teamWorkflows,
                     });
-                    setAiEnrichmentResult(
-                      `Doctrine research complete.\n\nTeams analyzed: ${Object.keys(data.doctrines.perTeamDoctrines).length}\n` +
-                        Object.entries(data.doctrines.perTeamDoctrines)
-                          .map(
-                            ([team, findings]) =>
-                              `\n--- ${team} ---\n${(findings as Array<{ domain: string; key_points: string[] }>).map((f) => `  • ${f.domain}: ${f.key_points?.[0] || ''}`).join('\n')}`,
-                          )
-                          .join(''),
-                    );
+                    if (data.enrichment) {
+                      setSceneEnrichment(data.enrichment);
+                    }
+                    setAiEnrichmentResult('complete');
                   } catch (err) {
                     setError(err instanceof Error ? err.message : 'AI research failed');
                   } finally {
