@@ -12,6 +12,23 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 
 const SEARCH_MODEL = 'gpt-4o-search-preview';
 
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  label: string,
+  retries = 1,
+  delayMs = 2000,
+): Promise<Response> {
+  const res = await fetch(url, init);
+  if (res.ok || retries <= 0 || res.status < 500) return res;
+  logger.warn(
+    { status: res.status, label },
+    `${label} got ${res.status}, retrying in ${delayMs}ms`,
+  );
+  await new Promise((r) => setTimeout(r, delayMs));
+  return fetch(url, init);
+}
+
 export interface AreaResearchStructured {
   venue_name?: string;
   location?: string;
@@ -535,18 +552,22 @@ Return ONLY valid JSON — an array of 2-4 findings:
 Focus on: decision gates, time thresholds, role responsibilities, handover procedures, and any criteria that determine correct vs incorrect responses by this team. For site_requirements, include only area types this team would actually set up or manage.`;
 
       try {
-        const res = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${openAiApiKey}`,
+        const res = await fetchWithRetry(
+          'https://api.openai.com/v1/chat/completions',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${openAiApiKey}`,
+            },
+            body: JSON.stringify({
+              model: SEARCH_MODEL,
+              messages: [{ role: 'user', content: prompt }],
+              max_tokens: 8000,
+            }),
           },
-          body: JSON.stringify({
-            model: SEARCH_MODEL,
-            messages: [{ role: 'user', content: prompt }],
-            max_tokens: 8000,
-          }),
-        });
+          `standards:${team.team_name}`,
+        );
 
         if (!res.ok) {
           logger.warn(
@@ -664,19 +685,23 @@ Return ONLY valid JSON — an array:
 ]`;
 
       try {
-        const res = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${openAiApiKey}`,
+        const res = await fetchWithRetry(
+          'https://api.openai.com/v1/chat/completions',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${openAiApiKey}`,
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages: [{ role: 'user', content: prompt }],
+              max_tokens: 2000,
+              temperature: 0.3,
+            }),
           },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [{ role: 'user', content: prompt }],
-            max_tokens: 2000,
-            temperature: 0.3,
-          }),
-        });
+          `forbidden:${team.team_name}`,
+        );
 
         if (!res.ok) {
           logger.warn(

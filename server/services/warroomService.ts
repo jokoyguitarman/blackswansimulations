@@ -306,6 +306,7 @@ export async function stageParseAndGeocode(
   openAiApiKey: string,
   onProgress?: WarroomProgressCallback,
   geocodeOverride?: { lat: number; lng: number; display_name?: string } | null,
+  skipHeavyOsm = false,
 ): Promise<ParseAndGeocodeResult> {
   let parsed: ParsedWarroomInput;
 
@@ -451,35 +452,40 @@ export async function stageParseAndGeocode(
       }
 
       let buildings: OsmBuilding[] = [];
-      const buildingRadii = [300, 450, 600];
-      for (let attempt = 1; attempt <= 5; attempt++) {
-        const radiusM = buildingRadii[Math.min(attempt - 1, buildingRadii.length - 1)];
-        try {
-          buildings = await fetchVenueBuilding(geocodeResult.lat, geocodeResult.lng, radiusM);
-          if (buildings.length > 0) break;
-        } catch (err) {
-          logger.warn({ err, attempt, radiusM }, 'OSM venue building fetch failed');
+      let spaces: OsmOpenSpace[] = [];
+      let routeGeoms: OsmRouteGeometry[] = [];
+
+      if (skipHeavyOsm) {
+        logger.info('Skipping heavy OSM queries (trainer scene provides building/layout)');
+      } else {
+        const buildingRadii = [300, 450, 600];
+        for (let attempt = 1; attempt <= 5; attempt++) {
+          const radiusM = buildingRadii[Math.min(attempt - 1, buildingRadii.length - 1)];
+          try {
+            buildings = await fetchVenueBuilding(geocodeResult.lat, geocodeResult.lng, radiusM);
+            if (buildings.length > 0) break;
+          } catch (err) {
+            logger.warn({ err, attempt, radiusM }, 'OSM venue building fetch failed');
+          }
+          if (attempt < 5) await delay(2000 * attempt);
         }
-        if (attempt < 5) await delay(2000 * attempt);
+        await delay(1500);
+
+        spaces = await fetchOsmOpenSpaces(geocodeResult.lat, geocodeResult.lng, 1500).catch(
+          (err) => {
+            logger.warn({ err }, 'OSM open spaces fetch failed; continuing without');
+            return [] as OsmOpenSpace[];
+          },
+        );
+        await delay(3000);
+
+        routeGeoms = await fetchRouteGeometries(geocodeResult.lat, geocodeResult.lng, 6000).catch(
+          (err) => {
+            logger.warn({ err }, 'OSM route geometries fetch failed; continuing without');
+            return [] as OsmRouteGeometry[];
+          },
+        );
       }
-      await delay(1500);
-
-      const spaces = await fetchOsmOpenSpaces(geocodeResult.lat, geocodeResult.lng, 1500).catch(
-        (err) => {
-          logger.warn({ err }, 'OSM open spaces fetch failed; continuing without');
-          return [] as OsmOpenSpace[];
-        },
-      );
-      await delay(3000);
-
-      const routeGeoms = await fetchRouteGeometries(
-        geocodeResult.lat,
-        geocodeResult.lng,
-        6000,
-      ).catch((err) => {
-        logger.warn({ err }, 'OSM route geometries fetch failed; continuing without');
-        return [] as OsmRouteGeometry[];
-      });
 
       osmVicinity = vicinity;
       osmOpenSpaces = spaces.length > 0 ? spaces : undefined;

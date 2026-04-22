@@ -4241,7 +4241,7 @@ Return ONLY valid JSON:
 
 CRITICAL: You MUST return ${minCasualties}-${maxCasualties} victims. Do NOT return fewer.`;
 
-  const BATCH_SIZE = 5;
+  const BATCH_SIZE = 3;
   const totalTarget = Math.round((minCasualties + maxCasualties) / 2);
   const batchCount = Math.ceil(totalTarget / BATCH_SIZE);
   const allProfiles: VictimProfile[] = [];
@@ -4272,7 +4272,7 @@ CRITICAL: You MUST return ${minCasualties}-${maxCasualties} victims. Do NOT retu
             batchSystemPrompt,
             batchUserPrompt,
             openAiApiKey,
-            8000,
+            10000,
           );
           return parsed.victims?.length ? parsed.victims : null;
         } catch (err) {
@@ -5324,7 +5324,7 @@ RULES:
         description: string;
         severity: string;
       }>;
-    }>(systemPrompt, userPrompt, openAiApiKey, 8000);
+    }>(systemPrompt, userPrompt, openAiApiKey, 12000);
 
     return {
       layout_ground_truth: parsed.layout_ground_truth || undefined,
@@ -6450,7 +6450,7 @@ RULES:
   const userPrompt = `Generate the adversary pursuit decision tree for "${narrative?.title || scenario_type}" at ${venue}. Adversary behaviors: ${adversaryBehaviors.join(', ')}. Duration: ${durationMinutes} minutes. Make the decisions genuinely difficult with realistic tradeoffs.`;
 
   try {
-    const tokenLimit = multiAdversary ? 8000 + (adversaryCount - 1) * 2000 : 8000;
+    const tokenLimit = multiAdversary ? 12000 + (adversaryCount - 1) * 2000 : 12000;
     const parsed = await callOpenAi<{
       adversary_profile?: {
         adversary_id?: string;
