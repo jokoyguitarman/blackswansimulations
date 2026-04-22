@@ -5,6 +5,7 @@ import type {
   RTSEquipment,
   RTSGameState,
   CasualtyCluster,
+  CasualtyPin,
   InteriorWall,
   HazardZone,
   Stairwell,
@@ -56,6 +57,8 @@ export function renderRTS(
   discoveredWallPointIds?: Set<string>,
   casualtyClusters?: CasualtyCluster[],
   activeCasualtyId?: string | null,
+  casualtyPinsParam?: CasualtyPin[],
+  activeCasualtyPinId?: string | null,
   interiorWalls?: InteriorWall[],
   hazardZones?: HazardZone[],
   stairwells?: Stairwell[],
@@ -129,6 +132,12 @@ export function renderRTS(
   if (casualtyClusters && casualtyClusters.length > 0) {
     for (const cluster of casualtyClusters) {
       drawCasualtyCluster(ctx, cluster, rc, activeCasualtyId === cluster.id);
+    }
+  }
+
+  if (casualtyPinsParam && casualtyPinsParam.length > 0) {
+    for (const pin of casualtyPinsParam) {
+      drawCasualtyPin(ctx, pin, rc, activeCasualtyPinId === pin.id);
     }
   }
 
@@ -973,6 +982,67 @@ function drawCasualtyCluster(
   ctx.font = 'bold 9px monospace';
   ctx.textAlign = 'center';
   ctx.fillText('CASUALTIES', p.cx, p.cy + r + 12);
+}
+
+// ── Individual casualty pins ─────────────────────────────────────────────
+const TAG_COLORS: Record<string, string> = {
+  red: '#ef4444',
+  yellow: '#eab308',
+  green: '#22c55e',
+  black: '#374151',
+  untagged: '#d1d5db',
+};
+
+function drawCasualtyPin(
+  ctx: CanvasRenderingContext2D,
+  pin: CasualtyPin,
+  rc: RenderContext,
+  isActive: boolean,
+) {
+  const p = toCanvas(pin.pos.x, pin.pos.y, rc);
+  const r = isActive ? 10 : 7;
+  const color = TAG_COLORS[pin.currentTag] || TAG_COLORS.untagged;
+
+  if (pin.deteriorationLevel > 0.05) {
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, r + 4, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(239, 68, 68, ${0.15 + pin.deteriorationLevel * 0.3})`;
+    ctx.fill();
+  }
+
+  if (isActive) {
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, r + 3, 0, Math.PI * 2);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.fillStyle = pin.currentTag === 'black' || pin.currentTag === 'red' ? '#fff' : '#000';
+  ctx.font = 'bold 8px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('+', p.cx, p.cy);
+
+  ctx.fillStyle = color;
+  ctx.font = 'bold 8px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText(pin.currentTag.toUpperCase(), p.cx, p.cy + r + 2);
+
+  if (pin.currentTag !== pin.trueTag) {
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '7px monospace';
+    ctx.fillText(`was ${pin.trueTag.toUpperCase()}`, p.cx, p.cy + r + 12);
+  }
 }
 
 // ── Wall inspection points ──────────────────────────────────────────────

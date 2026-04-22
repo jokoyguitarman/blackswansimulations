@@ -145,6 +145,8 @@ export function SceneSetup({
             new Set(),
             casualtyClusters,
             null,
+            [],
+            null,
             interiorWalls,
             hazardZones,
             stairwells,

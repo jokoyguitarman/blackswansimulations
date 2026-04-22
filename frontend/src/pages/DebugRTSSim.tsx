@@ -27,8 +27,7 @@ import {
   type TeamId,
   type PlantedItem,
   type CasualtyCluster,
-  type CasualtyVictim,
-  type TriageTag,
+  type CasualtyPin,
   type InteriorWall,
   type HazardZone,
   type HazardType,
@@ -47,7 +46,7 @@ import {
   fetchStreetViewImage,
   type WallInspectionPoint,
 } from '../lib/rts/wallInspection';
-import { generateBlastCasualties } from '../lib/rts/casualtyPresets';
+import { generateSingleCasualty } from '../lib/rts/casualtyPresets';
 import { type FireParams } from '../lib/rts/fireSimulation';
 import {
   SpatialEffectsEngine,
@@ -413,11 +412,9 @@ export function DebugRTSSim() {
     useState<PlantedItem['concealmentDifficulty']>('moderate');
   const [isTrainerMode, setIsTrainerMode] = useState(true);
 
-  // ── Casualty clusters ─────────────────────────────────────────────────
-  const [casualtyClusters, setCasualtyClusters] = useState<CasualtyCluster[]>([]);
-  const [activeCasualtyCluster, setActiveCasualtyCluster] = useState<CasualtyCluster | null>(null);
-  const [triageLoading, setTriageLoading] = useState(false);
-  const [triageResult, setTriageResult] = useState<string | null>(null);
+  // ── Casualty pins ────────────────────────────────────────────────────
+  const [casualtyPins, setCasualtyPins] = useState<CasualtyPin[]>([]);
+  const [activeCasualtyPin, setActiveCasualtyPin] = useState<CasualtyPin | null>(null);
 
   // ── Draw building tool ─────────────────────────────────────────────────
   const [drawingBuilding, setDrawingBuilding] = useState(false);
@@ -994,7 +991,7 @@ export function DebugRTSSim() {
         hazardZones,
         stairwells,
         blastSite,
-        casualtyClusters,
+        casualtyPins,
         plantedItems,
         wallInspectionPoints: wallPoints,
         pedestrianCount,
@@ -1018,7 +1015,7 @@ export function DebugRTSSim() {
     hazardZones,
     stairwells,
     blastSite,
-    casualtyClusters,
+    casualtyPins,
     plantedItems,
     wallPoints,
     pedestrianCount,
@@ -1038,11 +1035,11 @@ export function DebugRTSSim() {
           incidentDescription: isWarroomMode ? 'Explosion at building' : 'Explosion at building',
           blastRadius: blastRadius,
           blastSite: blastSite,
-          casualtyPins: casualtyClusters.map((c) => ({
+          casualtyPins: casualtyPins.map((c) => ({
             id: c.id,
             pos: c.pos,
-            description: c.sceneDescription || '',
-            trueTag: c.victims[0]?.trueTag || 'untagged',
+            description: c.description || '',
+            trueTag: c.trueTag || 'untagged',
             photos: c.imageUrl ? [c.imageUrl] : [],
             insideBuilding: c.insideBuilding ?? false,
           })),
@@ -1093,13 +1090,13 @@ export function DebugRTSSim() {
 
         // Auto-merge enriched descriptions into casualties that had none
         if (data.enrichedCasualties?.length) {
-          setCasualtyClusters((prev) =>
-            prev.map((cc) => {
-              const enriched = data.enrichedCasualties.find((e: { id: string }) => e.id === cc.id);
-              if (enriched && !cc.sceneDescription) {
-                return { ...cc, sceneDescription: enriched.description };
+          setCasualtyPins((prev) =>
+            prev.map((cp) => {
+              const enriched = data.enrichedCasualties.find((e: { id: string }) => e.id === cp.id);
+              if (enriched && !cp.description) {
+                return { ...cp, description: enriched.description };
               }
-              return cc;
+              return cp;
             }),
           );
         }
@@ -1116,7 +1113,7 @@ export function DebugRTSSim() {
   }, [
     enriching,
     blastSite,
-    casualtyClusters,
+    casualtyPins,
     hazardZones,
     exits,
     interiorWalls,
@@ -1157,7 +1154,45 @@ export function DebugRTSSim() {
       setHazardZones(sc.hazard_zones as HazardZone[]);
       setStairwells(sc.stairwells as Stairwell[]);
       setBlastSite(sc.blast_site);
-      setCasualtyClusters(sc.casualty_clusters as CasualtyCluster[]);
+      // Backward compatibility: convert old casualty_clusters to individual pins
+      const rawPins = (sc as unknown as Record<string, unknown>).casualty_pins as
+        | CasualtyPin[]
+        | undefined;
+      const rawClusters = sc.casualty_clusters as CasualtyCluster[] | undefined;
+      if (rawPins && rawPins.length > 0) {
+        setCasualtyPins(
+          rawPins.map((p) => ({
+            ...p,
+            currentTag: p.currentTag ?? p.trueTag,
+            deteriorationLevel: p.deteriorationLevel ?? 0,
+          })),
+        );
+      } else if (rawClusters && rawClusters.length > 0) {
+        const converted: CasualtyPin[] = [];
+        for (const cluster of rawClusters) {
+          for (let vi = 0; vi < cluster.victims.length; vi++) {
+            const v = cluster.victims[vi];
+            const offset = vi * 1.5;
+            converted.push({
+              id: v.id || `cas-conv-${Date.now()}-${vi}`,
+              pos: { x: cluster.pos.x + offset, y: cluster.pos.y },
+              description: v.description,
+              trueTag: v.trueTag,
+              currentTag: v.trueTag,
+              observableSigns: v.observableSigns,
+              imageUrl: v.imageUrl,
+              imageGenerating: false,
+              autoGenerated: false,
+              deteriorationLevel: 0,
+              insideBuilding: cluster.insideBuilding,
+              spatialContext: cluster.spatialContext,
+            });
+          }
+        }
+        setCasualtyPins(converted);
+      } else {
+        setCasualtyPins([]);
+      }
       setPlantedItems(sc.planted_items as PlantedItem[]);
       setPedestrianCount(sc.pedestrian_count);
 
@@ -1225,17 +1260,16 @@ export function DebugRTSSim() {
       doorPosition: w.doorPosition,
     }));
 
-    // Collect obstacle points (hazards + casualty clusters)
     const obstacles = [
       ...hazardZones.map((hz) => ({ x: hz.pos.x, y: hz.pos.y, radius: hz.radius })),
-      ...casualtyClusters.map((c) => ({ x: c.pos.x, y: c.pos.y, radius: 3 })),
+      ...casualtyPins.map((c) => ({ x: c.pos.x, y: c.pos.y, radius: 1.5 })),
     ];
 
     evacEngRef.current = new PolygonEvacuationEngine(config, exits, iwDefs, obstacles);
     rtsRef.current.setBuildingVertices(projectedVerts);
     rtsRef.current.setExits(exits);
     setPedestrians(evacEngRef.current.getSnapshots());
-  }, [projectedVerts, exits, pedestrianCount, interiorWalls, hazardZones, casualtyClusters]);
+  }, [projectedVerts, exits, pedestrianCount, interiorWalls, hazardZones, casualtyPins]);
 
   // Keep engine exits in sync when exits change (for pathfinding)
   useEffect(() => {
@@ -1272,10 +1306,10 @@ export function DebugRTSSim() {
   pedestriansRef.current = pedestrians;
   const plantedItemsRef = useRef(plantedItems);
   plantedItemsRef.current = plantedItems;
-  const casualtyClustersRef = useRef(casualtyClusters);
-  casualtyClustersRef.current = casualtyClusters;
-  const activeCasualtyRef = useRef(activeCasualtyCluster);
-  activeCasualtyRef.current = activeCasualtyCluster;
+  const casualtyPinsRef = useRef(casualtyPins);
+  casualtyPinsRef.current = casualtyPins;
+  const activeCasualtyRef = useRef(activeCasualtyPin);
+  activeCasualtyRef.current = activeCasualtyPin;
   const interiorWallsRef = useRef(interiorWalls);
   interiorWallsRef.current = interiorWalls;
   const hazardZonesRef = useRef(hazardZones);
@@ -1333,6 +1367,39 @@ export function DebugRTSSim() {
         const effectDt = dt * rts.state.clock.speed;
         effectsEng.step(effectDt, interiorWallsRef.current, hazardZonesRef.current);
         effectStatesRef.current = new Map(effectsEng.studStates);
+
+        // Casualty deterioration based on spatial effects
+        const eStates = effectsEng.studStates;
+        let pinsChanged = false;
+        const updatedPins = casualtyPinsRef.current.map((pin) => {
+          const nearest = simStudsRef.current.reduce<{ id: string; dist: number } | null>(
+            (best, s) => {
+              const d = Math.hypot(s.simPos.x - pin.pos.x, s.simPos.y - pin.pos.y);
+              return !best || d < best.dist ? { id: s.id, dist: d } : best;
+            },
+            null,
+          );
+          if (!nearest || nearest.dist > 8) return pin;
+          const es = eStates.get(nearest.id);
+          if (!es) return pin;
+
+          let dRate = 0;
+          if (es.fire.state === 'burning') dRate += effectDt * 0.008;
+          else if (es.fire.state === 'heating') dRate += effectDt * 0.003;
+          if (es.gas > 0.1) dRate += effectDt * 0.002 * es.gas;
+          if (es.flood > 0.3) dRate += effectDt * 0.001 * es.flood;
+
+          if (dRate <= 0) return pin;
+          pinsChanged = true;
+          const newLevel = Math.min(1, pin.deteriorationLevel + dRate);
+          let newTag = pin.currentTag;
+          if (pin.currentTag === 'green' && newLevel >= 0.3) newTag = 'yellow';
+          if ((pin.currentTag === 'green' || pin.currentTag === 'yellow') && newLevel >= 0.6)
+            newTag = 'red';
+          if (pin.currentTag !== 'black' && newLevel >= 0.9) newTag = 'black';
+          return { ...pin, deteriorationLevel: newLevel, currentTag: newTag };
+        });
+        if (pinsChanged) casualtyPinsRef.current = updatedPins;
       }
 
       updateRenderCtx();
@@ -1360,7 +1427,9 @@ export function DebugRTSSim() {
             activeWallPointRef.current?.id ?? null,
             planted,
             discovered,
-            casualtyClustersRef.current,
+            [],
+            null,
+            casualtyPinsRef.current,
             activeCasualtyRef.current?.id ?? null,
             interiorWallsRef.current,
             hazardZonesRef.current,
@@ -1549,240 +1618,10 @@ export function DebugRTSSim() {
     setAssessmentLoading(false);
   }, [activeWallPoint, assessmentText, wallPointImage, plantedItems]);
 
-  // ── Casualty cluster handlers ─────────────────────────────────────────
-  const handlePlaceCasualtyCluster = useCallback(
-    (pos: Vec2, victims: CasualtyVictim[], sceneDescription: string) => {
-      const cluster: CasualtyCluster = {
-        id: `cas-${Date.now()}`,
-        pos: { ...pos },
-        victims,
-        sceneDescription,
-        imageUrl: null,
-        imageGenerating: false,
-        discovered: true,
-        triageComplete: false,
-        aiEvaluation: null,
-      };
-      setCasualtyClusters((prev) => [...prev, cluster]);
-      return cluster;
-    },
-    [],
-  );
-
-  const handleCasualtyClusterClick = useCallback((cluster: CasualtyCluster) => {
-    setActiveCasualtyCluster(cluster);
-    setTriageResult(null);
+  // ── Casualty pin handlers ────────────────────────────────────────────
+  const handleCasualtyPinClick = useCallback((pin: CasualtyPin) => {
+    setActiveCasualtyPin(pin);
   }, []);
-
-  const closeCasualtyCard = useCallback(() => {
-    setActiveCasualtyCluster(null);
-    setTriageResult(null);
-  }, []);
-
-  const handleGenerateCasualtyImage = useCallback(
-    async (clusterId: string) => {
-      const cluster = casualtyClusters.find((c) => c.id === clusterId);
-      if (!cluster) return;
-
-      setCasualtyClusters((prev) =>
-        prev.map((c) => (c.id === clusterId ? { ...c, imageGenerating: true } : c)),
-      );
-
-      try {
-        const headers = await getAuthHeaders();
-        const resp = await fetch(apiUrl('/api/debug/rts-casualty-image'), {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            victims: cluster.victims.map((v) => ({
-              label: v.label,
-              trueTag: v.trueTag,
-              description: v.description,
-              observableSigns: v.observableSigns,
-            })),
-            sceneContext: cluster.sceneDescription,
-          }),
-        });
-
-        if (resp.ok) {
-          const { data } = await resp.json();
-          setCasualtyClusters((prev) =>
-            prev.map((c) =>
-              c.id === clusterId ? { ...c, imageUrl: data.imageUrl, imageGenerating: false } : c,
-            ),
-          );
-          if (activeCasualtyCluster?.id === clusterId) {
-            setActiveCasualtyCluster((prev) =>
-              prev ? { ...prev, imageUrl: data.imageUrl, imageGenerating: false } : prev,
-            );
-          }
-        } else {
-          setCasualtyClusters((prev) =>
-            prev.map((c) => (c.id === clusterId ? { ...c, imageGenerating: false } : c)),
-          );
-        }
-      } catch {
-        setCasualtyClusters((prev) =>
-          prev.map((c) => (c.id === clusterId ? { ...c, imageGenerating: false } : c)),
-        );
-      }
-    },
-    [casualtyClusters, activeCasualtyCluster],
-  );
-
-  const handleGenerateVictimImages = useCallback(
-    async (clusterId: string) => {
-      const cluster = casualtyClusters.find((c) => c.id === clusterId);
-      if (!cluster) return;
-
-      for (const victim of cluster.victims) {
-        if (victim.imageUrl) continue;
-
-        // Mark generating
-        const updateVictim = (url: string | null, generating: boolean) => {
-          setCasualtyClusters((prev) =>
-            prev.map((c) =>
-              c.id === clusterId
-                ? {
-                    ...c,
-                    victims: c.victims.map((v) =>
-                      v.id === victim.id ? { ...v, imageUrl: url, imageGenerating: generating } : v,
-                    ),
-                  }
-                : c,
-            ),
-          );
-          if (activeCasualtyCluster?.id === clusterId) {
-            setActiveCasualtyCluster((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    victims: prev.victims.map((v) =>
-                      v.id === victim.id ? { ...v, imageUrl: url, imageGenerating: generating } : v,
-                    ),
-                  }
-                : prev,
-            );
-          }
-        };
-
-        updateVictim(null, true);
-
-        try {
-          const headers = await getAuthHeaders();
-          const resp = await fetch(apiUrl('/api/debug/rts-victim-image'), {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              victim: {
-                label: victim.label,
-                trueTag: victim.trueTag,
-                description: victim.description,
-                observableSigns: victim.observableSigns,
-              },
-              sceneContext: cluster.sceneDescription,
-            }),
-          });
-
-          if (resp.ok) {
-            const { data } = await resp.json();
-            updateVictim(data.imageUrl, false);
-          } else {
-            updateVictim(null, false);
-          }
-        } catch {
-          updateVictim(null, false);
-        }
-      }
-    },
-    [casualtyClusters, activeCasualtyCluster],
-  );
-
-  const handleUpdateVictimTag = useCallback(
-    (clusterId: string, victimId: string, tag: TriageTag) => {
-      setCasualtyClusters((prev) =>
-        prev.map((c) =>
-          c.id === clusterId
-            ? {
-                ...c,
-                victims: c.victims.map((v) =>
-                  v.id === victimId ? { ...v, playerTag: tag, taggedAt: Date.now() } : v,
-                ),
-              }
-            : c,
-        ),
-      );
-      if (activeCasualtyCluster?.id === clusterId) {
-        setActiveCasualtyCluster((prev) =>
-          prev
-            ? {
-                ...prev,
-                victims: prev.victims.map((v) =>
-                  v.id === victimId ? { ...v, playerTag: tag, taggedAt: Date.now() } : v,
-                ),
-              }
-            : prev,
-        );
-      }
-    },
-    [activeCasualtyCluster],
-  );
-
-  const handleSubmitTriage = useCallback(async () => {
-    if (!activeCasualtyCluster) return;
-    const untagged = activeCasualtyCluster.victims.filter((v) => v.playerTag === 'untagged');
-    if (untagged.length > 0) return;
-
-    setTriageLoading(true);
-    setTriageResult(null);
-
-    try {
-      const headers = await getAuthHeaders();
-      const resp = await fetch(apiUrl('/api/debug/rts-triage-assess'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          imageUrl: activeCasualtyCluster.imageUrl || '',
-          victims: activeCasualtyCluster.victims.map((v) => ({
-            label: v.label,
-            trueTag: v.trueTag,
-            description: v.description,
-            playerTag: v.playerTag,
-          })),
-          sceneContext: activeCasualtyCluster.sceneDescription,
-        }),
-      });
-
-      if (resp.ok) {
-        const { data } = await resp.json();
-        const evalText = `Score: ${data.overallScore}/${data.maxScore}\n${data.evaluation}\n\n${data.perVictim
-          .map(
-            (pv: { label: string; correct: boolean; feedback: string }) =>
-              `${pv.label}: ${pv.correct ? '✓' : '✗'} ${pv.feedback}`,
-          )
-          .join(
-            '\n',
-          )}${data.criticalErrors.length > 0 ? `\n\nCRITICAL: ${data.criticalErrors.join(', ')}` : ''}`;
-
-        setTriageResult(evalText);
-        setCasualtyClusters((prev) =>
-          prev.map((c) =>
-            c.id === activeCasualtyCluster.id
-              ? { ...c, triageComplete: true, aiEvaluation: evalText }
-              : c,
-          ),
-        );
-        setActiveCasualtyCluster((prev) =>
-          prev ? { ...prev, triageComplete: true, aiEvaluation: evalText } : prev,
-        );
-      } else {
-        setTriageResult('Triage evaluation failed. Try again.');
-      }
-    } catch {
-      setTriageResult('Connection error. Try again.');
-    }
-    setTriageLoading(false);
-  }, [activeCasualtyCluster]);
 
   // ── Canvas mouse handlers ─────────────────────────────────────────────
   const dragStartRef = useRef<Vec2 | null>(null);
@@ -1805,7 +1644,7 @@ export function DebugRTSSim() {
     if (state.clock.phase !== 'setup') return null;
     const bs = blastSiteRef.current;
     if (bs && Math.hypot(sim.x - bs.x, sim.y - bs.y) < 4) return { type: 'blastSite', id: 'blast' };
-    for (const c of casualtyClustersRef.current) {
+    for (const c of casualtyPinsRef.current) {
       if (Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 8) return { type: 'casualty', id: c.id };
     }
     for (const hz of hazardZonesRef.current) {
@@ -1833,7 +1672,7 @@ export function DebugRTSSim() {
       if (drag.type === 'blastSite') setBlastSite(sp);
       else if (drag.type === 'stagingArea') rtsRef.current.setStagingArea(sp);
       else if (drag.type === 'casualty')
-        setCasualtyClusters((prev) =>
+        setCasualtyPins((prev) =>
           prev.map((c) => (c.id === drag.id ? { ...c, pos: { ...sp }, ...studMeta } : c)),
         );
       else if (drag.type === 'hazard')
@@ -1994,9 +1833,9 @@ export function DebugRTSSim() {
           }
         }
         if (clickedElement.type === 'casualty') {
-          const cas = casualtyClustersRef.current.find((c) => c.id === clickedElement.id);
+          const cas = casualtyPinsRef.current.find((c) => c.id === clickedElement.id);
           if (cas) {
-            handleCasualtyClusterClick(cas);
+            handleCasualtyPinClick(cas);
             return;
           }
         }
@@ -2009,11 +1848,11 @@ export function DebugRTSSim() {
           rts.selectUnitsInBox(dragStartRef.current, sim);
         } else {
           // Check casualty clusters
-          const hitCas = casualtyClustersRef.current.find(
+          const hitCas = casualtyPinsRef.current.find(
             (c) => Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 8,
           );
           if (hitCas) {
-            handleCasualtyClusterClick(hitCas);
+            handleCasualtyPinClick(hitCas);
             rts.state.selection.selectionBox = null;
             dragStartRef.current = null;
             isDraggingRef.current = false;
@@ -2225,8 +2064,8 @@ export function DebugRTSSim() {
       newExitWidth,
       wallPoints,
       handleWallPointClick,
-      casualtyClusters,
-      handleCasualtyClusterClick,
+      casualtyPins,
+      handleCasualtyPinClick,
       applyElementDrag,
     ],
   );
@@ -2437,8 +2276,8 @@ export function DebugRTSSim() {
           const hz = hazardZonesRef.current.find((h) => h.id === clickedEl.id);
           if (hz) setActiveHazard(hz);
         } else if (clickedEl.type === 'casualty') {
-          const cas = casualtyClustersRef.current.find((c) => c.id === clickedEl.id);
-          if (cas) handleCasualtyClusterClick(cas);
+          const cas = casualtyPinsRef.current.find((c) => c.id === clickedEl.id);
+          if (cas) handleCasualtyPinClick(cas);
         }
         touchStartRef.current = null;
         dragStartRef.current = null;
@@ -2482,11 +2321,11 @@ export function DebugRTSSim() {
         rts.state.selection.selectionBox = null;
       } else if (elapsed < 300) {
         if (mode.type === 'select') {
-          const hitCas = casualtyClustersRef.current.find(
+          const hitCas = casualtyPinsRef.current.find(
             (c) => Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 8,
           );
           if (hitCas) {
-            handleCasualtyClusterClick(hitCas);
+            handleCasualtyPinClick(hitCas);
           } else {
             const hitHz2 = hazardZonesRef.current.find(
               (hz) => Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < Math.max(hz.radius, 8),
@@ -2629,13 +2468,13 @@ export function DebugRTSSim() {
     [
       toSim,
       rerender,
-      casualtyClusters,
+      casualtyPins,
       wallPoints,
       projectedVerts,
       interiorWalls,
       exits,
       newExitWidth,
-      handleCasualtyClusterClick,
+      handleCasualtyPinClick,
       handleWallPointClick,
     ],
   );
@@ -3532,215 +3371,135 @@ export function DebugRTSSim() {
                 </div>
               )}
 
-              {/* ── Floating triage card ── */}
-              {activeCasualtyCluster && (
+              {/* ── Floating casualty pin card ── */}
+              {activeCasualtyPin && (
                 <div
                   className="absolute top-4 bg-gray-900/95 border border-red-700 rounded-lg shadow-2xl overflow-hidden"
                   style={{
                     zIndex: 1002,
                     left: 16,
-                    width: 480,
+                    width: 420,
                     maxHeight: 'calc(100% - 32px)',
                     overflowY: 'auto',
                   }}
                 >
                   <div className="flex items-center justify-between px-3 py-2 bg-red-900/40 border-b border-red-800">
-                    <div className="text-xs text-red-300 font-bold">
-                      Casualty Cluster — {activeCasualtyCluster.victims.length} victims
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+                          activeCasualtyPin.currentTag === 'red'
+                            ? 'bg-red-700 text-white'
+                            : activeCasualtyPin.currentTag === 'yellow'
+                              ? 'bg-yellow-600 text-white'
+                              : activeCasualtyPin.currentTag === 'green'
+                                ? 'bg-green-700 text-white'
+                                : activeCasualtyPin.currentTag === 'black'
+                                  ? 'bg-gray-600 text-white'
+                                  : 'bg-gray-500 text-white'
+                        }`}
+                      >
+                        {activeCasualtyPin.currentTag.toUpperCase()}
+                      </span>
+                      <span className="text-xs text-red-300 font-bold">
+                        Casualty — {activeCasualtyPin.id.slice(0, 12)}
+                      </span>
                     </div>
                     <button
-                      onClick={closeCasualtyCard}
+                      onClick={() => setActiveCasualtyPin(null)}
                       className="text-gray-400 hover:text-white text-sm px-1"
                     >
                       ✕
                     </button>
                   </div>
 
-                  {/* Scene image */}
-                  <div className="relative bg-black" style={{ minHeight: 160 }}>
-                    {activeCasualtyCluster.imageUrl ? (
-                      <img
-                        src={activeCasualtyCluster.imageUrl}
-                        alt="Casualty scene"
-                        className="w-full h-auto"
-                      />
-                    ) : activeCasualtyCluster.imageGenerating ? (
-                      <div className="flex items-center justify-center h-40 text-red-400 text-xs animate-pulse">
-                        Generating scene image with DALL-E 3...
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center h-40 gap-2">
-                        <span className="text-xs text-gray-500">No scene image yet</span>
-                        <button
-                          onClick={() => handleGenerateCasualtyImage(activeCasualtyCluster.id)}
-                          className="bg-red-800 hover:bg-red-700 text-white text-xs px-3 py-1 rounded border border-red-600"
-                        >
-                          Generate Scene Image (DALL-E 3)
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Scene description */}
-                  <div className="px-3 py-1.5 text-xs text-gray-400 border-t border-gray-800">
-                    {activeCasualtyCluster.sceneDescription}
-                  </div>
-
-                  {/* Victim cards — image-first */}
-                  <div className="px-3 py-2 border-t border-gray-800 space-y-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="text-xs text-red-400 font-bold">Triage Assessment</div>
-                      {activeCasualtyCluster.victims.some(
-                        (v) => !v.imageUrl && !v.imageGenerating,
-                      ) && (
-                        <button
-                          onClick={() => handleGenerateVictimImages(activeCasualtyCluster.id)}
-                          className="bg-red-800 hover:bg-red-700 text-white text-xs px-2 py-0.5 rounded border border-red-600"
-                        >
-                          Generate Victim Photos
-                        </button>
-                      )}
-                    </div>
-                    {activeCasualtyCluster.victims.map((v) => (
-                      <div
-                        key={v.id}
-                        className="bg-gray-800 rounded overflow-hidden border border-gray-700"
-                      >
-                        {/* Victim image */}
-                        <div className="relative">
-                          {v.imageUrl ? (
-                            <img
-                              src={v.imageUrl}
-                              alt={v.label}
-                              className="w-full h-40 object-cover"
-                            />
-                          ) : v.imageGenerating ? (
-                            <div className="w-full h-32 flex items-center justify-center bg-gray-900 text-red-400 text-xs animate-pulse">
-                              Generating {v.label} image...
-                            </div>
-                          ) : (
-                            <div className="w-full h-24 flex items-center justify-center bg-gray-900 text-gray-600 text-xs">
-                              No photo — click "Generate Victim Photos" above
-                            </div>
-                          )}
-                          {/* Label overlay on image */}
-                          <div className="absolute top-1 left-1 bg-black/70 rounded px-1.5 py-0.5">
-                            <span className="text-xs text-white font-bold">{v.label}</span>
-                          </div>
-                          {isTrainerMode && (
-                            <div
-                              className={`absolute top-1 right-1 rounded px-1.5 py-0.5 text-xs font-bold ${
-                                v.trueTag === 'red'
-                                  ? 'bg-red-700 text-white'
-                                  : v.trueTag === 'yellow'
-                                    ? 'bg-yellow-600 text-white'
-                                    : v.trueTag === 'green'
-                                      ? 'bg-green-700 text-white'
-                                      : 'bg-gray-700 text-white'
-                              }`}
-                            >
-                              {v.trueTag.toUpperCase()}
-                            </div>
-                          )}
-                          {/* Current tag overlay */}
-                          {v.playerTag !== 'untagged' && (
-                            <div
-                              className={`absolute bottom-1 right-1 rounded px-2 py-0.5 text-xs font-bold border ${
-                                v.playerTag === 'red'
-                                  ? 'bg-red-700 border-red-400 text-white'
-                                  : v.playerTag === 'yellow'
-                                    ? 'bg-yellow-600 border-yellow-400 text-white'
-                                    : v.playerTag === 'green'
-                                      ? 'bg-green-700 border-green-400 text-white'
-                                      : 'bg-gray-600 border-gray-400 text-white'
-                              }`}
-                            >
-                              Tagged: {v.playerTag.toUpperCase()}
-                            </div>
-                          )}
-                        </div>
-                        {/* Observable signs (collapsed, secondary to the image) */}
-                        <div className="px-2 py-1.5">
-                          <div className="text-xs text-gray-500 leading-tight mb-1.5">
-                            {v.observableSigns.visibleInjuries} · {v.observableSigns.consciousness}{' '}
-                            · {v.observableSigns.bleeding}
-                          </div>
-                          <div className="flex gap-1">
-                            {(['red', 'yellow', 'green', 'black'] as TriageTag[]).map((tag) => (
-                              <button
-                                key={tag}
-                                onClick={() =>
-                                  handleUpdateVictimTag(activeCasualtyCluster.id, v.id, tag)
-                                }
-                                className={`flex-1 text-xs py-1.5 rounded border font-bold transition-colors ${
-                                  v.playerTag === tag
-                                    ? tag === 'red'
-                                      ? 'bg-red-700 border-red-500 text-white'
-                                      : tag === 'yellow'
-                                        ? 'bg-yellow-700 border-yellow-500 text-white'
-                                        : tag === 'green'
-                                          ? 'bg-green-700 border-green-500 text-white'
-                                          : 'bg-gray-600 border-gray-400 text-white'
-                                    : 'border-gray-600 text-gray-400 hover:border-gray-400'
-                                }`}
-                              >
-                                {tag.toUpperCase()}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* AI evaluation result */}
-                  {triageResult && (
-                    <div className="px-3 py-2 border-t border-gray-800 bg-gray-800/50">
-                      <div className="text-xs text-amber-400 font-bold mb-1">
-                        Exercise Observer — Triage Evaluation
-                      </div>
-                      <pre className="text-xs text-green-300 whitespace-pre-wrap">
-                        {triageResult}
-                      </pre>
+                  {activeCasualtyPin.currentTag !== activeCasualtyPin.trueTag && (
+                    <div className="px-3 py-1.5 bg-red-950 border-b border-red-800 text-xs text-red-400">
+                      Deteriorated: was {activeCasualtyPin.trueTag.toUpperCase()}, now{' '}
+                      {activeCasualtyPin.currentTag.toUpperCase()}
                     </div>
                   )}
 
-                  {/* Submit */}
-                  <div className="px-3 py-2 border-t border-gray-800 flex justify-between items-center">
-                    <span className="text-xs text-gray-600">
-                      {
-                        activeCasualtyCluster.victims.filter((v) => v.playerTag !== 'untagged')
-                          .length
-                      }
-                      /{activeCasualtyCluster.victims.length} tagged
-                    </span>
-                    <button
-                      onClick={handleSubmitTriage}
-                      disabled={
-                        activeCasualtyCluster.victims.some((v) => v.playerTag === 'untagged') ||
-                        triageLoading ||
-                        activeCasualtyCluster.triageComplete
-                      }
-                      className="bg-red-800 hover:bg-red-700 disabled:opacity-30 text-white text-xs px-4 py-1.5 rounded border border-red-600 font-bold"
-                    >
-                      {triageLoading
-                        ? 'Evaluating...'
-                        : activeCasualtyCluster.triageComplete
-                          ? 'Triage Complete'
-                          : 'Submit Triage'}
-                    </button>
+                  {activeCasualtyPin.deteriorationLevel > 0 && (
+                    <div className="px-3 py-2 border-b border-gray-800">
+                      <div className="text-xs text-gray-500 mb-1">Deterioration</div>
+                      <div className="w-full h-2 bg-gray-800 rounded overflow-hidden">
+                        <div
+                          className="h-full transition-all"
+                          style={{
+                            width: `${activeCasualtyPin.deteriorationLevel * 100}%`,
+                            backgroundColor:
+                              activeCasualtyPin.deteriorationLevel > 0.7
+                                ? '#ef4444'
+                                : activeCasualtyPin.deteriorationLevel > 0.4
+                                  ? '#f97316'
+                                  : '#eab308',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="px-3 py-2 border-b border-gray-800">
+                    <label className="block text-xs text-red-400 mb-1">Description</label>
+                    <textarea
+                      value={activeCasualtyPin.description}
+                      onChange={(e) => {
+                        const desc = e.target.value;
+                        setCasualtyPins((prev) =>
+                          prev.map((p) =>
+                            p.id === activeCasualtyPin.id ? { ...p, description: desc } : p,
+                          ),
+                        );
+                        setActiveCasualtyPin((prev) =>
+                          prev ? { ...prev, description: desc } : prev,
+                        );
+                      }}
+                      placeholder="Describe the casualty's injuries..."
+                      className="w-full bg-gray-800 border border-gray-700 text-green-300 text-xs rounded px-2 py-1.5 resize-none focus:border-red-500 focus:outline-none"
+                      rows={3}
+                    />
                   </div>
+
+                  <div className="px-3 py-2 border-b border-gray-800 text-xs space-y-1">
+                    <div className="text-red-400 font-bold mb-1">Observable Signs</div>
+                    <div className="text-gray-400">
+                      Breathing: {activeCasualtyPin.observableSigns.breathing || '—'}
+                    </div>
+                    <div className="text-gray-400">
+                      Pulse: {activeCasualtyPin.observableSigns.pulse || '—'}
+                    </div>
+                    <div className="text-gray-400">
+                      Consciousness: {activeCasualtyPin.observableSigns.consciousness || '—'}
+                    </div>
+                    <div className="text-gray-400">
+                      Injuries: {activeCasualtyPin.observableSigns.visibleInjuries || '—'}
+                    </div>
+                    <div className="text-gray-400">
+                      Mobility: {activeCasualtyPin.observableSigns.mobility || '—'}
+                    </div>
+                    <div className="text-gray-400">
+                      Bleeding: {activeCasualtyPin.observableSigns.bleeding || '—'}
+                    </div>
+                  </div>
+
+                  <div className="px-3 py-2 border-b border-gray-800 text-xs text-gray-500">
+                    {activeCasualtyPin.insideBuilding ? 'Inside building' : 'Outside building'}
+                    {activeCasualtyPin.studId && (
+                      <span className="ml-2 text-gray-700">Stud: {activeCasualtyPin.studId}</span>
+                    )}
+                  </div>
+
                   <div className="px-3 py-2 border-t border-gray-800">
                     <button
                       onClick={() => {
-                        setCasualtyClusters((prev) =>
-                          prev.filter((c) => c.id !== activeCasualtyCluster.id),
+                        setCasualtyPins((prev) =>
+                          prev.filter((c) => c.id !== activeCasualtyPin.id),
                         );
-                        setActiveCasualtyCluster(null);
+                        setActiveCasualtyPin(null);
                       }}
                       className="w-full bg-red-900/40 hover:bg-red-800 text-red-300 text-xs px-3 py-1.5 rounded border border-red-700"
                     >
-                      Delete This Casualty Cluster
+                      Delete This Casualty
                     </button>
                   </div>
                 </div>
@@ -4573,22 +4332,30 @@ export function DebugRTSSim() {
                         const cx = e.clientX - rect.left;
                         const cy = e.clientY - rect.top;
                         const sim = toSim(cx, cy);
+                        const snapped = snapToStud(sim);
 
                         let distance = 50;
                         if (blastSite) {
-                          distance = Math.hypot(sim.x - blastSite.x, sim.y - blastSite.y);
+                          distance = Math.hypot(
+                            snapped.pos.x - blastSite.x,
+                            snapped.pos.y - blastSite.y,
+                          );
                         }
-                        const { victims, sceneDescription } = generateBlastCasualties(distance);
-                        handlePlaceCasualtyCluster(sim, victims, sceneDescription);
-                        canvas.removeEventListener('click', handlePlace);
+                        const pin = generateSingleCasualty(distance, snapped.pos);
+                        if (snapped.stud) {
+                          pin.studId = snapped.stud.id;
+                          pin.insideBuilding = snapped.stud.spatialContext === 'inside_building';
+                          pin.spatialContext = snapped.stud.spatialContext ?? undefined;
+                        }
+                        setCasualtyPins((prev) => [...prev, pin]);
                         rerender();
                       };
                       canvasRef.current?.addEventListener('click', handlePlace, { once: true });
                     }}
                     className="w-full text-xs text-left px-2 py-1.5 rounded border border-red-900 text-red-400 hover:border-red-700"
                   >
-                    🏥 Place Casualty Cluster{' '}
-                    {blastSite ? '(auto-generates by blast distance)' : '(click map)'}
+                    🏥 Place Casualty{' '}
+                    {blastSite ? '(injury based on blast distance)' : '(click map)'}
                   </button>
                   <button
                     onClick={() => {
@@ -4993,7 +4760,7 @@ export function DebugRTSSim() {
                 </div>
                 <div className="text-xs text-green-700 mt-1">
                   Exits: {exits.length} · Blast: {blastSite ? '✓' : '—'} · Casualties:{' '}
-                  {casualtyClusters.length}
+                  {casualtyPins.length}
                 </div>
 
                 {/* Hazard Effects Simulation */}
@@ -5206,8 +4973,7 @@ export function DebugRTSSim() {
                   </div>
                   {enriching && (
                     <div className="text-xs text-purple-400 animate-pulse">
-                      Running {hazardZones.length + casualtyClusters.length + 1} parallel AI
-                      calls...
+                      Running {hazardZones.length + casualtyPins.length + 1} parallel AI calls...
                     </div>
                   )}
                   {enrichResult && (
