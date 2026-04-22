@@ -3756,8 +3756,32 @@ export function DebugRTSSim() {
                       <option value="medium">Medium Severity</option>
                       <option value="high">High Severity</option>
                     </select>
-                    <div className="flex-1" />
-                    <span className="text-xs text-gray-500">Radius: {activeHazard.radius}m</span>
+                  </div>
+
+                  {/* Radius slider */}
+                  <div className="px-3 py-2 border-b border-gray-800">
+                    <label className="block text-xs text-orange-400 mb-1">
+                      Radius: {activeHazard.radius}m
+                    </label>
+                    <input
+                      type="range"
+                      min={2}
+                      max={50}
+                      step={1}
+                      value={activeHazard.radius}
+                      onChange={(e) => {
+                        const r = Number(e.target.value);
+                        setHazardZones((prev) =>
+                          prev.map((h) => (h.id === activeHazard.id ? { ...h, radius: r } : h)),
+                        );
+                        setActiveHazard((prev) => (prev ? { ...prev, radius: r } : prev));
+                      }}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between text-[10px] text-gray-600 mt-0.5">
+                      <span>2m</span>
+                      <span>50m</span>
+                    </div>
                   </div>
 
                   {/* Description */}

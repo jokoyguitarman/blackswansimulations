@@ -225,7 +225,9 @@ export class FireSimulation {
 
           if (!blocked) {
             const accel = this.getHazardAcceleration(dest.simPos, hazards);
-            toHeat.push({ id: nId, accel });
+            if (accel > 0) {
+              toHeat.push({ id: nId, accel });
+            }
           }
         }
       } else if (fState.state === 'heating') {
@@ -241,8 +243,9 @@ export class FireSimulation {
       const nState = this.states.get(id);
       if (!nState || nState.state !== 'none') continue;
       nState.state = 'heating';
-      nState.timer = this.params.heatTransferRate / accel;
-      nState.fuelFactor = accel > 1 ? accel * 0.5 : 1.0;
+      const effectiveAccel = Math.max(1, accel);
+      nState.timer = this.params.heatTransferRate / effectiveAccel;
+      nState.fuelFactor = effectiveAccel > 1 ? effectiveAccel * 0.5 : 1.0;
     }
   }
 
@@ -257,7 +260,7 @@ export class FireSimulation {
   }
 
   private getHazardAcceleration(pos: Vec2, hazards: HazardZone[]): number {
-    let maxAccel = 1;
+    let maxAccel = 0;
     for (const h of hazards) {
       const d = Math.hypot(h.pos.x - pos.x, h.pos.y - pos.y);
       if (d <= h.radius) {
