@@ -442,7 +442,7 @@ export class SpatialEffectsEngine {
 
   private stepSmoke(dt: number, walls: InteriorWall[]) {
     // Generate smoke from active fires and smoke-producing events
-    for (const [id, state] of this.studStates) {
+    for (const [, state] of this.studStates) {
       if (state.fire.state === 'burning') {
         state.smoke = Math.min(1, state.smoke + dt * 0.03);
       }
