@@ -1347,6 +1347,40 @@ export interface WarroomGenerateInput {
   real_bombs_count?: number;
   /** Pre-computed building stud grids for snap-to-slot placement. */
   studGrids?: StudGrid[];
+  /** Trainer-designed scene layout (positions in lat/lng). When present, the generation
+   *  pipeline uses this as the canonical physical layout instead of AI-generating hazards/exits. */
+  trainerScene?: TrainerScene;
+}
+
+export interface TrainerScene {
+  rtsSceneId: string;
+  blastSite: { lat: number; lng: number; radius?: number } | null;
+  hazards: Array<{
+    id: string;
+    lat: number;
+    lng: number;
+    hazardType: string;
+    severity: string;
+    description: string;
+    radius: number;
+    photos: string[];
+  }>;
+  exits: Array<{
+    id: string;
+    lat: number;
+    lng: number;
+    width: number;
+    status: string;
+    description: string;
+  }>;
+  buildingPolygon: [number, number][];
+  buildingName: string | null;
+  pedestrianCount: number;
+  enrichment?: {
+    hazardAnalysis: Array<Record<string, unknown>>;
+    sceneSynthesis: Record<string, unknown>;
+    overallAssessment: string;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -7387,14 +7421,18 @@ export async function warroomGenerateScenario(
   const dedupedTimeInjects = await deduplicateInjectsByTheme(rawTimeInjects, openAiApiKey);
   const time_injects = normalizeInjectTiming(dedupedTimeInjects, durationMinutes);
 
-  // Generate building stud grids for snap-to-slot placement inside buildings
-  const studGrids = input.osmBuildings?.length ? generateStudGrids(input.osmBuildings) : [];
+  // Use pre-populated stud grids from trainer scene, or generate from OSM
+  const studGrids = input.studGrids?.length
+    ? input.studGrids
+    : input.osmBuildings?.length
+      ? generateStudGrids(input.osmBuildings)
+      : [];
   if (studGrids.length > 0) {
     input.studGrids = studGrids;
     const totalStuds = studGrids.reduce((s, g) => s + g.studs.length, 0);
     logger.info(
-      { buildings: studGrids.length, totalStuds },
-      'Building stud grids generated for snap placement',
+      { buildings: studGrids.length, totalStuds, fromTrainerScene: !!input.trainerScene },
+      'Building stud grids ready for snap placement',
     );
   }
   const occupiedStudIds = new Set<string>();
@@ -7416,8 +7454,26 @@ export async function warroomGenerateScenario(
       : Promise.resolve([] as NonNullable<WarroomScenarioPayload['locations']>),
   ]);
 
-  // Merge and validate all pins (incident site + entry/exit + POIs)
+  // Convert trainer exits to location pins when scene is present
+  const trainerExitPins: NonNullable<WarroomScenarioPayload['locations']> = [];
+  if (input.trainerScene?.exits?.length) {
+    for (let i = 0; i < input.trainerScene.exits.length; i++) {
+      const exit = input.trainerScene.exits[i];
+      trainerExitPins.push({
+        location_type: 'entry_exit',
+        pin_category: 'entry_exit',
+        label: `Exit ${exit.id}${exit.description ? ' — ' + exit.description : ''}`,
+        coordinates: { lat: exit.lat, lng: exit.lng },
+        conditions: { width_m: exit.width, status: exit.status },
+        display_order: i,
+      });
+    }
+    logger.info({ count: trainerExitPins.length }, 'Trainer exit pins converted to locations');
+  }
+
+  // Merge and validate all pins (trainer exits + incident site + entry/exit + POIs)
   const mergedPins: NonNullable<WarroomScenarioPayload['locations']> = [
+    ...trainerExitPins,
     ...(scenarioFixedPins ?? []),
     ...poiPins,
   ];
@@ -7542,22 +7598,93 @@ export async function warroomGenerateScenario(
     }
   }
 
-  const [phase4c, scenarioHazards] = await Promise.all([
-    generateLayoutAndSiteKnowledge(
+  // Hazard generation: use trainer hazards when available, otherwise AI-generate
+  let scenarioHazards: WarroomScenarioPayload['hazards'];
+  if (input.trainerScene?.hazards?.length) {
+    onProgress?.('Using trainer-designed hazards...');
+    scenarioHazards = input.trainerScene.hazards.map((h) => {
+      const matchedEnrichment = input.trainerScene!.enrichment?.hazardAnalysis?.find(
+        (ea: Record<string, unknown>) => ea.hazardId === h.id,
+      ) as Record<string, unknown> | undefined;
+      return {
+        hazard_type: h.hazardType,
+        location_lat: h.lat,
+        location_lng: h.lng,
+        floor_level: 'G',
+        properties: {
+          label: (matchedEnrichment?.identifiedMaterial as string) || h.description || h.hazardType,
+          severity: h.severity,
+          trainer_description: h.description,
+        },
+        assessment_criteria: matchedEnrichment?.responderGuidance
+          ? [matchedEnrichment.responderGuidance as string]
+          : [],
+        status: 'active',
+        appears_at_minutes: 0,
+        enriched_description:
+          (matchedEnrichment?.generatedDescription as string) || h.description || undefined,
+        deterioration_timeline:
+          (matchedEnrichment?.events as unknown as Record<string, unknown>) || undefined,
+        fire_class: (matchedEnrichment?.identifiedMaterial as string)?.toLowerCase().includes('gas')
+          ? 'C'
+          : undefined,
+      };
+    });
+    logger.info(
+      {
+        count: scenarioHazards.length,
+        enriched: scenarioHazards.filter((h) => h.enriched_description).length,
+      },
+      'Trainer hazards mapped to scenario payload',
+    );
+  } else {
+    scenarioHazards = await generateScenarioHazards(
       input,
-      teamNames,
       openAiApiKey,
       onProgress,
       narrative,
       locations,
-    ),
-    generateScenarioHazards(input, openAiApiKey, onProgress, narrative, locations, teamNames),
-  ]);
+      teamNames,
+    );
+  }
+
+  // Layout knowledge (runs regardless of hazard source)
+  const phase4c = await generateLayoutAndSiteKnowledge(
+    input,
+    teamNames,
+    openAiApiKey,
+    onProgress,
+    narrative,
+    locations,
+  );
   const floorPlansResult = undefined;
 
-  // Snap hazard coordinates to building studs
-  if (studGrids.length > 0 && scenarioHazards?.length) {
+  // Snap hazard coordinates to building studs (skip for trainer hazards already in lat/lng)
+  if (!input.trainerScene && studGrids.length > 0 && scenarioHazards?.length) {
     batchSnap(scenarioHazards, studGrids, occupiedStudIds);
+  }
+
+  // Ensure blast site is represented as a hazard so zones center on it
+  if (input.trainerScene?.blastSite && scenarioHazards?.length) {
+    const blastLat = input.trainerScene.blastSite.lat;
+    const blastLng = input.trainerScene.blastSite.lng;
+    const hasBlastHazard = scenarioHazards.some(
+      (h) =>
+        Math.abs(h.location_lat - blastLat) < 0.0001 &&
+        Math.abs(h.location_lng - blastLng) < 0.0001,
+    );
+    if (!hasBlastHazard) {
+      scenarioHazards.unshift({
+        hazard_type: 'explosion',
+        location_lat: blastLat,
+        location_lng: blastLng,
+        floor_level: 'G',
+        properties: { label: 'Primary Explosion Site', severity: 'critical' },
+        assessment_criteria: ['Primary blast site — structural damage, shrapnel, thermal effects'],
+        status: 'active',
+        appears_at_minutes: 0,
+      });
+    }
   }
 
   // Generate unified incident zones as independent locations (draggable in preview)

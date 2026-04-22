@@ -5,7 +5,6 @@ import { api } from '../lib/api';
 import { VoiceMicButton } from '../components/VoiceMicButton';
 import { LocationPicker, type PickedLocation } from '../components/WarRoom/LocationPicker';
 import { SceneSetup, type SceneSetupResult } from '../components/WarRoom/SceneSetup';
-import type { SceneDesignerResult } from '../components/WarRoom/SceneDesigner';
 import { createSceneConfig } from '../lib/rts/sceneConfigApi';
 
 type TeamEntry = {
@@ -378,7 +377,7 @@ export const WarRoom = () => {
   const [useStructured, setUseStructured] = useState(false);
   const [progressPhase, setProgressPhase] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState<string>('');
-  const [step, setStep] = useState<1 | 2 | 3 | 35 | 4 | 5 | 11 | 12 | 13 | 14 | 15>(11);
+  const [step, setStep] = useState<1 | 2 | 3 | 35 | 4 | 5 | 11 | 12 | 13 | 14 | 15 | 16>(11);
   const [teams, setTeams] = useState<TeamEntry[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [resolvedScenarioType, setResolvedScenarioType] = useState<string | null>(null);
@@ -408,7 +407,6 @@ export const WarRoom = () => {
   const [rtsSceneId, setRtsSceneId] = useState<string | null>(null);
 
   // ── Manual Design mode state ──────────────────────────────────────────
-  const [manualSceneResult] = useState<SceneDesignerResult | null>(null);
   const [aiEnrichmentLoading, setAiEnrichmentLoading] = useState(false);
   const [aiEnrichmentResult, setAiEnrichmentResult] = useState<string | null>(null);
 
@@ -737,7 +735,7 @@ export const WarRoom = () => {
     setError(null);
     setDeteriorationLoading(true);
     setDeteriorationPreview(null);
-    setStep(5);
+    setStep(wizardMode ? 5 : 16);
     const hadScenarioAlready = Boolean(wizardScenarioId);
     try {
       // Persist-first, DB-backed preview:
@@ -938,7 +936,7 @@ export const WarRoom = () => {
       setWizardScenarioPersisting(false);
       setLoading(false);
     }
-  }, [wizardScenarioId, wizardDraftId, teams, buildOptions, geocodeData, doctrines]);
+  }, [wizardScenarioId, wizardDraftId, teams, buildOptions, geocodeData, doctrines, wizardMode]);
 
   const updateTeam = (index: number, field: keyof TeamEntry, value: string | number) => {
     setTeams((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)));
@@ -1880,8 +1878,8 @@ export const WarRoom = () => {
           </div>
         )}
 
-        {/* Step 5: Deterioration Timeline Review (wizard only) */}
-        {wizardMode && step === 5 && (
+        {/* Step 5/16: Deterioration Timeline Review */}
+        {((wizardMode && step === 5) || (!wizardMode && step === 16)) && (
           <div className="military-border p-6 mb-6 bg-robotic-gray-300">
             <h3 className="text-lg terminal-text uppercase mb-4">
               [DETERIORATION TIMELINE REVIEW]
@@ -2106,15 +2104,57 @@ export const WarRoom = () => {
             </p>
             <div className="flex gap-3 items-center">
               <button
-                onClick={() => {
-                  const params = new URLSearchParams({ warroom: '1' });
-                  if (wizardDraftId) params.set('draftId', wizardDraftId);
-                  if (rtsSceneId) params.set('sceneId', rtsSceneId);
-                  window.location.href = `/debug/rts-sim?${params}`;
+                onClick={async () => {
+                  setError(null);
+                  setGeocodeLoading(true);
+                  try {
+                    const opts = buildOptions();
+                    const inputPayload: Record<string, unknown> = {
+                      ...opts,
+                      teams: teams.map((t) => ({
+                        team_name: t.team_name,
+                        team_description: t.team_description,
+                        min_participants: t.min_participants,
+                        max_participants: t.max_participants,
+                        is_investigative: t.is_investigative ?? false,
+                      })),
+                    };
+                    if (manualCoords) {
+                      inputPayload.geocode_override = {
+                        lat: manualCoords.lat,
+                        lng: manualCoords.lng,
+                        display_name: manualCoords.display_name,
+                      };
+                    }
+
+                    let draftId = wizardDraftId;
+                    if (!draftId) {
+                      const { data: created } = await api.warroom.wizardDraftCreate({
+                        input: inputPayload,
+                      });
+                      draftId = created.draft_id;
+                      setWizardDraftId(draftId);
+                    } else {
+                      await api.warroom.wizardDraftPatch(draftId, { input: inputPayload });
+                    }
+
+                    const params = new URLSearchParams({ warroom: '1' });
+                    params.set('draftId', draftId);
+                    if (rtsSceneId) params.set('sceneId', rtsSceneId);
+                    window.location.href = `/debug/rts-sim?${params}`;
+                  } catch (err) {
+                    setError(
+                      err instanceof Error
+                        ? err.message
+                        : 'Failed to save draft before opening editor',
+                    );
+                    setGeocodeLoading(false);
+                  }
                 }}
-                className="military-button px-6 py-3 text-sm"
+                disabled={geocodeLoading}
+                className="military-button px-6 py-3 text-sm disabled:opacity-50"
               >
-                [OPEN SCENE EDITOR]
+                {geocodeLoading ? '[SAVING DRAFT...]' : '[OPEN SCENE EDITOR]'}
               </button>
               {rtsSceneId && (
                 <span className="text-xs terminal-text text-green-500">
@@ -2138,21 +2178,9 @@ export const WarRoom = () => {
               The AI will analyze your scene setup and research relevant doctrines, hazard
               interactions, casualty profiles, and response protocols.
             </p>
-            {manualSceneResult && (
-              <div className="text-xs terminal-text text-robotic-yellow/50 mb-4 space-y-0.5">
-                <p>Building: {manualSceneResult.buildingName || 'Custom'}</p>
-                <p>
-                  Exits: {manualSceneResult.exits.length} · Casualties:{' '}
-                  {manualSceneResult.casualtyPins.length} · Hazards:{' '}
-                  {manualSceneResult.hazardZones.length}
-                </p>
-                <p>
-                  Blast site:{' '}
-                  {manualSceneResult.blastSite
-                    ? `Set (${manualSceneResult.blastRadius}m radius)`
-                    : 'Not set'}
-                </p>
-                <p>Pedestrians: {manualSceneResult.pedestrianCount}</p>
+            {rtsSceneId && (
+              <div className="text-xs terminal-text text-robotic-yellow/50 mb-4">
+                Scene ID: {rtsSceneId.slice(0, 8)}... (saved in editor)
               </div>
             )}
             {aiEnrichmentLoading && (
@@ -2444,7 +2472,7 @@ export const WarRoom = () => {
               </button>
               <button
                 onClick={async () => {
-                  if (!manualSceneResult || !wizardDraftId) return;
+                  if (!rtsSceneId || !wizardDraftId) return;
                   setAiEnrichmentLoading(true);
                   try {
                     const opts = buildOptions();
@@ -2457,31 +2485,7 @@ export const WarRoom = () => {
                         max_participants: t.max_participants,
                       })),
                       scene_context: {
-                        building_name: manualSceneResult.buildingName,
-                        exits_count: manualSceneResult.exits.length,
-                        interior_walls_count: manualSceneResult.interiorWalls?.length || 0,
-                        stairwells_count: manualSceneResult.stairwells.length,
-                        has_blast_site: !!manualSceneResult.blastSite,
-                        blast_radius: manualSceneResult.blastRadius,
-                        casualty_count: manualSceneResult.casualtyPins.length,
-                        pedestrian_count: manualSceneResult.pedestrianCount,
-                        hazard_zones: manualSceneResult.hazardZones.map(
-                          (hz) =>
-                            `${hz.hazardType} (${hz.severity}): ${hz.description || 'no description'}`,
-                        ),
-                        game_zones: manualSceneResult.gameZones.map(
-                          (gz) => `${gz.type}: ${gz.radius}m`,
-                        ),
-                        exit_statuses: manualSceneResult.exits.map(
-                          (e: { id: string; status?: string; description?: string }) =>
-                            `${e.id}: ${e.status || 'open'}${e.description ? ' — ' + e.description : ''}`,
-                        ),
-                        wall_materials: (manualSceneResult.interiorWalls || [])
-                          .map((w: { material?: string }) => w.material || '')
-                          .filter(Boolean),
-                        rts_scene_id:
-                          (manualSceneResult as unknown as Record<string, unknown>).rtsSceneId ||
-                          null,
+                        rts_scene_id: rtsSceneId,
                       },
                     };
                     if (geocodeData) {
@@ -2512,12 +2516,45 @@ export const WarRoom = () => {
                     setAiEnrichmentLoading(false);
                   }
                 }}
-                disabled={loading || aiEnrichmentLoading || !manualSceneResult}
+                disabled={loading || aiEnrichmentLoading || !rtsSceneId}
                 className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {aiEnrichmentLoading ? '[RESEARCHING...]' : '[RUN AI RESEARCH]'}
               </button>
               {doctrines && (
+                <button
+                  onClick={handleDeteriorationPreview}
+                  disabled={loading || deteriorationLoading || wizardScenarioPersisting}
+                  className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deteriorationLoading || wizardScenarioPersisting
+                    ? '[GENERATING...]'
+                    : '[GENERATE SCENARIO]'}
+                </button>
+              )}
+            </>
+          ) : step === 16 ? (
+            /* Manual Step 6: Deterioration Preview + Open Scenarios */
+            <>
+              <button
+                onClick={() => setStep(15)}
+                disabled={loading}
+                className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              >
+                [BACK: RESEARCH]
+              </button>
+              <button
+                onClick={handleDeteriorationPreview}
+                disabled={loading || deteriorationLoading || wizardScenarioPersisting || !doctrines}
+                className="military-button px-8 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deteriorationLoading || wizardScenarioPersisting
+                  ? '[BUILDING PREVIEW...]'
+                  : wizardScenarioId
+                    ? '[REBUILD DETERIORATION PREVIEW]'
+                    : '[GENERATE SCENARIO]'}
+              </button>
+              {wizardScenarioId && (
                 <button
                   onClick={() => navigate('/scenarios')}
                   className="military-button px-8 py-3"

@@ -11,6 +11,8 @@ import {
 
 export type EffectType = 'fire' | 'gas' | 'flood' | 'structural_zone';
 
+export type SmokeGeneration = 'none' | 'light' | 'moderate' | 'heavy' | 'toxic';
+
 export interface HazardEvent {
   triggerTimeSec: number;
   eventType: 'ignite' | 'rupture' | 'collapse' | 'flood' | 'arc' | 'explode';
@@ -19,6 +21,9 @@ export interface HazardEvent {
   spreadRate: number;
   description: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
+  smokeGeneration?: SmokeGeneration;
+  smokeDescription?: string;
+  affectedStuds?: string[];
 }
 
 export interface HazardStateProgression {
@@ -35,6 +40,7 @@ export interface StudEffectState {
   gas: number;
   flood: number;
   structural: number;
+  smoke: number;
 }
 
 // ── Spatial effect instance ──────────────────────────────────────────────
@@ -118,12 +124,14 @@ export class SpatialEffectsEngine {
   hazardStates: Map<string, HazardRuntimeState> = new Map();
   activeEffects: ActiveEffect[] = [];
   elapsed = 0;
+  timeScale = 0.5;
 
   private studIndex: Map<string, FireSimStud> = new Map();
   private neighborCache: Map<string, string[]> = new Map();
   private fireSim: FireSimulation;
 
-  constructor(fireParams?: FireParams) {
+  constructor(fireParams?: FireParams, timeScale = 0.5) {
+    this.timeScale = timeScale;
     this.fireSim = new FireSimulation(fireParams);
   }
 
@@ -141,6 +149,7 @@ export class SpatialEffectsEngine {
         gas: 0,
         flood: 0,
         structural: 0,
+        smoke: 0,
       });
     }
 
@@ -179,13 +188,15 @@ export class SpatialEffectsEngine {
 
   step(dt: number, walls: InteriorWall[], hazards: HazardZone[]) {
     if (dt <= 0) return;
-    this.elapsed += dt;
+    const simDt = dt * this.timeScale;
+    this.elapsed += simDt;
 
     this.processHazardEvents(hazards);
-    this.stepFire(dt, walls, hazards);
-    this.stepGas(dt, walls);
-    this.stepFlood(dt, walls);
-    this.stepStructural(dt);
+    this.stepFire(simDt, walls, hazards);
+    this.stepGas(simDt, walls);
+    this.stepFlood(simDt, walls);
+    this.stepStructural(simDt);
+    this.stepSmoke(simDt, walls);
   }
 
   private processHazardEvents(hazards: HazardZone[]) {
@@ -421,6 +432,76 @@ export class SpatialEffectsEngine {
     }
   }
 
+  private static readonly SMOKE_RATE: Record<SmokeGeneration, number> = {
+    none: 0,
+    light: 0.15,
+    moderate: 0.4,
+    heavy: 0.7,
+    toxic: 0.9,
+  };
+
+  private stepSmoke(dt: number, walls: InteriorWall[]) {
+    // Generate smoke from active fires and smoke-producing events
+    for (const [id, state] of this.studStates) {
+      if (state.fire.state === 'burning') {
+        state.smoke = Math.min(1, state.smoke + dt * 0.03);
+      }
+    }
+
+    for (const [, hs] of this.hazardStates) {
+      for (let i = 0; i < hs.nextEventIdx; i++) {
+        const event = hs.events[i];
+        const rate = SpatialEffectsEngine.SMOKE_RATE[event.smokeGeneration ?? 'none'];
+        if (rate <= 0) continue;
+
+        if (event.affectedStuds?.length) {
+          for (const sId of event.affectedStuds) {
+            const s = this.studStates.get(sId);
+            if (s) s.smoke = Math.min(1, s.smoke + dt * rate * 0.02);
+          }
+        }
+      }
+    }
+
+    // Spread smoke between neighbors (passes through doors, partially blocked by solid walls)
+    const spreadAmount = dt * 0.025;
+    const toSpread: Array<{ id: string; amount: number }> = [];
+
+    for (const [id, state] of this.studStates) {
+      if (state.smoke > 0.02) {
+        const src = this.studIndex.get(id);
+        if (!src) continue;
+        const neighbors = this.neighborCache.get(id) ?? [];
+
+        for (const nId of neighbors) {
+          const nState = this.studStates.get(nId);
+          const dest = this.studIndex.get(nId);
+          if (!nState || !dest) continue;
+          if (nState.smoke >= state.smoke) continue;
+
+          const blocked = isWallBlocked(src.simPos, dest.simPos, walls);
+          const transfer = blocked ? spreadAmount * 0.05 : spreadAmount;
+          const diff = (state.smoke - nState.smoke) * transfer;
+          if (diff > 0.001) {
+            toSpread.push({ id: nId, amount: diff });
+          }
+        }
+
+        // Slow decay; faster outdoors where smoke disperses
+        const decayRate = dt * 0.002;
+        state.smoke = Math.max(0, state.smoke - decayRate);
+        if (src.spatialContext !== 'inside_building') {
+          state.smoke = Math.max(0, state.smoke - decayRate * 4);
+        }
+      }
+    }
+
+    for (const { id, amount } of toSpread) {
+      const s = this.studStates.get(id);
+      if (s) s.smoke = Math.min(1, s.smoke + amount);
+    }
+  }
+
   runPreview(
     seconds: number,
     walls: InteriorWall[],
@@ -441,7 +522,8 @@ export class SpatialEffectsEngine {
       fireBurnt = 0;
     let gasAffected = 0,
       floodAffected = 0,
-      structAffected = 0;
+      structAffected = 0,
+      smokeAffected = 0;
 
     for (const s of this.studStates.values()) {
       switch (s.fire.state) {
@@ -461,6 +543,7 @@ export class SpatialEffectsEngine {
       if (s.gas > 0.05) gasAffected++;
       if (s.flood > 0.05) floodAffected++;
       if (s.structural > 0.05) structAffected++;
+      if (s.smoke > 0.05) smokeAffected++;
     }
 
     return {
@@ -469,6 +552,7 @@ export class SpatialEffectsEngine {
       gasAffected,
       floodAffected,
       structAffected,
+      smokeAffected,
     };
   }
 }

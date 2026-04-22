@@ -81,6 +81,11 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   };
 }
 
+// ── Feature flags (set to true to re-enable hidden UI) ──────────────────
+const ENABLE_CASUALTY_PLACEMENT = false;
+const ENABLE_AI_ENRICHMENT = false;
+const ENABLE_MICROSOFT_FOOTPRINT = false;
+
 // ── Client-side stud generation for drawn/loaded buildings ──────────────
 const STUD_SPACING_M = 3;
 const EXTERIOR_PADDING_M = 150;
@@ -4323,40 +4328,42 @@ export function DebugRTSSim() {
                       <span className="text-yellow-500 ml-1 animate-pulse">(acquiring...)</span>
                     )}
                   </button>
-                  <button
-                    onClick={() => {
-                      const handlePlace = (e: MouseEvent) => {
-                        const canvas = canvasRef.current;
-                        if (!canvas) return;
-                        const rect = canvas.getBoundingClientRect();
-                        const cx = e.clientX - rect.left;
-                        const cy = e.clientY - rect.top;
-                        const sim = toSim(cx, cy);
-                        const snapped = snapToStud(sim);
+                  {ENABLE_CASUALTY_PLACEMENT && (
+                    <button
+                      onClick={() => {
+                        const handlePlace = (e: MouseEvent) => {
+                          const canvas = canvasRef.current;
+                          if (!canvas) return;
+                          const rect = canvas.getBoundingClientRect();
+                          const cx = e.clientX - rect.left;
+                          const cy = e.clientY - rect.top;
+                          const sim = toSim(cx, cy);
+                          const snapped = snapToStud(sim);
 
-                        let distance = 50;
-                        if (blastSite) {
-                          distance = Math.hypot(
-                            snapped.pos.x - blastSite.x,
-                            snapped.pos.y - blastSite.y,
-                          );
-                        }
-                        const pin = generateSingleCasualty(distance, snapped.pos);
-                        if (snapped.stud) {
-                          pin.studId = snapped.stud.id;
-                          pin.insideBuilding = snapped.stud.spatialContext === 'inside_building';
-                          pin.spatialContext = snapped.stud.spatialContext ?? undefined;
-                        }
-                        setCasualtyPins((prev) => [...prev, pin]);
-                        rerender();
-                      };
-                      canvasRef.current?.addEventListener('click', handlePlace, { once: true });
-                    }}
-                    className="w-full text-xs text-left px-2 py-1.5 rounded border border-red-900 text-red-400 hover:border-red-700"
-                  >
-                    🏥 Place Casualty{' '}
-                    {blastSite ? '(injury based on blast distance)' : '(click map)'}
-                  </button>
+                          let distance = 50;
+                          if (blastSite) {
+                            distance = Math.hypot(
+                              snapped.pos.x - blastSite.x,
+                              snapped.pos.y - blastSite.y,
+                            );
+                          }
+                          const pin = generateSingleCasualty(distance, snapped.pos);
+                          if (snapped.stud) {
+                            pin.studId = snapped.stud.id;
+                            pin.insideBuilding = snapped.stud.spatialContext === 'inside_building';
+                            pin.spatialContext = snapped.stud.spatialContext ?? undefined;
+                          }
+                          setCasualtyPins((prev) => [...prev, pin]);
+                          rerender();
+                        };
+                        canvasRef.current?.addEventListener('click', handlePlace, { once: true });
+                      }}
+                      className="w-full text-xs text-left px-2 py-1.5 rounded border border-red-900 text-red-400 hover:border-red-700"
+                    >
+                      🏥 Place Casualty{' '}
+                      {blastSite ? '(injury based on blast distance)' : '(click map)'}
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       const handlePlace = (e: MouseEvent) => {
@@ -4680,55 +4687,56 @@ export function DebugRTSSim() {
                       </span>
                     )}
                   </div>
-                  <button
-                    onClick={async () => {
-                      if (!selectedGrid) return;
-                      const cLat =
-                        selectedGrid.polygon.reduce((s, p) => s + p[0], 0) /
-                        selectedGrid.polygon.length;
-                      const cLng =
-                        selectedGrid.polygon.reduce((s, p) => s + p[1], 0) /
-                        selectedGrid.polygon.length;
-                      try {
-                        const headers = await getAuthHeaders();
-                        const resp = await fetch(apiUrl('/api/debug/enhance-building'), {
-                          method: 'POST',
-                          headers,
-                          body: JSON.stringify({
-                            lat: cLat,
-                            lng: cLng,
-                            polygon: selectedGrid.polygon,
-                            radius: 200,
-                          }),
-                        });
-                        if (resp.ok) {
-                          const { data } = await resp.json();
-                          if (data.enhanced && fetchResult && selectedGridIdx != null) {
-                            const newGrids = [...fetchResult.grids];
-                            newGrids[selectedGridIdx] = {
-                              ...newGrids[selectedGridIdx],
-                              polygon: data.polygon,
-                            };
-                            setFetchResult({ ...fetchResult, grids: newGrids });
-                            // Re-project and update engine
-                            const verts = projectPolygon(data.polygon);
-                            rtsRef.current.setBuildingVertices(verts);
-                            const pts = generateWallPoints(data.polygon, verts);
-                            setWallPoints(pts);
-                            rerender();
-                            alert(`Polygon enhanced: ${data.reason}`);
-                          } else {
-                            alert(`Not enhanced: ${data.reason}`);
+                  {ENABLE_MICROSOFT_FOOTPRINT && (
+                    <button
+                      onClick={async () => {
+                        if (!selectedGrid) return;
+                        const cLat =
+                          selectedGrid.polygon.reduce((s, p) => s + p[0], 0) /
+                          selectedGrid.polygon.length;
+                        const cLng =
+                          selectedGrid.polygon.reduce((s, p) => s + p[1], 0) /
+                          selectedGrid.polygon.length;
+                        try {
+                          const headers = await getAuthHeaders();
+                          const resp = await fetch(apiUrl('/api/debug/enhance-building'), {
+                            method: 'POST',
+                            headers,
+                            body: JSON.stringify({
+                              lat: cLat,
+                              lng: cLng,
+                              polygon: selectedGrid.polygon,
+                              radius: 200,
+                            }),
+                          });
+                          if (resp.ok) {
+                            const { data } = await resp.json();
+                            if (data.enhanced && fetchResult && selectedGridIdx != null) {
+                              const newGrids = [...fetchResult.grids];
+                              newGrids[selectedGridIdx] = {
+                                ...newGrids[selectedGridIdx],
+                                polygon: data.polygon,
+                              };
+                              setFetchResult({ ...fetchResult, grids: newGrids });
+                              const verts = projectPolygon(data.polygon);
+                              rtsRef.current.setBuildingVertices(verts);
+                              const pts = generateWallPoints(data.polygon, verts);
+                              setWallPoints(pts);
+                              rerender();
+                              alert(`Polygon enhanced: ${data.reason}`);
+                            } else {
+                              alert(`Not enhanced: ${data.reason}`);
+                            }
                           }
+                        } catch {
+                          alert('Enhancement request failed');
                         }
-                      } catch {
-                        alert('Enhancement request failed');
-                      }
-                    }}
-                    className="w-full text-xs text-left px-2 py-1.5 rounded border border-amber-900 text-amber-400 hover:border-amber-700"
-                  >
-                    🔍 Enhance with Microsoft Footprints
-                  </button>
+                      }}
+                      className="w-full text-xs text-left px-2 py-1.5 rounded border border-amber-900 text-amber-400 hover:border-amber-700"
+                    >
+                      🔍 Enhance with Microsoft Footprints
+                    </button>
+                  )}
                 </div>
 
                 <div>
@@ -4956,128 +4964,131 @@ export function DebugRTSSim() {
                 </div>
 
                 {/* AI Enrichment */}
-                <div className="space-y-1.5 border-t border-green-900 pt-2">
-                  <div className="text-xs text-green-500 uppercase tracking-wider">
-                    AI Enrichment
-                  </div>
-                  <button
-                    onClick={handleEnrichScene}
-                    disabled={enriching}
-                    className="w-full bg-purple-800 hover:bg-purple-700 disabled:opacity-50 text-purple-100 text-xs px-3 py-2 rounded border border-purple-600 font-bold"
-                  >
-                    {enriching ? '⏳ Enriching Scene...' : '🧠 Enrich Scene with AI'}
-                  </button>
-                  <div className="text-xs text-green-800">
-                    GPT-5.1 analyzes each hazard and casualty individually, then synthesizes
-                    cross-element interactions
-                  </div>
-                  {enriching && (
-                    <div className="text-xs text-purple-400 animate-pulse">
-                      Running {hazardZones.length + casualtyPins.length + 1} parallel AI calls...
+                {ENABLE_AI_ENRICHMENT && (
+                  <div className="space-y-1.5 border-t border-green-900 pt-2">
+                    <div className="text-xs text-green-500 uppercase tracking-wider">
+                      AI Enrichment
                     </div>
-                  )}
-                  {enrichResult && (
-                    <div className="space-y-1">
-                      <button
-                        onClick={() => setEnrichExpanded(!enrichExpanded)}
-                        className="w-full text-xs text-left text-purple-300 hover:text-purple-200 flex items-center gap-1"
-                      >
-                        <span>{enrichExpanded ? '▼' : '▶'}</span>
-                        <span>
-                          Results: {enrichResult.hazardAnalysis.length} hazards,{' '}
-                          {enrichResult.enrichedCasualties.length} casualties
-                        </span>
-                      </button>
-                      {enrichExpanded && (
-                        <div className="bg-gray-950 border border-purple-900 rounded p-2 space-y-2 max-h-60 overflow-y-auto">
-                          <div className="text-xs text-purple-300 font-bold">Assessment</div>
-                          <div className="text-xs text-green-400 whitespace-pre-wrap">
-                            {typeof enrichResult.overallAssessment === 'string'
-                              ? enrichResult.overallAssessment
-                              : typeof enrichResult.overallAssessment === 'object' &&
-                                  enrichResult.overallAssessment
-                                ? Object.entries(
-                                    enrichResult.overallAssessment as Record<string, string>,
-                                  ).map(([k, v]) => (
-                                    <div key={k} className="mb-1">
-                                      <span className="text-purple-400 font-semibold">{k}: </span>
-                                      {String(v)}
-                                    </div>
-                                  ))
-                                : String(enrichResult.overallAssessment)}
-                          </div>
+                    <button
+                      onClick={handleEnrichScene}
+                      disabled={enriching}
+                      className="w-full bg-purple-800 hover:bg-purple-700 disabled:opacity-50 text-purple-100 text-xs px-3 py-2 rounded border border-purple-600 font-bold"
+                    >
+                      {enriching ? '⏳ Enriching Scene...' : '🧠 Enrich Scene with AI'}
+                    </button>
+                    <div className="text-xs text-green-800">
+                      GPT-5.1 analyzes each hazard and casualty individually, then synthesizes
+                      cross-element interactions
+                    </div>
+                    {enriching && (
+                      <div className="text-xs text-purple-400 animate-pulse">
+                        Running {hazardZones.length + casualtyPins.length + 1} parallel AI calls...
+                      </div>
+                    )}
+                    {enrichResult && (
+                      <div className="space-y-1">
+                        <button
+                          onClick={() => setEnrichExpanded(!enrichExpanded)}
+                          className="w-full text-xs text-left text-purple-300 hover:text-purple-200 flex items-center gap-1"
+                        >
+                          <span>{enrichExpanded ? '▼' : '▶'}</span>
+                          <span>
+                            Results: {enrichResult.hazardAnalysis.length} hazards,{' '}
+                            {enrichResult.enrichedCasualties.length} casualties
+                          </span>
+                        </button>
+                        {enrichExpanded && (
+                          <div className="bg-gray-950 border border-purple-900 rounded p-2 space-y-2 max-h-60 overflow-y-auto">
+                            <div className="text-xs text-purple-300 font-bold">Assessment</div>
+                            <div className="text-xs text-green-400 whitespace-pre-wrap">
+                              {typeof enrichResult.overallAssessment === 'string'
+                                ? enrichResult.overallAssessment
+                                : typeof enrichResult.overallAssessment === 'object' &&
+                                    enrichResult.overallAssessment
+                                  ? Object.entries(
+                                      enrichResult.overallAssessment as Record<string, string>,
+                                    ).map(([k, v]) => (
+                                      <div key={k} className="mb-1">
+                                        <span className="text-purple-400 font-semibold">{k}: </span>
+                                        {String(v)}
+                                      </div>
+                                    ))
+                                  : String(enrichResult.overallAssessment)}
+                            </div>
 
-                          {enrichResult.sceneSynthesis.keyChallenges.length > 0 && (
-                            <>
-                              <div className="text-xs text-purple-300 font-bold mt-1">
-                                Key Challenges
-                              </div>
-                              {enrichResult.sceneSynthesis.keyChallenges.map((ch, i) => (
-                                <div key={i} className="text-xs text-amber-400">
-                                  • {ch}
+                            {enrichResult.sceneSynthesis.keyChallenges.length > 0 && (
+                              <>
+                                <div className="text-xs text-purple-300 font-bold mt-1">
+                                  Key Challenges
                                 </div>
-                              ))}
-                            </>
-                          )}
-
-                          {enrichResult.sceneSynthesis.chainReactions.length > 0 && (
-                            <>
-                              <div className="text-xs text-purple-300 font-bold mt-1">
-                                Chain Reactions
-                              </div>
-                              {enrichResult.sceneSynthesis.chainReactions.map((cr, i) => (
-                                <div key={i} className="text-xs text-red-400">
-                                  ⚠ {cr}
-                                </div>
-                              ))}
-                            </>
-                          )}
-
-                          {enrichResult.hazardAnalysis.length > 0 && (
-                            <>
-                              <div className="text-xs text-purple-300 font-bold mt-1">
-                                Hazard Analyses
-                              </div>
-                              {enrichResult.hazardAnalysis.map((ha) => (
-                                <div
-                                  key={ha.hazardId}
-                                  className="text-xs border-l-2 border-purple-800 pl-2 mb-1"
-                                >
-                                  <div className="text-amber-300">
-                                    {ha.identifiedMaterial} ({ha.riskLevel})
+                                {enrichResult.sceneSynthesis.keyChallenges.map((ch, i) => (
+                                  <div key={i} className="text-xs text-amber-400">
+                                    • {ch}
                                   </div>
-                                  <div className="text-green-600">{ha.blastInteraction}</div>
-                                  {ha.secondaryEffects.length > 0 && (
-                                    <div className="text-red-500 text-[10px]">
-                                      Effects: {ha.secondaryEffects.join(', ')}
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </>
-                          )}
+                                ))}
+                              </>
+                            )}
 
-                          {enrichResult.sceneSynthesis.escalationTimeline && (
-                            <>
-                              <div className="text-xs text-purple-300 font-bold mt-1">
-                                Escalation Timeline
-                              </div>
-                              <div className="text-xs text-green-500 whitespace-pre-wrap">
-                                {typeof enrichResult.sceneSynthesis.escalationTimeline === 'string'
-                                  ? enrichResult.sceneSynthesis.escalationTimeline
-                                  : JSON.stringify(
-                                      enrichResult.sceneSynthesis.escalationTimeline,
-                                      null,
-                                      2,
+                            {enrichResult.sceneSynthesis.chainReactions.length > 0 && (
+                              <>
+                                <div className="text-xs text-purple-300 font-bold mt-1">
+                                  Chain Reactions
+                                </div>
+                                {enrichResult.sceneSynthesis.chainReactions.map((cr, i) => (
+                                  <div key={i} className="text-xs text-red-400">
+                                    ⚠ {cr}
+                                  </div>
+                                ))}
+                              </>
+                            )}
+
+                            {enrichResult.hazardAnalysis.length > 0 && (
+                              <>
+                                <div className="text-xs text-purple-300 font-bold mt-1">
+                                  Hazard Analyses
+                                </div>
+                                {enrichResult.hazardAnalysis.map((ha) => (
+                                  <div
+                                    key={ha.hazardId}
+                                    className="text-xs border-l-2 border-purple-800 pl-2 mb-1"
+                                  >
+                                    <div className="text-amber-300">
+                                      {ha.identifiedMaterial} ({ha.riskLevel})
+                                    </div>
+                                    <div className="text-green-600">{ha.blastInteraction}</div>
+                                    {ha.secondaryEffects.length > 0 && (
+                                      <div className="text-red-500 text-[10px]">
+                                        Effects: {ha.secondaryEffects.join(', ')}
+                                      </div>
                                     )}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                                  </div>
+                                ))}
+                              </>
+                            )}
+
+                            {enrichResult.sceneSynthesis.escalationTimeline && (
+                              <>
+                                <div className="text-xs text-purple-300 font-bold mt-1">
+                                  Escalation Timeline
+                                </div>
+                                <div className="text-xs text-green-500 whitespace-pre-wrap">
+                                  {typeof enrichResult.sceneSynthesis.escalationTimeline ===
+                                  'string'
+                                    ? enrichResult.sceneSynthesis.escalationTimeline
+                                    : JSON.stringify(
+                                        enrichResult.sceneSynthesis.escalationTimeline,
+                                        null,
+                                        2,
+                                      )}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <button
                   onClick={handleSaveSceneToDb}

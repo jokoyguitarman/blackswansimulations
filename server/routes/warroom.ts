@@ -18,6 +18,7 @@ import {
   type WarroomTeamInput,
 } from '../services/warroomService.js';
 import { enrichScene, type SceneEnrichmentResult } from '../services/rtsSceneEnrichmentService.js';
+import { generateStudGrids } from '../services/buildingStudService.js';
 
 function applyWizardGeocodeOverride(
   geoResult: ParseAndGeocodeResult,
@@ -679,6 +680,46 @@ router.post(
             const exits = (sceneRow.exits as Array<Record<string, unknown>>) || [];
             const walls = (sceneRow.interior_walls as Array<Record<string, unknown>>) || [];
 
+            // Generate stud grids from the scene's building polygon for environmental analysis
+            const buildingPolygon = sceneRow.building_polygon as [number, number][] | null;
+            const blastSiteData = sceneRow.blast_site as {
+              x: number;
+              y: number;
+              radius?: number;
+            } | null;
+
+            // Convert blast site from sim-space meters back to lat/lng for generateStudGrids
+            let blastLatLng: { lat: number; lng: number } | undefined;
+            if (blastSiteData && buildingPolygon && buildingPolygon.length >= 3) {
+              const refLat = buildingPolygon.reduce((s, p) => s + p[0], 0) / buildingPolygon.length;
+              const refLng = buildingPolygon.reduce((s, p) => s + p[1], 0) / buildingPolygon.length;
+              const mPerDegLat = 111_320;
+              const mPerDegLng = 111_320 * Math.cos((refLat * Math.PI) / 180);
+              blastLatLng = {
+                lat: refLat - blastSiteData.y / mPerDegLat,
+                lng: refLng + blastSiteData.x / mPerDegLng,
+              };
+            }
+
+            const studGrids =
+              buildingPolygon && buildingPolygon.length >= 3
+                ? generateStudGrids(
+                    [
+                      {
+                        name: (sceneRow.building_name as string) || null,
+                        lat: buildingPolygon.reduce((s, p) => s + p[0], 0) / buildingPolygon.length,
+                        lng: buildingPolygon.reduce((s, p) => s + p[1], 0) / buildingPolygon.length,
+                        bounds: null,
+                        footprint_polygon: buildingPolygon,
+                        distance_from_center_m: 0,
+                      },
+                    ],
+                    5,
+                    blastLatLng,
+                    true,
+                  )
+                : [];
+
             enrichmentResult = await enrichScene(
               {
                 incidentDescription:
@@ -687,7 +728,7 @@ router.post(
                   'Explosion at building',
                 blastRadius:
                   ((sceneRow.blast_site as Record<string, unknown>)?.radius as number) ?? 20,
-                blastSite: (sceneRow.blast_site as { x: number; y: number } | null) ?? null,
+                blastSite: blastSiteData,
                 casualtyPins: casualties.map((c) => ({
                   id: (c.id as string) || `cas-${Math.random().toString(36).slice(2, 8)}`,
                   pos: (c.pos as { x: number; y: number }) || { x: 0, y: 0 },
@@ -710,11 +751,22 @@ router.post(
                   width: (e.width as number) || 2,
                 })),
                 wallMaterials: walls.map((w) => (w.material as string) || '').filter(Boolean),
+                walls: walls.map((w) => ({
+                  start: (w.start as { x: number; y: number }) || { x: 0, y: 0 },
+                  end: (w.end as { x: number; y: number }) || { x: 0, y: 0 },
+                  hasDoor: !!(w.hasDoor as boolean),
+                  doorWidth: (w.doorWidth as number) || 1,
+                  doorPosition: (w.doorPosition as number) || 0.5,
+                  material: (w.material as string) || '',
+                })),
                 gameZones: [],
                 buildingName: (sceneRow.building_name as string) || null,
                 pedestrianCount: (sceneRow.pedestrian_count as number) || 120,
+                gameDurationMin: (input.duration_minutes as number) || 60,
               },
               env.openAiApiKey,
+              studGrids.length > 0 ? studGrids : undefined,
+              buildingPolygon || undefined,
             );
 
             logger.info(
@@ -872,6 +924,16 @@ router.post(
         .from('warroom_wizard_drafts')
         .update({ scenario_id: scenarioId, status: 'persisted', current_step: 6 })
         .eq('id', draftId);
+
+      const rtsSceneId = (input.scene_context as Record<string, unknown>)?.rts_scene_id as
+        | string
+        | undefined;
+      if (rtsSceneId) {
+        await supabaseAdmin
+          .from('rts_scene_configs')
+          .update({ scenario_id: scenarioId })
+          .eq('id', rtsSceneId);
+      }
 
       return res.json({ data: { scenarioId, draft_id: draftId } });
     } catch (err) {

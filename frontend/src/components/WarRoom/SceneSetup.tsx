@@ -18,6 +18,8 @@ import { renderRTS, computeMapRenderContext } from '../../lib/rts/renderer';
 import type { RenderContext } from '../../lib/rts/renderer';
 import 'leaflet/dist/leaflet.css';
 
+const ENABLE_CASUALTY_PLACEMENT = false;
+
 interface SceneSetupProps {
   buildingPolygon: [number, number][];
   buildingName: string | null;
@@ -305,12 +307,14 @@ export function SceneSetup({
         >
           💥 Blast Site {blastSite ? '(replace)' : ''}
         </button>
-        <button
-          onClick={() => setActiveMode('place_casualty')}
-          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_casualty' ? 'border-red-400 bg-red-900/30 text-red-300' : 'border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50'}`}
-        >
-          🏥 Place Casualties
-        </button>
+        {ENABLE_CASUALTY_PLACEMENT && (
+          <button
+            onClick={() => setActiveMode('place_casualty')}
+            className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_casualty' ? 'border-red-400 bg-red-900/30 text-red-300' : 'border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50'}`}
+          >
+            🏥 Place Casualties
+          </button>
+        )}
         <button
           onClick={() => setActiveMode('place_stairwell')}
           className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_stairwell' ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300' : 'border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50'}`}

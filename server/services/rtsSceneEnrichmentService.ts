@@ -1,4 +1,10 @@
 import { logger } from '../lib/logger.js';
+import {
+  runEnvironmentalSimulation,
+  type SimStud,
+  type SimWall,
+  type SimHazard,
+} from './environmentalSimService.js';
 
 // ── Shared constants ─────────────────────────────────────────────────────
 
@@ -41,6 +47,15 @@ export interface ExitInput {
   width: number;
 }
 
+export interface WallInput {
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  hasDoor: boolean;
+  doorWidth: number;
+  doorPosition: number;
+  material: string;
+}
+
 export interface SceneEnrichmentRequest {
   incidentDescription: string;
   blastRadius: number;
@@ -49,9 +64,11 @@ export interface SceneEnrichmentRequest {
   hazards: HazardInput[];
   exits: ExitInput[];
   wallMaterials: string[];
+  walls?: WallInput[];
   gameZones: { type: string; radius: number }[];
   buildingName: string | null;
   pedestrianCount: number;
+  gameDurationMin?: number;
 }
 
 // ── Output types ─────────────────────────────────────────────────────────
@@ -70,6 +87,8 @@ export interface EnrichedCasualty {
   };
 }
 
+export type SmokeGeneration = 'none' | 'light' | 'moderate' | 'heavy' | 'toxic';
+
 export interface HazardEvent {
   triggerTimeSec: number;
   eventType: 'ignite' | 'rupture' | 'collapse' | 'flood' | 'arc' | 'explode';
@@ -78,6 +97,9 @@ export interface HazardEvent {
   spreadRate: number;
   description: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
+  smokeGeneration?: SmokeGeneration;
+  smokeDescription?: string;
+  affectedStuds?: string[];
 }
 
 export interface HazardStateProgression {
@@ -101,6 +123,21 @@ export interface HazardAnalysis {
   hazardStates: HazardStateProgression;
 }
 
+export interface StudEnvironmentalEffect {
+  stud_id: string;
+  smoke_density: number;
+  fire_intensity: number;
+  gas_concentration: number;
+  structural_damage: number;
+  visibility_m: number;
+}
+
+export interface EnvironmentalSnapshot {
+  at_minutes: number;
+  stud_effects: StudEnvironmentalEffect[];
+  narrative: string;
+}
+
 export interface SceneEnrichmentResult {
   enrichedCasualties: EnrichedCasualty[];
   generatedCasualties: EnrichedCasualty[];
@@ -111,6 +148,7 @@ export interface SceneEnrichmentResult {
     escalationTimeline: string;
     keyChallenges: string[];
     casualtyDeteriorationRisks: string[];
+    environmentalTimeline: EnvironmentalSnapshot[];
   };
 }
 
@@ -147,6 +185,8 @@ Determine what events this hazard will experience after the blast:
 - How fast does that effect spread (meters per minute)?
 - What initial radius does it affect?
 - What are the state transitions this hazard goes through over time?
+- What smoke does each event produce? Options: "none" (no smoke), "light" (thin haze), "moderate" (reduced visibility), "heavy" (near-zero visibility), "toxic" (heavy + chemical irritants). Only events involving combustion or chemical release produce smoke.
+- If nearby stud IDs are provided, list which studs would be affected by each event based on the spread radius and direction.
 
 Return JSON only:
 {
@@ -165,6 +205,9 @@ Return JSON only:
       "spreadType": "fire|gas|flood|structural_zone|null",
       "spreadRadius": 5,
       "spreadRate": 10,
+      "smokeGeneration": "none|light|moderate|heavy|toxic",
+      "smokeDescription": "what the smoke looks like and contains (e.g. thick black acrid smoke from burning plastics)",
+      "affectedStuds": ["stud-id-1", "stud-id-2"],
       "description": "what happens at this moment",
       "severity": "low|medium|high|critical"
     }
@@ -177,10 +220,18 @@ Return JSON only:
   }
 }`;
 
+interface NearbyStud {
+  id: string;
+  distance: number;
+  spatialContext: string;
+  blastBand?: string;
+}
+
 async function analyzeHazard(
   hazard: HazardInput,
   sceneContext: string,
   openAiApiKey: string,
+  nearbyStuds?: NearbyStud[],
 ): Promise<HazardAnalysis> {
   const userContent: Array<{
     type: string;
@@ -209,6 +260,10 @@ async function analyzeHazard(
     nearbyInfo.push(`Wall materials nearby: ${hazard.nearbyWallMaterials.join(', ')}`);
   }
 
+  const studBlock = nearbyStuds?.length
+    ? `\nNEARBY STUDS (snap-points in the building grid — use these IDs in affectedStuds for each event):\n${nearbyStuds.map((s) => `- ${s.id}: ${s.spatialContext}, ${Math.round(s.distance)}m from hazard${s.blastBand ? `, blast band: ${s.blastBand}` : ''}`).join('\n')}`
+    : '';
+
   const promptText = `${sceneContext}
 
 HAZARD TO ANALYZE:
@@ -219,7 +274,7 @@ HAZARD TO ANALYZE:
 - Distance from blast: ${hazard.distanceFromBlast != null ? `${Math.round(hazard.distanceFromBlast)}m` : 'unknown'}
 - Location: ${hazard.insideBuilding ? 'INSIDE building' : 'OUTSIDE building'}
 - Photos attached: ${hazard.photos.length}
-${nearbyInfo.length ? '\nSPATIAL CONTEXT:\n' + nearbyInfo.join('\n') : ''}
+${nearbyInfo.length ? '\nSPATIAL CONTEXT:\n' + nearbyInfo.join('\n') : ''}${studBlock}
 
 Perform a thorough analysis and return JSON only.`;
 
@@ -418,18 +473,20 @@ const SYNTHESIS_SYSTEM_PROMPT = `You are a senior emergency management consultan
 
 Consider:
 1. Chain reactions between hazards — which hazards would trigger or worsen others
-2. Escalation timeline — how the scene changes over the first 60 minutes
+2. Escalation timeline — how the scene changes over the first 60 minutes (fire spread, smoke filling corridors, gas clouds expanding, structural weakening). Describe this as a narrative.
 3. Key challenges for each response discipline (medical, fire, bomb squad, command)
 4. Which casualties will deteriorate if not treated promptly, based on their proximity to progressing hazards
-5. Bottlenecks — exits that are compromised, routes blocked by hazards
+5. Bottlenecks — exits that are compromised, routes blocked by hazards or smoke
 6. Resource prioritization — what must happen first, second, third
 
 Also: if no casualty pins were placed by the trainer, generate 8-15 realistic casualties distributed at various distances from the blast (0-100m). Use the hazard analysis results to inform what additional injuries these generated casualties might have.
 
+NOTE: The stud-level environmental timeline (fire/smoke/gas per stud over time) is computed separately by a deterministic simulation engine. You do NOT need to produce stud-level data. Focus on the narrative escalation timeline and strategic analysis.
+
 Return JSON only:
 {
   "chainReactions": ["description of chain reaction 1", ...],
-  "escalationTimeline": "minute-by-minute progression narrative for the first 60 minutes",
+  "escalationTimeline": "minute-by-minute narrative progression for the first 60 minutes — describe how fire, smoke, gas, and structural damage evolve and what this means for responders",
   "keyChallenges": ["challenge 1", "challenge 2", ...],
   "casualtyDeteriorationRisks": ["which casualties will worsen and why", ...],
   "generatedCasualties": [{"id": "gen-1", "description": "...", "trueTag": "red|yellow|green|black", "observableSigns": {"breathing": "...", "pulse": "...", "consciousness": "...", "visibleInjuries": "...", "mobility": "...", "bleeding": "..."}}],
@@ -451,12 +508,20 @@ async function synthesizeScene(
   casualtyResults: EnrichedCasualty[],
   noCasualtiesPlaced: boolean,
   openAiApiKey: string,
+  studSummary?: string,
 ): Promise<SynthesisResult> {
   const hazardSummary = hazardResults
-    .map(
-      (h) =>
-        `- ${h.hazardId}: ${h.identifiedMaterial} (${h.riskLevel})\n  Blast interaction: ${h.blastInteraction}\n  Secondary effects: ${h.secondaryEffects.join(', ')}\n  Timeline: ${h.progressionTimeline}\n  Chain risk: ${h.chainReactionRisk}`,
-    )
+    .map((h) => {
+      const eventDetails = h.events?.length
+        ? h.events
+            .map(
+              (e) =>
+                `    T+${e.triggerTimeSec}s: ${e.eventType} → ${e.spreadType || 'none'} (smoke: ${e.smokeGeneration || 'none'})${e.affectedStuds?.length ? ` [studs: ${e.affectedStuds.join(', ')}]` : ''}`,
+            )
+            .join('\n')
+        : '    No events predicted';
+      return `- ${h.hazardId}: ${h.identifiedMaterial} (${h.riskLevel})\n  Blast interaction: ${h.blastInteraction}\n  Secondary effects: ${h.secondaryEffects.join(', ')}\n  Timeline: ${h.progressionTimeline}\n  Chain risk: ${h.chainReactionRisk}\n  Events:\n${eventDetails}`;
+    })
     .join('\n\n');
 
   const casualtySummary = casualtyResults
@@ -466,6 +531,10 @@ async function synthesizeScene(
     )
     .join('\n');
 
+  const studBlock = studSummary
+    ? `\n═══ BUILDING STUDS (snap-points for environmental timeline) ═══\n${studSummary}\n`
+    : '';
+
   const promptText = `${sceneContext}
 
 ═══ INDIVIDUAL HAZARD ANALYSES ═══
@@ -473,8 +542,8 @@ ${hazardSummary || 'No hazards on scene.'}
 
 ═══ INDIVIDUAL CASUALTY PROFILES ═══
 ${casualtySummary || (noCasualtiesPlaced ? 'No casualty pins placed by trainer. You must generate 8-15 realistic casualties distributed across the blast zones.' : 'No casualties analyzed.')}
-
-Synthesize all findings into a unified scene analysis. Return JSON only.`;
+${studBlock}
+Synthesize all findings into a unified scene analysis. Include an environmentalTimeline showing how fire, smoke, gas, and structural damage affect specific studs over 30 minutes. Return JSON only.`;
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -592,26 +661,125 @@ TOTAL CASUALTY PINS: ${req.casualtyPins.length}`;
 
 // ── Main enrichment orchestrator (fan-out / fan-in) ──────────────────────
 
+export interface ProjectedStud {
+  id: string;
+  simPos: { x: number; y: number };
+  spatialContext: string | null;
+  blastBand?: string;
+  distFromIncidentM?: number;
+}
+
+function projectStudsToSimSpace(
+  studGrids: Array<{
+    studs: Array<{
+      id: string;
+      lat: number;
+      lng: number;
+      spatialContext?: string;
+      blastBand?: string;
+      distFromIncidentM?: number;
+    }>;
+  }>,
+  buildingPolygon: [number, number][],
+): ProjectedStud[] {
+  if (!buildingPolygon.length) return [];
+  const refLat = buildingPolygon.reduce((s, p) => s + p[0], 0) / buildingPolygon.length;
+  const refLng = buildingPolygon.reduce((s, p) => s + p[1], 0) / buildingPolygon.length;
+  const mPerDegLat = 111_320;
+  const mPerDegLng = 111_320 * Math.cos((refLat * Math.PI) / 180);
+
+  const projected: ProjectedStud[] = [];
+  for (const grid of studGrids) {
+    for (const stud of grid.studs) {
+      projected.push({
+        id: stud.id,
+        simPos: {
+          x: (stud.lng - refLng) * mPerDegLng,
+          y: (refLat - stud.lat) * mPerDegLat,
+        },
+        spatialContext: stud.spatialContext || null,
+        blastBand: stud.blastBand,
+        distFromIncidentM: stud.distFromIncidentM,
+      });
+    }
+  }
+  return projected;
+}
+
 export async function enrichScene(
   req: SceneEnrichmentRequest,
   openAiApiKey: string,
+  studGrids?: Array<{
+    studs: Array<{
+      id: string;
+      lat: number;
+      lng: number;
+      spatialContext?: string;
+      blastBand?: string;
+      distFromIncidentM?: number;
+    }>;
+  }>,
+  buildingPolygon?: [number, number][],
 ): Promise<SceneEnrichmentResult> {
   computeSpatialContext(req);
   const sceneContext = buildSceneContext(req);
   const noCasualties = req.casualtyPins.length === 0;
 
+  // Project studs from lat/lng to sim-space meters (same frame as hazards/blast)
+  const projectedStuds =
+    studGrids && buildingPolygon ? projectStudsToSimSpace(studGrids, buildingPolygon) : [];
+
+  // Pre-compute nearby studs for each hazard using sim-space distances
+  const NEARBY_STUD_RADIUS = 30;
+  const hazardStudMap = new Map<string, NearbyStud[]>();
+  if (projectedStuds.length > 0) {
+    for (const h of req.hazards) {
+      const nearby: NearbyStud[] = [];
+      for (const stud of projectedStuds) {
+        const d = Math.hypot(stud.simPos.x - h.pos.x, stud.simPos.y - h.pos.y);
+        if (d <= NEARBY_STUD_RADIUS) {
+          nearby.push({
+            id: stud.id,
+            distance: Math.round(d),
+            spatialContext: stud.spatialContext || 'unknown',
+            blastBand: stud.blastBand,
+          });
+        }
+      }
+      nearby.sort((a, b) => a.distance - b.distance);
+      hazardStudMap.set(h.id, nearby.slice(0, 20));
+    }
+  }
+
+  // Build a stud summary for the synthesis prompt
+  const studSummary =
+    projectedStuds.length > 0
+      ? projectedStuds
+          .slice(0, 40)
+          .map(
+            (s) =>
+              `${s.id}: ${s.spatialContext || 'unknown'}${s.blastBand ? `, blast: ${s.blastBand}` : ''}${s.distFromIncidentM != null ? `, ${Math.round(s.distFromIncidentM)}m from blast` : ''}`,
+          )
+          .join('\n')
+      : undefined;
+
   logger.info(
-    { hazards: req.hazards.length, casualties: req.casualtyPins.length },
+    {
+      hazards: req.hazards.length,
+      casualties: req.casualtyPins.length,
+      studs: projectedStuds.length,
+    },
     'Starting fan-out scene enrichment',
   );
 
   // Phase 1: parallel per-element deep dives
   const [hazardResults, casualtyResults] = await Promise.all([
-    Promise.allSettled(req.hazards.map((h) => analyzeHazard(h, sceneContext, openAiApiKey))).then(
-      (results) =>
-        results.map((r, i) =>
-          r.status === 'fulfilled' ? r.value : defaultHazardAnalysis(req.hazards[i].id),
-        ),
+    Promise.allSettled(
+      req.hazards.map((h) => analyzeHazard(h, sceneContext, openAiApiKey, hazardStudMap.get(h.id))),
+    ).then((results) =>
+      results.map((r, i) =>
+        r.status === 'fulfilled' ? r.value : defaultHazardAnalysis(req.hazards[i].id),
+      ),
     ),
     Promise.allSettled(
       req.casualtyPins
@@ -652,16 +820,63 @@ export async function enrichScene(
       casualtyAnalyses: casualtyResults.length,
       passthrough: alreadyDescribed.length,
     },
-    'Phase 1 complete, starting synthesis',
+    'Phase 1 complete',
   );
 
-  // Phase 2: synthesis
+  // Phase 1.5: Deterministic environmental simulation using AI hazard parameters
+  let engineTimeline: EnvironmentalSnapshot[] = [];
+  if (projectedStuds.length > 0 && hazardResults.some((h) => h.events?.length > 0)) {
+    const simStuds: SimStud[] = projectedStuds.map((s) => ({
+      id: s.id,
+      simPos: s.simPos,
+      spatialContext: s.spatialContext,
+    }));
+
+    const simWalls: SimWall[] = (req.walls ?? []).map((w) => ({
+      start: w.start,
+      end: w.end,
+      hasDoor: w.hasDoor,
+      doorWidth: w.doorWidth,
+      doorPosition: w.doorPosition,
+      material: w.material,
+    }));
+
+    const simHazards: SimHazard[] = req.hazards.map((h) => ({
+      id: h.id,
+      pos: h.pos,
+      radius: 5,
+      hazardType: h.hazardType,
+    }));
+
+    engineTimeline = runEnvironmentalSimulation(
+      simStuds,
+      simWalls,
+      simHazards,
+      hazardResults,
+      req.gameDurationMin || 60,
+    );
+
+    logger.info(
+      {
+        snapshots: engineTimeline.length,
+        maxAffected: engineTimeline.reduce((m, s) => Math.max(m, s.stud_effects.length), 0),
+      },
+      'Environmental simulation complete, starting synthesis',
+    );
+  } else {
+    logger.info(
+      'No studs or hazard events — skipping environmental simulation, starting synthesis',
+    );
+  }
+
+  // Phase 2: AI synthesis (narrative overview; engine provides the authoritative timeline)
   const synthesis = await synthesizeScene(
     sceneContext,
     hazardResults,
     allCasualties,
     noCasualties,
     openAiApiKey,
+    studSummary,
   );
 
   return {
@@ -674,6 +889,7 @@ export async function enrichScene(
       escalationTimeline: synthesis.escalationTimeline || '',
       keyChallenges: synthesis.keyChallenges || [],
       casualtyDeteriorationRisks: synthesis.casualtyDeteriorationRisks || [],
+      environmentalTimeline: engineTimeline,
     },
   };
 }

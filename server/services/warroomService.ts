@@ -29,6 +29,7 @@ import {
   type WarroomScenarioPayload,
   type Phase1Result,
   type DeteriorationTimelineResult,
+  type TrainerScene,
 } from './warroomAiService.js';
 import { persistWarroomScenario } from './warroomPersistenceService.js';
 import {
@@ -54,11 +55,30 @@ import {
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import type { OsmVicinity } from './osmVicinityService.js';
 import type { OsmOpenSpace, OsmBuilding, OsmRouteGeometry } from './osmVicinityService.js';
-import { backfillBuildingsForScenario } from './buildingStudService.js';
+import { backfillBuildingsForScenario, generateStudGrids } from './buildingStudService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const OSM_CACHE_RADIUS_M = 5000;
+
+/**
+ * Convert a sim-space position (meters, relative to building polygon centroid)
+ * back to WGS84 lat/lng. Same projection as projectPolygon in the frontend,
+ * but inverted.
+ */
+export function simToLatLng(
+  simPos: { x: number; y: number },
+  polygon: [number, number][],
+): { lat: number; lng: number } {
+  const refLat = polygon.reduce((s, p) => s + p[0], 0) / polygon.length;
+  const refLng = polygon.reduce((s, p) => s + p[1], 0) / polygon.length;
+  const mPerDegLat = 111_320;
+  const mPerDegLng = 111_320 * Math.cos((refLat * Math.PI) / 180);
+  return {
+    lat: refLat - simPos.y / mPerDegLat,
+    lng: refLng + simPos.x / mPerDegLng,
+  };
+}
 
 /**
  * Look for a nearby scenario that already has osm_vicinity data cached in
@@ -130,6 +150,7 @@ export interface WarroomGenerateOptions {
   secondary_devices_count?: number;
   real_bombs_count?: number;
   teams?: WarroomTeamInput[];
+  scene_context?: Record<string, unknown>;
 }
 
 export interface WarroomSuggestTeamsResult {
@@ -958,6 +979,114 @@ export async function stageGenerateAndPersist(
   const { standardsFindings, perTeamDoctrines, perTeamForbiddenActions } = doctrines;
   const aiProgress = (msg: string) => onProgress?.('ai', msg);
 
+  // Load trainer scene if rts_scene_id is present in scene_context
+  let trainerScene: TrainerScene | undefined;
+  let sceneStudGrids: import('./buildingStudService.js').StudGrid[] | undefined;
+  const sceneCtx = options.scene_context;
+  const rtsSceneId = sceneCtx?.rts_scene_id as string | undefined;
+  if (rtsSceneId) {
+    try {
+      const { data: sceneRow } = await supabaseAdmin
+        .from('rts_scene_configs')
+        .select('*')
+        .eq('id', rtsSceneId)
+        .single();
+
+      if (sceneRow) {
+        const buildingPolygon = sceneRow.building_polygon as [number, number][] | null;
+        const blastSiteRaw = sceneRow.blast_site as {
+          x: number;
+          y: number;
+          radius?: number;
+        } | null;
+        const hazardZonesRaw = (sceneRow.hazard_zones as Array<Record<string, unknown>>) || [];
+        const exitsRaw = (sceneRow.exits as Array<Record<string, unknown>>) || [];
+        const enrichmentResult = sceneRow.enrichment_result as Record<string, unknown> | null;
+
+        if (buildingPolygon && buildingPolygon.length >= 3) {
+          const blastLatLng = blastSiteRaw ? simToLatLng(blastSiteRaw, buildingPolygon) : null;
+
+          trainerScene = {
+            rtsSceneId,
+            blastSite: blastLatLng
+              ? { lat: blastLatLng.lat, lng: blastLatLng.lng, radius: blastSiteRaw?.radius }
+              : null,
+            hazards: hazardZonesRaw.map((h) => {
+              const pos = (h.pos as { x: number; y: number }) || { x: 0, y: 0 };
+              const geo = simToLatLng(pos, buildingPolygon);
+              return {
+                id: (h.id as string) || `haz-${Math.random().toString(36).slice(2, 8)}`,
+                lat: geo.lat,
+                lng: geo.lng,
+                hazardType: (h.hazardType as string) || 'unknown',
+                severity: (h.severity as string) || 'medium',
+                description: (h.description as string) || '',
+                radius: (h.radius as number) || 5,
+                photos: (h.photos as string[]) || [],
+              };
+            }),
+            exits: exitsRaw.map((e) => {
+              const pos = (e.pos as { x: number; y: number }) || { x: 0, y: 0 };
+              const geo = simToLatLng(pos, buildingPolygon);
+              return {
+                id: (e.id as string) || `exit-${Math.random().toString(36).slice(2, 8)}`,
+                lat: geo.lat,
+                lng: geo.lng,
+                width: (e.width as number) || 2,
+                status: (e.status as string) || 'open',
+                description: (e.description as string) || '',
+              };
+            }),
+            buildingPolygon,
+            buildingName: (sceneRow.building_name as string) || null,
+            pedestrianCount: (sceneRow.pedestrian_count as number) || 120,
+            enrichment: enrichmentResult
+              ? {
+                  hazardAnalysis: (enrichmentResult.hazardAnalysis ?? []) as Array<
+                    Record<string, unknown>
+                  >,
+                  sceneSynthesis: (enrichmentResult.sceneSynthesis ?? {}) as Record<
+                    string,
+                    unknown
+                  >,
+                  overallAssessment: (enrichmentResult.overallAssessment ?? '') as string,
+                }
+              : undefined,
+          };
+
+          sceneStudGrids = generateStudGrids(
+            [
+              {
+                name: trainerScene.buildingName,
+                lat: buildingPolygon.reduce((s, p) => s + p[0], 0) / buildingPolygon.length,
+                lng: buildingPolygon.reduce((s, p) => s + p[1], 0) / buildingPolygon.length,
+                bounds: null,
+                footprint_polygon: buildingPolygon,
+                distance_from_center_m: 0,
+              },
+            ],
+            5,
+            blastLatLng ? { lat: blastLatLng.lat, lng: blastLatLng.lng } : undefined,
+            true,
+          );
+
+          logger.info(
+            {
+              rtsSceneId,
+              hazards: trainerScene.hazards.length,
+              exits: trainerScene.exits.length,
+              studs: sceneStudGrids.reduce((s, g) => s + g.studs.length, 0),
+              hasEnrichment: !!trainerScene.enrichment,
+            },
+            'Trainer scene loaded for scenario generation',
+          );
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, rtsSceneId }, 'Failed to load trainer scene; continuing without');
+    }
+  }
+
   const payload = await warroomGenerateScenario(
     {
       scenario_type: parsed.scenario_type,
@@ -1012,6 +1141,8 @@ export async function stageGenerateAndPersist(
       threat_profile: geoResult.threatProfile,
       secondary_devices_count: options.secondary_devices_count,
       real_bombs_count: options.real_bombs_count,
+      trainerScene,
+      studGrids: sceneStudGrids,
     },
     openAiApiKey,
     aiProgress,
