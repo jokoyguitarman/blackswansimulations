@@ -575,8 +575,21 @@ export function DebugRTSSim() {
   } | null>(null);
   const [enrichExpanded, setEnrichExpanded] = useState(false);
 
-  // ── Stud grid toggle ────────────────────────────────────────────────
+  // ── Stud grid toggle + inspect ────────────────────────────────────────
   const [showStudGrid, setShowStudGrid] = useState(true);
+  const [studInspectMode, setStudInspectMode] = useState(false);
+  const [inspectedStud, setInspectedStud] = useState<SimStud | null>(null);
+
+  // ── Blast radius ──────────────────────────────────────────────────────
+  const [blastRadius, setBlastRadius] = useState(20);
+
+  // ── Operational zones (hot/warm/cold) ─────────────────────────────────
+  const [gameZones, setGameZones] = useState([
+    { id: 'hot', type: 'hot' as const, radius: 50 },
+    { id: 'warm', type: 'warm' as const, radius: 100 },
+    { id: 'cold', type: 'cold' as const, radius: 200 },
+  ]);
+  const [showGameZones, setShowGameZones] = useState(true);
 
   // ── Projected polygon ─────────────────────────────────────────────────
   const selectedGrid = selectedGridIdx != null ? fetchResult?.grids[selectedGridIdx] : null;
@@ -1023,7 +1036,7 @@ export function DebugRTSSim() {
         headers,
         body: JSON.stringify({
           incidentDescription: isWarroomMode ? 'Explosion at building' : 'Explosion at building',
-          blastRadius: 20,
+          blastRadius: blastRadius,
           blastSite: blastSite,
           casualtyPins: casualtyClusters.map((c) => ({
             id: c.id,
@@ -1278,6 +1291,10 @@ export function DebugRTSSim() {
   gpsAccuracyRef.current = gpsAccuracy;
   const showStudGridRef = useRef(showStudGrid);
   showStudGridRef.current = showStudGrid;
+  const gameZonesRef = useRef(gameZones);
+  gameZonesRef.current = gameZones;
+  const showGameZonesRef = useRef(showGameZones);
+  showGameZonesRef.current = showGameZones;
 
   // ── Fire simulation ────────────────────────────────────────────────────
   const effectsEngineRef = useRef<SpatialEffectsEngine | null>(null);
@@ -1349,7 +1366,7 @@ export function DebugRTSSim() {
             hazardZonesRef.current,
             stairwellsRef.current,
             blastSiteRef.current,
-            undefined,
+            showGameZonesRef.current ? gameZonesRef.current : undefined,
             (() => {
               const mode = rtsRef.current.state.interactionMode;
               if (mode.type === 'draw_wall' && mode.startPoint) {
@@ -1934,6 +1951,26 @@ export function DebugRTSSim() {
       const rts = rtsRef.current;
       const mode = rts.state.interactionMode;
 
+      // Stud inspect mode
+      if (studInspectMode) {
+        const studs = simStudsRef.current;
+        let nearest: SimStud | null = null;
+        let nearestDist = Infinity;
+        for (const s of studs) {
+          const d = Math.hypot(s.simPos.x - sim.x, s.simPos.y - sim.y);
+          if (d < nearestDist) {
+            nearestDist = d;
+            nearest = s;
+          }
+        }
+        if (nearest && nearestDist < 10) {
+          setInspectedStud(nearest);
+        } else {
+          setInspectedStud(null);
+        }
+        return;
+      }
+
       // Finalize element drag — if no actual movement, fall through to click handling
       if (elementDragRef.current) {
         if (isDraggingRef.current) {
@@ -2421,6 +2458,25 @@ export function DebugRTSSim() {
       const rts = rtsRef.current;
       const mode = rts.state.interactionMode;
 
+      // Stud inspect mode (touch)
+      if (studInspectMode && elapsed < 300) {
+        const studs = simStudsRef.current;
+        let nearest: SimStud | null = null;
+        let nearestDist = Infinity;
+        for (const s of studs) {
+          const d = Math.hypot(s.simPos.x - sim.x, s.simPos.y - sim.y);
+          if (d < nearestDist) {
+            nearestDist = d;
+            nearest = s;
+          }
+        }
+        if (nearest && nearestDist < 10) setInspectedStud(nearest);
+        else setInspectedStud(null);
+        touchStartRef.current = null;
+        rerender();
+        return;
+      }
+
       if (isDraggingRef.current && dragStartRef.current) {
         rts.selectUnitsInBox(dragStartRef.current, sim);
         rts.state.selection.selectionBox = null;
@@ -2647,7 +2703,7 @@ export function DebugRTSSim() {
             triggerTimeSec: 0,
             eventType: 'explode',
             spreadType: 'fire',
-            spreadRadius: 15,
+            spreadRadius: blastRadius,
             spreadRate: 10,
             description: 'Direct blast ignition',
             severity: 'critical',
@@ -2661,7 +2717,11 @@ export function DebugRTSSim() {
         },
       );
 
-      const blastHazard = { id: 'blast-direct', pos: blastSite } as HazardZone;
+      const blastHazard = {
+        id: 'blast-direct',
+        pos: blastSite,
+        radius: blastRadius,
+      } as HazardZone;
       hazardZonesRef.current = [
         ...hazardZonesRef.current.filter((h) => h.id !== 'blast-direct'),
         blastHazard,
@@ -4673,8 +4733,8 @@ export function DebugRTSSim() {
                   </div>
                 </div>
 
-                {/* Stud grid toggle */}
-                <div className="border-t border-green-900 pt-2">
+                {/* Stud grid toggle + inspect */}
+                <div className="border-t border-green-900 pt-2 space-y-1.5">
                   <label className="flex items-center gap-2 text-xs text-green-500 cursor-pointer">
                     <input
                       type="checkbox"
@@ -4685,7 +4745,160 @@ export function DebugRTSSim() {
                     Show stud grid
                     <span className="text-green-800">({allSimStuds.length} studs)</span>
                   </label>
+                  <label className="flex items-center gap-2 text-xs text-cyan-500 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={studInspectMode}
+                      onChange={(e) => {
+                        setStudInspectMode(e.target.checked);
+                        if (!e.target.checked) setInspectedStud(null);
+                      }}
+                      className="rounded border-cyan-700"
+                    />
+                    Inspect studs (tap to examine)
+                  </label>
+                  {inspectedStud && (
+                    <div className="bg-gray-950 border border-cyan-800 rounded p-2 text-xs space-y-0.5">
+                      <div className="text-cyan-300 font-bold">{inspectedStud.id}</div>
+                      <div className="text-green-400">
+                        Context:{' '}
+                        <span
+                          className={
+                            inspectedStud.spatialContext === 'inside_building'
+                              ? 'text-green-300'
+                              : 'text-gray-400'
+                          }
+                        >
+                          {inspectedStud.spatialContext ?? 'unknown'}
+                        </span>
+                      </div>
+                      <div className="text-gray-400">Type: {inspectedStud.studType}</div>
+                      <div className="text-gray-400">
+                        Lat: {inspectedStud.lat.toFixed(6)}, Lng: {inspectedStud.lng.toFixed(6)}
+                      </div>
+                      <div className="text-gray-400">
+                        Sim: ({inspectedStud.simPos.x.toFixed(1)},{' '}
+                        {inspectedStud.simPos.y.toFixed(1)})
+                      </div>
+                      {(() => {
+                        const es = effectStates?.get(inspectedStud.id);
+                        if (!es) return null;
+                        return (
+                          <>
+                            {es.fire.state !== 'none' && (
+                              <div className="text-red-400">Fire: {es.fire.state}</div>
+                            )}
+                            {es.gas > 0.01 && (
+                              <div className="text-lime-400">Gas: {(es.gas * 100).toFixed(0)}%</div>
+                            )}
+                            {es.flood > 0.01 && (
+                              <div className="text-blue-400">
+                                Flood: {(es.flood * 100).toFixed(0)}%
+                              </div>
+                            )}
+                            {es.structural > 0.01 && (
+                              <div className="text-red-300">
+                                Structural risk: {(es.structural * 100).toFixed(0)}%
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                      {(() => {
+                        const inZones = hazardZones.filter(
+                          (h) =>
+                            Math.hypot(
+                              h.pos.x - inspectedStud!.simPos.x,
+                              h.pos.y - inspectedStud!.simPos.y,
+                            ) <= h.radius,
+                        );
+                        if (inZones.length === 0)
+                          return (
+                            <div className="text-gray-600 italic">No fuel (no hazard zone)</div>
+                          );
+                        return (
+                          <div className="text-orange-400">
+                            Fuel: {inZones.map((z) => z.label).join(', ')}
+                          </div>
+                        );
+                      })()}
+                      <button
+                        onClick={() => setInspectedStud(null)}
+                        className="text-xs text-cyan-600 hover:text-cyan-400 mt-1"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
                 </div>
+
+                {/* Blast radius + operational zones */}
+                {blastSite && (
+                  <div className="space-y-1.5 border-t border-green-900 pt-2">
+                    <div className="text-xs text-green-500 uppercase tracking-wider">
+                      Blast & Zones
+                    </div>
+                    <div>
+                      <label className="block text-xs text-green-600 mb-1">
+                        Blast Radius: {blastRadius}m
+                      </label>
+                      <input
+                        type="range"
+                        min={5}
+                        max={100}
+                        step={1}
+                        value={blastRadius}
+                        onChange={(e) => setBlastRadius(Number(e.target.value))}
+                        className="w-full"
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-amber-500 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={showGameZones}
+                        onChange={(e) => setShowGameZones(e.target.checked)}
+                        className="rounded border-amber-700"
+                      />
+                      Show operational zones
+                    </label>
+                    {showGameZones &&
+                      gameZones.map((gz) => {
+                        const colors: Record<string, string> = {
+                          hot: 'text-red-400',
+                          warm: 'text-orange-400',
+                          cold: 'text-yellow-400',
+                        };
+                        const labels: Record<string, string> = {
+                          hot: 'Hot Zone',
+                          warm: 'Warm Zone',
+                          cold: 'Cold Zone',
+                        };
+                        return (
+                          <div key={gz.id}>
+                            <label
+                              className={`block text-xs mb-1 ${colors[gz.type] || 'text-gray-400'}`}
+                            >
+                              {labels[gz.type] || gz.type}: {gz.radius}m
+                            </label>
+                            <input
+                              type="range"
+                              min={10}
+                              max={500}
+                              step={5}
+                              value={gz.radius}
+                              onChange={(e) => {
+                                const r = Number(e.target.value);
+                                setGameZones((prev) =>
+                                  prev.map((z) => (z.id === gz.id ? { ...z, radius: r } : z)),
+                                );
+                              }}
+                              className="w-full"
+                            />
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
 
                 {/* Polygon enhancement */}
                 <div className="space-y-1.5 border-t border-green-900 pt-2">
@@ -4844,7 +5057,7 @@ export function DebugRTSSim() {
                                   triggerTimeSec: 0,
                                   eventType: 'explode',
                                   spreadType: 'fire',
-                                  spreadRadius: 15,
+                                  spreadRadius: blastRadius,
                                   spreadRate: 10,
                                   description: 'Direct blast ignition',
                                   severity: 'critical',
@@ -4942,7 +5155,7 @@ export function DebugRTSSim() {
                               photos: h.photos || [],
                             })),
                             wallMaterials: interiorWalls.map((w) => w.material).filter(Boolean),
-                            blastRadius: 20,
+                            blastRadius: blastRadius,
                           }),
                         });
                         if (resp.ok) {
