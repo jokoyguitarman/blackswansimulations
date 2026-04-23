@@ -1163,4 +1163,19 @@ export function computeMapRenderContext(
   return { scale, bounds, padX, padY };
 }
 
+/**
+ * Convert a lat/lng position to sim-space meters using a building polygon's
+ * centroid as the reference point. Inverse of projectPolygon.
+ */
+export function latLngToSim(lat: number, lng: number, polygon: [number, number][]): Vec2 {
+  const refLat = polygon.reduce((s, p) => s + p[0], 0) / polygon.length;
+  const refLng = polygon.reduce((s, p) => s + p[1], 0) / polygon.length;
+  const mPerDegLat = 111_320;
+  const mPerDegLng = 111_320 * Math.cos((refLat * Math.PI) / 180);
+  return {
+    x: (lng - refLng) * mPerDegLng,
+    y: (refLat - lat) * mPerDegLat,
+  };
+}
+
 export { toCanvas, toSim, mToCanvas, CANVAS_PAD };
