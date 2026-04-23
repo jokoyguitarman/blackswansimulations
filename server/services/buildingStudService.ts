@@ -786,7 +786,7 @@ export async function loadClassifiedGrids(scenarioId: string): Promise<StudGrid[
     .maybeSingle();
 
   const scenePolygon = sceneConfig?.building_polygon as [number, number][] | null;
-  if (scenePolygon && scenePolygon.length >= 3) {
+  if (sceneConfig && scenePolygon && scenePolygon.length >= 3) {
     const blastSiteRaw = sceneConfig.blast_site as { x: number; y: number } | null;
     const blastLatLng = blastSiteRaw ? simToLatLng(blastSiteRaw, scenePolygon) : null;
 
