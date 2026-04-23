@@ -162,6 +162,9 @@ export function SceneCanvasView({
       center: (e.center as Vec2) || { x: 0, y: 0 },
       width: (e.width as number) || 2,
       edgeIndex: (e.edgeIndex as number) || 0,
+      description: (e.description as string) || '',
+      status: ((e.status as string) || 'unknown') as ExitDef['status'],
+      photos: (e.photos as string[]) || [],
     }));
   }, [sceneConfig]);
 
@@ -199,8 +202,9 @@ export function SceneCanvasView({
     return sceneConfig.stairwells.map((s) => ({
       id: (s.id as string) || '',
       pos: (s.pos as Vec2) || { x: 0, y: 0 },
-      floors: (s.floors as string[]) || ['G'],
-      direction: ((s.direction as string) || 'both') as 'up' | 'down' | 'both',
+      connectsFloors: (s.connectsFloors as [number, number]) || [0, 1],
+      blocked: !!(s.blocked as boolean),
+      label: (s.label as string) || '',
     }));
   }, [sceneConfig]);
 
