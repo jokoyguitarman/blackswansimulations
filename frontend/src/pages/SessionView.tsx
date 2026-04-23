@@ -14,6 +14,7 @@ import { SessionLobby } from '../components/Session/SessionLobby';
 import { NotificationBell } from '../components/Notifications/NotificationBell';
 import { IncidentsPanel } from '../components/Incidents/IncidentsPanel';
 import { MapView } from '../components/COP/MapView';
+import { SceneCanvasView } from '../components/COP/SceneCanvasView';
 import type { DraggableAssetDef } from '../components/COP/AssetPalette';
 import { CreateDecisionForm } from '../components/Forms/CreateDecisionForm';
 
@@ -695,6 +696,7 @@ export const SessionView = () => {
   // Notifications are now handled automatically by the backend notification system
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasSceneConfig, setHasSceneConfig] = useState<boolean | null>(null);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   // Card notification state: 'new' = green dot, 'viewed' = yellow dot, 'none' = no dot
   const [cardNotifications, setCardNotifications] = useState<
@@ -1019,6 +1021,17 @@ export const SessionView = () => {
   useEffect(() => {
     if (showMapModule) setMapHasBeenOpened(true);
   }, [showMapModule]);
+
+  // Check if session's scenario has a trainer scene config (RTS canvas view)
+  useEffect(() => {
+    if (!id) return;
+    api.sessions
+      .getSceneConfig(id)
+      .then(({ data }) => {
+        setHasSceneConfig(!!data);
+      })
+      .catch(() => setHasSceneConfig(false));
+  }, [id]);
 
   // Mount MapView as soon as the map module is shown so Leaflet gets into the DOM.
   useEffect(() => {
@@ -1401,37 +1414,30 @@ export const SessionView = () => {
       <div className="h-screen w-screen overflow-hidden bg-robotic-gray-400 relative flex">
         {/* Map area */}
         <div className={isGodView ? 'relative flex-1' : 'absolute inset-0'}>
-          <MapView
-            sessionId={id}
-            scenarioId={session?.scenarios?.id ?? session?.scenario_id}
-            incidents={[]}
-            resources={[]}
-            isVisible={true}
-            fillHeight
-            showAllPins
-            hidePrebuiltZones
-            bypassExitGate
-            locationsRefreshTrigger={locationsRefreshTrigger}
-            sessionStartTime={session?.start_time ?? undefined}
-            currentState={mergeInjectEffects(
-              (session?.current_state as Record<string, unknown>) ?? {},
-              session?.inject_state_effects,
-            )}
-            initialCenter={
-              session?.scenarios?.center_lat != null && session?.scenarios?.center_lng != null
-                ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [number, number])
-                : [1.3521, 103.8198]
-            }
-            initialZoom={16}
-            teamName="Spectator"
-            draggableAssets={[]}
-            scenarioType={
-              ((session?.current_state as Record<string, unknown>)?.scenario_type as string) ??
-              undefined
-            }
-          >
-            <DemoMapAnimator
+          {hasSceneConfig ? (
+            <SceneCanvasView
+              scenarioId={session?.scenarios?.id ?? session?.scenario_id}
               sessionId={id}
+              fillHeight
+              showAllPins
+            />
+          ) : (
+            <MapView
+              sessionId={id}
+              scenarioId={session?.scenarios?.id ?? session?.scenario_id}
+              incidents={[]}
+              resources={[]}
+              isVisible={true}
+              fillHeight
+              showAllPins
+              hidePrebuiltZones
+              bypassExitGate
+              locationsRefreshTrigger={locationsRefreshTrigger}
+              sessionStartTime={session?.start_time ?? undefined}
+              currentState={mergeInjectEffects(
+                (session?.current_state as Record<string, unknown>) ?? {},
+                session?.inject_state_effects,
+              )}
               initialCenter={
                 session?.scenarios?.center_lat != null && session?.scenarios?.center_lng != null
                   ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
@@ -1441,8 +1447,27 @@ export const SessionView = () => {
                   : [1.3521, 103.8198]
               }
               initialZoom={16}
-            />
-          </MapView>
+              teamName="Spectator"
+              draggableAssets={[]}
+              scenarioType={
+                ((session?.current_state as Record<string, unknown>)?.scenario_type as string) ??
+                undefined
+              }
+            >
+              <DemoMapAnimator
+                sessionId={id}
+                initialCenter={
+                  session?.scenarios?.center_lat != null && session?.scenarios?.center_lng != null
+                    ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
+                        number,
+                        number,
+                      ])
+                    : [1.3521, 103.8198]
+                }
+                initialZoom={16}
+              />
+            </MapView>
+          )}
         </div>
 
         {/* God View: Activity ticker sidebar */}
@@ -2151,7 +2176,13 @@ export const SessionView = () => {
               </div>
             )}
             <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden">
-              {mapModuleReady && mapHasBeenOpened && (
+              {hasSceneConfig ? (
+                <SceneCanvasView
+                  scenarioId={session?.scenarios?.id ?? session?.scenario_id}
+                  sessionId={id}
+                  fillHeight
+                />
+              ) : mapModuleReady && mapHasBeenOpened ? (
                 <MapView
                   sessionId={id}
                   scenarioId={session?.scenarios?.id ?? session?.scenario_id}
@@ -2193,7 +2224,7 @@ export const SessionView = () => {
                   onStartRecording={handleStartRecording}
                   onCrowdMoved={handleCrowdMoved}
                 />
-              )}
+              ) : null}
             </div>
           </div>
         </div>
@@ -2485,54 +2516,63 @@ export const SessionView = () => {
                   </div>
                 </div>
                 <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden">
-                  <MapView
-                    sessionId={id}
-                    scenarioId={session?.scenarios?.id ?? session?.scenario_id}
-                    incidents={[]}
-                    resources={[]}
-                    isVisible={true}
-                    fillHeight
-                    showAllPins
-                    hidePrebuiltZones
-                    bypassExitGate
-                    inspectStuds={inspectStudsMode}
-                    locationsRefreshTrigger={locationsRefreshTrigger}
-                    sessionStartTime={session?.start_time ?? undefined}
-                    currentState={mergeInjectEffects(
-                      (session?.current_state as Record<string, unknown>) ?? {},
-                      session?.inject_state_effects,
-                    )}
-                    initialCenter={
-                      session?.scenarios?.center_lat != null &&
-                      session?.scenarios?.center_lng != null
-                        ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
-                            number,
-                            number,
-                          ])
-                        : [1.3521, 103.8198]
-                    }
-                    initialZoom={16}
-                    teamName={isTrainer ? 'Trainer' : myTeams[0]?.team_name}
-                    draggableAssets={
-                      isTrainer
-                        ? [
-                            ...Object.values(TEAM_ASSET_CATALOG)
-                              .flat()
-                              .filter(
-                                (a, i, arr) =>
-                                  arr.findIndex((b) => b.asset_type === a.asset_type) === i,
-                              ),
-                            ...UNIVERSAL_ASSETS,
-                          ]
-                        : myTeams[0]?.team_name
-                          ? getAssetsForTeam(myTeams[0].team_name, scenarioEquipment)
-                          : []
-                    }
-                    scenarioType={
-                      ((session?.current_state as Record<string, unknown>)
-                        ?.scenario_type as string) ?? undefined
-                    }
-                  />
+                  {hasSceneConfig ? (
+                    <SceneCanvasView
+                      scenarioId={session?.scenarios?.id ?? session?.scenario_id}
+                      sessionId={id}
+                      fillHeight
+                      showAllPins
+                    />
+                  ) : (
+                    <MapView
+                      sessionId={id}
+                      scenarioId={session?.scenarios?.id ?? session?.scenario_id}
+                      incidents={[]}
+                      resources={[]}
+                      isVisible={true}
+                      fillHeight
+                      showAllPins
+                      hidePrebuiltZones
+                      bypassExitGate
+                      inspectStuds={inspectStudsMode}
+                      locationsRefreshTrigger={locationsRefreshTrigger}
+                      sessionStartTime={session?.start_time ?? undefined}
+                      currentState={mergeInjectEffects(
+                        (session?.current_state as Record<string, unknown>) ?? {},
+                        session?.inject_state_effects,
+                      )}
+                      initialCenter={
+                        session?.scenarios?.center_lat != null &&
+                        session?.scenarios?.center_lng != null
+                          ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
+                              number,
+                              number,
+                            ])
+                          : [1.3521, 103.8198]
+                      }
+                      initialZoom={16}
+                      teamName={isTrainer ? 'Trainer' : myTeams[0]?.team_name}
+                      draggableAssets={
+                        isTrainer
+                          ? [
+                              ...Object.values(TEAM_ASSET_CATALOG)
+                                .flat()
+                                .filter(
+                                  (a, i, arr) =>
+                                    arr.findIndex((b) => b.asset_type === a.asset_type) === i,
+                                ),
+                              ...UNIVERSAL_ASSETS,
+                            ]
+                          : myTeams[0]?.team_name
+                            ? getAssetsForTeam(myTeams[0].team_name, scenarioEquipment)
+                            : []
+                      }
+                      scenarioType={
+                        ((session?.current_state as Record<string, unknown>)
+                          ?.scenario_type as string) ?? undefined
+                      }
+                    />
+                  )}
                 </div>
               </div>
 

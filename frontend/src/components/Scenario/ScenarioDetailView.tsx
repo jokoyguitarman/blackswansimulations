@@ -14,6 +14,7 @@ import { ScenarioLocationMarker, type ScenarioLocationPin } from '../COP/Scenari
 import { FloorSelector, type FloorPlan } from '../COP/FloorSelector';
 import { FloorPlanOverlay } from '../COP/FloorPlanOverlay';
 import { BuildingStudOverlay } from '../COP/BuildingStudOverlay';
+import { SceneCanvasView } from '../COP/SceneCanvasView';
 import { svg } from '../COP/mapIcons';
 
 interface StandardsFinding {
@@ -1622,6 +1623,7 @@ const MapPinsTab = ({
   useEffect(() => setHazards(hazardsProp), [hazardsProp]);
   useEffect(() => setCasualties(casualtiesProp), [casualtiesProp]);
 
+  const [hasSceneCanvas, setHasSceneCanvas] = useState<boolean | null>(null);
   const [expandedPin, setExpandedPin] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -2337,255 +2339,65 @@ const MapPinsTab = ({
       )}
       {saveMsg && <div className="text-xs terminal-text text-green-400 p-1">{saveMsg}</div>}
 
-      {/* OSM map */}
-      <div className="military-border overflow-hidden relative" style={{ height: 600 }}>
-        <MapContainer
-          center={mapCenter}
-          zoom={16}
-          style={{ height: '100%', width: '100%' }}
-          scrollWheelZoom={true}
-          doubleClickZoom={true}
-          zoomControl={true}
-          maxZoom={22}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            maxNativeZoom={19}
+      {/* RTS Scene Canvas (when trainer scene exists) */}
+      <SceneCanvasView
+        scenarioId={scenarioId}
+        height={600}
+        showAllPins
+        onLoaded={setHasSceneCanvas}
+      />
+
+      {/* OSM map (fallback when no trainer scene) */}
+      {hasSceneCanvas !== true && (
+        <div className="military-border overflow-hidden relative" style={{ height: 600 }}>
+          <MapContainer
+            center={mapCenter}
+            zoom={16}
+            style={{ height: '100%', width: '100%' }}
+            scrollWheelZoom={true}
+            doubleClickZoom={true}
+            zoomControl={true}
             maxZoom={22}
-          />
-          {/* Map click handler for add-pin mode */}
-          {addPinMode && <MapClickHandler onClick={handleMapClick} />}
+          >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              maxNativeZoom={19}
+              maxZoom={22}
+            />
+            {/* Map click handler for add-pin mode */}
+            {addPinMode && <MapClickHandler onClick={handleMapClick} />}
 
-          {/* Pending pin marker with form popup */}
-          {pendingPin && addPinMode && (
-            <Marker
-              position={[pendingPin.lat, pendingPin.lng]}
-              icon={
-                new DivIcon({
-                  className: '',
-                  html: '<div style="width:20px;height:20px;background:rgba(255,220,0,0.9);border:2px solid #fff;border-radius:50%;box-shadow:0 0 8px rgba(255,220,0,0.6);"></div>',
-                  iconSize: [20, 20],
-                  iconAnchor: [10, 10],
-                })
-              }
-            >
-              <Popup autoPan={true} closeOnClick={false} minWidth={240} maxWidth={300}>
-                <div className="space-y-2" style={{ minWidth: 220 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: '#222', marginBottom: 6 }}>
-                    New {ADD_PIN_OPTIONS.find((o) => o.mode === addPinMode)?.label || 'Pin'}
-                  </div>
-
-                  {/* Entry/Exit form */}
-                  {addPinMode === 'entry_exit' && (
-                    <div>
-                      <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
-                        Label
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Main Gate, Exit B"
-                        value={addPinForm.label || ''}
-                        onChange={(e) => setAddPinForm((f) => ({ ...f, label: e.target.value }))}
-                        style={{
-                          width: '100%',
-                          padding: '4px 6px',
-                          fontSize: 12,
-                          border: '1px solid #ccc',
-                          borderRadius: 3,
-                        }}
-                      />
+            {/* Pending pin marker with form popup */}
+            {pendingPin && addPinMode && (
+              <Marker
+                position={[pendingPin.lat, pendingPin.lng]}
+                icon={
+                  new DivIcon({
+                    className: '',
+                    html: '<div style="width:20px;height:20px;background:rgba(255,220,0,0.9);border:2px solid #fff;border-radius:50%;box-shadow:0 0 8px rgba(255,220,0,0.6);"></div>',
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10],
+                  })
+                }
+              >
+                <Popup autoPan={true} closeOnClick={false} minWidth={240} maxWidth={300}>
+                  <div className="space-y-2" style={{ minWidth: 220 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: '#222', marginBottom: 6 }}>
+                      New {ADD_PIN_OPTIONS.find((o) => o.mode === addPinMode)?.label || 'Pin'}
                     </div>
-                  )}
 
-                  {/* Hazard form */}
-                  {addPinMode === 'hazard' && (
-                    <>
+                    {/* Entry/Exit form */}
+                    {addPinMode === 'entry_exit' && (
                       <div>
                         <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
-                          Type
-                        </label>
-                        <select
-                          value={addPinForm.hazard_type || 'fire'}
-                          onChange={(e) =>
-                            setAddPinForm((f) => ({ ...f, hazard_type: e.target.value }))
-                          }
-                          style={{
-                            width: '100%',
-                            padding: '4px 6px',
-                            fontSize: 12,
-                            border: '1px solid #ccc',
-                            borderRadius: 3,
-                          }}
-                        >
-                          <option value="fire">Fire</option>
-                          <option value="chemical_spill">Chemical Spill</option>
-                          <option value="structural_collapse">Structural Collapse</option>
-                          <option value="gas_leak">Gas Leak</option>
-                          <option value="explosion">Explosion / Bomb</option>
-                          <option value="flooding">Flooding</option>
-                          <option value="electrical">Electrical Hazard</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
-                          Description (optional — AI generates full profile)
-                        </label>
-                        <textarea
-                          placeholder="e.g. Vehicle fire near entrance with fuel leaking — leave blank for auto-generated details"
-                          value={addPinForm.label || ''}
-                          onChange={(e) => setAddPinForm((f) => ({ ...f, label: e.target.value }))}
-                          rows={2}
-                          style={{
-                            width: '100%',
-                            padding: '4px 6px',
-                            fontSize: 12,
-                            border: '1px solid #ccc',
-                            borderRadius: 3,
-                            resize: 'vertical',
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
-                          Severity
-                        </label>
-                        <select
-                          value={addPinForm.severity || 'medium'}
-                          onChange={(e) =>
-                            setAddPinForm((f) => ({ ...f, severity: e.target.value }))
-                          }
-                          style={{
-                            width: '100%',
-                            padding: '4px 6px',
-                            fontSize: 12,
-                            border: '1px solid #ccc',
-                            borderRadius: 3,
-                          }}
-                        >
-                          <option value="low">Low</option>
-                          <option value="medium">Medium</option>
-                          <option value="high">High</option>
-                          <option value="critical">Critical</option>
-                        </select>
-                      </div>
-                    </>
-                  )}
-
-                  {/* Casualty (patient) form */}
-                  {addPinMode === 'casualty' && (
-                    <>
-                      <div>
-                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
-                          Triage Color
-                        </label>
-                        <select
-                          value={addPinForm.triage_color || 'yellow'}
-                          onChange={(e) =>
-                            setAddPinForm((f) => ({ ...f, triage_color: e.target.value }))
-                          }
-                          style={{
-                            width: '100%',
-                            padding: '4px 6px',
-                            fontSize: 12,
-                            border: '1px solid #ccc',
-                            borderRadius: 3,
-                          }}
-                        >
-                          <option value="green">GREEN (minor)</option>
-                          <option value="yellow">YELLOW (delayed)</option>
-                          <option value="red">RED (immediate)</option>
-                          <option value="black">BLACK (deceased)</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
-                          Injury Type
-                        </label>
-                        <select
-                          value={addPinForm.injury_type || 'blunt_trauma'}
-                          onChange={(e) =>
-                            setAddPinForm((f) => ({ ...f, injury_type: e.target.value }))
-                          }
-                          style={{
-                            width: '100%',
-                            padding: '4px 6px',
-                            fontSize: 12,
-                            border: '1px solid #ccc',
-                            borderRadius: 3,
-                          }}
-                        >
-                          <option value="blunt_trauma">Blunt Trauma</option>
-                          <option value="gunshot">Gunshot Wound</option>
-                          <option value="laceration">Laceration</option>
-                          <option value="burn">Burn</option>
-                          <option value="fracture">Fracture</option>
-                          <option value="crush_injury">Crush Injury</option>
-                          <option value="smoke_inhalation">Smoke Inhalation</option>
-                          <option value="chemical_exposure">Chemical Exposure</option>
-                          <option value="blast_injury">Blast Injury</option>
-                          <option value="psychological">Psychological Trauma</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
-                          Description (optional — AI generates full profile)
-                        </label>
-                        <textarea
-                          placeholder="e.g. Severe burn on face with blistering, shrapnel in arms — leave blank for auto-generated profile"
-                          value={addPinForm.injury || ''}
-                          onChange={(e) => setAddPinForm((f) => ({ ...f, injury: e.target.value }))}
-                          rows={2}
-                          style={{
-                            width: '100%',
-                            padding: '4px 6px',
-                            fontSize: 12,
-                            border: '1px solid #ccc',
-                            borderRadius: 3,
-                            resize: 'vertical',
-                          }}
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {/* Crowd form */}
-                  {addPinMode === 'crowd' && (
-                    <>
-                      <div>
-                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
-                          Crowd Type
-                        </label>
-                        <select
-                          value={addPinForm.crowd_type || 'crowd'}
-                          onChange={(e) =>
-                            setAddPinForm((f) => ({ ...f, crowd_type: e.target.value }))
-                          }
-                          style={{
-                            width: '100%',
-                            padding: '4px 6px',
-                            fontSize: 12,
-                            border: '1px solid #ccc',
-                            borderRadius: 3,
-                          }}
-                        >
-                          <option value="crowd">Crowd</option>
-                          <option value="evacuee_group">Evacuee Group</option>
-                          <option value="convergent_crowd">Convergent Crowd</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
-                          Headcount
+                          Label
                         </label>
                         <input
-                          type="number"
-                          min={1}
-                          max={5000}
-                          value={addPinForm.headcount || '20'}
-                          onChange={(e) =>
-                            setAddPinForm((f) => ({ ...f, headcount: e.target.value }))
-                          }
+                          type="text"
+                          placeholder="e.g. Main Gate, Exit B"
+                          value={addPinForm.label || ''}
+                          onChange={(e) => setAddPinForm((f) => ({ ...f, label: e.target.value }))}
                           style={{
                             width: '100%',
                             padding: '4px 6px',
@@ -2595,290 +2407,359 @@ const MapPinsTab = ({
                           }}
                         />
                       </div>
-                      <div>
-                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
-                          Behavior
-                        </label>
-                        <select
-                          value={addPinForm.behavior || 'calm'}
-                          onChange={(e) =>
-                            setAddPinForm((f) => ({ ...f, behavior: e.target.value }))
-                          }
-                          style={{
-                            width: '100%',
-                            padding: '4px 6px',
-                            fontSize: 12,
-                            border: '1px solid #ccc',
-                            borderRadius: 3,
-                          }}
-                        >
-                          <option value="calm">Calm</option>
-                          <option value="anxious">Anxious</option>
-                          <option value="panicking">Panicking</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
-                          Description (optional — AI generates full profile)
-                        </label>
-                        <textarea
-                          placeholder="e.g. Families with children sheltering near exit, some elderly — leave blank for auto-generated profile"
-                          value={addPinForm.description || ''}
-                          onChange={(e) =>
-                            setAddPinForm((f) => ({ ...f, description: e.target.value }))
-                          }
-                          rows={2}
-                          style={{
-                            width: '100%',
-                            padding: '4px 6px',
-                            fontSize: 12,
-                            border: '1px solid #ccc',
-                            borderRadius: 3,
-                            resize: 'vertical',
-                          }}
-                        />
-                      </div>
-                    </>
-                  )}
+                    )}
 
-                  {/* POI / Incident Site / Sighting form */}
-                  {(addPinMode === 'poi' ||
-                    addPinMode === 'incident_site' ||
-                    addPinMode === 'sighting_area') && (
-                    <div>
-                      <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
-                        Label
-                      </label>
-                      <input
-                        type="text"
-                        placeholder={
-                          addPinMode === 'incident_site'
-                            ? 'e.g. Bomb Detonation Site'
-                            : addPinMode === 'sighting_area'
-                              ? 'e.g. Suspect last seen here'
-                              : 'e.g. Main Lobby'
-                        }
-                        value={addPinForm.label || ''}
-                        onChange={(e) => setAddPinForm((f) => ({ ...f, label: e.target.value }))}
+                    {/* Hazard form */}
+                    {addPinMode === 'hazard' && (
+                      <>
+                        <div>
+                          <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                            Type
+                          </label>
+                          <select
+                            value={addPinForm.hazard_type || 'fire'}
+                            onChange={(e) =>
+                              setAddPinForm((f) => ({ ...f, hazard_type: e.target.value }))
+                            }
+                            style={{
+                              width: '100%',
+                              padding: '4px 6px',
+                              fontSize: 12,
+                              border: '1px solid #ccc',
+                              borderRadius: 3,
+                            }}
+                          >
+                            <option value="fire">Fire</option>
+                            <option value="chemical_spill">Chemical Spill</option>
+                            <option value="structural_collapse">Structural Collapse</option>
+                            <option value="gas_leak">Gas Leak</option>
+                            <option value="explosion">Explosion / Bomb</option>
+                            <option value="flooding">Flooding</option>
+                            <option value="electrical">Electrical Hazard</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                            Description (optional — AI generates full profile)
+                          </label>
+                          <textarea
+                            placeholder="e.g. Vehicle fire near entrance with fuel leaking — leave blank for auto-generated details"
+                            value={addPinForm.label || ''}
+                            onChange={(e) =>
+                              setAddPinForm((f) => ({ ...f, label: e.target.value }))
+                            }
+                            rows={2}
+                            style={{
+                              width: '100%',
+                              padding: '4px 6px',
+                              fontSize: 12,
+                              border: '1px solid #ccc',
+                              borderRadius: 3,
+                              resize: 'vertical',
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                            Severity
+                          </label>
+                          <select
+                            value={addPinForm.severity || 'medium'}
+                            onChange={(e) =>
+                              setAddPinForm((f) => ({ ...f, severity: e.target.value }))
+                            }
+                            style={{
+                              width: '100%',
+                              padding: '4px 6px',
+                              fontSize: 12,
+                              border: '1px solid #ccc',
+                              borderRadius: 3,
+                            }}
+                          >
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                            <option value="critical">Critical</option>
+                          </select>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Casualty (patient) form */}
+                    {addPinMode === 'casualty' && (
+                      <>
+                        <div>
+                          <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                            Triage Color
+                          </label>
+                          <select
+                            value={addPinForm.triage_color || 'yellow'}
+                            onChange={(e) =>
+                              setAddPinForm((f) => ({ ...f, triage_color: e.target.value }))
+                            }
+                            style={{
+                              width: '100%',
+                              padding: '4px 6px',
+                              fontSize: 12,
+                              border: '1px solid #ccc',
+                              borderRadius: 3,
+                            }}
+                          >
+                            <option value="green">GREEN (minor)</option>
+                            <option value="yellow">YELLOW (delayed)</option>
+                            <option value="red">RED (immediate)</option>
+                            <option value="black">BLACK (deceased)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                            Injury Type
+                          </label>
+                          <select
+                            value={addPinForm.injury_type || 'blunt_trauma'}
+                            onChange={(e) =>
+                              setAddPinForm((f) => ({ ...f, injury_type: e.target.value }))
+                            }
+                            style={{
+                              width: '100%',
+                              padding: '4px 6px',
+                              fontSize: 12,
+                              border: '1px solid #ccc',
+                              borderRadius: 3,
+                            }}
+                          >
+                            <option value="blunt_trauma">Blunt Trauma</option>
+                            <option value="gunshot">Gunshot Wound</option>
+                            <option value="laceration">Laceration</option>
+                            <option value="burn">Burn</option>
+                            <option value="fracture">Fracture</option>
+                            <option value="crush_injury">Crush Injury</option>
+                            <option value="smoke_inhalation">Smoke Inhalation</option>
+                            <option value="chemical_exposure">Chemical Exposure</option>
+                            <option value="blast_injury">Blast Injury</option>
+                            <option value="psychological">Psychological Trauma</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                            Description (optional — AI generates full profile)
+                          </label>
+                          <textarea
+                            placeholder="e.g. Severe burn on face with blistering, shrapnel in arms — leave blank for auto-generated profile"
+                            value={addPinForm.injury || ''}
+                            onChange={(e) =>
+                              setAddPinForm((f) => ({ ...f, injury: e.target.value }))
+                            }
+                            rows={2}
+                            style={{
+                              width: '100%',
+                              padding: '4px 6px',
+                              fontSize: 12,
+                              border: '1px solid #ccc',
+                              borderRadius: 3,
+                              resize: 'vertical',
+                            }}
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {/* Crowd form */}
+                    {addPinMode === 'crowd' && (
+                      <>
+                        <div>
+                          <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                            Crowd Type
+                          </label>
+                          <select
+                            value={addPinForm.crowd_type || 'crowd'}
+                            onChange={(e) =>
+                              setAddPinForm((f) => ({ ...f, crowd_type: e.target.value }))
+                            }
+                            style={{
+                              width: '100%',
+                              padding: '4px 6px',
+                              fontSize: 12,
+                              border: '1px solid #ccc',
+                              borderRadius: 3,
+                            }}
+                          >
+                            <option value="crowd">Crowd</option>
+                            <option value="evacuee_group">Evacuee Group</option>
+                            <option value="convergent_crowd">Convergent Crowd</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                            Headcount
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={5000}
+                            value={addPinForm.headcount || '20'}
+                            onChange={(e) =>
+                              setAddPinForm((f) => ({ ...f, headcount: e.target.value }))
+                            }
+                            style={{
+                              width: '100%',
+                              padding: '4px 6px',
+                              fontSize: 12,
+                              border: '1px solid #ccc',
+                              borderRadius: 3,
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                            Behavior
+                          </label>
+                          <select
+                            value={addPinForm.behavior || 'calm'}
+                            onChange={(e) =>
+                              setAddPinForm((f) => ({ ...f, behavior: e.target.value }))
+                            }
+                            style={{
+                              width: '100%',
+                              padding: '4px 6px',
+                              fontSize: 12,
+                              border: '1px solid #ccc',
+                              borderRadius: 3,
+                            }}
+                          >
+                            <option value="calm">Calm</option>
+                            <option value="anxious">Anxious</option>
+                            <option value="panicking">Panicking</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                            Description (optional — AI generates full profile)
+                          </label>
+                          <textarea
+                            placeholder="e.g. Families with children sheltering near exit, some elderly — leave blank for auto-generated profile"
+                            value={addPinForm.description || ''}
+                            onChange={(e) =>
+                              setAddPinForm((f) => ({ ...f, description: e.target.value }))
+                            }
+                            rows={2}
+                            style={{
+                              width: '100%',
+                              padding: '4px 6px',
+                              fontSize: 12,
+                              border: '1px solid #ccc',
+                              borderRadius: 3,
+                              resize: 'vertical',
+                            }}
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {/* POI / Incident Site / Sighting form */}
+                    {(addPinMode === 'poi' ||
+                      addPinMode === 'incident_site' ||
+                      addPinMode === 'sighting_area') && (
+                      <div>
+                        <label style={{ fontSize: 11, display: 'block', marginBottom: 2 }}>
+                          Label
+                        </label>
+                        <input
+                          type="text"
+                          placeholder={
+                            addPinMode === 'incident_site'
+                              ? 'e.g. Bomb Detonation Site'
+                              : addPinMode === 'sighting_area'
+                                ? 'e.g. Suspect last seen here'
+                                : 'e.g. Main Lobby'
+                          }
+                          value={addPinForm.label || ''}
+                          onChange={(e) => setAddPinForm((f) => ({ ...f, label: e.target.value }))}
+                          style={{
+                            width: '100%',
+                            padding: '4px 6px',
+                            fontSize: 12,
+                            border: '1px solid #ccc',
+                            borderRadius: 3,
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                      <button
+                        onClick={handleAddPinSubmit}
+                        disabled={addingPin}
                         style={{
-                          width: '100%',
-                          padding: '4px 6px',
-                          fontSize: 12,
-                          border: '1px solid #ccc',
+                          flex: 1,
+                          padding: '5px 10px',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          background: addingPin ? '#555' : '#16a34a',
+                          color: '#fff',
+                          border: 'none',
                           borderRadius: 3,
+                          cursor: addingPin ? 'wait' : 'pointer',
                         }}
-                      />
+                      >
+                        {addingPin ? 'GENERATING PROFILE...' : 'ADD PIN'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPendingPin(null);
+                          setAddPinForm({});
+                        }}
+                        style={{
+                          padding: '5px 10px',
+                          fontSize: 11,
+                          background: '#374151',
+                          color: '#d1d5db',
+                          border: '1px solid #4b5563',
+                          borderRadius: 3,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Cancel
+                      </button>
                     </div>
-                  )}
-
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                    <button
-                      onClick={handleAddPinSubmit}
-                      disabled={addingPin}
-                      style={{
-                        flex: 1,
-                        padding: '5px 10px',
-                        fontSize: 11,
-                        fontWeight: 600,
-                        background: addingPin ? '#555' : '#16a34a',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: 3,
-                        cursor: addingPin ? 'wait' : 'pointer',
-                      }}
-                    >
-                      {addingPin ? 'GENERATING PROFILE...' : 'ADD PIN'}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setPendingPin(null);
-                        setAddPinForm({});
-                      }}
-                      style={{
-                        padding: '5px 10px',
-                        fontSize: 11,
-                        background: '#374151',
-                        color: '#d1d5db',
-                        border: '1px solid #4b5563',
-                        borderRadius: 3,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Cancel
-                    </button>
                   </div>
-                </div>
-              </Popup>
-            </Marker>
-          )}
+                </Popup>
+              </Marker>
+            )}
 
-          {/* Floor plan overlay for active floor */}
-          {floorPlans
-            .filter((f) => f.floor_level === activeFloor)
-            .map((floor) => (
-              <FloorPlanOverlay key={floor.id} floor={floor} />
-            ))}
-          {/* Independent zone locations — draggable center + editable radius */}
-          {zoneLocations.length > 0
-            ? [...zoneLocations]
-                .sort((a, b) => {
-                  const rA = Number((a.conditions as Record<string, unknown>)?.radius_m) || 0;
-                  const rB = Number((b.conditions as Record<string, unknown>)?.radius_m) || 0;
-                  return rB - rA;
-                })
-                .map((zl) => {
-                  const conds = (zl.conditions ?? {}) as Record<string, unknown>;
-                  const zoneType = (conds.zone_type as string) || 'unknown';
-                  const radiusM = Number(conds.radius_m) || 100;
-                  const polygon = conds.polygon as number[][] | undefined;
-                  if (!polygon || polygon.length < 3) return null;
-                  const ZONE_COLORS: Record<string, { color: string; fillColor: string }> = {
-                    hot: { color: '#dc2626', fillColor: '#dc262640' },
-                    warm: { color: '#f59e0b', fillColor: '#f59e0b30' },
-                    cold: { color: '#3b82f6', fillColor: '#3b82f620' },
-                  };
-                  const style = ZONE_COLORS[zoneType] ?? {
-                    color: '#6b7280',
-                    fillColor: '#6b728020',
-                  };
-                  const positions = polygon.map((p) => [p[0], p[1]] as [number, number]);
-                  return (
-                    <span key={`zl-${zl.id}`}>
-                      <Polygon
-                        positions={positions}
-                        pathOptions={{
-                          color: style.color,
-                          fillColor: style.fillColor,
-                          fillOpacity: 0.3,
-                          weight: 2,
-                          dashArray: '6 4',
-                        }}
-                        interactive={!inspectStudsMode}
-                      >
-                        {!inspectStudsMode && (
-                          <Tooltip direction="center" permanent={false}>
-                            {zoneType.toUpperCase()} zone ({radiusM}m) — drag center marker to move
-                          </Tooltip>
-                        )}
-                        {!inspectStudsMode && (
-                          <Popup>
-                            <div
-                              style={{
-                                minWidth: 160,
-                                background: '#fff',
-                                color: '#222',
-                                padding: 8,
-                                borderRadius: 4,
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontWeight: 700,
-                                  fontSize: 13,
-                                  color: style.color,
-                                  marginBottom: 6,
-                                  textTransform: 'uppercase',
-                                  letterSpacing: 1,
-                                }}
-                              >
-                                {zoneType} zone
-                              </div>
-                              <label
-                                style={{
-                                  fontSize: 11,
-                                  display: 'block',
-                                  marginBottom: 2,
-                                  color: '#555',
-                                }}
-                              >
-                                Radius (meters)
-                              </label>
-                              <input
-                                type="number"
-                                min={10}
-                                max={5000}
-                                step={5}
-                                defaultValue={radiusM}
-                                onBlur={(e) => {
-                                  const val = parseInt(e.target.value, 10);
-                                  if (!isNaN(val) && val >= 10 && val !== radiusM) {
-                                    onZoneLocationRadiusChange(zl.id, val);
-                                  }
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                                }}
-                                style={{
-                                  width: '100%',
-                                  padding: '4px 6px',
-                                  fontSize: 13,
-                                  border: `1px solid ${style.color}`,
-                                  borderRadius: 4,
-                                  outline: 'none',
-                                  background: '#f9f9f9',
-                                  color: '#222',
-                                }}
-                              />
-                              {(conds.ppe_required as string[] | undefined)?.length ? (
-                                <div style={{ marginTop: 6, fontSize: 10, color: '#666' }}>
-                                  PPE: {(conds.ppe_required as string[]).join(', ')}
-                                </div>
-                              ) : null}
-                              {(conds.allowed_teams as string[] | undefined)?.length ? (
-                                <div style={{ fontSize: 10, color: '#666' }}>
-                                  Teams: {(conds.allowed_teams as string[]).join(', ')}
-                                </div>
-                              ) : null}
-                            </div>
-                          </Popup>
-                        )}
-                      </Polygon>
-                      <Marker
-                        position={[zl.coordinates.lat, zl.coordinates.lng]}
-                        draggable
-                        icon={
-                          new DivIcon({
-                            className: '',
-                            html: `<div style="width:18px;height:18px;border-radius:50%;border:3px solid ${style.color};background:${style.fillColor};cursor:grab" title="Drag to move ${zoneType} zone"></div>`,
-                            iconSize: [18, 18],
-                            iconAnchor: [9, 9],
-                          })
-                        }
-                        eventHandlers={{
-                          dragend: (e) => {
-                            const latlng = e.target.getLatLng();
-                            onZoneLocationDrag(zl.id, latlng.lat, latlng.lng);
-                          },
-                        }}
-                      >
-                        <Tooltip direction="top" offset={[0, -12]}>
-                          Drag to move {zoneType.toUpperCase()} zone
-                        </Tooltip>
-                      </Marker>
-                    </span>
-                  );
-                })
-            : /* Legacy: hazard-based zone polygons */
-              hazards
-                .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
-                .flatMap((hazard) =>
-                  [...(hazard.zones ?? [])]
-                    .filter((z) => z.polygon && z.polygon.length >= 3)
-                    .sort((a, b) => b.radius_m - a.radius_m)
-                    .map((zone) => {
-                      const ZONE_COLORS: Record<string, { color: string; fillColor: string }> = {
-                        hot: { color: '#dc2626', fillColor: '#dc262640' },
-                        warm: { color: '#f59e0b', fillColor: '#f59e0b30' },
-                        cold: { color: '#3b82f6', fillColor: '#3b82f620' },
-                      };
-                      const style = ZONE_COLORS[zone.zone_type] ?? {
-                        color: '#6b7280',
-                        fillColor: '#6b728020',
-                      };
-                      const positions = zone.polygon!.map((p) => [p[0], p[1]] as [number, number]);
-                      return (
+            {/* Floor plan overlay for active floor */}
+            {floorPlans
+              .filter((f) => f.floor_level === activeFloor)
+              .map((floor) => (
+                <FloorPlanOverlay key={floor.id} floor={floor} />
+              ))}
+            {/* Independent zone locations — draggable center + editable radius */}
+            {zoneLocations.length > 0
+              ? [...zoneLocations]
+                  .sort((a, b) => {
+                    const rA = Number((a.conditions as Record<string, unknown>)?.radius_m) || 0;
+                    const rB = Number((b.conditions as Record<string, unknown>)?.radius_m) || 0;
+                    return rB - rA;
+                  })
+                  .map((zl) => {
+                    const conds = (zl.conditions ?? {}) as Record<string, unknown>;
+                    const zoneType = (conds.zone_type as string) || 'unknown';
+                    const radiusM = Number(conds.radius_m) || 100;
+                    const polygon = conds.polygon as number[][] | undefined;
+                    if (!polygon || polygon.length < 3) return null;
+                    const ZONE_COLORS: Record<string, { color: string; fillColor: string }> = {
+                      hot: { color: '#dc2626', fillColor: '#dc262640' },
+                      warm: { color: '#f59e0b', fillColor: '#f59e0b30' },
+                      cold: { color: '#3b82f6', fillColor: '#3b82f620' },
+                    };
+                    const style = ZONE_COLORS[zoneType] ?? {
+                      color: '#6b7280',
+                      fillColor: '#6b728020',
+                    };
+                    const positions = polygon.map((p) => [p[0], p[1]] as [number, number]);
+                    return (
+                      <span key={`zl-${zl.id}`}>
                         <Polygon
-                          key={`zone-${hazard.id}-${zone.zone_type}`}
                           positions={positions}
                           pathOptions={{
                             color: style.color,
@@ -2891,7 +2772,8 @@ const MapPinsTab = ({
                         >
                           {!inspectStudsMode && (
                             <Tooltip direction="center" permanent={false}>
-                              {zone.zone_type.toUpperCase()} zone ({zone.radius_m}m)
+                              {zoneType.toUpperCase()} zone ({radiusM}m) — drag center marker to
+                              move
                             </Tooltip>
                           )}
                           {!inspectStudsMode && (
@@ -2915,7 +2797,7 @@ const MapPinsTab = ({
                                     letterSpacing: 1,
                                   }}
                                 >
-                                  {zone.zone_type} zone
+                                  {zoneType} zone
                                 </div>
                                 <label
                                   style={{
@@ -2932,11 +2814,12 @@ const MapPinsTab = ({
                                   min={10}
                                   max={5000}
                                   step={5}
-                                  defaultValue={zone.radius_m}
+                                  defaultValue={radiusM}
                                   onBlur={(e) => {
                                     const val = parseInt(e.target.value, 10);
-                                    if (!isNaN(val) && val >= 10 && val !== zone.radius_m)
-                                      onZoneRadiusChange(hazard.id, zone.zone_type, val);
+                                    if (!isNaN(val) && val >= 10 && val !== radiusM) {
+                                      onZoneLocationRadiusChange(zl.id, val);
+                                    }
                                   }}
                                   onKeyDown={(e) => {
                                     if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
@@ -2952,180 +2835,340 @@ const MapPinsTab = ({
                                     color: '#222',
                                   }}
                                 />
-                                {zone.ppe_required?.length ? (
+                                {(conds.ppe_required as string[] | undefined)?.length ? (
                                   <div style={{ marginTop: 6, fontSize: 10, color: '#666' }}>
-                                    PPE: {zone.ppe_required.join(', ')}
+                                    PPE: {(conds.ppe_required as string[]).join(', ')}
                                   </div>
                                 ) : null}
-                                {zone.allowed_teams?.length ? (
+                                {(conds.allowed_teams as string[] | undefined)?.length ? (
                                   <div style={{ fontSize: 10, color: '#666' }}>
-                                    Teams: {zone.allowed_teams.join(', ')}
+                                    Teams: {(conds.allowed_teams as string[]).join(', ')}
                                   </div>
                                 ) : null}
                               </div>
                             </Popup>
                           )}
                         </Polygon>
-                      );
-                    }),
-                )}
-          {/* Blast radius guide circles */}
-          {[...blastZoneLocations]
-            .sort((a, b) => {
-              const rA = Number((a.conditions as Record<string, unknown>)?.radius_m) || 0;
-              const rB = Number((b.conditions as Record<string, unknown>)?.radius_m) || 0;
-              return rB - rA;
-            })
-            .map((bz) => {
-              const conds = (bz.conditions ?? {}) as Record<string, unknown>;
-              const blastType = (conds.zone_type as string) || '';
-              const radiusM = Number(conds.radius_m) || 100;
-              const polygon = conds.polygon as number[][] | undefined;
-              if (!polygon || polygon.length < 3) return null;
-
-              const BLAST_COLORS: Record<
-                string,
-                { color: string; fillColor: string; opacity: number }
-              > = {
-                blast_lethal: { color: '#991b1b', fillColor: '#dc2626', opacity: 0.25 },
-                blast_severe: { color: '#c2410c', fillColor: '#ea580c', opacity: 0.18 },
-                blast_fragment: { color: '#ca8a04', fillColor: '#eab308', opacity: 0.12 },
-              };
-              const style = BLAST_COLORS[blastType] ?? {
-                color: '#6b7280',
-                fillColor: '#6b7280',
-                opacity: 0.15,
-              };
-              const positions = polygon.map((p) => [p[0], p[1]] as [number, number]);
-
-              const BLAST_LABELS: Record<string, string> = {
-                blast_lethal: 'Lethal Zone',
-                blast_severe: 'Severe Injury Zone',
-                blast_fragment: 'Fragment Zone',
-              };
-
-              return (
-                <Polygon
-                  key={`blast-${bz.id}`}
-                  positions={positions}
-                  pathOptions={{
-                    color: style.color,
-                    fillColor: style.fillColor,
-                    fillOpacity: style.opacity,
-                    weight: 2,
-                    dashArray: '4 6',
-                  }}
-                  interactive={!inspectStudsMode}
-                >
-                  {!inspectStudsMode && (
-                    <Tooltip direction="center" permanent={false}>
-                      {bz.label} ({Math.round(radiusM * 3.28084)} ft)
-                    </Tooltip>
-                  )}
-                  {!inspectStudsMode && (
-                    <Popup>
-                      <div style={{ minWidth: 160, padding: 4 }}>
-                        <div
-                          style={{
-                            fontWeight: 700,
-                            fontSize: 12,
-                            marginBottom: 6,
-                            color: style.color,
+                        <Marker
+                          position={[zl.coordinates.lat, zl.coordinates.lng]}
+                          draggable
+                          icon={
+                            new DivIcon({
+                              className: '',
+                              html: `<div style="width:18px;height:18px;border-radius:50%;border:3px solid ${style.color};background:${style.fillColor};cursor:grab" title="Drag to move ${zoneType} zone"></div>`,
+                              iconSize: [18, 18],
+                              iconAnchor: [9, 9],
+                            })
+                          }
+                          eventHandlers={{
+                            dragend: (e) => {
+                              const latlng = e.target.getLatLng();
+                              onZoneLocationDrag(zl.id, latlng.lat, latlng.lng);
+                            },
                           }}
                         >
-                          {BLAST_LABELS[blastType] || blastType.replace(/_/g, ' ')}
-                        </div>
-                        <label
-                          style={{
-                            fontSize: 11,
-                            display: 'block',
-                            marginBottom: 2,
-                            color: '#555',
-                          }}
-                        >
-                          Radius (meters)
-                        </label>
-                        <input
-                          type="number"
-                          min={5}
-                          max={500}
-                          step={5}
-                          defaultValue={radiusM}
-                          onBlur={(e) => {
-                            const val = parseInt(e.target.value, 10);
-                            if (!isNaN(val) && val >= 5 && val !== radiusM)
-                              onZoneLocationRadiusChange(bz.id, val);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                          }}
-                          style={{
-                            width: '100%',
-                            padding: '4px 6px',
-                            fontSize: 13,
-                            border: `1px solid ${style.color}`,
-                            borderRadius: 4,
-                            outline: 'none',
-                            background: '#f9f9f9',
-                            color: '#222',
-                          }}
-                        />
-                        <div style={{ marginTop: 4, fontSize: 10, color: '#888' }}>
-                          {Math.round(radiusM * 3.28084)} ft
-                        </div>
-                      </div>
-                    </Popup>
+                          <Tooltip direction="top" offset={[0, -12]}>
+                            Drag to move {zoneType.toUpperCase()} zone
+                          </Tooltip>
+                        </Marker>
+                      </span>
+                    );
+                  })
+              : /* Legacy: hazard-based zone polygons */
+                hazards
+                  .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
+                  .flatMap((hazard) =>
+                    [...(hazard.zones ?? [])]
+                      .filter((z) => z.polygon && z.polygon.length >= 3)
+                      .sort((a, b) => b.radius_m - a.radius_m)
+                      .map((zone) => {
+                        const ZONE_COLORS: Record<string, { color: string; fillColor: string }> = {
+                          hot: { color: '#dc2626', fillColor: '#dc262640' },
+                          warm: { color: '#f59e0b', fillColor: '#f59e0b30' },
+                          cold: { color: '#3b82f6', fillColor: '#3b82f620' },
+                        };
+                        const style = ZONE_COLORS[zone.zone_type] ?? {
+                          color: '#6b7280',
+                          fillColor: '#6b728020',
+                        };
+                        const positions = zone.polygon!.map(
+                          (p) => [p[0], p[1]] as [number, number],
+                        );
+                        return (
+                          <Polygon
+                            key={`zone-${hazard.id}-${zone.zone_type}`}
+                            positions={positions}
+                            pathOptions={{
+                              color: style.color,
+                              fillColor: style.fillColor,
+                              fillOpacity: 0.3,
+                              weight: 2,
+                              dashArray: '6 4',
+                            }}
+                            interactive={!inspectStudsMode}
+                          >
+                            {!inspectStudsMode && (
+                              <Tooltip direction="center" permanent={false}>
+                                {zone.zone_type.toUpperCase()} zone ({zone.radius_m}m)
+                              </Tooltip>
+                            )}
+                            {!inspectStudsMode && (
+                              <Popup>
+                                <div
+                                  style={{
+                                    minWidth: 160,
+                                    background: '#fff',
+                                    color: '#222',
+                                    padding: 8,
+                                    borderRadius: 4,
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      fontWeight: 700,
+                                      fontSize: 13,
+                                      color: style.color,
+                                      marginBottom: 6,
+                                      textTransform: 'uppercase',
+                                      letterSpacing: 1,
+                                    }}
+                                  >
+                                    {zone.zone_type} zone
+                                  </div>
+                                  <label
+                                    style={{
+                                      fontSize: 11,
+                                      display: 'block',
+                                      marginBottom: 2,
+                                      color: '#555',
+                                    }}
+                                  >
+                                    Radius (meters)
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min={10}
+                                    max={5000}
+                                    step={5}
+                                    defaultValue={zone.radius_m}
+                                    onBlur={(e) => {
+                                      const val = parseInt(e.target.value, 10);
+                                      if (!isNaN(val) && val >= 10 && val !== zone.radius_m)
+                                        onZoneRadiusChange(hazard.id, zone.zone_type, val);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                    }}
+                                    style={{
+                                      width: '100%',
+                                      padding: '4px 6px',
+                                      fontSize: 13,
+                                      border: `1px solid ${style.color}`,
+                                      borderRadius: 4,
+                                      outline: 'none',
+                                      background: '#f9f9f9',
+                                      color: '#222',
+                                    }}
+                                  />
+                                  {zone.ppe_required?.length ? (
+                                    <div style={{ marginTop: 6, fontSize: 10, color: '#666' }}>
+                                      PPE: {zone.ppe_required.join(', ')}
+                                    </div>
+                                  ) : null}
+                                  {zone.allowed_teams?.length ? (
+                                    <div style={{ fontSize: 10, color: '#666' }}>
+                                      Teams: {zone.allowed_teams.join(', ')}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </Popup>
+                            )}
+                          </Polygon>
+                        );
+                      }),
                   )}
-                </Polygon>
-              );
-            })}
-          {validPins.map((pin) => (
-            <ScenarioLocationMarker
-              key={pin.id}
-              location={pin}
-              position={[pin.coordinates.lat!, pin.coordinates.lng!]}
-              draggable
-              onDragEnd={onLocationDrag}
-            />
-          ))}
-          {hazards
-            .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
-            .map((h) => (
-              <Marker
-                key={`haz-${h.id}`}
-                position={[h.location_lat, h.location_lng]}
-                icon={createSvgDivIcon(
-                  HAZARD_COLORS[h.hazard_type] ?? '#ef4444',
-                  svg(HAZARD_SVG_KEYS[h.hazard_type] ?? 'hazard_generic', 16),
-                  30,
-                )}
+            {/* Blast radius guide circles */}
+            {[...blastZoneLocations]
+              .sort((a, b) => {
+                const rA = Number((a.conditions as Record<string, unknown>)?.radius_m) || 0;
+                const rB = Number((b.conditions as Record<string, unknown>)?.radius_m) || 0;
+                return rB - rA;
+              })
+              .map((bz) => {
+                const conds = (bz.conditions ?? {}) as Record<string, unknown>;
+                const blastType = (conds.zone_type as string) || '';
+                const radiusM = Number(conds.radius_m) || 100;
+                const polygon = conds.polygon as number[][] | undefined;
+                if (!polygon || polygon.length < 3) return null;
+
+                const BLAST_COLORS: Record<
+                  string,
+                  { color: string; fillColor: string; opacity: number }
+                > = {
+                  blast_lethal: { color: '#991b1b', fillColor: '#dc2626', opacity: 0.25 },
+                  blast_severe: { color: '#c2410c', fillColor: '#ea580c', opacity: 0.18 },
+                  blast_fragment: { color: '#ca8a04', fillColor: '#eab308', opacity: 0.12 },
+                };
+                const style = BLAST_COLORS[blastType] ?? {
+                  color: '#6b7280',
+                  fillColor: '#6b7280',
+                  opacity: 0.15,
+                };
+                const positions = polygon.map((p) => [p[0], p[1]] as [number, number]);
+
+                const BLAST_LABELS: Record<string, string> = {
+                  blast_lethal: 'Lethal Zone',
+                  blast_severe: 'Severe Injury Zone',
+                  blast_fragment: 'Fragment Zone',
+                };
+
+                return (
+                  <Polygon
+                    key={`blast-${bz.id}`}
+                    positions={positions}
+                    pathOptions={{
+                      color: style.color,
+                      fillColor: style.fillColor,
+                      fillOpacity: style.opacity,
+                      weight: 2,
+                      dashArray: '4 6',
+                    }}
+                    interactive={!inspectStudsMode}
+                  >
+                    {!inspectStudsMode && (
+                      <Tooltip direction="center" permanent={false}>
+                        {bz.label} ({Math.round(radiusM * 3.28084)} ft)
+                      </Tooltip>
+                    )}
+                    {!inspectStudsMode && (
+                      <Popup>
+                        <div style={{ minWidth: 160, padding: 4 }}>
+                          <div
+                            style={{
+                              fontWeight: 700,
+                              fontSize: 12,
+                              marginBottom: 6,
+                              color: style.color,
+                            }}
+                          >
+                            {BLAST_LABELS[blastType] || blastType.replace(/_/g, ' ')}
+                          </div>
+                          <label
+                            style={{
+                              fontSize: 11,
+                              display: 'block',
+                              marginBottom: 2,
+                              color: '#555',
+                            }}
+                          >
+                            Radius (meters)
+                          </label>
+                          <input
+                            type="number"
+                            min={5}
+                            max={500}
+                            step={5}
+                            defaultValue={radiusM}
+                            onBlur={(e) => {
+                              const val = parseInt(e.target.value, 10);
+                              if (!isNaN(val) && val >= 5 && val !== radiusM)
+                                onZoneLocationRadiusChange(bz.id, val);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '4px 6px',
+                              fontSize: 13,
+                              border: `1px solid ${style.color}`,
+                              borderRadius: 4,
+                              outline: 'none',
+                              background: '#f9f9f9',
+                              color: '#222',
+                            }}
+                          />
+                          <div style={{ marginTop: 4, fontSize: 10, color: '#888' }}>
+                            {Math.round(radiusM * 3.28084)} ft
+                          </div>
+                        </div>
+                      </Popup>
+                    )}
+                  </Polygon>
+                );
+              })}
+            {validPins.map((pin) => (
+              <ScenarioLocationMarker
+                key={pin.id}
+                location={pin}
+                position={[pin.coordinates.lat!, pin.coordinates.lng!]}
                 draggable
-                eventHandlers={{
-                  dragend: (e) => {
-                    const ll = e.target.getLatLng();
-                    onHazardDrag(h.id, ll.lat, ll.lng);
-                  },
-                }}
-              >
-                <Tooltip direction="top">{h.hazard_type.replace(/_/g, ' ')}</Tooltip>
-              </Marker>
+                onDragEnd={onLocationDrag}
+              />
             ))}
-          {patients
-            .filter((c) => c.floor_level === activeFloor || !floorPlans.length)
-            .map((c) => {
-              const triageColor =
-                TRIAGE_COLORS[(c.conditions.triage_color as string) ?? 'yellow'] ?? '#eab308';
-              const mobilitySvgKey =
-                c.conditions.mobility === 'trapped'
-                  ? 'person_trapped'
-                  : c.conditions.mobility === 'non_ambulatory'
-                    ? 'stretcher'
-                    : 'person';
-              return (
+            {hazards
+              .filter((h) => h.floor_level === activeFloor || !floorPlans.length)
+              .map((h) => (
                 <Marker
-                  key={`cas-${c.id}`}
+                  key={`haz-${h.id}`}
+                  position={[h.location_lat, h.location_lng]}
+                  icon={createSvgDivIcon(
+                    HAZARD_COLORS[h.hazard_type] ?? '#ef4444',
+                    svg(HAZARD_SVG_KEYS[h.hazard_type] ?? 'hazard_generic', 16),
+                    30,
+                  )}
+                  draggable
+                  eventHandlers={{
+                    dragend: (e) => {
+                      const ll = e.target.getLatLng();
+                      onHazardDrag(h.id, ll.lat, ll.lng);
+                    },
+                  }}
+                >
+                  <Tooltip direction="top">{h.hazard_type.replace(/_/g, ' ')}</Tooltip>
+                </Marker>
+              ))}
+            {patients
+              .filter((c) => c.floor_level === activeFloor || !floorPlans.length)
+              .map((c) => {
+                const triageColor =
+                  TRIAGE_COLORS[(c.conditions.triage_color as string) ?? 'yellow'] ?? '#eab308';
+                const mobilitySvgKey =
+                  c.conditions.mobility === 'trapped'
+                    ? 'person_trapped'
+                    : c.conditions.mobility === 'non_ambulatory'
+                      ? 'stretcher'
+                      : 'person';
+                return (
+                  <Marker
+                    key={`cas-${c.id}`}
+                    position={[c.location_lat, c.location_lng]}
+                    icon={createSvgDivIcon(triageColor, svg(mobilitySvgKey, 14), 24)}
+                    draggable
+                    eventHandlers={{
+                      dragend: (e) => {
+                        const ll = e.target.getLatLng();
+                        onCasualtyDrag(c.id, ll.lat, ll.lng);
+                      },
+                    }}
+                  >
+                    <Tooltip direction="top">
+                      {(c.conditions.visible_description as string)?.slice(0, 80) || 'Patient'}
+                    </Tooltip>
+                  </Marker>
+                );
+              })}
+            {crowds
+              .filter((c) => c.floor_level === activeFloor || !floorPlans.length)
+              .map((c) => (
+                <Marker
+                  key={`crowd-${c.id}`}
                   position={[c.location_lat, c.location_lng]}
-                  icon={createSvgDivIcon(triageColor, svg(mobilitySvgKey, 14), 24)}
+                  icon={createSvgDivIcon(
+                    '#8b5cf6',
+                    svg('crowd', 16),
+                    Math.min(36, 24 + Math.floor(c.headcount / 15)),
+                  )}
                   draggable
                   eventHandlers={{
                     dragend: (e) => {
@@ -3135,56 +3178,32 @@ const MapPinsTab = ({
                   }}
                 >
                   <Tooltip direction="top">
-                    {(c.conditions.visible_description as string)?.slice(0, 80) || 'Patient'}
+                    {c.headcount} people — {(c.conditions.behavior as string) ?? 'unknown'}
                   </Tooltip>
                 </Marker>
-              );
-            })}
-          {crowds
-            .filter((c) => c.floor_level === activeFloor || !floorPlans.length)
-            .map((c) => (
-              <Marker
-                key={`crowd-${c.id}`}
-                position={[c.location_lat, c.location_lng]}
-                icon={createSvgDivIcon(
-                  '#8b5cf6',
-                  svg('crowd', 16),
-                  Math.min(36, 24 + Math.floor(c.headcount / 15)),
-                )}
-                draggable
-                eventHandlers={{
-                  dragend: (e) => {
-                    const ll = e.target.getLatLng();
-                    onCasualtyDrag(c.id, ll.lat, ll.lng);
-                  },
-                }}
-              >
-                <Tooltip direction="top">
-                  {c.headcount} people — {(c.conditions.behavior as string) ?? 'unknown'}
-                </Tooltip>
-              </Marker>
-            ))}
+              ))}
 
-          {/* Building Stud Overlay — snap-point grid inside buildings */}
-          <BuildingStudOverlay
-            scenarioId={scenarioId}
-            floor={activeFloor}
-            refreshKey={studRefreshKey}
-            inspectable={inspectStudsMode}
-          />
-        </MapContainer>
-        {/* Floor Selector */}
-        {floorPlans.length > 1 && (
-          <FloorSelector
-            floors={floorPlans}
-            activeFloor={activeFloor}
-            onFloorChange={setActiveFloor}
-            hazardFloors={
-              new Set(hazards.filter((h) => h.status !== 'resolved').map((h) => h.floor_level))
-            }
-          />
-        )}
-      </div>
+            {/* Building Stud Overlay — snap-point grid inside buildings */}
+            <BuildingStudOverlay
+              scenarioId={scenarioId}
+              floor={activeFloor}
+              refreshKey={studRefreshKey}
+              inspectable={inspectStudsMode}
+            />
+          </MapContainer>
+          {/* Floor Selector */}
+          {floorPlans.length > 1 && (
+            <FloorSelector
+              floors={floorPlans}
+              activeFloor={activeFloor}
+              onFloorChange={setActiveFloor}
+              hazardFloors={
+                new Set(hazards.filter((h) => h.status !== 'resolved').map((h) => h.floor_level))
+              }
+            />
+          )}
+        </div>
+      )}
 
       {/* Legend */}
       <div className="flex flex-wrap gap-3">

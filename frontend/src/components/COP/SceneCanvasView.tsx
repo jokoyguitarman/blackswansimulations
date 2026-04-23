@@ -22,7 +22,9 @@ interface SceneCanvasViewProps {
   scenarioId: string;
   sessionId?: string;
   height?: number;
+  fillHeight?: boolean;
   showAllPins?: boolean;
+  onLoaded?: (hasScene: boolean) => void;
 }
 
 function MapRefSync({ onMap }: { onMap: (map: L.Map) => void }) {
@@ -57,7 +59,12 @@ type SceneConfigData = {
   pedestrian_count: number;
 };
 
-export function SceneCanvasView({ scenarioId, height = 600 }: SceneCanvasViewProps) {
+export function SceneCanvasView({
+  scenarioId,
+  height = 600,
+  fillHeight,
+  onLoaded,
+}: SceneCanvasViewProps) {
   const leafletMapRef = useRef<L.Map | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -86,12 +93,14 @@ export function SceneCanvasView({ scenarioId, height = 600 }: SceneCanvasViewPro
         const scene = sceneRes.data as SceneConfigData | null;
         if (!scene?.building_polygon || scene.building_polygon.length < 3) {
           setHasScene(false);
+          onLoaded?.(false);
           setLoading(false);
           return;
         }
 
         setSceneConfig(scene);
         setHasScene(true);
+        onLoaded?.(true);
 
         const polygon = scene.building_polygon;
         const casualties = (casualtiesRes as { data: Array<Record<string, unknown>> }).data || [];
@@ -131,13 +140,14 @@ export function SceneCanvasView({ scenarioId, height = 600 }: SceneCanvasViewPro
       } catch (err) {
         console.error('SceneCanvasView: failed to load data', err);
         setHasScene(false);
+        onLoaded?.(false);
       }
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [scenarioId]);
+  }, [scenarioId, onLoaded]);
 
   // Parse scene config into sim-space data
   const projectedVerts = useMemo(
@@ -285,8 +295,8 @@ export function SceneCanvasView({ scenarioId, height = 600 }: SceneCanvasViewPro
   if (loading) {
     return (
       <div
-        style={{ height }}
-        className="flex items-center justify-center bg-black/50 border border-robotic-gray-200 rounded"
+        style={fillHeight ? undefined : { height }}
+        className={`flex items-center justify-center bg-black/50 border border-robotic-gray-200 rounded ${fillHeight ? 'h-full' : ''}`}
       >
         <p className="text-xs terminal-text text-robotic-yellow/70 animate-pulse">
           Loading scene...
@@ -310,9 +320,9 @@ export function SceneCanvasView({ scenarioId, height = 600 }: SceneCanvasViewPro
 
   return (
     <div
-      className="relative overflow-hidden rounded border border-robotic-gray-200"
+      className={`relative overflow-hidden rounded border border-robotic-gray-200 ${fillHeight ? 'h-full' : ''}`}
       ref={containerRef}
-      style={{ height }}
+      style={fillHeight ? undefined : { height }}
     >
       <MapContainer
         center={[centerLat, centerLng]}
