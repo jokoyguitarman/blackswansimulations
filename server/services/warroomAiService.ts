@@ -6171,13 +6171,20 @@ export async function generateAdversaryPursuitTree(
     narrative?.briefing,
   );
 
-  const shouldGenerate = promptDetected || trainerToggle === true;
+  // When trainer scene exists, respect only the explicit toggle (no auto-detection from text)
+  const shouldGenerate = input.trainerScene
+    ? trainerToggle === true
+    : promptDetected || trainerToggle === true;
   if (!shouldGenerate) {
-    logger.info('Adversary pursuit: skipped (toggle off, no pursuit language detected)');
+    logger.info(
+      input.trainerScene
+        ? 'Adversary pursuit: skipped (trainer scene mode, toggle off)'
+        : 'Adversary pursuit: skipped (toggle off, no pursuit language detected)',
+    );
     return null;
   }
 
-  if (promptDetected && !trainerToggle) {
+  if (promptDetected && !trainerToggle && !input.trainerScene) {
     logger.info('Adversary pursuit: auto-enabled from prompt/narrative language (toggle was off)');
   }
 
@@ -7438,8 +7445,11 @@ export async function warroomGenerateScenario(
   const occupiedStudIds = new Set<string>();
 
   // Phase 4a-1 (scenario-fixed pins) + POI enrichment run in PARALLEL
+  // When trainer scene exists, skip AI-generated fixed pins (trainer provides all physical layout)
   const [scenarioFixedPins, poiPins] = await Promise.all([
-    generateScenarioFixedPins(input, teamNames, openAiApiKey, onProgress, narrative),
+    input.trainerScene
+      ? Promise.resolve([] as NonNullable<WarroomScenarioPayload['locations']>)
+      : generateScenarioFixedPins(input, teamNames, openAiApiKey, onProgress, narrative),
     osm_vicinity
       ? generatePoiPinsFromOsm(
           osm_vicinity,
@@ -7742,7 +7752,8 @@ export async function warroomGenerateScenario(
 ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radius_m}m from incident center. ${z.activities.join(', ')}. Allowed teams: ${z.allowed_teams.join(', ')}`).join('\n')}`
       : '';
 
-  // Casualty + crowd generation (casualties depend on hazard data + zone info for positioning)
+  // Casualty + crowd generation
+  // When trainer scene exists, skip crowd/convergent generation (trainer controls the physical layout)
   const [casualtyPins, crowdPins, convergentResult] = await Promise.all([
     generateCasualties(
       input,
@@ -7753,8 +7764,12 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
       scenarioHazards,
       zoneSummaryBlock,
     ),
-    generateCrowdPins(input, openAiApiKey, onProgress, narrative, locations, zoneSummaryBlock),
-    generateConvergentCrowds(input, openAiApiKey, onProgress, narrative, locations, teamNames),
+    input.trainerScene
+      ? Promise.resolve(undefined)
+      : generateCrowdPins(input, openAiApiKey, onProgress, narrative, locations, zoneSummaryBlock),
+    input.trainerScene
+      ? Promise.resolve(undefined)
+      : generateConvergentCrowds(input, openAiApiKey, onProgress, narrative, locations, teamNames),
   ]);
   const convergentPins = convergentResult?.crowds;
   const convergentAlertInjects = convergentResult?.alertInjects;
@@ -7953,7 +7968,7 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
   let finalHazards = scenarioHazards;
   const deviceCount = input.secondary_devices_count ?? 0;
   const realCount = Math.min(input.real_bombs_count ?? 0, deviceCount);
-  if (deviceCount > 0) {
+  if (deviceCount > 0 && !input.trainerScene) {
     onProgress?.('Generating secondary device challenge for bomb squad...');
     const scenarioCenter = input.geocode ?? { lat: 0, lng: 0 };
     const deviceResult = generateSecondaryDevices(
