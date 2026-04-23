@@ -7,6 +7,7 @@ import {
   renderRTS,
   computeMapRenderContext,
   latLngToSim,
+  toSim as rcToSim,
   drawScenarioLocation,
   drawIncidentZone,
   drawRoadPolyline,
@@ -84,6 +85,15 @@ export function SceneCanvasView({
   const [scenarioLocations, setScenarioLocations] = useState<SimLocation[]>([]);
   const [incidentZones, setIncidentZones] = useState<SimZone[]>([]);
   const [roadPolylines, setRoadPolylines] = useState<SimRoad[]>([]);
+  const [simStuds, setSimStuds] = useState<Array<{
+    simPos: Vec2;
+    studType: string;
+    spatialContext: string | null;
+    id: string;
+  }> | null>(null);
+  const [activeCasualtyPin, setActiveCasualtyPin] = useState<CasualtyPin | null>(null);
+  const [activeWallPoint, setActiveWallPoint] = useState<WallInspectionPoint | null>(null);
+  const [activeLocation, setActiveLocation] = useState<SimLocation | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasScene, setHasScene] = useState<boolean | null>(null);
 
@@ -187,9 +197,17 @@ export function SceneCanvasView({
         }
         setIncidentZones(zones);
 
-        // Convert road polylines to sim-space
+        // Convert road polylines and studs to sim-space
         const studsData = studsRes as {
-          grids: unknown[];
+          grids: Array<{
+            studs: Array<{
+              id: string;
+              lat: number;
+              lng: number;
+              studType: string;
+              spatialContext: string;
+            }>;
+          }>;
           roadPolylines: Array<{
             name: string;
             highway_type: string;
@@ -201,6 +219,16 @@ export function SceneCanvasView({
           name: r.name,
         }));
         setRoadPolylines(roads);
+
+        const allStuds = (studsData.grids || []).flatMap((g) =>
+          g.studs.map((s) => ({
+            id: s.id,
+            simPos: latLngToSim(s.lat, s.lng, polygon),
+            studType: s.studType || 'building',
+            spatialContext: s.spatialContext || null,
+          })),
+        );
+        if (allStuds.length > 0) setSimStuds(allStuds);
       } catch (err) {
         console.error('SceneCanvasView: failed to load data', err);
         setHasScene(false);
@@ -299,6 +327,51 @@ export function SceneCanvasView({
     return () => ro.disconnect();
   }, []);
 
+  // Click handler for canvas interaction
+  const handleCanvasClick = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const rc = renderCtxRef.current;
+      if (!rc || !canvasRef.current) return;
+      const rect = canvasRef.current.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const sim = rcToSim(cx, cy, rc);
+
+      const hitCas = casualtyPins.find((c) => Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 8);
+      if (hitCas) {
+        setActiveCasualtyPin(hitCas);
+        setActiveWallPoint(null);
+        setActiveLocation(null);
+        return;
+      }
+
+      const hitWp = wallPoints.find(
+        (wp) => wp.simPos && Math.hypot(wp.simPos.x - sim.x, wp.simPos.y - sim.y) < 3,
+      );
+      if (hitWp) {
+        setActiveWallPoint(hitWp);
+        setActiveCasualtyPin(null);
+        setActiveLocation(null);
+        return;
+      }
+
+      const hitLoc = scenarioLocations.find(
+        (l) => Math.hypot(l.simPos.x - sim.x, l.simPos.y - sim.y) < 10,
+      );
+      if (hitLoc) {
+        setActiveLocation(hitLoc);
+        setActiveCasualtyPin(null);
+        setActiveWallPoint(null);
+        return;
+      }
+
+      setActiveCasualtyPin(null);
+      setActiveWallPoint(null);
+      setActiveLocation(null);
+    },
+    [casualtyPins, wallPoints, scenarioLocations],
+  );
+
   // Render loop
   useEffect(() => {
     if (!sceneConfig || projectedVerts.length < 3) return;
@@ -340,17 +413,21 @@ export function SceneCanvasView({
             [],
             true,
             wallPoints,
-            null,
+            activeWallPoint?.id ?? null,
             new Set(),
             new Set(),
             [],
             null,
             casualtyPins,
-            null,
+            activeCasualtyPin?.id ?? null,
             interiorWalls,
             hazardZones,
             stairwells,
             blastSite,
+            undefined,
+            null,
+            null,
+            simStuds,
           );
 
           // Foreground layers: scenario location labels (on top of everything)
@@ -377,6 +454,9 @@ export function SceneCanvasView({
     scenarioLocations,
     incidentZones,
     roadPolylines,
+    simStuds,
+    activeCasualtyPin,
+    activeWallPoint,
   ]);
 
   if (loading) {
@@ -435,17 +515,166 @@ export function SceneCanvasView({
         ref={canvasRef}
         width={canvasSize.w}
         height={canvasSize.h}
+        onClick={handleCanvasClick}
         style={{
           position: 'absolute',
           top: 0,
           left: 0,
           width: canvasSize.w,
           height: canvasSize.h,
-          pointerEvents: 'none',
+          pointerEvents: 'auto',
           zIndex: 1000,
           touchAction: 'none',
         }}
       />
+
+      {/* Casualty inspection panel */}
+      {activeCasualtyPin && (
+        <div
+          className="absolute top-4 left-4 bg-gray-900/95 border border-red-700 rounded-lg shadow-2xl overflow-y-auto"
+          style={{ zIndex: 1002, width: 380, maxHeight: 'calc(100% - 32px)' }}
+        >
+          <div className="flex items-center justify-between px-3 py-2 bg-red-900/40 border-b border-red-800">
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+                  activeCasualtyPin.trueTag === 'red'
+                    ? 'bg-red-700 text-white'
+                    : activeCasualtyPin.trueTag === 'yellow'
+                      ? 'bg-yellow-600 text-black'
+                      : activeCasualtyPin.trueTag === 'green'
+                        ? 'bg-green-700 text-white'
+                        : activeCasualtyPin.trueTag === 'black'
+                          ? 'bg-gray-800 text-white'
+                          : 'bg-gray-600 text-white'
+                }`}
+              >
+                {activeCasualtyPin.trueTag.toUpperCase()}
+              </span>
+              <span className="text-xs text-white font-bold">
+                Casualty {activeCasualtyPin.id.slice(0, 8)}
+              </span>
+            </div>
+            <button
+              onClick={() => setActiveCasualtyPin(null)}
+              className="text-gray-400 hover:text-white text-sm px-1"
+            >
+              X
+            </button>
+          </div>
+          <div className="p-3 space-y-2">
+            {activeCasualtyPin.description && (
+              <p className="text-xs text-gray-300">{activeCasualtyPin.description}</p>
+            )}
+            <div className="grid grid-cols-2 gap-1 text-[10px]">
+              {activeCasualtyPin.observableSigns.breathing && (
+                <div>
+                  <span className="text-gray-500">Breathing:</span>{' '}
+                  <span className="text-gray-300">
+                    {activeCasualtyPin.observableSigns.breathing}
+                  </span>
+                </div>
+              )}
+              {activeCasualtyPin.observableSigns.pulse && (
+                <div>
+                  <span className="text-gray-500">Pulse:</span>{' '}
+                  <span className="text-gray-300">{activeCasualtyPin.observableSigns.pulse}</span>
+                </div>
+              )}
+              {activeCasualtyPin.observableSigns.consciousness && (
+                <div>
+                  <span className="text-gray-500">Consciousness:</span>{' '}
+                  <span className="text-gray-300">
+                    {activeCasualtyPin.observableSigns.consciousness}
+                  </span>
+                </div>
+              )}
+              {activeCasualtyPin.observableSigns.visibleInjuries && (
+                <div>
+                  <span className="text-gray-500">Injuries:</span>{' '}
+                  <span className="text-gray-300">
+                    {activeCasualtyPin.observableSigns.visibleInjuries}
+                  </span>
+                </div>
+              )}
+              {activeCasualtyPin.observableSigns.mobility && (
+                <div>
+                  <span className="text-gray-500">Mobility:</span>{' '}
+                  <span className="text-gray-300">
+                    {activeCasualtyPin.observableSigns.mobility}
+                  </span>
+                </div>
+              )}
+              {activeCasualtyPin.observableSigns.bleeding && (
+                <div>
+                  <span className="text-gray-500">Bleeding:</span>{' '}
+                  <span className="text-gray-300">
+                    {activeCasualtyPin.observableSigns.bleeding}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Wall photo point panel */}
+      {activeWallPoint && (
+        <div
+          className="absolute top-4 left-4 bg-gray-900/95 border border-cyan-700 rounded-lg shadow-2xl overflow-y-auto"
+          style={{ zIndex: 1002, width: 380, maxHeight: 'calc(100% - 32px)' }}
+        >
+          <div className="flex items-center justify-between px-3 py-2 bg-cyan-900/40 border-b border-cyan-800">
+            <span className="text-xs text-white font-bold">
+              Wall Point {(activeWallPoint as Record<string, unknown>).id as string}
+            </span>
+            <button
+              onClick={() => setActiveWallPoint(null)}
+              className="text-gray-400 hover:text-white text-sm px-1"
+            >
+              X
+            </button>
+          </div>
+          <div className="p-3">
+            {(activeWallPoint as Record<string, unknown>).imageUrl ? (
+              <img
+                src={(activeWallPoint as Record<string, unknown>).imageUrl as string}
+                alt="Wall point"
+                className="w-full rounded border border-gray-700"
+              />
+            ) : (
+              <p className="text-xs text-gray-500">No photo available</p>
+            )}
+            <div className="mt-2 text-[10px] text-gray-400">
+              Heading:{' '}
+              {Math.round(((activeWallPoint as Record<string, unknown>).heading as number) || 0)}°
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Location info panel */}
+      {activeLocation && (
+        <div
+          className="absolute top-4 left-4 bg-gray-900/95 border border-amber-700 rounded-lg shadow-2xl overflow-y-auto"
+          style={{ zIndex: 1002, width: 380, maxHeight: 'calc(100% - 32px)' }}
+        >
+          <div className="flex items-center justify-between px-3 py-2 bg-amber-900/40 border-b border-amber-800">
+            <span className="text-xs text-white font-bold">{activeLocation.label}</span>
+            <button
+              onClick={() => setActiveLocation(null)}
+              className="text-gray-400 hover:text-white text-sm px-1"
+            >
+              X
+            </button>
+          </div>
+          <div className="p-3 text-xs text-gray-300">
+            <div className="text-[10px] text-gray-500 uppercase mb-1">
+              {activeLocation.pinCategory || activeLocation.locationType || 'Location'}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
