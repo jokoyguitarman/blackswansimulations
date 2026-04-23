@@ -625,9 +625,7 @@ export function SceneCanvasView({
           style={{ zIndex: 1002, width: 380, maxHeight: 'calc(100% - 32px)' }}
         >
           <div className="flex items-center justify-between px-3 py-2 bg-cyan-900/40 border-b border-cyan-800">
-            <span className="text-xs text-white font-bold">
-              Wall Point {(activeWallPoint as Record<string, unknown>).id as string}
-            </span>
+            <span className="text-xs text-white font-bold">Wall Point {activeWallPoint.id}</span>
             <button
               onClick={() => setActiveWallPoint(null)}
               className="text-gray-400 hover:text-white text-sm px-1"
@@ -636,9 +634,9 @@ export function SceneCanvasView({
             </button>
           </div>
           <div className="p-3">
-            {(activeWallPoint as Record<string, unknown>).imageUrl ? (
+            {activeWallPoint.imageUrl ? (
               <img
-                src={(activeWallPoint as Record<string, unknown>).imageUrl as string}
+                src={activeWallPoint.imageUrl}
                 alt="Wall point"
                 className="w-full rounded border border-gray-700"
               />
@@ -646,8 +644,7 @@ export function SceneCanvasView({
               <p className="text-xs text-gray-500">No photo available</p>
             )}
             <div className="mt-2 text-[10px] text-gray-400">
-              Heading:{' '}
-              {Math.round(((activeWallPoint as Record<string, unknown>).heading as number) || 0)}°
+              Heading: {Math.round(activeWallPoint.heading || 0)}°
             </div>
           </div>
         </div>
