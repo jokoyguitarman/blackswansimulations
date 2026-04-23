@@ -3,8 +3,15 @@ import { MapContainer, TileLayer, Polygon, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { api } from '../../lib/api';
 import { projectPolygon } from '../../lib/evacuation/geometry';
-import { renderRTS, computeMapRenderContext, latLngToSim } from '../../lib/rts/renderer';
-import type { RenderContext } from '../../lib/rts/renderer';
+import {
+  renderRTS,
+  computeMapRenderContext,
+  latLngToSim,
+  drawScenarioLocation,
+  drawIncidentZone,
+  drawRoadPolyline,
+} from '../../lib/rts/renderer';
+import type { RenderContext, SimLocation, SimZone, SimRoad } from '../../lib/rts/renderer';
 import {
   createInitialGameState,
   type InteriorWall,
@@ -74,6 +81,9 @@ export function SceneCanvasView({
   const [canvasSize, setCanvasSize] = useState({ w: 800, h: 600 });
   const [sceneConfig, setSceneConfig] = useState<SceneConfigData | null>(null);
   const [casualtyPins, setCasualtyPins] = useState<CasualtyPin[]>([]);
+  const [scenarioLocations, setScenarioLocations] = useState<SimLocation[]>([]);
+  const [incidentZones, setIncidentZones] = useState<SimZone[]>([]);
+  const [roadPolylines, setRoadPolylines] = useState<SimRoad[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasScene, setHasScene] = useState<boolean | null>(null);
 
@@ -83,9 +93,14 @@ export function SceneCanvasView({
     (async () => {
       setLoading(true);
       try {
-        const [sceneRes, casualtiesRes] = await Promise.all([
+        const [sceneRes, casualtiesRes, locationsRes, hazardsRes, studsRes] = await Promise.all([
           api.scenarios.getSceneConfig(scenarioId),
           api.scenarios.getScenarioCasualties(scenarioId).catch(() => ({ data: [] })),
+          api.scenarios.getScenarioLocations(scenarioId).catch(() => ({ data: [] })),
+          api.scenarios.getScenarioHazards(scenarioId).catch(() => ({ data: [] })),
+          api.scenarios
+            .getBuildingStuds(scenarioId)
+            .catch(() => ({ grids: [], roadPolylines: [] })),
         ]);
 
         if (cancelled) return;
@@ -137,6 +152,55 @@ export function SceneCanvasView({
           });
 
         setCasualtyPins(converted);
+
+        // Convert scenario locations to sim-space
+        const locs = (locationsRes as { data: Array<Record<string, unknown>> }).data || [];
+        const simLocs: SimLocation[] = locs
+          .filter((l) => (l.coordinates as Record<string, unknown>)?.lat != null)
+          .map((l) => {
+            const coords = l.coordinates as { lat: number; lng: number };
+            return {
+              simPos: latLngToSim(coords.lat, coords.lng, polygon),
+              label: (l.label as string) || '',
+              pinCategory: (l.pin_category as string) || undefined,
+              locationType: (l.location_type as string) || undefined,
+            };
+          });
+        setScenarioLocations(simLocs);
+
+        // Extract incident zones from hazards
+        const hazards = (hazardsRes as { data: Array<Record<string, unknown>> }).data || [];
+        const zones: SimZone[] = [];
+        for (const h of hazards) {
+          if (!h.location_lat || !h.location_lng) continue;
+          const hCenter = latLngToSim(h.location_lat as number, h.location_lng as number, polygon);
+          const hZones = (h.zones as Array<Record<string, unknown>>) || [];
+          for (const z of hZones) {
+            if (z.radius_m) {
+              zones.push({
+                center: hCenter,
+                radiusM: z.radius_m as number,
+                zoneType: (z.zone_type as string) || 'warm',
+              });
+            }
+          }
+        }
+        setIncidentZones(zones);
+
+        // Convert road polylines to sim-space
+        const studsData = studsRes as {
+          grids: unknown[];
+          roadPolylines: Array<{
+            name: string;
+            highway_type: string;
+            coordinates: [number, number][];
+          }>;
+        };
+        const roads: SimRoad[] = (studsData.roadPolylines || []).map((r) => ({
+          points: r.coordinates.map(([lat, lng]) => latLngToSim(lat, lng, polygon)),
+          name: r.name,
+        }));
+        setRoadPolylines(roads);
       } catch (err) {
         console.error('SceneCanvasView: failed to load data', err);
         setHasScene(false);
@@ -253,6 +317,17 @@ export function SceneCanvasView({
       if (canvas && rc) {
         const ctx = canvas.getContext('2d');
         if (ctx) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          // Background layers: roads and incident zones (behind building)
+          for (const road of roadPolylines) {
+            drawRoadPolyline(ctx, road, rc);
+          }
+          for (const zone of incidentZones) {
+            drawIncidentZone(ctx, zone, rc);
+          }
+
+          // Main RTS scene (building, walls, hazards, exits, casualties)
           const state = createInitialGameState();
           renderRTS(
             ctx,
@@ -277,6 +352,11 @@ export function SceneCanvasView({
             stairwells,
             blastSite,
           );
+
+          // Foreground layers: scenario location labels (on top of everything)
+          for (const loc of scenarioLocations) {
+            drawScenarioLocation(ctx, loc, rc);
+          }
         }
       }
       rafRef.current = requestAnimationFrame(loop);
@@ -294,6 +374,9 @@ export function SceneCanvasView({
     blastSite,
     wallPoints,
     casualtyPins,
+    scenarioLocations,
+    incidentZones,
+    roadPolylines,
   ]);
 
   if (loading) {

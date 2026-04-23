@@ -1163,6 +1163,124 @@ export function computeMapRenderContext(
   return { scale, bounds, padX, padY };
 }
 
+// ── Scenario overlay drawing functions ───────────────────────────────────
+
+export interface SimLocation {
+  simPos: Vec2;
+  label: string;
+  pinCategory?: string;
+  locationType?: string;
+}
+
+export interface SimZone {
+  center: Vec2;
+  radiusM: number;
+  zoneType: string;
+}
+
+export interface SimRoad {
+  points: Vec2[];
+  name?: string;
+}
+
+const LOCATION_COLORS: Record<string, string> = {
+  hospital: '#ef4444',
+  police: '#3b82f6',
+  fire_station: '#f97316',
+  incident_site: '#eab308',
+  incident_zone: '#eab308',
+  entry_exit: '#22d3ee',
+  staging_area: '#22c55e',
+  assembly_point: '#22c55e',
+  poi: '#a78bfa',
+  cordon: '#f87171',
+};
+
+const LOCATION_ICONS: Record<string, string> = {
+  hospital: '🏥',
+  police: '🚔',
+  fire_station: '🚒',
+  incident_site: '⚠',
+  entry_exit: '🚪',
+  staging_area: '🏁',
+  assembly_point: '📍',
+  poi: '📌',
+};
+
+export function drawScenarioLocation(
+  ctx: CanvasRenderingContext2D,
+  loc: SimLocation,
+  rc: RenderContext,
+) {
+  const p = toCanvas(loc.simPos.x, loc.simPos.y, rc);
+  const category = loc.pinCategory || loc.locationType || 'poi';
+  const color = LOCATION_COLORS[category] || '#a78bfa';
+  const icon = LOCATION_ICONS[category] || '📌';
+
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, 6, 0, Math.PI * 2);
+  ctx.fillStyle = color + '60';
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(icon, p.cx, p.cy + 4);
+
+  const label = loc.label.length > 25 ? loc.label.slice(0, 23) + '…' : loc.label;
+  ctx.font = 'bold 8px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#000';
+  ctx.fillText(label, p.cx + 1, p.cy - 10);
+  ctx.fillStyle = color;
+  ctx.fillText(label, p.cx, p.cy - 11);
+}
+
+export function drawIncidentZone(ctx: CanvasRenderingContext2D, zone: SimZone, rc: RenderContext) {
+  const p = toCanvas(zone.center.x, zone.center.y, rc);
+  const r = mToCanvas(zone.radiusM, rc);
+  if (r < 2) return;
+
+  const colors: Record<string, { fill: string; stroke: string }> = {
+    hot: { fill: 'rgba(239,68,68,0.10)', stroke: '#ef4444' },
+    warm: { fill: 'rgba(249,115,22,0.08)', stroke: '#f97316' },
+    cold: { fill: 'rgba(234,179,8,0.05)', stroke: '#eab308' },
+  };
+  const c = colors[zone.zoneType] || { fill: 'rgba(168,139,250,0.06)', stroke: '#a78bfa' };
+
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = c.fill;
+  ctx.fill();
+  ctx.setLineDash([6, 4]);
+  ctx.strokeStyle = c.stroke;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.font = 'bold 8px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = c.stroke;
+  ctx.fillText(zone.zoneType.toUpperCase() + ' ZONE', p.cx, p.cy - r - 4);
+}
+
+export function drawRoadPolyline(ctx: CanvasRenderingContext2D, road: SimRoad, rc: RenderContext) {
+  if (road.points.length < 2) return;
+
+  ctx.beginPath();
+  const first = toCanvas(road.points[0].x, road.points[0].y, rc);
+  ctx.moveTo(first.cx, first.cy);
+  for (let i = 1; i < road.points.length; i++) {
+    const pt = toCanvas(road.points[i].x, road.points[i].y, rc);
+    ctx.lineTo(pt.cx, pt.cy);
+  }
+  ctx.strokeStyle = 'rgba(148,163,184,0.35)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
 /**
  * Convert a lat/lng position to sim-space meters using a building polygon's
  * centroid as the reference point. Inverse of projectPolygon.
