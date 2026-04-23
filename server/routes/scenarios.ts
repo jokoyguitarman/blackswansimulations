@@ -1480,11 +1480,13 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
       openAiApiKey,
     );
 
+    const detPromptBlock = detResearch ? deteriorationResearchToPromptBlock(detResearch) : '';
     if (!detResearch) {
-      return res.status(502).json({ error: 'Deterioration research failed (search model)' });
+      logger.warn(
+        { scenarioId },
+        'Deterioration research failed; continuing without research grounding',
+      );
     }
-
-    const detPromptBlock = deteriorationResearchToPromptBlock(detResearch);
 
     const detResult = await generateDeteriorationTimeline(
       hazardsForAi.map((h) => ({

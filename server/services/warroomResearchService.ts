@@ -956,15 +956,19 @@ RULES:
 Scenario context: ${scenarioDescription} at ${venueContext}`;
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
-      body: JSON.stringify({
-        model: SEARCH_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 5000,
-      }),
-    });
+    const res = await fetchWithRetry(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
+        body: JSON.stringify({
+          model: SEARCH_MODEL,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 5000,
+        }),
+      },
+      'similar-cases',
+    );
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -1470,18 +1474,22 @@ Return ONLY valid JSON:
 }`;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
+    const response = await fetchWithRetry(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${openAiApiKey}`,
+        },
+        body: JSON.stringify({
+          model: SEARCH_MODEL,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 5000,
+        }),
       },
-      body: JSON.stringify({
-        model: SEARCH_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 5000,
-      }),
-    });
+      'team-workflows',
+    );
 
     if (!response.ok) {
       logger.warn({ status: response.status }, 'Team workflow research failed');
@@ -1599,15 +1607,19 @@ Return ONLY valid JSON:
 Base your response on documented after-action reports and crowd psychology research. Use ONLY real behavioral patterns from real incidents. Be thorough — this drives realistic crowd simulation in a crisis training exercise.`;
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
-      body: JSON.stringify({
-        model: SEARCH_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 5000,
-      }),
-    });
+    const res = await fetchWithRetry(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
+        body: JSON.stringify({
+          model: SEARCH_MODEL,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 5000,
+        }),
+      },
+      'crowd-dynamics',
+    );
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -1728,23 +1740,27 @@ Return valid JSON:
 }`;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
+    const response = await fetchWithRetry(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${openAiApiKey}`,
+        },
+        body: JSON.stringify({
+          model: SEARCH_MODEL,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 8000,
+        }),
       },
-      body: JSON.stringify({
-        model: SEARCH_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 8000,
-      }),
-    });
+      'deterioration-physics',
+    );
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
       const msg = (err as { error?: { message?: string } }).error?.message || response.statusText;
-      logger.warn({ status: response.status, msg }, 'Deterioration research failed');
+      logger.warn({ status: response.status, msg }, 'Deterioration research failed (non-blocking)');
       return null;
     }
 
