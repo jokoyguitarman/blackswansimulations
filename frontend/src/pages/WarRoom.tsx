@@ -2131,6 +2131,9 @@ export const WarRoom = () => {
                         display_name: manualCoords.display_name,
                       };
                     }
+                    if (rtsSceneId) {
+                      inputPayload.scene_context = { rts_scene_id: rtsSceneId };
+                    }
 
                     let draftId = wizardDraftId;
                     if (!draftId) {
@@ -2572,11 +2575,18 @@ export const WarRoom = () => {
                           lng: manualCoords.lng,
                           display_name: manualCoords.display_name,
                         };
+                      if (rtsSceneId) {
+                        draftInput.scene_context = { rts_scene_id: rtsSceneId };
+                      }
                       const { data: draftRes } = await api.warroom.wizardDraftCreate({
                         input: draftInput,
                       });
                       draftId = draftRes.draft_id;
                       setWizardDraftId(draftId);
+                    } else if (rtsSceneId) {
+                      await api.warroom.wizardDraftPatch(draftId, {
+                        input: { scene_context: { rts_scene_id: rtsSceneId } },
+                      });
                     }
                     const { data } = await api.warroom.wizardDraftGeocodeValidate(draftId);
                     setGeocodeData(data.geocode);
