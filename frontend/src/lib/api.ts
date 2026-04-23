@@ -313,6 +313,12 @@ export const api = {
         }>;
       }>(await fetch(apiUrl(`/api/scenarios/${scenarioId}/building-studs${qs}`), { headers }));
     },
+    getSceneConfig: async (scenarioId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> | null }>(
+        await fetch(apiUrl(`/api/scenarios/${scenarioId}/scene-config`), { headers }),
+      );
+    },
     backfillBuildings: async (scenarioId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{
@@ -467,6 +473,12 @@ export const api = {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(
         await fetch(apiUrl(`/api/sessions/${id}`), { headers }),
+      );
+    },
+    getSceneConfig: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> | null }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/scene-config`), { headers }),
       );
     },
     getLocations: async (sessionId: string) => {

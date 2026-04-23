@@ -2511,6 +2511,31 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /scenarios/:id/scene-config — trainer scene config linked to this scenario
+// ---------------------------------------------------------------------------
+
+router.get('/:id/scene-config', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id: scenarioId } = req.params;
+    const { data, error } = await supabaseAdmin
+      .from('rts_scene_configs')
+      .select('*')
+      .eq('scenario_id', scenarioId)
+      .maybeSingle();
+
+    if (error) {
+      logger.error({ error, scenarioId }, 'Failed to load scene config for scenario');
+      return res.status(500).json({ error: 'Failed to load scene config' });
+    }
+
+    return res.json({ data: data || null });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /scenarios/:id/scene-config');
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /scenarios/:id/building-studs — stud grids with occupancy for frontend
 // ---------------------------------------------------------------------------
 

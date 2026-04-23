@@ -13,6 +13,7 @@ import { polygonBoundingBox, pointInPolygon, haversineM, distToPolylineM } from 
 import type { OsmBuilding, OsmRouteGeometry, BuildingFootprint } from './osmVicinityService.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { simToLatLng } from './warroomService.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -776,6 +777,48 @@ export function invalidateGridCache(scenarioId: string): void {
 export async function loadClassifiedGrids(scenarioId: string): Promise<StudGrid[]> {
   const cached = getCachedGrids(scenarioId);
   if (cached) return cached;
+
+  // Check for a linked trainer scene config first
+  const { data: sceneConfig } = await supabaseAdmin
+    .from('rts_scene_configs')
+    .select('building_polygon, building_name, blast_site')
+    .eq('scenario_id', scenarioId)
+    .maybeSingle();
+
+  const scenePolygon = sceneConfig?.building_polygon as [number, number][] | null;
+  if (scenePolygon && scenePolygon.length >= 3) {
+    const blastSiteRaw = sceneConfig.blast_site as { x: number; y: number } | null;
+    const blastLatLng = blastSiteRaw ? simToLatLng(blastSiteRaw, scenePolygon) : null;
+
+    const grids = generateStudGrids(
+      [
+        {
+          name: (sceneConfig.building_name as string) || null,
+          lat: scenePolygon.reduce((s, p) => s + p[0], 0) / scenePolygon.length,
+          lng: scenePolygon.reduce((s, p) => s + p[1], 0) / scenePolygon.length,
+          bounds: null,
+          footprint_polygon: scenePolygon,
+          distance_from_center_m: 0,
+        },
+      ],
+      DEFAULT_SPACING_M,
+      blastLatLng,
+      true,
+    );
+
+    if (grids.length > 0) {
+      logger.info(
+        {
+          scenarioId,
+          studs: grids.reduce((s, g) => s + g.studs.length, 0),
+          source: 'rts_scene_config',
+        },
+        'Stud grids loaded from trainer scene config',
+      );
+      setCachedGrids(scenarioId, grids);
+      return grids;
+    }
+  }
 
   const { data: sc } = await supabaseAdmin
     .from('scenarios')

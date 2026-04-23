@@ -854,6 +854,33 @@ router.get(
   },
 );
 
+// Get trainer scene config for the session's scenario (if one exists)
+router.get('/:id/scene-config', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const sessionId = req.params.id;
+    const { data: session, error: sessionError } = await supabaseAdmin
+      .from('sessions')
+      .select('scenario_id')
+      .eq('id', sessionId)
+      .single();
+
+    if (sessionError || !session?.scenario_id) {
+      return res.json({ data: null });
+    }
+
+    const { data } = await supabaseAdmin
+      .from('rts_scene_configs')
+      .select('*')
+      .eq('scenario_id', session.scenario_id)
+      .maybeSingle();
+
+    return res.json({ data: data || null });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /sessions/:id/scene-config');
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get scenario locations (map pins) for the session's scenario — Step 6
 router.get(
   '/:id/locations',
