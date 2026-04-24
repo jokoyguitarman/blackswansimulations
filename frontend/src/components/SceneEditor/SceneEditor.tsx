@@ -29,9 +29,15 @@ import {
   createInitialGameState,
 } from '../../lib/rts/types';
 import type { ExitDef, Vec2 } from '../../lib/evacuation/types';
-import { generateWallPoints, type WallInspectionPoint } from '../../lib/rts/wallInspection';
+import {
+  generateWallPoints,
+  fetchStreetViewImage,
+  type WallInspectionPoint,
+} from '../../lib/rts/wallInspection';
 import { createSceneConfig, updateSceneConfig } from '../../lib/rts/sceneConfigApi';
 import 'leaflet/dist/leaflet.css';
+
+const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -87,9 +93,11 @@ interface StudPoint {
   spatialContext: string | null;
 }
 
+const STUD_SPACING_M = 3;
+const EXTERIOR_PADDING_M = 150;
+
 function generateStudsForPolygon(polygon: [number, number][], _verts: Vec2[]): StudPoint[] {
   if (polygon.length < 3) return [];
-  const SPACING = 3;
   let minLat = Infinity,
     maxLat = -Infinity,
     minLng = Infinity,
@@ -101,31 +109,35 @@ function generateStudsForPolygon(polygon: [number, number][], _verts: Vec2[]): S
     if (ln > maxLng) maxLng = ln;
   }
   const midLat = (minLat + maxLat) / 2;
-  const dLat = SPACING / 111_320;
-  const dLng = SPACING / (111_320 * Math.cos((midLat * Math.PI) / 180));
+  const dLat = STUD_SPACING_M / 111_320;
+  const dLng = STUD_SPACING_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
+  const extPadLat = EXTERIOR_PADDING_M / 111_320;
+  const extPadLng = EXTERIOR_PADDING_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
   const refLat = polygon.reduce((s, p) => s + p[0], 0) / polygon.length;
   const refLng = polygon.reduce((s, p) => s + p[1], 0) / polygon.length;
   const mPerDegLat = 111_320;
   const mPerDegLng = 111_320 * Math.cos((refLat * Math.PI) / 180);
 
   const studs: StudPoint[] = [];
-  let idx = 0;
-  for (let la = minLat; la <= maxLat; la += dLat) {
-    for (let ln = minLng; ln <= maxLng; ln += dLng) {
-      if (pointInPoly(la, ln, polygon)) {
-        studs.push({
-          id: `stud-${idx++}`,
-          lat: la,
-          lng: ln,
-          simPos: {
-            x: (ln - refLng) * mPerDegLng,
-            y: (refLat - la) * mPerDegLat,
-          },
-          studType: 'building',
-          spatialContext: 'inside_building',
-        });
-      }
+  let row = 0;
+  for (let la = minLat - extPadLat; la <= maxLat + extPadLat; la += dLat) {
+    let col = 0;
+    for (let ln = minLng - extPadLng; ln <= maxLng + extPadLng; ln += dLng) {
+      const inside = pointInPoly(la, ln, polygon);
+      studs.push({
+        id: inside ? `stud-${row}-${col}` : `ext-${row}-${col}`,
+        lat: la,
+        lng: ln,
+        simPos: {
+          x: (ln - refLng) * mPerDegLng,
+          y: (refLat - la) * mPerDegLat,
+        },
+        studType: inside ? 'building' : 'outdoor',
+        spatialContext: inside ? 'inside_building' : 'open_air',
+      });
+      col++;
     }
+    row++;
   }
   return studs;
 }
@@ -238,6 +250,17 @@ export function SceneEditor({
   const [sceneConfigId, setSceneConfigId] = useState<string | null>(initialSceneId || null);
   const [saving, setSaving] = useState(false);
 
+  // Wall inspection state
+  const [activeWallPoint, setActiveWallPoint] = useState<WallInspectionPoint | null>(null);
+  const [wallPointImage, setWallPointImage] = useState<string | null>(null);
+  const [wallPointLoading, setWallPointLoading] = useState(false);
+  const [plantDescription, setPlantDescription] = useState('');
+  const [plantThreatLevel, setPlantThreatLevel] =
+    useState<PlantedItem['threatLevel']>('real_device');
+  const [plantDifficulty, setPlantDifficulty] =
+    useState<PlantedItem['concealmentDifficulty']>('moderate');
+  const photoUploadRef = useRef<HTMLInputElement>(null);
+
   // Canvas refs
   const leafletMapRef = useRef<L.Map | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -245,6 +268,27 @@ export function SceneEditor({
   const renderCtxRef = useRef<RenderContext | null>(null);
   const rafRef = useRef(0);
   const [canvasSize, setCanvasSize] = useState({ w: 800, h: 600 });
+
+  // Render-loop refs (keeps RAF loop current without effect restarts)
+  const exitsRef = useRef(exits);
+  exitsRef.current = exits;
+  const wallPointsRef = useRef(wallPoints);
+  wallPointsRef.current = wallPoints;
+  const activeWallPointRef = useRef(activeWallPoint);
+  activeWallPointRef.current = activeWallPoint;
+  const interiorWallsRef = useRef(interiorWalls);
+  interiorWallsRef.current = interiorWalls;
+  const hazardZonesRef = useRef(hazardZones);
+  hazardZonesRef.current = hazardZones;
+  const stairwellsRef = useRef(stairwells);
+  stairwellsRef.current = stairwells;
+  const blastSiteRef = useRef(blastSite);
+  blastSiteRef.current = blastSite;
+  const gameZonesRef = useRef(gameZones);
+  gameZonesRef.current = gameZones;
+  const simStudsRef = useRef<StudPoint[]>([]);
+  const plantedItemsRef = useRef(plantedItems);
+  plantedItemsRef.current = plantedItems;
 
   // Derived
   const selectedGrid = useMemo(
@@ -259,6 +303,7 @@ export function SceneEditor({
     () => (selectedGrid ? generateStudsForPolygon(selectedGrid.polygon, projectedVerts) : []),
     [selectedGrid, projectedVerts],
   );
+  simStudsRef.current = simStuds;
 
   // Sim-space converter
   const toSim = useCallback((cx: number, cy: number): Vec2 => {
@@ -435,6 +480,78 @@ export function SceneEditor({
     setActiveMode('select');
   }, []);
 
+  // ── Wall inspection callbacks ──────────────────────────────────────────
+
+  const handleWallPointClick = useCallback(async (wp: WallInspectionPoint) => {
+    setActiveWallPoint(wp);
+
+    if (wp.cached && wp.imageUrl) {
+      setWallPointImage(wp.imageUrl);
+      return;
+    }
+
+    if (!GOOGLE_MAPS_KEY) {
+      setWallPointImage(null);
+      return;
+    }
+
+    setWallPointLoading(true);
+    setWallPointImage(null);
+    const dataUrl = await fetchStreetViewImage(wp, GOOGLE_MAPS_KEY);
+    if (dataUrl) {
+      wp.imageUrl = dataUrl;
+      wp.cached = true;
+      wp.imageSource = 'streetview';
+      setWallPointImage(dataUrl);
+    }
+    setWallPointLoading(false);
+  }, []);
+
+  const closePhotoCard = useCallback(() => {
+    setActiveWallPoint(null);
+    setWallPointImage(null);
+  }, []);
+
+  const handlePhotoUpload = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file || !activeWallPoint) return;
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        activeWallPoint.imageUrl = dataUrl;
+        activeWallPoint.cached = true;
+        activeWallPoint.imageSource = 'custom';
+        setWallPointImage(dataUrl);
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+    },
+    [activeWallPoint],
+  );
+
+  const handlePlantItem = useCallback(() => {
+    if (!activeWallPoint || !plantDescription.trim()) return;
+    const item: PlantedItem = {
+      id: `planted-${Date.now()}`,
+      wallPointId: activeWallPoint.id,
+      description: plantDescription.trim(),
+      threatLevel: plantThreatLevel,
+      concealmentDifficulty: plantDifficulty,
+      discovered: false,
+      assessed: false,
+      assessmentCorrect: null,
+      aiResponse: null,
+      detonationTimer: null,
+    };
+    setPlantedItems((prev) => [...prev, item]);
+    setPlantDescription('');
+  }, [activeWallPoint, plantDescription, plantThreatLevel, plantDifficulty]);
+
+  const handleRemovePlantedItem = useCallback((itemId: string) => {
+    setPlantedItems((prev) => prev.filter((p) => p.id !== itemId));
+  }, []);
+
   // ── Canvas click handler ──────────────────────────────────────────────
 
   const handleCanvasClick = useCallback(
@@ -446,6 +563,17 @@ export function SceneEditor({
       const cy = e.clientY - rect.top;
       const sim = toSim(cx, cy);
       const snapped = snapToStud(sim);
+
+      // Wall point hit detection (select mode only)
+      if (activeMode === 'select') {
+        const hitWp = wallPoints.find(
+          (wp) => Math.hypot(wp.simPos.x - sim.x, wp.simPos.y - sim.y) < 3.0,
+        );
+        if (hitWp) {
+          handleWallPointClick(hitWp);
+          return;
+        }
+      }
 
       if (activeMode === 'place_exit') {
         const snap = nearestEdge(snapped.pos.x, snapped.pos.y, projectedVerts);
@@ -509,7 +637,7 @@ export function SceneEditor({
         // For now, use a simple two-click pattern
       }
     },
-    [activeMode, toSim, snapToStud, projectedVerts],
+    [activeMode, toSim, snapToStud, projectedVerts, wallPoints, handleWallPointClick],
   );
 
   // ── Save scene to DB ──────────────────────────────────────────────────
@@ -605,67 +733,68 @@ export function SceneEditor({
     return () => ro.disconnect();
   }, []);
 
-  // ── Render loop ───────────────────────────────────────────────────────
+  // ── Render loop (reads refs so it always paints current state) ────────
+
+  const selectedGridRef = useRef(selectedGrid);
+  selectedGridRef.current = selectedGrid;
+  const projectedVertsRef = useRef(projectedVerts);
+  projectedVertsRef.current = projectedVerts;
+
+  const renderLoop = useCallback(() => {
+    const grid = selectedGridRef.current;
+    const verts = projectedVertsRef.current;
+    if (!grid || verts.length < 3) return;
+
+    const map = leafletMapRef.current;
+    if (map) {
+      renderCtxRef.current = computeMapRenderContext(map, grid.polygon, verts);
+    }
+    const canvas = canvasRef.current;
+    const rc = renderCtxRef.current;
+    if (canvas && rc) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const planted = new Set(plantedItemsRef.current.map((p) => p.wallPointId));
+        const state = createInitialGameState();
+        const studs = simStudsRef.current;
+        const blast = blastSiteRef.current;
+        renderRTS(
+          ctx,
+          canvas.width,
+          canvas.height,
+          rc,
+          state,
+          verts,
+          exitsRef.current,
+          [],
+          true,
+          wallPointsRef.current,
+          activeWallPointRef.current?.id ?? null,
+          planted,
+          new Set(),
+          [],
+          null,
+          [],
+          null,
+          interiorWallsRef.current,
+          hazardZonesRef.current,
+          stairwellsRef.current,
+          blast,
+          blast ? gameZonesRef.current : undefined,
+          null,
+          null,
+          studs.length > 0 ? studs : null,
+        );
+      }
+    }
+    rafRef.current = requestAnimationFrame(renderLoop);
+  }, []);
 
   useEffect(() => {
     if (phase !== 'edit' || !selectedGrid || projectedVerts.length < 3) return;
-
-    const loop = () => {
-      const map = leafletMapRef.current;
-      if (map && selectedGrid) {
-        renderCtxRef.current = computeMapRenderContext(map, selectedGrid.polygon, projectedVerts);
-      }
-      const canvas = canvasRef.current;
-      const rc = renderCtxRef.current;
-      if (canvas && rc) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const state = createInitialGameState();
-          renderRTS(
-            ctx,
-            canvas.width,
-            canvas.height,
-            rc,
-            state,
-            projectedVerts,
-            exits,
-            [],
-            true,
-            wallPoints,
-            null,
-            new Set(),
-            new Set(),
-            [],
-            null,
-            [],
-            null,
-            interiorWalls,
-            hazardZones,
-            stairwells,
-            blastSite,
-            blastSite ? gameZones : undefined,
-            null,
-            null,
-            simStuds.length > 0 ? simStuds : null,
-          );
-        }
-      }
-      rafRef.current = requestAnimationFrame(loop);
-    };
-    rafRef.current = requestAnimationFrame(loop);
+    rafRef.current = requestAnimationFrame(renderLoop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [
-    phase,
-    selectedGrid,
-    projectedVerts,
-    exits,
-    interiorWalls,
-    hazardZones,
-    stairwells,
-    blastSite,
-    wallPoints,
-    simStuds,
-  ]);
+  }, [phase, selectedGrid, projectedVerts, renderLoop]);
 
   const setLeafletMap = useCallback((m: L.Map) => {
     leafletMapRef.current = m;
@@ -1162,6 +1291,171 @@ export function SceneEditor({
             style={{ zIndex: 1001 }}
           >
             Click map to place — ESC or click a tool to cancel
+          </div>
+        )}
+
+        {/* Floating wall inspection / photo viewer panel */}
+        {activeWallPoint && (
+          <div
+            className="absolute top-4 right-4 w-[400px] bg-gray-900/95 border border-cyan-700 rounded-lg shadow-2xl overflow-hidden"
+            style={{ zIndex: 1002 }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-3 py-2 bg-gray-800/80 border-b border-cyan-800">
+              <div className="text-xs text-cyan-300 font-bold">
+                Wall Inspection — Point {activeWallPoint.id}
+              </div>
+              <button
+                onClick={closePhotoCard}
+                className="text-gray-400 hover:text-white text-sm px-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Photo area */}
+            <div className="relative bg-black" style={{ minHeight: 180 }}>
+              {wallPointLoading && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-cyan-400 text-xs animate-pulse">Loading Street View...</div>
+                </div>
+              )}
+              {wallPointImage && (
+                <img
+                  src={wallPointImage}
+                  alt={`Street View at wall point ${activeWallPoint.id}`}
+                  className="w-full h-auto"
+                />
+              )}
+              {!wallPointImage && !wallPointLoading && (
+                <div className="flex flex-col items-center justify-center h-44 text-xs text-gray-500 px-4 text-center">
+                  {GOOGLE_MAPS_KEY ? (
+                    <>
+                      <span className="text-gray-400 mb-1">
+                        No outdoor Street View coverage here
+                      </span>
+                      <span className="text-gray-600">Upload a photo or try a nearby point.</span>
+                    </>
+                  ) : (
+                    'Set VITE_GOOGLE_MAPS_API_KEY to enable Street View'
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Upload / replace photo */}
+            <div className="px-3 py-1.5 border-t border-gray-800 flex gap-2 items-center">
+              <input
+                ref={photoUploadRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handlePhotoUpload}
+              />
+              <input
+                id="se-photo-gallery-input"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handlePhotoUpload}
+              />
+              <button
+                onClick={() => photoUploadRef.current?.click()}
+                className="bg-amber-800 hover:bg-amber-700 text-amber-100 text-xs px-3 py-1 rounded border border-amber-600"
+              >
+                Take Photo
+              </button>
+              <button
+                onClick={() => document.getElementById('se-photo-gallery-input')?.click()}
+                className="bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs px-3 py-1 rounded border border-gray-600"
+              >
+                Gallery
+              </button>
+              <span className="text-xs text-gray-600">
+                {activeWallPoint.imageSource === 'custom'
+                  ? 'Custom'
+                  : activeWallPoint.imageSource === 'streetview'
+                    ? 'Street View'
+                    : 'None'}
+              </span>
+            </div>
+
+            {/* Coordinates */}
+            <div className="px-3 py-1.5 text-xs text-gray-500 border-t border-gray-800 flex gap-3">
+              <span>
+                Wall: {activeWallPoint.lat.toFixed(6)}, {activeWallPoint.lng.toFixed(6)}
+              </span>
+              <span>Heading: {Math.round(activeWallPoint.heading)}°</span>
+            </div>
+
+            {/* Plant threat section */}
+            <div className="px-3 py-2 border-t border-red-900/50 bg-red-950/20">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs text-red-400 font-bold">Plant Threat (Trainer)</label>
+                {plantedItems.filter((p) => p.wallPointId === activeWallPoint.id).length > 0 && (
+                  <span className="text-xs text-red-300 bg-red-900/40 px-1.5 py-0.5 rounded">
+                    {plantedItems.filter((p) => p.wallPointId === activeWallPoint.id).length}{' '}
+                    planted
+                  </span>
+                )}
+              </div>
+              {plantedItems
+                .filter((p) => p.wallPointId === activeWallPoint.id)
+                .map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-start gap-1.5 mb-1.5 bg-red-900/20 rounded px-2 py-1"
+                  >
+                    <span className="text-xs text-red-300 flex-1">{p.description}</span>
+                    <span className="text-xs text-red-500">{p.threatLevel}</span>
+                    <button
+                      onClick={() => handleRemovePlantedItem(p.id)}
+                      className="text-red-600 hover:text-red-400 text-xs"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              <textarea
+                value={plantDescription}
+                onChange={(e) => setPlantDescription(e.target.value)}
+                placeholder="Describe what is hidden here — e.g. 'Pipe bomb concealed inside the green recycling bin'"
+                className="w-full bg-gray-800 border border-red-800 text-red-200 text-xs rounded px-2 py-1.5 resize-none focus:border-red-500 focus:outline-none"
+                rows={2}
+              />
+              <div className="flex gap-2 mt-1.5">
+                <select
+                  value={plantThreatLevel}
+                  onChange={(e) =>
+                    setPlantThreatLevel(e.target.value as PlantedItem['threatLevel'])
+                  }
+                  className="bg-gray-800 border border-red-800 text-red-300 text-xs rounded px-1 py-1 flex-1"
+                >
+                  <option value="real_device">Real Device</option>
+                  <option value="secondary_device">Secondary Device</option>
+                  <option value="decoy">Decoy</option>
+                </select>
+                <select
+                  value={plantDifficulty}
+                  onChange={(e) =>
+                    setPlantDifficulty(e.target.value as PlantedItem['concealmentDifficulty'])
+                  }
+                  className="bg-gray-800 border border-red-800 text-red-300 text-xs rounded px-1 py-1 flex-1"
+                >
+                  <option value="easy">Easy</option>
+                  <option value="moderate">Moderate</option>
+                  <option value="hard">Hard</option>
+                </select>
+                <button
+                  onClick={handlePlantItem}
+                  disabled={!plantDescription.trim()}
+                  className="bg-red-800 hover:bg-red-700 disabled:opacity-30 text-white text-xs px-3 py-1 rounded border border-red-600"
+                >
+                  Plant
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

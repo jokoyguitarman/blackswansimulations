@@ -704,10 +704,10 @@ function drawGameZones(
 
     ctx.beginPath();
     ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = color + '0a';
+    ctx.fillStyle = color + '15';
     ctx.fill();
-    ctx.strokeStyle = color + '50';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = color + '80';
+    ctx.lineWidth = 3;
     ctx.setLineDash([8, 6]);
     ctx.stroke();
     ctx.setLineDash([]);
