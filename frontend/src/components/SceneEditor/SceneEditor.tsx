@@ -13,7 +13,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { MapContainer, TileLayer, Polygon, CircleMarker, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon, CircleMarker, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { supabase } from '../../lib/supabase';
 import { projectPolygon, nearestEdge, edgeLength } from '../../lib/evacuation/geometry';
@@ -164,12 +164,9 @@ function FitBounds({ polygon }: { polygon: [number, number][] }) {
 
 function FlyToPoint({ lat, lng, zoom }: { lat: number; lng: number; zoom: number }) {
   const map = useMap();
-  const flownRef = useRef(false);
   useEffect(() => {
-    if (flownRef.current) return;
     if (lat === 0 && lng === 0) return;
-    flownRef.current = true;
-    map.setView([lat, lng], zoom);
+    map.flyTo([lat, lng], zoom, { duration: 0.8 });
   }, [map, lat, lng, zoom]);
   return null;
 }
@@ -885,18 +882,31 @@ export function SceneEditor({
             <MapRefSync onMap={setMapPhaseMap} />
             <FlyToPoint lat={mapPhaseLat} lng={mapPhaseLng} zoom={17} />
 
-            {/* Green dot at current coordinates */}
+            {/* Green dot + radius coverage circle */}
             {lat && lng && (
-              <CircleMarker
-                center={[parseFloat(lat), parseFloat(lng)]}
-                radius={8}
-                pathOptions={{
-                  color: '#22c55e',
-                  fillColor: '#22c55e',
-                  fillOpacity: 0.6,
-                  weight: 2,
-                }}
-              />
+              <>
+                <Circle
+                  center={[parseFloat(lat), parseFloat(lng)]}
+                  radius={parseFloat(radius) || 300}
+                  pathOptions={{
+                    color: '#22c55e',
+                    weight: 1,
+                    fillColor: '#22c55e',
+                    fillOpacity: 0.08,
+                    dashArray: '6 4',
+                  }}
+                />
+                <CircleMarker
+                  center={[parseFloat(lat), parseFloat(lng)]}
+                  radius={8}
+                  pathOptions={{
+                    color: '#22c55e',
+                    fillColor: '#22c55e',
+                    fillOpacity: 0.6,
+                    weight: 2,
+                  }}
+                />
+              </>
             )}
 
             {/* Render building polygons when fetched */}
