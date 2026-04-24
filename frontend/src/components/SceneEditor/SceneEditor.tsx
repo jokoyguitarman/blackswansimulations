@@ -289,6 +289,8 @@ export function SceneEditor({
   stairwellsRef.current = stairwells;
   const blastSiteRef = useRef(blastSite);
   blastSiteRef.current = blastSite;
+  const blastRadiusRef = useRef(blastRadius);
+  blastRadiusRef.current = blastRadius;
   const gameZonesRef = useRef(gameZones);
   gameZonesRef.current = gameZones;
   const simStudsRef = useRef<StudPoint[]>([]);
@@ -595,7 +597,7 @@ export function SceneEditor({
   // ── Canvas click handler ──────────────────────────────────────────────
 
   const handleCanvasClick = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
+    (e: React.MouseEvent) => {
       const canvas = canvasRef.current;
       if (!canvas || !renderCtxRef.current) return;
       const rect = canvas.getBoundingClientRect();
@@ -824,6 +826,8 @@ export function SceneEditor({
           null,
           null,
           studs.length > 0 ? studs : null,
+          null,
+          blastRadiusRef.current,
         );
       }
     }
@@ -1372,16 +1376,36 @@ export function SceneEditor({
           ref={canvasRef}
           width={canvasSize.w}
           height={canvasSize.h}
-          onClick={handleCanvasClick}
           style={{
             position: 'absolute',
             top: 0,
             left: 0,
             width: canvasSize.w,
             height: canvasSize.h,
-            pointerEvents: 'auto',
+            pointerEvents: 'none',
             zIndex: 1000,
-            touchAction: 'none',
+          }}
+        />
+        {/* Click overlay — only captures clicks, lets map handle drag/zoom */}
+        <div
+          onClick={handleCanvasClick}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            zIndex: 1001,
+            cursor: activeMode !== 'select' ? 'crosshair' : 'grab',
+          }}
+          onMouseDown={(e) => {
+            // Let Leaflet handle drag — only block when placing elements
+            if (activeMode === 'select') {
+              (e.target as HTMLElement).style.pointerEvents = 'none';
+              requestAnimationFrame(() => {
+                (e.target as HTMLElement).style.pointerEvents = 'auto';
+              });
+            }
           }}
         />
         {activeMode !== 'select' && (

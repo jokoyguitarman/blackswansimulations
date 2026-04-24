@@ -76,6 +76,7 @@ export function renderRTS(
     string,
     { fire: { state: string }; gas: number; flood: number; structural: number }
   > | null,
+  blastRadius?: number,
 ) {
   ctx.clearRect(0, 0, w, h);
 
@@ -93,7 +94,7 @@ export function renderRTS(
     if (gameZones && gameZones.length > 0) {
       drawGameZones(ctx, blastSite, gameZones, rc);
     }
-    drawBlastSite(ctx, blastSite, rc);
+    drawBlastSite(ctx, blastSite, rc, blastRadius);
   }
 
   drawBuilding(ctx, buildingVerts, rc, transparentBg);
@@ -720,32 +721,32 @@ function drawGameZones(
 }
 
 // ── Blast site ──────────────────────────────────────────────────────────
-function drawBlastSite(ctx: CanvasRenderingContext2D, pos: Vec2, rc: RenderContext) {
+function drawBlastSite(
+  ctx: CanvasRenderingContext2D,
+  pos: Vec2,
+  rc: RenderContext,
+  blastRadius?: number,
+) {
   const p = toCanvas(pos.x, pos.y, rc);
 
-  const rings = [
-    { radius: 10, color: '#ef4444', label: '10m' },
-    { radius: 20, color: '#f97316', label: '20m' },
-    { radius: 40, color: '#eab308', label: '40m' },
-    { radius: 70, color: '#84cc16', label: '70m' },
-    { radius: 100, color: '#22d3ee', label: '100m' },
-  ];
-
-  for (const ring of rings.reverse()) {
-    const r = mToCanvas(ring.radius, rc);
-    if (r < 5) continue;
+  // Draw the blast radius circle (thick black dashed)
+  const effectiveRadius = blastRadius ?? 20;
+  const blastR = mToCanvas(effectiveRadius, rc);
+  if (blastR >= 5) {
     ctx.beginPath();
-    ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
-    ctx.strokeStyle = ring.color + '40';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([6, 4]);
+    ctx.arc(p.cx, p.cy, blastR, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.06)';
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10, 6]);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    ctx.fillStyle = ring.color + '80';
-    ctx.font = 'bold 9px monospace';
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 10px monospace';
     ctx.textAlign = 'left';
-    ctx.fillText(ring.label, p.cx + r + 3, p.cy + 3);
+    ctx.fillText(`BLAST ${effectiveRadius}m`, p.cx + blastR + 4, p.cy - 4);
   }
 
   // Blast center
