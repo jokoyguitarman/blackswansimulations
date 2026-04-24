@@ -31,8 +31,55 @@ export async function captureMapPixels(map: L.Map): Promise<ImageData> {
 }
 
 /**
- * Flood fill from a starting pixel, collecting all connected pixels
- * within a color tolerance. Returns a binary mask.
+ * Compute gradient magnitude for each pixel (how much it differs from neighbors).
+ * Used as an edge map to stop flood fill at color transitions.
+ */
+function computeGradient(data: Uint8ClampedArray, width: number, height: number): Float32Array {
+  const grad = new Float32Array(width * height);
+
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const l = (y * width + (x - 1)) * 4;
+      const r = (y * width + (x + 1)) * 4;
+      const t = ((y - 1) * width + x) * 4;
+      const b = ((y + 1) * width + x) * 4;
+
+      const lLum = data[l] * 0.299 + data[l + 1] * 0.587 + data[l + 2] * 0.114;
+      const rLum = data[r] * 0.299 + data[r + 1] * 0.587 + data[r + 2] * 0.114;
+      const tLum = data[t] * 0.299 + data[t + 1] * 0.587 + data[t + 2] * 0.114;
+      const bLum = data[b] * 0.299 + data[b + 1] * 0.587 + data[b + 2] * 0.114;
+
+      const gx = rLum - lLum;
+      const gy = bLum - tLum;
+      grad[y * width + x] = Math.sqrt(gx * gx + gy * gy);
+
+      // Also check RGB distance to catch colored edges (not just luminance)
+      const rgbGx = Math.sqrt(
+        (data[r] - data[l]) ** 2 +
+          (data[r + 1] - data[l + 1]) ** 2 +
+          (data[r + 2] - data[l + 2]) ** 2,
+      );
+      const rgbGy = Math.sqrt(
+        (data[b] - data[t]) ** 2 +
+          (data[b + 1] - data[t + 1]) ** 2 +
+          (data[b + 2] - data[t + 2]) ** 2,
+      );
+      const rgbGrad = Math.max(rgbGx, rgbGy) * 0.5;
+
+      // Take the max of luminance gradient and RGB gradient
+      if (rgbGrad > grad[y * width + x]) {
+        grad[y * width + x] = rgbGrad;
+      }
+    }
+  }
+
+  return grad;
+}
+
+/**
+ * Edge-aware flood fill from a starting pixel.
+ * Combines color tolerance with gradient barrier detection so the fill
+ * stops at color transitions (building edges) even when zoomed in.
  */
 export function floodFillMask(
   imageData: ImageData,
@@ -63,9 +110,15 @@ export function floodFillMask(
   const brightness = targetR * 0.299 + targetG * 0.587 + targetB * 0.114;
   if (brightness < 40) return mask;
 
+  // Pre-compute gradient edge map
+  const gradient = computeGradient(data, width, height);
+
+  // Adaptive edge threshold: scale with tolerance (lower tolerance = more sensitive to edges)
+  const edgeThreshold = 8 + tolerance * 0.3;
+
   const queue: number[] = [sx, sy];
   mask[sy * width + sx] = 1;
-  const maxPixels = width * height * 0.4; // safety: don't fill more than 40% of screen
+  const maxPixels = width * height * 0.3;
   let filled = 0;
 
   while (queue.length > 0 && filled < maxPixels) {
@@ -84,6 +137,9 @@ export function floodFillMask(
       if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
       const ni = ny * width + nx;
       if (mask[ni]) continue;
+
+      // Stop at gradient edges (color transitions between building and surroundings)
+      if (gradient[ni] > edgeThreshold) continue;
 
       const pi = ni * 4;
       // Skip very dark pixels (text/labels overlaid on buildings)
