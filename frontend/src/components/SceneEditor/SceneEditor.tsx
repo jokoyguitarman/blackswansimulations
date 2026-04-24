@@ -13,7 +13,15 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { MapContainer, TileLayer, Polygon, CircleMarker, Circle, useMap } from 'react-leaflet';
+import {
+  MapContainer,
+  TileLayer,
+  Polygon,
+  CircleMarker,
+  Circle,
+  useMap,
+  useMapEvents,
+} from 'react-leaflet';
 import L from 'leaflet';
 import { supabase } from '../../lib/supabase';
 import { projectPolygon, nearestEdge, edgeLength } from '../../lib/evacuation/geometry';
@@ -36,6 +44,7 @@ import {
 } from '../../lib/rts/wallInspection';
 import { createSceneConfig, updateSceneConfig } from '../../lib/rts/sceneConfigApi';
 import { BuildingDrawHandler } from './BuildingDrawHandler';
+import { autoTraceBuilding } from './buildingAutoTrace';
 import 'leaflet/dist/leaflet.css';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
@@ -185,6 +194,54 @@ function FlyToPoint({ lat, lng, zoom }: { lat: number; lng: number; zoom: number
   return null;
 }
 
+function AutoTraceClickHandler({
+  active,
+  tolerance,
+  onResult,
+  onStatus,
+}: {
+  active: boolean;
+  tolerance: number;
+  onResult: (polygon: [number, number][]) => void;
+  onStatus: (status: string | null) => void;
+}) {
+  const map = useMap();
+  useMapEvents({
+    click(e) {
+      if (!active) return;
+      const cp = map.latLngToContainerPoint(e.latlng);
+      onStatus('Tracing...');
+      autoTraceBuilding(map, cp.x, cp.y, tolerance)
+        .then(({ polygon, pixelCount }) => {
+          if (polygon.length < 3) {
+            onStatus(
+              pixelCount < 50
+                ? 'No building detected at this point. Try clicking directly on a building.'
+                : 'Could not trace a clean outline. Try a different spot.',
+            );
+            return;
+          }
+          onStatus(null);
+          onResult(polygon);
+        })
+        .catch(() => {
+          onStatus('Trace failed. Try again.');
+        });
+    },
+  });
+
+  useEffect(() => {
+    if (!active) return;
+    const container = map.getContainer();
+    container.style.cursor = 'crosshair';
+    return () => {
+      container.style.cursor = '';
+    };
+  }, [map, active]);
+
+  return null;
+}
+
 // ── Main Component ────────────────────────────────────────────────────────
 
 let exitIdCounter = 1000;
@@ -230,6 +287,12 @@ export function SceneEditor({
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawnBuildingName, setDrawnBuildingName] = useState('');
   const [locationDescription, setLocationDescription] = useState<string | null>(null);
+
+  // Auto-trace mode
+  const [isAutoTracing, setIsAutoTracing] = useState(false);
+  const [autoTracePreview, setAutoTracePreview] = useState<[number, number][] | null>(null);
+  const [autoTraceTolerance, setAutoTraceTolerance] = useState(20);
+  const [autoTraceStatus, setAutoTraceStatus] = useState<string | null>(null);
 
   // Scene state
   const [exits, setExits] = useState<ExitDef[]>([]);
@@ -1339,7 +1402,99 @@ export function SceneEditor({
               >
                 Draw Building on Map
               </button>
+
+              {/* Auto-trace button */}
+              <button
+                onClick={() => {
+                  setIsAutoTracing(true);
+                  setAutoTracePreview(null);
+                  setAutoTraceStatus('Click on a building on the map to auto-trace its outline.');
+                }}
+                className="w-full px-4 py-2 text-xs terminal-text border border-purple-500/50 text-purple-400 hover:bg-purple-900/20 hover:border-purple-400"
+              >
+                Auto-Trace Building (Magic Wand)
+              </button>
             </>
+          )}
+
+          {/* Auto-trace mode UI */}
+          {isAutoTracing && (
+            <div className="space-y-3">
+              {autoTraceStatus && (
+                <div
+                  className={`px-3 py-2 text-xs terminal-text border rounded ${
+                    autoTraceStatus === 'Tracing...'
+                      ? 'bg-purple-900/20 border-purple-500/30 text-purple-400 animate-pulse'
+                      : autoTraceStatus.includes('No building') ||
+                          autoTraceStatus.includes('failed') ||
+                          autoTraceStatus.includes('Could not')
+                        ? 'bg-red-900/20 border-red-500/30 text-red-400'
+                        : 'bg-purple-900/20 border-purple-500/30 text-purple-400'
+                  }`}
+                >
+                  {autoTraceStatus}
+                </div>
+              )}
+
+              <div>
+                <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase">
+                  Color Tolerance: {autoTraceTolerance}
+                </label>
+                <input
+                  type="range"
+                  min={10}
+                  max={40}
+                  value={autoTraceTolerance}
+                  onChange={(e) => setAutoTraceTolerance(Number(e.target.value))}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-[9px] terminal-text text-robotic-yellow/20">
+                  <span>Tight</span>
+                  <span>Loose</span>
+                </div>
+              </div>
+
+              {autoTracePreview && autoTracePreview.length >= 3 && (
+                <div className="space-y-2">
+                  <p className="text-xs terminal-text text-purple-400">
+                    Traced {autoTracePreview.length} vertices. Accept or retry.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        handleDrawComplete(autoTracePreview);
+                        setIsAutoTracing(false);
+                        setAutoTracePreview(null);
+                        setAutoTraceStatus(null);
+                      }}
+                      className="flex-1 military-button px-3 py-2 text-xs"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAutoTracePreview(null);
+                        setAutoTraceStatus('Click on a building to trace again.');
+                      }}
+                      className="flex-1 px-3 py-2 text-xs terminal-text border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => {
+                  setIsAutoTracing(false);
+                  setAutoTracePreview(null);
+                  setAutoTraceStatus(null);
+                }}
+                className="w-full px-4 py-2 text-xs terminal-text border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              >
+                Cancel Auto-Trace
+              </button>
+            </div>
           )}
 
           {error && <p className="text-xs text-red-400">{error}</p>}
@@ -1438,6 +1593,28 @@ export function SceneEditor({
                 setDrawnBuildingName('');
               }}
             />
+
+            {/* Auto-trace click handler */}
+            <AutoTraceClickHandler
+              active={isAutoTracing && !autoTracePreview}
+              tolerance={autoTraceTolerance}
+              onResult={(polygon) => setAutoTracePreview(polygon)}
+              onStatus={setAutoTraceStatus}
+            />
+
+            {/* Auto-trace preview polygon */}
+            {autoTracePreview && autoTracePreview.length >= 3 && (
+              <Polygon
+                positions={autoTracePreview.map(([la, ln]) => [la, ln] as [number, number])}
+                pathOptions={{
+                  color: '#a855f7',
+                  weight: 3,
+                  fillColor: '#a855f7',
+                  fillOpacity: 0.2,
+                  dashArray: '8, 4',
+                }}
+              />
+            )}
           </MapContainer>
         </div>
       </div>
