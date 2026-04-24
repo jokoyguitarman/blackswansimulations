@@ -1012,6 +1012,37 @@ export async function stageGenerateAndPersist(
         if (buildingPolygon && buildingPolygon.length >= 3) {
           const blastLatLng = blastSiteRaw ? simToLatLng(blastSiteRaw, buildingPolygon) : null;
 
+          // Resolve planted items with positions from wall inspection points
+          const plantedItemsRaw = (sceneRow.planted_items as Array<Record<string, unknown>>) || [];
+          const wallPointsRaw =
+            (sceneRow.wall_inspection_points as Array<Record<string, unknown>>) || [];
+          const wallPointMap = new Map<string, { lat: number; lng: number }>();
+          for (const wp of wallPointsRaw) {
+            wallPointMap.set(wp.id as string, {
+              lat: wp.lat as number,
+              lng: wp.lng as number,
+            });
+          }
+          const plantedItems = plantedItemsRaw
+            .map((p) => {
+              const wpId = p.wallPointId as string;
+              const wpPos = wallPointMap.get(wpId);
+              if (!wpPos) return null;
+              return {
+                id: (p.id as string) || `pi-${Math.random().toString(36).slice(2, 8)}`,
+                wallPointId: wpId,
+                description: (p.description as string) || '',
+                threatLevel:
+                  (p.threatLevel as 'decoy' | 'real_device' | 'secondary_device') || 'decoy',
+                concealmentDifficulty:
+                  (p.concealmentDifficulty as 'easy' | 'moderate' | 'hard') || 'moderate',
+                detonationTimer: (p.detonationTimer as number) ?? null,
+                lat: wpPos.lat,
+                lng: wpPos.lng,
+              };
+            })
+            .filter((p): p is NonNullable<typeof p> => p !== null);
+
           trainerScene = {
             rtsSceneId,
             blastSite: blastLatLng
@@ -1046,6 +1077,7 @@ export async function stageGenerateAndPersist(
             buildingPolygon,
             buildingName: (sceneRow.building_name as string) || null,
             pedestrianCount: (sceneRow.pedestrian_count as number) || 120,
+            plantedItems,
             enrichment: enrichmentResult
               ? {
                   hazardAnalysis: (enrichmentResult.hazardAnalysis ?? []) as Array<
@@ -1081,6 +1113,7 @@ export async function stageGenerateAndPersist(
               rtsSceneId,
               hazards: trainerScene.hazards.length,
               exits: trainerScene.exits.length,
+              plantedItems: trainerScene.plantedItems.length,
               studs: sceneStudGrids.reduce((s, g) => s + g.studs.length, 0),
               hasEnrichment: !!trainerScene.enrichment,
             },

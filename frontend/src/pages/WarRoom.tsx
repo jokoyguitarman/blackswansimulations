@@ -1316,7 +1316,7 @@ export const WarRoom = () => {
                       {t.is_investigative ? '⬟ INVESTIGATIVE' : '○ INVESTIGATIVE'}
                     </button>
                   </div>
-                  {/bomb|eod/i.test(t.team_name) && (
+                  {/bomb|eod/i.test(t.team_name) && !rtsSceneId && (
                     <div className="border-t border-robotic-yellow/20 pt-2 mt-1">
                       <p className="text-[10px] terminal-text text-robotic-orange/80 uppercase mb-2">
                         [SECONDARY DEVICE CHALLENGE]

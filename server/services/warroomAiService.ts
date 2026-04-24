@@ -1376,6 +1376,16 @@ export interface TrainerScene {
   buildingPolygon: [number, number][];
   buildingName: string | null;
   pedestrianCount: number;
+  plantedItems: Array<{
+    id: string;
+    wallPointId: string;
+    description: string;
+    threatLevel: 'decoy' | 'real_device' | 'secondary_device';
+    concealmentDifficulty: 'easy' | 'moderate' | 'hard';
+    detonationTimer: number | null;
+    lat: number;
+    lng: number;
+  }>;
   enrichment?: {
     hazardAnalysis: Array<Record<string, unknown>>;
     sceneSynthesis: Record<string, unknown>;
@@ -7966,27 +7976,78 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
   // Secondary device generation for bomb squad challenge
   let sweepDevicePool: Array<Record<string, unknown>> | undefined;
   let finalHazards = scenarioHazards;
-  const deviceCount = input.secondary_devices_count ?? 0;
-  const realCount = Math.min(input.real_bombs_count ?? 0, deviceCount);
-  if (deviceCount > 0 && !input.trainerScene) {
-    onProgress?.('Generating secondary device challenge for bomb squad...');
-    const scenarioCenter = input.geocode ?? { lat: 0, lng: 0 };
-    const deviceResult = generateSecondaryDevices(
-      deviceCount,
-      realCount,
-      durationMinutes,
-      teamNames,
-      scenarioCenter.lat,
-      scenarioCenter.lng,
+
+  if (input.trainerScene?.plantedItems?.length) {
+    // Convert trainer-placed devices to sweep pool
+    const bombSquadTeam = teamNames.find((n) => /bomb|eod/i.test(n)) ?? 'Bomb Squad / EOD';
+    sweepDevicePool = input.trainerScene.plantedItems.map((item) => ({
+      container_type: 'trainer_placed',
+      is_live: item.threatLevel === 'real_device' || item.threatLevel === 'secondary_device',
+      threat_level: item.threatLevel,
+      description: item.description,
+      concealment: item.concealmentDifficulty,
+      detonation_timer: item.detonationTimer,
+      location_lat: item.lat,
+      location_lng: item.lng,
+      wall_point_id: item.wallPointId,
+    }));
+
+    // Create tip injects for each planted item so the bomb squad gets reports
+    const tipInjects: WarroomScenarioPayload['time_injects'] = [];
+    input.trainerScene.plantedItems.forEach((item, i) => {
+      const staggerBase = 5 + i * 6;
+      const staggerJitter = Math.floor(Math.random() * 3);
+      const triggerMinutes = Math.min(staggerBase + staggerJitter, durationMinutes - 5);
+
+      tipInjects.push({
+        trigger_time_minutes: triggerMinutes,
+        type: 'field_update',
+        title: `Suspicious Object Report #${i + 1}`,
+        content:
+          item.description ||
+          `A suspicious object has been spotted near wall inspection point ${item.wallPointId}. Bomb squad assessment required.`,
+        severity: item.threatLevel === 'decoy' ? 'medium' : 'critical',
+        inject_scope: 'team_specific',
+        target_teams: [bombSquadTeam],
+        requires_response: true,
+      });
+    });
+    if (tipInjects.length > 0) {
+      finalTimeInjects.push(...tipInjects);
+    }
+
+    logger.info(
+      {
+        totalDevices: input.trainerScene.plantedItems.length,
+        realDevices: input.trainerScene.plantedItems.filter((p) => p.threatLevel !== 'decoy')
+          .length,
+        decoys: input.trainerScene.plantedItems.filter((p) => p.threatLevel === 'decoy').length,
+      },
+      'Trainer-placed devices converted to sweep pool',
     );
-    if (deviceResult.tipInjects.length > 0) {
-      finalTimeInjects.push(...deviceResult.tipInjects);
-    }
-    if (deviceResult.tipHazards.length > 0) {
-      finalHazards = [...(scenarioHazards ?? []), ...deviceResult.tipHazards];
-    }
-    if (deviceResult.sweepPool.length > 0) {
-      sweepDevicePool = deviceResult.sweepPool;
+  } else {
+    const deviceCount = input.secondary_devices_count ?? 0;
+    const realCount = Math.min(input.real_bombs_count ?? 0, deviceCount);
+    if (deviceCount > 0) {
+      onProgress?.('Generating secondary device challenge for bomb squad...');
+      const scenarioCenter = input.geocode ?? { lat: 0, lng: 0 };
+      const deviceResult = generateSecondaryDevices(
+        deviceCount,
+        realCount,
+        durationMinutes,
+        teamNames,
+        scenarioCenter.lat,
+        scenarioCenter.lng,
+      );
+      if (deviceResult.tipInjects.length > 0) {
+        finalTimeInjects.push(...deviceResult.tipInjects);
+      }
+      if (deviceResult.tipHazards.length > 0) {
+        finalHazards = [...(scenarioHazards ?? []), ...deviceResult.tipHazards];
+      }
+      if (deviceResult.sweepPool.length > 0) {
+        sweepDevicePool = deviceResult.sweepPool;
+      }
     }
   }
 
