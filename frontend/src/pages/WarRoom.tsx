@@ -235,7 +235,7 @@ export const WarRoom = () => {
 
   return (
     <div className="min-h-screen scanline p-6">
-      <div className="max-w-6xl mx-auto">
+      <div className="w-full px-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl terminal-text uppercase tracking-wider">[WAR ROOM]</h1>
@@ -490,7 +490,7 @@ export const WarRoom = () => {
           )}
 
           {step === 3 && (
-            <div className="h-[calc(100vh-280px)] min-h-[500px]">
+            <div className="h-[calc(100vh-280px)] min-h-[600px]">
               <SceneEditor
                 incidentType={incidentType || 'bombing'}
                 initialSceneId={rtsSceneId}

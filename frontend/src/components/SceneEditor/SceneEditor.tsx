@@ -178,13 +178,19 @@ export function SceneEditor({
   // Phase: 'map' (searching) or 'edit' (scene editing)
   const [phase, setPhase] = useState<'map' | 'edit'>('map');
 
-  // Map search state
+  // GPS + Map search state
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
   const [radius, setRadius] = useState('300');
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Array<Record<string, unknown>>>([]);
+  const [searchResults, setSearchResults] = useState<
+    Array<{ lat: string; lon: string; display_name: string }>
+  >([]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchCountry, setSearchCountry] = useState('');
+  const [userGeoPos, setUserGeoPos] = useState<{ lat: number; lng: number } | null>(null);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mapPhaseMapRef = useRef<L.Map | null>(null);
   const [fetchResult, setFetchResult] = useState<{
     grids: Array<{
       buildingIndex: number;
@@ -271,27 +277,98 @@ export function SceneEditor({
     [simStuds],
   );
 
-  // ── Search ────────────────────────────────────────────────────────────
+  // ── GPS auto-detect on mount ──────────────────────────────────────────
 
-  const handleSearch = useCallback(async () => {
-    if (!searchQuery.trim()) return;
-    try {
-      const resp = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5`,
-      );
-      const results = await resp.json();
-      setSearchResults(results as Array<Record<string, unknown>>);
-      setSearchOpen(true);
-    } catch {
-      setSearchResults([]);
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setLat('1.2989008');
+      setLng('103.855176');
+      return;
     }
-  }, [searchQuery]);
-
-  const handleSelectResult = useCallback((result: Record<string, unknown>) => {
-    setLat(String(result.lat));
-    setLng(String(result.lon));
-    setSearchOpen(false);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const gLat = pos.coords.latitude;
+        const gLng = pos.coords.longitude;
+        setUserGeoPos({ lat: gLat, lng: gLng });
+        setLat(gLat.toFixed(7));
+        setLng(gLng.toFixed(7));
+        const map = mapPhaseMapRef.current;
+        if (map) map.setView([gLat, gLng], 16);
+        fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${gLat}&lon=${gLng}&format=json&zoom=3`,
+          { headers: { 'User-Agent': 'BlackSwanSimulations/1.0' } },
+        )
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => {
+            if (d?.address?.country_code) setSearchCountry(d.address.country_code.toUpperCase());
+          })
+          .catch(() => {});
+      },
+      () => {
+        setLat('1.2989008');
+        setLng('103.855176');
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
+    );
   }, []);
+
+  // ── Debounced search ────────────────────────────────────────────────
+
+  const handleSearchInput = useCallback(
+    (query: string) => {
+      setSearchQuery(query);
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+      if (query.trim().length < 3) {
+        setSearchResults([]);
+        return;
+      }
+      searchTimerRef.current = setTimeout(async () => {
+        try {
+          const params = new URLSearchParams({
+            q: query,
+            format: 'json',
+            limit: '8',
+            addressdetails: '0',
+          });
+          if (searchCountry) {
+            params.set('countrycodes', searchCountry.toLowerCase());
+          }
+          if (userGeoPos) {
+            const bias = 0.5;
+            params.set(
+              'viewbox',
+              `${userGeoPos.lng - bias},${userGeoPos.lat + bias},${userGeoPos.lng + bias},${userGeoPos.lat - bias}`,
+            );
+            params.set('bounded', '0');
+          }
+          const resp = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
+            headers: { 'User-Agent': 'BlackSwanSimulations/1.0' },
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            setSearchResults(data);
+            setSearchOpen(true);
+          }
+        } catch {
+          setSearchResults([]);
+        }
+      }, 400);
+    },
+    [userGeoPos, searchCountry],
+  );
+
+  const handleSelectResult = useCallback(
+    (result: { lat: string; lon: string; display_name: string }) => {
+      setLat(parseFloat(result.lat).toFixed(7));
+      setLng(parseFloat(result.lon).toFixed(7));
+      setSearchQuery(result.display_name);
+      setSearchOpen(false);
+      setSearchResults([]);
+      const map = mapPhaseMapRef.current;
+      if (map) map.setView([parseFloat(result.lat), parseFloat(result.lon)], 17);
+    },
+    [],
+  );
 
   // ── Fetch buildings ───────────────────────────────────────────────────
 
@@ -585,104 +662,234 @@ export function SceneEditor({
     leafletMapRef.current = m;
   }, []);
 
+  // ── Map phase: sync map to lat/lng ────────────────────────────────────
+
+  const mapPhaseLat = lat ? parseFloat(lat) : 1.2989;
+  const mapPhaseLng = lng ? parseFloat(lng) : 103.855;
+
+  const setMapPhaseMap = useCallback((m: L.Map) => {
+    mapPhaseMapRef.current = m;
+  }, []);
+
   // ── RENDER ────────────────────────────────────────────────────────────
 
-  // Map phase: search and select building
+  // Map phase: search and select building with map
   if (phase === 'map') {
     return (
-      <div className="flex flex-col h-full">
-        <div className="flex gap-2 items-end mb-3 flex-wrap">
-          <div className="flex-1 min-w-[200px]">
+      <div className="flex h-full gap-3">
+        {/* Left panel: search controls + building list */}
+        <div className="w-80 flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
+          {/* GPS status */}
+          {!lat && !lng && (
+            <div className="px-3 py-2 bg-cyan-900/20 border border-cyan-500/30 text-xs terminal-text text-cyan-400 animate-pulse">
+              Locating you...
+            </div>
+          )}
+
+          {/* Country dropdown */}
+          <div>
+            <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase">
+              Country
+            </label>
+            <select
+              value={searchCountry}
+              onChange={(e) => setSearchCountry(e.target.value)}
+              className="w-full mt-0.5 px-2 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
+            >
+              <option value="">All Countries</option>
+              <option value="AF">Afghanistan</option>
+              <option value="AL">Albania</option>
+              <option value="DZ">Algeria</option>
+              <option value="AR">Argentina</option>
+              <option value="AU">Australia</option>
+              <option value="AT">Austria</option>
+              <option value="BD">Bangladesh</option>
+              <option value="BE">Belgium</option>
+              <option value="BR">Brazil</option>
+              <option value="BN">Brunei</option>
+              <option value="KH">Cambodia</option>
+              <option value="CA">Canada</option>
+              <option value="CN">China</option>
+              <option value="CO">Colombia</option>
+              <option value="CZ">Czech Republic</option>
+              <option value="DK">Denmark</option>
+              <option value="EG">Egypt</option>
+              <option value="FI">Finland</option>
+              <option value="FR">France</option>
+              <option value="DE">Germany</option>
+              <option value="GR">Greece</option>
+              <option value="HK">Hong Kong</option>
+              <option value="HU">Hungary</option>
+              <option value="IN">India</option>
+              <option value="ID">Indonesia</option>
+              <option value="IQ">Iraq</option>
+              <option value="IE">Ireland</option>
+              <option value="IL">Israel</option>
+              <option value="IT">Italy</option>
+              <option value="JP">Japan</option>
+              <option value="JO">Jordan</option>
+              <option value="KZ">Kazakhstan</option>
+              <option value="KE">Kenya</option>
+              <option value="KR">South Korea</option>
+              <option value="KW">Kuwait</option>
+              <option value="LA">Laos</option>
+              <option value="LB">Lebanon</option>
+              <option value="MY">Malaysia</option>
+              <option value="MX">Mexico</option>
+              <option value="MM">Myanmar</option>
+              <option value="NL">Netherlands</option>
+              <option value="NZ">New Zealand</option>
+              <option value="NG">Nigeria</option>
+              <option value="NO">Norway</option>
+              <option value="PK">Pakistan</option>
+              <option value="PH">Philippines</option>
+              <option value="PL">Poland</option>
+              <option value="PT">Portugal</option>
+              <option value="QA">Qatar</option>
+              <option value="RO">Romania</option>
+              <option value="RU">Russia</option>
+              <option value="SA">Saudi Arabia</option>
+              <option value="SG">Singapore</option>
+              <option value="ZA">South Africa</option>
+              <option value="ES">Spain</option>
+              <option value="LK">Sri Lanka</option>
+              <option value="SE">Sweden</option>
+              <option value="CH">Switzerland</option>
+              <option value="TW">Taiwan</option>
+              <option value="TH">Thailand</option>
+              <option value="TR">Turkey</option>
+              <option value="AE">UAE</option>
+              <option value="UA">Ukraine</option>
+              <option value="GB">United Kingdom</option>
+              <option value="US">United States</option>
+              <option value="VN">Vietnam</option>
+            </select>
+          </div>
+
+          {/* Search input (debounced) */}
+          <div className="relative">
             <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase">
               Search Place
             </label>
-            <div className="flex gap-1">
-              <input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="Search for a place..."
-                className="flex-1 px-3 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
-              />
-              <button
-                onClick={handleSearch}
-                className="px-3 py-2 text-xs terminal-text border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
-              >
-                Search
-              </button>
-            </div>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => handleSearchInput(e.target.value)}
+              placeholder="Type to search (3+ chars)..."
+              className="w-full mt-0.5 px-3 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
+            />
             {searchOpen && searchResults.length > 0 && (
-              <div className="absolute z-20 bg-gray-900 border border-robotic-yellow/50 rounded mt-1 max-h-48 overflow-y-auto w-full max-w-md">
+              <div className="absolute z-20 bg-gray-900 border border-robotic-yellow/50 rounded mt-1 max-h-48 overflow-y-auto w-full">
                 {searchResults.map((r, i) => (
                   <button
                     key={i}
                     onClick={() => handleSelectResult(r)}
                     className="block w-full text-left px-3 py-2 text-xs terminal-text text-robotic-yellow/70 hover:bg-robotic-yellow/10 border-b border-robotic-gray-200 last:border-b-0"
                   >
-                    {String(r.display_name || '')}
+                    {r.display_name}
                   </button>
                 ))}
               </div>
             )}
           </div>
-          <div className="flex gap-2 items-end">
-            <div>
+
+          {/* Lat / Lng / Radius */}
+          <div className="flex gap-2">
+            <div className="flex-1">
               <label className="text-[10px] terminal-text text-robotic-yellow/40">Lat</label>
               <input
                 value={lat}
                 onChange={(e) => setLat(e.target.value)}
-                className="w-24 px-2 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
+                className="w-full px-2 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
               />
             </div>
-            <div>
+            <div className="flex-1">
               <label className="text-[10px] terminal-text text-robotic-yellow/40">Lng</label>
               <input
                 value={lng}
                 onChange={(e) => setLng(e.target.value)}
-                className="w-24 px-2 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
+                className="w-full px-2 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
               />
             </div>
-            <div>
+            <div className="w-16">
               <label className="text-[10px] terminal-text text-robotic-yellow/40">Radius</label>
               <input
                 value={radius}
                 onChange={(e) => setRadius(e.target.value)}
-                className="w-16 px-2 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
+                className="w-full px-2 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
               />
             </div>
-            <button
-              onClick={handleFetch}
-              disabled={fetchLoading || !lat || !lng}
-              className="military-button px-4 py-2 text-xs disabled:opacity-50"
-            >
-              {fetchLoading ? 'Fetching...' : 'Fetch Buildings'}
-            </button>
           </div>
+
+          {/* Fetch button */}
+          <button
+            onClick={handleFetch}
+            disabled={fetchLoading || !lat || !lng}
+            className="military-button w-full px-4 py-2 text-xs disabled:opacity-50"
+          >
+            {fetchLoading ? 'Fetching Buildings...' : 'Fetch Buildings'}
+          </button>
+
+          {error && <p className="text-xs text-red-400">{error}</p>}
+
+          {/* Building results list */}
+          {fetchResult && (
+            <div className="space-y-2">
+              <p className="text-xs terminal-text text-robotic-yellow/50">
+                {fetchResult.grids.length} buildings found. Select one:
+              </p>
+              <div className="space-y-1 max-h-60 overflow-y-auto">
+                {fetchResult.grids.map((g, i) => (
+                  <button
+                    key={i}
+                    onClick={() => selectBuilding(i)}
+                    className="w-full text-left px-3 py-2 border border-robotic-yellow/30 hover:border-robotic-yellow text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow bg-black/30 hover:bg-black/50"
+                  >
+                    <div className="font-bold">{g.buildingName || `Building ${i + 1}`}</div>
+                    <div className="text-[10px] text-robotic-yellow/40">
+                      {g.polygon.length} vertices
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
+        {/* Right: Leaflet map preview */}
+        <div className="flex-1 relative rounded overflow-hidden border border-robotic-gray-200">
+          <MapContainer
+            center={[mapPhaseLat, mapPhaseLng]}
+            zoom={16}
+            style={{ width: '100%', height: '100%' }}
+            zoomControl={true}
+          >
+            <TileLayer
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+              attribution="Tiles &copy; Esri"
+              maxZoom={20}
+              maxNativeZoom={18}
+            />
+            <MapRefSync onMap={setMapPhaseMap} />
 
-        {fetchResult && (
-          <div className="space-y-2">
-            <p className="text-xs terminal-text text-robotic-yellow/50">
-              {fetchResult.grids.length} buildings found. Select one:
-            </p>
-            <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
-              {fetchResult.grids.map((g, i) => (
-                <button
-                  key={i}
-                  onClick={() => selectBuilding(i)}
-                  className="text-left px-3 py-2 border border-robotic-yellow/30 hover:border-robotic-yellow text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow bg-black/30 hover:bg-black/50"
-                >
-                  <div className="font-bold">{g.buildingName || `Building ${i + 1}`}</div>
-                  <div className="text-[10px] text-robotic-yellow/40">
-                    {g.polygon.length} vertices
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+            {/* Render building polygons when fetched */}
+            {fetchResult?.grids.map((g, i) => (
+              <Polygon
+                key={i}
+                positions={g.polygon.map(([la, ln]) => [la, ln] as [number, number])}
+                pathOptions={{
+                  color: '#f59e0b',
+                  weight: 2,
+                  fillColor: '#f59e0b',
+                  fillOpacity: 0.15,
+                }}
+                eventHandlers={{
+                  click: () => selectBuilding(i),
+                }}
+              />
+            ))}
+          </MapContainer>
+        </div>
       </div>
     );
   }
