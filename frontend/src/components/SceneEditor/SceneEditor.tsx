@@ -35,6 +35,7 @@ import {
   type WallInspectionPoint,
 } from '../../lib/rts/wallInspection';
 import { createSceneConfig, updateSceneConfig } from '../../lib/rts/sceneConfigApi';
+import { BuildingDrawHandler } from './BuildingDrawHandler';
 import 'leaflet/dist/leaflet.css';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
@@ -223,6 +224,10 @@ export function SceneEditor({
   const [selectedGridIdx, setSelectedGridIdx] = useState<number | null>(null);
   const [fetchLoading, setFetchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Draw building mode
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [drawnBuildingName, setDrawnBuildingName] = useState('');
 
   // Scene state
   const [exits, setExits] = useState<ExitDef[]>([]);
@@ -472,6 +477,41 @@ export function SceneEditor({
       }
     },
     [fetchResult],
+  );
+
+  // ── Draw building polygon → enter edit mode ───────────────────────────
+
+  const handleDrawComplete = useCallback(
+    (polygon: [number, number][]) => {
+      const entry = {
+        buildingIndex: 0,
+        buildingName: drawnBuildingName || null,
+        polygon,
+        studs: [] as StudPoint[],
+      };
+      const newResult = { grids: [...(fetchResult?.grids ?? []), entry] };
+      setFetchResult(newResult);
+      const idx = newResult.grids.length - 1;
+      setSelectedGridIdx(idx);
+      setExits([]);
+      setInteriorWalls([]);
+      setHazardZones([]);
+      setStairwells([]);
+      setBlastSite(null);
+      setPlantedItems([]);
+      setActiveMode('select');
+      setPhase('edit');
+      setIsDrawing(false);
+
+      if (polygon.length >= 3) {
+        const verts = projectPolygon(polygon);
+        const pts = generateWallPoints(polygon, verts);
+        setWallPoints(pts);
+      } else {
+        setWallPoints([]);
+      }
+    },
+    [fetchResult, drawnBuildingName],
   );
 
   const backToMap = useCallback(() => {
@@ -959,19 +999,68 @@ export function SceneEditor({
             </div>
           </div>
 
-          {/* Fetch button */}
-          <button
-            onClick={handleFetch}
-            disabled={fetchLoading || !lat || !lng}
-            className="military-button w-full px-4 py-2 text-xs disabled:opacity-50"
-          >
-            {fetchLoading ? 'Fetching Buildings...' : 'Fetch Buildings'}
-          </button>
+          {/* Drawing mode status */}
+          {isDrawing ? (
+            <div className="space-y-3">
+              <div className="px-3 py-2 bg-amber-900/20 border border-amber-500/30 text-xs terminal-text text-amber-400">
+                Click on the map to place vertices. Close the polygon by clicking the first vertex
+                or press Enter. ESC to cancel.
+              </div>
+              <div>
+                <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase">
+                  Building Name (optional)
+                </label>
+                <input
+                  type="text"
+                  value={drawnBuildingName}
+                  onChange={(e) => setDrawnBuildingName(e.target.value)}
+                  placeholder="e.g. San Pedro Cathedral"
+                  className="w-full mt-0.5 px-3 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  setIsDrawing(false);
+                  setDrawnBuildingName('');
+                }}
+                className="w-full px-4 py-2 text-xs terminal-text border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              >
+                Cancel Drawing
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Fetch button */}
+              <button
+                onClick={handleFetch}
+                disabled={fetchLoading || !lat || !lng}
+                className="military-button w-full px-4 py-2 text-xs disabled:opacity-50"
+              >
+                {fetchLoading ? 'Fetching Buildings...' : 'Fetch Buildings'}
+              </button>
+
+              <div className="flex items-center gap-2">
+                <div className="flex-1 border-t border-robotic-gray-200" />
+                <span className="text-[10px] terminal-text text-robotic-yellow/30 uppercase">
+                  or
+                </span>
+                <div className="flex-1 border-t border-robotic-gray-200" />
+              </div>
+
+              {/* Draw building button */}
+              <button
+                onClick={() => setIsDrawing(true)}
+                className="w-full px-4 py-2 text-xs terminal-text border border-cyan-500/50 text-cyan-400 hover:bg-cyan-900/20 hover:border-cyan-400"
+              >
+                Draw Building on Map
+              </button>
+            </>
+          )}
 
           {error && <p className="text-xs text-red-400">{error}</p>}
 
           {/* Building results list */}
-          {fetchResult && (
+          {!isDrawing && fetchResult && (
             <div className="space-y-2">
               <p className="text-xs terminal-text text-robotic-yellow/50">
                 {fetchResult.grids.length} buildings found. Select one:
@@ -1054,6 +1143,16 @@ export function SceneEditor({
                 }}
               />
             ))}
+
+            {/* Draw building polygon handler */}
+            <BuildingDrawHandler
+              active={isDrawing}
+              onComplete={handleDrawComplete}
+              onCancel={() => {
+                setIsDrawing(false);
+                setDrawnBuildingName('');
+              }}
+            />
           </MapContainer>
         </div>
       </div>
