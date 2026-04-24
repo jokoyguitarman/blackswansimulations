@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
-import { SceneEditor, type SceneConfig } from '../components/SceneEditor/SceneEditor';
+import { SceneEditor } from '../components/SceneEditor/SceneEditor';
 
 interface TeamEntry {
   team_name: string;

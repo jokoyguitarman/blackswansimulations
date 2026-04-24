@@ -83,10 +83,11 @@ interface StudPoint {
   lat: number;
   lng: number;
   simPos: Vec2;
+  studType: string;
   spatialContext: string | null;
 }
 
-function generateStudsForPolygon(polygon: [number, number][], verts: Vec2[]): StudPoint[] {
+function generateStudsForPolygon(polygon: [number, number][], _verts: Vec2[]): StudPoint[] {
   if (polygon.length < 3) return [];
   const SPACING = 3;
   let minLat = Infinity,
@@ -120,6 +121,7 @@ function generateStudsForPolygon(polygon: [number, number][], verts: Vec2[]): St
             x: (ln - refLng) * mPerDegLng,
             y: (refLat - la) * mPerDegLat,
           },
+          studType: 'building',
           spatialContext: 'inside_building',
         });
       }
@@ -171,6 +173,8 @@ export function SceneEditor({
   weaponType: externalWeaponType,
   onWeaponTypeChange,
 }: SceneEditorProps) {
+  void incidentType; // will be used for scene-specific defaults later
+
   // Phase: 'map' (searching) or 'edit' (scene editing)
   const [phase, setPhase] = useState<'map' | 'edit'>('map');
 
@@ -360,7 +364,7 @@ export function SceneEditor({
       if (activeMode === 'place_exit') {
         const snap = nearestEdge(snapped.pos.x, snapped.pos.y, projectedVerts);
         const w = 3;
-        const len = edgeLength(projectedVerts, snap.edgeIndex);
+        void edgeLength; // available for width clamping later
         const t = snap.t;
         const edge = projectedVerts[snap.edgeIndex];
         const next = projectedVerts[(snap.edgeIndex + 1) % projectedVerts.length];
@@ -459,10 +463,10 @@ export function SceneEditor({
         });
         onSave(sceneConfigId, config);
       } else {
-        const id = await createSceneConfig({
+        const result = await createSceneConfig({
           name: selectedGrid.buildingName || 'Scene',
           buildingPolygon: selectedGrid.polygon,
-          buildingName: selectedGrid.buildingName,
+          buildingName: selectedGrid.buildingName || undefined,
           centerLat: config.centerLat,
           centerLng: config.centerLng,
           exits,
@@ -470,14 +474,14 @@ export function SceneEditor({
           hazardZones,
           stairwells,
           blastSite,
-          blastRadius,
           casualtyClusters: [],
           wallInspectionPoints: wallPoints,
           plantedItems,
           pedestrianCount,
         });
-        setSceneConfigId(id);
-        onSave(id, config);
+        const newId = result.id;
+        setSceneConfigId(newId);
+        onSave(newId, config);
       }
     } catch (err) {
       console.error('Failed to save scene', err);
