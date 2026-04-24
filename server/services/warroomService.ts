@@ -988,6 +988,7 @@ export async function stageGenerateAndPersist(
   // Load trainer scene if rts_scene_id is present in scene_context
   let trainerScene: TrainerScene | undefined;
   let sceneStudGrids: import('./buildingStudService.js').StudGrid[] | undefined;
+  let sceneLocationDescription: string | undefined;
   const sceneCtx = options.scene_context;
   const rtsSceneId = sceneCtx?.rts_scene_id as string | undefined;
   if (rtsSceneId) {
@@ -1005,12 +1006,14 @@ export async function stageGenerateAndPersist(
           y: number;
           radius?: number;
           weaponType?: string;
+          locationDescription?: string;
           gameZones?: Array<{ type: string; radius: number; center?: { x: number; y: number } }>;
         } | null;
         const hazardZonesRaw = (sceneRow.hazard_zones as Array<Record<string, unknown>>) || [];
         const exitsRaw = (sceneRow.exits as Array<Record<string, unknown>>) || [];
         const interiorWallsRaw = (sceneRow.interior_walls as Array<Record<string, unknown>>) || [];
         const enrichmentResult = sceneRow.enrichment_result as Record<string, unknown> | null;
+        sceneLocationDescription = blastSiteRaw?.locationDescription;
 
         if (buildingPolygon && buildingPolygon.length >= 3) {
           const blastLatLng = blastSiteRaw ? simToLatLng(blastSiteRaw, buildingPolygon) : null;
@@ -1143,8 +1146,8 @@ export async function stageGenerateAndPersist(
       scenario_type: parsed.scenario_type,
       setting: parsed.setting,
       terrain: parsed.terrain,
-      location: parsed.location,
-      venue_name: geoResult.venueName,
+      location: parsed.location || sceneLocationDescription || null,
+      venue_name: geoResult.venueName || trainerScene?.buildingName || undefined,
       original_prompt: options.prompt || undefined,
       landmarks: parsed.landmarks,
       osm_vicinity: geoResult.osmVicinity,

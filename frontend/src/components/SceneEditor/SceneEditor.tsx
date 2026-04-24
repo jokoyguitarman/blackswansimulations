@@ -57,6 +57,7 @@ export interface SceneConfig {
   plantedItems: PlantedItem[];
   pedestrianCount: number;
   weaponType: string | null;
+  locationDescription: string | null;
 }
 
 export interface SceneEditorProps {
@@ -228,6 +229,7 @@ export function SceneEditor({
   // Draw building mode
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawnBuildingName, setDrawnBuildingName] = useState('');
+  const [locationDescription, setLocationDescription] = useState<string | null>(null);
 
   // Scene state
   const [exits, setExits] = useState<ExitDef[]>([]);
@@ -429,6 +431,7 @@ export function SceneEditor({
       setLat(parseFloat(result.lat).toFixed(7));
       setLng(parseFloat(result.lon).toFixed(7));
       setSearchQuery(result.display_name);
+      setLocationDescription(result.display_name);
       setSearchOpen(false);
       setSearchResults([]);
       const map = mapPhaseMapRef.current;
@@ -510,6 +513,9 @@ export function SceneEditor({
       setActiveMode('select');
       setPhase('edit');
       setIsDrawing(false);
+      if (!locationDescription) {
+        setLocationDescription(drawnBuildingName || searchQuery || null);
+      }
 
       if (polygon.length >= 3) {
         const verts = projectPolygon(polygon);
@@ -519,7 +525,7 @@ export function SceneEditor({
         setWallPoints([]);
       }
     },
-    [fetchResult, drawnBuildingName],
+    [fetchResult, drawnBuildingName, locationDescription, searchQuery],
   );
 
   const backToMap = useCallback(() => {
@@ -955,10 +961,17 @@ export function SceneEditor({
         plantedItems,
         pedestrianCount,
         weaponType: localWeaponType || null,
+        locationDescription,
       };
 
       const enrichedBlastSite = blastSite
-        ? { ...blastSite, radius: blastRadius, weaponType: localWeaponType || null, gameZones }
+        ? {
+            ...blastSite,
+            radius: blastRadius,
+            weaponType: localWeaponType || null,
+            gameZones,
+            locationDescription,
+          }
         : null;
       const exitsWithPos = exits.map((e) => ({ ...e, pos: e.center }));
 
@@ -1013,6 +1026,7 @@ export function SceneEditor({
     pedestrianCount,
     localWeaponType,
     gameZones,
+    locationDescription,
     sceneConfigId,
     onSave,
   ]);
