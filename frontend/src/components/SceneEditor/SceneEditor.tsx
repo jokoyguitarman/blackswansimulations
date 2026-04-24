@@ -211,22 +211,21 @@ function AutoTraceClickHandler({
       if (!active) return;
       const cp = map.latLngToContainerPoint(e.latlng);
       onStatus('Tracing...');
-      autoTraceBuilding(map, cp.x, cp.y, tolerance)
-        .then(({ polygon, pixelCount }) => {
-          if (polygon.length < 3) {
-            onStatus(
-              pixelCount < 50
-                ? 'No building detected at this point. Try clicking directly on a building.'
-                : 'Could not trace a clean outline. Try a different spot.',
-            );
-            return;
-          }
-          onStatus(null);
-          onResult(polygon);
-        })
-        .catch(() => {
-          onStatus('Trace failed. Try again.');
-        });
+      try {
+        const { polygon, pixelCount } = autoTraceBuilding(map, cp.x, cp.y, tolerance);
+        if (polygon.length < 3) {
+          onStatus(
+            pixelCount < 50
+              ? 'No building detected at this point. Try clicking directly on a building.'
+              : 'Could not trace a clean outline. Try a different spot.',
+          );
+          return;
+        }
+        onStatus(null);
+        onResult(polygon);
+      } catch {
+        onStatus('Trace failed. Try again.');
+      }
     },
   });
 
@@ -1542,9 +1541,10 @@ export function SceneEditor({
           >
             <TileLayer
               attribution="&copy; OSM"
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              url={`${(import.meta.env.VITE_API_URL || '').replace(/\/$/, '')}/api/tiles/{z}/{x}/{y}.png`}
               maxNativeZoom={19}
               maxZoom={22}
+              crossOrigin="anonymous"
             />
             <MapRefSync onMap={setMapPhaseMap} />
             <FlyToPoint lat={mapPhaseLat} lng={mapPhaseLng} zoom={19} />

@@ -1,64 +1,49 @@
-import html2canvas from 'html2canvas';
 import type L from 'leaflet';
 
 /**
- * Capture the visible map tiles as pixel data by screenshotting
- * the Leaflet map container.
+ * Capture the visible map tiles as pixel data by compositing tile <img>
+ * elements onto an offscreen canvas. Tiles must be served with CORS
+ * headers (via the /api/tiles proxy) for getImageData to work.
  */
-export async function captureMapPixels(map: L.Map): Promise<ImageData> {
+export function captureMapPixels(map: L.Map): ImageData {
   const container = map.getContainer();
+  const { width, height } = container.getBoundingClientRect();
+  const w = Math.round(width);
+  const h = Math.round(height);
 
-  // Hide everything except the tile layer so overlays (circles, polygons,
-  // markers, controls) don't corrupt the pixel data
-  const panesToHide = [
-    'leaflet-overlay-pane',
-    'leaflet-shadow-pane',
-    'leaflet-marker-pane',
-    'leaflet-tooltip-pane',
-    'leaflet-popup-pane',
-    'leaflet-control-container',
-  ];
-  const hidden: HTMLElement[] = [];
-  for (const cls of panesToHide) {
-    const els = container.getElementsByClassName(cls);
-    for (let i = 0; i < els.length; i++) {
-      const el = els[i] as HTMLElement;
-      if (el.style.display !== 'none') {
-        el.style.display = 'none';
-        hidden.push(el);
+  const offscreen = document.createElement('canvas');
+  offscreen.width = w;
+  offscreen.height = h;
+  const ctx = offscreen.getContext('2d');
+  if (!ctx) throw new Error('Failed to get canvas context');
+
+  // White background (matches OSM tile background)
+  ctx.fillStyle = '#f2efe9';
+  ctx.fillRect(0, 0, w, h);
+
+  // Find all tile images in the tile pane and draw them at their CSS positions
+  const tilePane = container.querySelector('.leaflet-tile-pane');
+  if (tilePane) {
+    const imgs = tilePane.querySelectorAll('img.leaflet-tile');
+    const containerRect = container.getBoundingClientRect();
+
+    imgs.forEach((img) => {
+      const imgEl = img as HTMLImageElement;
+      if (!imgEl.complete || imgEl.naturalWidth === 0) return;
+
+      const rect = imgEl.getBoundingClientRect();
+      const x = rect.left - containerRect.left;
+      const y = rect.top - containerRect.top;
+
+      try {
+        ctx.drawImage(imgEl, x, y, rect.width, rect.height);
+      } catch {
+        // Skip tainted tiles (shouldn't happen with proxy)
       }
-    }
-  }
-  // Also hide any canvas overlays (our RTS canvas) that sit on top
-  const canvases = container.querySelectorAll('canvas');
-  const hiddenCanvases: HTMLCanvasElement[] = [];
-  canvases.forEach((c) => {
-    if (c.style.zIndex && parseInt(c.style.zIndex) >= 1000) {
-      c.style.display = 'none';
-      hiddenCanvases.push(c);
-    }
-  });
-
-  try {
-    const canvas = await html2canvas(container, {
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      backgroundColor: null,
-      scale: 1,
     });
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Failed to get canvas context');
-    return ctx.getImageData(0, 0, canvas.width, canvas.height);
-  } finally {
-    // Restore all hidden elements
-    for (const el of hidden) {
-      el.style.display = '';
-    }
-    for (const c of hiddenCanvases) {
-      c.style.display = '';
-    }
   }
+
+  return ctx.getImageData(0, 0, w, h);
 }
 
 // ── Helper: RGB distance between two pixel indices ────────────────────────
@@ -438,13 +423,13 @@ export function pixelsToLatLng(
 
 // ── Full auto-trace pipeline ─────────────────────────────────────────────
 
-export async function autoTraceBuilding(
+export function autoTraceBuilding(
   map: L.Map,
   clickX: number,
   clickY: number,
   tolerance: number = 20,
-): Promise<{ polygon: [number, number][]; pixelCount: number }> {
-  const imageData = await captureMapPixels(map);
+): { polygon: [number, number][]; pixelCount: number } {
+  const imageData = captureMapPixels(map);
   let mask = floodFillMask(imageData, clickX, clickY, tolerance);
 
   const pixelCount = mask.reduce((s, v) => s + v, 0);
