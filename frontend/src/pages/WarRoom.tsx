@@ -24,6 +24,39 @@ const STEP_LABELS: Record<number, string> = {
 
 const VISIBLE_STEPS = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11];
 
+const INCIDENT_TYPES = [
+  { id: 'bombing', label: 'Bombing (General)', group: 'Explosives', enabled: true, icon: '💣' },
+  { id: 'car_bomb', label: 'Car Bomb / VBIED', group: 'Explosives', enabled: true, icon: '🚗' },
+  {
+    id: 'suicide_bombing',
+    label: 'Suicide Bombing',
+    group: 'Explosives',
+    enabled: true,
+    icon: '⚠',
+  },
+  { id: 'bombing_mall', label: 'Mall Bombing', group: 'Explosives', enabled: true, icon: '🏬' },
+  {
+    id: 'open_field_shooting',
+    label: 'Shooting (Open Field)',
+    group: 'Armed Attack',
+    enabled: false,
+    icon: '🔫',
+  },
+  {
+    id: 'knife_attack',
+    label: 'Knife / Bladed Attack',
+    group: 'Armed Attack',
+    enabled: false,
+    icon: '🔪',
+  },
+  { id: 'gas_attack', label: 'Chemical / Gas Attack', group: 'CBRN', enabled: false, icon: '☣' },
+  { id: 'poisoning', label: 'Poisoning', group: 'CBRN', enabled: false, icon: '☠' },
+  { id: 'kidnapping', label: 'Kidnapping / Hostage', group: 'Other', enabled: false, icon: '🚨' },
+  { id: 'hijacking', label: 'Hijacking', group: 'Other', enabled: false, icon: '✈' },
+] as const;
+
+const INCIDENT_GROUPS = ['Explosives', 'Armed Attack', 'CBRN', 'Other'] as const;
+
 export const WarRoom = () => {
   const { isTrainer } = useRoleVisibility();
 
@@ -88,7 +121,8 @@ export const WarRoom = () => {
 
   const currentStepIndex = VISIBLE_STEPS.indexOf(step);
   const canGoBack = currentStepIndex > 0;
-  const canGoNext = step < 11;
+  const stepValid = step === 1 ? !!incidentType : true;
+  const canGoNext = step < 11 && stepValid;
 
   const goBack = () => {
     if (canGoBack) {
@@ -162,14 +196,83 @@ export const WarRoom = () => {
           {step === 1 && (
             <div>
               <h2 className="text-lg terminal-text uppercase mb-4">[STEP 1: INCIDENT SELECTION]</h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50">
+              <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
                 Select the type of incident for this training scenario.
               </p>
-              <div className="mt-4 text-sm terminal-text text-robotic-yellow/30">
-                [Incident selector will be implemented here]
-              </div>
-              <div className="mt-2 text-[10px] terminal-text text-robotic-yellow/20">
-                State: incidentType={incidentType || 'null'}, custom="{customIncidentText}"
+
+              {INCIDENT_GROUPS.map((group) => {
+                const groupTypes = INCIDENT_TYPES.filter((t) => t.group === group);
+                return (
+                  <div key={group} className="mb-5">
+                    <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2">
+                      {group}
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {groupTypes.map((t) => {
+                        const isSelected = incidentType === t.id;
+                        const isDisabled = !t.enabled;
+                        return (
+                          <div
+                            key={t.id}
+                            onClick={() => {
+                              if (isDisabled) return;
+                              setIncidentType(t.id);
+                              setCustomIncidentText('');
+                            }}
+                            title={isDisabled ? 'Available soon' : t.label}
+                            className={`relative px-3 py-3 border rounded text-center transition-all ${
+                              isDisabled
+                                ? 'border-robotic-gray-200 opacity-30 cursor-not-allowed'
+                                : isSelected
+                                  ? 'border-cyan-400 bg-cyan-900/30 cursor-pointer'
+                                  : 'border-robotic-gray-200 hover:border-robotic-yellow/50 cursor-pointer'
+                            }`}
+                          >
+                            <div className="text-xl mb-1">{t.icon}</div>
+                            <div
+                              className={`text-xs terminal-text ${
+                                isSelected
+                                  ? 'text-cyan-300'
+                                  : isDisabled
+                                    ? 'text-robotic-yellow/20'
+                                    : 'text-robotic-yellow/70'
+                              }`}
+                            >
+                              {t.label}
+                            </div>
+                            {isDisabled && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="text-[8px] terminal-text text-robotic-yellow/30 bg-black/60 px-1.5 py-0.5 rounded">
+                                  SOON
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div className="border-t border-robotic-gray-200 pt-4 mt-4">
+                <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider">
+                  Or describe a custom bombing scenario
+                </label>
+                <input
+                  type="text"
+                  value={customIncidentText}
+                  onChange={(e) => {
+                    setCustomIncidentText(e.target.value);
+                    if (e.target.value.trim()) {
+                      setIncidentType('custom');
+                    } else if (incidentType === 'custom') {
+                      setIncidentType(null);
+                    }
+                  }}
+                  placeholder="e.g., IED hidden in a vehicle outside a government building..."
+                  className="w-full mt-1 px-4 py-2 bg-black/50 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-sm rounded focus:outline-none focus:border-robotic-yellow/70"
+                />
               </div>
             </div>
           )}
