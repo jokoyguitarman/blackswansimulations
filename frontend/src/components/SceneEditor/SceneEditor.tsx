@@ -612,6 +612,7 @@ export function SceneEditor({
   const renderOnceRef = useRef<() => void>(() => {});
 
   const [activeHazard, setActiveHazard] = useState<HazardZone | null>(null);
+  const [activeWall, setActiveWall] = useState<InteriorWall | null>(null);
 
   const findDraggableAt = useCallback((sim: Vec2): { type: string; id: string } | null => {
     const bs = blastSiteRef.current;
@@ -623,6 +624,19 @@ export function SceneEditor({
     for (const sw of stairwellsRef.current) {
       if (Math.hypot(sw.pos.x - sim.x, sw.pos.y - sim.y) < 5)
         return { type: 'stairwell', id: sw.id };
+    }
+    for (const iw of interiorWallsRef.current) {
+      const dx = iw.end.x - iw.start.x;
+      const dy = iw.end.y - iw.start.y;
+      const len2 = dx * dx + dy * dy;
+      if (len2 < 0.01) continue;
+      const t = Math.max(
+        0,
+        Math.min(1, ((sim.x - iw.start.x) * dx + (sim.y - iw.start.y) * dy) / len2),
+      );
+      const px = iw.start.x + t * dx;
+      const py = iw.start.y + t * dy;
+      if (Math.hypot(sim.x - px, sim.y - py) < 3) return { type: 'wall', id: iw.id };
     }
     // Zone center dragging (click near the zone center marker)
     const fallback = bs;
@@ -774,6 +788,13 @@ export function SceneEditor({
             return;
           }
         }
+        if (clickedEl.type === 'wall') {
+          const iw = interiorWalls.find((w) => w.id === clickedEl.id);
+          if (iw) {
+            setActiveWall(iw);
+            return;
+          }
+        }
         if (clickedEl.type === 'blastSite') return;
         if (clickedEl.type === 'stairwell') return;
       }
@@ -899,6 +920,7 @@ export function SceneEditor({
       wallPoints,
       handleWallPointClick,
       hazardZones,
+      interiorWalls,
       applyElementDrag,
       studInspectMode,
     ],
@@ -2103,6 +2125,114 @@ export function SceneEditor({
                 className="w-full bg-red-900/40 hover:bg-red-800 text-red-300 text-xs px-3 py-1.5 rounded border border-red-700"
               >
                 Delete This Hazard
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Floating interior wall panel */}
+        {activeWall && (
+          <div
+            className="absolute bottom-4 left-4 w-[340px] bg-gray-900/95 border border-slate-600 rounded-lg shadow-2xl overflow-hidden"
+            style={{ zIndex: 1002 }}
+          >
+            <div className="flex items-center justify-between px-3 py-2 bg-slate-800/80 border-b border-slate-700">
+              <div className="text-xs text-slate-300 font-bold">
+                Interior Wall — {activeWall.id}
+              </div>
+              <button
+                onClick={() => setActiveWall(null)}
+                className="text-gray-400 hover:text-white text-sm px-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Length */}
+            <div className="px-3 py-1.5 text-xs text-gray-400 border-b border-gray-800">
+              Length:{' '}
+              {Math.hypot(
+                activeWall.end.x - activeWall.start.x,
+                activeWall.end.y - activeWall.start.y,
+              ).toFixed(1)}
+              m
+            </div>
+
+            {/* Material dropdown */}
+            <div className="px-3 py-2 border-b border-gray-800">
+              <label className="block text-xs text-slate-400 mb-1">Material</label>
+              <select
+                value={activeWall.material}
+                onChange={(e) => {
+                  const mat = e.target.value;
+                  setInteriorWalls((prev) =>
+                    prev.map((w) => (w.id === activeWall.id ? { ...w, material: mat } : w)),
+                  );
+                  setActiveWall((prev) => (prev ? { ...prev, material: mat } : prev));
+                }}
+                className="w-full bg-gray-800 border border-slate-700 text-slate-300 text-xs rounded px-2 py-1"
+              >
+                <option value="">-- Select material --</option>
+                <option value="concrete">Concrete</option>
+                <option value="brick">Brick</option>
+                <option value="drywall">Drywall / Gypsum</option>
+                <option value="cinder_block">Cinder Block</option>
+                <option value="glass">Glass</option>
+                <option value="metal">Metal / Steel</option>
+                <option value="wood">Wood</option>
+                <option value="plywood">Plywood / Partition</option>
+                <option value="stone">Stone / Masonry</option>
+                <option value="reinforced_concrete">Reinforced Concrete</option>
+              </select>
+            </div>
+
+            {/* Description */}
+            <div className="px-3 py-2 border-b border-gray-800">
+              <label className="block text-xs text-slate-400 mb-1">Description</label>
+              <textarea
+                value={activeWall.description}
+                onChange={(e) => {
+                  const desc = e.target.value;
+                  setInteriorWalls((prev) =>
+                    prev.map((w) => (w.id === activeWall.id ? { ...w, description: desc } : w)),
+                  );
+                  setActiveWall((prev) => (prev ? { ...prev, description: desc } : prev));
+                }}
+                placeholder="Describe the wall — load-bearing, partial, damaged, etc."
+                className="w-full bg-gray-800 border border-gray-700 text-slate-300 text-xs rounded px-2 py-1.5 resize-none focus:border-slate-500 focus:outline-none"
+                rows={2}
+              />
+            </div>
+
+            {/* Has door toggle */}
+            <div className="px-3 py-2 border-b border-gray-800 flex items-center gap-2">
+              <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={activeWall.hasDoor}
+                  onChange={(e) => {
+                    const val = e.target.checked;
+                    setInteriorWalls((prev) =>
+                      prev.map((w) => (w.id === activeWall.id ? { ...w, hasDoor: val } : w)),
+                    );
+                    setActiveWall((prev) => (prev ? { ...prev, hasDoor: val } : prev));
+                  }}
+                  className="rounded border-slate-600"
+                />
+                Has a door / opening
+              </label>
+            </div>
+
+            {/* Delete wall */}
+            <div className="px-3 py-2 border-t border-gray-800">
+              <button
+                onClick={() => {
+                  setInteriorWalls((prev) => prev.filter((w) => w.id !== activeWall.id));
+                  setActiveWall(null);
+                }}
+                className="w-full bg-red-900/40 hover:bg-red-800 text-red-300 text-xs px-3 py-1.5 rounded border border-red-700"
+              >
+                Delete This Wall
               </button>
             </div>
           </div>
