@@ -304,6 +304,68 @@ export function morphologicalClose(
   return result;
 }
 
+// ── Largest connected component extraction ───────────────────────────────
+
+function largestConnectedComponent(mask: Uint8Array, width: number, height: number): Uint8Array {
+  const labels = new Int32Array(width * height);
+  let nextLabel = 1;
+  const componentSizes = new Map<number, number>();
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      if (mask[idx] !== 1 || labels[idx] !== 0) continue;
+
+      // BFS to label this component
+      const label = nextLabel++;
+      let size = 0;
+      const q: number[] = [x, y];
+      labels[idx] = label;
+
+      while (q.length > 0) {
+        const cy = q.pop()!;
+        const cx = q.pop()!;
+        size++;
+
+        const neighbors = [
+          [cx - 1, cy],
+          [cx + 1, cy],
+          [cx, cy - 1],
+          [cx, cy + 1],
+        ];
+        for (const [nx, ny] of neighbors) {
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+          const ni = ny * width + nx;
+          if (mask[ni] === 1 && labels[ni] === 0) {
+            labels[ni] = label;
+            q.push(nx, ny);
+          }
+        }
+      }
+      componentSizes.set(label, size);
+    }
+  }
+
+  // Find the largest component
+  let bestLabel = 0;
+  let bestSize = 0;
+  for (const [label, size] of componentSizes) {
+    if (size > bestSize) {
+      bestSize = size;
+      bestLabel = label;
+    }
+  }
+
+  // Create mask with only the largest component
+  const result = new Uint8Array(width * height);
+  if (bestLabel > 0) {
+    for (let i = 0; i < labels.length; i++) {
+      if (labels[i] === bestLabel) result[i] = 1;
+    }
+  }
+  return result;
+}
+
 // ── Contour extraction (Moore neighborhood tracing) ──────────────────────
 
 export function extractContour(
@@ -557,17 +619,23 @@ export function autoTraceBuilding(
 
   let mask = floodFillMask(imageData, clickX, clickY, tolerance);
 
-  const pixelCount = mask.reduce((s, v) => s + v, 0);
+  const rawPixelCount = mask.reduce((s, v) => s + v, 0);
 
-  // Show debug popup
-  showDebugPopup(imageData, mask, clickX, clickY, target, pixelCount, tolerance);
-
-  if (pixelCount < 50) {
-    return { polygon: [], pixelCount };
+  if (rawPixelCount < 50) {
+    showDebugPopup(imageData, mask, clickX, clickY, target, rawPixelCount, tolerance);
+    return { polygon: [], pixelCount: rawPixelCount };
   }
 
   // Morphological close to fill text/icon holes
   mask = morphologicalClose(mask, imageData.width, imageData.height, 3);
+
+  // Keep only the largest connected blob (discard small fragments)
+  mask = largestConnectedComponent(mask, imageData.width, imageData.height);
+
+  const pixelCount = mask.reduce((s, v) => s + v, 0);
+
+  // Show debug popup with cleaned mask
+  showDebugPopup(imageData, mask, clickX, clickY, target, pixelCount, tolerance);
 
   const contour = extractContour(mask, imageData.width, imageData.height);
   if (contour.length < 3) {
