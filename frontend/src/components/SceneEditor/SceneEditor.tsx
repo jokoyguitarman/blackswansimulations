@@ -1126,6 +1126,15 @@ export function SceneEditor({
       renderCtxRef.current = computeMapRenderContext(map, grid.polygon, verts);
     }
     const canvas = canvasRef.current;
+    // Sync canvas buffer to match its actual display size
+    if (canvas) {
+      const cw = canvas.clientWidth;
+      const ch = canvas.clientHeight;
+      if (cw > 0 && ch > 0 && (canvas.width !== cw || canvas.height !== ch)) {
+        canvas.width = cw;
+        canvas.height = ch;
+      }
+    }
     const rc = renderCtxRef.current;
     if (canvas && rc) {
       const ctx = canvas.getContext('2d');
