@@ -423,6 +423,122 @@ export function pixelsToLatLng(
 
 // ── Full auto-trace pipeline ─────────────────────────────────────────────
 
+/**
+ * Show a debug popup with the captured image and flood fill mask overlay.
+ */
+function showDebugPopup(
+  imageData: ImageData,
+  mask: Uint8Array,
+  clickX: number,
+  clickY: number,
+  targetColor: { r: number; g: number; b: number } | null,
+  pixelCount: number,
+  tolerance: number,
+) {
+  // Remove previous debug popup
+  const prev = document.getElementById('autotrace-debug');
+  if (prev) prev.remove();
+
+  const { width, height } = imageData;
+
+  const popup = document.createElement('div');
+  popup.id = 'autotrace-debug';
+  popup.style.cssText = `
+    position: fixed; top: 10px; right: 10px; z-index: 10000;
+    background: #1a1a2e; border: 2px solid #e94560; border-radius: 8px;
+    padding: 10px; color: #eee; font-family: monospace; font-size: 11px;
+    max-width: 520px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  `;
+
+  // Scale factor for display (don't show full-res)
+  const scale = Math.min(500 / width, 300 / height, 1);
+  const dw = Math.round(width * scale);
+  const dh = Math.round(height * scale);
+
+  // Canvas 1: captured tiles
+  const c1 = document.createElement('canvas');
+  c1.width = dw;
+  c1.height = dh;
+  const ctx1 = c1.getContext('2d')!;
+  // Draw the captured image scaled down
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = width;
+  tempCanvas.height = height;
+  tempCanvas.getContext('2d')!.putImageData(imageData, 0, 0);
+  ctx1.drawImage(tempCanvas, 0, 0, dw, dh);
+  // Draw click point
+  ctx1.beginPath();
+  ctx1.arc(clickX * scale, clickY * scale, 6, 0, Math.PI * 2);
+  ctx1.strokeStyle = '#ff0';
+  ctx1.lineWidth = 2;
+  ctx1.stroke();
+  ctx1.fillStyle = '#ff0';
+  ctx1.font = '10px monospace';
+  ctx1.fillText(`click (${clickX}, ${clickY})`, clickX * scale + 8, clickY * scale - 4);
+
+  // Canvas 2: mask overlay on tiles
+  const c2 = document.createElement('canvas');
+  c2.width = dw;
+  c2.height = dh;
+  const ctx2 = c2.getContext('2d')!;
+  ctx2.drawImage(tempCanvas, 0, 0, dw, dh);
+  // Overlay mask in red
+  const maskOverlay = ctx2.getImageData(0, 0, dw, dh);
+  for (let y = 0; y < dh; y++) {
+    for (let x = 0; x < dw; x++) {
+      const srcX = Math.floor(x / scale);
+      const srcY = Math.floor(y / scale);
+      if (srcX < width && srcY < height && mask[srcY * width + srcX] === 1) {
+        const idx = (y * dw + x) * 4;
+        maskOverlay.data[idx] = 255;
+        maskOverlay.data[idx + 1] = Math.floor(maskOverlay.data[idx + 1] * 0.3);
+        maskOverlay.data[idx + 2] = Math.floor(maskOverlay.data[idx + 2] * 0.3);
+        maskOverlay.data[idx + 3] = 200;
+      }
+    }
+  }
+  ctx2.putImageData(maskOverlay, 0, 0);
+
+  // Color swatch
+  const colorStr = targetColor
+    ? `rgb(${targetColor.r}, ${targetColor.g}, ${targetColor.b})`
+    : 'null';
+
+  // Click pixel actual color
+  const pi = (Math.round(clickY) * width + Math.round(clickX)) * 4;
+  const actualColor = `rgb(${imageData.data[pi]}, ${imageData.data[pi + 1]}, ${imageData.data[pi + 2]})`;
+
+  popup.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <b style="color:#e94560;">Auto-Trace Debug</b>
+      <button id="autotrace-debug-close" style="background:none;border:none;color:#888;cursor:pointer;font-size:16px;">✕</button>
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
+      <div>
+        <div style="color:#888;margin-bottom:2px;">Captured Tiles (${width}x${height})</div>
+      </div>
+      <div>
+        <div style="color:#888;margin-bottom:2px;">Flood Fill Mask (red=filled)</div>
+      </div>
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:8px;" id="autotrace-debug-canvases"></div>
+    <div style="display:flex; gap:12px; align-items:center; margin-bottom:4px;">
+      <span>Target: <span style="display:inline-block;width:14px;height:14px;background:${colorStr};border:1px solid #888;vertical-align:middle;"></span> ${colorStr}</span>
+      <span>Click px: <span style="display:inline-block;width:14px;height:14px;background:${actualColor};border:1px solid #888;vertical-align:middle;"></span> ${actualColor}</span>
+    </div>
+    <div>Tolerance: ${tolerance} | Filled: ${pixelCount} px | Tiles found: ${document.querySelectorAll('.leaflet-tile-pane img.leaflet-tile').length}</div>
+  `;
+
+  document.body.appendChild(popup);
+  const canvasContainer = document.getElementById('autotrace-debug-canvases')!;
+  c1.style.border = '1px solid #333';
+  c2.style.border = '1px solid #333';
+  canvasContainer.appendChild(c1);
+  canvasContainer.appendChild(c2);
+
+  document.getElementById('autotrace-debug-close')!.onclick = () => popup.remove();
+}
+
 export function autoTraceBuilding(
   map: L.Map,
   clickX: number,
@@ -430,9 +546,22 @@ export function autoTraceBuilding(
   tolerance: number = 20,
 ): { polygon: [number, number][]; pixelCount: number } {
   const imageData = captureMapPixels(map);
+
+  // Get target color for debug
+  const sx = Math.round(clickX);
+  const sy = Math.round(clickY);
+  const target =
+    sx >= 0 && sx < imageData.width && sy >= 0 && sy < imageData.height
+      ? sampleTargetColor(imageData.data, imageData.width, imageData.height, sx, sy)
+      : null;
+
   let mask = floodFillMask(imageData, clickX, clickY, tolerance);
 
   const pixelCount = mask.reduce((s, v) => s + v, 0);
+
+  // Show debug popup
+  showDebugPopup(imageData, mask, clickX, clickY, target, pixelCount, tolerance);
+
   if (pixelCount < 50) {
     return { polygon: [], pixelCount };
   }
