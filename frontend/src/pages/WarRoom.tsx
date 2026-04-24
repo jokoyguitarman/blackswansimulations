@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
+import { SceneEditor, type SceneConfig } from '../components/SceneEditor/SceneEditor';
 
 interface TeamEntry {
   team_name: string;
@@ -137,9 +138,6 @@ export const WarRoom = () => {
   const [doctrines, setDoctrines] = useState<Record<string, unknown> | null>(null);
 
   // Suppress unused-var warnings until steps are implemented
-  void setRtsSceneId;
-  void setSceneConfig;
-  void setWeaponType;
   void setGeoResult;
   void setResearchResults;
   void setHazardAnalysis;
@@ -211,7 +209,13 @@ export const WarRoom = () => {
   const currentStepIndex = VISIBLE_STEPS.indexOf(step);
   const canGoBack = currentStepIndex > 0;
   const stepValid =
-    step === 1 ? !!incidentType : step === 2 ? teams.length > 0 && !teamsLoading : true;
+    step === 1
+      ? !!incidentType
+      : step === 2
+        ? teams.length > 0 && !teamsLoading
+        : step === 3
+          ? !!rtsSceneId
+          : true;
   const canGoNext = step < 11 && stepValid;
 
   const goBack = () => {
@@ -486,18 +490,18 @@ export const WarRoom = () => {
           )}
 
           {step === 3 && (
-            <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">[STEP 3: SCENE EDITOR]</h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50">
-                Design the physical scene for the exercise. Place buildings, exits, hazards, blast
-                zones, and perimeter inspection points.
-              </p>
-              <div className="mt-4 text-sm terminal-text text-robotic-yellow/30">
-                [Scene editor will be implemented here]
-              </div>
-              <div className="mt-2 text-[10px] terminal-text text-robotic-yellow/20">
-                State: rtsSceneId={rtsSceneId || 'null'}, weaponType={weaponType || 'null'}
-              </div>
+            <div className="h-[calc(100vh-280px)] min-h-[500px]">
+              <SceneEditor
+                incidentType={incidentType || 'bombing'}
+                initialSceneId={rtsSceneId}
+                weaponType={weaponType}
+                onWeaponTypeChange={(wt) => setWeaponType(wt)}
+                onSave={(id, config) => {
+                  setRtsSceneId(id);
+                  setSceneConfig(config as unknown as Record<string, unknown>);
+                  setWeaponType(config.weaponType);
+                }}
+              />
             </div>
           )}
 
