@@ -594,19 +594,164 @@ export function SceneEditor({
     setPlantedItems((prev) => prev.filter((p) => p.id !== itemId));
   }, []);
 
-  // ── Canvas click handler ──────────────────────────────────────────────
+  // ── Canvas interaction system (drag, pan, click, inspect) ────────────
 
-  const handleCanvasClick = useCallback(
-    (e: React.MouseEvent) => {
+  const dragStartRef = useRef<Vec2 | null>(null);
+  const isDraggingRef = useRef(false);
+  const elementDragRef = useRef<{ type: string; id: string } | null>(null);
+  const mapPanRef = useRef<{ startX: number; startY: number } | null>(null);
+
+  const [activeHazard, setActiveHazard] = useState<HazardZone | null>(null);
+
+  const findDraggableAt = useCallback((sim: Vec2): { type: string; id: string } | null => {
+    const bs = blastSiteRef.current;
+    if (bs && Math.hypot(sim.x - bs.x, sim.y - bs.y) < 4) return { type: 'blastSite', id: 'blast' };
+    for (const hz of hazardZonesRef.current) {
+      if (Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < Math.max(hz.radius, 8))
+        return { type: 'hazard', id: hz.id };
+    }
+    for (const sw of stairwellsRef.current) {
+      if (Math.hypot(sw.pos.x - sim.x, sw.pos.y - sim.y) < 5)
+        return { type: 'stairwell', id: sw.id };
+    }
+    return null;
+  }, []);
+
+  const applyElementDrag = useCallback(
+    (drag: { type: string; id: string }, sim: Vec2) => {
+      const snapped = snapToStud(sim);
+      const sp = snapped.pos;
+      const ctx = (snapped.stud?.spatialContext ?? undefined) as
+        | 'inside_building'
+        | 'road'
+        | 'open_air'
+        | undefined;
+      if (drag.type === 'blastSite') setBlastSite(sp);
+      else if (drag.type === 'hazard')
+        setHazardZones((prev) =>
+          prev.map((h) =>
+            h.id === drag.id
+              ? {
+                  ...h,
+                  pos: { ...sp },
+                  studId: snapped.stud?.id,
+                  insideBuilding: ctx === 'inside_building',
+                  spatialContext: ctx,
+                }
+              : h,
+          ),
+        );
+      else if (drag.type === 'stairwell')
+        setStairwells((prev) => prev.map((s) => (s.id === drag.id ? { ...s, pos: { ...sp } } : s)));
+    },
+    [snapToStud],
+  );
+
+  const handleCanvasMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
       if (!canvas || !renderCtxRef.current) return;
       const rect = canvas.getBoundingClientRect();
-      const cx = e.clientX - rect.left;
-      const cy = e.clientY - rect.top;
-      const sim = toSim(cx, cy);
+      const sim = toSim(e.clientX - rect.left, e.clientY - rect.top);
+
+      // In placement modes, don't start drag/pan
+      if (activeMode !== 'select') return;
+
+      // Check for a draggable element
+      const hit = findDraggableAt(sim);
+      if (hit) {
+        elementDragRef.current = hit;
+        isDraggingRef.current = false;
+        dragStartRef.current = sim;
+        return;
+      }
+
+      // Start map pan
+      mapPanRef.current = { startX: e.clientX, startY: e.clientY };
+      dragStartRef.current = sim;
+      isDraggingRef.current = false;
+    },
+    [activeMode, toSim, findDraggableAt],
+  );
+
+  const handleCanvasMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!renderCtxRef.current) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const sim = toSim(e.clientX - rect.left, e.clientY - rect.top);
+
+      // Map panning
+      if (mapPanRef.current && !elementDragRef.current) {
+        const map = leafletMapRef.current;
+        if (map) {
+          const dx = e.clientX - mapPanRef.current.startX;
+          const dy = e.clientY - mapPanRef.current.startY;
+          map.panBy([-dx, -dy], { animate: false });
+          mapPanRef.current = { startX: e.clientX, startY: e.clientY };
+        }
+        isDraggingRef.current = true;
+        return;
+      }
+
+      // Element dragging
+      if (elementDragRef.current && dragStartRef.current) {
+        const moved = Math.hypot(sim.x - dragStartRef.current.x, sim.y - dragStartRef.current.y);
+        if (moved > 1) {
+          isDraggingRef.current = true;
+          applyElementDrag(elementDragRef.current, sim);
+        }
+      }
+    },
+    [toSim, applyElementDrag],
+  );
+
+  const handleCanvasMouseUp = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      // End map pan
+      if (mapPanRef.current && !elementDragRef.current) {
+        const wasDragging = isDraggingRef.current;
+        mapPanRef.current = null;
+        dragStartRef.current = null;
+        isDraggingRef.current = false;
+        if (wasDragging) return;
+        // Fall through to click handling if no actual drag happened
+      }
+
+      const canvas = canvasRef.current;
+      if (!canvas || !renderCtxRef.current) return;
+      const rect = canvas.getBoundingClientRect();
+      const sim = toSim(e.clientX - rect.left, e.clientY - rect.top);
       const snapped = snapToStud(sim);
 
-      // Wall point hit detection (select mode only)
+      // Finalize element drag
+      if (elementDragRef.current) {
+        if (isDraggingRef.current) {
+          applyElementDrag(elementDragRef.current, sim);
+          elementDragRef.current = null;
+          dragStartRef.current = null;
+          isDraggingRef.current = false;
+          return;
+        }
+        // No movement — treat as click on the element
+        const clickedEl = elementDragRef.current;
+        elementDragRef.current = null;
+        dragStartRef.current = null;
+        isDraggingRef.current = false;
+
+        if (clickedEl.type === 'hazard') {
+          const hz = hazardZones.find((h) => h.id === clickedEl.id);
+          if (hz) {
+            setActiveHazard(hz);
+            return;
+          }
+        }
+        if (clickedEl.type === 'blastSite') return;
+        if (clickedEl.type === 'stairwell') return;
+      }
+
+      // Select mode: check wall points, studs
       if (activeMode === 'select') {
         const hitWp = wallPoints.find(
           (wp) => Math.hypot(wp.simPos.x - sim.x, wp.simPos.y - sim.y) < 3.0,
@@ -617,10 +762,11 @@ export function SceneEditor({
         }
       }
 
+      // Placement modes
       if (activeMode === 'place_exit') {
         const snap = nearestEdge(snapped.pos.x, snapped.pos.y, projectedVerts);
         const w = 3;
-        void edgeLength; // available for width clamping later
+        void edgeLength;
         const t = snap.t;
         const edge = projectedVerts[snap.edgeIndex];
         const next = projectedVerts[(snap.edgeIndex + 1) % projectedVerts.length];
@@ -674,13 +820,28 @@ export function SceneEditor({
           },
         ]);
         setActiveMode('select');
-      } else if (activeMode === 'draw_wall') {
-        // Simplified: single-click places wall start, second click places end
-        // For now, use a simple two-click pattern
       }
     },
-    [activeMode, toSim, snapToStud, projectedVerts, wallPoints, handleWallPointClick],
+    [
+      activeMode,
+      toSim,
+      snapToStud,
+      projectedVerts,
+      wallPoints,
+      handleWallPointClick,
+      hazardZones,
+      applyElementDrag,
+    ],
   );
+
+  const handleCanvasWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const map = leafletMapRef.current;
+    if (!map) return;
+    if (e.deltaY < 0) map.zoomIn();
+    else map.zoomOut();
+  }, []);
 
   // ── Save scene to DB ──────────────────────────────────────────────────
 
@@ -1376,36 +1537,20 @@ export function SceneEditor({
           ref={canvasRef}
           width={canvasSize.w}
           height={canvasSize.h}
+          onMouseDown={handleCanvasMouseDown}
+          onMouseMove={handleCanvasMouseMove}
+          onMouseUp={handleCanvasMouseUp}
+          onWheel={handleCanvasWheel}
           style={{
             position: 'absolute',
             top: 0,
             left: 0,
             width: canvasSize.w,
             height: canvasSize.h,
-            pointerEvents: 'none',
+            pointerEvents: 'auto',
             zIndex: 1000,
-          }}
-        />
-        {/* Click overlay — only captures clicks, lets map handle drag/zoom */}
-        <div
-          onClick={handleCanvasClick}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            zIndex: 1001,
+            touchAction: 'none',
             cursor: activeMode !== 'select' ? 'crosshair' : 'grab',
-          }}
-          onMouseDown={(e) => {
-            // Let Leaflet handle drag — only block when placing elements
-            if (activeMode === 'select') {
-              (e.target as HTMLElement).style.pointerEvents = 'none';
-              requestAnimationFrame(() => {
-                (e.target as HTMLElement).style.pointerEvents = 'auto';
-              });
-            }
           }}
         />
         {activeMode !== 'select' && (
@@ -1578,6 +1723,65 @@ export function SceneEditor({
                   Plant
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Floating hazard inspector panel */}
+        {activeHazard && (
+          <div
+            className="absolute top-4 left-4 w-[300px] bg-gray-900/95 border border-orange-700 rounded-lg shadow-2xl overflow-hidden"
+            style={{ zIndex: 1002 }}
+          >
+            <div className="flex items-center justify-between px-3 py-2 bg-gray-800/80 border-b border-orange-800">
+              <div
+                className="text-xs font-bold"
+                style={{
+                  color: HAZARD_DEFS[activeHazard.hazardType as HazardType]?.color || '#f97316',
+                }}
+              >
+                {HAZARD_DEFS[activeHazard.hazardType as HazardType]?.icon}{' '}
+                {activeHazard.label || activeHazard.hazardType}
+              </div>
+              <button
+                onClick={() => setActiveHazard(null)}
+                className="text-gray-400 hover:text-white text-sm px-1"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="px-3 py-2 text-xs text-gray-400 space-y-1">
+              <div>
+                Type: <span className="text-gray-200">{activeHazard.hazardType}</span>
+              </div>
+              <div>
+                Severity: <span className="text-gray-200">{activeHazard.severity}</span>
+              </div>
+              <div>
+                Radius: <span className="text-gray-200">{activeHazard.radius}m</span>
+              </div>
+              <div>
+                Position:{' '}
+                <span className="text-gray-200">
+                  ({activeHazard.pos.x.toFixed(1)}, {activeHazard.pos.y.toFixed(1)})
+                </span>
+              </div>
+              {activeHazard.spatialContext && (
+                <div>
+                  Context: <span className="text-gray-200">{activeHazard.spatialContext}</span>
+                </div>
+              )}
+            </div>
+            <div className="px-3 py-2 border-t border-gray-800">
+              <button
+                onClick={() => {
+                  setHazardZones((prev) => prev.filter((h) => h.id !== activeHazard.id));
+                  setActiveHazard(null);
+                }}
+                className="w-full bg-red-800 hover:bg-red-700 text-red-100 text-xs px-3 py-1.5 rounded border border-red-600"
+              >
+                Remove Hazard
+              </button>
             </div>
           </div>
         )}
