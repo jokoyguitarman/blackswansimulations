@@ -7,26 +7,58 @@ import type L from 'leaflet';
  */
 export async function captureMapPixels(map: L.Map): Promise<ImageData> {
   const container = map.getContainer();
-  const canvas = await html2canvas(container, {
-    useCORS: true,
-    allowTaint: true,
-    logging: false,
-    backgroundColor: null,
-    scale: 1,
-    ignoreElements: (el) => {
-      const cls = el.className || '';
-      if (typeof cls === 'string') {
-        if (cls.includes('leaflet-control')) return true;
-        if (cls.includes('leaflet-overlay-pane')) return true;
-        if (cls.includes('leaflet-marker-pane')) return true;
-        if (cls.includes('leaflet-popup-pane')) return true;
+
+  // Hide everything except the tile layer so overlays (circles, polygons,
+  // markers, controls) don't corrupt the pixel data
+  const panesToHide = [
+    'leaflet-overlay-pane',
+    'leaflet-shadow-pane',
+    'leaflet-marker-pane',
+    'leaflet-tooltip-pane',
+    'leaflet-popup-pane',
+    'leaflet-control-container',
+  ];
+  const hidden: HTMLElement[] = [];
+  for (const cls of panesToHide) {
+    const els = container.getElementsByClassName(cls);
+    for (let i = 0; i < els.length; i++) {
+      const el = els[i] as HTMLElement;
+      if (el.style.display !== 'none') {
+        el.style.display = 'none';
+        hidden.push(el);
       }
-      return false;
-    },
+    }
+  }
+  // Also hide any canvas overlays (our RTS canvas) that sit on top
+  const canvases = container.querySelectorAll('canvas');
+  const hiddenCanvases: HTMLCanvasElement[] = [];
+  canvases.forEach((c) => {
+    if (c.style.zIndex && parseInt(c.style.zIndex) >= 1000) {
+      c.style.display = 'none';
+      hiddenCanvases.push(c);
+    }
   });
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Failed to get canvas context');
-  return ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+  try {
+    const canvas = await html2canvas(container, {
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      backgroundColor: null,
+      scale: 1,
+    });
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Failed to get canvas context');
+    return ctx.getImageData(0, 0, canvas.width, canvas.height);
+  } finally {
+    // Restore all hidden elements
+    for (const el of hidden) {
+      el.style.display = '';
+    }
+    for (const c of hiddenCanvases) {
+      c.style.display = '';
+    }
+  }
 }
 
 // ── Helper: RGB distance between two pixel indices ────────────────────────
@@ -61,7 +93,7 @@ function sampleTargetColor(
   cy: number,
 ): { r: number; g: number; b: number } | null {
   const samples: Array<{ r: number; g: number; b: number }> = [];
-  const radius = 2; // 5x5 grid
+  const radius = 4; // 9x9 grid for more representative sampling
 
   for (let dy = -radius; dy <= radius; dy++) {
     for (let dx = -radius; dx <= radius; dx++) {
@@ -70,7 +102,7 @@ function sampleTargetColor(
       if (x < 0 || x >= width || y < 0 || y >= height) continue;
       const idx = (y * width + x) * 4;
       const lum = data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
-      if (lum < 40) continue; // skip dark text pixels
+      if (lum < 60) continue; // skip dark text/icon pixels
       samples.push({ r: data[idx], g: data[idx + 1], b: data[idx + 2] });
     }
   }
@@ -212,13 +244,14 @@ export function floodFillMask(
 
       const pi = ni * 4;
 
-      // Skip very dark pixels (text/labels)
-      const lum = data[pi] * 0.299 + data[pi + 1] * 0.587 + data[pi + 2] * 0.114;
-      if (lum < 40) continue;
-
       // Local check: is this pixel similar to its parent? (handles gradients)
       const localDist = rgbDist(data, pi, parentPI);
       if (localDist > localTolerance) continue;
+
+      // Skip very dark pixels only if they also fail global check
+      // (text is both dark AND far from building color)
+      const lum = data[pi] * 0.299 + data[pi + 1] * 0.587 + data[pi + 2] * 0.114;
+      if (lum < 35) continue;
 
       // Global check: hasn't drifted too far from original click color
       const globalDist = rgbDistToColor(data, pi, target.r, target.g, target.b);
