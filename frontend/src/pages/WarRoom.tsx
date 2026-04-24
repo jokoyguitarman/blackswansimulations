@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
+import { api } from '../lib/api';
 
 interface TeamEntry {
   team_name: string;
@@ -57,6 +58,47 @@ const INCIDENT_TYPES = [
 
 const INCIDENT_GROUPS = ['Explosives', 'Armed Attack', 'CBRN', 'Other'] as const;
 
+const TEAM_INVENTORY = [
+  {
+    name: 'Bomb Squad / EOD',
+    description:
+      'Secondary device sweep, render safe procedures, controlled detonation, forensic IED analysis',
+  },
+  {
+    name: 'Medical Triage',
+    description:
+      'Mass casualty triage, patient stabilization, hospital coordination, field treatment',
+  },
+  {
+    name: 'Hazards / Fire / Rescue',
+    description: 'Fire suppression, HAZMAT response, structural rescue, ventilation operations',
+  },
+  {
+    name: 'Evacuation',
+    description:
+      'Civilian evacuation management, assembly point coordination, headcount verification',
+  },
+  {
+    name: 'Media & Communications',
+    description:
+      'Press briefings, public information, social media monitoring, misinformation management',
+  },
+  {
+    name: 'Pursuit & Investigation',
+    description:
+      'Suspect tracking, evidence preservation, witness management, intelligence gathering',
+  },
+  {
+    name: 'Incident Command',
+    description:
+      'Overall incident coordination, resource allocation, inter-agency liaison, strategic decisions',
+  },
+  {
+    name: 'Police / Security',
+    description: 'Cordon management, crowd control, access control, VIP protection',
+  },
+];
+
 export const WarRoom = () => {
   const { isTrainer } = useRoleVisibility();
 
@@ -68,6 +110,8 @@ export const WarRoom = () => {
 
   // Step 2: Teams
   const [teams, setTeams] = useState<TeamEntry[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [showAddTeam, setShowAddTeam] = useState(false);
 
   // Step 3: Scene editor
   const [rtsSceneId, setRtsSceneId] = useState<string | null>(null);
@@ -93,9 +137,6 @@ export const WarRoom = () => {
   const [doctrines, setDoctrines] = useState<Record<string, unknown> | null>(null);
 
   // Suppress unused-var warnings until steps are implemented
-  void setIncidentType;
-  void setCustomIncidentText;
-  void setTeams;
   void setRtsSceneId;
   void setSceneConfig;
   void setWeaponType;
@@ -105,6 +146,54 @@ export const WarRoom = () => {
   void setCasualties;
   void setInjects;
   void setDoctrines;
+
+  // Team helpers
+  const updateTeam = useCallback(
+    (index: number, field: keyof TeamEntry, value: string | number | boolean) => {
+      setTeams((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)));
+    },
+    [],
+  );
+  const removeTeam = useCallback((index: number) => {
+    setTeams((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+  const addTeamFromInventory = useCallback((name: string) => {
+    const inv = TEAM_INVENTORY.find((t) => t.name === name);
+    if (!inv) return;
+    setTeams((prev) => [
+      ...prev,
+      {
+        team_name: inv.name,
+        team_description: inv.description,
+        min_participants: 1,
+        max_participants: 10,
+        is_investigative: /pursuit|investigation|police/i.test(inv.name),
+      },
+    ]);
+    setShowAddTeam(false);
+  }, []);
+
+  // Auto-suggest teams when entering step 2
+  useEffect(() => {
+    if (step !== 2 || teams.length > 0 || !incidentType) return;
+    setTeamsLoading(true);
+    api.warroom
+      .suggestTeams({
+        scenario_type: incidentType === 'custom' ? customIncidentText : incidentType,
+      })
+      .then(({ data }) => {
+        const mapped: TeamEntry[] = data.suggested_teams.map((t: Record<string, unknown>) => ({
+          team_name: (t.team_name as string) || '',
+          team_description: (t.team_description as string) || '',
+          min_participants: (t.min_participants as number) ?? 1,
+          max_participants: (t.max_participants as number) ?? 10,
+          is_investigative: !!(t.is_investigative as boolean),
+        }));
+        setTeams(mapped);
+      })
+      .catch(() => {})
+      .finally(() => setTeamsLoading(false));
+  }, [step, incidentType, customIncidentText, teams.length]);
 
   if (!isTrainer) {
     return (
@@ -121,7 +210,8 @@ export const WarRoom = () => {
 
   const currentStepIndex = VISIBLE_STEPS.indexOf(step);
   const canGoBack = currentStepIndex > 0;
-  const stepValid = step === 1 ? !!incidentType : true;
+  const stepValid =
+    step === 1 ? !!incidentType : step === 2 ? teams.length > 0 && !teamsLoading : true;
   const canGoNext = step < 11 && stepValid;
 
   const goBack = () => {
@@ -280,14 +370,117 @@ export const WarRoom = () => {
           {step === 2 && (
             <div>
               <h2 className="text-lg terminal-text uppercase mb-4">[STEP 2: TEAM SELECTION]</h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50">
-                Configure the response teams for this scenario.
+              <p className="text-xs terminal-text text-robotic-yellow/50 mb-4">
+                Configure the response teams for this scenario. Add or remove teams as needed.
               </p>
-              <div className="mt-4 text-sm terminal-text text-robotic-yellow/30">
-                [Team selector will be implemented here]
+
+              {teamsLoading && (
+                <p className="text-sm terminal-text text-robotic-yellow/70 animate-pulse mb-4">
+                  Suggesting teams for {incidentType}...
+                </p>
+              )}
+
+              <div className="space-y-3 mb-4">
+                {teams.map((t, i) => (
+                  <div
+                    key={i}
+                    className="border border-robotic-yellow/50 p-4 bg-black/30 flex flex-col gap-2"
+                  >
+                    <div className="flex gap-2 items-center">
+                      <div className="flex-1 px-3 py-2 bg-black/30 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-sm font-bold">
+                        {t.team_name}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeTeam(i)}
+                        disabled={teams.length <= 1}
+                        className="px-3 py-2 text-xs terminal-text text-robotic-orange hover:bg-robotic-orange/10 disabled:opacity-50"
+                      >
+                        [REMOVE]
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={t.team_description}
+                      onChange={(e) => updateTeam(i, 'team_description', e.target.value)}
+                      placeholder="Team description"
+                      className="px-3 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
+                    />
+                    <div className="flex gap-4 items-center">
+                      <label className="flex items-center gap-2 text-xs terminal-text text-robotic-yellow/70">
+                        Min:
+                        <input
+                          type="number"
+                          min={1}
+                          max={50}
+                          value={t.min_participants}
+                          onChange={(e) =>
+                            updateTeam(i, 'min_participants', parseInt(e.target.value, 10) || 1)
+                          }
+                          className="w-16 px-2 py-1 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow"
+                        />
+                      </label>
+                      <label className="flex items-center gap-2 text-xs terminal-text text-robotic-yellow/70">
+                        Max:
+                        <input
+                          type="number"
+                          min={1}
+                          max={50}
+                          value={t.max_participants}
+                          onChange={(e) =>
+                            updateTeam(i, 'max_participants', parseInt(e.target.value, 10) || 10)
+                          }
+                          className="w-16 px-2 py-1 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => updateTeam(i, 'is_investigative', !t.is_investigative)}
+                        className={`px-3 py-1.5 text-[10px] terminal-text uppercase tracking-wider border transition-all ${
+                          t.is_investigative
+                            ? 'border-cyan-500 bg-cyan-500/15 text-cyan-300'
+                            : 'border-robotic-yellow/30 text-robotic-yellow/50 hover:border-robotic-yellow/60'
+                        }`}
+                      >
+                        {t.is_investigative ? '\u2B21 INVESTIGATIVE' : '\u25CB INVESTIGATIVE'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="mt-2 text-[10px] terminal-text text-robotic-yellow/20">
-                State: teams={teams.length}
+
+              {/* Add team from inventory */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowAddTeam(!showAddTeam)}
+                  className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow border border-robotic-yellow/50 px-3 py-2"
+                >
+                  [+ ADD TEAM]
+                </button>
+                {showAddTeam && (
+                  <div className="absolute top-full left-0 mt-1 bg-gray-900 border border-robotic-yellow/50 rounded shadow-xl z-10 max-h-60 overflow-y-auto">
+                    {TEAM_INVENTORY.filter(
+                      (inv) => !teams.some((t) => t.team_name === inv.name),
+                    ).map((inv) => (
+                      <button
+                        key={inv.name}
+                        onClick={() => addTeamFromInventory(inv.name)}
+                        className="block w-full text-left px-4 py-2 text-xs terminal-text text-robotic-yellow/70 hover:bg-robotic-yellow/10 hover:text-robotic-yellow border-b border-robotic-gray-200 last:border-b-0"
+                      >
+                        <div className="font-bold">{inv.name}</div>
+                        <div className="text-[10px] text-robotic-yellow/40 mt-0.5">
+                          {inv.description}
+                        </div>
+                      </button>
+                    ))}
+                    {TEAM_INVENTORY.filter((inv) => !teams.some((t) => t.team_name === inv.name))
+                      .length === 0 && (
+                      <div className="px-4 py-2 text-xs terminal-text text-robotic-yellow/30">
+                        All teams added
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
