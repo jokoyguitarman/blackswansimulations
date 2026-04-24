@@ -690,15 +690,16 @@ function drawTrainerGps(
 // ── Game zones (hot/warm/cold) ───────────────────────────────────────────
 function drawGameZones(
   ctx: CanvasRenderingContext2D,
-  center: Vec2,
-  zones: Array<{ type: string; radius: number }>,
+  fallbackCenter: Vec2,
+  zones: Array<{ type: string; radius: number; center?: Vec2 }>,
   rc: RenderContext,
 ) {
-  const p = toCanvas(center.x, center.y, rc);
   const colors: Record<string, string> = { hot: '#ef4444', warm: '#f97316', cold: '#eab308' };
   const labels: Record<string, string> = { hot: 'HOT ZONE', warm: 'WARM ZONE', cold: 'COLD ZONE' };
 
   for (const zone of [...zones].reverse()) {
+    const zoneCenter = zone.center ?? fallbackCenter;
+    const p = toCanvas(zoneCenter.x, zoneCenter.y, rc);
     const r = mToCanvas(zone.radius, rc);
     if (r < 5) continue;
     const color = colors[zone.type] || '#888';
@@ -717,6 +718,16 @@ function drawGameZones(
     ctx.font = 'bold 10px monospace';
     ctx.textAlign = 'left';
     ctx.fillText(`${labels[zone.type] || zone.type} (${zone.radius}m)`, p.cx + r + 4, p.cy - 4);
+
+    // Draw draggable center marker
+    ctx.beginPath();
+    ctx.arc(p.cx, p.cy, 5, 0, Math.PI * 2);
+    ctx.fillStyle = color + '60';
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([]);
+    ctx.stroke();
   }
 }
 

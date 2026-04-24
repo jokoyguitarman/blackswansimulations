@@ -241,12 +241,18 @@ export function SceneEditor({
   const [pedestrianCount, setPedestrianCount] = useState(120);
   const [localWeaponType, setLocalWeaponType] = useState(externalWeaponType || '');
 
-  // Zone circles (trainer-editable)
-  const [gameZones, setGameZones] = useState<Array<{ type: string; radius: number }>>([
+  // Zone circles (trainer-editable, individually movable)
+  const [gameZones, setGameZones] = useState<
+    Array<{ type: string; radius: number; center?: Vec2 }>
+  >([
     { type: 'hot', radius: 25 },
     { type: 'warm', radius: 50 },
     { type: 'cold', radius: 100 },
   ]);
+
+  // Stud inspection
+  const [studInspectMode, setStudInspectMode] = useState(false);
+  const [inspectedStud, setInspectedStud] = useState<StudPoint | null>(null);
 
   // Editor mode
   const [activeMode, setActiveMode] = useState<string>('select');
@@ -265,6 +271,7 @@ export function SceneEditor({
   const [plantDifficulty, setPlantDifficulty] =
     useState<PlantedItem['concealmentDifficulty']>('moderate');
   const photoUploadRef = useRef<HTMLInputElement>(null);
+  const hazardPhotoRef = useRef<HTMLInputElement>(null);
 
   // Canvas refs
   const leafletMapRef = useRef<L.Map | null>(null);
@@ -600,6 +607,8 @@ export function SceneEditor({
   const isDraggingRef = useRef(false);
   const elementDragRef = useRef<{ type: string; id: string } | null>(null);
   const mapPanRef = useRef<{ startX: number; startY: number } | null>(null);
+  const wallDrawStartRef = useRef<Vec2 | null>(null);
+  const hoverSimPosRef = useRef<Vec2 | null>(null);
 
   const [activeHazard, setActiveHazard] = useState<HazardZone | null>(null);
 
@@ -614,6 +623,14 @@ export function SceneEditor({
       if (Math.hypot(sw.pos.x - sim.x, sw.pos.y - sim.y) < 5)
         return { type: 'stairwell', id: sw.id };
     }
+    // Zone center dragging (click near the zone center marker)
+    const fallback = bs;
+    if (fallback) {
+      for (const gz of gameZonesRef.current) {
+        const zc = gz.center ?? fallback;
+        if (Math.hypot(zc.x - sim.x, zc.y - sim.y) < 8) return { type: 'zone', id: gz.type };
+      }
+    }
     return null;
   }, []);
 
@@ -626,8 +643,15 @@ export function SceneEditor({
         | 'road'
         | 'open_air'
         | undefined;
-      if (drag.type === 'blastSite') setBlastSite(sp);
-      else if (drag.type === 'hazard')
+      if (drag.type === 'blastSite') {
+        setBlastSite(sp);
+        // Move zones that haven't been individually repositioned
+        setGameZones((prev) => prev.map((gz) => (gz.center ? gz : { ...gz, center: sp })));
+      } else if (drag.type === 'zone') {
+        setGameZones((prev) =>
+          prev.map((gz) => (gz.type === drag.id ? { ...gz, center: { ...sp } } : gz)),
+        );
+      } else if (drag.type === 'hazard')
         setHazardZones((prev) =>
           prev.map((h) =>
             h.id === drag.id
@@ -681,6 +705,7 @@ export function SceneEditor({
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
       const sim = toSim(e.clientX - rect.left, e.clientY - rect.top);
+      hoverSimPosRef.current = sim;
 
       // Map panning
       if (mapPanRef.current && !elementDragRef.current) {
@@ -751,7 +776,24 @@ export function SceneEditor({
         if (clickedEl.type === 'stairwell') return;
       }
 
-      // Select mode: check wall points, studs
+      // Stud inspect mode
+      if (studInspectMode) {
+        const studs = simStudsRef.current;
+        let nearest: StudPoint | null = null;
+        let nearestDist = Infinity;
+        for (const s of studs) {
+          const d = Math.hypot(s.simPos.x - sim.x, s.simPos.y - sim.y);
+          if (d < nearestDist) {
+            nearestDist = d;
+            nearest = s;
+          }
+        }
+        if (nearest && nearestDist < 10) setInspectedStud(nearest);
+        else setInspectedStud(null);
+        return;
+      }
+
+      // Select mode: check wall points
       if (activeMode === 'select') {
         const hitWp = wallPoints.find(
           (wp) => Math.hypot(wp.simPos.x - sim.x, wp.simPos.y - sim.y) < 3.0,
@@ -820,6 +862,31 @@ export function SceneEditor({
           },
         ]);
         setActiveMode('select');
+      } else if (activeMode === 'draw_wall') {
+        if (!wallDrawStartRef.current) {
+          wallDrawStartRef.current = snapped.pos;
+        } else {
+          const start = wallDrawStartRef.current;
+          setInteriorWalls((prev) => [
+            ...prev,
+            {
+              id: `iw-${Date.now()}`,
+              start,
+              end: snapped.pos,
+              hasDoor: false,
+              doorWidth: 1.5,
+              doorPosition: 0.5,
+              description: '',
+              material: '',
+              photos: [],
+              studId: snapped.stud?.id,
+              insideBuilding: snapped.stud?.spatialContext === 'inside_building',
+              spatialContext:
+                (snapped.stud?.spatialContext as InteriorWall['spatialContext']) ?? undefined,
+            },
+          ]);
+          wallDrawStartRef.current = null;
+        }
       }
     },
     [
@@ -831,6 +898,7 @@ export function SceneEditor({
       handleWallPointClick,
       hazardZones,
       applyElementDrag,
+      studInspectMode,
     ],
   );
 
@@ -984,7 +1052,12 @@ export function SceneEditor({
           stairwellsRef.current,
           blast,
           blast ? gameZonesRef.current : undefined,
-          null,
+          wallDrawStartRef.current
+            ? {
+                start: wallDrawStartRef.current,
+                cursor: hoverSimPosRef.current ?? wallDrawStartRef.current,
+              }
+            : null,
           null,
           studs.length > 0 ? studs : null,
           null,
@@ -1263,7 +1336,7 @@ export function SceneEditor({
               maxZoom={22}
             />
             <MapRefSync onMap={setMapPhaseMap} />
-            <FlyToPoint lat={mapPhaseLat} lng={mapPhaseLng} zoom={17} />
+            <FlyToPoint lat={mapPhaseLat} lng={mapPhaseLng} zoom={19} />
 
             {/* Green dot + radius coverage circle */}
             {lat && lng && (
@@ -1365,6 +1438,23 @@ export function SceneEditor({
         >
           Place Stairwell
         </button>
+        <button
+          onClick={() => {
+            if (activeMode === 'draw_wall') {
+              setActiveMode('select');
+              wallDrawStartRef.current = null;
+            } else {
+              setActiveMode('draw_wall');
+              wallDrawStartRef.current = null;
+            }
+          }}
+          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'draw_wall' ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300' : 'border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50'}`}
+        >
+          Draw Interior Wall{' '}
+          {activeMode === 'draw_wall' && wallDrawStartRef.current
+            ? '(click end point)'
+            : '(click start → end)'}
+        </button>
 
         <div className="text-xs text-robotic-yellow/50 mt-2">Hazards:</div>
         {(Object.keys(HAZARD_DEFS) as HazardType[]).map((ht) => (
@@ -1432,6 +1522,9 @@ export function SceneEditor({
             <div className="mt-3">
               <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase mb-1">
                 Operational Zones
+                <span className="normal-case ml-1 text-robotic-yellow/20">
+                  (drag center on map)
+                </span>
               </div>
               {gameZones.map((zone, i) => {
                 const colors: Record<string, string> = {
@@ -1440,28 +1533,42 @@ export function SceneEditor({
                   cold: '#eab308',
                 };
                 return (
-                  <div key={zone.type} className="flex items-center gap-2 mb-1">
-                    <span
-                      className="text-[10px] terminal-text w-10"
-                      style={{ color: colors[zone.type] || '#aaa' }}
-                    >
-                      {zone.type.toUpperCase()}
-                    </span>
-                    <input
-                      type="range"
-                      min={5}
-                      max={200}
-                      value={zone.radius}
-                      onChange={(e) => {
-                        const newZones = [...gameZones];
-                        newZones[i] = { ...zone, radius: Number(e.target.value) };
-                        setGameZones(newZones);
-                      }}
-                      className="flex-1"
-                    />
-                    <span className="text-[10px] terminal-text text-robotic-yellow/50 w-10 text-right">
-                      {zone.radius}m
-                    </span>
+                  <div key={zone.type} className="mb-2">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="text-[10px] terminal-text w-10"
+                        style={{ color: colors[zone.type] || '#aaa' }}
+                      >
+                        {zone.type.toUpperCase()}
+                      </span>
+                      <input
+                        type="range"
+                        min={5}
+                        max={200}
+                        value={zone.radius}
+                        onChange={(e) => {
+                          const newZones = [...gameZones];
+                          newZones[i] = { ...zone, radius: Number(e.target.value) };
+                          setGameZones(newZones);
+                        }}
+                        className="flex-1"
+                      />
+                      <span className="text-[10px] terminal-text text-robotic-yellow/50 w-10 text-right">
+                        {zone.radius}m
+                      </span>
+                    </div>
+                    {zone.center && (
+                      <button
+                        onClick={() => {
+                          const newZones = [...gameZones];
+                          newZones[i] = { ...zone, center: undefined };
+                          setGameZones(newZones);
+                        }}
+                        className="text-[9px] terminal-text text-robotic-yellow/30 hover:text-robotic-yellow/60 mt-0.5 ml-12"
+                      >
+                        Reset to blast center
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -1492,6 +1599,67 @@ export function SceneEditor({
             <div>Devices: {plantedItems.length}</div>
             <div>Studs: {simStuds.length}</div>
           </div>
+        </div>
+
+        <div className="border-t border-robotic-gray-200 pt-2 mt-2">
+          <label className="flex items-center gap-2 text-xs text-cyan-500 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={studInspectMode}
+              onChange={(e) => {
+                setStudInspectMode(e.target.checked);
+                if (!e.target.checked) setInspectedStud(null);
+              }}
+              className="rounded border-cyan-700"
+            />
+            Inspect studs (tap to examine)
+          </label>
+          {inspectedStud && (
+            <div className="bg-gray-950 border border-cyan-800 rounded p-2 text-xs space-y-0.5 mt-2">
+              <div className="text-cyan-300 font-bold">{inspectedStud.id}</div>
+              <div className="text-green-400">
+                Context:{' '}
+                <span
+                  className={
+                    inspectedStud.spatialContext === 'inside_building'
+                      ? 'text-green-300'
+                      : 'text-gray-400'
+                  }
+                >
+                  {inspectedStud.spatialContext ?? 'unknown'}
+                </span>
+              </div>
+              <div className="text-gray-400">Type: {inspectedStud.studType}</div>
+              <div className="text-gray-400">
+                Lat: {inspectedStud.lat.toFixed(6)}, Lng: {inspectedStud.lng.toFixed(6)}
+              </div>
+              <div className="text-gray-400">
+                Sim: ({inspectedStud.simPos.x.toFixed(1)}, {inspectedStud.simPos.y.toFixed(1)})
+              </div>
+              {(() => {
+                const inZones = hazardZones.filter(
+                  (h) =>
+                    Math.hypot(
+                      h.pos.x - inspectedStud!.simPos.x,
+                      h.pos.y - inspectedStud!.simPos.y,
+                    ) <= h.radius,
+                );
+                if (inZones.length === 0)
+                  return <div className="text-gray-600 italic">No fuel (no hazard zone)</div>;
+                return (
+                  <div className="text-orange-400">
+                    Fuel: {inZones.map((z) => z.label).join(', ')}
+                  </div>
+                );
+              })()}
+              <button
+                onClick={() => setInspectedStud(null)}
+                className="text-xs text-cyan-600 hover:text-cyan-400 mt-1"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
         </div>
 
         <button
@@ -1727,13 +1895,19 @@ export function SceneEditor({
           </div>
         )}
 
-        {/* Floating hazard inspector panel */}
+        {/* Floating hazard inspector panel (full) */}
         {activeHazard && (
           <div
-            className="absolute top-4 left-4 w-[300px] bg-gray-900/95 border border-orange-700 rounded-lg shadow-2xl overflow-hidden"
-            style={{ zIndex: 1002 }}
+            className="absolute top-4 bg-gray-900/95 border border-orange-700 rounded-lg shadow-2xl overflow-hidden"
+            style={{
+              zIndex: 1002,
+              left: 16,
+              width: 380,
+              maxHeight: 'calc(100% - 32px)',
+              overflowY: 'auto',
+            }}
           >
-            <div className="flex items-center justify-between px-3 py-2 bg-gray-800/80 border-b border-orange-800">
+            <div className="flex items-center justify-between px-3 py-2 bg-orange-900/40 border-b border-orange-800">
               <div
                 className="text-xs font-bold"
                 style={{
@@ -1750,37 +1924,178 @@ export function SceneEditor({
                 ✕
               </button>
             </div>
-            <div className="px-3 py-2 text-xs text-gray-400 space-y-1">
-              <div>
-                Type: <span className="text-gray-200">{activeHazard.hazardType}</span>
-              </div>
-              <div>
-                Severity: <span className="text-gray-200">{activeHazard.severity}</span>
-              </div>
-              <div>
-                Radius: <span className="text-gray-200">{activeHazard.radius}m</span>
-              </div>
-              <div>
-                Position:{' '}
-                <span className="text-gray-200">
-                  ({activeHazard.pos.x.toFixed(1)}, {activeHazard.pos.y.toFixed(1)})
-                </span>
-              </div>
-              {activeHazard.spatialContext && (
-                <div>
-                  Context: <span className="text-gray-200">{activeHazard.spatialContext}</span>
-                </div>
-              )}
+
+            {/* Severity */}
+            <div className="px-3 py-2 flex gap-2 items-center border-b border-gray-800">
+              <select
+                value={activeHazard.severity}
+                onChange={(e) => {
+                  const sev = e.target.value as HazardZone['severity'];
+                  setHazardZones((prev) =>
+                    prev.map((h) => (h.id === activeHazard.id ? { ...h, severity: sev } : h)),
+                  );
+                  setActiveHazard((prev) => (prev ? { ...prev, severity: sev } : prev));
+                }}
+                className="bg-gray-800 border border-orange-800 text-orange-300 text-xs rounded px-2 py-1"
+              >
+                <option value="low">Low Severity</option>
+                <option value="medium">Medium Severity</option>
+                <option value="high">High Severity</option>
+              </select>
             </div>
+
+            {/* Radius slider */}
+            <div className="px-3 py-2 border-b border-gray-800">
+              <label className="block text-xs text-orange-400 mb-1">
+                Radius: {activeHazard.radius}m
+              </label>
+              <input
+                type="range"
+                min={2}
+                max={50}
+                step={1}
+                value={activeHazard.radius}
+                onChange={(e) => {
+                  const r = Number(e.target.value);
+                  setHazardZones((prev) =>
+                    prev.map((h) => (h.id === activeHazard.id ? { ...h, radius: r } : h)),
+                  );
+                  setActiveHazard((prev) => (prev ? { ...prev, radius: r } : prev));
+                }}
+                className="w-full"
+              />
+              <div className="flex justify-between text-[10px] text-gray-600 mt-0.5">
+                <span>2m</span>
+                <span>50m</span>
+              </div>
+            </div>
+
+            {/* Description */}
+            <div className="px-3 py-2 border-b border-gray-800">
+              <label className="block text-xs text-orange-400 mb-1">Description</label>
+              <textarea
+                value={activeHazard.description}
+                onChange={(e) => {
+                  const desc = e.target.value;
+                  setHazardZones((prev) =>
+                    prev.map((h) => (h.id === activeHazard.id ? { ...h, description: desc } : h)),
+                  );
+                  setActiveHazard((prev) => (prev ? { ...prev, description: desc } : prev));
+                }}
+                placeholder="Describe the hazard — chemical type, material, risk level, containment needs..."
+                className="w-full bg-gray-800 border border-gray-700 text-green-300 text-xs rounded px-2 py-1.5 resize-none focus:border-orange-500 focus:outline-none"
+                rows={3}
+              />
+            </div>
+
+            {/* Photos */}
+            <div className="px-3 py-2">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs text-orange-400">
+                  Photos ({activeHazard.photos.length})
+                </label>
+                <div className="flex gap-1">
+                  <input
+                    ref={hazardPhotoRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file || !activeHazard) return;
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        const url = reader.result as string;
+                        const updated = [...activeHazard.photos, url];
+                        setHazardZones((prev) =>
+                          prev.map((h) =>
+                            h.id === activeHazard.id ? { ...h, photos: updated } : h,
+                          ),
+                        );
+                        setActiveHazard((prev) => (prev ? { ...prev, photos: updated } : prev));
+                      };
+                      reader.readAsDataURL(file);
+                      e.target.value = '';
+                    }}
+                  />
+                  <button
+                    onClick={() => hazardPhotoRef.current?.click()}
+                    className="bg-orange-800 hover:bg-orange-700 text-orange-100 text-xs px-2 py-0.5 rounded border border-orange-600"
+                  >
+                    Take Photo
+                  </button>
+                  <button
+                    onClick={() => {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = 'image/*';
+                      input.onchange = (ev) => {
+                        const file = (ev.target as HTMLInputElement).files?.[0];
+                        if (!file || !activeHazard) return;
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          const url = reader.result as string;
+                          const updated = [...activeHazard.photos, url];
+                          setHazardZones((prev) =>
+                            prev.map((h) =>
+                              h.id === activeHazard.id ? { ...h, photos: updated } : h,
+                            ),
+                          );
+                          setActiveHazard((prev) => (prev ? { ...prev, photos: updated } : prev));
+                        };
+                        reader.readAsDataURL(file);
+                      };
+                      input.click();
+                    }}
+                    className="bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs px-2 py-0.5 rounded border border-gray-600"
+                  >
+                    Gallery
+                  </button>
+                </div>
+              </div>
+              {activeHazard.photos.length === 0 && (
+                <p className="text-xs text-gray-600 italic">
+                  No photos yet — add photos of the potential hazard
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-1.5">
+                {activeHazard.photos.map((photo, i) => (
+                  <div key={i} className="relative group">
+                    <img
+                      src={photo}
+                      alt={`Hazard photo ${i + 1}`}
+                      className="w-full h-24 object-cover rounded border border-gray-700"
+                    />
+                    <button
+                      onClick={() => {
+                        const updated = activeHazard.photos.filter((_, idx) => idx !== i);
+                        setHazardZones((prev) =>
+                          prev.map((h) =>
+                            h.id === activeHazard.id ? { ...h, photos: updated } : h,
+                          ),
+                        );
+                        setActiveHazard((prev) => (prev ? { ...prev, photos: updated } : prev));
+                      }}
+                      className="absolute top-0.5 right-0.5 bg-red-800 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Delete hazard */}
             <div className="px-3 py-2 border-t border-gray-800">
               <button
                 onClick={() => {
                   setHazardZones((prev) => prev.filter((h) => h.id !== activeHazard.id));
                   setActiveHazard(null);
                 }}
-                className="w-full bg-red-800 hover:bg-red-700 text-red-100 text-xs px-3 py-1.5 rounded border border-red-600"
+                className="w-full bg-red-900/40 hover:bg-red-800 text-red-300 text-xs px-3 py-1.5 rounded border border-red-700"
               >
-                Remove Hazard
+                Delete This Hazard
               </button>
             </div>
           </div>
