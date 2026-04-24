@@ -1386,6 +1386,15 @@ export interface TrainerScene {
     lat: number;
     lng: number;
   }>;
+  interiorWalls?: Array<{
+    id: string;
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+    material: string;
+    description: string;
+    hasDoor: boolean;
+    photos: string[];
+  }>;
   enrichment?: {
     hazardAnalysis: Array<Record<string, unknown>>;
     sceneSynthesis: Record<string, unknown>;

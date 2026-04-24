@@ -1004,9 +1004,12 @@ export async function stageGenerateAndPersist(
           x: number;
           y: number;
           radius?: number;
+          weaponType?: string;
+          gameZones?: Array<{ type: string; radius: number; center?: { x: number; y: number } }>;
         } | null;
         const hazardZonesRaw = (sceneRow.hazard_zones as Array<Record<string, unknown>>) || [];
         const exitsRaw = (sceneRow.exits as Array<Record<string, unknown>>) || [];
+        const interiorWallsRaw = (sceneRow.interior_walls as Array<Record<string, unknown>>) || [];
         const enrichmentResult = sceneRow.enrichment_result as Record<string, unknown> | null;
 
         if (buildingPolygon && buildingPolygon.length >= 3) {
@@ -1078,6 +1081,15 @@ export async function stageGenerateAndPersist(
             buildingName: (sceneRow.building_name as string) || null,
             pedestrianCount: (sceneRow.pedestrian_count as number) || 120,
             plantedItems,
+            interiorWalls: interiorWallsRaw.map((w) => ({
+              id: (w.id as string) || `iw-${Math.random().toString(36).slice(2, 8)}`,
+              start: (w.start as { x: number; y: number }) || { x: 0, y: 0 },
+              end: (w.end as { x: number; y: number }) || { x: 0, y: 0 },
+              material: (w.material as string) || '',
+              description: (w.description as string) || '',
+              hasDoor: (w.hasDoor as boolean) || false,
+              photos: (w.photos as string[]) || [],
+            })),
             enrichment: enrichmentResult
               ? {
                   hazardAnalysis: (enrichmentResult.hazardAnalysis ?? []) as Array<

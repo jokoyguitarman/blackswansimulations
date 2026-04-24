@@ -268,8 +268,7 @@ export function SceneEditor({
   const [plantDescription, setPlantDescription] = useState('');
   const [plantThreatLevel, setPlantThreatLevel] =
     useState<PlantedItem['threatLevel']>('real_device');
-  const [plantDifficulty, setPlantDifficulty] =
-    useState<PlantedItem['concealmentDifficulty']>('moderate');
+  const [plantDifficulty] = useState<PlantedItem['concealmentDifficulty']>('moderate');
   const photoUploadRef = useRef<HTMLInputElement>(null);
   const hazardPhotoRef = useRef<HTMLInputElement>(null);
 
@@ -958,14 +957,18 @@ export function SceneEditor({
         weaponType: localWeaponType || null,
       };
 
+      const enrichedBlastSite = blastSite
+        ? { ...blastSite, radius: blastRadius, weaponType: localWeaponType || null, gameZones }
+        : null;
+      const exitsWithPos = exits.map((e) => ({ ...e, pos: e.center }));
+
       if (sceneConfigId) {
         await updateSceneConfig(sceneConfigId, {
-          exits,
+          exits: exitsWithPos,
           interiorWalls,
           hazardZones,
           stairwells,
-          blastSite,
-          blastRadius,
+          blastSite: enrichedBlastSite,
           wallInspectionPoints: wallPoints,
           plantedItems,
           pedestrianCount,
@@ -978,11 +981,11 @@ export function SceneEditor({
           buildingName: selectedGrid.buildingName || undefined,
           centerLat: config.centerLat,
           centerLng: config.centerLng,
-          exits,
+          exits: exitsWithPos,
           interiorWalls,
           hazardZones,
           stairwells,
-          blastSite,
+          blastSite: enrichedBlastSite,
           casualtyClusters: [],
           wallInspectionPoints: wallPoints,
           plantedItems,
@@ -1009,6 +1012,7 @@ export function SceneEditor({
     plantedItems,
     pedestrianCount,
     localWeaponType,
+    gameZones,
     sceneConfigId,
     onSave,
   ]);
@@ -1901,17 +1905,6 @@ export function SceneEditor({
                   <option value="secondary_device">Secondary Device</option>
                   <option value="decoy">Decoy</option>
                 </select>
-                <select
-                  value={plantDifficulty}
-                  onChange={(e) =>
-                    setPlantDifficulty(e.target.value as PlantedItem['concealmentDifficulty'])
-                  }
-                  className="bg-gray-800 border border-red-800 text-red-300 text-xs rounded px-1 py-1 flex-1"
-                >
-                  <option value="easy">Easy</option>
-                  <option value="moderate">Moderate</option>
-                  <option value="hard">Hard</option>
-                </select>
                 <button
                   onClick={handlePlantItem}
                   disabled={!plantDescription.trim()}
@@ -1952,25 +1945,6 @@ export function SceneEditor({
               >
                 ✕
               </button>
-            </div>
-
-            {/* Severity */}
-            <div className="px-3 py-2 flex gap-2 items-center border-b border-gray-800">
-              <select
-                value={activeHazard.severity}
-                onChange={(e) => {
-                  const sev = e.target.value as HazardZone['severity'];
-                  setHazardZones((prev) =>
-                    prev.map((h) => (h.id === activeHazard.id ? { ...h, severity: sev } : h)),
-                  );
-                  setActiveHazard((prev) => (prev ? { ...prev, severity: sev } : prev));
-                }}
-                className="bg-gray-800 border border-orange-800 text-orange-300 text-xs rounded px-2 py-1"
-              >
-                <option value="low">Low Severity</option>
-                <option value="medium">Medium Severity</option>
-                <option value="high">High Severity</option>
-              </select>
             </div>
 
             {/* Radius slider */}
