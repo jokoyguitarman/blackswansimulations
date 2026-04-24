@@ -609,6 +609,7 @@ export function SceneEditor({
   const mapPanRef = useRef<{ startX: number; startY: number } | null>(null);
   const wallDrawStartRef = useRef<Vec2 | null>(null);
   const hoverSimPosRef = useRef<Vec2 | null>(null);
+  const renderOnceRef = useRef<() => void>(() => {});
 
   const [activeHazard, setActiveHazard] = useState<HazardZone | null>(null);
 
@@ -707,7 +708,7 @@ export function SceneEditor({
       const sim = toSim(e.clientX - rect.left, e.clientY - rect.top);
       hoverSimPosRef.current = sim;
 
-      // Map panning
+      // Map panning — repaint canvas synchronously to eliminate 1-frame lag
       if (mapPanRef.current && !elementDragRef.current) {
         const map = leafletMapRef.current;
         if (map) {
@@ -715,6 +716,7 @@ export function SceneEditor({
           const dy = e.clientY - mapPanRef.current.startY;
           map.panBy([-dx, -dy], { animate: false });
           mapPanRef.current = { startX: e.clientX, startY: e.clientY };
+          renderOnceRef.current();
         }
         isDraggingRef.current = true;
         return;
@@ -1011,7 +1013,7 @@ export function SceneEditor({
   const projectedVertsRef = useRef(projectedVerts);
   projectedVertsRef.current = projectedVerts;
 
-  const renderLoop = useCallback(() => {
+  const renderOnce = useCallback((): void => {
     const grid = selectedGridRef.current;
     const verts = projectedVertsRef.current;
     if (!grid || verts.length < 3) return;
@@ -1065,8 +1067,13 @@ export function SceneEditor({
         );
       }
     }
-    rafRef.current = requestAnimationFrame(renderLoop);
   }, []);
+  renderOnceRef.current = renderOnce;
+
+  const renderLoop = useCallback(() => {
+    renderOnce();
+    rafRef.current = requestAnimationFrame(renderLoop);
+  }, [renderOnce]);
 
   useEffect(() => {
     if (phase !== 'edit' || !selectedGrid || projectedVerts.length < 3) return;
