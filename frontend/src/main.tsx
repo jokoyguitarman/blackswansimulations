@@ -8,6 +8,7 @@ import { SignUp } from './pages/SignUp';
 import { Dashboard } from './pages/Dashboard';
 import { Scenarios } from './pages/Scenarios';
 import { WarRoom } from './pages/WarRoom';
+import { WarRoomLegacy } from './pages/WarRoomLegacy';
 import { Sessions } from './pages/Sessions';
 import { SessionView } from './pages/SessionView';
 import { JoinSessionPage } from './pages/JoinSessionPage';
@@ -73,6 +74,14 @@ const App = () => {
               element={
                 <ProtectedRoute>
                   <WarRoom />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/warroom-legacy"
+              element={
+                <ProtectedRoute>
+                  <WarRoomLegacy />
                 </ProtectedRoute>
               }
             />
