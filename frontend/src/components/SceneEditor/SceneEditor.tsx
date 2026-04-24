@@ -13,7 +13,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { MapContainer, TileLayer, Polygon, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon, CircleMarker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { supabase } from '../../lib/supabase';
 import { projectPolygon, nearestEdge, edgeLength } from '../../lib/evacuation/geometry';
@@ -159,6 +159,18 @@ function FitBounds({ polygon }: { polygon: [number, number][] }) {
     const bounds = L.latLngBounds(polygon.map(([la, ln]) => [la, ln] as [number, number]));
     map.fitBounds(bounds, { padding: [80, 80], maxZoom: 20 });
   }, [map, polygon]);
+  return null;
+}
+
+function FlyToPoint({ lat, lng, zoom }: { lat: number; lng: number; zoom: number }) {
+  const map = useMap();
+  const flownRef = useRef(false);
+  useEffect(() => {
+    if (flownRef.current) return;
+    if (lat === 0 && lng === 0) return;
+    flownRef.current = true;
+    map.setView([lat, lng], zoom);
+  }, [map, lat, lng, zoom]);
   return null;
 }
 
@@ -676,9 +688,9 @@ export function SceneEditor({
   // Map phase: search and select building with map
   if (phase === 'map') {
     return (
-      <div className="flex h-full gap-3">
-        {/* Left panel: search controls + building list */}
-        <div className="w-80 flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
+      <div className="flex flex-col lg:flex-row h-full gap-3">
+        {/* Controls panel: top on portrait/narrow, left on landscape/wide */}
+        <div className="w-full lg:w-80 flex-shrink-0 flex flex-col gap-3 overflow-y-auto max-h-[40vh] lg:max-h-none">
           {/* GPS status */}
           {!lat && !lng && (
             <div className="px-3 py-2 bg-cyan-900/20 border border-cyan-500/30 text-xs terminal-text text-cyan-400 animate-pulse">
@@ -856,8 +868,8 @@ export function SceneEditor({
           )}
         </div>
 
-        {/* Right: Leaflet map preview */}
-        <div className="flex-1 relative rounded overflow-hidden border border-robotic-gray-200">
+        {/* Map: below on portrait/narrow, right on landscape/wide */}
+        <div className="flex-1 relative rounded overflow-hidden border border-robotic-gray-200 min-h-[300px]">
           <MapContainer
             center={[mapPhaseLat, mapPhaseLng]}
             zoom={16}
@@ -865,12 +877,27 @@ export function SceneEditor({
             zoomControl={true}
           >
             <TileLayer
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-              attribution="Tiles &copy; Esri"
-              maxZoom={20}
-              maxNativeZoom={18}
+              attribution="&copy; OSM"
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              maxNativeZoom={19}
+              maxZoom={22}
             />
             <MapRefSync onMap={setMapPhaseMap} />
+            <FlyToPoint lat={mapPhaseLat} lng={mapPhaseLng} zoom={17} />
+
+            {/* Green dot at current coordinates */}
+            {lat && lng && (
+              <CircleMarker
+                center={[parseFloat(lat), parseFloat(lng)]}
+                radius={8}
+                pathOptions={{
+                  color: '#22c55e',
+                  fillColor: '#22c55e',
+                  fillOpacity: 0.6,
+                  weight: 2,
+                }}
+              />
+            )}
 
             {/* Render building polygons when fetched */}
             {fetchResult?.grids.map((g, i) => (
@@ -903,9 +930,9 @@ export function SceneEditor({
     : 0;
 
   return (
-    <div className="flex h-full gap-3">
-      {/* Left: Tools panel */}
-      <div className="w-56 overflow-y-auto space-y-2 flex-shrink-0">
+    <div className="flex flex-col lg:flex-row h-full gap-3">
+      {/* Tools panel: top on portrait/narrow, left on landscape/wide */}
+      <div className="w-full lg:w-56 overflow-y-auto lg:overflow-x-visible space-y-2 flex-shrink-0 max-h-[35vh] lg:max-h-none">
         <button
           onClick={backToMap}
           className="w-full text-xs terminal-text text-robotic-yellow/50 hover:text-robotic-yellow border border-robotic-gray-200 px-2 py-1"
@@ -1076,9 +1103,9 @@ export function SceneEditor({
         )}
       </div>
 
-      {/* Right: Map + Canvas */}
+      {/* Map + Canvas: below on portrait/narrow, right on landscape/wide */}
       <div
-        className="flex-1 relative overflow-hidden rounded border border-robotic-gray-200"
+        className="flex-1 relative overflow-hidden rounded border border-robotic-gray-200 min-h-[350px]"
         ref={containerRef}
       >
         <MapContainer

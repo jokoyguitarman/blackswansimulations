@@ -490,7 +490,7 @@ export const WarRoom = () => {
           )}
 
           {step === 3 && (
-            <div className="h-[calc(100vh-280px)] min-h-[600px]">
+            <div className="h-[calc(100vh-280px)] min-h-[500px] lg:min-h-[600px]">
               <SceneEditor
                 incidentType={incidentType || 'bombing'}
                 initialSceneId={rtsSceneId}
