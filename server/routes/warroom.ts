@@ -565,14 +565,12 @@ router.post(
         override && typeof override.lat === 'number' && typeof override.lng === 'number'
           ? override
           : null;
-      const hasTrainerScene = !!(input.scene_context as Record<string, unknown> | undefined)
-        ?.rts_scene_id;
       const result = await stageParseAndGeocode(
         input,
         env.openAiApiKey,
         undefined,
         validOverride,
-        hasTrainerScene,
+        false,
       );
       if (!validOverride) applyWizardGeocodeOverride(result, input);
 

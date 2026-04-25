@@ -217,6 +217,24 @@ export const WarRoom = () => {
         if (customIncidentText) {
           draftInput.prompt = customIncidentText;
         }
+        // Provide geocode override from scene config so the server knows where to search for POIs
+        if (sceneConfig) {
+          const cLat = sceneConfig.centerLat as number | undefined;
+          const cLng = sceneConfig.centerLng as number | undefined;
+          const locDesc = sceneConfig.locationDescription as string | undefined;
+          const bName = sceneConfig.buildingName as string | undefined;
+          if (cLat && cLng) {
+            draftInput.geocode_override = {
+              lat: cLat,
+              lng: cLng,
+              display_name: locDesc || bName || undefined,
+            };
+          }
+          if (locDesc || bName) {
+            draftInput.location = locDesc || bName;
+            draftInput.venue_name = bName || undefined;
+          }
+        }
 
         let draftId = wizardDraftId;
         if (!draftId) {
@@ -246,6 +264,7 @@ export const WarRoom = () => {
     rtsSceneId,
     customIncidentText,
     wizardDraftId,
+    sceneConfig,
   ]);
 
   if (!isTrainer) {
