@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
 import { SceneEditor } from '../components/SceneEditor/SceneEditor';
+import { LocationValidationStep } from '../components/WarRoom/LocationValidationStep';
 
 interface TeamEntry {
   team_name: string;
@@ -119,8 +120,14 @@ export const WarRoom = () => {
   const [sceneConfig, setSceneConfig] = useState<Record<string, unknown> | null>(null);
   const [weaponType, setWeaponType] = useState<string | null>(null);
 
+  // Wizard draft
+  const [wizardDraftId, setWizardDraftId] = useState<string | null>(null);
+
   // Step 5: Location validation
   const [geoResult, setGeoResult] = useState<Record<string, unknown> | null>(null);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
+  const geoFetchedRef = useRef(false);
 
   // Step 6: Research
   const [researchResults, setResearchResults] = useState<Record<string, unknown> | null>(null);
@@ -138,7 +145,6 @@ export const WarRoom = () => {
   const [doctrines, setDoctrines] = useState<Record<string, unknown> | null>(null);
 
   // Suppress unused-var warnings until steps are implemented
-  void setGeoResult;
   void setResearchResults;
   void setHazardAnalysis;
   void setCasualties;
@@ -192,6 +198,55 @@ export const WarRoom = () => {
       .catch(() => {})
       .finally(() => setTeamsLoading(false));
   }, [step, incidentType, customIncidentText, teams.length]);
+
+  // Auto-run geocode-validate when entering Step 5
+  useEffect(() => {
+    if (step !== 5 || geoResult || geoLoading || geoFetchedRef.current) return;
+    geoFetchedRef.current = true;
+
+    const run = async () => {
+      setGeoLoading(true);
+      setGeoError(null);
+      try {
+        const draftInput: Record<string, unknown> = {
+          scenario_type: incidentType,
+          teams: teams.map((t) => t.team_name),
+          weapon_type: weaponType,
+          scene_context: rtsSceneId ? { rts_scene_id: rtsSceneId } : undefined,
+        };
+        if (customIncidentText) {
+          draftInput.prompt = customIncidentText;
+        }
+
+        let draftId = wizardDraftId;
+        if (!draftId) {
+          const { data: created } = await api.warroom.wizardDraftCreate({ input: draftInput });
+          draftId = created.draft_id;
+          setWizardDraftId(draftId);
+        } else {
+          await api.warroom.wizardDraftPatch(draftId, { input: draftInput });
+        }
+
+        const { data } = await api.warroom.wizardDraftGeocodeValidate(draftId);
+        setGeoResult(data as Record<string, unknown>);
+      } catch (err) {
+        setGeoError(err instanceof Error ? err.message : 'Geocode validation failed');
+      } finally {
+        setGeoLoading(false);
+      }
+    };
+    run();
+  }, [
+    step,
+    geoResult,
+    geoLoading,
+    incidentType,
+    teams,
+    weaponType,
+    rtsSceneId,
+    customIncidentText,
+    wizardDraftId,
+  ]);
 
   if (!isTrainer) {
     return (
@@ -510,15 +565,17 @@ export const WarRoom = () => {
               <h2 className="text-lg terminal-text uppercase mb-4">
                 [STEP 5: LOCATION VALIDATION]
               </h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50">
-                Identify nearby facilities, routes, and points of interest.
+              <p className="text-xs terminal-text text-robotic-yellow/50 mb-4">
+                Review nearby facilities, routes, and points of interest. Remove or adjust as
+                needed.
               </p>
-              <div className="mt-4 text-sm terminal-text text-robotic-yellow/30">
-                [Location validation will be implemented here]
-              </div>
-              <div className="mt-2 text-[10px] terminal-text text-robotic-yellow/20">
-                State: geoResult={geoResult ? 'loaded' : 'null'}
-              </div>
+              <LocationValidationStep
+                geoResult={geoResult}
+                onUpdate={setGeoResult}
+                sceneConfig={sceneConfig}
+                loading={geoLoading}
+                error={geoError}
+              />
             </div>
           )}
 
