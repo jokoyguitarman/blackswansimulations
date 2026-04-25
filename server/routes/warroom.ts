@@ -561,10 +561,46 @@ router.post(
       const override = input.geocode_override as
         | { lat: number; lng: number; display_name?: string }
         | undefined;
-      const validOverride =
+      let validOverride: { lat: number; lng: number; display_name?: string } | null =
         override && typeof override.lat === 'number' && typeof override.lng === 'number'
           ? override
           : null;
+
+      // If no geocode override, extract coordinates from the scene config in DB
+      if (!validOverride) {
+        const sceneId = (input.scene_context as Record<string, unknown> | undefined)
+          ?.rts_scene_id as string | undefined;
+        if (sceneId) {
+          const { data: scene } = await supabaseAdmin
+            .from('rts_scene_configs')
+            .select('center_lat, center_lng, building_name, blast_site')
+            .eq('id', sceneId)
+            .single();
+          if (scene) {
+            const lat = parseFloat(String(scene.center_lat));
+            const lng = parseFloat(String(scene.center_lng));
+            if (!isNaN(lat) && !isNaN(lng)) {
+              validOverride = {
+                lat,
+                lng,
+                display_name: (scene.building_name as string) || undefined,
+              };
+              logger.info(
+                { lat, lng, building: scene.building_name },
+                'Extracted geocode coordinates from scene config',
+              );
+            }
+            const blastSite = scene.blast_site as Record<string, unknown> | null;
+            if (blastSite?.locationDescription && !input.location) {
+              input.location = blastSite.locationDescription;
+            }
+            if (scene.building_name && !input.venue_name) {
+              input.venue_name = scene.building_name;
+            }
+          }
+        }
+      }
+
       const result = await stageParseAndGeocode(
         input,
         env.openAiApiKey,
