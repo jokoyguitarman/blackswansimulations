@@ -106,6 +106,21 @@ export const WarRoom = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const resumedRef = useRef(false);
 
+  // Draft picker
+  const [existingDrafts, setExistingDrafts] = useState<
+    Array<{
+      id: string;
+      status: string;
+      current_step: number;
+      input: Record<string, unknown>;
+      created_at: string;
+      updated_at: string;
+      scenario_id: string | null;
+    }>
+  >([]);
+  const [showDraftPicker, setShowDraftPicker] = useState(false);
+  const [draftsLoaded, setDraftsLoaded] = useState(false);
+
   const [step, setStep] = useState<1 | 2 | 3 | 5 | 6 | 7>(1);
 
   // Step 1: Incident selection
@@ -270,6 +285,22 @@ export const WarRoom = () => {
     };
     resume();
   }, [searchParams]);
+
+  // Load existing drafts for picker (when no ?draft= param)
+  useEffect(() => {
+    if (searchParams.get('draft') || draftsLoaded) return;
+    setDraftsLoaded(true);
+    api.warroom
+      .wizardDraftList()
+      .then(({ data }) => {
+        const active = data.filter((d) => d.status === 'draft' && !d.scenario_id);
+        if (active.length > 0) {
+          setExistingDrafts(active);
+          setShowDraftPicker(true);
+        }
+      })
+      .catch(() => {});
+  }, [searchParams, draftsLoaded]);
 
   // Team helpers
   const updateTeam = useCallback(
@@ -485,6 +516,58 @@ export const WarRoom = () => {
             })}
           </div>
         </div>
+
+        {/* Draft picker banner */}
+        {showDraftPicker && existingDrafts.length > 0 && (
+          <div className="military-border p-4 mb-4 bg-cyan-900/10">
+            <div className="flex justify-between items-center mb-3">
+              <div className="text-sm terminal-text text-cyan-400 uppercase">
+                Resume an in-progress scenario
+              </div>
+              <button
+                onClick={() => setShowDraftPicker(false)}
+                className="text-xs terminal-text text-robotic-yellow/40 hover:text-robotic-yellow/70"
+              >
+                Dismiss
+              </button>
+            </div>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {existingDrafts.map((draft) => {
+                const input = draft.input || {};
+                const sceneName = (input.scenario_type as string) || 'Unknown';
+                const stepLabel =
+                  STEP_LABELS[draft.current_step as keyof typeof STEP_LABELS] ||
+                  `Step ${draft.current_step}`;
+                const updated = new Date(draft.updated_at).toLocaleString();
+                return (
+                  <div
+                    key={draft.id}
+                    className="flex items-center justify-between border border-robotic-gray-200 rounded px-3 py-2 hover:bg-robotic-gray-200/20"
+                  >
+                    <div>
+                      <div className="text-xs terminal-text text-robotic-yellow/70 capitalize">
+                        {sceneName.replace(/_/g, ' ')}
+                      </div>
+                      <div className="text-[10px] terminal-text text-robotic-yellow/30">
+                        At: {stepLabel} — Updated: {updated}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowDraftPicker(false);
+                        setSearchParams({ draft: draft.id }, { replace: true });
+                        window.location.reload();
+                      }}
+                      className="text-xs terminal-text text-cyan-400 border border-cyan-500/50 px-3 py-1 hover:bg-cyan-900/20"
+                    >
+                      Resume
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Step content */}
         <div className="military-border p-6 mb-6 min-h-[400px]">

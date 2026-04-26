@@ -337,7 +337,7 @@ export function SceneCanvasView({
       const cy = e.clientY - rect.top;
       const sim = rcToSim(cx, cy, rc);
 
-      const hitCas = casualtyPins.find((c) => Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 8);
+      const hitCas = casualtyPins.find((c) => Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 3);
       if (hitCas) {
         setActiveCasualtyPin(hitCas);
         setActiveWallPoint(null);

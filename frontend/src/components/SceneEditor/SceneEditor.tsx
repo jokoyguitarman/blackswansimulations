@@ -42,7 +42,11 @@ import {
   fetchStreetViewImage,
   type WallInspectionPoint,
 } from '../../lib/rts/wallInspection';
-import { createSceneConfig, updateSceneConfig } from '../../lib/rts/sceneConfigApi';
+import {
+  createSceneConfig,
+  updateSceneConfig,
+  loadSceneConfig,
+} from '../../lib/rts/sceneConfigApi';
 import { BuildingDrawHandler } from './BuildingDrawHandler';
 import { autoTraceBuilding } from './buildingAutoTrace';
 import 'leaflet/dist/leaflet.css';
@@ -407,6 +411,63 @@ export function SceneEditor({
     },
     [simStuds],
   );
+
+  // ── Auto-load saved scene when initialSceneId is set ─────────────────
+
+  const sceneLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!initialSceneId || sceneLoadedRef.current) return;
+    sceneLoadedRef.current = true;
+
+    loadSceneConfig(initialSceneId)
+      .then((row) => {
+        const r = row as unknown as Record<string, unknown>;
+        const polygon = r.building_polygon as [number, number][] | undefined;
+        if (!polygon || polygon.length < 3) return;
+
+        const entry = {
+          buildingIndex: 0,
+          buildingName: (r.building_name as string) || null,
+          polygon,
+          studs: [] as StudPoint[],
+        };
+        setFetchResult({ grids: [entry] });
+        setSelectedGridIdx(0);
+
+        // Restore scene elements
+        const exitsRaw = (r.exits as ExitDef[]) || [];
+        setExits(exitsRaw);
+        setInteriorWalls((r.interior_walls as InteriorWall[]) || []);
+        setHazardZones((r.hazard_zones as HazardZone[]) || []);
+        setStairwells((r.stairwells as Stairwell[]) || []);
+        setPlantedItems((r.planted_items as PlantedItem[]) || []);
+        setPedestrianCount((r.pedestrian_count as number) || 120);
+
+        const bs = r.blast_site as Record<string, unknown> | null;
+        if (bs && typeof bs.x === 'number' && typeof bs.y === 'number') {
+          setBlastSite({ x: bs.x, y: bs.y });
+          if (bs.radius) setBlastRadius(bs.radius as number);
+          if (bs.weaponType) {
+            setLocalWeaponType(bs.weaponType as string);
+            onWeaponTypeChange?.(bs.weaponType as string);
+          }
+          if (bs.locationDescription) setLocationDescription(bs.locationDescription as string);
+          if (bs.gameZones)
+            setGameZones(bs.gameZones as Array<{ type: string; radius: number; center?: Vec2 }>);
+        }
+
+        // Generate wall points from polygon
+        const verts = projectPolygon(polygon);
+        const pts = generateWallPoints(polygon, verts);
+        setWallPoints((r.wall_inspection_points as WallInspectionPoint[]) || pts);
+
+        setActiveMode('select');
+        setPhase('edit');
+      })
+      .catch(() => {
+        // Failed to load -- trainer can re-design
+      });
+  }, [initialSceneId]);
 
   // ── GPS auto-detect on mount ──────────────────────────────────────────
 

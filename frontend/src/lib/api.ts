@@ -1621,6 +1621,21 @@ export const api = {
       return result;
     },
 
+    wizardDraftList: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          status: string;
+          current_step: number;
+          input: Record<string, unknown>;
+          created_at: string;
+          updated_at: string;
+          scenario_id: string | null;
+        }>;
+      }>(await fetch(apiUrl('/api/warroom/wizard/drafts'), { headers }));
+    },
+
     wizardDraftCreate: async (body: { input?: Record<string, unknown> }) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: { draft_id: string } }>(

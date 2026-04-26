@@ -395,6 +395,38 @@ router.post(
 // Wizard Drafts (DB-backed, resumable)
 // ---------------------------------------------------------------------------
 
+// List drafts for current user
+router.get(
+  ['/wizard/drafts', '/wizard/drafts/'],
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only trainers can use the War Room' });
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from('warroom_wizard_drafts')
+        .select('id, status, current_step, input, created_at, updated_at, scenario_id')
+        .eq('created_by', user.id)
+        .order('updated_at', { ascending: false })
+        .limit(20);
+
+      if (error) {
+        logger.error({ error }, 'Failed to list wizard drafts');
+        return res.status(500).json({ error: 'Failed to list drafts' });
+      }
+
+      return res.json({ data: data ?? [] });
+    } catch (err) {
+      const error = err as Error;
+      logger.error({ error: error.message }, 'Error in GET /warroom/wizard/drafts');
+      return res.status(500).json({ error: error.message || 'Failed to list drafts' });
+    }
+  },
+);
+
 const wizardDraftCreateSchema = z.object({
   body: z.object({
     input: z.record(z.string(), z.unknown()).default({}),
