@@ -847,11 +847,8 @@ export const WarRoom = () => {
           </span>
           {step === 7 ? (
             scenarioId ? (
-              <a
-                href={`/scenarios/${scenarioId}`}
-                className="military-button px-8 py-3 text-center"
-              >
-                [VIEW SCENARIO]
+              <a href="/scenarios" className="military-button px-8 py-3 text-center">
+                [VIEW SCENARIOS]
               </a>
             ) : (
               <span className="text-xs terminal-text text-robotic-yellow/30">

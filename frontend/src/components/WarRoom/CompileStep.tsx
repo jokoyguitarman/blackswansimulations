@@ -99,11 +99,8 @@ export function CompileStep({ wizardDraftId, onComplete }: CompileStepProps) {
           Scenario ID: {scenarioId}
         </div>
         <div className="flex gap-4">
-          <a
-            href={`/scenarios/${scenarioId}`}
-            className="military-button px-8 py-3 text-sm text-center"
-          >
-            VIEW SCENARIO
+          <a href="/scenarios" className="military-button px-8 py-3 text-sm text-center">
+            VIEW SCENARIOS
           </a>
           <a
             href="/warroom"
