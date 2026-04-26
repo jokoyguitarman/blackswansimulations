@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
 import { SceneEditor } from '../components/SceneEditor/SceneEditor';
@@ -104,6 +105,8 @@ const TEAM_INVENTORY = [
 
 export const WarRoom = () => {
   const { isTrainer } = useRoleVisibility();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const resumedRef = useRef(false);
 
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11>(1);
 
@@ -150,6 +153,111 @@ export const WarRoom = () => {
   void setCasualties;
   void setInjects;
   void setDoctrines;
+
+  // ── Draft save/resume helpers ─────────────────────────────────────────
+
+  const buildDraftInput = useCallback(() => {
+    const input: Record<string, unknown> = {
+      scenario_type: incidentType,
+      custom_incident_text: customIncidentText,
+      teams: teams,
+      weapon_type: weaponType,
+      scene_context: rtsSceneId ? { rts_scene_id: rtsSceneId } : undefined,
+    };
+    if (customIncidentText) input.prompt = customIncidentText;
+    return input;
+  }, [incidentType, customIncidentText, teams, weaponType, rtsSceneId]);
+
+  const saveDraftState = useCallback(
+    async (nextStep: number) => {
+      try {
+        if (!wizardDraftId) {
+          const { data: created } = await api.warroom.wizardDraftCreate({
+            input: buildDraftInput(),
+          });
+          const newId = created.draft_id;
+          setWizardDraftId(newId);
+          setSearchParams({ draft: newId }, { replace: true });
+          return newId;
+        }
+        await api.warroom.wizardDraftPatch(wizardDraftId, {
+          current_step: nextStep,
+          input: buildDraftInput(),
+        });
+        return wizardDraftId;
+      } catch (err) {
+        console.error('Failed to save draft', err);
+        return wizardDraftId;
+      }
+    },
+    [wizardDraftId, buildDraftInput, setSearchParams],
+  );
+
+  // Resume from ?draft= on mount
+  useEffect(() => {
+    if (resumedRef.current) return;
+    const draftParam = searchParams.get('draft');
+    if (!draftParam) return;
+    resumedRef.current = true;
+
+    const resume = async () => {
+      try {
+        const { data: draft } = await api.warroom.wizardDraftGet(draftParam);
+        if (!draft) return;
+
+        setWizardDraftId(draftParam);
+        const input = (draft.input ?? {}) as Record<string, unknown>;
+        const savedStep = (draft.current_step as number) || 1;
+        const validStep = VISIBLE_STEPS.includes(savedStep) ? savedStep : 1;
+
+        // Restore wizard state from draft input
+        if (input.scenario_type) setIncidentType(input.scenario_type as string);
+        if (input.custom_incident_text) setCustomIncidentText(input.custom_incident_text as string);
+        if (input.weapon_type) setWeaponType(input.weapon_type as string);
+
+        const teamsData = input.teams as TeamEntry[] | string[] | undefined;
+        if (Array.isArray(teamsData) && teamsData.length > 0) {
+          if (typeof teamsData[0] === 'string') {
+            setTeams(
+              (teamsData as string[]).map((name) => ({
+                team_name: name,
+                team_description: '',
+                min_participants: 1,
+                max_participants: 10,
+                is_investigative: false,
+              })),
+            );
+          } else {
+            setTeams(teamsData as TeamEntry[]);
+          }
+        }
+
+        const sceneCtx = input.scene_context as Record<string, unknown> | undefined;
+        if (sceneCtx?.rts_scene_id) {
+          setRtsSceneId(sceneCtx.rts_scene_id as string);
+        }
+
+        // Restore geo result if present
+        if (draft.geo_result) {
+          setGeoResult(draft.geo_result as Record<string, unknown>);
+          geoFetchedRef.current = true;
+        }
+
+        // Restore research results if present
+        if (draft.phase1_preview && draft.doctrines) {
+          setResearchResults({
+            phase1Preview: draft.phase1_preview,
+            doctrines: draft.doctrines,
+          } as Record<string, unknown>);
+        }
+
+        setStep(validStep as typeof step);
+      } catch (err) {
+        console.error('Failed to resume draft', err);
+      }
+    };
+    resume();
+  }, [searchParams]);
 
   // Team helpers
   const updateTeam = useCallback(
@@ -241,6 +349,7 @@ export const WarRoom = () => {
           const { data: created } = await api.warroom.wizardDraftCreate({ input: draftInput });
           draftId = created.draft_id;
           setWizardDraftId(draftId);
+          setSearchParams({ draft: draftId }, { replace: true });
         } else {
           await api.warroom.wizardDraftPatch(draftId, { input: draftInput });
         }
@@ -297,15 +406,19 @@ export const WarRoom = () => {
   const goBack = () => {
     if (canGoBack) {
       const prevStep = VISIBLE_STEPS[currentStepIndex - 1];
+      saveDraftState(prevStep);
       setStep(prevStep as typeof step);
     }
   };
 
   const goNext = () => {
     if (step === 3) {
+      saveDraftState(5);
       setStep(5);
     } else if (canGoNext) {
-      setStep((step + 1) as typeof step);
+      const nextStep = (step + 1) as typeof step;
+      saveDraftState(nextStep);
+      setStep(nextStep);
     }
   };
 

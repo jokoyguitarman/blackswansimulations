@@ -472,7 +472,7 @@ router.get(
 const wizardDraftPatchSchema = z.object({
   body: z.object({
     status: z.string().optional(),
-    current_step: z.number().int().min(1).max(10).optional(),
+    current_step: z.number().int().min(1).max(11).optional(),
     input: z.record(z.string(), z.unknown()).optional(),
     validated_doctrines: z.record(z.string(), z.unknown()).optional(),
     deterioration_preview: z.unknown().optional(),
