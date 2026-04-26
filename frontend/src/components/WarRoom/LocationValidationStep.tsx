@@ -187,7 +187,7 @@ export function LocationValidationStep({
   const poiCategories = ['hospitals', 'police', 'fire_stations', 'cctv_or_surveillance'] as const;
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-320px)] min-h-[500px] gap-3">
+    <div className="flex flex-col lg:flex-row h-[calc(100vh-320px)] min-h-[350px] gap-3">
       {/* Left: POI panel */}
       <div className="w-full lg:w-80 flex-shrink-0 overflow-y-auto space-y-3">
         {/* Venue / Location header */}

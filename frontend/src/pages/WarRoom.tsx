@@ -466,8 +466,8 @@ export const WarRoom = () => {
   };
 
   return (
-    <div className="min-h-screen scanline p-6">
-      <div className="w-full px-4">
+    <div className="min-h-screen scanline p-4 sm:p-6 flex flex-col">
+      <div className="w-full px-2 sm:px-4 flex-1 flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl terminal-text uppercase tracking-wider">[WAR ROOM]</h1>
@@ -475,7 +475,7 @@ export const WarRoom = () => {
         </div>
 
         {/* Step progress bar */}
-        <div className="military-border p-3 mb-6 bg-robotic-gray-300">
+        <div className="military-border p-2 sm:p-3 mb-4 sm:mb-6 bg-robotic-gray-300 flex-shrink-0">
           <div className="flex items-center gap-1 overflow-x-auto">
             {VISIBLE_STEPS.map((s, i) => {
               const isCurrent = s === step;
@@ -570,7 +570,7 @@ export const WarRoom = () => {
         )}
 
         {/* Step content */}
-        <div className="military-border p-6 mb-6 min-h-[400px]">
+        <div className="military-border p-4 sm:p-6 mb-4 sm:mb-6 flex-1 flex flex-col min-h-0 overflow-y-auto">
           {step === 1 && (
             <div>
               <h2 className="text-lg terminal-text uppercase mb-4">[STEP 1: INCIDENT SELECTION]</h2>
@@ -774,7 +774,7 @@ export const WarRoom = () => {
           )}
 
           {step === 3 && (
-            <div className="h-[calc(100vh-280px)] min-h-[500px] lg:min-h-[600px]">
+            <div className="h-[calc(100vh-280px)] min-h-[400px]">
               <SceneEditor
                 incidentType={incidentType || 'bombing'}
                 initialSceneId={rtsSceneId}
@@ -834,7 +834,7 @@ export const WarRoom = () => {
         </div>
 
         {/* Navigation buttons */}
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center flex-shrink-0 pt-2">
           <button
             onClick={goBack}
             disabled={!canGoBack}
