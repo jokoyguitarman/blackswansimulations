@@ -3,6 +3,10 @@ import { MapContainer, TileLayer, Polygon, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { api } from '../../lib/api';
 import { projectPolygon } from '../../lib/evacuation/geometry';
+import { PolygonEvacuationEngine } from '../../lib/evacuation/engine';
+import type { PedSnapshot } from '../../lib/evacuation/engine';
+import { DEFAULT_POLYGON_CONFIG } from '../../lib/evacuation/types';
+import type { PolygonSimConfig } from '../../lib/evacuation/types';
 import {
   renderRTS,
   computeMapRenderContext,
@@ -65,6 +69,7 @@ type SceneConfigData = {
   blast_site: { x: number; y: number } | null;
   wall_inspection_points: Array<Record<string, unknown>>;
   pedestrian_count: number;
+  enrichment_result?: Record<string, unknown> | null;
 };
 
 export function SceneCanvasView({
@@ -97,6 +102,29 @@ export function SceneCanvasView({
   const [loading, setLoading] = useState(true);
   const [hasScene, setHasScene] = useState<boolean | null>(null);
 
+  // Hazard progression preview
+  interface EnvSnapshot {
+    at_minutes: number;
+    stud_effects: Array<{
+      stud_id: string;
+      smoke_density: number;
+      fire_intensity: number;
+      gas_concentration: number;
+      structural_damage: number;
+      visibility_m: number;
+    }>;
+  }
+  const [envTimeline, setEnvTimeline] = useState<EnvSnapshot[]>([]);
+  const [showHazardTimeline, setShowHazardTimeline] = useState(false);
+  const [timelineIndex, setTimelineIndex] = useState(0);
+
+  // Evacuation preview
+  const [showEvacuation, setShowEvacuation] = useState(false);
+  const [evacRunning, setEvacRunning] = useState(false);
+  const evacEngRef = useRef<PolygonEvacuationEngine | null>(null);
+  const [pedestrians, setPedestrians] = useState<PedSnapshot[]>([]);
+  const evacSpeedRef = useRef(1);
+
   // Load scene config and scenario pins
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +154,15 @@ export function SceneCanvasView({
         setSceneConfig(scene);
         setHasScene(true);
         onLoaded?.(true);
+
+        // Extract environmental timeline from enrichment_result if present
+        const enrichment = (scene as unknown as Record<string, unknown>)
+          .enrichment_result as Record<string, unknown> | null;
+        if (enrichment?.sceneSynthesis) {
+          const syn = enrichment.sceneSynthesis as Record<string, unknown>;
+          const timeline = (syn.environmentalTimeline as EnvSnapshot[]) || [];
+          if (timeline.length > 0) setEnvTimeline(timeline);
+        }
 
         const polygon = scene.building_polygon;
         const casualties = (casualtiesRes as { data: Array<Record<string, unknown>> }).data || [];
@@ -400,6 +437,33 @@ export function SceneCanvasView({
             drawIncidentZone(ctx, zone, rc);
           }
 
+          // Compute effectStates from selected timeline snapshot
+          let activeEffects: Map<
+            string,
+            { fire: { state: string }; gas: number; flood: number; structural: number }
+          > | null = null;
+          if (showHazardTimeline && envTimeline.length > 0) {
+            const snap = envTimeline[Math.min(timelineIndex, envTimeline.length - 1)];
+            if (snap?.stud_effects?.length > 0) {
+              activeEffects = new Map();
+              for (const e of snap.stud_effects) {
+                activeEffects.set(e.stud_id, {
+                  fire: {
+                    state:
+                      e.fire_intensity > 0.5
+                        ? 'burning'
+                        : e.fire_intensity > 0.01
+                          ? 'heating'
+                          : 'none',
+                  },
+                  gas: e.gas_concentration,
+                  flood: 0,
+                  structural: e.structural_damage,
+                });
+              }
+            }
+          }
+
           // Main RTS scene (building, walls, hazards, exits, casualties)
           const state = createInitialGameState();
           renderRTS(
@@ -410,7 +474,7 @@ export function SceneCanvasView({
             state,
             projectedVerts,
             exits,
-            [],
+            pedestrians,
             true,
             wallPoints,
             activeWallPoint?.id ?? null,
@@ -428,6 +492,7 @@ export function SceneCanvasView({
             null,
             null,
             simStuds,
+            activeEffects,
           );
 
           // Foreground layers: scenario location labels (on top of everything)
@@ -457,7 +522,59 @@ export function SceneCanvasView({
     simStuds,
     activeCasualtyPin,
     activeWallPoint,
+    showHazardTimeline,
+    timelineIndex,
+    envTimeline,
+    pedestrians,
   ]);
+
+  // Evacuation engine step
+  useEffect(() => {
+    if (!evacRunning || !evacEngRef.current) return;
+    let frameId = 0;
+    const step = () => {
+      const eng = evacEngRef.current;
+      if (!eng) return;
+      const speed = evacSpeedRef.current;
+      for (let i = 0; i < speed; i++) eng.step();
+      setPedestrians(eng.getSnapshots());
+      frameId = requestAnimationFrame(step);
+    };
+    frameId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frameId);
+  }, [evacRunning]);
+
+  const startEvacuation = useCallback(() => {
+    if (!sceneConfig || !projectedVerts.length || !exits.length) return;
+    const config: PolygonSimConfig = {
+      vertices: projectedVerts,
+      pedestrianCount: sceneConfig.pedestrian_count || 120,
+      pedestrianRadius: DEFAULT_POLYGON_CONFIG.pedestrianRadius,
+      desiredSpeed: DEFAULT_POLYGON_CONFIG.desiredSpeed,
+      panicFactor: DEFAULT_POLYGON_CONFIG.panicFactor,
+      dt: DEFAULT_POLYGON_CONFIG.dt,
+    };
+    const iwDefs = interiorWalls.map((w) => ({
+      startX: w.start.x,
+      startY: w.start.y,
+      endX: w.end.x,
+      endY: w.end.y,
+      hasDoor: w.hasDoor,
+      doorWidth: w.doorWidth ?? 1.5,
+      doorPosition: w.doorPosition ?? 0.5,
+    }));
+    const obstacles = hazardZones.map((hz) => ({ x: hz.pos.x, y: hz.pos.y, radius: hz.radius }));
+    evacEngRef.current = new PolygonEvacuationEngine(config, exits, iwDefs, obstacles);
+    setPedestrians(evacEngRef.current.getSnapshots());
+    setEvacRunning(true);
+  }, [sceneConfig, projectedVerts, exits, interiorWalls, hazardZones]);
+
+  const stopEvacuation = useCallback(() => {
+    setEvacRunning(false);
+    evacEngRef.current?.destroy();
+    evacEngRef.current = null;
+    setPedestrians([]);
+  }, []);
 
   if (loading) {
     return (
@@ -487,191 +604,291 @@ export function SceneCanvasView({
 
   return (
     <div
-      className={`relative overflow-hidden rounded border border-robotic-gray-200 ${fillHeight ? 'h-full' : ''}`}
-      ref={containerRef}
+      className={`relative overflow-hidden rounded border border-robotic-gray-200 ${fillHeight ? 'h-full' : ''} flex flex-col`}
       style={fillHeight ? undefined : { height }}
     >
-      <MapContainer
-        center={[centerLat, centerLng]}
-        zoom={19}
-        maxZoom={22}
-        style={{ height: '100%', width: '100%' }}
-        doubleClickZoom={false}
-      >
-        <TileLayer
-          attribution="&copy; OSM"
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          maxNativeZoom={19}
-          maxZoom={22}
-        />
-        <MapRefSync onMap={setLeafletMap} />
-        <FitBounds polygon={sceneConfig.building_polygon} />
-        <Polygon
-          positions={sceneConfig.building_polygon.map(([la, ln]) => [la, ln] as [number, number])}
-          pathOptions={{ color: '#22d3ee', weight: 2, fillOpacity: 0 }}
-        />
-      </MapContainer>
-      <canvas
-        ref={canvasRef}
-        width={canvasSize.w}
-        height={canvasSize.h}
-        onClick={handleCanvasClick}
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: canvasSize.w,
-          height: canvasSize.h,
-          pointerEvents: 'auto',
-          zIndex: 1000,
-          touchAction: 'none',
-        }}
-      />
-
-      {/* Casualty inspection panel */}
-      {activeCasualtyPin && (
-        <div
-          className="absolute top-4 left-4 bg-gray-900/95 border border-red-700 rounded-lg shadow-2xl overflow-y-auto"
-          style={{ zIndex: 1002, width: 380, maxHeight: 'calc(100% - 32px)' }}
+      {/* Preview toolbar */}
+      <div className="flex items-center gap-2 px-3 py-1.5 bg-robotic-gray-300 border-b border-robotic-gray-200 flex-shrink-0">
+        <button
+          onClick={() => {
+            setShowHazardTimeline(!showHazardTimeline);
+            if (showHazardTimeline) setTimelineIndex(0);
+          }}
+          disabled={envTimeline.length === 0}
+          className={`text-[10px] terminal-text px-2 py-1 rounded border transition-colors ${
+            showHazardTimeline
+              ? 'border-red-500 bg-red-900/30 text-red-300'
+              : 'border-robotic-gray-200 text-robotic-yellow/50 hover:border-robotic-yellow/40'
+          } ${envTimeline.length === 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
         >
-          <div className="flex items-center justify-between px-3 py-2 bg-red-900/40 border-b border-red-800">
-            <div className="flex items-center gap-2">
-              <span
-                className={`text-xs font-bold px-1.5 py-0.5 rounded ${
-                  activeCasualtyPin.trueTag === 'red'
-                    ? 'bg-red-700 text-white'
-                    : activeCasualtyPin.trueTag === 'yellow'
-                      ? 'bg-yellow-600 text-black'
-                      : activeCasualtyPin.trueTag === 'green'
-                        ? 'bg-green-700 text-white'
-                        : activeCasualtyPin.trueTag === 'black'
-                          ? 'bg-gray-800 text-white'
-                          : 'bg-gray-600 text-white'
+          {showHazardTimeline ? 'Hide Hazards' : 'Hazard Timeline'}
+        </button>
+
+        <button
+          onClick={() => {
+            if (showEvacuation) {
+              stopEvacuation();
+              setShowEvacuation(false);
+            } else {
+              setShowEvacuation(true);
+              startEvacuation();
+            }
+          }}
+          disabled={!exits.length}
+          className={`text-[10px] terminal-text px-2 py-1 rounded border transition-colors ${
+            showEvacuation
+              ? 'border-cyan-500 bg-cyan-900/30 text-cyan-300'
+              : 'border-robotic-gray-200 text-robotic-yellow/50 hover:border-robotic-yellow/40'
+          } ${!exits.length ? 'opacity-30 cursor-not-allowed' : ''}`}
+        >
+          {showEvacuation ? 'Stop Evacuation' : 'Evacuation Preview'}
+        </button>
+
+        {showEvacuation && (
+          <>
+            <button
+              onClick={() => setEvacRunning(!evacRunning)}
+              className="text-[10px] terminal-text px-2 py-1 border border-robotic-gray-200 text-robotic-yellow/50 rounded"
+            >
+              {evacRunning ? 'Pause' : 'Play'}
+            </button>
+            {[1, 2, 5].map((s) => (
+              <button
+                key={s}
+                onClick={() => {
+                  evacSpeedRef.current = s;
+                }}
+                className={`text-[9px] terminal-text px-1.5 py-0.5 rounded border ${
+                  evacSpeedRef.current === s
+                    ? 'border-cyan-500 text-cyan-300'
+                    : 'border-robotic-gray-200 text-robotic-yellow/30'
                 }`}
               >
-                {activeCasualtyPin.trueTag.toUpperCase()}
-              </span>
-              <span className="text-xs text-white font-bold">
-                Casualty {activeCasualtyPin.id.slice(0, 8)}
-              </span>
-            </div>
-            <button
-              onClick={() => setActiveCasualtyPin(null)}
-              className="text-gray-400 hover:text-white text-sm px-1"
-            >
-              X
-            </button>
-          </div>
-          <div className="p-3 space-y-2">
-            {activeCasualtyPin.description && (
-              <p className="text-xs text-gray-300">{activeCasualtyPin.description}</p>
-            )}
-            <div className="grid grid-cols-2 gap-1 text-[10px]">
-              {activeCasualtyPin.observableSigns.breathing && (
-                <div>
-                  <span className="text-gray-500">Breathing:</span>{' '}
-                  <span className="text-gray-300">
-                    {activeCasualtyPin.observableSigns.breathing}
-                  </span>
-                </div>
-              )}
-              {activeCasualtyPin.observableSigns.pulse && (
-                <div>
-                  <span className="text-gray-500">Pulse:</span>{' '}
-                  <span className="text-gray-300">{activeCasualtyPin.observableSigns.pulse}</span>
-                </div>
-              )}
-              {activeCasualtyPin.observableSigns.consciousness && (
-                <div>
-                  <span className="text-gray-500">Consciousness:</span>{' '}
-                  <span className="text-gray-300">
-                    {activeCasualtyPin.observableSigns.consciousness}
-                  </span>
-                </div>
-              )}
-              {activeCasualtyPin.observableSigns.visibleInjuries && (
-                <div>
-                  <span className="text-gray-500">Injuries:</span>{' '}
-                  <span className="text-gray-300">
-                    {activeCasualtyPin.observableSigns.visibleInjuries}
-                  </span>
-                </div>
-              )}
-              {activeCasualtyPin.observableSigns.mobility && (
-                <div>
-                  <span className="text-gray-500">Mobility:</span>{' '}
-                  <span className="text-gray-300">
-                    {activeCasualtyPin.observableSigns.mobility}
-                  </span>
-                </div>
-              )}
-              {activeCasualtyPin.observableSigns.bleeding && (
-                <div>
-                  <span className="text-gray-500">Bleeding:</span>{' '}
-                  <span className="text-gray-300">
-                    {activeCasualtyPin.observableSigns.bleeding}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+                {s}x
+              </button>
+            ))}
+            <span className="text-[9px] terminal-text text-robotic-yellow/30">
+              {pedestrians.filter((p) => p.evacuated).length}/{pedestrians.length} evacuated
+            </span>
+          </>
+        )}
 
-      {/* Wall photo point panel */}
-      {activeWallPoint && (
-        <div
-          className="absolute top-4 left-4 bg-gray-900/95 border border-cyan-700 rounded-lg shadow-2xl overflow-y-auto"
-          style={{ zIndex: 1002, width: 380, maxHeight: 'calc(100% - 32px)' }}
-        >
-          <div className="flex items-center justify-between px-3 py-2 bg-cyan-900/40 border-b border-cyan-800">
-            <span className="text-xs text-white font-bold">Wall Point {activeWallPoint.id}</span>
-            <button
-              onClick={() => setActiveWallPoint(null)}
-              className="text-gray-400 hover:text-white text-sm px-1"
-            >
-              X
-            </button>
-          </div>
-          <div className="p-3">
-            {activeWallPoint.imageUrl ? (
-              <img
-                src={activeWallPoint.imageUrl}
-                alt="Wall point"
-                className="w-full rounded border border-gray-700"
-              />
-            ) : (
-              <p className="text-xs text-gray-500">No photo available</p>
-            )}
-            <div className="mt-2 text-[10px] text-gray-400">
-              Heading: {Math.round(activeWallPoint.heading || 0)}°
+        {showHazardTimeline && envTimeline.length > 0 && (
+          <div className="flex items-center gap-2 ml-2">
+            <span className="text-[9px] terminal-text text-red-400">
+              T+{envTimeline[timelineIndex]?.at_minutes ?? 0} min
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={envTimeline.length - 1}
+              value={timelineIndex}
+              onChange={(e) => setTimelineIndex(Number(e.target.value))}
+              className="w-32"
+            />
+            <div className="flex gap-0.5">
+              {envTimeline.map((s, i) => (
+                <button
+                  key={i}
+                  onClick={() => setTimelineIndex(i)}
+                  className={`text-[8px] terminal-text px-1 py-0.5 rounded ${
+                    i === timelineIndex
+                      ? 'bg-red-900/40 text-red-300'
+                      : 'text-robotic-yellow/20 hover:text-robotic-yellow/40'
+                  }`}
+                >
+                  {s.at_minutes}m
+                </button>
+              ))}
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Location info panel */}
-      {activeLocation && (
-        <div
-          className="absolute top-4 left-4 bg-gray-900/95 border border-amber-700 rounded-lg shadow-2xl overflow-y-auto"
-          style={{ zIndex: 1002, width: 380, maxHeight: 'calc(100% - 32px)' }}
+      {/* Map + Canvas */}
+      <div className="flex-1 relative" ref={containerRef}>
+        <MapContainer
+          center={[centerLat, centerLng]}
+          zoom={19}
+          maxZoom={22}
+          style={{ height: '100%', width: '100%' }}
+          doubleClickZoom={false}
         >
-          <div className="flex items-center justify-between px-3 py-2 bg-amber-900/40 border-b border-amber-800">
-            <span className="text-xs text-white font-bold">{activeLocation.label}</span>
-            <button
-              onClick={() => setActiveLocation(null)}
-              className="text-gray-400 hover:text-white text-sm px-1"
-            >
-              X
-            </button>
-          </div>
-          <div className="p-3 text-xs text-gray-300">
-            <div className="text-[10px] text-gray-500 uppercase mb-1">
-              {activeLocation.pinCategory || activeLocation.locationType || 'Location'}
+          <TileLayer
+            attribution="&copy; OSM"
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            maxNativeZoom={19}
+            maxZoom={22}
+          />
+          <MapRefSync onMap={setLeafletMap} />
+          <FitBounds polygon={sceneConfig.building_polygon} />
+          <Polygon
+            positions={sceneConfig.building_polygon.map(([la, ln]) => [la, ln] as [number, number])}
+            pathOptions={{ color: '#22d3ee', weight: 2, fillOpacity: 0 }}
+          />
+        </MapContainer>
+        <canvas
+          ref={canvasRef}
+          width={canvasSize.w}
+          height={canvasSize.h}
+          onClick={handleCanvasClick}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: canvasSize.w,
+            height: canvasSize.h,
+            pointerEvents: 'auto',
+            zIndex: 1000,
+            touchAction: 'none',
+          }}
+        />
+
+        {/* Casualty inspection panel */}
+        {activeCasualtyPin && (
+          <div
+            className="absolute top-4 left-4 bg-gray-900/95 border border-red-700 rounded-lg shadow-2xl overflow-y-auto"
+            style={{ zIndex: 1002, width: 380, maxHeight: 'calc(100% - 32px)' }}
+          >
+            <div className="flex items-center justify-between px-3 py-2 bg-red-900/40 border-b border-red-800">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+                    activeCasualtyPin.trueTag === 'red'
+                      ? 'bg-red-700 text-white'
+                      : activeCasualtyPin.trueTag === 'yellow'
+                        ? 'bg-yellow-600 text-black'
+                        : activeCasualtyPin.trueTag === 'green'
+                          ? 'bg-green-700 text-white'
+                          : activeCasualtyPin.trueTag === 'black'
+                            ? 'bg-gray-800 text-white'
+                            : 'bg-gray-600 text-white'
+                  }`}
+                >
+                  {activeCasualtyPin.trueTag.toUpperCase()}
+                </span>
+                <span className="text-xs text-white font-bold">
+                  Casualty {activeCasualtyPin.id.slice(0, 8)}
+                </span>
+              </div>
+              <button
+                onClick={() => setActiveCasualtyPin(null)}
+                className="text-gray-400 hover:text-white text-sm px-1"
+              >
+                X
+              </button>
+            </div>
+            <div className="p-3 space-y-2">
+              {activeCasualtyPin.description && (
+                <p className="text-xs text-gray-300">{activeCasualtyPin.description}</p>
+              )}
+              <div className="grid grid-cols-2 gap-1 text-[10px]">
+                {activeCasualtyPin.observableSigns.breathing && (
+                  <div>
+                    <span className="text-gray-500">Breathing:</span>{' '}
+                    <span className="text-gray-300">
+                      {activeCasualtyPin.observableSigns.breathing}
+                    </span>
+                  </div>
+                )}
+                {activeCasualtyPin.observableSigns.pulse && (
+                  <div>
+                    <span className="text-gray-500">Pulse:</span>{' '}
+                    <span className="text-gray-300">{activeCasualtyPin.observableSigns.pulse}</span>
+                  </div>
+                )}
+                {activeCasualtyPin.observableSigns.consciousness && (
+                  <div>
+                    <span className="text-gray-500">Consciousness:</span>{' '}
+                    <span className="text-gray-300">
+                      {activeCasualtyPin.observableSigns.consciousness}
+                    </span>
+                  </div>
+                )}
+                {activeCasualtyPin.observableSigns.visibleInjuries && (
+                  <div>
+                    <span className="text-gray-500">Injuries:</span>{' '}
+                    <span className="text-gray-300">
+                      {activeCasualtyPin.observableSigns.visibleInjuries}
+                    </span>
+                  </div>
+                )}
+                {activeCasualtyPin.observableSigns.mobility && (
+                  <div>
+                    <span className="text-gray-500">Mobility:</span>{' '}
+                    <span className="text-gray-300">
+                      {activeCasualtyPin.observableSigns.mobility}
+                    </span>
+                  </div>
+                )}
+                {activeCasualtyPin.observableSigns.bleeding && (
+                  <div>
+                    <span className="text-gray-500">Bleeding:</span>{' '}
+                    <span className="text-gray-300">
+                      {activeCasualtyPin.observableSigns.bleeding}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Wall photo point panel */}
+        {activeWallPoint && (
+          <div
+            className="absolute top-4 left-4 bg-gray-900/95 border border-cyan-700 rounded-lg shadow-2xl overflow-y-auto"
+            style={{ zIndex: 1002, width: 380, maxHeight: 'calc(100% - 32px)' }}
+          >
+            <div className="flex items-center justify-between px-3 py-2 bg-cyan-900/40 border-b border-cyan-800">
+              <span className="text-xs text-white font-bold">Wall Point {activeWallPoint.id}</span>
+              <button
+                onClick={() => setActiveWallPoint(null)}
+                className="text-gray-400 hover:text-white text-sm px-1"
+              >
+                X
+              </button>
+            </div>
+            <div className="p-3">
+              {activeWallPoint.imageUrl ? (
+                <img
+                  src={activeWallPoint.imageUrl}
+                  alt="Wall point"
+                  className="w-full rounded border border-gray-700"
+                />
+              ) : (
+                <p className="text-xs text-gray-500">No photo available</p>
+              )}
+              <div className="mt-2 text-[10px] text-gray-400">
+                Heading: {Math.round(activeWallPoint.heading || 0)}°
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Location info panel */}
+        {activeLocation && (
+          <div
+            className="absolute top-4 left-4 bg-gray-900/95 border border-amber-700 rounded-lg shadow-2xl overflow-y-auto"
+            style={{ zIndex: 1002, width: 380, maxHeight: 'calc(100% - 32px)' }}
+          >
+            <div className="flex items-center justify-between px-3 py-2 bg-amber-900/40 border-b border-amber-800">
+              <span className="text-xs text-white font-bold">{activeLocation.label}</span>
+              <button
+                onClick={() => setActiveLocation(null)}
+                className="text-gray-400 hover:text-white text-sm px-1"
+              >
+                X
+              </button>
+            </div>
+            <div className="p-3 text-xs text-gray-300">
+              <div className="text-[10px] text-gray-500 uppercase mb-1">
+                {activeLocation.pinCategory || activeLocation.locationType || 'Location'}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

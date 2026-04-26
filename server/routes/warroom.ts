@@ -901,6 +901,14 @@ router.post(
         })
         .eq('id', draftId);
 
+      // Persist enrichment to scene config so SceneCanvasView can load environmental timeline
+      if (enrichmentResult && rtsSceneId) {
+        await supabaseAdmin
+          .from('rts_scene_configs')
+          .update({ enrichment_result: enrichmentResult as unknown })
+          .eq('id', rtsSceneId);
+      }
+
       return res.json({
         data: {
           draft_id: draftId,
