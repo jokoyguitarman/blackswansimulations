@@ -549,7 +549,15 @@ ${
         const pc = pedestrianCount ?? 120;
         const [minC, maxC] =
           pc > 1000 ? [40, 80] : pc > 500 ? [25, 50] : pc > 200 ? [15, 30] : [8, 15];
-        return `No casualty pins placed by trainer. The venue has approximately ${pc} people present. You must generate ${minC}-${maxC} realistic casualties distributed across the blast zones at varying distances (0-100m). Scale injuries by proximity to blast.`;
+        return `No casualty pins placed by trainer. The venue has approximately ${pc} people present. You must generate ${minC}-${maxC} realistic casualties distributed across the blast zones at varying distances (0-100m). Scale injuries by proximity to blast.
+
+MANDATORY TRIAGE TAG DISTRIBUTION FOR BOMBING/EXPLOSION:
+- At least 15-20% MUST be BLACK (deceased) — people at ground zero DO NOT survive an explosion
+- At least 25-30% MUST be RED (immediate/critical) — severe blast injuries, burns, amputations
+- Remaining split between YELLOW (delayed) and GREEN (minor)
+- Casualties within 0-5m of blast center MUST ALL be BLACK
+- Casualties within 5-15m should be mostly RED with some BLACK
+- You MUST include BLACK casualties. A bombing without fatalities is unrealistic.`;
       })()
     : 'No casualties analyzed.')
 }

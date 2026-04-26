@@ -119,6 +119,9 @@ export function SceneCanvasView({
   const [envTimeline, setEnvTimeline] = useState<EnvSnapshot[]>([]);
   const [showHazardTimeline, setShowHazardTimeline] = useState(false);
   const [timelineIndex, setTimelineIndex] = useState(0);
+  const [hazardEnrichmentMap, setHazardEnrichmentMap] = useState<
+    Map<string, Record<string, unknown>>
+  >(new Map());
 
   // Evacuation preview
   const [showEvacuation, setShowEvacuation] = useState(false);
@@ -164,6 +167,14 @@ export function SceneCanvasView({
           const syn = enrichment.sceneSynthesis as Record<string, unknown>;
           const timeline = (syn.environmentalTimeline as EnvSnapshot[]) || [];
           if (timeline.length > 0) setEnvTimeline(timeline);
+        }
+        // Build hazard enrichment lookup
+        if (enrichment?.hazardAnalysis) {
+          const haMap = new Map<string, Record<string, unknown>>();
+          for (const ha of enrichment.hazardAnalysis as Array<Record<string, unknown>>) {
+            if (ha.hazardId) haMap.set(ha.hazardId as string, ha);
+          }
+          if (haMap.size > 0) setHazardEnrichmentMap(haMap);
         }
 
         const polygon = scene.building_polygon;
@@ -935,49 +946,113 @@ export function SceneCanvasView({
         )}
 
         {/* Hazard detail panel */}
-        {activeHazard && (
-          <div
-            className="absolute top-4 left-4 bg-gray-900/95 border border-orange-700 rounded-lg shadow-2xl overflow-y-auto"
-            style={{ zIndex: 1002, width: 380, maxHeight: 'calc(100% - 32px)' }}
-          >
-            <div className="flex items-center justify-between px-3 py-2 bg-orange-900/40 border-b border-orange-800">
-              <span className="text-xs text-orange-300 font-bold">
-                {activeHazard.label || activeHazard.hazardType}
-              </span>
-              <button
-                onClick={() => setActiveHazard(null)}
-                className="text-gray-400 hover:text-white text-sm px-1"
+        {activeHazard &&
+          (() => {
+            const enriched = hazardEnrichmentMap.get(activeHazard.id);
+            return (
+              <div
+                className="absolute top-4 left-4 bg-gray-900/95 border border-orange-700 rounded-lg shadow-2xl overflow-y-auto"
+                style={{ zIndex: 1002, width: 380, maxHeight: 'calc(100% - 32px)' }}
               >
-                X
-              </button>
-            </div>
-            <div className="p-3 text-xs text-gray-300 space-y-1">
-              <div>
-                Type: <span className="text-orange-300">{activeHazard.hazardType}</span>
-              </div>
-              <div>
-                Radius: <span className="text-orange-300">{activeHazard.radius}m</span>
-              </div>
-              {activeHazard.description && (
-                <div className="whitespace-pre-wrap text-gray-400 mt-1">
-                  {activeHazard.description}
+                <div className="flex items-center justify-between px-3 py-2 bg-orange-900/40 border-b border-orange-800">
+                  <span className="text-xs text-orange-300 font-bold">
+                    {(enriched?.identifiedMaterial as string) ||
+                      activeHazard.label ||
+                      activeHazard.hazardType}
+                  </span>
+                  <button
+                    onClick={() => setActiveHazard(null)}
+                    className="text-gray-400 hover:text-white text-sm px-1"
+                  >
+                    X
+                  </button>
                 </div>
-              )}
-              {activeHazard.photos && activeHazard.photos.length > 0 && (
-                <div className="grid grid-cols-2 gap-1 mt-2">
-                  {activeHazard.photos.map((photo, i) => (
-                    <img
-                      key={i}
-                      src={photo}
-                      alt={`Hazard ${i + 1}`}
-                      className="w-full h-20 object-cover rounded border border-gray-700"
-                    />
-                  ))}
+                <div className="p-3 text-xs text-gray-300 space-y-2">
+                  <div>
+                    Type: <span className="text-orange-300">{activeHazard.hazardType}</span>
+                  </div>
+                  <div>
+                    Radius: <span className="text-orange-300">{activeHazard.radius}m</span>
+                  </div>
+                  {!!enriched?.riskLevel && (
+                    <div>
+                      Risk:{' '}
+                      <span
+                        className={`font-bold ${
+                          String(enriched.riskLevel).toLowerCase().includes('high')
+                            ? 'text-red-400'
+                            : 'text-orange-400'
+                        }`}
+                      >
+                        {String(enriched.riskLevel)}
+                      </span>
+                    </div>
+                  )}
+                  {!!enriched?.generatedDescription && (
+                    <div className="whitespace-pre-wrap text-gray-400 border-t border-gray-800 pt-2">
+                      {String(enriched.generatedDescription)}
+                    </div>
+                  )}
+                  {!enriched?.generatedDescription && activeHazard.description && (
+                    <div className="whitespace-pre-wrap text-gray-400">
+                      {activeHazard.description}
+                    </div>
+                  )}
+                  {!!enriched?.blastInteraction && (
+                    <div>
+                      <span className="text-[9px] text-gray-500 uppercase">Blast Interaction:</span>{' '}
+                      <span className="text-gray-400">{String(enriched.blastInteraction)}</span>
+                    </div>
+                  )}
+                  {!!enriched?.secondaryEffects &&
+                    (enriched.secondaryEffects as string[]).length > 0 && (
+                      <div>
+                        <span className="text-[9px] text-gray-500 uppercase">
+                          Secondary Effects:
+                        </span>{' '}
+                        <span className="text-gray-400">
+                          {(enriched.secondaryEffects as string[]).join('; ')}
+                        </span>
+                      </div>
+                    )}
+                  {!!enriched?.progressionTimeline && (
+                    <div>
+                      <span className="text-[9px] text-gray-500 uppercase">Progression:</span>{' '}
+                      <span className="text-gray-400">{String(enriched.progressionTimeline)}</span>
+                    </div>
+                  )}
+                  {!!enriched?.chainReactionRisk && (
+                    <div>
+                      <span className="text-[9px] text-gray-500 uppercase">Chain Reaction:</span>{' '}
+                      <span className="text-gray-400">{String(enriched.chainReactionRisk)}</span>
+                    </div>
+                  )}
+                  {!!enriched?.responderGuidance && (
+                    <div className="border-t border-gray-800 pt-2">
+                      <span className="text-[9px] text-cyan-500 uppercase">
+                        Responder Guidance:
+                      </span>
+                      <div className="text-cyan-400/70 mt-0.5">
+                        {String(enriched.responderGuidance)}
+                      </div>
+                    </div>
+                  )}
+                  {activeHazard.photos && activeHazard.photos.length > 0 && (
+                    <div className="grid grid-cols-2 gap-1 mt-2">
+                      {activeHazard.photos.map((photo, i) => (
+                        <img
+                          key={i}
+                          src={photo}
+                          alt={`Hazard ${i + 1}`}
+                          className="w-full h-20 object-cover rounded border border-gray-700"
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
-        )}
+              </div>
+            );
+          })()}
       </div>
     </div>
   );

@@ -3692,7 +3692,8 @@ Return ONLY valid JSON:
 }
 
 IMPORTANT:
-- equipment_requirements MUST contain at least 2 items. Be specific — not just "fire_extinguisher" but the correct type (foam, CO2, dry chemical, etc.) for this hazard.
+- equipment_requirements MUST contain at least 6 items. Be comprehensive and specific — not just "fire_extinguisher" but the correct type (foam, CO2, dry chemical, etc.) for this hazard.
+- For bombing/explosion scenarios, MUST include: triage tags, tourniquets, stretchers, burn treatment kits, breathing apparatus, thermal imaging camera, bomb disposal robot or render-safe kit, portable x-ray, shoring equipment, hydraulic rescue tools, ventilation fans, barrier tape, megaphones, safety vests, helmets.
 - ALWAYS include the personal protective equipment (PPE) that responders MUST wear when approaching this hazard. Examples: breathing_apparatus, hazmat_suit, fire_protective_gear, safety_vest, helmet, ppe_medical, chemical_gloves, face_shield. Mark PPE items as critical: true.
 - safety_precautions should list procedural safety steps (e.g. "establish exclusion zone", "approach from upwind").
 - ideal_response_sequence: the COMPLETE ordered playbook a perfect team follows from first alarm to resolution. Each step must name the responsible team. Include PPE donning, zone setup, approach, containment, mitigation, monitoring, and stand-down.
@@ -4420,10 +4421,11 @@ For EACH victim, assign:
 
 CRITICAL PLACEMENT CONSTRAINTS:
 - If studs are listed above with [inside_building] tags, ALL casualties from an indoor explosion MUST be placed on [inside_building] studs only.
-- Casualties must be within the blast radius of the explosion.
+- Casualties must be within the blast radius of the explosion. The blast radius is approximately ${threatProfile?.expected_damage?.blast ? '20-50' : '10-20'}m from the detonation point.
 - Do NOT place any casualties outside the building polygon for indoor blasts.
 - Use the exact stud coordinates for placement — pick the nearest [inside_building] stud at an appropriate distance from the blast.
 - Distribute casualties realistically: more severe injuries (red/black) closer to blast, lighter injuries (green/yellow) further away but still inside.
+- BLACK (deceased) casualties MUST be within 5m of the blast center. RED within 15m. YELLOW within 30m. GREEN beyond 30m but still inside.
 
 Return ONLY valid JSON:
 {
