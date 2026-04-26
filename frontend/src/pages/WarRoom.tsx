@@ -3,6 +3,7 @@ import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
 import { SceneEditor } from '../components/SceneEditor/SceneEditor';
 import { LocationValidationStep } from '../components/WarRoom/LocationValidationStep';
+import { ResearchStep } from '../components/WarRoom/ResearchStep';
 
 interface TeamEntry {
   team_name: string;
@@ -145,7 +146,6 @@ export const WarRoom = () => {
   const [doctrines, setDoctrines] = useState<Record<string, unknown> | null>(null);
 
   // Suppress unused-var warnings until steps are implemented
-  void setResearchResults;
   void setHazardAnalysis;
   void setCasualties;
   void setInjects;
@@ -289,7 +289,9 @@ export const WarRoom = () => {
         ? teams.length > 0 && !teamsLoading
         : step === 3
           ? !!rtsSceneId
-          : true;
+          : step === 6
+            ? !!researchResults
+            : true;
   const canGoNext = step < 11 && stepValid;
 
   const goBack = () => {
@@ -601,16 +603,14 @@ export const WarRoom = () => {
           {step === 6 && (
             <div>
               <h2 className="text-lg terminal-text uppercase mb-4">[STEP 6: INCIDENT RESEARCH]</h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50">
-                AI researches similar incidents and analyzes the area. Weapon type inference if not
-                specified.
+              <p className="text-xs terminal-text text-robotic-yellow/50 mb-4">
+                AI researches similar incidents, generates scenario narrative, and produces per-team
+                doctrines and workflows.
               </p>
-              <div className="mt-4 text-sm terminal-text text-robotic-yellow/30">
-                [Research results will be implemented here]
-              </div>
-              <div className="mt-2 text-[10px] terminal-text text-robotic-yellow/20">
-                State: researchResults={researchResults ? 'loaded' : 'null'}
-              </div>
+              <ResearchStep
+                wizardDraftId={wizardDraftId}
+                onComplete={(data) => setResearchResults(data)}
+              />
             </div>
           )}
 
