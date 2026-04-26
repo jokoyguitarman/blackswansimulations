@@ -276,6 +276,12 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
                   </div>
 
                   {/* Doctrine findings */}
+                  {findings.length === 0 && !workflow && (
+                    <div className="text-[10px] terminal-text text-robotic-yellow/20 italic">
+                      No doctrine data returned for this team. The AI research may have timed out --
+                      try re-running.
+                    </div>
+                  )}
                   {findings.map((f, i) => (
                     <div key={i} className="mb-2">
                       <div className="text-[10px] terminal-text text-robotic-yellow/40">
@@ -386,21 +392,103 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
                 <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase mb-1">
                   Hazard Analyses ({enrichment.hazardAnalysis.length})
                 </div>
-                {enrichment.hazardAnalysis.map((ha, i) => (
-                  <div
-                    key={i}
-                    className="border border-robotic-gray-200 rounded p-2 mb-1 text-[10px] terminal-text text-robotic-yellow/50"
-                  >
-                    <div className="font-bold text-red-400">
-                      {(ha.hazardType as string) || `Hazard ${i + 1}`}
-                    </div>
-                    {(ha.analysisNarrative as string) && (
-                      <div className="mt-1 whitespace-pre-wrap">
-                        {ha.analysisNarrative as string}
+                {enrichment.hazardAnalysis.map((ha, i) => {
+                  const hazardId = (ha.hazardId as string) || '';
+                  const material = (ha.identifiedMaterial as string) || '';
+                  const blastInteraction = (ha.blastInteraction as string) || '';
+                  const secondaryEffects = (ha.secondaryEffects as string[]) || [];
+                  const timeline = (ha.progressionTimeline as string) || '';
+                  const riskLevel = (ha.riskLevel as string) || '';
+                  const chainRisk = (ha.chainReactionRisk as string) || '';
+                  const guidance = (ha.responderGuidance as string) || '';
+                  const description = (ha.generatedDescription as string) || '';
+
+                  return (
+                    <div key={i} className="border border-robotic-gray-200 rounded p-3 mb-2">
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="text-xs terminal-text font-bold text-red-400">
+                          {material || hazardId || `Hazard ${i + 1}`}
+                        </div>
+                        {riskLevel && (
+                          <span
+                            className={`text-[9px] terminal-text px-1.5 py-0.5 rounded ${
+                              riskLevel.toLowerCase().includes('high') ||
+                              riskLevel.toLowerCase().includes('critical')
+                                ? 'bg-red-900/40 text-red-300'
+                                : riskLevel.toLowerCase().includes('moderate') ||
+                                    riskLevel.toLowerCase().includes('medium')
+                                  ? 'bg-orange-900/40 text-orange-300'
+                                  : 'bg-yellow-900/40 text-yellow-300'
+                            }`}
+                          >
+                            {riskLevel}
+                          </span>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
+
+                      {description && (
+                        <div className="text-[10px] terminal-text text-robotic-yellow/60 mb-2 whitespace-pre-wrap">
+                          {description}
+                        </div>
+                      )}
+
+                      {blastInteraction && (
+                        <div className="mb-1.5">
+                          <span className="text-[9px] terminal-text text-robotic-yellow/30 uppercase">
+                            Blast Interaction:{' '}
+                          </span>
+                          <span className="text-[10px] terminal-text text-robotic-yellow/50">
+                            {blastInteraction}
+                          </span>
+                        </div>
+                      )}
+
+                      {secondaryEffects.length > 0 && (
+                        <div className="mb-1.5">
+                          <span className="text-[9px] terminal-text text-robotic-yellow/30 uppercase">
+                            Secondary Effects:{' '}
+                          </span>
+                          <span className="text-[10px] terminal-text text-robotic-yellow/50">
+                            {secondaryEffects.join('; ')}
+                          </span>
+                        </div>
+                      )}
+
+                      {timeline && (
+                        <div className="mb-1.5">
+                          <span className="text-[9px] terminal-text text-robotic-yellow/30 uppercase">
+                            Progression:{' '}
+                          </span>
+                          <span className="text-[10px] terminal-text text-robotic-yellow/50">
+                            {timeline}
+                          </span>
+                        </div>
+                      )}
+
+                      {chainRisk && (
+                        <div className="mb-1.5">
+                          <span className="text-[9px] terminal-text text-robotic-yellow/30 uppercase">
+                            Chain Reaction Risk:{' '}
+                          </span>
+                          <span className="text-[10px] terminal-text text-robotic-yellow/50">
+                            {chainRisk}
+                          </span>
+                        </div>
+                      )}
+
+                      {guidance && (
+                        <div className="mt-2 border-t border-robotic-gray-200 pt-1.5">
+                          <span className="text-[9px] terminal-text text-cyan-500/70 uppercase">
+                            Responder Guidance:{' '}
+                          </span>
+                          <span className="text-[10px] terminal-text text-cyan-400/60">
+                            {guidance}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
             {enrichment.generatedCasualties && enrichment.generatedCasualties.length > 0 && (
@@ -408,6 +496,65 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
                 Generated {enrichment.generatedCasualties.length} casualties from blast analysis.
               </div>
             )}
+            {enrichment.sceneSynthesis &&
+              (() => {
+                const syn = enrichment.sceneSynthesis as Record<string, unknown>;
+                const chainReactions = syn.chainReactions as string[] | undefined;
+                const escalation = syn.escalationTimeline as string | undefined;
+                const challenges = syn.keyChallenges as string[] | undefined;
+                if (!chainReactions?.length && !escalation && !challenges?.length) return null;
+                return (
+                  <div className="border-t border-robotic-gray-200 pt-3 mt-2">
+                    <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase mb-2">
+                      Scene Synthesis
+                    </div>
+                    {escalation && (
+                      <div className="mb-2">
+                        <span className="text-[9px] terminal-text text-robotic-yellow/30 uppercase">
+                          Escalation Timeline:{' '}
+                        </span>
+                        <div className="text-[10px] terminal-text text-robotic-yellow/50 whitespace-pre-wrap mt-0.5">
+                          {escalation}
+                        </div>
+                      </div>
+                    )}
+                    {chainReactions && chainReactions.length > 0 && (
+                      <div className="mb-2">
+                        <span className="text-[9px] terminal-text text-robotic-yellow/30 uppercase">
+                          Chain Reactions:{' '}
+                        </span>
+                        <ul className="mt-0.5">
+                          {chainReactions.map((cr, j) => (
+                            <li
+                              key={j}
+                              className="text-[10px] terminal-text text-robotic-yellow/50"
+                            >
+                              - {cr}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {challenges && challenges.length > 0 && (
+                      <div>
+                        <span className="text-[9px] terminal-text text-robotic-yellow/30 uppercase">
+                          Key Challenges:{' '}
+                        </span>
+                        <ul className="mt-0.5">
+                          {challenges.map((ch, j) => (
+                            <li
+                              key={j}
+                              className="text-[10px] terminal-text text-robotic-yellow/50"
+                            >
+                              - {ch}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
           </div>
         </Section>
       )}
