@@ -1044,16 +1044,19 @@ function drawCasualtyPin(
   ctx.textBaseline = 'middle';
   ctx.fillText('+', p.cx, p.cy);
 
-  ctx.fillStyle = color;
-  ctx.font = 'bold 8px monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  ctx.fillText(pin.currentTag.toUpperCase(), p.cx, p.cy + r + 2);
+  // Only show tag labels for tagged casualties (not untagged preview pins)
+  if (pin.currentTag !== 'untagged') {
+    ctx.fillStyle = color;
+    ctx.font = 'bold 8px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(pin.currentTag.toUpperCase(), p.cx, p.cy + r + 2);
 
-  if (pin.currentTag !== pin.trueTag) {
-    ctx.fillStyle = '#9ca3af';
-    ctx.font = '7px monospace';
-    ctx.fillText(`was ${pin.trueTag.toUpperCase()}`, p.cx, p.cy + r + 12);
+    if (pin.currentTag !== pin.trueTag) {
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '7px monospace';
+      ctx.fillText(`was ${pin.trueTag.toUpperCase()}`, p.cx, p.cy + r + 12);
+    }
   }
 }
 

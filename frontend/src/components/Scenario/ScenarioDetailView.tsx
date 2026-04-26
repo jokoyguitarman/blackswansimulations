@@ -2188,139 +2188,150 @@ const MapPinsTab = ({
         <span className="ml-auto text-robotic-yellow/40">drag pins to reposition</span>
       </div>
 
-      {(deteriorationMissing || hazards.length > 0 || casualties.length > 0) && (
-        <div className="flex items-center gap-3 p-2 military-border bg-robotic-yellow/5">
-          <div className="text-xs terminal-text text-robotic-yellow/70">
-            {deteriorationMissing
-              ? 'Deterioration data is missing (no timelines/spawn pins). You can generate it from the current map pins.'
-              : 'Regenerate deterioration timelines/spawn pins after adding/removing map pins.'}
-          </div>
-          <button
-            onClick={async () => {
-              setRetryDetLoading(true);
-              setRetryDetMsg(null);
-              try {
-                const res = await api.scenarios.retryDeterioration(scenarioId, {
-                  force: !deteriorationMissing,
-                });
-                const msg =
-                  res.message ||
-                  (res.ok
-                    ? `Updated hazards: ${res.hazards_updated ?? 0}, casualties: ${res.casualties_updated ?? 0}, spawn pins: ${(res.spawn_hazards_inserted ?? 0) + (res.spawn_casualties_inserted ?? 0)}`
-                    : res.error) ||
-                  'Retry complete';
-                setRetryDetMsg(msg);
+      {hasSceneCanvas === false &&
+        (deteriorationMissing || hazards.length > 0 || casualties.length > 0) && (
+          <div className="flex items-center gap-3 p-2 military-border bg-robotic-yellow/5">
+            <div className="text-xs terminal-text text-robotic-yellow/70">
+              {deteriorationMissing
+                ? 'Deterioration data is missing (no timelines/spawn pins). You can generate it from the current map pins.'
+                : 'Regenerate deterioration timelines/spawn pins after adding/removing map pins.'}
+            </div>
+            <button
+              onClick={async () => {
+                setRetryDetLoading(true);
+                setRetryDetMsg(null);
+                try {
+                  const res = await api.scenarios.retryDeterioration(scenarioId, {
+                    force: !deteriorationMissing,
+                  });
+                  const msg =
+                    res.message ||
+                    (res.ok
+                      ? `Updated hazards: ${res.hazards_updated ?? 0}, casualties: ${res.casualties_updated ?? 0}, spawn pins: ${(res.spawn_hazards_inserted ?? 0) + (res.spawn_casualties_inserted ?? 0)}`
+                      : res.error) ||
+                    'Retry complete';
+                  setRetryDetMsg(msg);
 
-                const [locRes, hazRes, casRes] = await Promise.all([
-                  api.scenarios.getScenarioLocations(scenarioId),
-                  api.scenarios.getScenarioHazards(scenarioId).catch(() => ({ data: [] })),
-                  api.scenarios.getScenarioCasualties(scenarioId).catch(() => ({ data: [] })),
-                ]);
-                setLocations((locRes.data ?? []) as LocationPin[]);
-                setHazards((hazRes.data ?? []) as HazardPin[]);
-                setCasualties((casRes.data ?? []) as CasualtyPin[]);
-              } catch (err) {
-                setRetryDetMsg(
-                  err instanceof Error ? err.message : 'Failed to retry deterioration',
-                );
-              } finally {
-                setRetryDetLoading(false);
-              }
-            }}
-            disabled={retryDetLoading}
-            className="ml-auto px-4 py-1.5 text-xs terminal-text bg-blue-700 hover:bg-blue-600 text-white rounded border border-blue-500 disabled:opacity-50"
-          >
-            {retryDetLoading
-              ? 'GENERATING...'
-              : deteriorationMissing
-                ? 'GENERATE DETERIORATION'
-                : 'REGENERATE DETERIORATION'}
-          </button>
-        </div>
-      )}
+                  const [locRes, hazRes, casRes] = await Promise.all([
+                    api.scenarios.getScenarioLocations(scenarioId),
+                    api.scenarios.getScenarioHazards(scenarioId).catch(() => ({ data: [] })),
+                    api.scenarios.getScenarioCasualties(scenarioId).catch(() => ({ data: [] })),
+                  ]);
+                  setLocations((locRes.data ?? []) as LocationPin[]);
+                  setHazards((hazRes.data ?? []) as HazardPin[]);
+                  setCasualties((casRes.data ?? []) as CasualtyPin[]);
+                } catch (err) {
+                  setRetryDetMsg(
+                    err instanceof Error ? err.message : 'Failed to retry deterioration',
+                  );
+                } finally {
+                  setRetryDetLoading(false);
+                }
+              }}
+              disabled={retryDetLoading}
+              className="ml-auto px-4 py-1.5 text-xs terminal-text bg-blue-700 hover:bg-blue-600 text-white rounded border border-blue-500 disabled:opacity-50"
+            >
+              {retryDetLoading
+                ? 'GENERATING...'
+                : deteriorationMissing
+                  ? 'GENERATE DETERIORATION'
+                  : 'REGENERATE DETERIORATION'}
+            </button>
+          </div>
+        )}
       {retryDetMsg && <div className="text-xs terminal-text text-green-400 p-1">{retryDetMsg}</div>}
 
-      {/* Backfill buildings toolbar */}
-      <div className="flex items-center gap-3 p-2 military-border bg-cyan-900/10">
-        <div className="text-xs terminal-text text-robotic-yellow/70">
-          Missing building studs? Fetch buildings from OpenStreetMap.
-        </div>
-        <button
-          onClick={async () => {
-            setBackfillLoading(true);
-            setBackfillMsg(null);
-            try {
-              const res = await api.scenarios.backfillBuildings(scenarioId);
-              setBackfillMsg(
-                res.status === 'backfilled'
-                  ? `Loaded ${res.buildingCount} buildings + ${res.routeCount} roads`
-                  : res.status === 'already_populated'
-                    ? `${res.buildingCount} buildings + ${res.routeCount} roads already loaded`
-                    : res.message,
-              );
-              setStudRefreshKey((k) => k + 1);
-            } catch (err) {
-              setBackfillMsg(err instanceof Error ? err.message : 'Backfill failed');
-            } finally {
-              setBackfillLoading(false);
-            }
-          }}
-          disabled={backfillLoading}
-          className="ml-auto px-4 py-1.5 text-xs terminal-text bg-cyan-700 hover:bg-cyan-600 text-white rounded border border-cyan-500 disabled:opacity-50"
-        >
-          {backfillLoading ? 'LOADING...' : 'BACKFILL BUILDINGS'}
-        </button>
-        <button
-          onClick={() => setInspectStudsMode((v) => !v)}
-          className={`px-4 py-1.5 text-xs terminal-text rounded border ${
-            inspectStudsMode
-              ? 'bg-amber-600 border-amber-400 text-white'
-              : 'bg-gray-700 hover:bg-gray-600 border-gray-500 text-gray-200'
-          }`}
-        >
-          {inspectStudsMode ? 'INSPECT: ON' : 'INSPECT STUDS'}
-        </button>
-      </div>
-      {backfillMsg && <div className="text-xs terminal-text text-green-400 p-1">{backfillMsg}</div>}
+      {/* Backfill buildings toolbar (legacy only) */}
+      {hasSceneCanvas === false && (
+        <>
+          <div className="flex items-center gap-3 p-2 military-border bg-cyan-900/10">
+            <div className="text-xs terminal-text text-robotic-yellow/70">
+              Missing building studs? Fetch buildings from OpenStreetMap.
+            </div>
+            <button
+              onClick={async () => {
+                setBackfillLoading(true);
+                setBackfillMsg(null);
+                try {
+                  const res = await api.scenarios.backfillBuildings(scenarioId);
+                  setBackfillMsg(
+                    res.status === 'backfilled'
+                      ? `Loaded ${res.buildingCount} buildings + ${res.routeCount} roads`
+                      : res.status === 'already_populated'
+                        ? `${res.buildingCount} buildings + ${res.routeCount} roads already loaded`
+                        : res.message,
+                  );
+                  setStudRefreshKey((k) => k + 1);
+                } catch (err) {
+                  setBackfillMsg(err instanceof Error ? err.message : 'Backfill failed');
+                } finally {
+                  setBackfillLoading(false);
+                }
+              }}
+              disabled={backfillLoading}
+              className="ml-auto px-4 py-1.5 text-xs terminal-text bg-cyan-700 hover:bg-cyan-600 text-white rounded border border-cyan-500 disabled:opacity-50"
+            >
+              {backfillLoading ? 'LOADING...' : 'BACKFILL BUILDINGS'}
+            </button>
+            <button
+              onClick={() => setInspectStudsMode((v) => !v)}
+              className={`px-4 py-1.5 text-xs terminal-text rounded border ${
+                inspectStudsMode
+                  ? 'bg-amber-600 border-amber-400 text-white'
+                  : 'bg-gray-700 hover:bg-gray-600 border-gray-500 text-gray-200'
+              }`}
+            >
+              {inspectStudsMode ? 'INSPECT: ON' : 'INSPECT STUDS'}
+            </button>
+          </div>
+          {backfillMsg && (
+            <div className="text-xs terminal-text text-green-400 p-1">{backfillMsg}</div>
+          )}
+        </>
+      )}
 
-      {/* Add Pin toolbar */}
-      <div className="flex flex-wrap items-center gap-2 p-2 military-border bg-black/30">
-        <span className="text-xs terminal-text text-robotic-yellow/60 mr-1">ADD PIN:</span>
-        {ADD_PIN_OPTIONS.map((opt) => (
-          <button
-            key={opt.mode}
-            onClick={() => {
-              setAddPinMode(addPinMode === opt.mode ? null : opt.mode);
-              setPendingPin(null);
-              setAddPinForm({});
-            }}
-            className={`px-2.5 py-1 text-[10px] terminal-text rounded border transition-all ${
-              addPinMode === opt.mode
-                ? `${opt.color} text-white ring-1 ring-white/40`
-                : 'bg-gray-800 hover:bg-gray-700 border-gray-600 text-gray-300'
-            }`}
-          >
-            {opt.label}
-          </button>
-        ))}
-        {addPinMode && (
-          <button
-            onClick={() => {
-              setAddPinMode(null);
-              setPendingPin(null);
-              setAddPinForm({});
-            }}
-            className="px-2 py-1 text-[10px] terminal-text bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-400 rounded ml-auto"
-          >
-            CANCEL
-          </button>
-        )}
-      </div>
-      {addPinMode && !pendingPin && (
-        <div className="text-xs terminal-text text-robotic-yellow animate-pulse p-1.5 bg-robotic-yellow/5 military-border">
-          Click on the map to place a{' '}
-          {ADD_PIN_OPTIONS.find((o) => o.mode === addPinMode)?.label || 'pin'}
-        </div>
+      {/* Add Pin toolbar (legacy only) */}
+      {hasSceneCanvas === false && (
+        <>
+          <div className="flex flex-wrap items-center gap-2 p-2 military-border bg-black/30">
+            <span className="text-xs terminal-text text-robotic-yellow/60 mr-1">ADD PIN:</span>
+            {ADD_PIN_OPTIONS.map((opt) => (
+              <button
+                key={opt.mode}
+                onClick={() => {
+                  setAddPinMode(addPinMode === opt.mode ? null : opt.mode);
+                  setPendingPin(null);
+                  setAddPinForm({});
+                }}
+                className={`px-2.5 py-1 text-[10px] terminal-text rounded border transition-all ${
+                  addPinMode === opt.mode
+                    ? `${opt.color} text-white ring-1 ring-white/40`
+                    : 'bg-gray-800 hover:bg-gray-700 border-gray-600 text-gray-300'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+            {addPinMode && (
+              <button
+                onClick={() => {
+                  setAddPinMode(null);
+                  setPendingPin(null);
+                  setAddPinForm({});
+                }}
+                className="px-2 py-1 text-[10px] terminal-text bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-400 rounded ml-auto"
+              >
+                CANCEL
+              </button>
+            )}
+          </div>
+          {addPinMode && !pendingPin && (
+            <div className="text-xs terminal-text text-robotic-yellow animate-pulse p-1.5 bg-robotic-yellow/5 military-border">
+              Click on the map to place a{' '}
+              {ADD_PIN_OPTIONS.find((o) => o.mode === addPinMode)?.label || 'pin'}
+            </div>
+          )}
+        </>
       )}
 
       {dirty && (
