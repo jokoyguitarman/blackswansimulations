@@ -492,8 +492,92 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
               </div>
             )}
             {enrichment.generatedCasualties && enrichment.generatedCasualties.length > 0 && (
-              <div className="text-xs terminal-text text-robotic-yellow/50">
-                Generated {enrichment.generatedCasualties.length} casualties from blast analysis.
+              <div>
+                <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase mb-2">
+                  Generated Casualties ({enrichment.generatedCasualties.length})
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {enrichment.generatedCasualties.map((cas, i) => {
+                    const c = cas as Record<string, unknown>;
+                    const tag = (c.trueTag as string) || 'green';
+                    const desc = (c.description as string) || '';
+                    const signs = (c.observableSigns as Record<string, string>) || {};
+                    const tagColors: Record<string, { bg: string; text: string; label: string }> = {
+                      red: { bg: 'bg-red-900/40', text: 'text-red-300', label: 'IMMEDIATE' },
+                      yellow: { bg: 'bg-yellow-900/40', text: 'text-yellow-300', label: 'DELAYED' },
+                      green: { bg: 'bg-green-900/40', text: 'text-green-300', label: 'MINOR' },
+                      black: { bg: 'bg-gray-800', text: 'text-gray-400', label: 'DECEASED' },
+                    };
+                    const tc = tagColors[tag] || tagColors.green;
+
+                    return (
+                      <div
+                        key={i}
+                        className={`border border-robotic-gray-200 rounded p-2 ${tc.bg}`}
+                      >
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[10px] terminal-text text-robotic-yellow/30">
+                            {(c.id as string) || `Casualty ${i + 1}`}
+                          </span>
+                          <span
+                            className={`text-[9px] terminal-text font-bold px-1.5 py-0.5 rounded ${tc.text}`}
+                          >
+                            {tc.label}
+                          </span>
+                        </div>
+                        {desc && (
+                          <div className="text-[10px] terminal-text text-robotic-yellow/60 mb-1.5">
+                            {desc}
+                          </div>
+                        )}
+                        {Object.keys(signs).length > 0 && (
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[9px] terminal-text">
+                            {signs.breathing && (
+                              <div>
+                                <span className="text-robotic-yellow/30">Breathing:</span>{' '}
+                                <span className="text-robotic-yellow/50">{signs.breathing}</span>
+                              </div>
+                            )}
+                            {signs.pulse && (
+                              <div>
+                                <span className="text-robotic-yellow/30">Pulse:</span>{' '}
+                                <span className="text-robotic-yellow/50">{signs.pulse}</span>
+                              </div>
+                            )}
+                            {signs.consciousness && (
+                              <div>
+                                <span className="text-robotic-yellow/30">Conscious:</span>{' '}
+                                <span className="text-robotic-yellow/50">
+                                  {signs.consciousness}
+                                </span>
+                              </div>
+                            )}
+                            {signs.mobility && (
+                              <div>
+                                <span className="text-robotic-yellow/30">Mobility:</span>{' '}
+                                <span className="text-robotic-yellow/50">{signs.mobility}</span>
+                              </div>
+                            )}
+                            {signs.bleeding && (
+                              <div>
+                                <span className="text-robotic-yellow/30">Bleeding:</span>{' '}
+                                <span className="text-robotic-yellow/50">{signs.bleeding}</span>
+                              </div>
+                            )}
+                            {signs.visibleInjuries && (
+                              <div className="col-span-2">
+                                <span className="text-robotic-yellow/30">Injuries:</span>{' '}
+                                <span className="text-robotic-yellow/50">
+                                  {signs.visibleInjuries}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
             {enrichment.sceneSynthesis &&
@@ -568,11 +652,20 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
         </Section>
       )}
 
-      {/* Completion indicator */}
-      <div className="text-center py-4">
+      {/* Completion indicator + re-run option */}
+      <div className="text-center py-4 space-y-3">
         <div className="text-xs terminal-text text-green-500/70">
           Research complete. Click [NEXT] to proceed.
         </div>
+        <button
+          onClick={() => {
+            setData(null);
+            setElapsed(0);
+          }}
+          className="text-[10px] terminal-text text-robotic-yellow/30 hover:text-robotic-yellow/60 border border-robotic-gray-200 px-3 py-1 rounded"
+        >
+          Re-run Research (if results are incomplete)
+        </button>
       </div>
     </div>
   );

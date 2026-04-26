@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import { SceneEditor } from '../components/SceneEditor/SceneEditor';
 import { LocationValidationStep } from '../components/WarRoom/LocationValidationStep';
 import { ResearchStep } from '../components/WarRoom/ResearchStep';
+import { CompileStep } from '../components/WarRoom/CompileStep';
 
 interface TeamEntry {
   team_name: string;
@@ -20,14 +21,10 @@ const STEP_LABELS: Record<number, string> = {
   3: 'Scene Editor',
   5: 'Location',
   6: 'Research',
-  7: 'Hazard Analysis',
-  8: 'Casualties',
-  9: 'Injects',
-  10: 'Doctrines',
-  11: 'Review',
+  7: 'Compile',
 };
 
-const VISIBLE_STEPS = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11];
+const VISIBLE_STEPS = [1, 2, 3, 5, 6, 7];
 
 const INCIDENT_TYPES = [
   { id: 'bombing', label: 'Bombing (General)', group: 'Explosives', enabled: true, icon: '💣' },
@@ -108,7 +105,7 @@ export const WarRoom = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const resumedRef = useRef(false);
 
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 5 | 6 | 7>(1);
 
   // Step 1: Incident selection
   const [incidentType, setIncidentType] = useState<string | null>(null);
@@ -136,23 +133,8 @@ export const WarRoom = () => {
   // Step 6: Research
   const [researchResults, setResearchResults] = useState<Record<string, unknown> | null>(null);
 
-  // Step 7: Hazard analysis
-  const [hazardAnalysis, setHazardAnalysis] = useState<Record<string, unknown> | null>(null);
-
-  // Step 8: Casualties
-  const [casualties, setCasualties] = useState<Array<Record<string, unknown>>>([]);
-
-  // Step 9: Injects
-  const [injects, setInjects] = useState<Array<Record<string, unknown>>>([]);
-
-  // Step 10: Doctrines
-  const [doctrines, setDoctrines] = useState<Record<string, unknown> | null>(null);
-
-  // Suppress unused-var warnings until steps are implemented
-  void setHazardAnalysis;
-  void setCasualties;
-  void setInjects;
-  void setDoctrines;
+  // Step 7: Compile
+  const [scenarioId, setScenarioId] = useState<string | null>(null);
 
   // ── Draft save/resume helpers ─────────────────────────────────────────
 
@@ -401,7 +383,7 @@ export const WarRoom = () => {
           : step === 6
             ? !!researchResults
             : true;
-  const canGoNext = step < 11 && stepValid;
+  const canGoNext = step < 7 && stepValid;
 
   const goBack = () => {
     if (canGoBack) {
@@ -729,81 +711,11 @@ export const WarRoom = () => {
 
           {step === 7 && (
             <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">
-                [STEP 7: HAZARD PHYSICS ANALYSIS]
-              </h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50">
-                AI analyzes blast physics, determines which hazards are affected, and models
-                fire/smoke/gas spread across studs.
+              <h2 className="text-lg terminal-text uppercase mb-4">[STEP 7: COMPILE SCENARIO]</h2>
+              <p className="text-xs terminal-text text-robotic-yellow/50 mb-4">
+                Compile all research, hazard analysis, and doctrines into a playable scenario.
               </p>
-              <div className="mt-4 text-sm terminal-text text-robotic-yellow/30">
-                [Hazard analysis visualization will be implemented here]
-              </div>
-              <div className="mt-2 text-[10px] terminal-text text-robotic-yellow/20">
-                State: hazardAnalysis={hazardAnalysis ? 'loaded' : 'null'}, sceneConfig=
-                {sceneConfig ? 'loaded' : 'null'}
-              </div>
-            </div>
-          )}
-
-          {step === 8 && (
-            <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">
-                [STEP 8: CASUALTY GENERATION]
-              </h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50">
-                AI places casualties within the blast radius. Review positions, injuries, and
-                deterioration timelines.
-              </p>
-              <div className="mt-4 text-sm terminal-text text-robotic-yellow/30">
-                [Casualty generation will be implemented here]
-              </div>
-              <div className="mt-2 text-[10px] terminal-text text-robotic-yellow/20">
-                State: casualties={casualties.length}
-              </div>
-            </div>
-          )}
-
-          {step === 9 && (
-            <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">[STEP 9: INJECT GENERATION]</h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50">
-                AI generates time-based injects, media pins, and crowd events. Add custom injects.
-              </p>
-              <div className="mt-4 text-sm terminal-text text-robotic-yellow/30">
-                [Inject editor will be implemented here]
-              </div>
-              <div className="mt-2 text-[10px] terminal-text text-robotic-yellow/20">
-                State: injects={injects.length}
-              </div>
-            </div>
-          )}
-
-          {step === 10 && (
-            <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">[STEP 10: DOCTRINE RESEARCH]</h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50">
-                AI researches per-team standards, doctrines, and SOPs. Review and edit.
-              </p>
-              <div className="mt-4 text-sm terminal-text text-robotic-yellow/30">
-                [Doctrine research will be implemented here]
-              </div>
-              <div className="mt-2 text-[10px] terminal-text text-robotic-yellow/20">
-                State: doctrines={doctrines ? 'loaded' : 'null'}
-              </div>
-            </div>
-          )}
-
-          {step === 11 && (
-            <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">[STEP 11: SCENARIO REVIEW]</h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50">
-                Review the complete scenario before compilation. All pins include expected player
-                approaches for evaluation.
-              </p>
-              <div className="mt-4 text-sm terminal-text text-robotic-yellow/30">
-                [Scenario review will be implemented here]
-              </div>
+              <CompileStep wizardDraftId={wizardDraftId} onComplete={(id) => setScenarioId(id)} />
             </div>
           )}
         </div>
@@ -820,8 +732,19 @@ export const WarRoom = () => {
           <span className="text-xs terminal-text text-robotic-yellow/40">
             Step {VISIBLE_STEPS.indexOf(step) + 1} of {VISIBLE_STEPS.length}
           </span>
-          {step === 11 ? (
-            <button className="military-button px-8 py-3">[COMPILE SCENARIO]</button>
+          {step === 7 ? (
+            scenarioId ? (
+              <a
+                href={`/scenarios/${scenarioId}`}
+                className="military-button px-8 py-3 text-center"
+              >
+                [VIEW SCENARIO]
+              </a>
+            ) : (
+              <span className="text-xs terminal-text text-robotic-yellow/30">
+                Compile the scenario above to finish
+              </span>
+            )
           ) : (
             <button
               onClick={goNext}

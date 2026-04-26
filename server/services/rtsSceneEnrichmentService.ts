@@ -479,7 +479,7 @@ Consider:
 5. Bottlenecks — exits that are compromised, routes blocked by hazards or smoke
 6. Resource prioritization — what must happen first, second, third
 
-Also: if no casualty pins were placed by the trainer, generate 8-15 realistic casualties distributed at various distances from the blast (0-100m). Use the hazard analysis results to inform what additional injuries these generated casualties might have.
+Also: if no casualty pins were placed by the trainer, generate realistic casualties distributed at various distances from the blast (0-100m). The number of casualties should be proportional to the crowd size (given in EVACUEES count). Use the hazard analysis results to inform what additional injuries these generated casualties might have. Include a realistic distribution of triage tags (red/yellow/green/black) based on proximity to blast.
 
 NOTE: The stud-level environmental timeline (fire/smoke/gas per stud over time) is computed separately by a deterministic simulation engine. You do NOT need to produce stud-level data. Focus on the narrative escalation timeline and strategic analysis.
 
@@ -509,6 +509,7 @@ async function synthesizeScene(
   noCasualtiesPlaced: boolean,
   openAiApiKey: string,
   studSummary?: string,
+  pedestrianCount?: number,
 ): Promise<SynthesisResult> {
   const hazardSummary = hazardResults
     .map((h) => {
@@ -541,7 +542,17 @@ async function synthesizeScene(
 ${hazardSummary || 'No hazards on scene.'}
 
 ═══ INDIVIDUAL CASUALTY PROFILES ═══
-${casualtySummary || (noCasualtiesPlaced ? 'No casualty pins placed by trainer. You must generate 8-15 realistic casualties distributed across the blast zones.' : 'No casualties analyzed.')}
+${
+  casualtySummary ||
+  (noCasualtiesPlaced
+    ? (() => {
+        const pc = pedestrianCount ?? 120;
+        const [minC, maxC] =
+          pc > 1000 ? [40, 80] : pc > 500 ? [25, 50] : pc > 200 ? [15, 30] : [8, 15];
+        return `No casualty pins placed by trainer. The venue has approximately ${pc} people present. You must generate ${minC}-${maxC} realistic casualties distributed across the blast zones at varying distances (0-100m). Scale injuries by proximity to blast.`;
+      })()
+    : 'No casualties analyzed.')
+}
 ${studBlock}
 Synthesize all findings into a unified scene analysis. Include an environmentalTimeline showing how fire, smoke, gas, and structural damage affect specific studs over 30 minutes. Return JSON only.`;
 
@@ -877,6 +888,7 @@ export async function enrichScene(
     noCasualties,
     openAiApiKey,
     studSummary,
+    req.pedestrianCount,
   );
 
   return {
