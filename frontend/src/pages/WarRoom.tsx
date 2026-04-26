@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
 import { SceneEditor } from '../components/SceneEditor/SceneEditor';
+import { loadSceneConfig } from '../lib/rts/sceneConfigApi';
 import { LocationValidationStep } from '../components/WarRoom/LocationValidationStep';
 import { ResearchStep } from '../components/WarRoom/ResearchStep';
 import { CompileStep } from '../components/WarRoom/CompileStep';
@@ -216,7 +217,36 @@ export const WarRoom = () => {
 
         const sceneCtx = input.scene_context as Record<string, unknown> | undefined;
         if (sceneCtx?.rts_scene_id) {
-          setRtsSceneId(sceneCtx.rts_scene_id as string);
+          const sceneId = sceneCtx.rts_scene_id as string;
+          setRtsSceneId(sceneId);
+          try {
+            const sceneRow = await loadSceneConfig(sceneId);
+            if (sceneRow) {
+              const row = sceneRow as unknown as Record<string, unknown>;
+              setSceneConfig({
+                buildingPolygon: row.building_polygon,
+                buildingName: row.building_name,
+                centerLat: parseFloat(String(row.center_lat)) || 0,
+                centerLng: parseFloat(String(row.center_lng)) || 0,
+                exits: row.exits || [],
+                interiorWalls: row.interior_walls || [],
+                hazardZones: row.hazard_zones || [],
+                stairwells: row.stairwells || [],
+                blastSite: row.blast_site || null,
+                blastRadius: ((row.blast_site as Record<string, unknown>)?.radius as number) || 20,
+                wallInspectionPoints: row.wall_inspection_points || [],
+                plantedItems: row.planted_items || [],
+                pedestrianCount: row.pedestrian_count || 120,
+                weaponType:
+                  ((row.blast_site as Record<string, unknown>)?.weaponType as string) || null,
+                locationDescription:
+                  ((row.blast_site as Record<string, unknown>)?.locationDescription as string) ||
+                  null,
+              } as unknown as Record<string, unknown>);
+            }
+          } catch {
+            // Scene config load failed -- non-critical, continue
+          }
         }
 
         // Restore geo result if present
