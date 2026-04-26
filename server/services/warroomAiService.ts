@@ -4381,18 +4381,17 @@ async function placeVictimsOnMap(
 - Accessibility should be "open" for all or nearly all — a ${weaponDesc} does not create environmental barriers.
 - Spread victims across realistic paths of flight from the incident site toward exits.`
     : isExplosive
-      ? `EXPLOSION PLACEMENT LOGIC — STRICT RADIUS ANCHORING:
-The bomb detonated at the incident site coordinates. Place victims at distances matching their triage severity:
-- BLACK victims (fatalities): MUST be within 0-164 ft (~50m) of the bomb center. They were at ground zero. Some are under debris or behind fire.
-  Accessibility: "under_debris", "behind_fire", or "in_smoke". These are the hardest to reach.
-- RED victims (critical): MUST be within 164-328 ft (~50-100m). Severe blast injuries, burns, amputations. 
-  Accessibility: mix of "under_debris", "behind_fire", and "open". Some crawled away but collapsed.
-- YELLOW victims (serious): MUST be within 328-492 ft (~100-150m). Shrapnel and blast wave injuries.
-  Accessibility: mostly "open" or "in_smoke". They were knocked down or hit by flying debris.
-- GREEN victims (minor): Place within 328-656 ft (~100-200m). Minor cuts, psychological shock. 
-  Accessibility: "open". They fled but sustained minor injuries from glass, stampede, or falls.
-- Delayed-discovery victims (appears_at > 0): Place in areas obscured by smoke or debris, within the 0-328 ft band.
-- IMPORTANT: Use haversine distance from the bomb center to verify placement radius. Do NOT cluster all victims at the same point — spread them realistically within each band.`
+      ? `EXPLOSION PLACEMENT LOGIC — STUD-BASED PLACEMENT:
+The bomb detonated at the incident site coordinates. If placement studs are listed below, you MUST use the EXACT stud coordinates for every casualty. Do NOT invent your own coordinates.
+- Pick studs marked [inside_building] that are within the blast zone.
+- BLACK victims: pick studs closest to the blast center (0-5m distance).
+- RED victims: pick studs at 5-15m from blast.
+- YELLOW victims: pick studs at 15-30m from blast.
+- GREEN victims: pick studs at the edges of the building, further from blast.
+- Each casualty's location_lat and location_lng MUST exactly match a stud coordinate from the list.
+- Do NOT place any victim outside the building. Do NOT use coordinates not found in the stud list.
+- Spread victims across different studs — do not cluster multiple victims on the same stud.
+- Accessibility: BLACK="under_debris" or "behind_fire", RED=mix, YELLOW="open" or "in_smoke", GREEN="open".`
       : `PLACEMENT LOGIC:
 - Most severely injured victims closest to the incident site.
 - Moderately injured further away.
@@ -4415,17 +4414,15 @@ VICTIM PROFILES TO PLACE:
 ${profileSummary}
 
 For EACH victim, assign:
-- location_lat, location_lng: realistic coordinates near the venue, based on their triage severity and the placement logic above. If placement slots are listed above, use the nearest slot coordinate for victims inside a building.
+- location_lat, location_lng: MUST be an exact stud coordinate from the list above. Do NOT make up coordinates.
 - floor_level: "G" for ground, "B1"/"B2" for basement, "1"/"2" for upper floors
 - accessibility: "open" | "behind_fire" | "under_debris" | "in_smoke" | "blocked_corridor"
 
 CRITICAL PLACEMENT CONSTRAINTS:
-- If studs are listed above with [inside_building] tags, ALL casualties from an indoor explosion MUST be placed on [inside_building] studs only.
-- Casualties must be within the blast radius of the explosion. The blast radius is approximately ${threatProfile?.expected_damage?.blast ? '20-50' : '10-20'}m from the detonation point.
-- Do NOT place any casualties outside the building polygon for indoor blasts.
-- Use the exact stud coordinates for placement — pick the nearest [inside_building] stud at an appropriate distance from the blast.
-- Distribute casualties realistically: more severe injuries (red/black) closer to blast, lighter injuries (green/yellow) further away but still inside.
-- BLACK (deceased) casualties MUST be within 5m of the blast center. RED within 15m. YELLOW within 30m. GREEN beyond 30m but still inside.
+- You MUST use exact lat/lng values from the stud list above. Copy them exactly.
+- ALL casualties MUST be on [inside_building] studs for indoor explosions.
+- Do NOT invent coordinates. Every location_lat and location_lng must appear in the stud list.
+- Spread casualties across different studs based on distance from blast center.
 
 Return ONLY valid JSON:
 {
