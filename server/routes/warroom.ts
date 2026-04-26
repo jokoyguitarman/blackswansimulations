@@ -729,6 +729,26 @@ router.post(
       const input = (draft.input ?? {}) as Record<string, unknown>;
       applyWizardGeocodeOverride(geoResult, input);
 
+      // Override setting to indoor when trainer scene has a blast inside a building
+      const sceneCtxForSetting = (input.scene_context as Record<string, unknown>) ?? null;
+      if (sceneCtxForSetting?.rts_scene_id) {
+        const { data: sceneForSetting } = await supabaseAdmin
+          .from('rts_scene_configs')
+          .select('building_name, blast_site')
+          .eq('id', sceneCtxForSetting.rts_scene_id as string)
+          .single();
+        if (sceneForSetting?.blast_site && sceneForSetting?.building_name) {
+          const parsed = geoResult.parsed as unknown as Record<string, unknown>;
+          if (parsed.setting === 'open_field') {
+            parsed.setting = 'worship';
+            logger.info(
+              { building: sceneForSetting.building_name },
+              'Research step: overriding setting from open_field to worship (blast inside building)',
+            );
+          }
+        }
+      }
+
       const { phase1Preview, userTeams } = await stageTeamsAndNarrative(
         geoResult as unknown as Parameters<typeof stageTeamsAndNarrative>[0],
         input as unknown as Parameters<typeof stageTeamsAndNarrative>[1],
