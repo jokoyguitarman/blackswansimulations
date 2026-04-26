@@ -105,27 +105,32 @@ export function generateStudsForPolygon(
 ): BuildingStud[] {
   if (polygon.length < 3) return [];
 
+  const EXTERIOR_PADDING_M = 150;
   const bbox = polygonBoundingBox(polygon);
   const midLat = (bbox.minLat + bbox.maxLat) / 2;
   const dLat = spacingM / 111_320;
   const dLng = spacingM / (111_320 * Math.cos((midLat * Math.PI) / 180));
+  const extPadLat = EXTERIOR_PADDING_M / 111_320;
+  const extPadLng = EXTERIOR_PADDING_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
 
   const studs: BuildingStud[] = [];
   let row = 0;
 
-  for (let lat = bbox.minLat + dLat / 2; lat <= bbox.maxLat; lat += dLat) {
+  for (let lat = bbox.minLat - extPadLat; lat <= bbox.maxLat + extPadLat; lat += dLat) {
     let col = 0;
-    for (let lng = bbox.minLng + dLng / 2; lng <= bbox.maxLng; lng += dLng) {
-      if (pointInPolygon(lat, lng, polygon)) {
-        studs.push({
-          id: `bldg-${buildingIndex}-${floor}-${row}-${col}`,
-          lat,
-          lng,
-          floor,
-          buildingIndex,
-          studType: 'building',
-        });
-      }
+    for (let lng = bbox.minLng - extPadLng; lng <= bbox.maxLng + extPadLng; lng += dLng) {
+      const inside = pointInPolygon(lat, lng, polygon);
+      studs.push({
+        id: inside
+          ? `bldg-${buildingIndex}-${floor}-${row}-${col}`
+          : `ext-${buildingIndex}-${row}-${col}`,
+        lat,
+        lng,
+        floor,
+        buildingIndex,
+        studType: inside ? 'building' : 'outdoor',
+        spatialContext: inside ? 'inside_building' : 'open_air',
+      });
       col++;
     }
     row++;

@@ -99,6 +99,8 @@ export function SceneCanvasView({
   const [activeCasualtyPin, setActiveCasualtyPin] = useState<CasualtyPin | null>(null);
   const [activeWallPoint, setActiveWallPoint] = useState<WallInspectionPoint | null>(null);
   const [activeLocation, setActiveLocation] = useState<SimLocation | null>(null);
+  const [activeHazard, setActiveHazard] = useState<HazardZone | null>(null);
+  const [plantedItems, setPlantedItems] = useState<Array<Record<string, unknown>>>([]);
   const [loading, setLoading] = useState(true);
   const [hasScene, setHasScene] = useState<boolean | null>(null);
 
@@ -171,9 +173,6 @@ export function SceneCanvasView({
           .map((c) => {
             const pos = latLngToSim(c.location_lat as number, c.location_lng as number, polygon);
             const conditions = (c.conditions ?? {}) as Record<string, unknown>;
-            const triageTag = (
-              (conditions.triage_category as string) || 'green'
-            ).toLowerCase() as TriageTag;
             return {
               id: c.id as string,
               pos,
@@ -181,7 +180,7 @@ export function SceneCanvasView({
                 (conditions.visible_description as string) ||
                 (conditions.injury_description as string) ||
                 '',
-              trueTag: triageTag,
+              trueTag: 'untagged' as TriageTag,
               currentTag: 'untagged' as TriageTag,
               observableSigns: {
                 breathing: (conditions.breathing as string) || '',
@@ -213,7 +212,9 @@ export function SceneCanvasView({
               locationType: (l.location_type as string) || undefined,
             };
           });
-        setScenarioLocations(simLocs);
+        // Filter out locations too far from building (>500m in sim-space)
+        const nearbyLocs = simLocs.filter((l) => Math.hypot(l.simPos.x, l.simPos.y) < 500);
+        setScenarioLocations(nearbyLocs);
 
         // Extract incident zones from hazards
         const hazards = (hazardsRes as { data: Array<Record<string, unknown>> }).data || [];
@@ -266,6 +267,12 @@ export function SceneCanvasView({
           })),
         );
         if (allStuds.length > 0) setSimStuds(allStuds);
+
+        // Load planted items from scene config
+        const planted = (scene as unknown as Record<string, unknown>).planted_items as
+          | Array<Record<string, unknown>>
+          | undefined;
+        if (planted && planted.length > 0) setPlantedItems(planted);
       } catch (err) {
         console.error('SceneCanvasView: failed to load data', err);
         setHasScene(false);
@@ -399,14 +406,27 @@ export function SceneCanvasView({
         setActiveLocation(hitLoc);
         setActiveCasualtyPin(null);
         setActiveWallPoint(null);
+        setActiveHazard(null);
+        return;
+      }
+
+      const hitHz = hazardZones.find(
+        (hz) => Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < Math.max(hz.radius, 5),
+      );
+      if (hitHz) {
+        setActiveHazard(hitHz);
+        setActiveCasualtyPin(null);
+        setActiveWallPoint(null);
+        setActiveLocation(null);
         return;
       }
 
       setActiveCasualtyPin(null);
       setActiveWallPoint(null);
       setActiveLocation(null);
+      setActiveHazard(null);
     },
-    [casualtyPins, wallPoints, scenarioLocations],
+    [casualtyPins, wallPoints, scenarioLocations, hazardZones],
   );
 
   // Render loop
@@ -478,7 +498,7 @@ export function SceneCanvasView({
             true,
             wallPoints,
             activeWallPoint?.id ?? null,
-            new Set(),
+            new Set(plantedItems.map((p) => p.wallPointId as string)),
             new Set(),
             [],
             null,
@@ -732,6 +752,11 @@ export function SceneCanvasView({
           width={canvasSize.w}
           height={canvasSize.h}
           onClick={handleCanvasClick}
+          onWheel={(e) => {
+            e.preventDefault();
+            const map = leafletMapRef.current;
+            if (map) e.deltaY < 0 ? map.zoomIn() : map.zoomOut();
+          }}
           style={{
             position: 'absolute',
             top: 0,
@@ -862,6 +887,26 @@ export function SceneCanvasView({
               <div className="mt-2 text-[10px] text-gray-400">
                 Heading: {Math.round(activeWallPoint.heading || 0)}°
               </div>
+              {/* Planted devices at this wall point */}
+              {plantedItems.filter((p) => p.wallPointId === activeWallPoint.id).length > 0 && (
+                <div className="mt-2 border-t border-red-900/50 pt-2">
+                  <div className="text-[10px] text-red-400 font-bold mb-1">Planted Devices</div>
+                  {plantedItems
+                    .filter((p) => p.wallPointId === activeWallPoint.id)
+                    .map((p, i) => (
+                      <div
+                        key={i}
+                        className="text-[10px] text-red-300 bg-red-900/20 rounded px-2 py-1 mb-1"
+                      >
+                        <span className="text-red-500">
+                          {(p.threatLevel as string) || 'unknown'}
+                        </span>
+                        {' — '}
+                        {(p.description as string) || 'No description'}
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -885,6 +930,51 @@ export function SceneCanvasView({
               <div className="text-[10px] text-gray-500 uppercase mb-1">
                 {activeLocation.pinCategory || activeLocation.locationType || 'Location'}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Hazard detail panel */}
+        {activeHazard && (
+          <div
+            className="absolute top-4 left-4 bg-gray-900/95 border border-orange-700 rounded-lg shadow-2xl overflow-y-auto"
+            style={{ zIndex: 1002, width: 380, maxHeight: 'calc(100% - 32px)' }}
+          >
+            <div className="flex items-center justify-between px-3 py-2 bg-orange-900/40 border-b border-orange-800">
+              <span className="text-xs text-orange-300 font-bold">
+                {activeHazard.label || activeHazard.hazardType}
+              </span>
+              <button
+                onClick={() => setActiveHazard(null)}
+                className="text-gray-400 hover:text-white text-sm px-1"
+              >
+                X
+              </button>
+            </div>
+            <div className="p-3 text-xs text-gray-300 space-y-1">
+              <div>
+                Type: <span className="text-orange-300">{activeHazard.hazardType}</span>
+              </div>
+              <div>
+                Radius: <span className="text-orange-300">{activeHazard.radius}m</span>
+              </div>
+              {activeHazard.description && (
+                <div className="whitespace-pre-wrap text-gray-400 mt-1">
+                  {activeHazard.description}
+                </div>
+              )}
+              {activeHazard.photos && activeHazard.photos.length > 0 && (
+                <div className="grid grid-cols-2 gap-1 mt-2">
+                  {activeHazard.photos.map((photo, i) => (
+                    <img
+                      key={i}
+                      src={photo}
+                      alt={`Hazard ${i + 1}`}
+                      className="w-full h-20 object-cover rounded border border-gray-700"
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

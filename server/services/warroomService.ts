@@ -1141,6 +1141,17 @@ export async function stageGenerateAndPersist(
     }
   }
 
+  // Override setting to indoor when blast site is inside a building
+  if (trainerScene?.blastSite && trainerScene.buildingName) {
+    if (parsed.setting === 'open_field') {
+      parsed.setting = 'worship';
+      logger.info(
+        { buildingName: trainerScene.buildingName },
+        'Overriding setting from open_field to worship (blast inside building)',
+      );
+    }
+  }
+
   const payload = await warroomGenerateScenario(
     {
       scenario_type: parsed.scenario_type,
