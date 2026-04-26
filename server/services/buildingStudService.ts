@@ -1025,7 +1025,7 @@ export function formatStudsForPrompt(
           const limited = bandStuds.slice(0, Math.ceil(maxStudsPerFloor / bandOrder.length));
           for (const s of limited) {
             lines.push(
-              `    ${s.id}: (${s.lat.toFixed(6)}, ${s.lng.toFixed(6)}) ~${Math.round(s.distFromIncidentM ?? 0)}m`,
+              `    ${s.id}: (${s.lat.toFixed(6)}, ${s.lng.toFixed(6)}) ~${Math.round(s.distFromIncidentM ?? 0)}m [${s.spatialContext || 'unknown'}]`,
             );
           }
           if (bandStuds.length > limited.length) {
@@ -1036,7 +1036,9 @@ export function formatStudsForPrompt(
         const limited = floorStuds.slice(0, maxStudsPerFloor);
         lines.push(`\n${nameLabel} — Floor ${floor} (${floorStuds.length} vacant slots):`);
         for (const s of limited) {
-          lines.push(`  ${s.id}: (${s.lat.toFixed(6)}, ${s.lng.toFixed(6)})`);
+          lines.push(
+            `  ${s.id}: (${s.lat.toFixed(6)}, ${s.lng.toFixed(6)}) [${s.spatialContext || 'unknown'}]`,
+          );
         }
         if (floorStuds.length > maxStudsPerFloor) {
           lines.push(`  ... and ${floorStuds.length - maxStudsPerFloor} more slots`);

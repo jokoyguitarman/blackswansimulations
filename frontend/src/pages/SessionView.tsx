@@ -1414,14 +1414,14 @@ export const SessionView = () => {
       <div className="h-screen w-screen overflow-hidden bg-robotic-gray-400 relative flex">
         {/* Map area */}
         <div className={isGodView ? 'relative flex-1' : 'absolute inset-0'}>
-          {hasSceneConfig ? (
+          {hasSceneConfig === true ? (
             <SceneCanvasView
               scenarioId={session?.scenarios?.id ?? session?.scenario_id}
               sessionId={id}
               fillHeight
               showAllPins
             />
-          ) : (
+          ) : hasSceneConfig === false ? (
             <MapView
               sessionId={id}
               scenarioId={session?.scenarios?.id ?? session?.scenario_id}
@@ -1467,7 +1467,7 @@ export const SessionView = () => {
                 initialZoom={16}
               />
             </MapView>
-          )}
+          ) : null}
         </div>
 
         {/* God View: Activity ticker sidebar */}
@@ -2176,13 +2176,13 @@ export const SessionView = () => {
               </div>
             )}
             <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden">
-              {hasSceneConfig ? (
+              {hasSceneConfig === true ? (
                 <SceneCanvasView
                   scenarioId={session?.scenarios?.id ?? session?.scenario_id}
                   sessionId={id}
                   fillHeight
                 />
-              ) : mapModuleReady && mapHasBeenOpened ? (
+              ) : hasSceneConfig === false && mapModuleReady && mapHasBeenOpened ? (
                 <MapView
                   sessionId={id}
                   scenarioId={session?.scenarios?.id ?? session?.scenario_id}
@@ -2516,14 +2516,14 @@ export const SessionView = () => {
                   </div>
                 </div>
                 <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden">
-                  {hasSceneConfig ? (
+                  {hasSceneConfig === true ? (
                     <SceneCanvasView
                       scenarioId={session?.scenarios?.id ?? session?.scenario_id}
                       sessionId={id}
                       fillHeight
                       showAllPins
                     />
-                  ) : (
+                  ) : hasSceneConfig === false ? (
                     <MapView
                       sessionId={id}
                       scenarioId={session?.scenarios?.id ?? session?.scenario_id}
@@ -2572,7 +2572,7 @@ export const SessionView = () => {
                           ?.scenario_type as string) ?? undefined
                       }
                     />
-                  )}
+                  ) : null}
                 </div>
               </div>
 

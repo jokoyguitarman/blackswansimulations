@@ -2348,7 +2348,7 @@ const MapPinsTab = ({
       />
 
       {/* OSM map (fallback when no trainer scene) */}
-      {hasSceneCanvas !== true && (
+      {hasSceneCanvas === false && (
         <div className="military-border overflow-hidden relative" style={{ height: 600 }}>
           <MapContainer
             center={mapCenter}

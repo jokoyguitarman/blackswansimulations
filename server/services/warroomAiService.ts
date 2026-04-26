@@ -4418,6 +4418,13 @@ For EACH victim, assign:
 - floor_level: "G" for ground, "B1"/"B2" for basement, "1"/"2" for upper floors
 - accessibility: "open" | "behind_fire" | "under_debris" | "in_smoke" | "blocked_corridor"
 
+CRITICAL PLACEMENT CONSTRAINTS:
+- If studs are listed above with [inside_building] tags, ALL casualties from an indoor explosion MUST be placed on [inside_building] studs only.
+- Casualties must be within the blast radius of the explosion.
+- Do NOT place any casualties outside the building polygon for indoor blasts.
+- Use the exact stud coordinates for placement — pick the nearest [inside_building] stud at an appropriate distance from the blast.
+- Distribute casualties realistically: more severe injuries (red/black) closer to blast, lighter injuries (green/yellow) further away but still inside.
+
 Return ONLY valid JSON:
 {
   "placements": [

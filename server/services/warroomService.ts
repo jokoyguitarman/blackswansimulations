@@ -1203,6 +1203,8 @@ export async function stageGenerateAndPersist(
   );
 
   // Adversary pursuit decision tree
+  const hasInvestigativeTeam = userTeams?.some((t) => t.is_investigative) ?? false;
+  const pursuitToggle = hasInvestigativeTeam ? (options.include_adversary_pursuit ?? true) : false;
   try {
     const payloadLocations = (payload.locations || []).map((l) => ({
       location_type: l.location_type,
@@ -1237,7 +1239,7 @@ export async function stageGenerateAndPersist(
       openAiApiKey,
       pursuitNarrative,
       (msg: string) => onProgress?.('ai', msg),
-      options.include_adversary_pursuit,
+      pursuitToggle,
     );
 
     if (pursuitResult) {
