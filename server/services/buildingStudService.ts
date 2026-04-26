@@ -84,7 +84,7 @@ export interface StudGrid {
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_SPACING_M = 5;
+const DEFAULT_SPACING_M = 3;
 const SNAP_MATCH_TOLERANCE_M = 2;
 const ROAD_AVOIDANCE_M = 8;
 

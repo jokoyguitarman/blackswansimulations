@@ -4123,6 +4123,109 @@ async function generateCasualties(
   if (!profiles?.length) return undefined;
 
   // --- PHASE 2: Place victims on the map ---
+  // For trainer scenes with studs, bypass AI placement entirely and assign deterministically
+  if (input.trainerScene?.blastSite && input.studGrids?.length) {
+    onProgress?.(`Placing ${profiles.length} casualties on building studs (deterministic)...`);
+    const blastLat = input.trainerScene.blastSite.lat;
+    const blastLng = input.trainerScene.blastSite.lng;
+
+    // Collect all inside_building studs and compute distance from blast
+    const insideStuds = input.studGrids
+      .flatMap((g) => g.studs)
+      .filter((s) => s.spatialContext === 'inside_building')
+      .map((s) => {
+        const dLat = (s.lat - blastLat) * 111320;
+        const dLng = (s.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
+        return { ...s, distFromBlast: Math.sqrt(dLat * dLat + dLng * dLng) };
+      })
+      .sort((a, b) => a.distFromBlast - b.distFromBlast);
+
+    if (insideStuds.length > 0) {
+      const totalStuds = insideStuds.length;
+      const usedIndices = new Set<number>();
+
+      const pickStud = (minPct: number, maxPct: number): (typeof insideStuds)[0] => {
+        const lo = Math.floor(totalStuds * minPct);
+        const hi = Math.min(Math.floor(totalStuds * maxPct), totalStuds - 1);
+        for (let attempt = 0; attempt < 20; attempt++) {
+          const idx = lo + Math.floor(Math.random() * (hi - lo + 1));
+          if (!usedIndices.has(idx)) {
+            usedIndices.add(idx);
+            return insideStuds[idx];
+          }
+        }
+        // Fallback: pick any unused stud in range
+        for (let i = lo; i <= hi; i++) {
+          if (!usedIndices.has(i)) {
+            usedIndices.add(i);
+            return insideStuds[i];
+          }
+        }
+        return insideStuds[Math.floor(Math.random() * totalStuds)];
+      };
+
+      const accessibilityByTag: Record<string, string[]> = {
+        black: ['under_debris', 'behind_fire', 'in_smoke'],
+        red: ['under_debris', 'behind_fire', 'open', 'in_smoke'],
+        yellow: ['open', 'in_smoke'],
+        green: ['open'],
+      };
+
+      const placed = profiles.map((p) => {
+        const tag = p.triage_color?.toLowerCase() || 'green';
+        const stud =
+          tag === 'black'
+            ? pickStud(0, 0.2)
+            : tag === 'red'
+              ? pickStud(0.1, 0.5)
+              : tag === 'yellow'
+                ? pickStud(0.4, 0.8)
+                : pickStud(0.6, 1.0);
+
+        const accOptions = accessibilityByTag[tag] || ['open'];
+        const accessibility = accOptions[Math.floor(Math.random() * accOptions.length)];
+
+        return {
+          casualty_type: 'patient' as const,
+          location_lat: stud.lat,
+          location_lng: stud.lng,
+          floor_level: stud.floor || 'G',
+          headcount: 1,
+          conditions: {
+            name: p.name,
+            age: p.age,
+            sex: p.sex,
+            role: p.role,
+            injuries: p.injuries,
+            triage_color: p.triage_color,
+            mobility: p.mobility,
+            accessibility,
+            consciousness: p.consciousness,
+            breathing: p.breathing,
+            visible_description: p.visible_description,
+            treatment_requirements: p.treatment_requirements,
+            transport_prerequisites: p.transport_prerequisites,
+            contraindications: p.contraindications,
+            ideal_response_sequence: p.ideal_response_sequence,
+            required_ppe: p.required_ppe,
+            required_equipment: p.required_equipment,
+            expected_time_to_treat_minutes: p.expected_time_to_treat_minutes,
+            recommended_transport: p.recommended_transport,
+            deterioration_timeline: p.deterioration_timeline,
+          },
+          status: 'undiscovered' as const,
+          appears_at_minutes: p.appears_at_minutes ?? 0,
+        };
+      });
+
+      logger.info(
+        { count: placed.length, insideStuds: insideStuds.length },
+        'Deterministic casualty placement on inside_building studs',
+      );
+      return placed;
+    }
+  }
+
   onProgress?.(`Placing ${profiles.length} casualties on map...`);
   const placed = await placeVictimsOnMap(
     profiles,

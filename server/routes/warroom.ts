@@ -746,6 +746,15 @@ router.post(
               'Research step: overriding setting from open_field to worship (blast inside building)',
             );
           }
+          // Inject indoor context into prompt
+          if (sceneForSetting?.building_name) {
+            const indoorCtx = `CRITICAL: The explosive device was detonated INSIDE ${sceneForSetting.building_name}. This is an INDOOR explosion. All blast damage, casualties, fire, and debris are contained within the building interior. Do NOT describe this as an outdoor or open-air explosion.`;
+            if (input.prompt) {
+              input.prompt = `${indoorCtx}\n\n${input.prompt}`;
+            } else {
+              input.prompt = indoorCtx;
+            }
+          }
         }
       }
 

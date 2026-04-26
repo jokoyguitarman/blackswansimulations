@@ -1152,6 +1152,13 @@ export async function stageGenerateAndPersist(
     }
   }
 
+  // Inject indoor explosion context into the prompt
+  let indoorContext = '';
+  if (trainerScene?.blastSite && trainerScene.buildingName) {
+    indoorContext = `CRITICAL: The explosive device was detonated INSIDE ${trainerScene.buildingName}. This is an INDOOR explosion. All blast damage, casualties, fire, and debris are contained within the building interior. Do NOT describe this as an outdoor or open-air explosion.`;
+    parsed.setting = parsed.setting === 'open_field' ? 'worship' : parsed.setting;
+  }
+
   const payload = await warroomGenerateScenario(
     {
       scenario_type: parsed.scenario_type,
@@ -1159,7 +1166,9 @@ export async function stageGenerateAndPersist(
       terrain: parsed.terrain,
       location: parsed.location || sceneLocationDescription || null,
       venue_name: geoResult.venueName || trainerScene?.buildingName || undefined,
-      original_prompt: options.prompt || undefined,
+      original_prompt: indoorContext
+        ? `${indoorContext}\n\n${options.prompt || ''}`
+        : options.prompt || undefined,
       landmarks: parsed.landmarks,
       osm_vicinity: geoResult.osmVicinity,
       osmOpenSpaces: geoResult.osmOpenSpaces,

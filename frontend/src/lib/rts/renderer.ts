@@ -40,6 +40,20 @@ function mToCanvas(meters: number, rc: RenderContext) {
   return meters * rc.scale;
 }
 
+function scaledFont(
+  basePx: number,
+  rc: RenderContext,
+  weight = 'bold',
+  family = 'monospace',
+): string {
+  const scaled = Math.max(basePx, Math.round(basePx * Math.min(rc.scale / 3, 4)));
+  return `${weight} ${scaled}px ${family}`;
+}
+
+function scaledR(basePx: number, rc: RenderContext): number {
+  return Math.max(basePx, Math.round(basePx * Math.min(rc.scale / 3, 4)));
+}
+
 // ── Main render function ────────────────────────────────────────────────
 export function renderRTS(
   ctx: CanvasRenderingContext2D,
@@ -1012,7 +1026,7 @@ function drawCasualtyPin(
   isActive: boolean,
 ) {
   const p = toCanvas(pin.pos.x, pin.pos.y, rc);
-  const r = isActive ? 10 : 7;
+  const r = scaledR(isActive ? 10 : 7, rc);
   const color = TAG_COLORS[pin.currentTag] || TAG_COLORS.untagged;
 
   if (pin.deteriorationLevel > 0.05) {
@@ -1039,7 +1053,7 @@ function drawCasualtyPin(
   ctx.stroke();
 
   ctx.fillStyle = pin.currentTag === 'black' || pin.currentTag === 'red' ? '#fff' : '#000';
-  ctx.font = 'bold 8px monospace';
+  ctx.font = scaledFont(8, rc);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('+', p.cx, p.cy);
@@ -1047,14 +1061,14 @@ function drawCasualtyPin(
   // Only show tag labels for tagged casualties (not untagged preview pins)
   if (pin.currentTag !== 'untagged') {
     ctx.fillStyle = color;
-    ctx.font = 'bold 8px monospace';
+    ctx.font = scaledFont(8, rc);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText(pin.currentTag.toUpperCase(), p.cx, p.cy + r + 2);
 
     if (pin.currentTag !== pin.trueTag) {
       ctx.fillStyle = '#9ca3af';
-      ctx.font = '7px monospace';
+      ctx.font = scaledFont(7, rc);
       ctx.fillText(`was ${pin.trueTag.toUpperCase()}`, p.cx, p.cy + r + 12);
     }
   }
@@ -1233,19 +1247,19 @@ export function drawScenarioLocation(
   const icon = LOCATION_ICONS[category] || '📌';
 
   ctx.beginPath();
-  ctx.arc(p.cx, p.cy, 6, 0, Math.PI * 2);
+  ctx.arc(p.cx, p.cy, scaledR(6, rc), 0, Math.PI * 2);
   ctx.fillStyle = color + '60';
   ctx.fill();
   ctx.strokeStyle = color;
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  ctx.font = '12px sans-serif';
+  ctx.font = scaledFont(12, rc, 'normal', 'sans-serif');
   ctx.textAlign = 'center';
   ctx.fillText(icon, p.cx, p.cy + 4);
 
   const label = loc.label.length > 25 ? loc.label.slice(0, 23) + '…' : loc.label;
-  ctx.font = 'bold 8px monospace';
+  ctx.font = scaledFont(8, rc);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#000';
   ctx.fillText(label, p.cx + 1, p.cy - 10);
