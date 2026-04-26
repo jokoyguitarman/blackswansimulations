@@ -1456,6 +1456,9 @@ export function DebugRTSSim() {
               : null,
             showStudGridRef.current ? simStudsRef.current : null,
             effectStatesRef.current,
+            undefined,
+            true,
+            showGameZonesRef.current,
           );
         }
       }

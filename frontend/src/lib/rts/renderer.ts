@@ -91,6 +91,8 @@ export function renderRTS(
     { fire: { state: string }; gas: number; flood: number; structural: number }
   > | null,
   blastRadius?: number,
+  showBlastZone?: boolean,
+  showOperatingZones?: boolean,
 ) {
   ctx.clearRect(0, 0, w, h);
 
@@ -105,10 +107,12 @@ export function renderRTS(
   }
 
   if (blastSite) {
-    if (gameZones && gameZones.length > 0) {
+    if (showOperatingZones && gameZones && gameZones.length > 0) {
       drawGameZones(ctx, blastSite, gameZones, rc);
     }
-    drawBlastSite(ctx, blastSite, rc, blastRadius);
+    if (showBlastZone) {
+      drawBlastSite(ctx, blastSite, rc, blastRadius);
+    }
   }
 
   drawBuilding(ctx, buildingVerts, rc, transparentBg);
@@ -1057,21 +1061,6 @@ function drawCasualtyPin(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('+', p.cx, p.cy);
-
-  // Only show tag labels for tagged casualties (not untagged preview pins)
-  if (pin.currentTag !== 'untagged') {
-    ctx.fillStyle = color;
-    ctx.font = scaledFont(8, rc);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(pin.currentTag.toUpperCase(), p.cx, p.cy + r + 2);
-
-    if (pin.currentTag !== pin.trueTag) {
-      ctx.fillStyle = '#9ca3af';
-      ctx.font = scaledFont(7, rc);
-      ctx.fillText(`was ${pin.trueTag.toUpperCase()}`, p.cx, p.cy + r + 12);
-    }
-  }
 }
 
 // ── Wall inspection points ──────────────────────────────────────────────
@@ -1349,14 +1338,6 @@ export function drawScenarioLocation(
   ctx.stroke();
 
   drawLocationIcon(ctx, p.cx, p.cy, category, color, rc);
-
-  const label = loc.label.length > 25 ? loc.label.slice(0, 23) + '…' : loc.label;
-  ctx.font = scaledFont(8, rc);
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#000';
-  ctx.fillText(label, p.cx + 1, p.cy - 10);
-  ctx.fillStyle = color;
-  ctx.fillText(label, p.cx, p.cy - 11);
 }
 
 export function drawIncidentZone(ctx: CanvasRenderingContext2D, zone: SimZone, rc: RenderContext) {

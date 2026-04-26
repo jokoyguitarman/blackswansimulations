@@ -1236,6 +1236,8 @@ export function SceneEditor({
           studs.length > 0 ? studs : null,
           null,
           blastRadiusRef.current,
+          true,
+          true,
         );
       }
     }

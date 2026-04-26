@@ -103,6 +103,8 @@ export function SceneCanvasView({
   const [plantedItems, setPlantedItems] = useState<Array<Record<string, unknown>>>([]);
   const [loading, setLoading] = useState(true);
   const [hasScene, setHasScene] = useState<boolean | null>(null);
+  const [showBlastZone, setShowBlastZone] = useState(false);
+  const [showOperatingZones, setShowOperatingZones] = useState(false);
 
   // Hazard progression preview
   interface EnvSnapshot {
@@ -464,8 +466,10 @@ export function SceneCanvasView({
           for (const road of roadPolylines) {
             drawRoadPolyline(ctx, road, rc);
           }
-          for (const zone of incidentZones) {
-            drawIncidentZone(ctx, zone, rc);
+          if (showOperatingZones) {
+            for (const zone of incidentZones) {
+              drawIncidentZone(ctx, zone, rc);
+            }
           }
 
           // Compute effectStates from selected timeline snapshot
@@ -524,6 +528,9 @@ export function SceneCanvasView({
             null,
             simStuds,
             activeEffects,
+            undefined,
+            showBlastZone,
+            showOperatingZones,
           );
 
           // Foreground layers: scenario location labels (on top of everything)
@@ -557,6 +564,8 @@ export function SceneCanvasView({
     timelineIndex,
     envTimeline,
     pedestrians,
+    showBlastZone,
+    showOperatingZones,
   ]);
 
   // Evacuation engine step
@@ -703,6 +712,28 @@ export function SceneCanvasView({
             </span>
           </>
         )}
+
+        <button
+          onClick={() => setShowBlastZone(!showBlastZone)}
+          className={`text-[10px] terminal-text px-2 py-1 rounded border transition-colors ${
+            showBlastZone
+              ? 'border-red-500 bg-red-900/30 text-red-300'
+              : 'border-robotic-gray-200 text-robotic-yellow/50 hover:border-robotic-yellow/40'
+          }`}
+        >
+          {showBlastZone ? 'Hide Blast Radius' : 'Show Blast Radius'}
+        </button>
+
+        <button
+          onClick={() => setShowOperatingZones(!showOperatingZones)}
+          className={`text-[10px] terminal-text px-2 py-1 rounded border transition-colors ${
+            showOperatingZones
+              ? 'border-orange-500 bg-orange-900/30 text-orange-300'
+              : 'border-robotic-gray-200 text-robotic-yellow/50 hover:border-robotic-yellow/40'
+          }`}
+        >
+          {showOperatingZones ? 'Hide Operating Zones' : 'Show Operating Zones'}
+        </button>
 
         {showHazardTimeline && envTimeline.length > 0 && (
           <div className="flex items-center gap-2 ml-2">

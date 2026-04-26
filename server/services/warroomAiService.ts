@@ -7779,10 +7779,38 @@ export async function warroomGenerateScenario(
         }),
       };
     });
+    // Run enrichHazardDetail on hazards missing equipment_requirements
+    const needsEquipment = scenarioHazards.filter(
+      (h) => !h.equipment_requirements || h.equipment_requirements.length === 0,
+    );
+    if (needsEquipment.length > 0) {
+      onProgress?.(`Enriching ${needsEquipment.length} hazards for equipment requirements...`);
+      const enriched = await Promise.all(
+        needsEquipment.map((h) => enrichHazardDetail(h, input, openAiApiKey, narrative, teamNames)),
+      );
+      const enrichMap = new Map(enriched.map((e) => [`${e.location_lat},${e.location_lng}`, e]));
+      scenarioHazards = scenarioHazards.map((h) => {
+        const key = `${h.location_lat},${h.location_lng}`;
+        const enrichedH = enrichMap.get(key);
+        if (enrichedH) {
+          return {
+            ...h,
+            resolution_requirements: enrichedH.resolution_requirements ?? h.resolution_requirements,
+            personnel_requirements: enrichedH.personnel_requirements ?? h.personnel_requirements,
+            equipment_requirements: enrichedH.equipment_requirements ?? h.equipment_requirements,
+            enriched_description: enrichedH.enriched_description ?? h.enriched_description,
+          };
+        }
+        return h;
+      });
+    }
     logger.info(
       {
         count: scenarioHazards.length,
         enriched: scenarioHazards.filter((h) => h.enriched_description).length,
+        withEquipment: scenarioHazards.filter(
+          (h) => h.equipment_requirements && h.equipment_requirements.length > 0,
+        ).length,
       },
       'Trainer hazards mapped to scenario payload',
     );
@@ -7905,37 +7933,40 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
           // Convert enrichment casualties to payload format with deterministic stud placement
           const blastSite = input.trainerScene?.blastSite;
           const studGrids = input.studGrids ?? [];
-          const insideStuds = studGrids
+          const blastLat = blastSite?.lat ?? 0;
+          const blastLng = blastSite?.lng ?? 0;
+          const allStuds = studGrids
             .flatMap((g) => g.studs)
-            .filter((s) => s.spatialContext === 'inside_building')
             .map((s) => {
-              const blastLat = blastSite?.lat ?? 0;
-              const blastLng = blastSite?.lng ?? 0;
               const dLat = (s.lat - blastLat) * 111320;
               const dLng = (s.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
               return { ...s, distFromBlast: Math.sqrt(dLat * dLat + dLng * dLng) };
             })
             .sort((a, b) => a.distFromBlast - b.distFromBlast);
+          const insideStuds = allStuds.filter((s) => s.spatialContext === 'inside_building');
+          // Fall back to all studs if too few inside studs
+          const candidateStuds = insideStuds.length >= 5 ? insideStuds : allStuds;
 
           const usedIndices = new Set<number>();
-          const totalStuds = insideStuds.length;
+          const totalStuds = candidateStuds.length;
           const pickStud = (minPct: number, maxPct: number) => {
+            if (totalStuds === 0) return null;
             const lo = Math.floor(totalStuds * minPct);
             const hi = Math.min(Math.floor(totalStuds * maxPct), totalStuds - 1);
             for (let attempt = 0; attempt < 20; attempt++) {
               const idx = lo + Math.floor(Math.random() * (hi - lo + 1));
               if (!usedIndices.has(idx)) {
                 usedIndices.add(idx);
-                return insideStuds[idx];
+                return candidateStuds[idx];
               }
             }
             for (let i = lo; i <= hi; i++) {
               if (!usedIndices.has(i)) {
                 usedIndices.add(i);
-                return insideStuds[i];
+                return candidateStuds[i];
               }
             }
-            return insideStuds[Math.floor(Math.random() * totalStuds)];
+            return candidateStuds[Math.floor(Math.random() * totalStuds)];
           };
 
           const accessMap: Record<string, string[]> = {
@@ -7948,7 +7979,7 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
           const mapped = enrichmentCasualties.map((c, i) => {
             const tag = ((c.trueTag as string) || 'green').toLowerCase();
             const stud =
-              insideStuds.length > 0
+              totalStuds > 0
                 ? tag === 'black'
                   ? pickStud(0, 0.2)
                   : tag === 'red'
