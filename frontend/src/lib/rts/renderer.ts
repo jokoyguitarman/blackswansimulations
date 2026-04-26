@@ -1225,16 +1225,111 @@ const LOCATION_COLORS: Record<string, string> = {
   cordon: '#f87171',
 };
 
-const LOCATION_ICONS: Record<string, string> = {
-  hospital: '🏥',
-  police: '🚔',
-  fire_station: '🚒',
-  incident_site: '⚠',
-  entry_exit: '🚪',
-  staging_area: '🏁',
-  assembly_point: '📍',
-  poi: '📌',
-};
+function drawLocationIcon(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  category: string,
+  color: string,
+  rc: RenderContext,
+) {
+  const r = scaledR(5, rc);
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = Math.max(1, r * 0.15);
+
+  switch (category) {
+    case 'hospital': {
+      const arm = r * 0.7;
+      const thick = r * 0.3;
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(cx - thick / 2, cy - arm, thick, arm * 2);
+      ctx.fillRect(cx - arm, cy - thick / 2, arm * 2, thick);
+      break;
+    }
+    case 'police': {
+      ctx.beginPath();
+      const pts = 5;
+      for (let i = 0; i < pts; i++) {
+        const angle = -Math.PI / 2 + (i * 2 * Math.PI) / pts;
+        const px = cx + r * Math.cos(angle);
+        const py = cy + r * Math.sin(angle);
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      break;
+    }
+    case 'fire_station': {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r);
+      ctx.quadraticCurveTo(cx + r * 0.4, cy - r * 0.2, cx + r * 0.5, cy + r);
+      ctx.lineTo(cx, cy + r * 0.3);
+      ctx.lineTo(cx - r * 0.5, cy + r);
+      ctx.quadraticCurveTo(cx - r * 0.4, cy - r * 0.2, cx, cy - r);
+      ctx.closePath();
+      ctx.fillStyle = '#f97316';
+      ctx.fill();
+      break;
+    }
+    case 'incident_site': {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx + r, cy + r * 0.8);
+      ctx.lineTo(cx - r, cy + r * 0.8);
+      ctx.closePath();
+      ctx.fillStyle = '#ef4444';
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${Math.max(6, r)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('!', cx, cy + r * 0.15);
+      break;
+    }
+    case 'entry_exit': {
+      const w = r * 1.2;
+      const h = r * 1.6;
+      ctx.fillStyle = '#06b6d4';
+      ctx.fillRect(cx - w / 2, cy - h / 2, w, h);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(cx + w * 0.15, cy - h / 2, w * 0.15, h);
+      break;
+    }
+    case 'staging_area': {
+      const pole = r * 1.4;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(1, r * 0.12);
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.4, cy + pole / 2);
+      ctx.lineTo(cx - r * 0.4, cy - pole / 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.4, cy - pole / 2);
+      ctx.lineTo(cx + r * 0.6, cy - pole / 2 + r * 0.4);
+      ctx.lineTo(cx - r * 0.4, cy - pole / 2 + r * 0.8);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    default: {
+      const d = r * 0.8;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - d);
+      ctx.lineTo(cx + d, cy);
+      ctx.lineTo(cx, cy + d);
+      ctx.lineTo(cx - d, cy);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      break;
+    }
+  }
+  ctx.restore();
+}
 
 export function drawScenarioLocation(
   ctx: CanvasRenderingContext2D,
@@ -1244,7 +1339,6 @@ export function drawScenarioLocation(
   const p = toCanvas(loc.simPos.x, loc.simPos.y, rc);
   const category = loc.pinCategory || loc.locationType || 'poi';
   const color = LOCATION_COLORS[category] || '#a78bfa';
-  const icon = LOCATION_ICONS[category] || '📌';
 
   ctx.beginPath();
   ctx.arc(p.cx, p.cy, scaledR(6, rc), 0, Math.PI * 2);
@@ -1254,9 +1348,7 @@ export function drawScenarioLocation(
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  ctx.font = scaledFont(12, rc, 'normal', 'sans-serif');
-  ctx.textAlign = 'center';
-  ctx.fillText(icon, p.cx, p.cy + 4);
+  drawLocationIcon(ctx, p.cx, p.cy, category, color, rc);
 
   const label = loc.label.length > 25 ? loc.label.slice(0, 23) + '…' : loc.label;
   ctx.font = scaledFont(8, rc);

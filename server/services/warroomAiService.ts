@@ -1399,6 +1399,8 @@ export interface TrainerScene {
     hazardAnalysis: Array<Record<string, unknown>>;
     sceneSynthesis: Record<string, unknown>;
     overallAssessment: string;
+    generatedCasualties?: Array<Record<string, unknown>>;
+    enrichedCasualties?: Array<Record<string, unknown>>;
   };
 }
 
@@ -7766,6 +7768,15 @@ export async function warroomGenerateScenario(
         fire_class: (matchedEnrichment?.identifiedMaterial as string)?.toLowerCase().includes('gas')
           ? 'C'
           : undefined,
+        ...(matchedEnrichment && {
+          resolution_requirements:
+            (matchedEnrichment.resolution_requirements as Record<string, unknown>) ?? undefined,
+          personnel_requirements:
+            (matchedEnrichment.personnel_requirements as Record<string, unknown>) ?? undefined,
+          equipment_requirements:
+            (matchedEnrichment.equipment_requirements as Array<Record<string, unknown>>) ??
+            undefined,
+        }),
       };
     });
     logger.info(
@@ -7881,17 +7892,129 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
       : '';
 
   // Casualty + crowd generation
-  // When trainer scene exists, skip crowd/convergent generation (trainer controls the physical layout)
+  // When trainer scene has enrichment casualties, use them directly instead of AI generation
+  const enrichmentCasualties = input.trainerScene?.enrichment?.generatedCasualties;
+  const hasEnrichmentCasualties = enrichmentCasualties && enrichmentCasualties.length > 0;
+
   const [casualtyPins, crowdPins, convergentResult] = await Promise.all([
-    generateCasualties(
-      input,
-      openAiApiKey,
-      onProgress,
-      narrative,
-      locations,
-      scenarioHazards,
-      zoneSummaryBlock,
-    ),
+    hasEnrichmentCasualties
+      ? (async () => {
+          onProgress?.(
+            `Using ${enrichmentCasualties.length} pre-generated casualties from research enrichment...`,
+          );
+          // Convert enrichment casualties to payload format with deterministic stud placement
+          const blastSite = input.trainerScene?.blastSite;
+          const studGrids = input.studGrids ?? [];
+          const insideStuds = studGrids
+            .flatMap((g) => g.studs)
+            .filter((s) => s.spatialContext === 'inside_building')
+            .map((s) => {
+              const blastLat = blastSite?.lat ?? 0;
+              const blastLng = blastSite?.lng ?? 0;
+              const dLat = (s.lat - blastLat) * 111320;
+              const dLng = (s.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
+              return { ...s, distFromBlast: Math.sqrt(dLat * dLat + dLng * dLng) };
+            })
+            .sort((a, b) => a.distFromBlast - b.distFromBlast);
+
+          const usedIndices = new Set<number>();
+          const totalStuds = insideStuds.length;
+          const pickStud = (minPct: number, maxPct: number) => {
+            const lo = Math.floor(totalStuds * minPct);
+            const hi = Math.min(Math.floor(totalStuds * maxPct), totalStuds - 1);
+            for (let attempt = 0; attempt < 20; attempt++) {
+              const idx = lo + Math.floor(Math.random() * (hi - lo + 1));
+              if (!usedIndices.has(idx)) {
+                usedIndices.add(idx);
+                return insideStuds[idx];
+              }
+            }
+            for (let i = lo; i <= hi; i++) {
+              if (!usedIndices.has(i)) {
+                usedIndices.add(i);
+                return insideStuds[i];
+              }
+            }
+            return insideStuds[Math.floor(Math.random() * totalStuds)];
+          };
+
+          const accessMap: Record<string, string[]> = {
+            black: ['under_debris', 'behind_fire'],
+            red: ['under_debris', 'behind_fire', 'in_smoke'],
+            yellow: ['open', 'in_smoke'],
+            green: ['open'],
+          };
+
+          const mapped = enrichmentCasualties.map((c, i) => {
+            const tag = ((c.trueTag as string) || 'green').toLowerCase();
+            const stud =
+              insideStuds.length > 0
+                ? tag === 'black'
+                  ? pickStud(0, 0.2)
+                  : tag === 'red'
+                    ? pickStud(0.1, 0.5)
+                    : tag === 'yellow'
+                      ? pickStud(0.4, 0.8)
+                      : pickStud(0.6, 1.0)
+                : null;
+
+            const signs = (c.observableSigns as Record<string, string>) || {};
+            const acc = accessMap[tag] || ['open'];
+
+            return {
+              casualty_type: 'patient' as const,
+              location_lat: stud?.lat ?? blastSite?.lat ?? 0,
+              location_lng: stud?.lng ?? blastSite?.lng ?? 0,
+              floor_level: stud?.floor || 'G',
+              headcount: 1,
+              conditions: {
+                name: `Casualty ${i + 1}`,
+                age: 25 + Math.floor(Math.random() * 45),
+                sex: Math.random() > 0.5 ? 'male' : 'female',
+                role: 'civilian',
+                injuries: [],
+                triage_color: tag,
+                triage_category: tag,
+                mobility:
+                  tag === 'black'
+                    ? 'immobile'
+                    : tag === 'red'
+                      ? 'immobile'
+                      : tag === 'yellow'
+                        ? 'limited'
+                        : 'ambulatory',
+                accessibility: acc[Math.floor(Math.random() * acc.length)],
+                consciousness:
+                  signs.consciousness || (tag === 'black' ? 'unresponsive' : 'responsive'),
+                breathing: signs.breathing || (tag === 'black' ? 'absent' : 'present'),
+                visible_description: (c.description as string) || '',
+                visible_injuries: signs.visibleInjuries || '',
+                bleeding: signs.bleeding || '',
+                pulse: signs.pulse || '',
+                treatment_requirements: [],
+                transport_prerequisites: [],
+                contraindications: [],
+                deterioration_timeline: [],
+              },
+              status: 'undiscovered' as const,
+              appears_at_minutes: 0,
+            };
+          });
+          logger.info(
+            { count: mapped.length, fromEnrichment: true },
+            'Using enrichment casualties for scenario (skipped AI casualty generation)',
+          );
+          return mapped as WarroomScenarioPayload['casualties'];
+        })()
+      : generateCasualties(
+          input,
+          openAiApiKey,
+          onProgress,
+          narrative,
+          locations,
+          scenarioHazards,
+          zoneSummaryBlock,
+        ),
     input.trainerScene
       ? Promise.resolve(undefined)
       : generateCrowdPins(input, openAiApiKey, onProgress, narrative, locations, zoneSummaryBlock),

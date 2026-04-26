@@ -1103,6 +1103,12 @@ export async function stageGenerateAndPersist(
                     unknown
                   >,
                   overallAssessment: (enrichmentResult.overallAssessment ?? '') as string,
+                  generatedCasualties: (enrichmentResult.generatedCasualties ?? []) as Array<
+                    Record<string, unknown>
+                  >,
+                  enrichedCasualties: (enrichmentResult.enrichedCasualties ?? []) as Array<
+                    Record<string, unknown>
+                  >,
                 }
               : undefined,
           };
