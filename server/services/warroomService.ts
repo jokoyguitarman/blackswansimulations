@@ -1216,87 +1216,91 @@ export async function stageGenerateAndPersist(
   // Adversary pursuit decision tree
   const hasInvestigativeTeam = userTeams?.some((t) => t.is_investigative) ?? false;
   const pursuitToggle = hasInvestigativeTeam ? (options.include_adversary_pursuit ?? true) : false;
-  try {
-    const payloadLocations = (payload.locations || []).map((l) => ({
-      location_type: l.location_type,
-      pin_category: l.pin_category,
-      label: l.label,
-      coordinates: l.coordinates,
-    }));
-    const payloadTeamNames = payload.teams.map((t) => t.team_name);
-    const pursuitNarrative = {
-      title: payload.scenario.title,
-      description: payload.scenario.description,
-      briefing: payload.scenario.briefing,
-    };
-
-    const pursuitResult = await generateAdversaryPursuitTree(
-      {
-        scenario_type: parsed.scenario_type,
-        setting: parsed.setting,
-        terrain: parsed.terrain,
-        location: parsed.location ?? null,
-        venue_name: parsed.venue_name,
-        original_prompt: options.prompt,
-        duration_minutes: options.duration_minutes || 60,
-        typeSpec: geoResult.typeSpec,
-        settingSpec: geoResult.settingSpec,
-        terrainSpec: geoResult.terrainSpec,
-        complexity_tier: options.complexity_tier || 'full',
-        threat_profile: geoResult.threatProfile,
-      },
-      payloadLocations,
-      payloadTeamNames,
-      openAiApiKey,
-      pursuitNarrative,
-      (msg: string) => onProgress?.('ai', msg),
-      pursuitToggle,
-    );
-
-    if (pursuitResult) {
-      if (!payload.insider_knowledge) payload.insider_knowledge = {};
-      (payload.insider_knowledge as Record<string, unknown>).adversary_profiles =
-        pursuitResult.adversary_profiles;
-
-      const taggedPursuitInjects = pursuitResult.pursuit_time_injects.map((inj, i) => ({
-        ...inj,
-        _pursuit_inject_index: i,
+  if (!pursuitToggle) {
+    logger.info('Adversary pursuit: skipped (no investigative team)');
+  }
+  if (pursuitToggle)
+    try {
+      const payloadLocations = (payload.locations || []).map((l) => ({
+        location_type: l.location_type,
+        pin_category: l.pin_category,
+        label: l.label,
+        coordinates: l.coordinates,
       }));
-      payload.time_injects = [...payload.time_injects, ...taggedPursuitInjects].sort(
-        (a, b) => a.trigger_time_minutes - b.trigger_time_minutes,
-      ) as typeof payload.time_injects;
+      const payloadTeamNames = payload.teams.map((t) => t.team_name);
+      const pursuitNarrative = {
+        title: payload.scenario.title,
+        description: payload.scenario.description,
+        briefing: payload.scenario.briefing,
+      };
 
-      if (!payload.condition_driven_injects) payload.condition_driven_injects = [];
-      (payload.condition_driven_injects as Array<Record<string, unknown>>).push(
-        ...(pursuitResult.pursuit_condition_injects as Array<Record<string, unknown>>),
-      );
-
-      if (!payload.locations) payload.locations = [];
-      payload.locations.push(
-        ...pursuitResult.last_known_pins.map((p) => p as (typeof payload.locations)[0]),
-      );
-
-      const payloadAny = payload as unknown as Record<string, unknown>;
-      if (!payloadAny.pursuit_gates) {
-        payloadAny.pursuit_gates = pursuitResult.pursuit_gates;
-      }
-
-      logger.info(
+      const pursuitResult = await generateAdversaryPursuitTree(
         {
-          adversaryCount: pursuitResult.adversary_profiles.length,
-          pursuitInjects: pursuitResult.pursuit_time_injects.length,
-          pursuitCondInjects: pursuitResult.pursuit_condition_injects.length,
-          pursuitGates: pursuitResult.pursuit_gates.length,
+          scenario_type: parsed.scenario_type,
+          setting: parsed.setting,
+          terrain: parsed.terrain,
+          location: parsed.location ?? null,
+          venue_name: parsed.venue_name,
+          original_prompt: options.prompt,
+          duration_minutes: options.duration_minutes || 60,
+          typeSpec: geoResult.typeSpec,
+          settingSpec: geoResult.settingSpec,
+          terrainSpec: geoResult.terrainSpec,
+          complexity_tier: options.complexity_tier || 'full',
+          threat_profile: geoResult.threatProfile,
         },
-        'Adversary pursuit tree merged into scenario payload',
+        payloadLocations,
+        payloadTeamNames,
+        openAiApiKey,
+        pursuitNarrative,
+        (msg: string) => onProgress?.('ai', msg),
+        pursuitToggle,
+      );
+
+      if (pursuitResult) {
+        if (!payload.insider_knowledge) payload.insider_knowledge = {};
+        (payload.insider_knowledge as Record<string, unknown>).adversary_profiles =
+          pursuitResult.adversary_profiles;
+
+        const taggedPursuitInjects = pursuitResult.pursuit_time_injects.map((inj, i) => ({
+          ...inj,
+          _pursuit_inject_index: i,
+        }));
+        payload.time_injects = [...payload.time_injects, ...taggedPursuitInjects].sort(
+          (a, b) => a.trigger_time_minutes - b.trigger_time_minutes,
+        ) as typeof payload.time_injects;
+
+        if (!payload.condition_driven_injects) payload.condition_driven_injects = [];
+        (payload.condition_driven_injects as Array<Record<string, unknown>>).push(
+          ...(pursuitResult.pursuit_condition_injects as Array<Record<string, unknown>>),
+        );
+
+        if (!payload.locations) payload.locations = [];
+        payload.locations.push(
+          ...pursuitResult.last_known_pins.map((p) => p as (typeof payload.locations)[0]),
+        );
+
+        const payloadAny = payload as unknown as Record<string, unknown>;
+        if (!payloadAny.pursuit_gates) {
+          payloadAny.pursuit_gates = pursuitResult.pursuit_gates;
+        }
+
+        logger.info(
+          {
+            adversaryCount: pursuitResult.adversary_profiles.length,
+            pursuitInjects: pursuitResult.pursuit_time_injects.length,
+            pursuitCondInjects: pursuitResult.pursuit_condition_injects.length,
+            pursuitGates: pursuitResult.pursuit_gates.length,
+          },
+          'Adversary pursuit tree merged into scenario payload',
+        );
+      }
+    } catch (pursuitErr) {
+      logger.warn(
+        { err: pursuitErr },
+        'Adversary pursuit tree generation failed; continuing without',
       );
     }
-  } catch (pursuitErr) {
-    logger.warn(
-      { err: pursuitErr },
-      'Adversary pursuit tree generation failed; continuing without',
-    );
-  }
 
   // Persist site_requirements into insider_knowledge for runtime use
   if (standardsFindings.length > 0) {
