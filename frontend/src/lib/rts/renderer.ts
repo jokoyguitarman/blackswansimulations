@@ -14,7 +14,7 @@ import { HAZARD_DEFS } from './types';
 import type { WallInspectionPoint } from './wallInspection';
 import { polygonBounds } from '../evacuation/geometry';
 import type { Bounds } from '../evacuation/geometry';
-import { getIcon, LOCATION_ICON_KEY, HAZARD_ICON_KEY } from './iconCache';
+import { getIcon, preloadIcons, LOCATION_ICON_KEY, HAZARD_ICON_KEY } from './iconCache';
 
 export interface RenderContext {
   scale: number;
@@ -62,7 +62,7 @@ function drawSvgIcon(
   cy: number,
   size: number,
 ): boolean {
-  const img = getIcon(key, Math.round(size));
+  const img = getIcon(key);
   if (!img || !img.complete) return false;
   ctx.drawImage(img, cx - size / 2, cy - size / 2, size, size);
   return true;
@@ -108,6 +108,7 @@ export function renderRTS(
   showBlastZone?: boolean,
   showOperatingZones?: boolean,
 ) {
+  preloadIcons();
   ctx.clearRect(0, 0, w, h);
 
   if (!transparentBg) {

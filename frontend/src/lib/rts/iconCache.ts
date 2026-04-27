@@ -1,34 +1,81 @@
 import { svg } from '../../components/COP/mapIcons';
 
+const RENDER_SIZE = 48;
 const cache = new Map<string, HTMLImageElement>();
-const loading = new Set<string>();
+let preloaded = false;
 
-/**
- * Get a cached HTMLImageElement rendered from an SVG icon in mapIcons.ts.
- * Returns null on first call while the image loads; subsequent calls return
- * the ready image. This avoids blocking the render loop.
- */
-export function getIcon(key: string, size = 24): HTMLImageElement | null {
-  const cacheKey = `${key}_${size}`;
-  const cached = cache.get(cacheKey);
-  if (cached && cached.complete) return cached;
-  if (loading.has(cacheKey)) return null;
+const PRELOAD_KEYS = [
+  'explosion',
+  'fire',
+  'chemical',
+  'collapse',
+  'debris',
+  'gas',
+  'flood',
+  'biohazard',
+  'electrical',
+  'smoke',
+  'hazard_generic',
+  'hospital',
+  'police',
+  'fire_station',
+  'siren',
+  'door',
+  'staging',
+  'flag',
+  'pin',
+  'cctv',
+  'cordon',
+  'community',
+  'command',
+  'person',
+  'person_trapped',
+  'stretcher',
+  'deceased',
+  'resolved',
+  'crowd',
+  'medical_cross',
+  'ambulance',
+  'tent',
+  'barrier',
+  'bomb',
+  'bomb_robot',
+  'blast_shield',
+  'radio',
+  'clipboard',
+];
 
-  const svgStr = svg(key, size);
-  if (!svgStr) return null;
+function loadIcon(key: string): void {
+  if (cache.has(key)) return;
+  const svgStr = svg(key, RENDER_SIZE);
+  if (!svgStr) return;
 
-  loading.add(cacheKey);
-  const img = new Image(size, size);
-  img.onload = () => {
-    loading.delete(cacheKey);
-  };
+  const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  const img = new Image(RENDER_SIZE, RENDER_SIZE);
+  img.onload = () => URL.revokeObjectURL(url);
   img.onerror = () => {
-    loading.delete(cacheKey);
-    cache.delete(cacheKey);
+    URL.revokeObjectURL(url);
+    cache.delete(key);
   };
-  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
-  cache.set(cacheKey, img);
-  return null;
+  img.src = url;
+  cache.set(key, img);
+}
+
+export function preloadIcons(): void {
+  if (preloaded) return;
+  preloaded = true;
+  for (const key of PRELOAD_KEYS) loadIcon(key);
+}
+
+export function getIcon(key: string): HTMLImageElement | null {
+  if (!preloaded) preloadIcons();
+  const img = cache.get(key);
+  if (!img) {
+    loadIcon(key);
+    return cache.get(key) ?? null;
+  }
+  return img;
 }
 
 /** Category-to-icon-key mapping for scenario locations */
@@ -40,7 +87,7 @@ export const LOCATION_ICON_KEY: Record<string, string> = {
   entry_exit: 'door',
   staging_area: 'staging',
   assembly_point: 'flag',
-  poi: 'pin',
+  poi: 'command',
   cctv: 'cctv',
   cordon: 'cordon',
   community: 'community',
