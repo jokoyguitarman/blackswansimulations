@@ -186,10 +186,7 @@ const paths: Record<string, string> = {
 
 export function svg(key: string, size = 16): string {
   const p = paths[key];
-  if (!p)
-    return paths.pin
-      ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S} ${S}" width="${size}" height="${size}">${paths.pin}</svg>`
-      : '';
+  if (!p) return '';
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S} ${S}" width="${size}" height="${size}">${p}</svg>`;
 }
 

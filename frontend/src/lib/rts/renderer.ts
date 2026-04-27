@@ -810,14 +810,19 @@ function drawBlastSite(ctx: CanvasRenderingContext2D, pos: Vec2, rc: RenderConte
   ctx.fillStyle = '#dc2626';
   ctx.fill();
 
-  const iconSize = scaledR(14, rc);
-  if (!drawSvgIcon(ctx, 'explosion', p.cx, p.cy, iconSize)) {
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 10px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('X', p.cx, p.cy);
-  }
+  ctx.beginPath();
+  ctx.arc(p.cx, p.cy, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(p.cx - 8, p.cy);
+  ctx.lineTo(p.cx + 8, p.cy);
+  ctx.moveTo(p.cx, p.cy - 8);
+  ctx.lineTo(p.cx, p.cy + 8);
+  ctx.stroke();
 }
 
 // ── Interior walls ──────────────────────────────────────────────────────
@@ -888,14 +893,14 @@ function drawHazardZone(ctx: CanvasRenderingContext2D, hz: HazardZone, rc: Rende
   ctx.stroke();
   ctx.setLineDash([]);
 
-  const iconKey = HAZARD_ICON_KEY[hz.hazardType] || 'hazard_generic';
-  const iconSize = Math.min(drawR * 0.8, scaledR(12, rc));
-  if (!drawSvgIcon(ctx, iconKey, p.cx, p.cy, iconSize)) {
+  const iconKey = HAZARD_ICON_KEY[hz.hazardType];
+  const iconSize = Math.min(drawR * 0.6, scaledR(10, rc));
+  if (!iconKey || !drawSvgIcon(ctx, iconKey, p.cx, p.cy, iconSize)) {
     ctx.fillStyle = def.color;
-    ctx.font = `${Math.min(drawR * 0.6, 16)}px monospace`;
+    ctx.font = `bold ${Math.min(drawR * 0.5, 14)}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(def.icon, p.cx, p.cy);
+    ctx.fillText(def.label.charAt(0).toUpperCase(), p.cx, p.cy);
   }
 }
 
@@ -1082,7 +1087,7 @@ function drawCasualtyPin(
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  const iconSize = r * 1.4;
+  const iconSize = r * 1.0;
   if (!drawSvgIcon(ctx, 'person', p.cx, p.cy, iconSize)) {
     ctx.fillStyle = '#fff';
     drawPersonSilhouette(ctx, p.cx, p.cy, r);
@@ -1363,9 +1368,9 @@ export function drawScenarioLocation(
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  const iconKey = LOCATION_ICON_KEY[category] || 'pin';
-  const iconSize = scaledR(10, rc);
-  if (!drawSvgIcon(ctx, iconKey, p.cx, p.cy, iconSize)) {
+  const iconKey = LOCATION_ICON_KEY[category];
+  const iconSize = scaledR(8, rc);
+  if (!iconKey || !drawSvgIcon(ctx, iconKey, p.cx, p.cy, iconSize)) {
     drawLocationIcon(ctx, p.cx, p.cy, category, color, rc);
   }
 }
