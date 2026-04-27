@@ -466,8 +466,8 @@ export const WarRoom = () => {
   };
 
   return (
-    <div className="min-h-screen scanline p-4 sm:p-6">
-      <div className="w-full px-2 sm:px-4">
+    <div className="min-h-screen scanline p-2 sm:p-6">
+      <div className="w-full px-1 sm:px-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl terminal-text uppercase tracking-wider">[WAR ROOM]</h1>
@@ -570,7 +570,7 @@ export const WarRoom = () => {
         )}
 
         {/* Step content */}
-        <div className="military-border p-4 sm:p-6 mb-4 sm:mb-6">
+        <div className={`military-border mb-4 sm:mb-6 ${step === 3 ? 'p-0' : 'p-4 sm:p-6'}`}>
           {step === 1 && (
             <div>
               <h2 className="text-lg terminal-text uppercase mb-4">[STEP 1: INCIDENT SELECTION]</h2>
@@ -776,7 +776,7 @@ export const WarRoom = () => {
           {step === 3 && (
             <div
               className="w-full"
-              style={{ height: 'min(calc(100vh - 260px), 70vw)', minHeight: 350 }}
+              style={{ height: 'min(calc(100vh - 200px), 75vw)', minHeight: 350 }}
             >
               <SceneEditor
                 incidentType={incidentType || 'bombing'}
