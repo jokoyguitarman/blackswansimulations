@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { MapContainer, TileLayer, Polygon, useMap } from 'react-leaflet';
-import L from 'leaflet';
+import { MapContainer, TileLayer, Polygon, Marker, Tooltip, useMap } from 'react-leaflet';
+import L, { DivIcon } from 'leaflet';
 import { api } from '../../lib/api';
 import { projectPolygon } from '../../lib/evacuation/geometry';
 import { PolygonEvacuationEngine } from '../../lib/evacuation/engine';
@@ -12,7 +12,6 @@ import {
   computeMapRenderContext,
   latLngToSim,
   toSim as rcToSim,
-  drawScenarioLocation,
   drawIncidentZone,
   drawRoadPolyline,
 } from '../../lib/rts/renderer';
@@ -28,6 +27,7 @@ import {
 } from '../../lib/rts/types';
 import type { ExitDef, Vec2 } from '../../lib/evacuation/types';
 import type { WallInspectionPoint } from '../../lib/rts/wallInspection';
+import { svg } from '../../components/COP/mapIcons';
 import 'leaflet/dist/leaflet.css';
 
 interface SceneCanvasViewProps {
@@ -106,6 +106,12 @@ export function SceneCanvasView({
   const [activeLocation, setActiveLocation] = useState<SimLocation | null>(null);
   const [activeHazard, setActiveHazard] = useState<HazardZone | null>(null);
   const [plantedItems, setPlantedItems] = useState<Array<Record<string, unknown>>>([]);
+  const [rawCasualties, setRawCasualties] = useState<
+    Array<{ id: string; lat: number; lng: number; tag: string }>
+  >([]);
+  const [rawLocations, setRawLocations] = useState<
+    Array<{ id: string; lat: number; lng: number; label: string; category: string }>
+  >([]);
   const [loading, setLoading] = useState(true);
   const [hasScene, setHasScene] = useState<boolean | null>(null);
   const [showBlastZone, setShowBlastZone] = useState(false);
@@ -216,6 +222,17 @@ export function SceneCanvasView({
           });
 
         setCasualtyPins(converted);
+        setRawCasualties(
+          casualties
+            .filter((c) => c.location_lat != null && c.location_lng != null)
+            .map((c) => ({
+              id: c.id as string,
+              lat: c.location_lat as number,
+              lng: c.location_lng as number,
+              tag:
+                ((c.conditions as Record<string, unknown>)?.triage_color as string) || 'untagged',
+            })),
+        );
 
         // Convert scenario locations to sim-space
         const locs = (locationsRes as { data: Array<Record<string, unknown>> }).data || [];
@@ -233,6 +250,23 @@ export function SceneCanvasView({
         // Filter out locations too far from building (>500m in sim-space)
         const nearbyLocs = simLocs.filter((l) => Math.hypot(l.simPos.x, l.simPos.y) < 500);
         setScenarioLocations(nearbyLocs);
+        setRawLocations(
+          locs
+            .filter((l) => (l.coordinates as Record<string, unknown>)?.lat != null)
+            .map((l) => {
+              const coords = l.coordinates as { lat: number; lng: number };
+              const sim = latLngToSim(coords.lat, coords.lng, polygon);
+              if (Math.hypot(sim.x, sim.y) >= 500) return null;
+              return {
+                id: (l.id as string) || '',
+                lat: coords.lat,
+                lng: coords.lng,
+                label: (l.label as string) || '',
+                category: (l.pin_category as string) || (l.location_type as string) || 'poi',
+              };
+            })
+            .filter((l): l is NonNullable<typeof l> => l !== null),
+        );
 
         // Extract incident zones from hazards
         const hazards = (hazardsRes as { data: Array<Record<string, unknown>> }).data || [];
@@ -528,8 +562,8 @@ export function SceneCanvasView({
             new Set(),
             [],
             null,
-            casualtyPins,
-            activeCasualtyPin?.id ?? null,
+            [],
+            null,
             interiorWalls,
             hazardZones,
             stairwells,
@@ -544,10 +578,7 @@ export function SceneCanvasView({
             showOperatingZones,
           );
 
-          // Foreground layers: scenario location labels (on top of everything)
-          for (const loc of scenarioLocations) {
-            drawScenarioLocation(ctx, loc, rc);
-          }
+          // Location and casualty pins are rendered as Leaflet DivIcon markers (not on canvas)
         }
       }
       rafRef.current = requestAnimationFrame(loop);
@@ -800,6 +831,104 @@ export function SceneCanvasView({
             positions={sceneConfig.building_polygon.map(([la, ln]) => [la, ln] as [number, number])}
             pathOptions={{ color: '#22d3ee', weight: 2, fillOpacity: 0 }}
           />
+
+          {/* Casualty markers (Leaflet DivIcon with SVG from mapIcons) */}
+          {rawCasualties.map((c) => {
+            const TAG_COLORS: Record<string, string> = {
+              red: '#ef4444',
+              yellow: '#eab308',
+              green: '#22c55e',
+              black: '#374151',
+              untagged: '#9ca3af',
+            };
+            const bg = TAG_COLORS[c.tag] || TAG_COLORS.untagged;
+            return (
+              <Marker
+                key={`cas-${c.id}`}
+                position={[c.lat, c.lng]}
+                zIndexOffset={2000}
+                icon={
+                  new DivIcon({
+                    className: '',
+                    html: `<div style="background:${bg};width:24px;height:24px;border-radius:50%;border:2px solid #000;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.4)">${svg('person', 14)}</div>`,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12],
+                  })
+                }
+                eventHandlers={{
+                  click: () => {
+                    const pin = casualtyPins.find((p) => p.id === c.id);
+                    if (pin) {
+                      setActiveCasualtyPin(pin);
+                      setActiveWallPoint(null);
+                      setActiveLocation(null);
+                      setActiveHazard(null);
+                    }
+                  },
+                }}
+              />
+            );
+          })}
+
+          {/* Location markers (Leaflet DivIcon with SVG from mapIcons) */}
+          {rawLocations.map((loc) => {
+            const LOC_COLORS: Record<string, string> = {
+              hospital: '#ef4444',
+              police: '#3b82f6',
+              fire_station: '#f97316',
+              incident_site: '#ef4444',
+              entry_exit: '#06b6d4',
+              staging_area: '#22c55e',
+              assembly_point: '#22c55e',
+              cctv: '#8b5cf6',
+              poi: '#a78bfa',
+              cordon: '#f87171',
+            };
+            const ICON_KEYS: Record<string, string> = {
+              hospital: 'hospital',
+              police: 'police',
+              fire_station: 'fire_station',
+              incident_site: 'siren',
+              entry_exit: 'door',
+              staging_area: 'staging',
+              assembly_point: 'flag',
+              cctv: 'cctv',
+              poi: 'command',
+              cordon: 'cordon',
+            };
+            const bg = LOC_COLORS[loc.category] || '#a78bfa';
+            const iconKey = ICON_KEYS[loc.category] || 'command';
+            return (
+              <Marker
+                key={`loc-${loc.id}`}
+                position={[loc.lat, loc.lng]}
+                zIndexOffset={1500}
+                icon={
+                  new DivIcon({
+                    className: '',
+                    html: `<div style="background:${bg};width:26px;height:26px;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.3)">${svg(iconKey, 16)}</div>`,
+                    iconSize: [26, 26],
+                    iconAnchor: [13, 13],
+                  })
+                }
+                eventHandlers={{
+                  click: () => {
+                    const sl = scenarioLocations.find((s) => s.label === loc.label);
+                    if (sl) {
+                      setActiveLocation(sl);
+                      setActiveCasualtyPin(null);
+                      setActiveWallPoint(null);
+                      setActiveHazard(null);
+                    }
+                  },
+                }}
+              >
+                <Tooltip className="pin-tooltip">
+                  <span className="text-xs">{loc.label}</span>
+                </Tooltip>
+              </Marker>
+            );
+          })}
         </MapContainer>
         <canvas
           ref={canvasRef}
@@ -818,7 +947,7 @@ export function SceneCanvasView({
             width: canvasSize.w,
             height: canvasSize.h,
             pointerEvents: 'auto',
-            zIndex: 1000,
+            zIndex: 450,
             touchAction: 'none',
           }}
         />
