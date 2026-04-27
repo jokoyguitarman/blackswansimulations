@@ -466,8 +466,8 @@ export const WarRoom = () => {
   };
 
   return (
-    <div className="min-h-screen scanline p-4 sm:p-6 flex flex-col">
-      <div className="w-full px-2 sm:px-4 flex-1 flex flex-col">
+    <div className="min-h-screen scanline p-4 sm:p-6">
+      <div className="w-full px-2 sm:px-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl terminal-text uppercase tracking-wider">[WAR ROOM]</h1>
@@ -509,7 +509,7 @@ export const WarRoom = () => {
                     >
                       {isPast ? '\u2713' : VISIBLE_STEPS.indexOf(s) + 1}
                     </span>
-                    {STEP_LABELS[s]}
+                    <span className="hidden sm:inline">{STEP_LABELS[s]}</span>
                   </div>
                 </div>
               );
@@ -570,7 +570,7 @@ export const WarRoom = () => {
         )}
 
         {/* Step content */}
-        <div className="military-border p-4 sm:p-6 mb-4 sm:mb-6 flex-1 flex flex-col min-h-0 overflow-y-auto">
+        <div className="military-border p-4 sm:p-6 mb-4 sm:mb-6">
           {step === 1 && (
             <div>
               <h2 className="text-lg terminal-text uppercase mb-4">[STEP 1: INCIDENT SELECTION]</h2>
@@ -774,7 +774,10 @@ export const WarRoom = () => {
           )}
 
           {step === 3 && (
-            <div className="h-[calc(100vh-280px)] min-h-[400px]">
+            <div
+              className="w-full"
+              style={{ height: 'min(calc(100vh - 260px), 70vw)', minHeight: 350 }}
+            >
               <SceneEditor
                 incidentType={incidentType || 'bombing'}
                 initialSceneId={rtsSceneId}

@@ -2351,12 +2351,14 @@ const MapPinsTab = ({
       {saveMsg && <div className="text-xs terminal-text text-green-400 p-1">{saveMsg}</div>}
 
       {/* RTS Scene Canvas (when trainer scene exists) */}
-      <SceneCanvasView
-        scenarioId={scenarioId}
-        height={600}
-        showAllPins
-        onLoaded={setHasSceneCanvas}
-      />
+      <div style={{ height: 'min(600px, 70vw)', minHeight: 300 }}>
+        <SceneCanvasView
+          scenarioId={scenarioId}
+          fillHeight
+          showAllPins
+          onLoaded={setHasSceneCanvas}
+        />
+      </div>
 
       {/* OSM map (fallback when no trainer scene) */}
       {hasSceneCanvas === false && (
