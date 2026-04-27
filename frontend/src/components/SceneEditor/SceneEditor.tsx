@@ -1274,11 +1274,11 @@ export function SceneEditor({
   if (phase === 'map') {
     return (
       <div className="flex flex-col lg:flex-row h-full gap-2 lg:gap-3">
-        {/* Controls panel: compact grid on portrait/narrow, sidebar on landscape/wide */}
-        <div className="w-full lg:w-80 flex-shrink-0 grid grid-cols-2 lg:grid-cols-1 gap-2 lg:gap-3 lg:overflow-y-auto lg:max-h-none items-start">
+        {/* Controls panel: scrollable strip above map on narrow, sidebar on wide */}
+        <div className="w-full lg:w-80 flex-shrink-0 flex flex-col gap-2 lg:gap-3 overflow-y-auto max-h-[35vh] lg:max-h-none">
           {/* GPS status */}
           {!lat && !lng && (
-            <div className="col-span-2 lg:col-span-1 px-3 py-2 bg-cyan-900/20 border border-cyan-500/30 text-xs terminal-text text-cyan-400 animate-pulse">
+            <div className="px-3 py-2 bg-cyan-900/20 border border-cyan-500/30 text-xs terminal-text text-cyan-400 animate-pulse">
               Locating you...
             </div>
           )}
@@ -1391,7 +1391,7 @@ export function SceneEditor({
           </div>
 
           {/* Lat / Lng / Radius */}
-          <div className="col-span-2 lg:col-span-1 flex gap-2">
+          <div className="flex gap-2">
             <div className="flex-1">
               <label className="text-[10px] terminal-text text-robotic-yellow/40">Lat</label>
               <input
@@ -1420,7 +1420,7 @@ export function SceneEditor({
 
           {/* Drawing mode status */}
           {isDrawing ? (
-            <div className="col-span-2 lg:col-span-1 space-y-3">
+            <div className="space-y-3">
               <div className="px-3 py-2 bg-amber-900/20 border border-amber-500/30 text-xs terminal-text text-amber-400">
                 Click on the map to place vertices. Close the polygon by clicking the first vertex
                 or press Enter. ESC to cancel.
@@ -1448,7 +1448,7 @@ export function SceneEditor({
               </button>
             </div>
           ) : (
-            <div className="col-span-2 lg:col-span-1 flex flex-col gap-2">
+            <div className="flex flex-col gap-2">
               <button
                 onClick={handleFetch}
                 disabled={fetchLoading || !lat || !lng}
@@ -1487,7 +1487,7 @@ export function SceneEditor({
 
           {/* Auto-trace mode UI */}
           {isAutoTracing && (
-            <div className="col-span-2 lg:col-span-1 space-y-3">
+            <div className="space-y-3">
               {autoTraceStatus && (
                 <div
                   className={`px-3 py-2 text-xs terminal-text border rounded ${
@@ -1565,11 +1565,11 @@ export function SceneEditor({
             </div>
           )}
 
-          {error && <p className="col-span-2 lg:col-span-1 text-xs text-red-400">{error}</p>}
+          {error && <p className="text-xs text-red-400">{error}</p>}
 
           {/* Building results list */}
           {!isDrawing && fetchResult && (
-            <div className="col-span-2 lg:col-span-1 space-y-2">
+            <div className="space-y-2">
               <p className="text-xs terminal-text text-robotic-yellow/50">
                 {fetchResult.grids.length} buildings found. Select one:
               </p>
