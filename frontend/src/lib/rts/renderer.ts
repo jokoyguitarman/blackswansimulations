@@ -63,7 +63,7 @@ function drawSvgIcon(
   size: number,
 ): boolean {
   const img = getIcon(key, Math.round(size));
-  if (!img || !img.complete || img.naturalWidth === 0) return false;
+  if (!img || !img.complete) return false;
   ctx.drawImage(img, cx - size / 2, cy - size / 2, size, size);
   return true;
 }
