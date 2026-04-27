@@ -14,6 +14,7 @@ import { HAZARD_DEFS } from './types';
 import type { WallInspectionPoint } from './wallInspection';
 import { polygonBounds } from '../evacuation/geometry';
 import type { Bounds } from '../evacuation/geometry';
+import { getIcon, LOCATION_ICON_KEY, HAZARD_ICON_KEY } from './iconCache';
 
 export interface RenderContext {
   scale: number;
@@ -52,6 +53,19 @@ export function scaledFont(
 
 function scaledR(basePx: number, rc: RenderContext): number {
   return Math.max(basePx, Math.round(basePx * Math.min(rc.scale / 3, 4)));
+}
+
+function drawSvgIcon(
+  ctx: CanvasRenderingContext2D,
+  key: string,
+  cx: number,
+  cy: number,
+  size: number,
+): boolean {
+  const img = getIcon(key, Math.round(size));
+  if (!img || !img.complete || img.naturalWidth === 0) return false;
+  ctx.drawImage(img, cx - size / 2, cy - size / 2, size, size);
+  return true;
 }
 
 // ── Main render function ────────────────────────────────────────────────
@@ -796,16 +810,14 @@ function drawBlastSite(ctx: CanvasRenderingContext2D, pos: Vec2, rc: RenderConte
   ctx.fillStyle = '#dc2626';
   ctx.fill();
 
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 10px monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('💥', p.cx, p.cy);
-
-  ctx.fillStyle = '#ef4444';
-  ctx.font = 'bold 10px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText('BLAST SITE', p.cx, p.cy + 18);
+  const iconSize = scaledR(14, rc);
+  if (!drawSvgIcon(ctx, 'explosion', p.cx, p.cy, iconSize)) {
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('X', p.cx, p.cy);
+  }
 }
 
 // ── Interior walls ──────────────────────────────────────────────────────
@@ -876,16 +888,15 @@ function drawHazardZone(ctx: CanvasRenderingContext2D, hz: HazardZone, rc: Rende
   ctx.stroke();
   ctx.setLineDash([]);
 
-  ctx.fillStyle = def.color;
-  ctx.font = `${Math.min(drawR * 0.6, 16)}px monospace`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(def.icon, p.cx, p.cy);
-
-  ctx.fillStyle = def.color;
-  ctx.font = 'bold 8px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText(def.label.toUpperCase(), p.cx, p.cy + drawR + 8);
+  const iconKey = HAZARD_ICON_KEY[hz.hazardType] || 'hazard_generic';
+  const iconSize = Math.min(drawR * 0.8, scaledR(12, rc));
+  if (!drawSvgIcon(ctx, iconKey, p.cx, p.cy, iconSize)) {
+    ctx.fillStyle = def.color;
+    ctx.font = `${Math.min(drawR * 0.6, 16)}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(def.icon, p.cx, p.cy);
+  }
 }
 
 // ── Stairwells ──────────────────────────────────────────────────────────
@@ -1071,8 +1082,11 @@ function drawCasualtyPin(
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  ctx.fillStyle = '#fff';
-  drawPersonSilhouette(ctx, p.cx, p.cy, r);
+  const iconSize = r * 1.4;
+  if (!drawSvgIcon(ctx, 'person', p.cx, p.cy, iconSize)) {
+    ctx.fillStyle = '#fff';
+    drawPersonSilhouette(ctx, p.cx, p.cy, r);
+  }
 }
 
 // ── Wall inspection points ──────────────────────────────────────────────
@@ -1349,7 +1363,11 @@ export function drawScenarioLocation(
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  drawLocationIcon(ctx, p.cx, p.cy, category, color, rc);
+  const iconKey = LOCATION_ICON_KEY[category] || 'pin';
+  const iconSize = scaledR(10, rc);
+  if (!drawSvgIcon(ctx, iconKey, p.cx, p.cy, iconSize)) {
+    drawLocationIcon(ctx, p.cx, p.cy, category, color, rc);
+  }
 }
 
 export function drawIncidentZone(ctx: CanvasRenderingContext2D, zone: SimZone, rc: RenderContext) {

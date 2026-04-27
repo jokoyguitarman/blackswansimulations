@@ -4127,43 +4127,53 @@ async function generateCasualties(
   // --- PHASE 2: Place victims on the map ---
   // For trainer scenes with studs, bypass AI placement entirely and assign deterministically
   if (input.trainerScene?.blastSite && input.studGrids?.length) {
-    onProgress?.(`Placing ${profiles.length} casualties on building studs (deterministic)...`);
+    onProgress?.(`Placing ${profiles.length} casualties in blast zones (deterministic)...`);
     const blastLat = input.trainerScene.blastSite.lat;
     const blastLng = input.trainerScene.blastSite.lng;
+    const blastR = input.trainerScene.blastSite.radius ?? 20;
 
-    // Collect studs and compute distance from blast; fall back to all studs if few inside
     const allStudsSorted = input.studGrids
       .flatMap((g) => g.studs)
       .map((s) => {
-        const dLat = (s.lat - blastLat) * 111320;
-        const dLng = (s.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
-        return { ...s, distFromBlast: Math.sqrt(dLat * dLat + dLng * dLng) };
+        const dist =
+          s.distFromIncidentM ??
+          (() => {
+            const dLat = (s.lat - blastLat) * 111320;
+            const dLng = (s.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
+            return Math.sqrt(dLat * dLat + dLng * dLng);
+          })();
+        return { ...s, distFromBlast: dist };
       })
       .sort((a, b) => a.distFromBlast - b.distFromBlast);
-    const insideStuds = allStudsSorted.filter((s) => s.spatialContext === 'inside_building');
-    const candidateStuds = insideStuds.length >= 5 ? insideStuds : allStudsSorted;
+
+    const killR = blastR * 0.33;
+    const ampR = blastR * 0.66;
+    const killStuds = allStudsSorted.filter((s) => s.distFromBlast <= killR);
+    const ampStuds = allStudsSorted.filter(
+      (s) => s.distFromBlast > killR && s.distFromBlast <= ampR,
+    );
+    const lacStuds = allStudsSorted.filter(
+      (s) => s.distFromBlast > ampR && s.distFromBlast <= blastR,
+    );
+    const withinBlast = allStudsSorted.filter((s) => s.distFromBlast <= blastR);
+    const candidateStuds = withinBlast.length >= 5 ? withinBlast : allStudsSorted.slice(0, 50);
 
     if (candidateStuds.length > 0) {
-      const totalStuds = candidateStuds.length;
-      const usedIndices = new Set<number>();
-
-      const pickStud = (minPct: number, maxPct: number): (typeof candidateStuds)[0] => {
-        const lo = Math.floor(totalStuds * minPct);
-        const hi = Math.min(Math.floor(totalStuds * maxPct), totalStuds - 1);
-        for (let attempt = 0; attempt < 20; attempt++) {
-          const idx = lo + Math.floor(Math.random() * (hi - lo + 1));
-          if (!usedIndices.has(idx)) {
-            usedIndices.add(idx);
-            return candidateStuds[idx];
+      const usedIds = new Set<string>();
+      const pickFromPool = (pool: typeof allStudsSorted) => {
+        for (const s of pool) {
+          if (!usedIds.has(s.id)) {
+            usedIds.add(s.id);
+            return s;
           }
         }
-        for (let i = lo; i <= hi; i++) {
-          if (!usedIndices.has(i)) {
-            usedIndices.add(i);
-            return candidateStuds[i];
+        for (const s of candidateStuds) {
+          if (!usedIds.has(s.id)) {
+            usedIds.add(s.id);
+            return s;
           }
         }
-        return candidateStuds[Math.floor(Math.random() * totalStuds)];
+        return candidateStuds[Math.floor(Math.random() * candidateStuds.length)];
       };
 
       const accessibilityByTag: Record<string, string[]> = {
@@ -4173,16 +4183,25 @@ async function generateCasualties(
         green: ['open'],
       };
 
-      const placed = profiles.map((p) => {
-        const tag = p.triage_color?.toLowerCase() || 'green';
-        const stud =
-          tag === 'black'
-            ? pickStud(0, 0.2)
-            : tag === 'red'
-              ? pickStud(0.1, 0.5)
-              : tag === 'yellow'
-                ? pickStud(0.4, 0.8)
-                : pickStud(0.6, 1.0);
+      const placed = profiles.map((p, idx) => {
+        const stud = pickFromPool(
+          idx < profiles.length * 0.18
+            ? killStuds
+            : idx < profiles.length * 0.5
+              ? ampStuds
+              : lacStuds.length > 0
+                ? lacStuds
+                : candidateStuds,
+        );
+        const actualDist = stud.distFromBlast;
+        const tag =
+          actualDist <= killR
+            ? 'black'
+            : actualDist <= ampR
+              ? 'red'
+              : actualDist <= blastR * 0.85
+                ? 'yellow'
+                : 'green';
 
         const accOptions = accessibilityByTag[tag] || ['open'];
         const accessibility = accOptions[Math.floor(Math.random() * accOptions.length)];
@@ -4199,11 +4218,11 @@ async function generateCasualties(
             sex: p.sex,
             role: p.role,
             injuries: p.injuries,
-            triage_color: p.triage_color,
-            mobility: p.mobility,
+            triage_color: tag,
+            mobility: tag === 'black' ? 'immobile' : tag === 'red' ? 'immobile' : p.mobility,
             accessibility,
             consciousness: p.consciousness,
-            breathing: p.breathing,
+            breathing: tag === 'black' ? 'absent' : p.breathing,
             visible_description: p.visible_description,
             treatment_requirements: p.treatment_requirements,
             transport_prerequisites: p.transport_prerequisites,
@@ -4223,10 +4242,13 @@ async function generateCasualties(
       logger.info(
         {
           count: placed.length,
-          candidateStuds: candidateStuds.length,
-          insideStuds: insideStuds.length,
+          blastRadiusM: blastR,
+          killStuds: killStuds.length,
+          ampStuds: ampStuds.length,
+          lacStuds: lacStuds.length,
+          withinBlast: withinBlast.length,
         },
-        'Deterministic casualty placement on studs',
+        'Deterministic casualty placement in blast zones',
       );
       return placed;
     }
@@ -8031,6 +8053,50 @@ export async function warroomGenerateScenario(
 ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radius_m}m from incident center. ${z.activities.join(', ')}. Allowed teams: ${z.allowed_teams.join(', ')}`).join('\n')}`
       : '';
 
+  // Graphic injury description pools by blast zone
+  const ZONE_INJURIES: Record<string, string[]> = {
+    black: [
+      'Massive blast overpressure — torso crushed, unsurvivable internal organ rupture. Body found face-down, partially buried in debris.',
+      'Complete traumatic amputation of both lower extremities at the hip. Catastrophic hemorrhage, no signs of life.',
+      'Full-thickness burns covering 95% of body surface. Airway completely seared shut. Clothing fused to skin.',
+      'Skull fracture with exposed brain matter from primary blast wave. Fixed dilated pupils, no respiratory effort.',
+      'Torso eviscerated by structural shrapnel — large steel fragment embedded through abdomen to spine. Immediate death.',
+      'Decapitation from flying debris. Body found 3m from blast seat.',
+      'Crushed under collapsed ceiling beam — chest completely flattened. Lividity already forming.',
+      'Flash burns with charring of all exposed skin. Respiratory tract destroyed by superheated gas inhalation.',
+    ],
+    red: [
+      'Traumatic amputation of left leg below the knee — femoral artery spurting bright red blood. Tourniquet needed immediately. Patient screaming.',
+      'Penetrating shrapnel wound to abdomen — loops of bowel visible through 15cm laceration. Active hemorrhage pooling on floor.',
+      'Blast lung — coughing pink frothy sputum, severe respiratory distress, cyanotic lips. Tracheal deviation suggesting tension pneumothorax.',
+      'Both eardrums ruptured, bleeding from ear canals. Open fracture of right forearm — bone protruding through skin. Confused and combative.',
+      'Second and third degree burns to face, neck, and both arms. Eyes swollen shut. Stridor indicating airway swelling.',
+      'Embedded glass shards across entire anterior chest wall. Deep penetrating wound right axilla with arterial bleeding.',
+      'Crush injury to pelvis from fallen masonry. Unable to move legs. Blood pooling beneath patient. Hypotensive and tachycardic.',
+      'Open pneumothorax — sucking chest wound on right lateral thorax. Breathing labored, SpO2 dropping rapidly.',
+      'Severe degloving injury to both hands from blast wave. All fingers exposed to bone. Massive bleeding from radial arteries.',
+      'Shrapnel penetration through right thigh — entry and exit wounds. Pulsatile bleeding suggests femoral vessel damage.',
+    ],
+    yellow: [
+      'Multiple superficial shrapnel lacerations across face and arms. Temporary bilateral deafness — not responding to verbal commands. Ambulatory but disoriented.',
+      'Concussion with persistent vomiting. Large hematoma on forehead. Pupils equal and reactive. Walking but unsteady.',
+      'Second degree burns to left forearm and hand. Blistering skin, intense pain. Alert and oriented.',
+      'Glass fragment embedded in right cheek — bleeding controlled. Laceration across forehead requiring sutures.',
+      'Fractured left clavicle from blast throw — shoulder deformed, arm held against body. Walking wounded.',
+      'Tympanic membrane rupture left ear — blood trickling from ear canal, tinnitus. Minor lacerations to scalp.',
+      'Contusion across anterior chest from blast wave — no rib fractures palpable. Painful breathing, SpO2 96%.',
+      'Partial thickness burn to back of neck from flash. Hair singed. Multiple small glass wounds to posterior arms.',
+    ],
+    green: [
+      'Superficial cuts from flying glass to hands and face. Shaking, crying, ears ringing. Fully ambulatory.',
+      'Psychological shock — staring blankly, hyperventilating. No visible physical injuries. Responsive but non-communicative.',
+      'Minor abrasion to both knees from being knocked down by blast wave. Walking and talking but very frightened.',
+      'Dust-covered, coughing from debris inhalation. Small bruise on shoulder. No significant injuries visible.',
+      'Ringing in ears, small nosebleed likely from pressure wave. Anxious, asking about family members. Ambulatory.',
+      'Twisted ankle from running after blast. Minor swelling. No lacerations. Distressed but physically intact.',
+    ],
+  };
+
   // Casualty + crowd generation
   // When trainer scene has enrichment casualties, use them directly instead of AI generation
   const enrichmentCasualties = input.trainerScene?.enrichment?.generatedCasualties;
@@ -8042,43 +8108,55 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
           onProgress?.(
             `Using ${enrichmentCasualties.length} pre-generated casualties from research enrichment...`,
           );
-          // Convert enrichment casualties to payload format with deterministic stud placement
+          // Convert enrichment casualties to payload format with blast-zone stud placement
           const blastSite = input.trainerScene?.blastSite;
           const studGrids = input.studGrids ?? [];
           const blastLat = blastSite?.lat ?? 0;
           const blastLng = blastSite?.lng ?? 0;
+          const blastRadiusM = blastSite?.radius ?? 20;
+
           const allStuds = studGrids
             .flatMap((g) => g.studs)
             .map((s) => {
-              const dLat = (s.lat - blastLat) * 111320;
-              const dLng = (s.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
-              return { ...s, distFromBlast: Math.sqrt(dLat * dLat + dLng * dLng) };
+              const dist =
+                s.distFromIncidentM ??
+                (() => {
+                  const dLat = (s.lat - blastLat) * 111320;
+                  const dLng = (s.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
+                  return Math.sqrt(dLat * dLat + dLng * dLng);
+                })();
+              return { ...s, distFromBlast: dist };
             })
             .sort((a, b) => a.distFromBlast - b.distFromBlast);
-          const insideStuds = allStuds.filter((s) => s.spatialContext === 'inside_building');
-          // Fall back to all studs if too few inside studs
-          const candidateStuds = insideStuds.length >= 5 ? insideStuds : allStuds;
 
-          const usedIndices = new Set<number>();
-          const totalStuds = candidateStuds.length;
-          const pickStud = (minPct: number, maxPct: number) => {
-            if (totalStuds === 0) return null;
-            const lo = Math.floor(totalStuds * minPct);
-            const hi = Math.min(Math.floor(totalStuds * maxPct), totalStuds - 1);
-            for (let attempt = 0; attempt < 20; attempt++) {
-              const idx = lo + Math.floor(Math.random() * (hi - lo + 1));
-              if (!usedIndices.has(idx)) {
-                usedIndices.add(idx);
-                return candidateStuds[idx];
+          // Blast zone bands: kill (0-33%), amputation (33-66%), laceration (66-100%)
+          const killR = blastRadiusM * 0.33;
+          const ampR = blastRadiusM * 0.66;
+          const killStuds = allStuds.filter((s) => s.distFromBlast <= killR);
+          const ampStuds = allStuds.filter(
+            (s) => s.distFromBlast > killR && s.distFromBlast <= ampR,
+          );
+          const lacStuds = allStuds.filter(
+            (s) => s.distFromBlast > ampR && s.distFromBlast <= blastRadiusM,
+          );
+          const withinBlast = allStuds.filter((s) => s.distFromBlast <= blastRadiusM);
+          const candidateStuds = withinBlast.length >= 5 ? withinBlast : allStuds.slice(0, 50);
+
+          const usedIds = new Set<string>();
+          const pickFromPool = (pool: typeof allStuds) => {
+            for (const s of pool) {
+              if (!usedIds.has(s.id)) {
+                usedIds.add(s.id);
+                return s;
               }
             }
-            for (let i = lo; i <= hi; i++) {
-              if (!usedIndices.has(i)) {
-                usedIndices.add(i);
-                return candidateStuds[i];
+            for (const s of candidateStuds) {
+              if (!usedIds.has(s.id)) {
+                usedIds.add(s.id);
+                return s;
               }
             }
-            return candidateStuds[Math.floor(Math.random() * totalStuds)];
+            return candidateStuds[Math.floor(Math.random() * candidateStuds.length)] ?? null;
           };
 
           const accessMap: Record<string, string[]> = {
@@ -8089,17 +8167,29 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
           };
 
           const mapped = enrichmentCasualties.map((c, i) => {
-            const tag = ((c.trueTag as string) || 'green').toLowerCase();
-            const stud =
-              totalStuds > 0
-                ? tag === 'black'
-                  ? pickStud(0, 0.2)
-                  : tag === 'red'
-                    ? pickStud(0.1, 0.5)
-                    : tag === 'yellow'
-                      ? pickStud(0.4, 0.8)
-                      : pickStud(0.6, 1.0)
-                : null;
+            const dist = (() => {
+              const stud = pickFromPool(
+                i < enrichmentCasualties.length * 0.18
+                  ? killStuds
+                  : i < enrichmentCasualties.length * 0.5
+                    ? ampStuds
+                    : lacStuds.length > 0
+                      ? lacStuds
+                      : candidateStuds,
+              );
+              return stud;
+            })();
+            const stud = dist;
+            const actualDist = stud?.distFromBlast ?? blastRadiusM;
+            // Assign triage tag by zone distance
+            const tag =
+              actualDist <= killR
+                ? 'black'
+                : actualDist <= ampR
+                  ? 'red'
+                  : actualDist <= blastRadiusM * 0.85
+                    ? 'yellow'
+                    : 'green';
 
             const signs = (c.observableSigns as Record<string, string>) || {};
             const acc = accessMap[tag] || ['open'];
@@ -8130,10 +8220,19 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
                 consciousness:
                   signs.consciousness || (tag === 'black' ? 'unresponsive' : 'responsive'),
                 breathing: signs.breathing || (tag === 'black' ? 'absent' : 'present'),
-                visible_description: (c.description as string) || '',
+                visible_description:
+                  (c.description as string) ||
+                  ZONE_INJURIES[tag]?.[
+                    Math.floor(Math.random() * (ZONE_INJURIES[tag]?.length ?? 1))
+                  ] ||
+                  '',
                 visible_injuries: signs.visibleInjuries || '',
-                bleeding: signs.bleeding || '',
-                pulse: signs.pulse || '',
+                bleeding:
+                  signs.bleeding ||
+                  (tag === 'black' ? 'catastrophic' : tag === 'red' ? 'uncontrolled' : ''),
+                pulse:
+                  signs.pulse ||
+                  (tag === 'black' ? 'absent' : tag === 'red' ? 'rapid and weak' : ''),
                 treatment_requirements: [],
                 transport_prerequisites: [],
                 contraindications: [],
@@ -8147,9 +8246,11 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
             {
               count: mapped.length,
               fromEnrichment: true,
-              totalStuds: candidateStuds.length,
-              insideStuds: insideStuds.length,
-              allStuds: allStuds.length,
+              blastRadiusM,
+              killStuds: killStuds.length,
+              ampStuds: ampStuds.length,
+              lacStuds: lacStuds.length,
+              withinBlast: withinBlast.length,
               blastLat,
               blastLng,
               sampleLat: mapped[0]?.location_lat,
