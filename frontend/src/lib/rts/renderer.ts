@@ -810,19 +810,7 @@ function drawBlastSite(ctx: CanvasRenderingContext2D, pos: Vec2, rc: RenderConte
   ctx.fillStyle = '#dc2626';
   ctx.fill();
 
-  ctx.beginPath();
-  ctx.arc(p.cx, p.cy, 4, 0, Math.PI * 2);
-  ctx.fillStyle = '#fff';
-  ctx.fill();
-
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(p.cx - 8, p.cy);
-  ctx.lineTo(p.cx + 8, p.cy);
-  ctx.moveTo(p.cx, p.cy - 8);
-  ctx.lineTo(p.cx, p.cy + 8);
-  ctx.stroke();
+  drawSvgIcon(ctx, 'explosion', p.cx, p.cy, scaledR(12, rc));
 }
 
 // ── Interior walls ──────────────────────────────────────────────────────
@@ -893,15 +881,8 @@ function drawHazardZone(ctx: CanvasRenderingContext2D, hz: HazardZone, rc: Rende
   ctx.stroke();
   ctx.setLineDash([]);
 
-  const iconKey = HAZARD_ICON_KEY[hz.hazardType];
-  const iconSize = Math.min(drawR * 0.6, scaledR(10, rc));
-  if (!iconKey || !drawSvgIcon(ctx, iconKey, p.cx, p.cy, iconSize)) {
-    ctx.fillStyle = def.color;
-    ctx.font = `bold ${Math.min(drawR * 0.5, 14)}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(def.label.charAt(0).toUpperCase(), p.cx, p.cy);
-  }
+  const iconKey = HAZARD_ICON_KEY[hz.hazardType] || 'hazard_generic';
+  drawSvgIcon(ctx, iconKey, p.cx, p.cy, Math.min(drawR * 0.6, scaledR(10, rc)));
 }
 
 // ── Stairwells ──────────────────────────────────────────────────────────
@@ -1037,7 +1018,12 @@ const TAG_COLORS: Record<string, string> = {
   untagged: '#d1d5db',
 };
 
-function drawPersonSilhouette(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+export function drawPersonSilhouette(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+) {
   const headR = r * 0.28;
   const headY = cy - r * 0.25;
   ctx.beginPath();
@@ -1087,11 +1073,7 @@ function drawCasualtyPin(
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  const iconSize = r * 1.0;
-  if (!drawSvgIcon(ctx, 'person', p.cx, p.cy, iconSize)) {
-    ctx.fillStyle = '#fff';
-    drawPersonSilhouette(ctx, p.cx, p.cy, r);
-  }
+  drawSvgIcon(ctx, 'person', p.cx, p.cy, r * 1.2);
 }
 
 // ── Wall inspection points ──────────────────────────────────────────────
@@ -1245,7 +1227,7 @@ const LOCATION_COLORS: Record<string, string> = {
   cordon: '#f87171',
 };
 
-function drawLocationIcon(
+export function drawLocationIcon(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
@@ -1368,11 +1350,8 @@ export function drawScenarioLocation(
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  const iconKey = LOCATION_ICON_KEY[category];
-  const iconSize = scaledR(8, rc);
-  if (!iconKey || !drawSvgIcon(ctx, iconKey, p.cx, p.cy, iconSize)) {
-    drawLocationIcon(ctx, p.cx, p.cy, category, color, rc);
-  }
+  const iconKey = LOCATION_ICON_KEY[category] || 'command';
+  drawSvgIcon(ctx, iconKey, p.cx, p.cy, scaledR(8, rc));
 }
 
 export function drawIncidentZone(ctx: CanvasRenderingContext2D, zone: SimZone, rc: RenderContext) {
