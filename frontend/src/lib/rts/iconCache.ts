@@ -11,20 +11,20 @@ const loading = new Set<string>();
 export function getIcon(key: string, size = 24): HTMLImageElement | null {
   const cacheKey = `${key}_${size}`;
   const cached = cache.get(cacheKey);
-  if (cached && cached.complete && cached.naturalWidth > 0) return cached;
+  if (cached && cached.complete) return cached;
   if (loading.has(cacheKey)) return null;
 
   const svgStr = svg(key, size);
   if (!svgStr) return null;
 
   loading.add(cacheKey);
-  const img = new Image();
+  const img = new Image(size, size);
   img.onload = () => {
-    cache.set(cacheKey, img);
     loading.delete(cacheKey);
   };
   img.onerror = () => {
     loading.delete(cacheKey);
+    cache.delete(cacheKey);
   };
   img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
   cache.set(cacheKey, img);
