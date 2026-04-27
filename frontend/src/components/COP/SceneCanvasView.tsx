@@ -834,14 +834,7 @@ export function SceneCanvasView({
 
           {/* Casualty markers (Leaflet DivIcon with SVG from mapIcons) */}
           {rawCasualties.map((c) => {
-            const TAG_COLORS: Record<string, string> = {
-              red: '#ef4444',
-              yellow: '#eab308',
-              green: '#22c55e',
-              black: '#374151',
-              untagged: '#9ca3af',
-            };
-            const bg = TAG_COLORS[c.tag] || TAG_COLORS.untagged;
+            const bg = '#9ca3af';
             return (
               <Marker
                 key={`cas-${c.id}`}
@@ -872,32 +865,43 @@ export function SceneCanvasView({
 
           {/* Location markers (Leaflet DivIcon with SVG from mapIcons) */}
           {rawLocations.map((loc) => {
-            const LOC_COLORS: Record<string, string> = {
-              hospital: '#ef4444',
-              police: '#3b82f6',
-              fire_station: '#f97316',
-              incident_site: '#ef4444',
-              entry_exit: '#06b6d4',
-              staging_area: '#22c55e',
-              assembly_point: '#22c55e',
-              cctv: '#8b5cf6',
-              poi: '#a78bfa',
-              cordon: '#f87171',
+            const cat = loc.category.toLowerCase().replace(/[\s-]/g, '_');
+            const colorByCategory = (c: string): string => {
+              if (c.includes('hospital') || c.includes('clinic') || c.includes('medical'))
+                return '#ef4444';
+              if (c.includes('police') || c.includes('law')) return '#3b82f6';
+              if (c.includes('fire') && !c.includes('firearm')) return '#f97316';
+              if (c.includes('incident') || c.includes('blast') || c.includes('epicentr'))
+                return '#ef4444';
+              if (c.includes('entry') || c.includes('exit') || c.includes('door')) return '#06b6d4';
+              if (c.includes('staging') || c.includes('assembly') || c.includes('rvp'))
+                return '#22c55e';
+              if (c.includes('cctv') || c.includes('camera') || c.includes('surveil'))
+                return '#8b5cf6';
+              if (c.includes('cordon') || c.includes('perimete')) return '#f87171';
+              return '#a78bfa';
             };
-            const ICON_KEYS: Record<string, string> = {
-              hospital: 'hospital',
-              police: 'police',
-              fire_station: 'fire_station',
-              incident_site: 'siren',
-              entry_exit: 'door',
-              staging_area: 'staging',
-              assembly_point: 'flag',
-              cctv: 'cctv',
-              poi: 'command',
-              cordon: 'cordon',
+            const iconByCategory = (c: string): string => {
+              if (c.includes('hospital') || c.includes('clinic') || c.includes('medical'))
+                return 'hospital';
+              if (c.includes('police') || c.includes('law')) return 'police';
+              if (c.includes('fire') && !c.includes('firearm')) return 'fire_station';
+              if (c.includes('incident') || c.includes('blast') || c.includes('epicentr'))
+                return 'siren';
+              if (c.includes('entry') || c.includes('exit') || c.includes('door')) return 'door';
+              if (c.includes('staging') || c.includes('rvp')) return 'staging';
+              if (c.includes('assembly') || c.includes('muster')) return 'flag';
+              if (c.includes('cctv') || c.includes('camera') || c.includes('surveil'))
+                return 'cctv';
+              if (c.includes('cordon') || c.includes('perimete')) return 'cordon';
+              if (c.includes('route') || c.includes('road') || c.includes('highway'))
+                return 'route';
+              if (c.includes('community') || c.includes('church') || c.includes('school'))
+                return 'community';
+              return 'pin';
             };
-            const bg = LOC_COLORS[loc.category] || '#a78bfa';
-            const iconKey = ICON_KEYS[loc.category] || 'command';
+            const bg = colorByCategory(cat);
+            const iconKey = iconByCategory(cat);
             return (
               <Marker
                 key={`loc-${loc.id}`}
