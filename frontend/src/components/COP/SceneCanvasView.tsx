@@ -262,7 +262,7 @@ export function SceneCanvasView({
                 lat: coords.lat,
                 lng: coords.lng,
                 label: (l.label as string) || '',
-                category: (l.pin_category as string) || (l.location_type as string) || 'poi',
+                category: (l.location_type as string) || (l.pin_category as string) || 'poi',
               };
             })
             .filter((l): l is NonNullable<typeof l> => l !== null),
@@ -879,6 +879,13 @@ export function SceneCanvasView({
               if (c.includes('cctv') || c.includes('camera') || c.includes('surveil'))
                 return '#8b5cf6';
               if (c.includes('cordon') || c.includes('perimete')) return '#f87171';
+              if (
+                c.includes('route') ||
+                c.includes('road') ||
+                c.includes('highway') ||
+                c.includes('traffic')
+              )
+                return '#22c55e';
               return '#a78bfa';
             };
             const iconByCategory = (c: string): string => {
