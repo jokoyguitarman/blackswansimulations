@@ -923,13 +923,15 @@ function mergeDeteriorationResult(
     );
     const parentLat = parentHazard?.location_lat ?? 0;
     const parentLng = parentHazard?.location_lng ?? 0;
+    const latOff = Number.isFinite(sp.lat_offset) ? sp.lat_offset : 0;
+    const lngOff = Number.isFinite(sp.lng_offset) ? sp.lng_offset : 0;
 
     if (sp.pin_type === 'hazard') {
       (payload.hazards as Array<Record<string, unknown>>).push({
         hazard_type: sp.hazard_type || 'secondary_hazard',
         label: sp.label,
-        location_lat: parentLat + sp.lat_offset,
-        location_lng: parentLng + sp.lng_offset,
+        location_lat: parentLat + latOff,
+        location_lng: parentLng + lngOff,
         floor_level: sp.floor_level || 'G',
         status: 'delayed',
         appears_at_minutes: sp.appears_at_minutes,
@@ -943,8 +945,8 @@ function mergeDeteriorationResult(
     } else {
       (payload.casualties as Array<Record<string, unknown>>).push({
         casualty_type: sp.casualty_type || 'patient',
-        location_lat: parentLat + sp.lat_offset,
-        location_lng: parentLng + sp.lng_offset,
+        location_lat: parentLat + latOff,
+        location_lng: parentLng + lngOff,
         floor_level: sp.floor_level || 'G',
         headcount: sp.headcount ?? 1,
         status: 'delayed',

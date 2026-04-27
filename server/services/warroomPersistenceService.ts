@@ -462,8 +462,17 @@ export async function persistWarroomScenario(
         'convergent_crowd',
       ]);
       const spacedCasualties = enforceMinSpacing(casualties, 12, options.osmBuildings);
+      const validCasualties = spacedCasualties.filter(
+        (c) => Number.isFinite(c.location_lat) && Number.isFinite(c.location_lng),
+      );
+      if (validCasualties.length < spacedCasualties.length) {
+        logger.warn(
+          { total: spacedCasualties.length, valid: validCasualties.length },
+          'Filtered out casualties with non-finite coordinates before DB insert',
+        );
+      }
       const { error: casError } = await supabaseAdmin.from('scenario_casualties').insert(
-        spacedCasualties.map((c) => {
+        validCasualties.map((c) => {
           return {
             scenario_id: scenarioId,
             casualty_type: VALID_CASUALTY_TYPES.has(c.casualty_type) ? c.casualty_type : 'crowd',

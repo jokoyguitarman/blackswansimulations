@@ -8144,7 +8144,17 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
             };
           });
           logger.info(
-            { count: mapped.length, fromEnrichment: true },
+            {
+              count: mapped.length,
+              fromEnrichment: true,
+              totalStuds: candidateStuds.length,
+              insideStuds: insideStuds.length,
+              allStuds: allStuds.length,
+              blastLat,
+              blastLng,
+              sampleLat: mapped[0]?.location_lat,
+              sampleLng: mapped[0]?.location_lng,
+            },
             'Using enrichment casualties for scenario (skipped AI casualty generation)',
           );
           return mapped as WarroomScenarioPayload['casualties'];
