@@ -11,7 +11,6 @@ import {
   renderRTS,
   computeMapRenderContext,
   latLngToSim,
-  toSim as rcToSim,
   drawIncidentZone,
   drawRoadPolyline,
 } from '../../lib/rts/renderer';
@@ -430,62 +429,8 @@ export function SceneCanvasView({
   }, []);
 
   // Click handler for canvas interaction
-  const handleCanvasClick = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const rc = renderCtxRef.current;
-      if (!rc || !canvasRef.current) return;
-      const rect = canvasRef.current.getBoundingClientRect();
-      const cx = e.clientX - rect.left;
-      const cy = e.clientY - rect.top;
-      const sim = rcToSim(cx, cy, rc);
-
-      const hitCas = casualtyPins.find((c) => Math.hypot(c.pos.x - sim.x, c.pos.y - sim.y) < 3);
-      if (hitCas) {
-        setActiveCasualtyPin(hitCas);
-        setActiveWallPoint(null);
-        setActiveLocation(null);
-        return;
-      }
-
-      const hitWp = wallPoints.find(
-        (wp) => wp.simPos && Math.hypot(wp.simPos.x - sim.x, wp.simPos.y - sim.y) < 3,
-      );
-      if (hitWp) {
-        setActiveWallPoint(hitWp);
-        setActiveCasualtyPin(null);
-        setActiveLocation(null);
-        return;
-      }
-
-      const hitLoc = scenarioLocations.find(
-        (l) => Math.hypot(l.simPos.x - sim.x, l.simPos.y - sim.y) < 10,
-      );
-      if (hitLoc) {
-        setActiveLocation(hitLoc);
-        setActiveCasualtyPin(null);
-        setActiveWallPoint(null);
-        setActiveHazard(null);
-        return;
-      }
-
-      const hitHz = hazardZones.find(
-        (hz) => Math.hypot(hz.pos.x - sim.x, hz.pos.y - sim.y) < Math.max(hz.radius, 5),
-      );
-      if (hitHz) {
-        setActiveHazard(hitHz);
-        setActiveCasualtyPin(null);
-        setActiveWallPoint(null);
-        setActiveLocation(null);
-        return;
-      }
-
-      setActiveCasualtyPin(null);
-      setActiveWallPoint(null);
-      setActiveLocation(null);
-      setActiveHazard(null);
-    },
-    [casualtyPins, wallPoints, scenarioLocations, hazardZones],
-  );
+  // Canvas click handling removed — pins are now Leaflet markers with their own click handlers
+  void useCallback(() => {}, [casualtyPins, wallPoints, scenarioLocations, hazardZones]);
 
   // Render loop
   useEffect(() => {
@@ -503,6 +448,12 @@ export function SceneCanvasView({
       const canvas = canvasRef.current;
       const rc = renderCtxRef.current;
       if (canvas && rc) {
+        const cw = canvas.clientWidth;
+        const ch = canvas.clientHeight;
+        if (cw > 0 && ch > 0 && (canvas.width !== cw || canvas.height !== ch)) {
+          canvas.width = cw;
+          canvas.height = ch;
+        }
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -945,21 +896,14 @@ export function SceneCanvasView({
           ref={canvasRef}
           width={canvasSize.w}
           height={canvasSize.h}
-          onClick={handleCanvasClick}
-          onWheel={(e) => {
-            e.preventDefault();
-            const map = leafletMapRef.current;
-            if (map) e.deltaY < 0 ? map.zoomIn() : map.zoomOut();
-          }}
           style={{
             position: 'absolute',
             top: 0,
             left: 0,
-            width: canvasSize.w,
-            height: canvasSize.h,
-            pointerEvents: 'auto',
+            width: '100%',
+            height: '100%',
+            pointerEvents: 'none',
             zIndex: 450,
-            touchAction: 'none',
           }}
         />
 
