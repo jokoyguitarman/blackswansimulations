@@ -40,7 +40,7 @@ function mToCanvas(meters: number, rc: RenderContext) {
   return meters * rc.scale;
 }
 
-function scaledFont(
+export function scaledFont(
   basePx: number,
   rc: RenderContext,
   weight = 'bold',
@@ -111,8 +111,9 @@ export function renderRTS(
       drawGameZones(ctx, blastSite, gameZones, rc);
     }
     if (showBlastZone) {
-      drawBlastSite(ctx, blastSite, rc, blastRadius);
+      drawBlastRadius(ctx, blastSite, rc, blastRadius);
     }
+    drawBlastSite(ctx, blastSite, rc);
   }
 
   drawBuilding(ctx, buildingVerts, rc, transparentBg);
@@ -750,15 +751,13 @@ function drawGameZones(
 }
 
 // ── Blast site ──────────────────────────────────────────────────────────
-function drawBlastSite(
+function drawBlastRadius(
   ctx: CanvasRenderingContext2D,
   pos: Vec2,
   rc: RenderContext,
   blastRadius?: number,
 ) {
   const p = toCanvas(pos.x, pos.y, rc);
-
-  // Draw the blast radius circle (thick black dashed)
   const effectiveRadius = blastRadius ?? 20;
   const blastR = mToCanvas(effectiveRadius, rc);
   if (blastR >= 5) {
@@ -771,12 +770,11 @@ function drawBlastSite(
     ctx.setLineDash([10, 6]);
     ctx.stroke();
     ctx.setLineDash([]);
-
-    ctx.fillStyle = '#000';
-    ctx.font = 'bold 10px monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText(`BLAST ${effectiveRadius}m`, p.cx + blastR + 4, p.cy - 4);
   }
+}
+
+function drawBlastSite(ctx: CanvasRenderingContext2D, pos: Vec2, rc: RenderContext) {
+  const p = toCanvas(pos.x, pos.y, rc);
 
   // Blast center
   ctx.save();
@@ -1023,6 +1021,23 @@ const TAG_COLORS: Record<string, string> = {
   untagged: '#d1d5db',
 };
 
+function drawPersonSilhouette(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+  const headR = r * 0.28;
+  const headY = cy - r * 0.25;
+  ctx.beginPath();
+  ctx.arc(cx, headY, headR, 0, Math.PI * 2);
+  ctx.fill();
+
+  const shoulderW = r * 0.45;
+  const bodyTop = headY + headR + r * 0.05;
+  const bodyBot = cy + r * 0.45;
+  ctx.beginPath();
+  ctx.moveTo(cx - shoulderW, bodyBot);
+  ctx.quadraticCurveTo(cx - shoulderW, bodyTop, cx, bodyTop);
+  ctx.quadraticCurveTo(cx + shoulderW, bodyTop, cx + shoulderW, bodyBot);
+  ctx.fill();
+}
+
 function drawCasualtyPin(
   ctx: CanvasRenderingContext2D,
   pin: CasualtyPin,
@@ -1056,11 +1071,8 @@ function drawCasualtyPin(
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  ctx.fillStyle = pin.currentTag === 'black' || pin.currentTag === 'red' ? '#fff' : '#000';
-  ctx.font = scaledFont(8, rc);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('+', p.cx, p.cy);
+  ctx.fillStyle = '#fff';
+  drawPersonSilhouette(ctx, p.cx, p.cy, r);
 }
 
 // ── Wall inspection points ──────────────────────────────────────────────

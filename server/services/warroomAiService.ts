@@ -4131,39 +4131,39 @@ async function generateCasualties(
     const blastLat = input.trainerScene.blastSite.lat;
     const blastLng = input.trainerScene.blastSite.lng;
 
-    // Collect all inside_building studs and compute distance from blast
-    const insideStuds = input.studGrids
+    // Collect studs and compute distance from blast; fall back to all studs if few inside
+    const allStudsSorted = input.studGrids
       .flatMap((g) => g.studs)
-      .filter((s) => s.spatialContext === 'inside_building')
       .map((s) => {
         const dLat = (s.lat - blastLat) * 111320;
         const dLng = (s.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
         return { ...s, distFromBlast: Math.sqrt(dLat * dLat + dLng * dLng) };
       })
       .sort((a, b) => a.distFromBlast - b.distFromBlast);
+    const insideStuds = allStudsSorted.filter((s) => s.spatialContext === 'inside_building');
+    const candidateStuds = insideStuds.length >= 5 ? insideStuds : allStudsSorted;
 
-    if (insideStuds.length > 0) {
-      const totalStuds = insideStuds.length;
+    if (candidateStuds.length > 0) {
+      const totalStuds = candidateStuds.length;
       const usedIndices = new Set<number>();
 
-      const pickStud = (minPct: number, maxPct: number): (typeof insideStuds)[0] => {
+      const pickStud = (minPct: number, maxPct: number): (typeof candidateStuds)[0] => {
         const lo = Math.floor(totalStuds * minPct);
         const hi = Math.min(Math.floor(totalStuds * maxPct), totalStuds - 1);
         for (let attempt = 0; attempt < 20; attempt++) {
           const idx = lo + Math.floor(Math.random() * (hi - lo + 1));
           if (!usedIndices.has(idx)) {
             usedIndices.add(idx);
-            return insideStuds[idx];
+            return candidateStuds[idx];
           }
         }
-        // Fallback: pick any unused stud in range
         for (let i = lo; i <= hi; i++) {
           if (!usedIndices.has(i)) {
             usedIndices.add(i);
-            return insideStuds[i];
+            return candidateStuds[i];
           }
         }
-        return insideStuds[Math.floor(Math.random() * totalStuds)];
+        return candidateStuds[Math.floor(Math.random() * totalStuds)];
       };
 
       const accessibilityByTag: Record<string, string[]> = {
@@ -4221,8 +4221,12 @@ async function generateCasualties(
       });
 
       logger.info(
-        { count: placed.length, insideStuds: insideStuds.length },
-        'Deterministic casualty placement on inside_building studs',
+        {
+          count: placed.length,
+          candidateStuds: candidateStuds.length,
+          insideStuds: insideStuds.length,
+        },
+        'Deterministic casualty placement on studs',
       );
       return placed;
     }
@@ -5126,8 +5130,116 @@ async function generateScenarioEquipment(
     }
   }
 
-  // Items with empty applicable_teams get assigned to all teams (universal)
+  // Standard team loadout from gameplay doctrine docs
+  const TEAM_BASE_EQUIPMENT: Record<
+    string,
+    Array<{ type: string; label: string; icon: string }>
+  > = {
+    fire: [
+      { type: 'structural_prop', label: 'Structural Prop', icon: 'collapse' },
+      { type: 'breaching_kit', label: 'Breaching Kit', icon: 'door' },
+      { type: 'ladder', label: 'Ladder', icon: 'stairs' },
+      { type: 'lighting_rig', label: 'Lighting Rig', icon: 'emergency_light' },
+      { type: 'thermal_camera', label: 'Thermal Imaging Camera', icon: 'camera' },
+      { type: 'fire_extinguisher', label: 'Fire Extinguisher', icon: 'extinguisher' },
+      { type: 'breathing_apparatus', label: 'Breathing Apparatus', icon: 'mask' },
+    ],
+    bomb: [
+      { type: 'exclusion_zone_marker', label: 'Exclusion Zone Marker', icon: 'cordon' },
+      { type: 'disruption_device', label: 'Disruption Device', icon: 'bomb' },
+      { type: 'blast_blanket', label: 'Blast Blanket', icon: 'blast_shield' },
+      { type: 'all_clear_marker', label: 'All Clear Marker', icon: 'resolved' },
+      { type: 'eod_robot', label: 'EOD Robot', icon: 'bomb_robot' },
+      { type: 'xray_scanner', label: 'X-Ray Scanner', icon: 'xray_scanner' },
+    ],
+    eod: [
+      { type: 'exclusion_zone_marker', label: 'Exclusion Zone Marker', icon: 'cordon' },
+      { type: 'disruption_device', label: 'Disruption Device', icon: 'bomb' },
+      { type: 'blast_blanket', label: 'Blast Blanket', icon: 'blast_shield' },
+      { type: 'eod_robot', label: 'EOD Robot', icon: 'bomb_robot' },
+    ],
+    triage: [
+      { type: 'ccp_tent', label: 'Casualty Collection Point', icon: 'tent' },
+      { type: 'treatment_area', label: 'Treatment Area', icon: 'medical_cross' },
+      { type: 'ambulance_staging', label: 'Ambulance Staging Point', icon: 'ambulance' },
+      { type: 'minor_injuries_area', label: 'Minor Injuries Area', icon: 'bandage' },
+      { type: 'body_holding_area', label: 'Body Holding Area', icon: 'deceased' },
+      { type: 'stretcher', label: 'Stretcher', icon: 'stretcher' },
+      { type: 'spinal_board', label: 'Spinal Board', icon: 'splint' },
+      { type: 'oxygen_mask', label: 'Oxygen Mask', icon: 'oxygen_mask' },
+      { type: 'defibrillator', label: 'Defibrillator', icon: 'heartbeat' },
+      { type: 'iv_kit', label: 'IV Kit', icon: 'syringe' },
+    ],
+    medical: [
+      { type: 'ccp_tent', label: 'Casualty Collection Point', icon: 'tent' },
+      { type: 'treatment_area', label: 'Treatment Area', icon: 'medical_cross' },
+      { type: 'ambulance_staging', label: 'Ambulance Staging Point', icon: 'ambulance' },
+      { type: 'stretcher', label: 'Stretcher', icon: 'stretcher' },
+      { type: 'defibrillator', label: 'Defibrillator', icon: 'heartbeat' },
+      { type: 'oxygen_mask', label: 'Oxygen Mask', icon: 'oxygen_mask' },
+    ],
+    evacuation: [
+      { type: 'assembly_point_marker', label: 'Assembly Point Marker', icon: 'flag' },
+      { type: 'directional_signage', label: 'Directional Signage', icon: 'exit_sign' },
+      { type: 'megaphone', label: 'Megaphone / PA Speaker', icon: 'pa_system' },
+      { type: 'one_way_barrier', label: 'One-Way Barrier', icon: 'barrier' },
+    ],
+    police: [
+      { type: 'hard_barrier', label: 'Hard Barrier', icon: 'barrier' },
+      { type: 'tape_cordon', label: 'Tape Cordon', icon: 'cordon' },
+      { type: 'road_block', label: 'Road Block', icon: 'barrier' },
+      { type: 'access_control_point', label: 'Access Control Point', icon: 'checkpoint' },
+      { type: 'media_holding_point', label: 'Media Holding Point', icon: 'broadcast' },
+    ],
+    cordon: [
+      { type: 'hard_barrier', label: 'Hard Barrier', icon: 'barrier' },
+      { type: 'tape_cordon', label: 'Tape Cordon', icon: 'cordon' },
+      { type: 'road_block', label: 'Road Block', icon: 'barrier' },
+      { type: 'access_control_point', label: 'Access Control Point', icon: 'checkpoint' },
+    ],
+    media: [
+      { type: 'media_briefing_point', label: 'Media Briefing Point', icon: 'broadcast' },
+      { type: 'family_reception_centre', label: 'Family Reception Centre', icon: 'community' },
+      { type: 'social_media_monitor', label: 'Social Media Monitor', icon: 'eye' },
+    ],
+    comms: [
+      { type: 'media_briefing_point', label: 'Media Briefing Point', icon: 'broadcast' },
+      { type: 'family_reception_centre', label: 'Family Reception Centre', icon: 'community' },
+    ],
+    commander: [
+      { type: 'forward_command_post', label: 'Forward Command Post', icon: 'command' },
+      { type: 'radio_set', label: 'Radio Set', icon: 'radio' },
+      { type: 'situation_board', label: 'Situation Board', icon: 'clipboard' },
+    ],
+    incident: [
+      { type: 'forward_command_post', label: 'Forward Command Post', icon: 'command' },
+      { type: 'radio_set', label: 'Radio Set', icon: 'radio' },
+    ],
+  };
+
+  // Inject standard team equipment for each selected team
   const allTeamsNormalized = (teamNames ?? []).map(normalizeTeam);
+  for (const teamName of allTeamsNormalized) {
+    for (const [keyword, items] of Object.entries(TEAM_BASE_EQUIPMENT)) {
+      if (teamName.includes(keyword)) {
+        for (const item of items) {
+          if (!equipmentMap.has(item.type)) {
+            equipmentMap.set(item.type, {
+              equipment_type: item.type,
+              label: item.label,
+              icon: item.icon,
+              properties: { quantity_needed: 1, applicable_to: ['team_standard'] },
+              applicable_teams: [teamName],
+            });
+          } else {
+            const existing = equipmentMap.get(item.type)!;
+            existing.applicable_teams = mergeTeams(existing.applicable_teams, [teamName]);
+          }
+        }
+      }
+    }
+  }
+
   for (const entry of equipmentMap.values()) {
     if (entry.applicable_teams.length === 0) {
       entry.applicable_teams = allTeamsNormalized;

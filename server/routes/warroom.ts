@@ -739,11 +739,20 @@ router.post(
           .single();
         if (sceneForSetting?.blast_site && sceneForSetting?.building_name) {
           const parsed = geoResult.parsed as unknown as Record<string, unknown>;
-          if (parsed.setting === 'open_field') {
-            parsed.setting = 'worship';
+          const outdoorSettings = new Set([
+            'open_field',
+            'park',
+            'beach',
+            'street',
+            'waterfront',
+            'stadium',
+          ]);
+          if (outdoorSettings.has(parsed.setting as string)) {
+            const prev = parsed.setting;
+            parsed.setting = 'office';
             logger.info(
-              { building: sceneForSetting.building_name },
-              'Research step: overriding setting from open_field to worship (blast inside building)',
+              { building: sceneForSetting.building_name, from: prev, to: 'office' },
+              'Research step: overriding outdoor setting to office (blast inside building)',
             );
           }
           // Inject indoor context into prompt

@@ -233,7 +233,7 @@ export async function suggestWarroomTeams(
   } else {
     parsed = {
       scenario_type: options.scenario_type || 'car_bomb',
-      setting: options.setting || 'open_field',
+      setting: options.setting || 'office',
       terrain: options.terrain || 'urban',
       location: options.location || null,
       threat_profile: buildDefaultThreatProfile(options.scenario_type || 'car_bomb'),
@@ -316,7 +316,7 @@ export async function stageParseAndGeocode(
   } else {
     parsed = {
       scenario_type: options.scenario_type || 'car_bomb',
-      setting: options.setting || 'open_field',
+      setting: options.setting || 'office',
       terrain: options.terrain || 'urban',
       location: options.location || null,
       threat_profile: buildDefaultThreatProfile(options.scenario_type || 'car_bomb'),
@@ -1147,13 +1147,22 @@ export async function stageGenerateAndPersist(
     }
   }
 
-  // Override setting to indoor when blast site is inside a building
+  // Override any outdoor setting to indoor when blast is inside a building
+  const OUTDOOR_SETTINGS = new Set([
+    'open_field',
+    'park',
+    'beach',
+    'street',
+    'waterfront',
+    'stadium',
+  ]);
   if (trainerScene?.blastSite && trainerScene.buildingName) {
-    if (parsed.setting === 'open_field') {
-      parsed.setting = 'worship';
+    if (OUTDOOR_SETTINGS.has(parsed.setting)) {
+      const prev = parsed.setting;
+      parsed.setting = 'office';
       logger.info(
-        { buildingName: trainerScene.buildingName },
-        'Overriding setting from open_field to worship (blast inside building)',
+        { buildingName: trainerScene.buildingName, from: prev, to: 'office' },
+        'Overriding outdoor setting to office (blast inside building)',
       );
     }
   }
@@ -1162,7 +1171,6 @@ export async function stageGenerateAndPersist(
   let indoorContext = '';
   if (trainerScene?.blastSite && trainerScene.buildingName) {
     indoorContext = `CRITICAL: The explosive device was detonated INSIDE ${trainerScene.buildingName}. This is an INDOOR explosion. All blast damage, casualties, fire, and debris are contained within the building interior. Do NOT describe this as an outdoor or open-air explosion.`;
-    parsed.setting = parsed.setting === 'open_field' ? 'worship' : parsed.setting;
   }
 
   const payload = await warroomGenerateScenario(

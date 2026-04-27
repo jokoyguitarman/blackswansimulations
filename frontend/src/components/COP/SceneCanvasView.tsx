@@ -66,7 +66,12 @@ type SceneConfigData = {
   interior_walls: Array<Record<string, unknown>>;
   hazard_zones: Array<Record<string, unknown>>;
   stairwells: Array<Record<string, unknown>>;
-  blast_site: { x: number; y: number } | null;
+  blast_site: {
+    x: number;
+    y: number;
+    radius?: number;
+    gameZones?: Array<{ type: string; radius: number; center?: { x: number; y: number } }>;
+  } | null;
   wall_inspection_points: Array<Record<string, unknown>>;
   pedestrian_count: number;
   enrichment_result?: Record<string, unknown> | null;
@@ -359,6 +364,12 @@ export function SceneCanvasView({
 
   const blastSite = useMemo<Vec2 | null>(() => sceneConfig?.blast_site || null, [sceneConfig]);
 
+  const sceneGameZones = useMemo<Array<{ type: string; radius: number; center?: Vec2 }>>(() => {
+    const gz = sceneConfig?.blast_site?.gameZones;
+    if (!gz || !Array.isArray(gz)) return [];
+    return gz;
+  }, [sceneConfig]);
+
   const wallPoints = useMemo<WallInspectionPoint[]>(() => {
     if (!sceneConfig?.wall_inspection_points) return [];
     return sceneConfig.wall_inspection_points as unknown as WallInspectionPoint[];
@@ -523,7 +534,7 @@ export function SceneCanvasView({
             hazardZones,
             stairwells,
             blastSite,
-            undefined,
+            sceneGameZones.length > 0 ? sceneGameZones : undefined,
             null,
             null,
             simStuds,
@@ -566,6 +577,7 @@ export function SceneCanvasView({
     pedestrians,
     showBlastZone,
     showOperatingZones,
+    sceneGameZones,
   ]);
 
   // Evacuation engine step
