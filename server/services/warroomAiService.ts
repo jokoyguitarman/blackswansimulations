@@ -8275,7 +8275,8 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
   ];
 
   // Snap casualty/crowd coordinates to building studs (zone-aware for casualties)
-  if (studGrids.length > 0 && allCasualtyPins.length > 0) {
+  // Skip for trainer scenes — enrichment and deterministic paths already place on exact studs
+  if (!input.trainerScene && studGrids.length > 0 && allCasualtyPins.length > 0) {
     batchSnapCasualties(allCasualtyPins, studGrids, occupiedStudIds);
   }
 
