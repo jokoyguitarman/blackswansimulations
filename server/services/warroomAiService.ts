@@ -8048,217 +8048,423 @@ export async function warroomGenerateScenario(
 ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radius_m}m from incident center. ${z.activities.join(', ')}. Allowed teams: ${z.allowed_teams.join(', ')}`).join('\n')}`
       : '';
 
-  // Graphic injury description pools by blast zone
-  const ZONE_INJURIES: Record<string, string[]> = {
-    black: [
-      'Massive blast overpressure — torso crushed, unsurvivable internal organ rupture. Body found face-down, partially buried in debris.',
-      'Complete traumatic amputation of both lower extremities at the hip. Catastrophic hemorrhage, no signs of life.',
-      'Full-thickness burns covering 95% of body surface. Airway completely seared shut. Clothing fused to skin.',
-      'Skull fracture with exposed brain matter from primary blast wave. Fixed dilated pupils, no respiratory effort.',
-      'Torso eviscerated by structural shrapnel — large steel fragment embedded through abdomen to spine. Immediate death.',
-      'Decapitation from flying debris. Body found 3m from blast seat.',
-      'Crushed under collapsed ceiling beam — chest completely flattened. Lividity already forming.',
-      'Flash burns with charring of all exposed skin. Respiratory tract destroyed by superheated gas inhalation.',
-    ],
-    red: [
-      'Traumatic amputation of left leg below the knee — femoral artery spurting bright red blood. Tourniquet needed immediately. Patient screaming.',
-      'Penetrating shrapnel wound to abdomen — loops of bowel visible through 15cm laceration. Active hemorrhage pooling on floor.',
-      'Blast lung — coughing pink frothy sputum, severe respiratory distress, cyanotic lips. Tracheal deviation suggesting tension pneumothorax.',
-      'Both eardrums ruptured, bleeding from ear canals. Open fracture of right forearm — bone protruding through skin. Confused and combative.',
-      'Second and third degree burns to face, neck, and both arms. Eyes swollen shut. Stridor indicating airway swelling.',
-      'Embedded glass shards across entire anterior chest wall. Deep penetrating wound right axilla with arterial bleeding.',
-      'Crush injury to pelvis from fallen masonry. Unable to move legs. Blood pooling beneath patient. Hypotensive and tachycardic.',
-      'Open pneumothorax — sucking chest wound on right lateral thorax. Breathing labored, SpO2 dropping rapidly.',
-      'Severe degloving injury to both hands from blast wave. All fingers exposed to bone. Massive bleeding from radial arteries.',
-      'Shrapnel penetration through right thigh — entry and exit wounds. Pulsatile bleeding suggests femoral vessel damage.',
-    ],
-    yellow: [
-      'Multiple superficial shrapnel lacerations across face and arms. Temporary bilateral deafness — not responding to verbal commands. Ambulatory but disoriented.',
-      'Concussion with persistent vomiting. Large hematoma on forehead. Pupils equal and reactive. Walking but unsteady.',
-      'Second degree burns to left forearm and hand. Blistering skin, intense pain. Alert and oriented.',
-      'Glass fragment embedded in right cheek — bleeding controlled. Laceration across forehead requiring sutures.',
-      'Fractured left clavicle from blast throw — shoulder deformed, arm held against body. Walking wounded.',
-      'Tympanic membrane rupture left ear — blood trickling from ear canal, tinnitus. Minor lacerations to scalp.',
-      'Contusion across anterior chest from blast wave — no rib fractures palpable. Painful breathing, SpO2 96%.',
-      'Partial thickness burn to back of neck from flash. Hair singed. Multiple small glass wounds to posterior arms.',
-    ],
-    green: [
-      'Superficial cuts from flying glass to hands and face. Shaking, crying, ears ringing. Fully ambulatory.',
-      'Psychological shock — staring blankly, hyperventilating. No visible physical injuries. Responsive but non-communicative.',
-      'Minor abrasion to both knees from being knocked down by blast wave. Walking and talking but very frightened.',
-      'Dust-covered, coughing from debris inhalation. Small bruise on shoulder. No significant injuries visible.',
-      'Ringing in ears, small nosebleed likely from pressure wave. Anxious, asking about family members. Ambulatory.',
-      'Twisted ankle from running after blast. Minor swelling. No lacerations. Distressed but physically intact.',
-    ],
-  };
+  // ── Context-aware casualty generation for trainer scenes ──────────────
+  async function generateContextAwareCasualties(): Promise<WarroomScenarioPayload['casualties']> {
+    const blastSite = input.trainerScene?.blastSite;
+    if (!blastSite || !studGrids.length) return undefined;
+
+    const blastLat = blastSite.lat;
+    const blastLng = blastSite.lng;
+    const blastRadiusM = blastSite.radius ?? 20;
+    const pc = input.trainerScene?.pedestrianCount ?? 120;
+
+    // Step 1: Determine count and place empty pins on blast-zone studs
+    const [minC, maxC] = pc > 1000 ? [40, 80] : pc > 500 ? [25, 50] : pc > 200 ? [15, 30] : [8, 15];
+    const targetCount = Math.round((minC + maxC) / 2);
+    onProgress?.(`Placing ${targetCount} casualties on blast-zone studs...`);
+
+    const allStuds = studGrids
+      .flatMap((g) => g.studs)
+      .map((s) => {
+        const dLat = (s.lat - blastLat) * 111320;
+        const dLng = (s.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
+        return { ...s, distFromBlast: Math.sqrt(dLat * dLat + dLng * dLng) };
+      })
+      .sort((a, b) => a.distFromBlast - b.distFromBlast);
+
+    const killR = blastRadiusM * 0.33;
+    const ampR = blastRadiusM * 0.66;
+    const killStuds = allStuds.filter((s) => s.distFromBlast <= killR);
+    const ampStuds = allStuds.filter((s) => s.distFromBlast > killR && s.distFromBlast <= ampR);
+    const lacStuds = allStuds.filter(
+      (s) => s.distFromBlast > ampR && s.distFromBlast <= blastRadiusM,
+    );
+    const withinBlast = allStuds.filter((s) => s.distFromBlast <= blastRadiusM);
+    const pool = withinBlast.length >= 5 ? withinBlast : allStuds.slice(0, 50);
+
+    const usedIds = new Set<string>();
+    const pick = (candidates: typeof allStuds) => {
+      for (const s of candidates)
+        if (!usedIds.has(s.id)) {
+          usedIds.add(s.id);
+          return s;
+        }
+      for (const s of pool)
+        if (!usedIds.has(s.id)) {
+          usedIds.add(s.id);
+          return s;
+        }
+      return pool[Math.floor(Math.random() * pool.length)] ?? null;
+    };
+
+    const nKill = Math.round(targetCount * 0.18);
+    const nAmp = Math.round(targetCount * 0.32);
+    const nLac = targetCount - nKill - nAmp;
+
+    type PlacedPin = {
+      index: number;
+      lat: number;
+      lng: number;
+      floor: string;
+      distFromBlastM: number;
+      blastZone: 'kill' | 'amputation' | 'laceration';
+      triageTag: 'black' | 'red' | 'yellow' | 'green';
+      spatialContext: string;
+      nearbyHazards: Array<{ type: string; description: string; distM: number }>;
+      nearbyExits: Array<{ id: string; status: string; distM: number }>;
+      nearbyWalls: Array<{ material: string; hasDoor: boolean; distM: number }>;
+      isTrapped: boolean;
+      smokeLevel: string;
+      fireNearby: boolean;
+    };
+
+    const trainerHazards = input.trainerScene?.hazards ?? [];
+    const trainerExits = input.trainerScene?.exits ?? [];
+    const trainerWalls = input.trainerScene?.interiorWalls ?? [];
+
+    const placedPins: PlacedPin[] = [];
+    const placeGroup = (
+      candidates: typeof allStuds,
+      count: number,
+      zone: 'kill' | 'amputation' | 'laceration',
+      tag: 'black' | 'red' | 'yellow' | 'green',
+    ) => {
+      for (let i = 0; i < count; i++) {
+        const stud = pick(candidates);
+        if (!stud) continue;
+
+        // Step 2: Gather spatial context
+        const nearbyHazards = trainerHazards
+          .map((h) => ({
+            type: h.hazardType,
+            description: h.description,
+            distM: haversineDistance(stud.lat, stud.lng, h.lat, h.lng),
+          }))
+          .filter((h) => h.distM <= 10)
+          .sort((a, b) => a.distM - b.distM)
+          .slice(0, 3)
+          .map((h) => ({ ...h, distM: Math.round(h.distM * 10) / 10 }));
+
+        const nearbyExits = trainerExits
+          .map((e) => ({
+            id: e.id,
+            status: e.status,
+            distM: haversineDistance(stud.lat, stud.lng, e.lat, e.lng),
+          }))
+          .filter((e) => e.distM <= 15)
+          .sort((a, b) => a.distM - b.distM)
+          .slice(0, 2)
+          .map((e) => ({ ...e, distM: Math.round(e.distM * 10) / 10 }));
+
+        const nearbyWalls = trainerWalls
+          .filter((wall) => {
+            const midX = (wall.start.x + wall.end.x) / 2;
+            const midY = (wall.start.y + wall.end.y) / 2;
+            const studSimX = (stud.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
+            const studSimY = (blastLat - stud.lat) * 111320;
+            return Math.hypot(midX - studSimX, midY - studSimY) < 5;
+          })
+          .slice(0, 2)
+          .map((wall) => ({
+            material: wall.material || 'unknown',
+            hasDoor: wall.hasDoor,
+            distM: 2,
+          }));
+
+        const isTrapped = zone === 'kill' && nearbyWalls.some((w) => !w.hasDoor);
+        const fireNearby = nearbyHazards.some(
+          (h) => h.type.includes('combust') || h.type.includes('ignit') || h.type.includes('fire'),
+        );
+        const smokeLevel =
+          zone === 'kill'
+            ? 'heavy'
+            : zone === 'amputation'
+              ? 'moderate'
+              : fireNearby
+                ? 'light'
+                : 'none';
+
+        placedPins.push({
+          index: placedPins.length + 1,
+          lat: stud.lat,
+          lng: stud.lng,
+          floor: stud.floor || 'G',
+          distFromBlastM: Math.round(stud.distFromBlast * 10) / 10,
+          blastZone: zone,
+          triageTag: tag,
+          spatialContext: stud.spatialContext || 'inside_building',
+          nearbyHazards,
+          nearbyExits,
+          nearbyWalls,
+          isTrapped,
+          smokeLevel,
+          fireNearby,
+        });
+      }
+    };
+
+    placeGroup(killStuds, nKill, 'kill', 'black');
+    placeGroup(ampStuds, nAmp, 'amputation', 'red');
+    placeGroup(lacStuds, Math.round(nLac * 0.6), 'laceration', 'yellow');
+    placeGroup(
+      lacStuds.length > 0 ? lacStuds : pool,
+      Math.round(nLac * 0.4),
+      'laceration',
+      'green',
+    );
+
+    logger.info(
+      {
+        total: placedPins.length,
+        kill: nKill,
+        amp: nAmp,
+        lac: nLac,
+        blastRadiusM,
+        withinBlast: withinBlast.length,
+      },
+      'Context-aware casualties placed on studs',
+    );
+
+    // Step 3: AI batch call to generate descriptions
+    onProgress?.(`Generating context-aware descriptions for ${placedPins.length} casualties...`);
+
+    const BATCH_SIZE = 12;
+    const batches: PlacedPin[][] = [];
+    for (let i = 0; i < placedPins.length; i += BATCH_SIZE) {
+      batches.push(placedPins.slice(i, i + BATCH_SIZE));
+    }
+
+    const buildingName = input.trainerScene?.buildingName || input.venue_name || 'building';
+    const scenarioDesc = `${input.scenario_type} at ${buildingName}`;
+
+    const contextPrompt = (pins: PlacedPin[]) => {
+      const pinDescriptions = pins
+        .map((p) => {
+          const parts = [
+            `CASUALTY ${p.index}:`,
+            `- Distance from blast: ${p.distFromBlastM}m (${p.blastZone.toUpperCase()} ZONE)`,
+            `- Triage: ${p.triageTag.toUpperCase()}`,
+            `- Location: ${p.spatialContext.replace(/_/g, ' ')}, floor ${p.floor}`,
+          ];
+          if (p.nearbyHazards.length > 0)
+            parts.push(
+              `- Nearby hazards: ${p.nearbyHazards.map((h) => `${h.type} ${h.distM}m away`).join(', ')}`,
+            );
+          if (p.nearbyExits.length > 0)
+            parts.push(
+              `- Nearby exits: ${p.nearbyExits.map((e) => `${e.id} (${e.status}) ${e.distM}m away`).join(', ')}`,
+            );
+          if (p.nearbyWalls.length > 0)
+            parts.push(
+              `- Nearby walls: ${p.nearbyWalls.map((w) => `${w.material}${w.hasDoor ? ' with door' : ''}`).join(', ')}`,
+            );
+          parts.push(`- Trapped: ${p.isTrapped ? 'YES' : 'NO'}`);
+          parts.push(`- Smoke: ${p.smokeLevel}, Fire nearby: ${p.fireNearby ? 'YES' : 'NO'}`);
+          return parts.join('\n');
+        })
+        .join('\n\n');
+
+      return `Scenario: ${scenarioDesc}
+Blast site radius: ${blastRadiusM}m
+Building: ${buildingName}
+
+${pinDescriptions}
+
+For EACH casualty above, generate a JSON object. The injuries and description MUST be consistent with the distance from blast, zone, and surrounding context. Be GRAPHIC and CLINICAL in visible_description.
+
+KILL ZONE casualties: fatal injuries — dismemberment, crushed organs, total body burns, decapitation.
+AMPUTATION ZONE casualties: traumatic amputations, blast lung, penetrating shrapnel, severe burns, arterial bleeding.
+LACERATION ZONE (YELLOW): shrapnel cuts, concussion, minor burns, fractured bones, temporary deafness.
+LACERATION ZONE (GREEN): superficial cuts, psychological shock, bruises, ringing ears.
+
+Return JSON:
+{ "casualties": [
+  {
+    "index": 1,
+    "visible_description": "graphic clinical description matching exact distance and context",
+    "injuries": [{"type": "blast_amputation", "severity": "critical", "body_part": "left_leg", "visible_signs": "..."}],
+    "consciousness": "unresponsive|confused|alert",
+    "breathing": "absent|labored|rapid|normal",
+    "pulse": "absent|thready|rapid|normal",
+    "bleeding": "catastrophic|uncontrolled|controlled|none",
+    "mobility": "immobile|limited|ambulatory",
+    "visible_injuries": "description of what responder can see",
+    "treatment_requirements": [{"intervention": "...", "priority": "immediate|urgent|delayed", "reason": "..."}],
+    "ideal_response_sequence": [{"step": 1, "action": "...", "detail": "..."}],
+    "transport_prerequisites": ["stabilize cervical spine", "..."],
+    "contraindications": ["do not move without spinal board", "..."],
+    "deterioration_timeline": [{"at_minutes": 5, "description": "..."}],
+    "required_equipment": [{"item": "tourniquet", "quantity": 1, "purpose": "..."}],
+    "expected_time_to_treat_minutes": 8
+  }
+]}`;
+    };
+
+    const systemPrompt = `You are a trauma medicine specialist creating realistic casualty profiles for a crisis management training exercise. Each casualty has been placed at an EXACT distance from a bomb blast. Your descriptions MUST match the physics of that distance — a person 2m from the blast has catastrophically different injuries than one at 15m. Be graphic, clinical, and precise. Include the ideal handling sequence so trainers can evaluate whether response teams follow correct protocols.`;
+
+    type AICasualtyResult = {
+      index: number;
+      visible_description: string;
+      injuries: Array<{ type: string; severity: string; body_part: string; visible_signs: string }>;
+      consciousness: string;
+      breathing: string;
+      pulse: string;
+      bleeding: string;
+      mobility: string;
+      visible_injuries: string;
+      treatment_requirements: Array<{ intervention: string; priority: string; reason: string }>;
+      ideal_response_sequence: Array<{ step: number; action: string; detail: string }>;
+      transport_prerequisites: string[];
+      contraindications: string[];
+      deterioration_timeline: Array<{ at_minutes: number; description: string }>;
+      required_equipment: Array<{ item: string; quantity: number; purpose: string }>;
+      expected_time_to_treat_minutes: number;
+    };
+
+    const aiResults = new Map<number, AICasualtyResult>();
+
+    const batchPromises = batches.map(async (batch) => {
+      try {
+        const result = await callOpenAi<{ casualties?: AICasualtyResult[] }>(
+          systemPrompt,
+          contextPrompt(batch),
+          openAiApiKey,
+          Math.max(4000, batch.length * 500),
+        );
+        for (const c of result.casualties ?? []) {
+          if (c.index) aiResults.set(c.index, c);
+        }
+      } catch (err) {
+        logger.warn({ err, batchSize: batch.length }, 'Context-aware casualty batch failed');
+      }
+    });
+
+    await Promise.all(batchPromises);
+    logger.info(
+      { requested: placedPins.length, aiDescribed: aiResults.size },
+      'Context-aware casualty AI descriptions complete',
+    );
+
+    // Step 4: Merge placed pins with AI descriptions
+    const ZONE_INJURIES_FALLBACK: Record<string, string[]> = {
+      black: [
+        'Massive blast overpressure — torso crushed, unsurvivable internal organ rupture.',
+        'Complete traumatic amputation of both lower extremities. Catastrophic hemorrhage, no signs of life.',
+        'Full-thickness burns covering 95% of body surface. Airway completely seared shut.',
+        'Skull fracture with exposed brain matter from primary blast wave. No respiratory effort.',
+      ],
+      red: [
+        'Traumatic amputation of left leg below knee — femoral artery spurting. Tourniquet needed immediately.',
+        'Penetrating shrapnel wound to abdomen — bowel evisceration visible. Active hemorrhage.',
+        'Blast lung — coughing pink frothy sputum, severe respiratory distress, cyanotic lips.',
+        'Open pneumothorax — sucking chest wound on right lateral thorax. SpO2 dropping rapidly.',
+      ],
+      yellow: [
+        'Multiple superficial shrapnel lacerations across face and arms. Temporary bilateral deafness.',
+        'Concussion with persistent vomiting. Large hematoma on forehead. Walking but unsteady.',
+        'Second degree burns to left forearm and hand. Blistering skin, intense pain.',
+        'Fractured left clavicle from blast throw. Shoulder deformed, arm held against body.',
+      ],
+      green: [
+        'Superficial cuts from flying glass to hands and face. Shaking, ears ringing. Fully ambulatory.',
+        'Psychological shock — staring blankly, hyperventilating. No visible physical injuries.',
+        'Minor abrasion to both knees from being knocked down. Walking and frightened.',
+        'Dust-covered, coughing from debris inhalation. Small bruise on shoulder. No significant injuries.',
+      ],
+    };
+
+    const accessMap: Record<string, string[]> = {
+      black: ['under_debris', 'behind_fire'],
+      red: ['under_debris', 'behind_fire', 'in_smoke'],
+      yellow: ['open', 'in_smoke'],
+      green: ['open'],
+    };
+
+    const casualties: NonNullable<WarroomScenarioPayload['casualties']> = placedPins.map((pin) => {
+      const ai = aiResults.get(pin.index);
+      const tag = pin.triageTag;
+      const acc = accessMap[tag] || ['open'];
+      const fallbackDesc =
+        ZONE_INJURIES_FALLBACK[tag]?.[
+          Math.floor(Math.random() * (ZONE_INJURIES_FALLBACK[tag]?.length ?? 1))
+        ] || '';
+
+      return {
+        casualty_type: 'patient' as const,
+        location_lat: pin.lat,
+        location_lng: pin.lng,
+        floor_level: pin.floor,
+        headcount: 1,
+        conditions: {
+          name: `Casualty ${pin.index}`,
+          age: 18 + Math.floor(Math.random() * 55),
+          sex: Math.random() > 0.5 ? 'male' : 'female',
+          role: 'civilian',
+          injuries: ai?.injuries ?? [],
+          triage_color: tag,
+          triage_category: tag,
+          mobility:
+            ai?.mobility ||
+            (tag === 'black' || tag === 'red'
+              ? 'immobile'
+              : tag === 'yellow'
+                ? 'limited'
+                : 'ambulatory'),
+          accessibility: pin.isTrapped
+            ? 'under_debris'
+            : acc[Math.floor(Math.random() * acc.length)],
+          consciousness:
+            ai?.consciousness ||
+            (tag === 'black' ? 'unresponsive' : tag === 'red' ? 'confused' : 'alert'),
+          breathing:
+            ai?.breathing || (tag === 'black' ? 'absent' : tag === 'red' ? 'labored' : 'normal'),
+          visible_description: ai?.visible_description || fallbackDesc,
+          visible_injuries: ai?.visible_injuries || '',
+          bleeding:
+            ai?.bleeding ||
+            (tag === 'black' ? 'catastrophic' : tag === 'red' ? 'uncontrolled' : ''),
+          pulse: ai?.pulse || (tag === 'black' ? 'absent' : tag === 'red' ? 'thready' : 'normal'),
+          treatment_requirements: ai?.treatment_requirements ?? [],
+          transport_prerequisites: ai?.transport_prerequisites ?? [],
+          contraindications: ai?.contraindications ?? [],
+          ideal_response_sequence: ai?.ideal_response_sequence ?? [],
+          required_ppe: [],
+          required_equipment: ai?.required_equipment ?? [],
+          expected_time_to_treat_minutes:
+            ai?.expected_time_to_treat_minutes ?? (tag === 'red' ? 5 : tag === 'yellow' ? 3 : 1),
+          recommended_transport:
+            tag === 'black'
+              ? 'body_holding_area'
+              : tag === 'red'
+                ? 'hospital_immediate'
+                : 'hospital_delayed',
+          deterioration_timeline: ai?.deterioration_timeline ?? [],
+        },
+        status: 'undiscovered' as const,
+        appears_at_minutes: 0,
+      };
+    });
+
+    return casualties;
+  }
 
   // Casualty + crowd generation
-  // When trainer scene has enrichment casualties, use them directly instead of AI generation
-  const enrichmentCasualties = input.trainerScene?.enrichment?.generatedCasualties;
-  const hasEnrichmentCasualties = enrichmentCasualties && enrichmentCasualties.length > 0;
-
+  // For trainer scenes with blast site: use context-aware pipeline (place first, describe second)
+  // For non-trainer scenes: use AI generation
   const [casualtyPins, crowdPins, convergentResult] = await Promise.all([
-    hasEnrichmentCasualties
-      ? (async () => {
-          onProgress?.(
-            `Using ${enrichmentCasualties.length} pre-generated casualties from research enrichment...`,
-          );
-          // Convert enrichment casualties to payload format with blast-zone stud placement
-          const blastSite = input.trainerScene?.blastSite;
-          const studGrids = input.studGrids ?? [];
-          const blastLat = blastSite?.lat ?? 0;
-          const blastLng = blastSite?.lng ?? 0;
-          const blastRadiusM = blastSite?.radius ?? 20;
-
-          const allStuds = studGrids
-            .flatMap((g) => g.studs)
-            .map((s) => {
-              const dLat = (s.lat - blastLat) * 111320;
-              const dLng = (s.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
-              return { ...s, distFromBlast: Math.sqrt(dLat * dLat + dLng * dLng) };
-            })
-            .sort((a, b) => a.distFromBlast - b.distFromBlast);
-
-          // Blast zone bands: kill (0-33%), amputation (33-66%), laceration (66-100%)
-          const killR = blastRadiusM * 0.33;
-          const ampR = blastRadiusM * 0.66;
-          const killStuds = allStuds.filter((s) => s.distFromBlast <= killR);
-          const ampStuds = allStuds.filter(
-            (s) => s.distFromBlast > killR && s.distFromBlast <= ampR,
-          );
-          const lacStuds = allStuds.filter(
-            (s) => s.distFromBlast > ampR && s.distFromBlast <= blastRadiusM,
-          );
-          const withinBlast = allStuds.filter((s) => s.distFromBlast <= blastRadiusM);
-          const candidateStuds = withinBlast.length >= 5 ? withinBlast : allStuds.slice(0, 50);
-
-          const usedIds = new Set<string>();
-          const pickFromPool = (pool: typeof allStuds) => {
-            for (const s of pool) {
-              if (!usedIds.has(s.id)) {
-                usedIds.add(s.id);
-                return s;
-              }
-            }
-            for (const s of candidateStuds) {
-              if (!usedIds.has(s.id)) {
-                usedIds.add(s.id);
-                return s;
-              }
-            }
-            return candidateStuds[Math.floor(Math.random() * candidateStuds.length)] ?? null;
-          };
-
-          const accessMap: Record<string, string[]> = {
-            black: ['under_debris', 'behind_fire'],
-            red: ['under_debris', 'behind_fire', 'in_smoke'],
-            yellow: ['open', 'in_smoke'],
-            green: ['open'],
-          };
-
-          const mapped = enrichmentCasualties.map((c, i) => {
-            const dist = (() => {
-              const stud = pickFromPool(
-                i < enrichmentCasualties.length * 0.18
-                  ? killStuds
-                  : i < enrichmentCasualties.length * 0.5
-                    ? ampStuds
-                    : lacStuds.length > 0
-                      ? lacStuds
-                      : candidateStuds,
-              );
-              return stud;
-            })();
-            const stud = dist;
-            const actualDist = stud?.distFromBlast ?? blastRadiusM;
-            // Assign triage tag by zone distance
-            const tag =
-              actualDist <= killR
-                ? 'black'
-                : actualDist <= ampR
-                  ? 'red'
-                  : actualDist <= blastRadiusM * 0.85
-                    ? 'yellow'
-                    : 'green';
-
-            const signs = (c.observableSigns as Record<string, string>) || {};
-            const acc = accessMap[tag] || ['open'];
-
-            return {
-              casualty_type: 'patient' as const,
-              location_lat: stud?.lat ?? blastSite?.lat ?? 0,
-              location_lng: stud?.lng ?? blastSite?.lng ?? 0,
-              floor_level: stud?.floor || 'G',
-              headcount: 1,
-              conditions: {
-                name: `Casualty ${i + 1}`,
-                age: 25 + Math.floor(Math.random() * 45),
-                sex: Math.random() > 0.5 ? 'male' : 'female',
-                role: 'civilian',
-                injuries: [],
-                triage_color: tag,
-                triage_category: tag,
-                mobility:
-                  tag === 'black'
-                    ? 'immobile'
-                    : tag === 'red'
-                      ? 'immobile'
-                      : tag === 'yellow'
-                        ? 'limited'
-                        : 'ambulatory',
-                accessibility: acc[Math.floor(Math.random() * acc.length)],
-                consciousness:
-                  signs.consciousness || (tag === 'black' ? 'unresponsive' : 'responsive'),
-                breathing: signs.breathing || (tag === 'black' ? 'absent' : 'present'),
-                visible_description:
-                  (c.description as string) ||
-                  ZONE_INJURIES[tag]?.[
-                    Math.floor(Math.random() * (ZONE_INJURIES[tag]?.length ?? 1))
-                  ] ||
-                  '',
-                visible_injuries: signs.visibleInjuries || '',
-                bleeding:
-                  signs.bleeding ||
-                  (tag === 'black' ? 'catastrophic' : tag === 'red' ? 'uncontrolled' : ''),
-                pulse:
-                  signs.pulse ||
-                  (tag === 'black' ? 'absent' : tag === 'red' ? 'rapid and weak' : ''),
-                treatment_requirements: [],
-                transport_prerequisites: [],
-                contraindications: [],
-                deterioration_timeline: [],
-              },
-              status: 'undiscovered' as const,
-              appears_at_minutes: 0,
-            };
-          });
-          logger.info(
-            {
-              count: mapped.length,
-              fromEnrichment: true,
-              blastRadiusM,
-              killStuds: killStuds.length,
-              ampStuds: ampStuds.length,
-              lacStuds: lacStuds.length,
-              withinBlast: withinBlast.length,
-              blastLat,
-              blastLng,
-              sampleLat: mapped[0]?.location_lat,
-              sampleLng: mapped[0]?.location_lng,
-            },
-            'Using enrichment casualties for scenario (skipped AI casualty generation)',
-          );
-          return mapped as WarroomScenarioPayload['casualties'];
-        })()
-      : generateCasualties(
-          input,
-          openAiApiKey,
-          onProgress,
-          narrative,
-          locations,
-          scenarioHazards,
-          zoneSummaryBlock,
-        ),
+    input.trainerScene?.blastSite
+      ? generateContextAwareCasualties()
+      : !input.trainerScene
+        ? generateCasualties(
+            input,
+            openAiApiKey,
+            onProgress,
+            narrative,
+            locations,
+            scenarioHazards,
+            zoneSummaryBlock,
+          )
+        : Promise.resolve(undefined),
     input.trainerScene
       ? Promise.resolve(undefined)
       : generateCrowdPins(input, openAiApiKey, onProgress, narrative, locations, zoneSummaryBlock),
