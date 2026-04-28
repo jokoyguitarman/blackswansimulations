@@ -8057,21 +8057,29 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
     const pc = input.trainerScene?.pedestrianCount ?? 120;
 
     // Step 1: Determine count and place empty pins on blast-zone studs
-    // Use the stud's pre-classified blastBand and distFromIncidentM from classifyStudZones
+    // Use distFromIncidentM (from classifyStudZones) but filter by trainer's blast radius
     const [minC, maxC] = pc > 1000 ? [40, 80] : pc > 500 ? [25, 50] : pc > 200 ? [15, 30] : [8, 15];
     const targetCount = Math.round((minC + maxC) / 2);
-    onProgress?.(`Placing ${targetCount} casualties on blast-zone studs...`);
+    onProgress?.(`Placing ${targetCount} casualties within ${blastRadiusM}m blast radius...`);
+
+    const killR = blastRadiusM * 0.33;
+    const critR = blastRadiusM * 0.66;
 
     const allStuds = studGrids
       .flatMap((g) => g.studs)
-      .filter((s) => s.distFromIncidentM != null && s.blastBand != null)
+      .filter((s) => s.distFromIncidentM != null)
       .sort((a, b) => (a.distFromIncidentM ?? 9999) - (b.distFromIncidentM ?? 9999));
 
-    const killStuds = allStuds.filter((s) => s.blastBand === 'kill');
-    const criticalStuds = allStuds.filter((s) => s.blastBand === 'critical');
-    const seriousStuds = allStuds.filter((s) => s.blastBand === 'serious');
-    const minorStuds = allStuds.filter((s) => s.blastBand === 'minor');
-    const withinBlast = allStuds.filter((s) => s.blastBand !== 'outside');
+    const killStuds = allStuds.filter((s) => (s.distFromIncidentM ?? 9999) <= killR);
+    const criticalStuds = allStuds.filter((s) => {
+      const d = s.distFromIncidentM ?? 9999;
+      return d > killR && d <= critR;
+    });
+    const seriousStuds = allStuds.filter((s) => {
+      const d = s.distFromIncidentM ?? 9999;
+      return d > critR && d <= blastRadiusM;
+    });
+    const withinBlast = allStuds.filter((s) => (s.distFromIncidentM ?? 9999) <= blastRadiusM);
     const pool = withinBlast.length >= 5 ? withinBlast : allStuds.slice(0, 50);
 
     const usedIds = new Set<string>();
@@ -8178,8 +8186,13 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
 
     placeGroup(killStuds, nKill, 'kill', 'black');
     placeGroup(criticalStuds, nCritical, 'amputation', 'red');
-    placeGroup(seriousStuds, nSerious, 'laceration', 'yellow');
-    placeGroup(minorStuds.length > 0 ? minorStuds : pool, nMinor, 'laceration', 'green');
+    placeGroup(seriousStuds, Math.round(nSerious * 0.6), 'laceration', 'yellow');
+    placeGroup(
+      seriousStuds.length > 0 ? seriousStuds : pool,
+      Math.round(nSerious * 0.4) + nMinor,
+      'laceration',
+      'green',
+    );
 
     logger.info(
       {
@@ -8189,10 +8202,11 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
         serious: nSerious,
         minor: nMinor,
         blastRadiusM,
+        killR,
+        critR,
         killStuds: killStuds.length,
         criticalStuds: criticalStuds.length,
         seriousStuds: seriousStuds.length,
-        minorStuds: minorStuds.length,
         withinBlast: withinBlast.length,
       },
       'Context-aware casualties placed on studs',
