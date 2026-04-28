@@ -4135,14 +4135,9 @@ async function generateCasualties(
     const allStudsSorted = input.studGrids
       .flatMap((g) => g.studs)
       .map((s) => {
-        const dist =
-          s.distFromIncidentM ??
-          (() => {
-            const dLat = (s.lat - blastLat) * 111320;
-            const dLng = (s.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
-            return Math.sqrt(dLat * dLat + dLng * dLng);
-          })();
-        return { ...s, distFromBlast: dist };
+        const dLat = (s.lat - blastLat) * 111320;
+        const dLng = (s.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
+        return { ...s, distFromBlast: Math.sqrt(dLat * dLat + dLng * dLng) };
       })
       .sort((a, b) => a.distFromBlast - b.distFromBlast);
 
@@ -8118,14 +8113,9 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
           const allStuds = studGrids
             .flatMap((g) => g.studs)
             .map((s) => {
-              const dist =
-                s.distFromIncidentM ??
-                (() => {
-                  const dLat = (s.lat - blastLat) * 111320;
-                  const dLng = (s.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
-                  return Math.sqrt(dLat * dLat + dLng * dLng);
-                })();
-              return { ...s, distFromBlast: dist };
+              const dLat = (s.lat - blastLat) * 111320;
+              const dLng = (s.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
+              return { ...s, distFromBlast: Math.sqrt(dLat * dLat + dLng * dLng) };
             })
             .sort((a, b) => a.distFromBlast - b.distFromBlast);
 

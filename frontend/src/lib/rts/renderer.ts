@@ -775,14 +775,24 @@ function drawBlastRadius(
   const p = toCanvas(pos.x, pos.y, rc);
   const effectiveRadius = blastRadius ?? 20;
   const blastR = mToCanvas(effectiveRadius, rc);
-  if (blastR >= 5) {
+  if (blastR < 5) return;
+
+  const zones = [
+    { pct: 1.0, fill: 'rgba(234, 179, 8, 0.06)', stroke: '#eab308', label: 'LACERATION' },
+    { pct: 0.66, fill: 'rgba(249, 115, 22, 0.08)', stroke: '#f97316', label: 'AMPUTATION' },
+    { pct: 0.33, fill: 'rgba(239, 68, 68, 0.12)', stroke: '#ef4444', label: 'KILL' },
+  ];
+
+  for (const z of zones) {
+    const r = blastR * z.pct;
+    if (r < 3) continue;
     ctx.beginPath();
-    ctx.arc(p.cx, p.cy, blastR, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(239, 68, 68, 0.06)';
+    ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = z.fill;
     ctx.fill();
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 3;
-    ctx.setLineDash([10, 6]);
+    ctx.strokeStyle = z.stroke;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
     ctx.stroke();
     ctx.setLineDash([]);
   }
