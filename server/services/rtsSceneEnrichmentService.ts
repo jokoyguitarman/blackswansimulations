@@ -479,9 +479,7 @@ Consider:
 5. Bottlenecks — exits that are compromised, routes blocked by hazards or smoke
 6. Resource prioritization — what must happen first, second, third
 
-Also: if no casualty pins were placed by the trainer, generate realistic casualties distributed at various distances from the blast (0-100m). The number of casualties should be proportional to the crowd size (given in EVACUEES count). Use the hazard analysis results to inform what additional injuries these generated casualties might have. Include a realistic distribution of triage tags (red/yellow/green/black) based on proximity to blast.
-
-NOTE: The stud-level environmental timeline (fire/smoke/gas per stud over time) is computed separately by a deterministic simulation engine. You do NOT need to produce stud-level data. Focus on the narrative escalation timeline and strategic analysis.
+NOTE: The stud-level environmental timeline (fire/smoke/gas per stud over time) is computed separately by a deterministic simulation engine. You do NOT need to produce stud-level data. Focus on the narrative escalation timeline and strategic analysis. Casualties are generated separately during the compile step — do NOT generate casualty profiles here.
 
 Return JSON only:
 {
@@ -489,7 +487,6 @@ Return JSON only:
   "escalationTimeline": "minute-by-minute narrative progression for the first 60 minutes — describe how fire, smoke, gas, and structural damage evolve and what this means for responders",
   "keyChallenges": ["challenge 1", "challenge 2", ...],
   "casualtyDeteriorationRisks": ["which casualties will worsen and why", ...],
-  "generatedCasualties": [{"id": "gen-1", "description": "...", "trueTag": "red|yellow|green|black", "observableSigns": {"breathing": "...", "pulse": "...", "consciousness": "...", "visibleInjuries": "...", "mobility": "...", "bleeding": "..."}}],
   "overallAssessment": "comprehensive assessment of the scene — complexity, resource requirements, critical decision points for the incident commander"
 }`;
 
@@ -498,7 +495,6 @@ interface SynthesisResult {
   escalationTimeline: string;
   keyChallenges: string[];
   casualtyDeteriorationRisks: string[];
-  generatedCasualties: EnrichedCasualty[];
   overallAssessment: string;
 }
 
@@ -509,7 +505,6 @@ async function synthesizeScene(
   noCasualtiesPlaced: boolean,
   openAiApiKey: string,
   studSummary?: string,
-  pedestrianCount?: number,
 ): Promise<SynthesisResult> {
   const hazardSummary = hazardResults
     .map((h) => {
@@ -542,25 +537,7 @@ async function synthesizeScene(
 ${hazardSummary || 'No hazards on scene.'}
 
 ═══ INDIVIDUAL CASUALTY PROFILES ═══
-${
-  casualtySummary ||
-  (noCasualtiesPlaced
-    ? (() => {
-        const pc = pedestrianCount ?? 120;
-        const [minC, maxC] =
-          pc > 1000 ? [40, 80] : pc > 500 ? [25, 50] : pc > 200 ? [15, 30] : [8, 15];
-        return `No casualty pins placed by trainer. The venue has approximately ${pc} people present. You must generate ${minC}-${maxC} realistic casualties distributed across the blast zones at varying distances (0-100m). Scale injuries by proximity to blast.
-
-MANDATORY TRIAGE TAG DISTRIBUTION FOR BOMBING/EXPLOSION:
-- At least 15-20% MUST be BLACK (deceased) — people at ground zero DO NOT survive an explosion
-- At least 25-30% MUST be RED (immediate/critical) — severe blast injuries, burns, amputations
-- Remaining split between YELLOW (delayed) and GREEN (minor)
-- Casualties within 0-5m of blast center MUST ALL be BLACK
-- Casualties within 5-15m should be mostly RED with some BLACK
-- You MUST include BLACK casualties. A bombing without fatalities is unrealistic.`;
-      })()
-    : 'No casualties analyzed.')
-}
+${casualtySummary || '(Casualties will be generated separately during the compile step.)'}
 ${studBlock}
 Synthesize all findings into a unified scene analysis. Include an environmentalTimeline showing how fire, smoke, gas, and structural damage affect specific studs over 30 minutes. Return JSON only.`;
 
@@ -606,7 +583,6 @@ function defaultSynthesis(): SynthesisResult {
     escalationTimeline: 'Analysis unavailable.',
     keyChallenges: [],
     casualtyDeteriorationRisks: [],
-    generatedCasualties: [],
     overallAssessment: 'Scene synthesis unavailable.',
   };
 }
@@ -896,12 +872,11 @@ export async function enrichScene(
     noCasualties,
     openAiApiKey,
     studSummary,
-    req.pedestrianCount,
   );
 
   return {
     enrichedCasualties: allCasualties,
-    generatedCasualties: synthesis.generatedCasualties || [],
+    generatedCasualties: [],
     hazardAnalysis: hazardResults,
     overallAssessment: synthesis.overallAssessment || 'Assessment unavailable.',
     sceneSynthesis: {

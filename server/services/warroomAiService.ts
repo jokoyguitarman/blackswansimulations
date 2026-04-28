@@ -8053,33 +8053,25 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
     const blastSite = input.trainerScene?.blastSite;
     if (!blastSite || !studGrids.length) return undefined;
 
-    const blastLat = blastSite.lat;
-    const blastLng = blastSite.lng;
     const blastRadiusM = blastSite.radius ?? 20;
     const pc = input.trainerScene?.pedestrianCount ?? 120;
 
     // Step 1: Determine count and place empty pins on blast-zone studs
+    // Use the stud's pre-classified blastBand and distFromIncidentM from classifyStudZones
     const [minC, maxC] = pc > 1000 ? [40, 80] : pc > 500 ? [25, 50] : pc > 200 ? [15, 30] : [8, 15];
     const targetCount = Math.round((minC + maxC) / 2);
     onProgress?.(`Placing ${targetCount} casualties on blast-zone studs...`);
 
     const allStuds = studGrids
       .flatMap((g) => g.studs)
-      .map((s) => {
-        const dLat = (s.lat - blastLat) * 111320;
-        const dLng = (s.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
-        return { ...s, distFromBlast: Math.sqrt(dLat * dLat + dLng * dLng) };
-      })
-      .sort((a, b) => a.distFromBlast - b.distFromBlast);
+      .filter((s) => s.distFromIncidentM != null && s.blastBand != null)
+      .sort((a, b) => (a.distFromIncidentM ?? 9999) - (b.distFromIncidentM ?? 9999));
 
-    const killR = blastRadiusM * 0.33;
-    const ampR = blastRadiusM * 0.66;
-    const killStuds = allStuds.filter((s) => s.distFromBlast <= killR);
-    const ampStuds = allStuds.filter((s) => s.distFromBlast > killR && s.distFromBlast <= ampR);
-    const lacStuds = allStuds.filter(
-      (s) => s.distFromBlast > ampR && s.distFromBlast <= blastRadiusM,
-    );
-    const withinBlast = allStuds.filter((s) => s.distFromBlast <= blastRadiusM);
+    const killStuds = allStuds.filter((s) => s.blastBand === 'kill');
+    const criticalStuds = allStuds.filter((s) => s.blastBand === 'critical');
+    const seriousStuds = allStuds.filter((s) => s.blastBand === 'serious');
+    const minorStuds = allStuds.filter((s) => s.blastBand === 'minor');
+    const withinBlast = allStuds.filter((s) => s.blastBand !== 'outside');
     const pool = withinBlast.length >= 5 ? withinBlast : allStuds.slice(0, 50);
 
     const usedIds = new Set<string>();
@@ -8097,9 +8089,10 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
       return pool[Math.floor(Math.random() * pool.length)] ?? null;
     };
 
-    const nKill = Math.round(targetCount * 0.18);
-    const nAmp = Math.round(targetCount * 0.32);
-    const nLac = targetCount - nKill - nAmp;
+    const nKill = Math.round(targetCount * 0.15);
+    const nCritical = Math.round(targetCount * 0.25);
+    const nSerious = Math.round(targetCount * 0.35);
+    const nMinor = targetCount - nKill - nCritical - nSerious;
 
     type PlacedPin = {
       index: number;
@@ -8120,7 +8113,6 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
 
     const trainerHazards = input.trainerScene?.hazards ?? [];
     const trainerExits = input.trainerScene?.exits ?? [];
-    const trainerWalls = input.trainerScene?.interiorWalls ?? [];
 
     const placedPins: PlacedPin[] = [];
     const placeGroup = (
@@ -8156,46 +8148,27 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
           .slice(0, 2)
           .map((e) => ({ ...e, distM: Math.round(e.distM * 10) / 10 }));
 
-        const nearbyWalls = trainerWalls
-          .filter((wall) => {
-            const midX = (wall.start.x + wall.end.x) / 2;
-            const midY = (wall.start.y + wall.end.y) / 2;
-            const studSimX = (stud.lng - blastLng) * 111320 * Math.cos((blastLat * Math.PI) / 180);
-            const studSimY = (blastLat - stud.lat) * 111320;
-            return Math.hypot(midX - studSimX, midY - studSimY) < 5;
-          })
-          .slice(0, 2)
-          .map((wall) => ({
-            material: wall.material || 'unknown',
-            hasDoor: wall.hasDoor,
-            distM: 2,
-          }));
-
-        const isTrapped = zone === 'kill' && nearbyWalls.some((w) => !w.hasDoor);
+        const isTrapped = tag === 'black' || tag === 'red';
         const fireNearby = nearbyHazards.some(
           (h) => h.type.includes('combust') || h.type.includes('ignit') || h.type.includes('fire'),
         );
         const smokeLevel =
-          zone === 'kill'
-            ? 'heavy'
-            : zone === 'amputation'
-              ? 'moderate'
-              : fireNearby
-                ? 'light'
-                : 'none';
+          tag === 'black' ? 'heavy' : tag === 'red' ? 'moderate' : fireNearby ? 'light' : 'none';
+
+        const distM = stud.distFromIncidentM ?? 0;
 
         placedPins.push({
           index: placedPins.length + 1,
           lat: stud.lat,
           lng: stud.lng,
           floor: stud.floor || 'G',
-          distFromBlastM: Math.round(stud.distFromBlast * 10) / 10,
+          distFromBlastM: Math.round(distM * 10) / 10,
           blastZone: zone,
           triageTag: tag,
           spatialContext: stud.spatialContext || 'inside_building',
           nearbyHazards,
           nearbyExits,
-          nearbyWalls,
+          nearbyWalls: [],
           isTrapped,
           smokeLevel,
           fireNearby,
@@ -8204,22 +8177,22 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
     };
 
     placeGroup(killStuds, nKill, 'kill', 'black');
-    placeGroup(ampStuds, nAmp, 'amputation', 'red');
-    placeGroup(lacStuds, Math.round(nLac * 0.6), 'laceration', 'yellow');
-    placeGroup(
-      lacStuds.length > 0 ? lacStuds : pool,
-      Math.round(nLac * 0.4),
-      'laceration',
-      'green',
-    );
+    placeGroup(criticalStuds, nCritical, 'amputation', 'red');
+    placeGroup(seriousStuds, nSerious, 'laceration', 'yellow');
+    placeGroup(minorStuds.length > 0 ? minorStuds : pool, nMinor, 'laceration', 'green');
 
     logger.info(
       {
         total: placedPins.length,
         kill: nKill,
-        amp: nAmp,
-        lac: nLac,
+        critical: nCritical,
+        serious: nSerious,
+        minor: nMinor,
         blastRadiusM,
+        killStuds: killStuds.length,
+        criticalStuds: criticalStuds.length,
+        seriousStuds: seriousStuds.length,
+        minorStuds: minorStuds.length,
         withinBlast: withinBlast.length,
       },
       'Context-aware casualties placed on studs',
