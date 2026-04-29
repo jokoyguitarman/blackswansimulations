@@ -352,6 +352,7 @@ export function SceneCanvasView({
       description: (e.description as string) || '',
       status: ((e.status as string) || 'unknown') as ExitDef['status'],
       photos: (e.photos as string[]) || [],
+      exitType: (e.exitType as 'public' | 'service') || undefined,
     }));
   }, [sceneConfig]);
 

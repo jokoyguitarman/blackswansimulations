@@ -237,7 +237,8 @@ export class PolygonEvacuationEngine {
   }
 
   private pickNearestExit(x: number, y: number): string {
-    let best = this.exits[0]?.id ?? '';
+    const publicExits = this.exits.filter((e) => e.exitType !== 'service');
+    let best = publicExits[0]?.id ?? this.exits[0]?.id ?? '';
     let bestDist = Infinity;
     for (const e of this.exits) {
       if (e.exitType === 'service') continue;
