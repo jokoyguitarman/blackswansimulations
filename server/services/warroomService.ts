@@ -893,7 +893,7 @@ function mergeDeteriorationResult(
   det: DeteriorationTimelineResult,
 ): void {
   // Enrich existing hazard deterioration timelines
-  for (const eh of det.enriched_hazard_timelines) {
+  for (const eh of det.enriched_hazard_timelines ?? []) {
     const match = (payload.hazards ?? []).find(
       (h) => ((h as Record<string, unknown>).label ?? h.hazard_type) === eh.hazard_label,
     );
@@ -905,7 +905,7 @@ function mergeDeteriorationResult(
   }
 
   // Enrich existing casualty deterioration timelines
-  for (const ec of det.enriched_casualty_timelines) {
+  for (const ec of det.enriched_casualty_timelines ?? []) {
     const cas = (payload.casualties ?? [])[ec.casualty_index];
     if (cas && cas.conditions) {
       (cas.conditions as Record<string, unknown>).deterioration_timeline =
@@ -917,7 +917,7 @@ function mergeDeteriorationResult(
   if (!payload.hazards) payload.hazards = [] as unknown as typeof payload.hazards;
   if (!payload.casualties) payload.casualties = [] as unknown as typeof payload.casualties;
 
-  for (const sp of det.spawn_pins) {
+  for (const sp of det.spawn_pins ?? []) {
     const parentHazard = payload.hazards!.find(
       (h) => ((h as Record<string, unknown>).label ?? h.hazard_type) === sp.parent_pin_label,
     );
