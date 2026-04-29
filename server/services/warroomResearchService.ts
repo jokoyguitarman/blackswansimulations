@@ -1739,45 +1739,68 @@ Return valid JSON:
   "patient_deterioration_notes": "..."
 }`;
 
-  try {
-    const response = await fetchWithRetry(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${openAiApiKey}`,
+  const MAX_ATTEMPTS = 2;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const response = await fetchWithRetry(
+        'https://api.openai.com/v1/chat/completions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${openAiApiKey}`,
+          },
+          body: JSON.stringify({
+            model: 'gpt-5.1',
+            messages: [
+              {
+                role: 'system',
+                content:
+                  'You are a hazardous materials and emergency medicine expert. Return ONLY valid JSON. No markdown, no explanations, no code fences. Start your response with { and end with }.',
+              },
+              { role: 'user', content: prompt },
+            ],
+            max_tokens: 10000,
+          }),
         },
-        body: JSON.stringify({
-          model: SEARCH_MODEL,
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: 10000,
-        }),
-      },
-      'deterioration-physics',
-    );
+        'deterioration-physics',
+      );
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      const msg = (err as { error?: { message?: string } }).error?.message || response.statusText;
-      logger.warn({ status: response.status, msg }, 'Deterioration research failed (non-blocking)');
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        const msg = (err as { error?: { message?: string } }).error?.message || response.statusText;
+        logger.warn(
+          { status: response.status, msg, attempt },
+          'Deterioration research failed (non-blocking)',
+        );
+        if (attempt < MAX_ATTEMPTS) continue;
+        return null;
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content;
+      if (typeof content !== 'string') {
+        if (attempt < MAX_ATTEMPTS) continue;
+        return null;
+      }
+
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        logger.warn(
+          { attempt, contentLength: content.length },
+          'Deterioration research returned non-JSON content, retrying',
+        );
+        if (attempt < MAX_ATTEMPTS) continue;
+        return null;
+      }
+      return JSON.parse(jsonMatch[0]) as DeteriorationResearch;
+    } catch (err) {
+      logger.warn({ err, attempt }, 'Deterioration research error');
+      if (attempt < MAX_ATTEMPTS) continue;
       return null;
     }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') return null;
-
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      logger.warn('Deterioration research returned non-JSON content');
-      return null;
-    }
-    return JSON.parse(jsonMatch[0]) as DeteriorationResearch;
-  } catch (err) {
-    logger.warn({ err }, 'Deterioration research error');
-    return null;
   }
+  return null;
 }
 
 /**
