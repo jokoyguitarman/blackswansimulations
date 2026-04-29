@@ -1004,8 +1004,12 @@ router.post(
       if (draft.created_by && draft.created_by !== user.id && user.role !== 'admin') {
         return res.status(403).json({ error: 'Access denied' });
       }
+      // Allow re-compilation: if draft already has a scenario_id, clear it so a new scenario is created
       if (draft.scenario_id) {
-        return res.json({ data: { scenarioId: draft.scenario_id, draft_id: draftId } });
+        await supabaseAdmin
+          .from('warroom_wizard_drafts')
+          .update({ scenario_id: null, status: 'draft' })
+          .eq('id', draftId);
       }
       if (!draft.geo_result) return res.status(400).json({ error: 'Draft is missing geo_result' });
       if (!draft.phase1_preview)
