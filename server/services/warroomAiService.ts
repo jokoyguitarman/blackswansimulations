@@ -1863,7 +1863,7 @@ async function callOpenAi<T>(
   systemPrompt: string,
   userPrompt: string,
   openAiApiKey: string,
-  maxTokens = 4000,
+  maxTokens = 10000,
   temperature = 0.7,
   _retryCount = 0,
 ): Promise<T> {

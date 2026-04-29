@@ -323,9 +323,9 @@ ${dossier.slice(0, 24000)}
         Authorization: `Bearer ${openAiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5.1',
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 2200,
+        max_tokens: 10000,
         temperature: 0.2,
       }),
     });
@@ -392,9 +392,9 @@ Structured area research (may be empty): ${area ? JSON.stringify(area).slice(0, 
         Authorization: `Bearer ${openAiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5.1',
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 1700,
+        max_tokens: 10000,
         temperature: 0.3,
       }),
     });
@@ -451,9 +451,9 @@ ${dossier.slice(0, 20000)}
         Authorization: `Bearer ${openAiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5.1',
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 1200,
+        max_tokens: 10000,
         temperature: 0.2,
       }),
     });
@@ -563,7 +563,7 @@ Focus on: decision gates, time thresholds, role responsibilities, handover proce
             body: JSON.stringify({
               model: SEARCH_MODEL,
               messages: [{ role: 'user', content: prompt }],
-              max_tokens: 8000,
+              max_tokens: 10000,
             }),
           },
           `standards:${team.team_name}`,
@@ -694,9 +694,9 @@ Return ONLY valid JSON — an array:
               Authorization: `Bearer ${openAiApiKey}`,
             },
             body: JSON.stringify({
-              model: 'gpt-4o-mini',
+              model: 'gpt-5.1',
               messages: [{ role: 'user', content: prompt }],
-              max_tokens: 2000,
+              max_tokens: 10000,
               temperature: 0.3,
             }),
           },
@@ -964,7 +964,7 @@ Scenario context: ${scenarioDescription} at ${venueContext}`;
         body: JSON.stringify({
           model: SEARCH_MODEL,
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: 5000,
+          max_tokens: 10000,
         }),
       },
       'similar-cases',
@@ -1364,9 +1364,9 @@ Where values are arrays of standard indices. Every standard must appear in at le
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5.1',
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 500,
+        max_tokens: 10000,
         temperature: 0,
       }),
     });
@@ -1485,7 +1485,7 @@ Return ONLY valid JSON:
         body: JSON.stringify({
           model: SEARCH_MODEL,
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: 5000,
+          max_tokens: 10000,
         }),
       },
       'team-workflows',
@@ -1615,7 +1615,7 @@ Base your response on documented after-action reports and crowd psychology resea
         body: JSON.stringify({
           model: SEARCH_MODEL,
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: 5000,
+          max_tokens: 10000,
         }),
       },
       'crowd-dynamics',
@@ -1751,7 +1751,7 @@ Return valid JSON:
         body: JSON.stringify({
           model: SEARCH_MODEL,
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: 8000,
+          max_tokens: 10000,
         }),
       },
       'deterioration-physics',
