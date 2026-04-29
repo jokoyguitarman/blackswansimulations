@@ -325,7 +325,7 @@ ${dossier.slice(0, 24000)}
       body: JSON.stringify({
         model: 'gpt-5.1',
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 10000,
+        max_completion_tokens: 10000,
         temperature: 0.2,
       }),
     });
@@ -394,7 +394,7 @@ Structured area research (may be empty): ${area ? JSON.stringify(area).slice(0, 
       body: JSON.stringify({
         model: 'gpt-5.1',
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 10000,
+        max_completion_tokens: 10000,
         temperature: 0.3,
       }),
     });
@@ -453,7 +453,7 @@ ${dossier.slice(0, 20000)}
       body: JSON.stringify({
         model: 'gpt-5.1',
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 10000,
+        max_completion_tokens: 10000,
         temperature: 0.2,
       }),
     });
@@ -696,7 +696,7 @@ Return ONLY valid JSON — an array:
             body: JSON.stringify({
               model: 'gpt-5.1',
               messages: [{ role: 'user', content: prompt }],
-              max_tokens: 10000,
+              max_completion_tokens: 10000,
               temperature: 0.3,
             }),
           },
@@ -1366,7 +1366,7 @@ Where values are arrays of standard indices. Every standard must appear in at le
       body: JSON.stringify({
         model: 'gpt-5.1',
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 10000,
+        max_completion_tokens: 10000,
         temperature: 0,
       }),
     });
@@ -1760,7 +1760,7 @@ Return valid JSON:
               },
               { role: 'user', content: prompt },
             ],
-            max_tokens: 10000,
+            max_completion_tokens: 10000,
           }),
         },
         'deterioration-physics',
