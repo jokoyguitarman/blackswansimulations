@@ -293,9 +293,9 @@ export const WarRoom = () => {
     api.warroom
       .wizardDraftList()
       .then(({ data }) => {
-        const active = data.filter((d) => d.status === 'draft' && !d.scenario_id);
-        if (active.length > 0) {
-          setExistingDrafts(active);
+        const allDrafts = data.filter((d) => d.status === 'draft' || d.status === 'persisted');
+        if (allDrafts.length > 0) {
+          setExistingDrafts(allDrafts);
           setShowDraftPicker(true);
         }
       })
@@ -535,21 +535,30 @@ export const WarRoom = () => {
               {existingDrafts.map((draft) => {
                 const input = draft.input || {};
                 const sceneName = (input.scenario_type as string) || 'Unknown';
-                const stepLabel =
-                  STEP_LABELS[draft.current_step as keyof typeof STEP_LABELS] ||
-                  `Step ${draft.current_step}`;
+                const isCompleted = draft.status === 'persisted' || !!draft.scenario_id;
+                const stepLabel = isCompleted
+                  ? 'Compiled'
+                  : STEP_LABELS[draft.current_step as keyof typeof STEP_LABELS] ||
+                    `Step ${draft.current_step}`;
                 const updated = new Date(draft.updated_at).toLocaleString();
                 return (
                   <div
                     key={draft.id}
-                    className="flex items-center justify-between border border-robotic-gray-200 rounded px-3 py-2 hover:bg-robotic-gray-200/20"
+                    className={`flex items-center justify-between border rounded px-3 py-2 hover:bg-robotic-gray-200/20 ${
+                      isCompleted ? 'border-green-700/50' : 'border-robotic-gray-200'
+                    }`}
                   >
                     <div>
                       <div className="text-xs terminal-text text-robotic-yellow/70 capitalize">
                         {sceneName.replace(/_/g, ' ')}
+                        {isCompleted && (
+                          <span className="ml-2 text-[9px] text-green-500 uppercase">
+                            completed
+                          </span>
+                        )}
                       </div>
                       <div className="text-[10px] terminal-text text-robotic-yellow/30">
-                        At: {stepLabel} — Updated: {updated}
+                        {stepLabel} — {updated}
                       </div>
                     </div>
                     <button
@@ -558,9 +567,13 @@ export const WarRoom = () => {
                         setSearchParams({ draft: draft.id }, { replace: true });
                         window.location.reload();
                       }}
-                      className="text-xs terminal-text text-cyan-400 border border-cyan-500/50 px-3 py-1 hover:bg-cyan-900/20"
+                      className={`text-xs terminal-text border px-3 py-1 ${
+                        isCompleted
+                          ? 'text-green-400 border-green-500/50 hover:bg-green-900/20'
+                          : 'text-cyan-400 border-cyan-500/50 hover:bg-cyan-900/20'
+                      }`}
                     >
-                      Resume
+                      {isCompleted ? 'Re-compile' : 'Resume'}
                     </button>
                   </div>
                 );
