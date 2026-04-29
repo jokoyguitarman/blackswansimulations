@@ -11,6 +11,7 @@ export interface ExitDef {
   description: string;
   status: 'open' | 'blocked' | 'congested' | 'unknown';
   photos: string[];
+  exitType?: 'public' | 'service';
 }
 
 export interface SimConfig {

@@ -378,12 +378,17 @@ function drawExits(
     const p1 = toCanvas(ex.center.x - nx * halfW, ex.center.y - ny * halfW, rc);
     const p2 = toCanvas(ex.center.x + nx * halfW, ex.center.y + ny * halfW, rc);
 
+    const isService = ex.exitType === 'service';
+    const exitColor = isService ? '#f97316' : '#22d3ee';
+
     ctx.beginPath();
     ctx.moveTo(p1.cx, p1.cy);
     ctx.lineTo(p2.cx, p2.cy);
-    ctx.strokeStyle = '#22d3ee';
-    ctx.lineWidth = 4;
+    ctx.strokeStyle = exitColor;
+    ctx.lineWidth = isService ? 3 : 4;
+    if (isService) ctx.setLineDash([4, 3]);
     ctx.stroke();
+    if (isService) ctx.setLineDash([]);
 
     const perpX = -ny;
     const perpY = nx;
@@ -392,7 +397,7 @@ function drawExits(
     ctx.beginPath();
     ctx.moveTo(center.cx, center.cy);
     ctx.lineTo(center.cx + perpX * arrowLen, center.cy + perpY * arrowLen);
-    ctx.strokeStyle = '#22d3ee';
+    ctx.strokeStyle = exitColor;
     ctx.lineWidth = 1.5;
     ctx.stroke();
   }

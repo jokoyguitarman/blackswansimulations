@@ -240,6 +240,7 @@ export class PolygonEvacuationEngine {
     let best = this.exits[0]?.id ?? '';
     let bestDist = Infinity;
     for (const e of this.exits) {
+      if (e.exitType === 'service') continue;
       const dx = e.center.x - x;
       const dy = e.center.y - y;
       const d = dx * dx + dy * dy;

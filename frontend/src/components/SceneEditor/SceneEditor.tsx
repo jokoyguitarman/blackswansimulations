@@ -978,6 +978,28 @@ export function SceneEditor({
           },
         ]);
         setActiveMode('select');
+      } else if (activeMode === 'place_service_entry') {
+        const snap = nearestEdge(snapped.pos.x, snapped.pos.y, projectedVerts);
+        const w = 2;
+        const t = snap.t;
+        const edge = projectedVerts[snap.edgeIndex];
+        const next = projectedVerts[(snap.edgeIndex + 1) % projectedVerts.length];
+        const cx2 = edge.x + (next.x - edge.x) * t;
+        const cy2 = edge.y + (next.y - edge.y) * t;
+        setExits((prev) => [
+          ...prev,
+          {
+            id: `service-${++exitIdCounter}`,
+            center: { x: cx2, y: cy2 },
+            width: w,
+            edgeIndex: snap.edgeIndex,
+            description: 'Service entry — staff/responder access only',
+            status: 'unknown' as const,
+            photos: [],
+            exitType: 'service' as const,
+          },
+        ]);
+        setActiveMode('select');
       } else if (activeMode === 'place_blast_site') {
         setBlastSite(snapped.pos);
         setActiveMode('select');
@@ -1718,6 +1740,12 @@ export function SceneEditor({
           className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_exit' ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300' : 'border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50'}`}
         >
           Place Exit
+        </button>
+        <button
+          onClick={() => setActiveMode('place_service_entry')}
+          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_service_entry' ? 'border-orange-400 bg-orange-900/30 text-orange-300' : 'border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50'}`}
+        >
+          Place Service Entry
         </button>
         <button
           onClick={() => setActiveMode('place_blast_site')}
