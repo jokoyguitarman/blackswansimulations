@@ -1867,23 +1867,33 @@ async function callOpenAi<T>(
   temperature = 0.7,
   _retryCount = 0,
 ): Promise<T> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${openAiApiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-5.1',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature,
-      max_completion_tokens: maxTokens,
-      response_format: { type: 'json_object' },
-    }),
-  });
+  const fetchOAI = async () =>
+    fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-5.1',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature,
+        max_completion_tokens: maxTokens,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+  let response = await fetchOAI();
+
+  // Retry on 5xx server errors (OpenAI outages)
+  if (response.status >= 500 && response.status < 600) {
+    logger.warn({ status: response.status }, 'OpenAI 5xx error, retrying after 3s...');
+    await new Promise((r) => setTimeout(r, 3000));
+    response = await fetchOAI();
+  }
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
