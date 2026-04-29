@@ -175,10 +175,6 @@ async function runOverpassQuery(
   way["amenity"="hospital"](around:${radius},${lat},${lng});
   node["healthcare"="hospital"](around:${radius},${lat},${lng});
   way["healthcare"="hospital"](around:${radius},${lat},${lng});
-  node["amenity"="clinic"](around:${radius},${lat},${lng});
-  way["amenity"="clinic"](around:${radius},${lat},${lng});
-  node["healthcare"="centre"](around:${radius},${lat},${lng});
-  way["healthcare"="centre"](around:${radius},${lat},${lng});
   node["building"="hospital"](around:${radius},${lat},${lng});
   way["building"="hospital"](around:${radius},${lat},${lng});
   node["amenity"="police"](around:${radius},${lat},${lng});
@@ -186,8 +182,6 @@ async function runOverpassQuery(
   node["amenity"="fire_station"](around:${radius},${lat},${lng});
   way["amenity"="fire_station"](around:${radius},${lat},${lng});
   way["highway"~"^(primary|secondary|tertiary|trunk|motorway)"](around:${radius},${lat},${lng});
-  node["man_made"="surveillance"](around:${radius},${lat},${lng});
-  node["surveillance:type"="camera"](around:${radius},${lat},${lng});
 );
 out body center;
 `;

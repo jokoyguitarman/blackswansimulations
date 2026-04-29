@@ -429,7 +429,7 @@ export async function stageParseAndGeocode(
     );
     try {
       const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-      const INITIAL_RADIUS_M = 10000;
+      const INITIAL_RADIUS_M = 5000;
       const cachedVicinity = await findCachedOsmVicinity(geocodeResult.lat, geocodeResult.lng);
       let vicinity =
         cachedVicinity ??
@@ -438,7 +438,7 @@ export async function stageParseAndGeocode(
           geocodeResult.lng,
           INITIAL_RADIUS_M,
         ));
-      if (!cachedVicinity) await delay(1500);
+      if (!cachedVicinity) await delay(500);
 
       // Tiered expansion: if fewer than 2 hospitals found, widen search
       if ((vicinity.hospitals?.length ?? 0) < 2) {
@@ -467,9 +467,9 @@ export async function stageParseAndGeocode(
           } catch (err) {
             logger.warn({ err, attempt, radiusM }, 'OSM venue building fetch failed');
           }
-          if (attempt < 5) await delay(2000 * attempt);
+          if (attempt < 5) await delay(1000 * attempt);
         }
-        await delay(1500);
+        await delay(500);
 
         spaces = await fetchOsmOpenSpaces(geocodeResult.lat, geocodeResult.lng, 1500).catch(
           (err) => {
@@ -477,9 +477,9 @@ export async function stageParseAndGeocode(
             return [] as OsmOpenSpace[];
           },
         );
-        await delay(3000);
+        await delay(500);
 
-        routeGeoms = await fetchRouteGeometries(geocodeResult.lat, geocodeResult.lng, 6000).catch(
+        routeGeoms = await fetchRouteGeometries(geocodeResult.lat, geocodeResult.lng, 3000).catch(
           (err) => {
             logger.warn({ err }, 'OSM route geometries fetch failed; continuing without');
             return [] as OsmRouteGeometry[];
