@@ -8059,8 +8059,7 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
     // Step 1: Determine count and place empty pins on blast-zone studs
     // Use distFromIncidentM (from classifyStudZones) but filter by trainer's blast radius
     const [minC, maxC] = pc > 1000 ? [40, 80] : pc > 500 ? [25, 50] : pc > 200 ? [15, 30] : [8, 15];
-    const targetCount = Math.round((minC + maxC) / 2);
-    onProgress?.(`Placing ${targetCount} casualties within ${blastRadiusM}m blast radius...`);
+    let targetCount = Math.round((minC + maxC) / 2);
 
     const killR = blastRadiusM * 0.33;
     const critR = blastRadiusM * 0.66;
@@ -8080,6 +8079,13 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
       return d > critR && d <= blastRadiusM;
     });
     const withinBlast = allStuds.filter((s) => (s.distFromIncidentM ?? 9999) <= blastRadiusM);
+    // Cap casualty count to available studs within blast radius
+    if (withinBlast.length > 0 && targetCount > withinBlast.length) {
+      targetCount = Math.max(5, Math.floor(withinBlast.length * 0.8));
+    }
+    onProgress?.(
+      `Placing ${targetCount} casualties within ${blastRadiusM}m blast radius (${withinBlast.length} studs available)...`,
+    );
     const pool = withinBlast.length >= 5 ? withinBlast : allStuds.slice(0, 50);
 
     const usedIds = new Set<string>();
@@ -8097,10 +8103,13 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
       return pool[Math.floor(Math.random() * pool.length)] ?? null;
     };
 
-    const nKill = Math.round(targetCount * 0.15);
-    const nCritical = Math.round(targetCount * 0.25);
-    const nSerious = Math.round(targetCount * 0.35);
-    const nMinor = targetCount - nKill - nCritical - nSerious;
+    const nKill = Math.min(Math.round(targetCount * 0.15), killStuds.length);
+    const nCritical = Math.min(Math.round(targetCount * 0.25), criticalStuds.length);
+    const nSeriousYellow = Math.min(Math.round(targetCount * 0.35), seriousStuds.length);
+    const nSeriousGreen = Math.min(
+      targetCount - nKill - nCritical - nSeriousYellow,
+      Math.max(seriousStuds.length - nSeriousYellow, 0),
+    );
 
     type PlacedPin = {
       index: number;
@@ -8186,21 +8195,16 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
 
     placeGroup(killStuds, nKill, 'kill', 'black');
     placeGroup(criticalStuds, nCritical, 'amputation', 'red');
-    placeGroup(seriousStuds, Math.round(nSerious * 0.6), 'laceration', 'yellow');
-    placeGroup(
-      seriousStuds.length > 0 ? seriousStuds : pool,
-      Math.round(nSerious * 0.4) + nMinor,
-      'laceration',
-      'green',
-    );
+    placeGroup(seriousStuds, nSeriousYellow, 'laceration', 'yellow');
+    placeGroup(seriousStuds.length > 0 ? seriousStuds : pool, nSeriousGreen, 'laceration', 'green');
 
     logger.info(
       {
         total: placedPins.length,
         kill: nKill,
         critical: nCritical,
-        serious: nSerious,
-        minor: nMinor,
+        seriousYellow: nSeriousYellow,
+        seriousGreen: nSeriousGreen,
         blastRadiusM,
         killR,
         critR,
@@ -8215,7 +8219,7 @@ ${unifiedZones.map((z) => `- ${z.zone_type.toUpperCase()} zone: radius ${z.radiu
     // Step 3: AI batch call to generate descriptions
     onProgress?.(`Generating context-aware descriptions for ${placedPins.length} casualties...`);
 
-    const BATCH_SIZE = 12;
+    const BATCH_SIZE = 6;
     const batches: PlacedPin[][] = [];
     for (let i = 0; i < placedPins.length; i += BATCH_SIZE) {
       batches.push(placedPins.slice(i, i + BATCH_SIZE));
@@ -8316,7 +8320,7 @@ Return JSON:
           systemPrompt,
           contextPrompt(batch),
           openAiApiKey,
-          Math.max(4000, batch.length * 500),
+          Math.max(5000, batch.length * 5000),
         );
         for (const c of result.casualties ?? []) {
           if (c.index) aiResults.set(c.index, c);
