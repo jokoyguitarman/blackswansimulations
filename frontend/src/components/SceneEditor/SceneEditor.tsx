@@ -286,6 +286,20 @@ export function SceneEditor({
   const [fetchLoading, setFetchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Orientation detection — stack vertically when height > width
+  const [isPortrait, setIsPortrait] = useState(
+    () => typeof window !== 'undefined' && window.innerHeight > window.innerWidth,
+  );
+  useEffect(() => {
+    const check = () => setIsPortrait(window.innerHeight > window.innerWidth);
+    window.addEventListener('resize', check);
+    window.addEventListener('orientationchange', check);
+    return () => {
+      window.removeEventListener('resize', check);
+      window.removeEventListener('orientationchange', check);
+    };
+  }, []);
+
   // Draw building mode
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawnBuildingName, setDrawnBuildingName] = useState('');
@@ -1295,9 +1309,13 @@ export function SceneEditor({
   // Map phase: search and select building with map
   if (phase === 'map') {
     return (
-      <div className="flex flex-col md:flex-row h-full gap-2 md:gap-3">
-        {/* Controls panel: scrollable strip above map on narrow, sidebar on wide */}
-        <div className="w-full md:w-80 flex-shrink-0 flex flex-col gap-2 md:gap-3 overflow-y-auto max-h-[40vh] md:max-h-none">
+      <div className={`flex h-full gap-2 ${isPortrait ? 'flex-col' : 'flex-row gap-3'}`}>
+        {/* Controls panel: scrollable strip on top in portrait, sidebar in landscape */}
+        <div
+          className={`flex-shrink-0 flex flex-col gap-2 overflow-y-auto ${
+            isPortrait ? 'w-full max-h-[35vh]' : 'w-80 gap-3'
+          }`}
+        >
           {/* GPS status */}
           {!lat && !lng && (
             <div className="px-3 py-2 bg-cyan-900/20 border border-cyan-500/30 text-xs terminal-text text-cyan-400 animate-pulse">
