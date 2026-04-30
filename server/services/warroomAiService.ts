@@ -1823,7 +1823,7 @@ Return ONLY valid JSON: { "team_name": "operational" | "non_operational" } for e
   return fallback;
 }
 
-function repairTruncatedJson(raw: string): string {
+export function repairTruncatedJson(raw: string): string {
   let s = raw.trim();
   // Strip trailing commas before we close brackets
   s = s.replace(/,\s*$/, '');

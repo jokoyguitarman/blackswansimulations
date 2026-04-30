@@ -260,18 +260,24 @@ export async function persistWarroomScenario(
     }
 
     if (objectives.length > 0) {
-      const { error: objError } = await supabaseAdmin.from('scenario_objectives').insert(
-        objectives.map((o) => ({
-          scenario_id: scenarioId,
-          objective_id:
-            o.objective_id || o.objective_name.toLowerCase().replace(new RegExp('\\s+', 'g'), '_'),
-          objective_name: o.objective_name,
-          description: o.description,
-          weight: o.weight ?? 25,
-          success_criteria: o.success_criteria ?? {},
-        })),
+      const validObjectives = objectives.filter(
+        (o) => o.objective_name != null && typeof o.objective_name === 'string',
       );
-      if (objError) throw new Error(`scenario_objectives: ${objError.message}`);
+      if (validObjectives.length > 0) {
+        const { error: objError } = await supabaseAdmin.from('scenario_objectives').insert(
+          validObjectives.map((o) => ({
+            scenario_id: scenarioId,
+            objective_id:
+              o.objective_id ||
+              o.objective_name.toLowerCase().replace(new RegExp('\\s+', 'g'), '_'),
+            objective_name: o.objective_name,
+            description: o.description || '',
+            weight: o.weight ?? 25,
+            success_criteria: o.success_criteria ?? {},
+          })),
+        );
+        if (objError) throw new Error(`scenario_objectives: ${objError.message}`);
+      }
     }
 
     if (locations && locations.length > 0) {

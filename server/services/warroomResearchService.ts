@@ -1793,7 +1793,19 @@ Return valid JSON:
         if (attempt < MAX_ATTEMPTS) continue;
         return null;
       }
-      return JSON.parse(jsonMatch[0]) as DeteriorationResearch;
+      try {
+        return JSON.parse(jsonMatch[0]) as DeteriorationResearch;
+      } catch {
+        try {
+          const { repairTruncatedJson } = await import('./warroomAiService.js');
+          const repaired = repairTruncatedJson(jsonMatch[0]);
+          return JSON.parse(repaired) as DeteriorationResearch;
+        } catch (parseErr) {
+          logger.warn({ parseErr, attempt }, 'Deterioration JSON repair failed');
+          if (attempt < MAX_ATTEMPTS) continue;
+          return null;
+        }
+      }
     } catch (err) {
       logger.warn({ err, attempt }, 'Deterioration research error');
       if (attempt < MAX_ATTEMPTS) continue;
