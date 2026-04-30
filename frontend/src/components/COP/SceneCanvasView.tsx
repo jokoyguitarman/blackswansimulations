@@ -508,9 +508,9 @@ export function SceneCanvasView({
             exits,
             pedestrians,
             true,
-            wallPoints,
-            activeWallPoint?.id ?? null,
-            new Set(plantedItems.map((p) => p.wallPointId as string)),
+            [],
+            null,
+            new Set<string>(),
             new Set(),
             [],
             null,
@@ -892,6 +892,41 @@ export function SceneCanvasView({
               </Marker>
             );
           })}
+          {/* Wall inspection point markers (Leaflet DivIcon) */}
+          {wallPoints
+            .filter((wp) => wp.lat != null && wp.lng != null)
+            .map((wp) => {
+              const hasPlanted = plantedItems.some((p) => p.wallPointId === wp.id);
+              const bg = hasPlanted ? '#ef4444' : '#06b6d4';
+              const iconKey = hasPlanted ? 'bomb' : 'camera';
+              return (
+                <Marker
+                  key={`wp-${wp.id}`}
+                  position={[wp.lat, wp.lng]}
+                  zIndexOffset={1800}
+                  icon={
+                    new DivIcon({
+                      className: '',
+                      html: `<div style="background:${bg};width:22px;height:22px;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer">${svg(iconKey, 12)}</div>`,
+                      iconSize: [22, 22],
+                      iconAnchor: [11, 11],
+                    })
+                  }
+                  eventHandlers={{
+                    click: () => {
+                      setActiveWallPoint(wp);
+                      setActiveCasualtyPin(null);
+                      setActiveLocation(null);
+                      setActiveHazard(null);
+                    },
+                  }}
+                >
+                  <Tooltip className="pin-tooltip">
+                    <span className="text-xs">{hasPlanted ? 'Planted Device' : 'Wall Point'}</span>
+                  </Tooltip>
+                </Marker>
+              );
+            })}
         </MapContainer>
         <canvas
           ref={canvasRef}
