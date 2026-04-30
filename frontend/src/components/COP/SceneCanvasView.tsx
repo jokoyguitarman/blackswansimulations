@@ -3,6 +3,9 @@ import { MapContainer, TileLayer, Polygon, Marker, Tooltip, useMap } from 'react
 import L, { DivIcon } from 'leaflet';
 import { api } from '../../lib/api';
 import { projectPolygon } from '../../lib/evacuation/geometry';
+import { fetchStreetViewImage } from '../../lib/rts/wallInspection';
+
+const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 import { PolygonEvacuationEngine } from '../../lib/evacuation/engine';
 import type { PedSnapshot } from '../../lib/evacuation/engine';
 import { DEFAULT_POLYGON_CONFIG } from '../../lib/evacuation/types';
@@ -102,6 +105,8 @@ export function SceneCanvasView({
   }> | null>(null);
   const [activeCasualtyPin, setActiveCasualtyPin] = useState<CasualtyPin | null>(null);
   const [activeWallPoint, setActiveWallPoint] = useState<WallInspectionPoint | null>(null);
+  const [wallPointImage, setWallPointImage] = useState<string | null>(null);
+  const [wallPointLoading, setWallPointLoading] = useState(false);
   const [activeLocation, setActiveLocation] = useState<SimLocation | null>(null);
   const [activeHazard, setActiveHazard] = useState<HazardZone | null>(null);
   const [plantedItems, setPlantedItems] = useState<Array<Record<string, unknown>>>([]);
@@ -408,6 +413,34 @@ export function SceneCanvasView({
     if (!sceneConfig?.wall_inspection_points) return [];
     return sceneConfig.wall_inspection_points as unknown as WallInspectionPoint[];
   }, [sceneConfig]);
+
+  // Fetch Street View photo on demand when wall point is selected
+  useEffect(() => {
+    if (!activeWallPoint || !GOOGLE_MAPS_KEY) {
+      setWallPointImage(null);
+      return;
+    }
+    if (activeWallPoint.imageUrl) {
+      setWallPointImage(activeWallPoint.imageUrl);
+      return;
+    }
+    let cancelled = false;
+    setWallPointLoading(true);
+    setWallPointImage(null);
+    fetchStreetViewImage(activeWallPoint, GOOGLE_MAPS_KEY).then((dataUrl) => {
+      if (cancelled) return;
+      if (dataUrl) {
+        activeWallPoint.imageUrl = dataUrl;
+        activeWallPoint.cached = true;
+        activeWallPoint.imageSource = 'streetview';
+        setWallPointImage(dataUrl);
+      }
+      setWallPointLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWallPoint]);
 
   const setLeafletMap = useCallback((map: L.Map) => {
     leafletMapRef.current = map;
@@ -1049,14 +1082,22 @@ export function SceneCanvasView({
               </button>
             </div>
             <div className="p-3">
-              {activeWallPoint.imageUrl ? (
+              {wallPointLoading ? (
+                <div className="flex items-center justify-center h-44 text-xs text-cyan-400 animate-pulse">
+                  Loading Street View...
+                </div>
+              ) : wallPointImage || activeWallPoint.imageUrl ? (
                 <img
-                  src={activeWallPoint.imageUrl}
+                  src={wallPointImage || activeWallPoint.imageUrl || ''}
                   alt="Wall point"
                   className="w-full rounded border border-gray-700"
                 />
               ) : (
-                <p className="text-xs text-gray-500">No photo available</p>
+                <p className="text-xs text-gray-500">
+                  {GOOGLE_MAPS_KEY
+                    ? 'No Street View coverage at this location'
+                    : 'No Google Maps API key configured'}
+                </p>
               )}
               <div className="mt-2 text-[10px] text-gray-400">
                 Heading: {Math.round(activeWallPoint.heading || 0)}°
