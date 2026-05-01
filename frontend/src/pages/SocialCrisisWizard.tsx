@@ -207,7 +207,7 @@ export const SocialCrisisWizard = () => {
       });
       if (res.ok) {
         const json = await res.json();
-        setCommunities(json.data?.communities || json.communities || []);
+        setCommunities(Array.isArray(json.data) ? json.data : json.data?.communities || []);
       }
     } catch {
       /* fallback below */
@@ -230,7 +230,7 @@ export const SocialCrisisWizard = () => {
       });
       if (res.ok) {
         const json = await res.json();
-        setTeams(json.data?.teams || json.teams || []);
+        setTeams(Array.isArray(json.data) ? json.data : json.data?.teams || []);
       }
     } catch {
       /* use fallback */
@@ -282,7 +282,7 @@ export const SocialCrisisWizard = () => {
       });
       if (res.ok) {
         const json = await res.json();
-        setSop(json.data?.sop || json.sop || json.data || null);
+        setSop(json.data?.steps ? json.data : json.data?.sop || null);
       }
     } catch {
       /* fallback */
@@ -309,11 +309,11 @@ export const SocialCrisisWizard = () => {
       ]);
       if (pRes.ok) {
         const pJson = await pRes.json();
-        setPersonas(pJson.data?.personas || pJson.personas || []);
+        setPersonas(Array.isArray(pJson.data) ? pJson.data : pJson.data?.personas || []);
       }
       if (fRes.ok) {
         const fJson = await fRes.json();
-        setFactSheet(fJson.data?.fact_sheet || fJson.fact_sheet || fJson.data || null);
+        setFactSheet(fJson.data?.confirmed_facts ? fJson.data : fJson.data?.fact_sheet || null);
       }
     } catch {
       /* fallback */
