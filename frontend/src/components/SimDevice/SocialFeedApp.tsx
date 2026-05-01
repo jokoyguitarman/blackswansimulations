@@ -291,27 +291,28 @@ export default function SocialFeedApp() {
                     </p>
 
                     {/* Content Flags */}
-                    {post.content_flags &&
-                      (post.content_flags.is_hate_speech ||
-                        post.content_flags.is_misinformation) && (
-                        <div className="flex gap-1 mt-2">
-                          {!!post.content_flags.is_hate_speech && (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-red-900 text-red-300 rounded">
-                              Hate Speech
-                            </span>
-                          )}
-                          {!!post.content_flags.is_misinformation && (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-orange-900 text-orange-300 rounded">
-                              Misinformation
-                            </span>
-                          )}
-                          {!!post.content_flags.is_racist && (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-red-900 text-red-300 rounded">
-                              Racist
-                            </span>
-                          )}
-                        </div>
-                      )}
+                    {!!(
+                      post.content_flags &&
+                      (post.content_flags.is_hate_speech || post.content_flags.is_misinformation)
+                    ) && (
+                      <div className="flex gap-1 mt-2">
+                        {!!post.content_flags.is_hate_speech && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-red-900 text-red-300 rounded">
+                            Hate Speech
+                          </span>
+                        )}
+                        {!!post.content_flags.is_misinformation && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-orange-900 text-orange-300 rounded">
+                            Misinformation
+                          </span>
+                        )}
+                        {!!post.content_flags.is_racist && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-red-900 text-red-300 rounded">
+                            Racist
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {/* Actions */}
                     <div className="flex items-center gap-6 mt-3 text-gray-500">
