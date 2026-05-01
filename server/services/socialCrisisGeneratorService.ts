@@ -181,7 +181,7 @@ async function callAI(
           { role: 'user', content: userPrompt },
         ],
         temperature,
-        max_tokens: maxTokens,
+        max_completion_tokens: maxTokens,
         response_format: { type: 'json_object' },
       }),
     });

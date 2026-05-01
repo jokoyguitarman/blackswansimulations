@@ -94,7 +94,7 @@ Return ONLY valid JSON:
           },
         ],
         temperature: 0.4,
-        max_tokens: 600,
+        max_completion_tokens: 600,
         response_format: { type: 'json_object' },
       }),
     });

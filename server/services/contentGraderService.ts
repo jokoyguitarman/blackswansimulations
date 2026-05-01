@@ -73,7 +73,7 @@ Return ONLY valid JSON:
           { role: 'user', content: `Grade this response:\n\n${playerContent}` },
         ],
         temperature: 0.3,
-        max_tokens: 1024,
+        max_completion_tokens: 1024,
         response_format: { type: 'json_object' },
       }),
     });
