@@ -31,38 +31,47 @@ interface TeamDef {
 }
 
 interface SocialInject {
-  inject_id: string;
-  team: string;
+  trigger_time_minutes?: number;
   type: string;
   title: string;
-  description: string;
-  trigger_time_minutes: number;
-  platform?: string;
-  author_handle?: string;
-  severity?: string;
+  content: string;
+  severity: string;
+  inject_scope: string;
+  target_teams: string[];
+  requires_response?: boolean;
+  response_deadline_minutes?: number;
+  delivery_config?: Record<string, unknown>;
+  conditions_to_appear?: unknown;
+  conditions_to_cancel?: string[];
+  eligible_after_minutes?: number;
 }
 
-interface ConvergenceGate {
-  gate_id: string;
-  title: string;
+interface ObjectiveDef {
+  objective_id: string;
+  objective_name: string;
   description: string;
-  trigger_time_minutes: number;
-  required_teams: string[];
-  conditions: string[];
-}
-
-interface ResearchGuideline {
-  category: string;
-  title: string;
-  source?: string;
-  summary: string;
-  recommendations: string[];
+  weight: number;
 }
 
 interface ResearchGuidelines {
-  guidelines: ResearchGuideline[];
-  best_practices: string[];
-  case_studies: string[];
+  per_team: Array<{
+    team_name: string;
+    guidelines: Array<{
+      guideline_id: string;
+      best_practice: string;
+      source_basis: string;
+      timing_window?: string;
+      if_violated: string;
+      if_followed: string;
+      detection_signals: string[];
+    }>;
+  }>;
+  group_wide: {
+    coordination_guidelines: string[];
+    escalation_protocols: string[];
+    timing_benchmarks: Record<string, number>;
+    case_studies: Array<{ name: string; summary: string; lessons: string[] }>;
+  };
 }
 
 /* ─── Constants ─────────────────────────────────────────────────────── */
@@ -196,9 +205,13 @@ export const SocialCrisisWizard = () => {
 
   /* Step 5 — Convergence + Shared Chaos */
   const [sharedInjects, setSharedInjects] = useState<SocialInject[]>([]);
-  const [convergenceGates, setConvergenceGates] = useState<ConvergenceGate[]>([]);
-  const [narrative, setNarrative] = useState('');
-  const [objectives, setObjectives] = useState<string[]>([]);
+  const [convergenceGates, setConvergenceGates] = useState<SocialInject[]>([]);
+  const [narrative, setNarrative] = useState<{
+    title: string;
+    description: string;
+    briefing: string;
+  } | null>(null);
+  const [objectives, setObjectives] = useState<ObjectiveDef[]>([]);
   const [step5Loading, setStep5Loading] = useState(false);
   const [step5Error, setStep5Error] = useState<string | null>(null);
 
@@ -428,7 +441,8 @@ export const SocialCrisisWizard = () => {
         body: JSON.stringify({
           crisis_type: crisisType,
           communities,
-          personas: personas.map((p) => ({ handle: p.handle, type: p.type })),
+          context: effectiveContext,
+          country,
         }),
       });
       if (res.ok) {
@@ -442,7 +456,7 @@ export const SocialCrisisWizard = () => {
       setStep3Error('Network error suggesting teams.');
     }
     setStep3Loading(false);
-  }, [crisisType, communities, personas]);
+  }, [crisisType, communities, effectiveContext, country]);
 
   const generateStorylines = useCallback(async () => {
     if (!crisisType || teams.length === 0) return;
@@ -484,21 +498,13 @@ export const SocialCrisisWizard = () => {
             if (!line.trim()) continue;
             try {
               const msg = JSON.parse(line);
-              if (msg.type === 'progress' && msg.message) {
-                setStep4Progress((prev) => [...prev, msg.message]);
-              } else if (
-                msg.type === 'team_storyline' &&
-                msg.team_name &&
-                Array.isArray(msg.injects)
-              ) {
-                setTeamStorylines((prev) => ({
-                  ...prev,
-                  [String(msg.team_name)]: msg.injects,
-                }));
+              if (msg.type === 'team_complete') {
                 setStep4Progress((prev) => [
                   ...prev,
-                  `Generated ${msg.injects.length} injects for ${String(msg.team_name)}`,
+                  `Generated ${Number(msg.inject_count)} injects for ${String(msg.team)}`,
                 ]);
+              } else if (msg.type === 'complete' && msg.storylines) {
+                setTeamStorylines(msg.storylines);
               } else if (msg.type === 'error') {
                 setStep4Error(String(msg.message || 'Storyline generation failed'));
               }
@@ -542,10 +548,12 @@ export const SocialCrisisWizard = () => {
       if (res.ok) {
         const json = await res.json();
         const d = json.data || json;
-        if (Array.isArray(d.shared_injects)) setSharedInjects(d.shared_injects);
-        if (Array.isArray(d.convergence_gates)) setConvergenceGates(d.convergence_gates);
-        if (d.narrative) setNarrative(String(d.narrative));
-        if (Array.isArray(d.objectives)) setObjectives(d.objectives.map(String));
+        const si = d.sharedInjects || d.shared_injects;
+        if (Array.isArray(si)) setSharedInjects(si);
+        const cg = d.convergenceGates || d.convergence_gates;
+        if (Array.isArray(cg)) setConvergenceGates(cg);
+        if (d.narrative && typeof d.narrative === 'object') setNarrative(d.narrative);
+        if (Array.isArray(d.objectives)) setObjectives(d.objectives);
       } else {
         setStep5Error('Failed to generate convergence. Try again.');
       }
@@ -579,11 +587,9 @@ export const SocialCrisisWizard = () => {
         headers,
         body: JSON.stringify({
           crisis_type: crisisType,
-          location,
-          country,
           context: effectiveContext,
-          communities,
-          teams: teams.map((t) => t.team_name),
+          teams,
+          team_storylines: teamStorylines,
         }),
       });
 
@@ -591,9 +597,6 @@ export const SocialCrisisWizard = () => {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        const accGuidelines: ResearchGuideline[] = [];
-        const accBestPractices: string[] = [];
-        const accCaseStudies: string[] = [];
 
         while (true) {
           const { done, value } = await reader.read();
@@ -606,31 +609,10 @@ export const SocialCrisisWizard = () => {
             if (!line.trim()) continue;
             try {
               const msg = JSON.parse(line);
-              if (msg.type === 'progress' && msg.message) {
-                setStep6Progress((prev) => [...prev, msg.message]);
-              } else if (msg.type === 'guideline' && msg.data) {
-                accGuidelines.push(msg.data);
-                setResearch({
-                  guidelines: [...accGuidelines],
-                  best_practices: [...accBestPractices],
-                  case_studies: [...accCaseStudies],
-                });
-              } else if (msg.type === 'best_practice' && msg.data) {
-                accBestPractices.push(String(msg.data));
-                setResearch({
-                  guidelines: [...accGuidelines],
-                  best_practices: [...accBestPractices],
-                  case_studies: [...accCaseStudies],
-                });
-              } else if (msg.type === 'case_study' && msg.data) {
-                accCaseStudies.push(String(msg.data));
-                setResearch({
-                  guidelines: [...accGuidelines],
-                  best_practices: [...accBestPractices],
-                  case_studies: [...accCaseStudies],
-                });
-              } else if (msg.type === 'complete' && msg.data) {
-                setResearch(msg.data);
+              if (msg.type === 'team_research_complete') {
+                setStep6Progress((prev) => [...prev, `Completed research for ${String(msg.team)}`]);
+              } else if (msg.type === 'complete' && msg.research) {
+                setResearch(msg.research);
               } else if (msg.type === 'error') {
                 setStep6Error(String(msg.message || 'Research generation failed'));
               }
@@ -639,14 +621,6 @@ export const SocialCrisisWizard = () => {
             }
           }
         }
-
-        if (accGuidelines.length > 0 && !research) {
-          setResearch({
-            guidelines: accGuidelines,
-            best_practices: accBestPractices,
-            case_studies: accCaseStudies,
-          });
-        }
       } else {
         setStep6Error('Failed to generate research.');
       }
@@ -654,7 +628,7 @@ export const SocialCrisisWizard = () => {
       setStep6Error('Network error generating research.');
     }
     setStep6Loading(false);
-  }, [crisisType, location, country, effectiveContext, communities, teams, research]);
+  }, [crisisType, effectiveContext, teams, teamStorylines]);
 
   const compileScenario = useCallback(async () => {
     if (!crisisType) return;
@@ -670,57 +644,34 @@ export const SocialCrisisWizard = () => {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          crisis_type: crisisType,
-          location,
-          country,
-          context: effectiveContext,
-          communities,
+          narrative,
           teams,
+          objectives,
           personas,
           fact_sheet: factSheet,
+          communities,
           team_storylines: teamStorylines,
           shared_injects: sharedInjects,
           convergence_gates: convergenceGates,
-          narrative,
-          objectives,
           research,
+          duration: 60,
         }),
       });
 
-      if (res.ok && res.body) {
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const msg = JSON.parse(line);
-              if (msg.type === 'progress' && msg.message) {
-                addProgress(msg.message);
-              } else if (msg.type === 'complete' && msg.scenario_id) {
-                setScenarioId(String(msg.scenario_id));
-                if (msg.title) setScenarioTitle(String(msg.title));
-                addProgress(
-                  `Scenario created successfully! ID: ${String(msg.scenario_id).slice(0, 8)}`,
-                );
-              } else if (msg.type === 'error') {
-                addProgress(`Error: ${String(msg.message || 'Compilation failed')}`);
-              }
-            } catch {
-              /* skip malformed */
-            }
+      if (res.ok) {
+        const json = await res.json();
+        const d = json.data;
+        if (d) {
+          setScenarioId(String(d.scenario_id));
+          if (d.title) setScenarioTitle(String(d.title));
+          addProgress(`Scenario created successfully! ID: ${String(d.scenario_id).slice(0, 8)}`);
+          if (d.inject_count != null) {
+            addProgress(`Total injects: ${Number(d.inject_count)}`);
           }
         }
       } else {
-        addProgress('Error: Failed to compile scenario.');
+        const errJson = await res.json().catch(() => null);
+        addProgress(`Error: ${errJson?.error || 'Failed to compile scenario.'}`);
       }
     } catch {
       addProgress('Error: Network error during compilation.');
