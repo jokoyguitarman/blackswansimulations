@@ -159,6 +159,39 @@ async function callAI(
   }
 }
 
+const FALLBACK_COMMUNITIES: Record<string, string[]> = {
+  racial_tension: [
+    'Targeted ethnic minority community',
+    'Mixed-race families and individuals',
+    'Community leaders and advocacy groups',
+  ],
+  religious_incident: [
+    'Targeted religious community',
+    'Interfaith organizations',
+    'Religious minority youth',
+  ],
+  xenophobic_attack: [
+    'Foreign worker community',
+    'Migrant families and dependents',
+    'Employers of foreign workers',
+  ],
+  terror_aftermath: [
+    'Muslim community',
+    'South Asian community',
+    'Interfaith and community harmony groups',
+  ],
+  police_incident: [
+    'Targeted minority community',
+    'Civil rights advocacy groups',
+    'Law enforcement families',
+  ],
+  fake_news_spiral: [
+    'Targeted ethnic community',
+    'Small business owners from targeted community',
+    'Parents and students from targeted community',
+  ],
+};
+
 export async function suggestAffectedCommunities(
   crisisType: string,
   context: string,
@@ -167,14 +200,15 @@ export async function suggestAffectedCommunities(
   const result = await callAI(
     `You are an expert in social cohesion and racial harmony crisis management. Given a crisis event, suggest which communities or demographic groups are most likely to be targeted by hate speech, misinformation, or scapegoating on social media in the aftermath.
 
-Consider the country context and typical social media dynamics. Return 2-5 communities.
+Consider the country context and typical social media dynamics. Return 2-5 specific, named communities — not generic labels like "minority group" but concrete groups relevant to the crisis and country (e.g. "Muslim community", "South Asian migrant workers", "Indonesian domestic workers").
 
 Return ONLY valid JSON: { "communities": ["community1", "community2", ...] }`,
     `Crisis type: ${crisisType}\nCountry: ${country}\nAdditional context: ${context || 'None'}`,
     512,
   );
   return (
-    (result?.communities as string[]) || ['Affected minority community', 'Immigrant community']
+    (result?.communities as string[]) ||
+    FALLBACK_COMMUNITIES[crisisType] || ['Affected community', 'Advocacy groups']
   );
 }
 

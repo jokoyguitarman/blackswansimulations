@@ -104,6 +104,39 @@ const CRISIS_TYPES = [
   },
 ];
 
+const CRISIS_FALLBACK_COMMUNITIES: Record<string, string[]> = {
+  racial_tension: [
+    'Targeted ethnic minority community',
+    'Mixed-race families and individuals',
+    'Community leaders and advocacy groups',
+  ],
+  religious_incident: [
+    'Targeted religious community',
+    'Interfaith organizations',
+    'Religious minority youth',
+  ],
+  xenophobic_attack: [
+    'Foreign worker community',
+    'Migrant families and dependents',
+    'Employers of foreign workers',
+  ],
+  terror_aftermath: [
+    'Muslim community',
+    'South Asian community',
+    'Interfaith and community harmony groups',
+  ],
+  police_incident: [
+    'Targeted minority community',
+    'Civil rights advocacy groups',
+    'Law enforcement families',
+  ],
+  fake_news_spiral: [
+    'Targeted ethnic community',
+    'Small business owners from targeted community',
+    'Parents and students from targeted community',
+  ],
+};
+
 const STEP_LABELS: Record<number, string> = {
   1: 'Crisis Event',
   2: 'Communities',
@@ -330,7 +363,9 @@ export const SocialCrisisWizard = () => {
       /* fallback below */
     }
     if (communities.length === 0) {
-      setCommunities(['Affected minority community', 'Immigrant community']);
+      setCommunities(
+        CRISIS_FALLBACK_COMMUNITIES[crisisType] || ['Affected community', 'Advocacy groups'],
+      );
     }
     setCommunitiesLoading(false);
   }, [crisisType, effectiveContext, country, communities.length]);
