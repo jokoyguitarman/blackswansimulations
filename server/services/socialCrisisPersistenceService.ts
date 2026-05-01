@@ -61,28 +61,33 @@ export async function persistSocialCrisisScenario(
     }
 
     if (objectives.length > 0) {
-      const { error: objErr } = await supabaseAdmin.from('scenario_objectives').insert(
-        objectives.map((o) => ({
-          scenario_id: scenarioId,
-          objective_id: o.objective_id,
-          objective_name: o.objective_name,
-          description: o.description,
-          weight: o.weight,
-          success_criteria: o.success_criteria || {},
-        })),
-      );
-      if (objErr) throw new Error(`scenario_objectives: ${objErr.message}`);
+      const validObjectives = objectives.filter((o) => o.objective_name);
+      if (validObjectives.length > 0) {
+        const { error: objErr } = await supabaseAdmin.from('scenario_objectives').insert(
+          validObjectives.map((o) => ({
+            scenario_id: scenarioId,
+            objective_id: o.objective_id || o.objective_name.toLowerCase().replace(/\s+/g, '_'),
+            objective_name: o.objective_name,
+            description: o.description || '',
+            weight: o.weight || 25,
+            success_criteria: o.success_criteria || {},
+          })),
+        );
+        if (objErr) throw new Error(`scenario_objectives: ${objErr.message}`);
+      }
     }
 
-    const { error: sopErr } = await supabaseAdmin.from('sop_definitions').insert({
-      scenario_id: scenarioId,
-      sop_name: sop.sop_name,
-      description: sop.description,
-      steps: sop.steps,
-      response_time_limit_minutes: sop.response_time_limit_minutes,
-      content_guidelines: sop.content_guidelines,
-    });
-    if (sopErr) logger.warn({ error: sopErr }, 'SOP insert failed (non-critical)');
+    if (sop) {
+      const { error: sopErr } = await supabaseAdmin.from('sop_definitions').insert({
+        scenario_id: scenarioId,
+        sop_name: sop.sop_name,
+        description: sop.description,
+        steps: sop.steps,
+        response_time_limit_minutes: sop.response_time_limit_minutes,
+        content_guidelines: sop.content_guidelines,
+      });
+      if (sopErr) logger.warn({ error: sopErr }, 'SOP insert failed (non-critical)');
+    }
 
     const allInjects = [
       ...time_injects.map((inj) => ({
@@ -95,7 +100,7 @@ export async function persistSocialCrisisScenario(
         inject_scope: sanitizeScope(inj.inject_scope),
         target_teams: inj.target_teams || [],
         requires_response: inj.requires_response || false,
-        delivery_config: inj.delivery_config,
+        delivery_config: inj.delivery_config || null,
         conditions_to_appear: null,
         conditions_to_cancel: null,
         eligible_after_minutes: null,
@@ -113,7 +118,7 @@ export async function persistSocialCrisisScenario(
         inject_scope: sanitizeScope(inj.inject_scope),
         target_teams: inj.target_teams || [],
         requires_response: inj.requires_response || false,
-        delivery_config: inj.delivery_config,
+        delivery_config: inj.delivery_config || null,
         conditions_to_appear: inj.conditions_to_appear || null,
         conditions_to_cancel: inj.conditions_to_cancel || null,
         eligible_after_minutes: inj.eligible_after_minutes || null,
@@ -124,8 +129,7 @@ export async function persistSocialCrisisScenario(
       ...decision_injects.map((inj) => ({
         scenario_id: scenarioId,
         trigger_time_minutes: null,
-        trigger_condition:
-          ((inj as unknown as Record<string, unknown>).trigger_condition as string) || null,
+        trigger_condition: inj.trigger_condition || null,
         type: inj.type || 'social_post',
         title: inj.title,
         content: inj.content,
@@ -133,7 +137,7 @@ export async function persistSocialCrisisScenario(
         inject_scope: sanitizeScope(inj.inject_scope),
         target_teams: inj.target_teams || [],
         requires_response: false,
-        delivery_config: inj.delivery_config,
+        delivery_config: inj.delivery_config || null,
         ai_generated: true,
         generation_source: 'war_room',
       })),
@@ -150,8 +154,9 @@ export async function persistSocialCrisisScenario(
         teams: teams.length,
         objectives: objectives.length,
         injects: allInjects.length,
+        hasResearchGuidelines: !!scenario.initial_state.research_guidelines,
       },
-      'Social crisis scenario persisted successfully',
+      'Social crisis scenario V2 persisted successfully',
     );
 
     return scenarioId;

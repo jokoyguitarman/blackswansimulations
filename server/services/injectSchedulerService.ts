@@ -683,6 +683,12 @@ export class InjectSchedulerService {
               .eq('requires_response', true)
               .is('responded_at', null);
 
+            const researchGuidelines =
+              ((session.current_state as Record<string, unknown>)?.research_guidelines as Record<
+                string,
+                unknown
+              >) || undefined;
+
             const result = await shouldCancelSocialInject(
               {
                 title: inject.title ?? '',
@@ -696,6 +702,7 @@ export class InjectSchedulerService {
               })),
               sentiment,
               pendingCount ?? 0,
+              researchGuidelines as Parameters<typeof shouldCancelSocialInject>[4],
             );
             cancelled = result.cancel;
           } else {

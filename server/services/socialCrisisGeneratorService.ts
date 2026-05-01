@@ -1,6 +1,8 @@
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 
+// ─── Types ──────────────────────────────────────────────────────────────────
+
 export interface NPCPersona {
   handle: string;
   name: string;
@@ -8,12 +10,16 @@ export interface NPCPersona {
   personality: string;
   bias: string;
   follower_count: number;
+  backstory: string;
+  posting_pattern: string;
+  specific_claims: string[];
 }
 
 export interface FactSheetEntry {
   claim: string;
   status: 'TRUE' | 'FALSE' | 'UNVERIFIED';
   truth: string;
+  spread_by?: string[];
 }
 
 export interface FactSheet {
@@ -21,34 +27,11 @@ export interface FactSheet {
   unconfirmed_claims: FactSheetEntry[];
 }
 
-export interface SOPStep {
-  step_id: string;
-  name: string;
-  description: string;
-  time_limit_minutes: number;
-}
-
-export interface SOPDefinition {
-  sop_name: string;
-  description: string;
-  steps: SOPStep[];
-  response_time_limit_minutes: number;
-  content_guidelines: {
-    tone: string[];
-    avoid: string[];
-    include: string[];
-    language_sensitivity: string[];
-  };
-}
-
-export interface SentimentCurve {
-  baseline: number;
-  crisis_drop: number;
-  natural_recovery_per_10min: number;
-  good_response_boost: number;
-  poor_response_penalty: number;
-  hate_speech_penalty_per_unaddressed: number;
-  community_engagement_boost: number;
+export interface TeamDef {
+  team_name: string;
+  team_description: string;
+  min_participants: number;
+  max_participants: number;
 }
 
 export interface SocialInjectDeliveryConfig {
@@ -87,6 +70,68 @@ export interface SocialInject {
   conditions_to_cancel?: string[];
   eligible_after_minutes?: number;
   state_effect?: Record<string, unknown>;
+  trigger_condition?: string;
+}
+
+export interface TeamBestPractice {
+  team_name: string;
+  guidelines: Array<{
+    guideline_id: string;
+    best_practice: string;
+    source_basis: string;
+    timing_window?: string;
+    if_violated: string;
+    if_followed: string;
+    detection_signals: string[];
+  }>;
+}
+
+export interface ResearchGuidelines {
+  per_team: TeamBestPractice[];
+  group_wide: {
+    coordination_guidelines: string[];
+    escalation_protocols: string[];
+    timing_benchmarks: Record<string, number>;
+    case_studies: Array<{ name: string; summary: string; lessons: string[] }>;
+  };
+}
+
+export interface SentimentCurve {
+  baseline: number;
+  crisis_drop: number;
+  natural_recovery_per_10min: number;
+  good_response_boost: number;
+  poor_response_penalty: number;
+  hate_speech_penalty_per_unaddressed: number;
+  community_engagement_boost: number;
+}
+
+export interface ObjectiveDef {
+  objective_id: string;
+  objective_name: string;
+  description: string;
+  weight: number;
+  success_criteria?: Record<string, unknown>;
+}
+
+export interface SOPStep {
+  step_id: string;
+  name: string;
+  description: string;
+  time_limit_minutes: number;
+}
+
+export interface SOPDefinition {
+  sop_name: string;
+  description: string;
+  steps: SOPStep[];
+  response_time_limit_minutes: number;
+  content_guidelines: {
+    tone: string[];
+    avoid: string[];
+    include: string[];
+    language_sensitivity: string[];
+  };
 }
 
 export interface SocialCrisisPayload {
@@ -102,26 +147,18 @@ export interface SocialCrisisPayload {
       fact_sheet: FactSheet;
       sentiment_curve: SentimentCurve;
       affected_communities: string[];
+      research_guidelines: ResearchGuidelines;
     };
   };
-  teams: Array<{
-    team_name: string;
-    team_description: string;
-    min_participants: number;
-    max_participants: number;
-  }>;
-  objectives: Array<{
-    objective_id: string;
-    objective_name: string;
-    description: string;
-    weight: number;
-    success_criteria?: Record<string, unknown>;
-  }>;
+  teams: TeamDef[];
+  objectives: ObjectiveDef[];
   sop: SOPDefinition;
   time_injects: SocialInject[];
   condition_injects: SocialInject[];
   decision_injects: SocialInject[];
 }
+
+// ─── AI Helper ──────────────────────────────────────────────────────────────
 
 async function callAI(
   systemPrompt: string,
@@ -148,7 +185,10 @@ async function callAI(
         response_format: { type: 'json_object' },
       }),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      logger.warn({ status: response.status }, 'Social crisis AI call returned non-OK');
+      return null;
+    }
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
     if (!content) return null;
@@ -159,88 +199,94 @@ async function callAI(
   }
 }
 
-const FALLBACK_COMMUNITIES: Record<string, string[]> = {
-  racial_tension: [
-    'Targeted ethnic minority community',
-    'Mixed-race families and individuals',
-    'Community leaders and advocacy groups',
-  ],
-  religious_incident: [
-    'Targeted religious community',
-    'Interfaith organizations',
-    'Religious minority youth',
-  ],
-  xenophobic_attack: [
-    'Foreign worker community',
-    'Migrant families and dependents',
-    'Employers of foreign workers',
-  ],
-  terror_aftermath: [
-    'Muslim community',
-    'South Asian community',
-    'Interfaith and community harmony groups',
-  ],
-  police_incident: [
-    'Targeted minority community',
-    'Civil rights advocacy groups',
-    'Law enforcement families',
-  ],
-  fake_news_spiral: [
-    'Targeted ethnic community',
-    'Small business owners from targeted community',
-    'Parents and students from targeted community',
-  ],
-};
+// ─── Stage 1: NPCs + Fact Sheet + Communities ───────────────────────────────
 
-export async function suggestAffectedCommunities(
+export async function generateNPCsAndFactSheet(
   crisisType: string,
   context: string,
   country: string,
-): Promise<string[]> {
+  location: string,
+): Promise<{ personas: NPCPersona[]; factSheet: FactSheet; communities: string[] }> {
   const result = await callAI(
-    `You are an expert in social cohesion and racial harmony crisis management. Given a crisis event, suggest which communities or demographic groups are most likely to be targeted by hate speech, misinformation, or scapegoating on social media in the aftermath.
+    `You are an expert social media crisis simulation designer. You are creating a CHARACTER BIBLE for a crisis response training exercise.
 
-Consider the country context and typical social media dynamics. Return 2-5 specific, named communities — not generic labels like "minority group" but concrete groups relevant to the crisis and country (e.g. "Muslim community", "South Asian migrant workers", "Indonesian domestic workers").
+Given the crisis event, generate:
 
-Return ONLY valid JSON: { "communities": ["community1", "community2", ...] }`,
-    `Crisis type: ${crisisType}\nCountry: ${country}\nAdditional context: ${context || 'None'}`,
+1. AFFECTED COMMUNITIES: 2-5 specific communities that will be targeted by hate speech and misinformation in this crisis. Name them concretely (e.g. "Malay-Muslim community" not "minority group").
+
+2. NPC PERSONAS: 10-15 fictional social media accounts that will populate the simulation. These are the characters whose posts the response team will encounter. Create a diverse, realistic cast:
+   - 4-5 HOSTILE personas: people spreading hate speech, racist content, calls for violence, scapegoating. Each should have a different angle of attack.
+   - 2-3 FEAR/AMPLIFIER personas: scared people who share unverified info, amplify rumors, demand extreme action out of fear.
+   - 2-3 SUPPORTIVE personas: interfaith leaders, community advocates, reasonable voices calling for calm and unity.
+   - 2 MEDIA personas: news outlets or journalists reporting facts.
+   - 1 WILDCARD: a politician, influencer, or public figure whose stance is ambiguous and can swing either way.
+
+   For EACH persona provide:
+   - handle (e.g. @angry_citizen_42)
+   - name (culturally appropriate display name for the country)
+   - type (npc_public, npc_media, npc_politician, npc_influencer)
+   - personality (2-3 sentence character description)
+   - bias (what prejudice drives them, or "none" for neutral)
+   - follower_count (realistic number)
+   - backstory (2-3 sentences: who they are in real life, why they care about this crisis, what personal stake they have)
+   - posting_pattern (how they behave online: frequency, style, what triggers them to post more)
+   - specific_claims (array of 1-3 specific false claims or narratives THIS persona will push, or empty for factual/supportive personas)
+
+3. FACT SHEET: The ground truth for the simulation.
+   - confirmed_facts: 6-10 facts that emergency services and police have confirmed
+   - unconfirmed_claims: 5-8 false or unverified claims circulating on social media, each with:
+     - claim: what people are saying
+     - status: FALSE or UNVERIFIED
+     - truth: the actual truth
+     - spread_by: array of NPC handles who spread this claim
+
+Country: ${country}
+
+Return ONLY valid JSON:
+{
+  "communities": ["..."],
+  "personas": [{ "handle": "...", "name": "...", "type": "...", "personality": "...", "bias": "...", "follower_count": 0, "backstory": "...", "posting_pattern": "...", "specific_claims": ["..."] }],
+  "fact_sheet": {
+    "confirmed_facts": ["..."],
+    "unconfirmed_claims": [{ "claim": "...", "status": "FALSE", "truth": "...", "spread_by": ["@handle1"] }]
+  }
+}`,
+    `Crisis type: ${crisisType}\nLocation: ${location}, ${country}\nContext: ${context}`,
     8000,
+    0.8,
   );
-  return (
-    (result?.communities as string[]) ||
-    FALLBACK_COMMUNITIES[crisisType] || ['Affected community', 'Advocacy groups']
-  );
+
+  const personas = (result?.personas as NPCPersona[]) || [];
+  const factSheet = (result?.fact_sheet as FactSheet) || {
+    confirmed_facts: [],
+    unconfirmed_claims: [],
+  };
+  const communities = (result?.communities as string[]) || [];
+
+  return { personas, factSheet, communities };
 }
+
+// ─── Stage 2: Teams ─────────────────────────────────────────────────────────
 
 export async function suggestSocialCrisisTeams(
   crisisType: string,
   communities: string[],
-): Promise<
-  Array<{
-    team_name: string;
-    team_description: string;
-    min_participants: number;
-    max_participants: number;
-  }>
-> {
+  context: string,
+  country: string,
+): Promise<TeamDef[]> {
   const result = await callAI(
-    `You are an expert in social media crisis response team structure. Given a crisis event and the communities being targeted online, suggest 4-6 response teams that a racial harmony / social cohesion organization would deploy.
+    `You are an expert in social media crisis response team structure. Given a crisis event, the communities being targeted online, and the country context, suggest 4-6 response teams that a racial harmony / social cohesion organization would deploy.
 
-Each team should have a clear, distinct role in the social media response effort.
+Each team should have a clear, distinct role in the social media response effort. Consider the specific dynamics of this crisis and country when naming and describing teams.
 
 Return ONLY valid JSON:
 { "teams": [{ "team_name": "...", "team_description": "...", "min_participants": 1, "max_participants": 4 }] }`,
-    `Crisis: ${crisisType}\nTargeted communities: ${communities.join(', ')}`,
+    `Crisis: ${crisisType}\nCountry: ${country}\nTargeted communities: ${communities.join(', ')}\nContext: ${context}`,
     8000,
   );
 
   return (
-    (result?.teams as Array<{
-      team_name: string;
-      team_description: string;
-      min_participants: number;
-      max_participants: number;
-    }>) || [
+    (result?.teams as TeamDef[]) || [
       {
         team_name: 'Social Media Monitoring',
         team_description: 'Monitor feeds, flag hate speech and misinformation',
@@ -269,233 +315,187 @@ Return ONLY valid JSON:
   );
 }
 
-export async function generateSOPAndGuidelines(
-  crisisType: string,
-  communities: string[],
-  teams: Array<{ team_name: string }>,
-): Promise<SOPDefinition> {
+// ─── Stage 3: Per-Team Storylines (parallel) ────────────────────────────────
+
+export async function generateTeamStoryline(
+  team: TeamDef,
+  crisisContext: {
+    crisisType: string;
+    location: string;
+    country: string;
+    context: string;
+    duration: number;
+  },
+  npcs: NPCPersona[],
+  factSheet: FactSheet,
+  allTeams: TeamDef[],
+): Promise<SocialInject[]> {
+  const otherTeams = allTeams.filter((t) => t.team_name !== team.team_name);
+  const npcContext = npcs
+    .map(
+      (p) =>
+        `${p.handle} (${p.name}): ${p.type}, ${p.personality}, bias: ${p.bias}, backstory: ${p.backstory}, claims: ${p.specific_claims.join('; ')}`,
+    )
+    .join('\n');
+  const factsContext = `Confirmed: ${factSheet.confirmed_facts.join('; ')}\nFalse claims: ${factSheet.unconfirmed_claims.map((c) => `"${c.claim}" (${c.status}) - spread by ${(c.spread_by || []).join(', ')}`).join('; ')}`;
+
   const result = await callAI(
-    `You are an expert in crisis communication SOPs for racial harmony organizations. Generate a detailed Standard Operating Procedure for responding to hate speech and misinformation on social media during a crisis.
+    `You are designing the STORYLINE for a specific team in a social media crisis simulation.
 
-The SOP should have 8-12 sequential steps, each with a name, description, and time limit in minutes (from session start).
+TEAM: "${team.team_name}" — ${team.team_description}
 
-Also generate content guidelines specifying tone, language to avoid, mandatory inclusions, and cultural sensitivity rules.
+Other teams in the exercise: ${otherTeams.map((t) => `${t.team_name} (${t.team_description})`).join(', ')}
+
+You must generate 8-15 injects that ONLY this team will experience. These create a unique pressure arc for this team's specific role.
+
+The injects should be a MIX of:
+- EMAILS (app: "email") addressed to this team from stakeholders relevant to their role. Use from_name and from_address matching real-world senders this team would hear from.
+- DIRECT MESSAGES or GROUP CHAT (app: "group_chat") from NPCs or colleagues with tips, requests, or pressure.
+- SOCIAL MEDIA POSTS (app: "social_feed") that are particularly relevant to this team's monitoring responsibility. Use the NPC personas and their specific claims.
+- PHONE CALLS (app: "phone_call") from leadership or stakeholders demanding updates.
+
+Each inject should create PRESSURE specific to this team's role. The storyline should have:
+- An OPENING phase (T+0 to T+5): the team becomes aware of the crisis
+- A BUILDING phase (T+5 to T+20): pressure intensifies, specific challenges emerge
+- A PEAK phase (T+20 to T+40): maximum pressure, critical decisions needed
+- A RESOLUTION phase (T+40+): consequences of actions start appearing
+
+Mark critical injects with requires_response: true and response_deadline_minutes.
+
+ALL injects must have target_teams: ["${team.team_name}"].
+
+Available NPCs:
+${npcContext}
+
+Facts and claims:
+${factsContext}
+
+Return ONLY valid JSON:
+{ "injects": [{ "trigger_time_minutes": 0, "type": "social_post|email_inbound|group_chat_message|phone_call", "title": "...", "content": "...", "severity": "low|medium|high|critical", "inject_scope": "team_specific", "target_teams": ["${team.team_name}"], "requires_response": false, "response_deadline_minutes": null, "delivery_config": { "app": "social_feed|email|group_chat|phone_call", ... } }] }`,
+    `Crisis: ${crisisContext.crisisType} in ${crisisContext.location}, ${crisisContext.country}\nContext: ${crisisContext.context}\nDuration: ${crisisContext.duration} minutes`,
+    8000,
+    0.8,
+  );
+
+  const injects = (result?.injects as SocialInject[]) || [];
+  return injects.map((inj) => ({
+    ...inj,
+    target_teams: [team.team_name],
+    inject_scope: 'team_specific',
+  }));
+}
+
+export async function generateAllTeamStorylines(
+  teams: TeamDef[],
+  crisisContext: {
+    crisisType: string;
+    location: string;
+    country: string;
+    context: string;
+    duration: number;
+  },
+  npcs: NPCPersona[],
+  factSheet: FactSheet,
+  onTeamComplete?: (teamName: string, injectCount: number) => void,
+): Promise<Record<string, SocialInject[]>> {
+  const results: Record<string, SocialInject[]> = {};
+
+  await Promise.all(
+    teams.map(async (team) => {
+      const injects = await generateTeamStoryline(team, crisisContext, npcs, factSheet, teams);
+      results[team.team_name] = injects;
+      onTeamComplete?.(team.team_name, injects.length);
+    }),
+  );
+
+  return results;
+}
+
+// ─── Stage 4: Convergence Layer ─────────────────────────────────────────────
+
+export async function generateConvergenceLayer(
+  teamStorylines: Record<string, SocialInject[]>,
+  npcs: NPCPersona[],
+  factSheet: FactSheet,
+  crisisContext: {
+    crisisType: string;
+    location: string;
+    country: string;
+    context: string;
+    duration: number;
+  },
+): Promise<{
+  sharedInjects: SocialInject[];
+  convergenceGates: SocialInject[];
+  narrative: { title: string; description: string; briefing: string };
+  objectives: ObjectiveDef[];
+}> {
+  const storylineSummary = Object.entries(teamStorylines)
+    .map(
+      ([team, injects]) =>
+        `${team} (${injects.length} injects): ${injects.map((i) => `T+${i.trigger_time_minutes || '?'} ${i.title}`).join(', ')}`,
+    )
+    .join('\n\n');
+
+  const npcHandles = npcs
+    .map((p) => `${p.handle} (${p.name}, ${p.type}, bias: ${p.bias})`)
+    .join(', ');
+
+  const result = await callAI(
+    `You are designing the SHARED EXPERIENCE layer for a social media crisis simulation. Multiple teams are running their own storylines in parallel. You must now create:
+
+1. SCENARIO NARRATIVE: A compelling title, description (2-3 paragraphs), and team briefing.
+
+2. OBJECTIVES: 4-6 measurable objectives for the overall exercise.
+
+3. SHARED SOCIAL MEDIA CHAOS: 10-15 social posts that ALL teams see in their feeds. These create the ambient environment of a social media crisis — hate speech, misinformation, supportive voices, breaking news. These should use the NPC personas and their claims. These injects have inject_scope: "universal" and target_teams: [].
+
+4. CONVERGENCE GATES: 5-8 condition-based injects that create CROSS-TEAM consequences. These fire based on what players do or don't do. Use these condition keys:
+   - hate_post_unaddressed_count_gt_3
+   - misinformation_unaddressed_10min
+   - sentiment_below_30
+   - sentiment_above_60
+   - team_published_counter_narrative
+   - team_flagged_misinformation
+   - community_leader_contacted
+   - player_post_count_gt_3
+   - player_post_count_gt_5
+   - rally_call_active
+   - sop_step_monitor_completed / sop_step_monitor_overdue
+   - sop_step_draft_completed / sop_step_draft_overdue
+   - sop_step_publish_completed / sop_step_publish_overdue
+
+   Each convergence gate should be a MAJOR escalation or de-escalation moment that feels like an organic consequence.
+
+Per-team storylines already created:
+${storylineSummary}
+
+NPCs: ${npcHandles}
+
+Confirmed facts: ${factSheet.confirmed_facts.join('; ')}
+False claims: ${factSheet.unconfirmed_claims.map((c) => c.claim).join('; ')}
 
 Return ONLY valid JSON:
 {
-  "sop_name": "...",
-  "description": "...",
-  "steps": [{ "step_id": "monitor", "name": "...", "description": "...", "time_limit_minutes": 5 }],
-  "response_time_limit_minutes": 60,
-  "content_guidelines": {
-    "tone": ["empathetic", "calm", ...],
-    "avoid": ["defensive language", ...],
-    "include": ["verified facts", ...],
-    "language_sensitivity": ["avoid associating groups with attack", ...]
-  }
+  "narrative": { "title": "...", "description": "...", "briefing": "..." },
+  "objectives": [{ "objective_id": "...", "objective_name": "...", "description": "...", "weight": 25 }],
+  "shared_injects": [{ "trigger_time_minutes": 0, "type": "social_post", "title": "...", "content": "...", "severity": "...", "inject_scope": "universal", "target_teams": [], "delivery_config": { "app": "social_feed", ... } }],
+  "convergence_gates": [{ "title": "...", "content": "...", "type": "social_post", "severity": "critical", "inject_scope": "universal", "target_teams": [], "delivery_config": { ... }, "conditions_to_appear": { "threshold": 1, "conditions": ["..."] }, "conditions_to_cancel": ["..."], "eligible_after_minutes": 10 }]
 }`,
-    `Crisis: ${crisisType}\nAffected communities: ${communities.join(', ')}\nTeams: ${teams.map((t) => t.team_name).join(', ')}`,
+    `Crisis: ${crisisContext.crisisType} in ${crisisContext.location}, ${crisisContext.country}\nDuration: ${crisisContext.duration} minutes\nContext: ${crisisContext.context}`,
     8000,
+    0.8,
   );
 
-  if (result) return result as unknown as SOPDefinition;
-
   return {
-    sop_name: 'Social Media Crisis Response Protocol',
-    description:
-      'Standard procedure for responding to hate speech and misinformation during a crisis event',
-    steps: [
-      {
-        step_id: 'monitor',
-        name: 'Activate Monitoring',
-        description: 'Begin real-time monitoring of all social media platforms',
-        time_limit_minutes: 5,
-      },
-      {
-        step_id: 'assess',
-        name: 'Situation Assessment',
-        description: 'Assess scale of online hate, identify key narratives',
-        time_limit_minutes: 10,
-      },
-      {
-        step_id: 'fact_check',
-        name: 'Fact Verification',
-        description: 'Cross-reference claims with official sources',
-        time_limit_minutes: 15,
-      },
-      {
-        step_id: 'escalate',
-        name: 'Escalate to Leadership',
-        description: 'Brief leadership, get approval for response strategy',
-        time_limit_minutes: 20,
-      },
-      {
-        step_id: 'draft',
-        name: 'Draft Response',
-        description: 'Prepare official counter-narrative',
-        time_limit_minutes: 25,
-      },
-      {
-        step_id: 'approve',
-        name: 'Approve Response',
-        description: 'Submit draft through approval channels',
-        time_limit_minutes: 30,
-      },
-      {
-        step_id: 'publish',
-        name: 'Publish Response',
-        description: 'Publish across all official channels',
-        time_limit_minutes: 35,
-      },
-      {
-        step_id: 'engage',
-        name: 'Community Engagement',
-        description: 'Reach out to community leaders',
-        time_limit_minutes: 40,
-      },
-      {
-        step_id: 'monitor_impact',
-        name: 'Monitor Impact',
-        description: 'Track sentiment shift after response',
-        time_limit_minutes: 50,
-      },
-      {
-        step_id: 'report',
-        name: 'Situation Report',
-        description: 'Compile report with metrics',
-        time_limit_minutes: 60,
-      },
-    ],
-    response_time_limit_minutes: 60,
-    content_guidelines: {
-      tone: ['empathetic', 'calm', 'authoritative', 'factual'],
-      avoid: ['defensive language', 'naming suspects', 'speculative claims', 'dismissive tone'],
-      include: ['verified facts only', 'unity messaging', 'helpline numbers'],
-      language_sensitivity: ['avoid associating any ethnic/religious group with the attack'],
+    sharedInjects: (result?.shared_injects as SocialInject[]) || [],
+    convergenceGates: (result?.convergence_gates as SocialInject[]) || [],
+    narrative: (result?.narrative as { title: string; description: string; briefing: string }) || {
+      title: `${crisisContext.crisisType} - Social Media Crisis`,
+      description: `A crisis simulation set in ${crisisContext.location}.`,
+      briefing: 'Monitor social media and coordinate your response.',
     },
-  };
-}
-
-export async function generateNPCPersonas(
-  crisisType: string,
-  communities: string[],
-  country: string,
-): Promise<NPCPersona[]> {
-  const result = await callAI(
-    `You are designing a social media crisis simulation. Generate 10 realistic NPC (non-player character) social media personas who will populate the simulated social media feed during a crisis.
-
-Distribution:
-- 3-4 hostile/hateful personas (spread hate, blame communities, share misinformation)
-- 2 fearful/amplifier personas (scared, share unverified info, call for extreme action)
-- 2-3 supportive/calm personas (call for unity, counter hate, share facts)
-- 2 media personas (news outlets, factual reporting)
-
-Each persona needs a realistic social media handle, display name appropriate to the country/culture, personality description, and bias indicator.
-
-Country context: ${country}
-
-Return ONLY valid JSON:
-{ "personas": [{ "handle": "@username", "name": "Display Name", "type": "npc_public|npc_media|npc_politician|npc_influencer", "personality": "...", "bias": "anti-X|general xenophobia|none|...", "follower_count": 1000 }] }`,
-    `Crisis: ${crisisType}\nTargeted communities: ${communities.join(', ')}\nCountry: ${country}`,
-    8000,
-  );
-
-  return (result?.personas as NPCPersona[]) || [];
-}
-
-export async function generateFactSheet(
-  crisisType: string,
-  location: string,
-  context: string,
-): Promise<FactSheet> {
-  const result = await callAI(
-    `You are creating a fact sheet for a crisis simulation exercise. Generate realistic confirmed facts and false claims that would circulate on social media after a crisis event.
-
-The confirmed facts should be things emergency services and police would confirm. The false claims should be the kind of misinformation and rumors that typically spread on social media after such events.
-
-Return ONLY valid JSON:
-{
-  "confirmed_facts": ["fact1", "fact2", ...],
-  "unconfirmed_claims": [{ "claim": "...", "status": "FALSE|UNVERIFIED", "truth": "..." }]
-}`,
-    `Crisis: ${crisisType}\nLocation: ${location}\nContext: ${context || 'Standard crisis scenario'}`,
-    8000,
-  );
-
-  if (result) return result as unknown as FactSheet;
-
-  return {
-    confirmed_facts: [
-      'Emergency services responding to the scene',
-      'Police investigating the incident',
-      'Area cordoned off for public safety',
-    ],
-    unconfirmed_claims: [
-      { claim: 'Suspect identified', status: 'FALSE', truth: 'No suspect identified by police' },
-    ],
-  };
-}
-
-export async function generateFullScenario(input: {
-  crisisType: string;
-  location: string;
-  country: string;
-  context: string;
-  communities: string[];
-  teams: Array<{
-    team_name: string;
-    team_description: string;
-    min_participants: number;
-    max_participants: number;
-  }>;
-  sop: SOPDefinition;
-  personas: NPCPersona[];
-  factSheet: FactSheet;
-  durationMinutes: number;
-  difficulty: string;
-  onProgress?: (phase: string, message: string) => void;
-}): Promise<SocialCrisisPayload> {
-  const {
-    crisisType,
-    location,
-    country,
-    context,
-    communities,
-    teams,
-    sop,
-    personas,
-    factSheet,
-    durationMinutes,
-    difficulty,
-    onProgress,
-  } = input;
-
-  onProgress?.('narrative', 'Generating scenario narrative and objectives...');
-
-  const narrativeResult = await callAI(
-    `You are an expert crisis simulation designer. Create a social media crisis response scenario.
-
-The scenario is about a ${crisisType} in ${location}, ${country}. The crisis triggers hate speech and misinformation targeting ${communities.join(' and ')}.
-
-Generate a compelling scenario with title, description (2-3 paragraphs setting the scene), briefing (instructions for the response team), and 4-6 measurable objectives.
-
-Return ONLY valid JSON:
-{
-  "title": "...",
-  "description": "...",
-  "briefing": "...",
-  "objectives": [{ "objective_id": "...", "objective_name": "...", "description": "...", "weight": 25 }]
-}`,
-    `Context: ${context || 'Standard crisis'}\nDuration: ${durationMinutes} minutes\nDifficulty: ${difficulty}\nTeams: ${teams.map((t) => t.team_name).join(', ')}`,
-    8000,
-  );
-
-  const narrative = narrativeResult || {
-    title: `${crisisType} - Social Media Crisis Response`,
-    description: `A ${crisisType} has occurred in ${location}. Social media is flooding with hate speech targeting ${communities.join(' and ')}.`,
-    briefing:
-      'Your team must monitor social media, counter misinformation, and coordinate a response to maintain social harmony.',
-    objectives: [
+    objectives: (result?.objectives as ObjectiveDef[]) || [
       {
         objective_id: 'response_time',
         objective_name: 'Timely Response',
@@ -515,134 +515,290 @@ Return ONLY valid JSON:
         weight: 25,
       },
       {
-        objective_id: 'community_engagement',
-        objective_name: 'Community Engagement',
-        description: 'Coordinate with community leaders',
+        objective_id: 'coordination',
+        objective_name: 'Team Coordination',
+        description: 'Coordinate effectively across teams',
         weight: 25,
       },
     ],
   };
+}
 
-  onProgress?.('injects', 'Generating social media inject timeline...');
+// ─── Stage 5: Research + Best Practices ─────────────────────────────────────
 
-  const personaContext = personas
-    .map(
-      (p) =>
-        `${p.handle} (${p.name}): ${p.type}, ${p.personality}, bias: ${p.bias}, followers: ${p.follower_count}`,
-    )
-    .join('\n');
-  const factsContext = `Confirmed: ${factSheet.confirmed_facts.join('; ')}\nFalse claims: ${factSheet.unconfirmed_claims.map((c) => c.claim).join('; ')}`;
+async function researchTeamBestPractices(
+  team: TeamDef,
+  crisisType: string,
+  context: string,
+  storylineInjects: SocialInject[],
+): Promise<TeamBestPractice> {
+  const injectSummary = storylineInjects
+    .slice(0, 10)
+    .map((i) => `T+${i.trigger_time_minutes || '?'}: ${i.title}`)
+    .join(', ');
 
-  const injectsResult = await callAI(
-    `You are designing the inject timeline for a social media crisis simulation. Generate 18-25 timed injects that create a realistic escalation arc.
+  const result = await callAI(
+    `You are an expert researcher in crisis communication, social media response, and racial harmony. Research the best practices for this team's role during this type of crisis.
 
-Available NPC personas:
-${personaContext}
+Team: "${team.team_name}" — ${team.team_description}
 
-Facts and false claims:
-${factsContext}
+Based on real-world frameworks, academic research, and documented case studies (e.g., UNESCO Handbook on Countering Online Hate Speech, Christchurch Call protocols, IMDA Singapore guidelines, EU Code of Practice on Disinformation), generate 4-8 specific, actionable guidelines.
 
-Teams: ${teams.map((t) => t.team_name).join(', ')}
+Each guideline should specify:
+- What the best practice IS (concrete, not vague)
+- What source/framework it comes from
+- What happens narratively if the team VIOLATES it (a consequence that would happen in-simulation)
+- What happens narratively if the team FOLLOWS it (a reward that would happen in-simulation)
+- What player actions would SIGNAL violation or compliance (detection signals the AI can monitor)
 
-Each inject must specify which simulated app it appears in via delivery_config:
-- social_feed: Social media posts (most common, ~60% of injects)
-- email: Emails from leadership, community leaders, journalists
-- news: Breaking news articles
-- group_chat: Internal team chat messages from NPCs
-- phone_call: Incoming calls
-
-Timeline should span 0 to ${durationMinutes} minutes. Early injects (T+0 to T+5) set the scene. Middle injects (T+5 to T+20) escalate with hate speech and misinformation. Late injects (T+20+) either continue escalation or show resolution depending on player actions.
-
-Mark critical hate speech / misinformation posts with requires_response: true and a response_deadline_minutes.
-
-For social_feed injects, include content_flags: { is_hate_speech, is_misinformation, is_racist, targets_group, factual_basis }.
+These guidelines will be used as a HIDDEN SCORING RUBRIC — players don't see them, but their actions are judged against them, and violations trigger organic in-world consequences rather than system warnings.
 
 Return ONLY valid JSON:
-{ "time_injects": [{ "trigger_time_minutes": 0, "type": "social_post", "title": "...", "content": "...", "severity": "low|medium|high|critical", "inject_scope": "universal", "target_teams": [], "requires_response": false, "response_deadline_minutes": null, "delivery_config": { "app": "social_feed", "platform": "x_twitter", "author_handle": "@...", "author_display_name": "...", "author_type": "npc_public", "virality_score": 50, "content_flags": {}, "engagement_seed": { "likes": 100, "reposts": 30, "replies": 20 } } }] }`,
-    `Crisis: ${crisisType} in ${location}, ${country}\nDuration: ${durationMinutes}min\nDifficulty: ${difficulty}`,
+{
+  "team_name": "${team.team_name}",
+  "guidelines": [{
+    "guideline_id": "...",
+    "best_practice": "...",
+    "source_basis": "...",
+    "timing_window": "within 15 minutes of incident",
+    "if_violated": "...",
+    "if_followed": "...",
+    "detection_signals": ["player action or inaction that indicates this"]
+  }]
+}`,
+    `Crisis: ${crisisType}\nContext: ${context}\nTeam's storyline includes: ${injectSummary}`,
     8000,
-    0.8,
   );
 
-  onProgress?.('conditions', 'Generating escalation triggers...');
+  return (result as unknown as TeamBestPractice) || { team_name: team.team_name, guidelines: [] };
+}
 
-  const conditionsResult = await callAI(
-    `You are designing condition-based escalation triggers for a social media crisis simulation. These injects fire when specific conditions are met (or not met) based on player actions.
+async function researchGroupBestPractices(
+  crisisType: string,
+  context: string,
+  teams: TeamDef[],
+): Promise<ResearchGuidelines['group_wide']> {
+  const result = await callAI(
+    `You are an expert researcher in inter-agency crisis coordination and social media crisis management.
 
-Available condition keys:
-- hate_post_unaddressed_count_gt_3 (more than 3 hate posts without response)
-- misinformation_unaddressed_10min (misinfo unaddressed for 10+ min)
-- sentiment_below_30 (public sentiment critically low)
-- sentiment_above_60 (sentiment recovering)
-- team_published_counter_narrative (team posted an official response)
-- team_flagged_misinformation (team flagged a false claim)
-- sop_step_monitor_completed, sop_step_assess_completed, sop_step_fact_check_completed, sop_step_escalate_completed, sop_step_draft_completed, sop_step_publish_completed
-- sop_step_monitor_overdue, sop_step_assess_overdue, sop_step_draft_overdue, sop_step_publish_overdue
-- player_post_count_gt_3 (team has posted 3+ responses)
-- rally_call_active (NPC called for a rally, unaddressed)
+Research GROUP-WIDE best practices for coordinating a multi-team social media crisis response. This covers:
 
-Generate 6-10 condition-based injects. These create consequences for player action or inaction.
+1. COORDINATION GUIDELINES: How teams should share information and coordinate actions
+2. ESCALATION PROTOCOLS: When and how to escalate issues up the chain or across teams
+3. TIMING BENCHMARKS: Critical time thresholds (e.g., "first official response within 30 minutes", "misinformation debunked within 1 hour")
+4. CASE STUDIES: 2-3 real-world examples of social media crises (positive or negative outcomes) with lessons learned
+
+Teams in this exercise: ${teams.map((t) => `${t.team_name} (${t.team_description})`).join(', ')}
 
 Return ONLY valid JSON:
-{ "condition_injects": [{ "title": "...", "content": "...", "type": "social_post", "severity": "high", "inject_scope": "universal", "target_teams": [], "requires_response": false, "delivery_config": { "app": "social_feed", ... }, "conditions_to_appear": { "threshold": 1, "conditions": ["hate_post_unaddressed_count_gt_3"] }, "conditions_to_cancel": ["team_published_counter_narrative"], "eligible_after_minutes": 10 }] }`,
-    `Crisis: ${crisisType}\nPersonas: ${personas.map((p) => p.handle).join(', ')}\nTeams: ${teams.map((t) => t.team_name).join(', ')}`,
+{
+  "coordination_guidelines": ["..."],
+  "escalation_protocols": ["..."],
+  "timing_benchmarks": { "first_response_minutes": 30, "misinformation_debunk_minutes": 60, ... },
+  "case_studies": [{ "name": "...", "summary": "...", "lessons": ["..."] }]
+}`,
+    `Crisis: ${crisisType}\nContext: ${context}`,
     8000,
-    0.7,
   );
 
-  onProgress?.('decisions', 'Generating decision-based reactions...');
-
-  const decisionsResult = await callAI(
-    `You are designing decision-triggered reactions for a social media crisis simulation. These injects fire in response to specific types of player actions (posts, replies, flags).
-
-Generate 4-6 decision-based injects that react to player behavior:
-- When a player publishes a good counter-narrative → community leaders amplify
-- When a player publishes without fact-checking → journalists question accuracy
-- When a player engages a community leader → coalition forms
-- When a player flags misinformation → platform takes notice
-
-Each needs a trigger_condition in JSON format: { "type": "decision_based", "match_criteria": { "keywords": ["counter", "unity", "facts"] } }
-
-Return ONLY valid JSON:
-{ "decision_injects": [{ "trigger_condition": "{ ... JSON ... }", "title": "...", "content": "...", "type": "social_post", "severity": "medium", "inject_scope": "universal", "target_teams": [], "delivery_config": { "app": "social_feed", ... } }] }`,
-    `Crisis: ${crisisType}\nPersonas: ${personas.map((p) => `${p.handle}: ${p.personality}`).join('; ')}`,
-    8000,
-    0.7,
+  return (
+    (result as unknown as ResearchGuidelines['group_wide']) || {
+      coordination_guidelines: [],
+      escalation_protocols: [],
+      timing_benchmarks: {},
+      case_studies: [],
+    }
   );
+}
 
-  onProgress?.('finalizing', 'Assembling scenario...');
+export async function researchBestPractices(
+  crisisType: string,
+  context: string,
+  teams: TeamDef[],
+  teamStorylines: Record<string, SocialInject[]>,
+  onTeamComplete?: (teamName: string) => void,
+): Promise<ResearchGuidelines> {
+  const [teamResults, groupResult] = await Promise.all([
+    Promise.all(
+      teams.map(async (team) => {
+        const bp = await researchTeamBestPractices(
+          team,
+          crisisType,
+          context,
+          teamStorylines[team.team_name] || [],
+        );
+        onTeamComplete?.(team.team_name);
+        return bp;
+      }),
+    ),
+    researchGroupBestPractices(crisisType, context, teams),
+  ]);
 
-  const timeInjects = (injectsResult?.time_injects || []) as SocialInject[];
-  const conditionInjects = (conditionsResult?.condition_injects || []) as SocialInject[];
-  const decisionInjects = (decisionsResult?.decision_injects || []) as SocialInject[];
-
-  const sentimentCurve: SentimentCurve = {
-    baseline: 65,
-    crisis_drop: -30,
-    natural_recovery_per_10min: 2,
-    good_response_boost: 10,
-    poor_response_penalty: -8,
-    hate_speech_penalty_per_unaddressed: -3,
-    community_engagement_boost: 12,
+  return {
+    per_team: teamResults,
+    group_wide: groupResult,
   };
+}
+
+// ─── Stage 6: Generate SOP from Research ────────────────────────────────────
+
+export function buildSOPFromResearch(research: ResearchGuidelines): SOPDefinition {
+  const steps: SOPStep[] = [
+    {
+      step_id: 'monitor',
+      name: 'Activate Monitoring',
+      description:
+        'Begin real-time monitoring of all social media platforms for hate speech, misinformation, and inflammatory content',
+      time_limit_minutes: 5,
+    },
+    {
+      step_id: 'assess',
+      name: 'Situation Assessment',
+      description:
+        'Assess the scale of online hate, identify key narratives and affected communities',
+      time_limit_minutes: 10,
+    },
+    {
+      step_id: 'fact_check',
+      name: 'Fact Verification',
+      description:
+        'Cross-reference claims with official sources, document confirmed facts and debunk false claims',
+      time_limit_minutes: 15,
+    },
+    {
+      step_id: 'escalate',
+      name: 'Escalate to Leadership',
+      description: 'Brief leadership on situation, get approval for response strategy',
+      time_limit_minutes: 20,
+    },
+    {
+      step_id: 'draft',
+      name: 'Draft Response',
+      description:
+        'Prepare official counter-narrative addressing key false claims and promoting unity',
+      time_limit_minutes: 25,
+    },
+    {
+      step_id: 'approve',
+      name: 'Approve Response',
+      description: 'Submit draft through approval channels',
+      time_limit_minutes: 30,
+    },
+    {
+      step_id: 'publish',
+      name: 'Publish Response',
+      description: 'Publish across all official channels simultaneously',
+      time_limit_minutes: 35,
+    },
+    {
+      step_id: 'engage',
+      name: 'Community Engagement',
+      description: 'Reach out to community leaders for amplification',
+      time_limit_minutes: 40,
+    },
+    {
+      step_id: 'monitor_impact',
+      name: 'Monitor Impact',
+      description: 'Track sentiment shift after response',
+      time_limit_minutes: 50,
+    },
+    {
+      step_id: 'report',
+      name: 'Situation Report',
+      description: 'Compile report with metrics',
+      time_limit_minutes: 60,
+    },
+  ];
+
+  const benchmarks = research.group_wide.timing_benchmarks || {};
+  if (benchmarks.first_response_minutes) {
+    const publishStep = steps.find((s) => s.step_id === 'publish');
+    if (publishStep) publishStep.time_limit_minutes = benchmarks.first_response_minutes as number;
+  }
+
+  return {
+    sop_name: 'Social Media Crisis Response Protocol',
+    description: 'Generated from research-based best practices for social media crisis response',
+    steps,
+    response_time_limit_minutes: 60,
+    content_guidelines: {
+      tone: ['empathetic', 'calm', 'authoritative', 'factual'],
+      avoid: [
+        'defensive language',
+        'naming suspects',
+        'speculative claims',
+        'dismissive tone',
+        'victim blaming',
+      ],
+      include: [
+        'verified facts only',
+        'unity messaging',
+        'helpline numbers',
+        'official source references',
+      ],
+      language_sensitivity: [
+        'avoid associating any ethnic/religious group with the attack',
+        'use person-first language',
+        'acknowledge community fears without validating hate',
+      ],
+    },
+  };
+}
+
+// ─── Full Assembly ──────────────────────────────────────────────────────────
+
+export function assemblePayload(
+  narrative: { title: string; description: string; briefing: string },
+  teams: TeamDef[],
+  objectives: ObjectiveDef[],
+  npcs: NPCPersona[],
+  factSheet: FactSheet,
+  communities: string[],
+  teamStorylines: Record<string, SocialInject[]>,
+  sharedInjects: SocialInject[],
+  convergenceGates: SocialInject[],
+  research: ResearchGuidelines,
+  sop: SOPDefinition,
+  duration: number,
+): SocialCrisisPayload {
+  const allTeamInjects: SocialInject[] = [];
+  for (const injects of Object.values(teamStorylines)) {
+    allTeamInjects.push(...injects);
+  }
+
+  const timeInjects = [
+    ...allTeamInjects.filter((i) => i.trigger_time_minutes != null),
+    ...sharedInjects,
+  ];
+  const conditionInjects = convergenceGates;
+  const decisionInjects = allTeamInjects.filter((i) => i.trigger_condition);
 
   return {
     scenario: {
-      title: narrative.title as string,
-      description: narrative.description as string,
-      briefing: narrative.briefing as string,
+      title: narrative.title,
+      description: narrative.description,
+      briefing: narrative.briefing,
       category: 'social_media_crisis',
-      difficulty,
-      duration_minutes: durationMinutes,
+      difficulty: 'expert',
+      duration_minutes: duration,
       initial_state: {
-        npc_personas: personas,
+        npc_personas: npcs,
         fact_sheet: factSheet,
-        sentiment_curve: sentimentCurve,
+        sentiment_curve: {
+          baseline: 65,
+          crisis_drop: -30,
+          natural_recovery_per_10min: 2,
+          good_response_boost: 10,
+          poor_response_penalty: -8,
+          hate_speech_penalty_per_unaddressed: -3,
+          community_engagement_boost: 12,
+        },
         affected_communities: communities,
+        research_guidelines: research,
       },
     },
     teams,
-    objectives: (narrative.objectives || []) as SocialCrisisPayload['objectives'],
+    objectives,
     sop,
     time_injects: timeInjects,
     condition_injects: conditionInjects,

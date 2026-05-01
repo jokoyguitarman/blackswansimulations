@@ -17,6 +17,12 @@ export async function shouldCancelSocialInject(
   }>,
   sentimentState: { overall: number; hate_speech_volume: number; trend: string },
   pendingResponseCount: number,
+  researchGuidelines?: {
+    per_team?: Array<{
+      team_name: string;
+      guidelines: Array<{ best_practice: string; if_violated: string; if_followed: string }>;
+    }>;
+  },
 ): Promise<SocialInjectCancellationResult> {
   if (!env.openAiApiKey) {
     return { cancel: false, cancel_reason: 'No API key' };
@@ -72,7 +78,19 @@ Return ONLY valid JSON:
           { role: 'system', content: systemPrompt },
           {
             role: 'user',
-            content: `SCHEDULED INJECT:\nTitle: ${inject.title}\nContent: ${inject.content}\nApp: ${(inject.delivery_config as Record<string, unknown>)?.app || 'social_feed'}\n\nTEAM ACTIONS:\n${actionsText}\n\nSENTIMENT: ${sentimentState.overall}/100 (${sentimentState.trend})\nPENDING RESPONSES: ${pendingResponseCount} posts still need response`,
+            content: `SCHEDULED INJECT:\nTitle: ${inject.title}\nContent: ${inject.content}\nApp: ${(inject.delivery_config as Record<string, unknown>)?.app || 'social_feed'}\n\nTEAM ACTIONS:\n${actionsText}\n\nSENTIMENT: ${sentimentState.overall}/100 (${sentimentState.trend})\nPENDING RESPONSES: ${pendingResponseCount} posts still need response${
+              researchGuidelines?.per_team?.length
+                ? `\n\nBEST PRACTICE GUIDELINES (hidden rubric):\n${researchGuidelines.per_team
+                    .flatMap((t) =>
+                      t.guidelines.map(
+                        (g) =>
+                          `[${t.team_name}] ${g.best_practice} — if violated: ${g.if_violated}`,
+                      ),
+                    )
+                    .slice(0, 10)
+                    .join('\n')}`
+                : ''
+            }`,
           },
         ],
         temperature: 0.4,

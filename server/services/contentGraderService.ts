@@ -20,6 +20,7 @@ export async function gradePlayerContent(
     confirmed_facts: string[];
     content_guidelines?: Record<string, unknown>;
     hateful_post_being_addressed?: string;
+    research_guidelines?: Array<{ best_practice: string; source_basis: string }>;
   },
 ): Promise<ContentGrade> {
   if (!env.openAiApiKey) {
@@ -43,6 +44,8 @@ Confirmed facts available:
 ${context.confirmed_facts.map((f) => `- ${f}`).join('\n')}
 
 ${context.hateful_post_being_addressed ? `The hateful post being addressed:\n${context.hateful_post_being_addressed}` : ''}
+
+${context.research_guidelines?.length ? `Research-based best practices to evaluate against:\n${context.research_guidelines.map((g) => `- ${g.best_practice} (${g.source_basis})`).join('\n')}` : ''}
 
 Return ONLY valid JSON:
 {
