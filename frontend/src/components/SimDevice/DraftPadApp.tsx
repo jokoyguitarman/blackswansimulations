@@ -155,9 +155,9 @@ export default function DraftPadApp() {
                   <div key={key} className="flex justify-between">
                     <span className="text-gray-400 capitalize">{key.replace('_', ' ')}</span>
                     <span
-                      className={`font-bold ${(grade[key] as number) >= 70 ? 'text-green-400' : (grade[key] as number) >= 40 ? 'text-yellow-400' : 'text-red-400'}`}
+                      className={`font-bold ${Number(grade[key]) >= 70 ? 'text-green-400' : Number(grade[key]) >= 40 ? 'text-yellow-400' : 'text-red-400'}`}
                     >
-                      {grade[key] as number}/100
+                      {String(grade[key])}/100
                     </span>
                   </div>
                 ))}

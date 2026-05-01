@@ -276,7 +276,7 @@ export default function SocialFeedApp() {
 
                     {/* Content */}
                     <p className="text-sm mt-1 whitespace-pre-wrap break-words">
-                      {post.content.split(/(#\w+)/g).map((part, i) =>
+                      {post.content.split(/(#\w+)/g).map((part: string, i: number) =>
                         part.startsWith('#') ? (
                           <span key={i} className="text-blue-400">
                             {part}
