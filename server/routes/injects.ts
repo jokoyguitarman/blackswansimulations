@@ -12,6 +12,7 @@ import {
 import { logAndBroadcastEvent } from '../services/eventService.js';
 import { runPathwayOutcomesOnInjectPublished } from '../services/pathwayOutcomesService.js';
 import { applyInjectPublishEffects } from '../services/injectPublishEffectsService.js';
+import { routeInjectToApp } from '../services/feedEngineService.js';
 import type { Server as SocketServer } from 'socket.io';
 
 const router = Router();
@@ -129,6 +130,20 @@ export async function publishInjectToSession(
 
   // Phase 5.1: Apply inject-driven objective penalty and state effect (central hook)
   await applyInjectPublishEffects(sessionId, injectId, inject as Record<string, unknown>);
+
+  // Route inject to simulated device apps if delivery_config is present
+  const deliveryConfig = (inject as Record<string, unknown>).delivery_config;
+  if (deliveryConfig && typeof deliveryConfig === 'object') {
+    void routeInjectToApp(sessionId, injectId, {
+      title: inject.title,
+      content: inject.content,
+      type: inject.type,
+      severity: inject.severity,
+      delivery_config: deliveryConfig as Parameters<typeof routeInjectToApp>[2]['delivery_config'],
+      requires_response: (inject as { requires_response?: boolean }).requires_response,
+      trigger_time_minutes: inject.trigger_time_minutes,
+    }).catch((err) => logger.error({ err, sessionId, injectId }, 'Feed engine routing failed'));
+  }
 
   // Broadcast generic event (the session_events insert was already done above)
   // We just need to broadcast it, not log it again

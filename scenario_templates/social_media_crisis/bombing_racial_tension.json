@@ -1,0 +1,565 @@
+{
+  "id": "bombing_racial_tension",
+  "display_name": "MRT Station Bombing - Racial Tension Response",
+  "category": "social_media_crisis",
+  "crisis_event": {
+    "type": "bombing",
+    "location": "Raffles Place MRT Station",
+    "description": "An explosion at Raffles Place MRT station during morning rush hour. 12 injured, 2 critical. Perpetrator unknown. Social media immediately attributes the attack to a specific ethnic/religious group without evidence."
+  },
+  "affected_communities": ["Muslim community", "South Asian community"],
+  "required_teams": [
+    {
+      "team_name": "Social Media Monitoring",
+      "team_description": "Monitor social feeds, flag hate speech and misinformation, track sentiment trends",
+      "min_participants": 2,
+      "max_participants": 4
+    },
+    {
+      "team_name": "Content Response",
+      "team_description": "Draft and publish official responses, counter-narratives, and fact-based corrections",
+      "min_participants": 2,
+      "max_participants": 4
+    },
+    {
+      "team_name": "Community Liaison",
+      "team_description": "Coordinate with community leaders, religious organizations, and grassroots networks",
+      "min_participants": 1,
+      "max_participants": 3
+    },
+    {
+      "team_name": "Escalation & Coordination",
+      "team_description": "Escalate to authorities, coordinate with police PR, manage inter-agency comms",
+      "min_participants": 1,
+      "max_participants": 2
+    }
+  ],
+  "npc_personas": [
+    {
+      "handle": "@angry_uncle_sg",
+      "name": "Kenneth Lim",
+      "type": "npc_public",
+      "personality": "reactionary, emotional, shares without verifying",
+      "bias": "anti-Muslim",
+      "follower_count": 2300
+    },
+    {
+      "handle": "@concerned_mom_88",
+      "name": "Karen Wong",
+      "type": "npc_public",
+      "personality": "fearful, amplifies rumors, calls for action",
+      "bias": "general xenophobia",
+      "follower_count": 890
+    },
+    {
+      "handle": "@sg_truth_seeker",
+      "name": "TruthSeeker",
+      "type": "npc_influencer",
+      "personality": "conspiracy theorist, high follower count, deliberately inflammatory",
+      "bias": "anti-immigrant",
+      "follower_count": 48000
+    },
+    {
+      "handle": "@rev_david_chen",
+      "name": "Rev. David Chen",
+      "type": "npc_public",
+      "personality": "interfaith leader, calls for calm, supportive",
+      "bias": "none",
+      "follower_count": 5400
+    },
+    {
+      "handle": "@clonenewsasia",
+      "name": "Channel NewsAsia",
+      "type": "npc_media",
+      "personality": "factual, breaking news, neutral",
+      "bias": "none",
+      "follower_count": 1200000
+    },
+    {
+      "handle": "@mama_fatimah",
+      "name": "Fatimah Binte Hassan",
+      "type": "npc_public",
+      "personality": "scared Muslim mother, worried about backlash against her children at school",
+      "bias": "none",
+      "follower_count": 340
+    },
+    {
+      "handle": "@proud_sg_patriot",
+      "name": "SG Patriot",
+      "type": "npc_public",
+      "personality": "ultranationalist, dog-whistle racism, couches hate in patriotism",
+      "bias": "anti-foreigner",
+      "follower_count": 12000
+    },
+    {
+      "handle": "@straitstimesonline",
+      "name": "The Straits Times",
+      "type": "npc_media",
+      "personality": "authoritative, fact-based, measured tone",
+      "bias": "none",
+      "follower_count": 2500000
+    }
+  ],
+  "fact_sheet": {
+    "confirmed_facts": [
+      "Explosion occurred at 08:42 at Raffles Place MRT",
+      "12 people injured, 2 in critical condition at SGH",
+      "Police investigating, no arrests made",
+      "MRT services suspended on East-West Line between Tanjong Pagar and City Hall",
+      "SCDF deployed 5 emergency vehicles to scene",
+      "Police have cordoned off the area within 200m radius"
+    ],
+    "unconfirmed_claims": [
+      {
+        "claim": "Perpetrator identified as foreign worker",
+        "status": "FALSE",
+        "truth": "No suspect identified by police"
+      },
+      {
+        "claim": "Second bomb found at City Hall MRT",
+        "status": "FALSE",
+        "truth": "Area swept and cleared by police"
+      },
+      {
+        "claim": "Attack linked to overseas terrorist group",
+        "status": "UNVERIFIED",
+        "truth": "Police have not confirmed any links"
+      },
+      {
+        "claim": "Video shows bomber's face",
+        "status": "FALSE",
+        "truth": "Circulating video is from a 2019 incident in another country"
+      },
+      {
+        "claim": "Muslim community celebrations reported",
+        "status": "FALSE",
+        "truth": "Fabricated claim with no evidence"
+      }
+    ]
+  },
+  "sop_reference": {
+    "sop_name": "Protocol 3: Racial Incident Social Media Response",
+    "steps": [
+      {
+        "step_id": "monitor",
+        "name": "Activate Monitoring",
+        "description": "Begin real-time monitoring of all social media platforms for hate speech, misinformation, and inflammatory content",
+        "time_limit_minutes": 5
+      },
+      {
+        "step_id": "assess",
+        "name": "Situation Assessment",
+        "description": "Assess the scale of online hate, identify key narratives, and determine affected communities",
+        "time_limit_minutes": 10
+      },
+      {
+        "step_id": "fact_check",
+        "name": "Fact Verification",
+        "description": "Cross-reference claims with official sources. Document confirmed facts and debunk false claims",
+        "time_limit_minutes": 15
+      },
+      {
+        "step_id": "escalate",
+        "name": "Escalate to Leadership",
+        "description": "Brief leadership on situation, get approval for response strategy",
+        "time_limit_minutes": 20
+      },
+      {
+        "step_id": "draft_response",
+        "name": "Draft Official Response",
+        "description": "Prepare official counter-narrative addressing key false claims and promoting unity",
+        "time_limit_minutes": 25
+      },
+      {
+        "step_id": "approve_response",
+        "name": "Get Response Approved",
+        "description": "Submit draft for approval through proper channels",
+        "time_limit_minutes": 30
+      },
+      {
+        "step_id": "publish",
+        "name": "Publish Response",
+        "description": "Publish approved response across all official channels simultaneously",
+        "time_limit_minutes": 35
+      },
+      {
+        "step_id": "engage_community",
+        "name": "Community Engagement",
+        "description": "Reach out to community leaders for amplification and grassroots calming",
+        "time_limit_minutes": 40
+      },
+      {
+        "step_id": "monitor_impact",
+        "name": "Monitor Response Impact",
+        "description": "Track sentiment shift after response, adjust strategy if needed",
+        "time_limit_minutes": 50
+      },
+      {
+        "step_id": "report",
+        "name": "Situation Report",
+        "description": "Compile situation report with metrics on reach, engagement, and sentiment change",
+        "time_limit_minutes": 60
+      }
+    ],
+    "content_guidelines": {
+      "tone": ["empathetic", "calm", "authoritative", "factual"],
+      "avoid": [
+        "defensive language",
+        "naming suspects",
+        "speculative claims",
+        "dismissive tone",
+        "victim blaming"
+      ],
+      "include": [
+        "verified facts only",
+        "unity messaging",
+        "helpline numbers",
+        "official source references"
+      ],
+      "language_sensitivity": [
+        "avoid associating any ethnic/religious group with the attack",
+        "use person-first language",
+        "acknowledge community fears without validating hate"
+      ]
+    }
+  },
+  "inject_templates": [
+    {
+      "timing": "T+0",
+      "type": "social_post",
+      "template": "BREAKING: Explosion reported at Raffles Place MRT. Smoke seen rising from station entrance. Emergency services on scene. #SGBombing #RafflesPlace",
+      "delivery_config": {
+        "app": "social_feed",
+        "platform": "x_twitter",
+        "author_handle": "@clonenewsasia",
+        "author_display_name": "Channel NewsAsia",
+        "author_type": "npc_media",
+        "virality_score": 95,
+        "content_flags": { "is_misinformation": false },
+        "engagement_seed": { "likes": 3200, "reposts": 1800, "replies": 450 },
+        "spawn_replies": 8,
+        "reply_sentiment_distribution": {
+          "negative": 0.3,
+          "neutral": 0.4,
+          "supportive": 0.2,
+          "hateful": 0.1
+        }
+      },
+      "severity": "critical"
+    },
+    {
+      "timing": "T+2",
+      "type": "news_alert",
+      "template": "BREAKING NEWS: Explosion at Raffles Place MRT station during morning rush hour. At least 12 injured, emergency services responding. Cause under investigation.",
+      "delivery_config": {
+        "app": "news",
+        "outlet_name": "Channel NewsAsia",
+        "headline": "Explosion at Raffles Place MRT - Multiple Casualties Reported",
+        "category": "breaking"
+      },
+      "severity": "critical"
+    },
+    {
+      "timing": "T+3",
+      "type": "social_post",
+      "template": "I KNEW IT. These people come to our country and this is what they do. Send them all back. #SGBombing #DeportThemAll",
+      "delivery_config": {
+        "app": "social_feed",
+        "platform": "x_twitter",
+        "author_handle": "@angry_uncle_sg",
+        "author_display_name": "Kenneth Lim",
+        "author_type": "npc_public",
+        "virality_score": 72,
+        "content_flags": {
+          "is_hate_speech": true,
+          "is_racist": true,
+          "targets_group": "foreign workers",
+          "factual_basis": "none"
+        },
+        "engagement_seed": { "likes": 890, "reposts": 340, "replies": 230 },
+        "spawn_replies": 12,
+        "reply_sentiment_distribution": {
+          "hateful": 0.5,
+          "negative": 0.2,
+          "neutral": 0.1,
+          "supportive": 0.2
+        }
+      },
+      "severity": "critical",
+      "requires_response": true,
+      "response_deadline_minutes": 10
+    },
+    {
+      "timing": "T+4",
+      "type": "social_post",
+      "template": "My children go to school near Raffles Place. Are they safe? I'm so scared people will blame us for this. We had nothing to do with it. Please don't hurt us. #SGBombing",
+      "delivery_config": {
+        "app": "social_feed",
+        "platform": "x_twitter",
+        "author_handle": "@mama_fatimah",
+        "author_display_name": "Fatimah Binte Hassan",
+        "author_type": "npc_public",
+        "virality_score": 55,
+        "content_flags": { "is_misinformation": false },
+        "engagement_seed": { "likes": 2100, "reposts": 780, "replies": 180 },
+        "spawn_replies": 6,
+        "reply_sentiment_distribution": {
+          "supportive": 0.5,
+          "neutral": 0.2,
+          "negative": 0.2,
+          "hateful": 0.1
+        }
+      },
+      "severity": "high"
+    },
+    {
+      "timing": "T+5",
+      "type": "email_inbound",
+      "template": "Subject: URGENT - MRT Explosion Social Media Response\n\nTeam,\n\nSocial media is exploding with racist content targeting the Muslim and South Asian communities following the Raffles Place explosion. We need an immediate coordinated response.\n\nPlease activate Protocol 3 (Racial Incident Response) immediately.\n\nKey priorities:\n1. Monitor and flag hate speech\n2. Verify facts with SPF/SCDF\n3. Draft counter-narrative\n4. Coordinate with community leaders\n\nI need a situation assessment within 15 minutes.\n\nRegards,\nDirector, Office of Harmony",
+      "delivery_config": {
+        "app": "email",
+        "from_address": "director@harmony.gov.sg",
+        "from_name": "Director, Office of Harmony",
+        "priority": "urgent"
+      },
+      "severity": "critical"
+    },
+    {
+      "timing": "T+6",
+      "type": "social_post",
+      "template": "THREAD: What they don't want you to know about the Raffles Place bombing. Sources tell me the bomber was a foreign worker from [redacted country]. The government is covering it up. RT if you want the TRUTH. 1/5 #SGBombing #WakeUpSG",
+      "delivery_config": {
+        "app": "social_feed",
+        "platform": "x_twitter",
+        "author_handle": "@sg_truth_seeker",
+        "author_display_name": "TruthSeeker",
+        "author_type": "npc_influencer",
+        "virality_score": 88,
+        "content_flags": {
+          "is_misinformation": true,
+          "is_hate_speech": true,
+          "is_racist": true,
+          "targets_group": "foreign workers",
+          "factual_basis": "fabricated"
+        },
+        "engagement_seed": { "likes": 5600, "reposts": 3200, "replies": 890 },
+        "spawn_replies": 15,
+        "reply_sentiment_distribution": {
+          "hateful": 0.4,
+          "negative": 0.3,
+          "neutral": 0.1,
+          "supportive": 0.2
+        }
+      },
+      "severity": "critical",
+      "requires_response": true,
+      "response_deadline_minutes": 8
+    },
+    {
+      "timing": "T+8",
+      "type": "news_alert",
+      "template": "Police confirm explosion at Raffles Place MRT was caused by an improvised device. Investigation ongoing. No arrests made. Police urge public not to speculate on social media about the identity of any perpetrator.",
+      "delivery_config": {
+        "app": "news",
+        "outlet_name": "The Straits Times",
+        "headline": "Police Confirm Improvised Device Behind Raffles Place MRT Explosion",
+        "category": "breaking"
+      },
+      "severity": "high"
+    },
+    {
+      "timing": "T+10",
+      "type": "group_chat_message",
+      "template": "Hi team, I'm seeing a video going viral claiming to show the bomber's face. It's actually footage from a 2019 incident in another country. We need to flag this immediately and prepare a debunk post.",
+      "delivery_config": {
+        "app": "group_chat",
+        "sender_name": "Sarah (Monitoring Team)",
+        "channel_type": "inter_agency"
+      },
+      "severity": "high"
+    },
+    {
+      "timing": "T+12",
+      "type": "social_post",
+      "template": "As an interfaith leader, I urge everyone to stay calm and not jump to conclusions. Let the police do their work. Now is the time for unity, not division. Praying for all victims regardless of race or religion. #SGUnited #PrayForSG",
+      "delivery_config": {
+        "app": "social_feed",
+        "platform": "x_twitter",
+        "author_handle": "@rev_david_chen",
+        "author_display_name": "Rev. David Chen",
+        "author_type": "npc_public",
+        "virality_score": 62,
+        "content_flags": { "is_misinformation": false },
+        "engagement_seed": { "likes": 4500, "reposts": 1200, "replies": 320 },
+        "spawn_replies": 5,
+        "reply_sentiment_distribution": {
+          "supportive": 0.6,
+          "neutral": 0.2,
+          "negative": 0.1,
+          "hateful": 0.1
+        }
+      },
+      "severity": "medium"
+    },
+    {
+      "timing": "T+15",
+      "type": "social_post",
+      "template": "Time to take back our country. If the government won't protect us, WE WILL. Rally at Raffles Place tonight 8pm. Real Singaporeans only. #ProtectSG #SGFirst",
+      "delivery_config": {
+        "app": "social_feed",
+        "platform": "x_twitter",
+        "author_handle": "@proud_sg_patriot",
+        "author_display_name": "SG Patriot",
+        "author_type": "npc_public",
+        "virality_score": 78,
+        "content_flags": {
+          "is_hate_speech": true,
+          "is_racist": true,
+          "incites_violence": true,
+          "targets_group": "non-Chinese minorities",
+          "factual_basis": "none"
+        },
+        "engagement_seed": { "likes": 3400, "reposts": 1900, "replies": 560 },
+        "spawn_replies": 10,
+        "reply_sentiment_distribution": {
+          "hateful": 0.35,
+          "negative": 0.25,
+          "neutral": 0.15,
+          "supportive": 0.25
+        }
+      },
+      "severity": "critical",
+      "requires_response": true,
+      "response_deadline_minutes": 5
+    },
+    {
+      "timing": "T+18",
+      "type": "email_inbound",
+      "template": "Subject: RE: MRT Explosion - Community Leader Coordination\n\nDear Team,\n\nI am Imam Ahmad from Al-Istiqamah Mosque near Raffles Place. Several of our congregation members were caught in the explosion and are receiving treatment. We are receiving threatening messages and our community is frightened.\n\nPlease advise on what we should communicate to our members. We want to help calm the situation but need guidance on messaging.\n\nJazakAllah khair,\nImam Ahmad bin Ibrahim",
+      "delivery_config": {
+        "app": "email",
+        "from_address": "imam.ahmad@alistiqamah.org.sg",
+        "from_name": "Imam Ahmad bin Ibrahim",
+        "priority": "high"
+      },
+      "severity": "high",
+      "requires_response": true,
+      "response_deadline_minutes": 15
+    },
+    {
+      "timing": "T+22",
+      "type": "social_post",
+      "template": "UPDATE: Second suspicious package found at City Hall MRT! Everyone evacuate NOW! This is an organized attack!! #SGBombing #CityHall #Evacuate",
+      "delivery_config": {
+        "app": "social_feed",
+        "platform": "x_twitter",
+        "author_handle": "@concerned_mom_88",
+        "author_display_name": "Karen Wong",
+        "author_type": "npc_public",
+        "virality_score": 82,
+        "content_flags": {
+          "is_misinformation": true,
+          "factual_basis": "false - area has been swept and cleared"
+        },
+        "engagement_seed": { "likes": 6700, "reposts": 4500, "replies": 1200 },
+        "spawn_replies": 20,
+        "reply_sentiment_distribution": {
+          "negative": 0.4,
+          "hateful": 0.2,
+          "neutral": 0.2,
+          "supportive": 0.2
+        }
+      },
+      "severity": "critical",
+      "requires_response": true,
+      "response_deadline_minutes": 5
+    },
+    {
+      "timing": "T+28",
+      "type": "news_alert",
+      "template": "UPDATE: Singapore Police Force confirms NO second device found. City Hall MRT station area has been swept and cleared. Police urge public not to spread unverified information.",
+      "delivery_config": {
+        "app": "news",
+        "outlet_name": "The Straits Times",
+        "headline": "Police: No Second Device Found at City Hall MRT - Area Cleared",
+        "category": "update"
+      },
+      "severity": "high"
+    },
+    {
+      "timing": "T+35",
+      "type": "social_post",
+      "template": "Disgusting to see Singaporeans turning on each other. We are ONE people. The real enemy is whoever planted that bomb, not our neighbors. My Malay neighbor was FIRST to help the injured. THAT is Singapore. #SGUnited #OneNation",
+      "delivery_config": {
+        "app": "social_feed",
+        "platform": "x_twitter",
+        "author_handle": "@straitstimesonline",
+        "author_display_name": "The Straits Times",
+        "author_type": "npc_media",
+        "virality_score": 70,
+        "content_flags": { "is_misinformation": false },
+        "engagement_seed": { "likes": 12000, "reposts": 5600, "replies": 890 },
+        "spawn_replies": 8,
+        "reply_sentiment_distribution": {
+          "supportive": 0.6,
+          "neutral": 0.2,
+          "negative": 0.1,
+          "hateful": 0.1
+        }
+      },
+      "severity": "medium"
+    }
+  ],
+  "escalation_triggers": [
+    {
+      "condition": "no_response_to_hate_post_within_15_min",
+      "effect": "Virality of hateful posts doubles. 3 new inflammatory posts from high-follower NPCs.",
+      "sentiment_impact": -15
+    },
+    {
+      "condition": "no_response_to_misinformation_within_10_min",
+      "effect": "Misinformation spreads to other platforms. Engagement triples on false claims.",
+      "sentiment_impact": -12
+    },
+    {
+      "condition": "player_publishes_response_without_fact_check",
+      "effect": "NPC journalists question the official response's accuracy. Credibility takes a hit.",
+      "sentiment_impact": -10
+    },
+    {
+      "condition": "player_publishes_good_counter_narrative",
+      "effect": "Community leaders amplify the message. Supportive posts increase by 30%.",
+      "sentiment_impact": 20
+    },
+    {
+      "condition": "player_engages_community_leaders",
+      "effect": "Interfaith coalition issues joint statement. Hate speech drops by 25%.",
+      "sentiment_impact": 15
+    },
+    {
+      "condition": "rally_call_not_addressed_within_10_min",
+      "effect": "Rally gains traction. Counter-rally organized. Risk of real-world confrontation escalates.",
+      "sentiment_impact": -25
+    }
+  ],
+  "sentiment_curve": {
+    "baseline": 65,
+    "crisis_drop": -30,
+    "natural_recovery_per_10min": 2,
+    "good_response_boost": 10,
+    "poor_response_penalty": -8,
+    "hate_speech_penalty_per_unaddressed": -3,
+    "community_engagement_boost": 12
+  },
+  "environmental_factors": [
+    "social_media_virality",
+    "community_tension",
+    "misinformation_spread",
+    "public_sentiment",
+    "media_scrutiny"
+  ],
+  "has_adversary": false,
+  "multi_storey": false,
+  "compatible_settings": [],
+  "compatible_terrains": ["urban"]
+}

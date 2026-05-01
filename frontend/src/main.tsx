@@ -18,6 +18,16 @@ import { DebugEvacuationSim } from './pages/DebugEvacuationSim';
 import { DebugRTSSim } from './pages/DebugRTSSim';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SupabaseConfigError } from './components/SupabaseConfigError';
+import DeviceShell from './components/SimDevice/DeviceShell';
+import HomeScreen from './components/SimDevice/HomeScreen';
+import SocialFeedApp from './components/SimDevice/SocialFeedApp';
+import GroupChatApp from './components/SimDevice/GroupChatApp';
+import EmailApp from './components/SimDevice/EmailApp';
+import NewsApp from './components/SimDevice/NewsApp';
+import FactCheckBrowser from './components/SimDevice/FactCheckBrowser';
+import DraftPadApp from './components/SimDevice/DraftPadApp';
+import TrainerSimDashboard from './components/SimDevice/TrainerSimDashboard';
+import DesktopShell from './components/SimDevice/DesktopShell';
 import './style.css';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -130,6 +140,40 @@ const App = () => {
               element={
                 <ProtectedRoute>
                   <DebugRTSSim />
+                </ProtectedRoute>
+              }
+            />
+            {/* Social Media Crisis Simulation Device Routes */}
+            <Route
+              path="/sim/:sessionId/device"
+              element={
+                <ProtectedRoute>
+                  <DeviceShell />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<HomeScreen />} />
+              <Route path="home" element={<HomeScreen />} />
+              <Route path="social" element={<SocialFeedApp />} />
+              <Route path="chat" element={<GroupChatApp />} />
+              <Route path="email" element={<EmailApp />} />
+              <Route path="news" element={<NewsApp />} />
+              <Route path="browser" element={<FactCheckBrowser />} />
+              <Route path="drafts" element={<DraftPadApp />} />
+            </Route>
+            <Route
+              path="/sim/:sessionId/desktop"
+              element={
+                <ProtectedRoute>
+                  <DesktopShell />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/sim/:sessionId/trainer"
+              element={
+                <ProtectedRoute>
+                  <TrainerSimDashboard />
                 </ProtectedRoute>
               }
             />
