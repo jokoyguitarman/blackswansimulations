@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { supabase } from '../../lib/supabase';
 
@@ -39,7 +38,6 @@ interface SimEmail {
 export default function EmailApp() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [emails, setEmails] = useState<SimEmail[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<SimEmail | null>(null);
   const [composing, setComposing] = useState(false);

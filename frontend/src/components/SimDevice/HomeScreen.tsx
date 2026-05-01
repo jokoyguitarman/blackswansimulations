@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
@@ -16,7 +16,7 @@ export default function HomeScreen() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [badges, setBadges] = useState<Record<string, number>>({});
+  const [badges] = useState<Record<string, number>>({});
   const [scenario, setScenario] = useState<{ title: string; description: string } | null>(null);
 
   useEffect(() => {

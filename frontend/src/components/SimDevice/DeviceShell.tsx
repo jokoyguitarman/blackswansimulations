@@ -1,18 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Outlet, useParams, useNavigate } from 'react-router-dom';
 
 export default function DeviceShell() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const location = useLocation();
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
-
-  const isHome = location.pathname.endsWith('/home') || location.pathname.endsWith('/device');
 
   return (
     <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">

@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -33,7 +32,6 @@ interface Draft {
 export default function DraftPadApp() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [editing, setEditing] = useState(false);
   const [currentDraft, setCurrentDraft] = useState({ title: '', content: '' });
@@ -165,7 +163,7 @@ export default function DraftPadApp() {
                 ))}
               </div>
               {grade.feedback && (
-                <p className="text-xs text-gray-300 mt-2">{grade.feedback as string}</p>
+                <p className="text-xs text-gray-300 mt-2">{String(grade.feedback)}</p>
               )}
             </div>
           )}
