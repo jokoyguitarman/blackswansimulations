@@ -66,7 +66,6 @@ export default function HomeScreen() {
     { id: 'drafts', label: 'DraftPad', icon: '/icons/icon-drafts.png', path: 'drafts' },
   ];
 
-  const gridApps = apps.filter((a) => !a.inDock);
   const dockApps = apps.filter((a) => a.inDock);
 
   return (
