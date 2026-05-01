@@ -59,36 +59,48 @@ const CRISIS_TYPES = [
     label: 'Racial Tension',
     icon: '⚡',
     description: 'Hate speech and scapegoating targeting ethnic communities',
+    default_context:
+      'A violent assault has occurred in a public area. Bystander video goes viral showing the attacker, who appears to be of a specific ethnicity. Social media erupts with racist generalizations, calls to "send them back", and threats against the attacker\'s perceived ethnic community. Community members who share the attacker\'s ethnicity report receiving threats and harassment online. Several viral posts falsely claim the attack was coordinated by a larger group.',
   },
   {
     id: 'religious_incident',
     label: 'Religious Incident',
     icon: '🕌',
     description: 'Inflammatory posts targeting religious communities',
+    default_context:
+      'A place of worship has been vandalized with hate symbols and threatening graffiti overnight. Photos spread rapidly on social media. Inflammatory accounts claim this is "justified payback" for a recent overseas terror attack attributed to the same religion. Counter-posts from the affected religious community express fear and anger. Unverified claims circulate that the vandalism is a false flag. Community leaders call for calm while demanding police action. A local politician\'s ambiguous statement about "understanding frustrations" goes viral and is interpreted as endorsing the vandalism.',
   },
   {
     id: 'xenophobic_attack',
     label: 'Xenophobic Attack',
     icon: '🌍',
     description: 'Anti-immigrant sentiment and misinformation',
+    default_context:
+      'A workplace accident at a construction site has resulted in multiple injuries. Initial reports indicate the site employed a large number of foreign workers. Social media narratives quickly shift from sympathy for the injured to blaming foreign workers for "taking local jobs" and "lowering safety standards." Viral posts falsely claim foreign workers are paid to undercut locals. Anti-immigration hashtags trend. Foreign worker dormitory addresses are shared online with threatening messages. Migrant advocacy groups report a spike in harassment.',
   },
   {
     id: 'terror_aftermath',
     label: 'Terror Aftermath',
     icon: '💥',
     description: 'Social media backlash after a terror event',
+    default_context:
+      "An explosion has occurred at a crowded public transit station during morning rush hour. At least 15 people injured, 3 in critical condition. Police confirm it was caused by an improvised explosive device. No arrests have been made and no group has claimed responsibility. Social media immediately attributes the attack to a specific ethnic and religious minority community without any evidence. Hate speech surges with calls for deportation, travel bans, and vigilante action. A fake video claiming to show the bomber's face goes viral — it is actually footage from an unrelated incident in another country years ago. Muslim community members report being verbally and physically harassed on public transport.",
   },
   {
     id: 'police_incident',
     label: 'Police Incident',
     icon: '🚔',
     description: 'Viral video of a controversial police encounter',
+    default_context:
+      "A bystander video shows police officers using force during an arrest of a person from a visible minority group. The 45-second clip, which does not show what preceded the arrest, goes viral with millions of views. Social media splits between those accusing police of racial profiling and excessive force, and those defending police actions. Protest hashtags trend alongside counter-hashtags. Doxxing attempts target both the officers and the arrested individual. Unverified claims about the arrested person's criminal history circulate. Community organizations demand an independent investigation. A planned vigil is co-opted online by extremist groups on both sides.",
   },
   {
     id: 'fake_news_spiral',
     label: 'Fake News Spiral',
     icon: '📰',
     description: 'Viral misinformation causing real-world harm',
+    default_context:
+      'A fabricated news article claiming that a specific ethnic community is responsible for a disease outbreak has gone viral across multiple social media platforms. The article cites a non-existent "health ministry report" and includes manipulated photos. It has been shared over 50,000 times in 3 hours. Real-world consequences are emerging: businesses owned by the targeted community report customers refusing to enter, children from the community are being bullied at school, and a popular restaurant has been vandalized. The actual health ministry has not issued any such report. Mainstream media has not yet picked up the debunking. Influencer accounts with large followings are amplifying the false claims.',
   },
 ];
 
@@ -290,6 +302,14 @@ export const SocialCrisisWizard = () => {
     personasLoading,
   ]);
 
+  /* ─── Effective context (use default_context as fallback) ────── */
+
+  const effectiveContext = useMemo(() => {
+    if (context.trim()) return context.trim();
+    const match = CRISIS_TYPES.find((t) => t.id === crisisType);
+    return match?.default_context || '';
+  }, [context, crisisType]);
+
   /* ─── API calls ─────────────────────────────────────────────────── */
 
   const generateCommunities = useCallback(async () => {
@@ -300,7 +320,7 @@ export const SocialCrisisWizard = () => {
       const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/suggest-communities'), {
         method: 'POST',
         headers,
-        body: JSON.stringify({ crisis_type: crisisType, context, country }),
+        body: JSON.stringify({ crisis_type: crisisType, context: effectiveContext, country }),
       });
       if (res.ok) {
         const json = await res.json();
@@ -313,7 +333,7 @@ export const SocialCrisisWizard = () => {
       setCommunities(['Affected minority community', 'Immigrant community']);
     }
     setCommunitiesLoading(false);
-  }, [crisisType, context, country, communities.length]);
+  }, [crisisType, effectiveContext, country, communities.length]);
 
   const generateTeams = useCallback(async () => {
     if (!crisisType || communities.length === 0) return;
@@ -401,7 +421,7 @@ export const SocialCrisisWizard = () => {
         fetchJSON(apiUrl('/api/warroom/social-crisis/generate-factsheet'), {
           method: 'POST',
           headers,
-          body: JSON.stringify({ crisis_type: crisisType, location, context }),
+          body: JSON.stringify({ crisis_type: crisisType, location, context: effectiveContext }),
         }),
       ]);
       if (pRes.ok) {
@@ -437,7 +457,7 @@ export const SocialCrisisWizard = () => {
           crisis_type: crisisType,
           location,
           country,
-          context,
+          context: effectiveContext,
           communities,
           teams,
           sop,
@@ -491,7 +511,7 @@ export const SocialCrisisWizard = () => {
     crisisType,
     location,
     country,
-    context,
+    effectiveContext,
     communities,
     teams,
     sop,
