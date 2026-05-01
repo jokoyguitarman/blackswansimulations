@@ -90,7 +90,7 @@ export async function computeSessionSentiment(sessionId: string): Promise<Sentim
 
   getWebSocketService().broadcastToSession(sessionId, {
     type: 'sentiment.updated',
-    data: state,
+    data: { ...state },
     timestamp: new Date().toISOString(),
   });
 

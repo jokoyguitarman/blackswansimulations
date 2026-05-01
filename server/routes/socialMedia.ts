@@ -95,8 +95,8 @@ router.post(
         .insert({
           session_id,
           platform,
-          author_handle: `@${user.displayName?.replace(/\s+/g, '_').toLowerCase() || user.id.slice(0, 8)}`,
-          author_display_name: user.displayName || 'Player',
+          author_handle: `@${(user.email || user.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`,
+          author_display_name: (user.metadata?.full_name as string) || user.email || 'Player',
           author_type: 'player',
           content,
           hashtags,
@@ -112,9 +112,17 @@ router.post(
       }
 
       if (reply_to_post_id) {
-        await supabaseAdmin
-          .rpc('increment_reply_count', { post_id: reply_to_post_id })
-          .catch(() => {});
+        const { data: parentPost } = await supabaseAdmin
+          .from('social_posts')
+          .select('reply_count')
+          .eq('id', reply_to_post_id)
+          .single();
+        if (parentPost) {
+          await supabaseAdmin
+            .from('social_posts')
+            .update({ reply_count: (parentPost.reply_count || 0) + 1 })
+            .eq('id', reply_to_post_id);
+        }
         await markPostResponded(session_id, reply_to_post_id, post.id);
         await recordPlayerAction(session_id, user.id, 'reply_posted', reply_to_post_id, content);
       } else {
@@ -214,8 +222,8 @@ router.post('/posts/:postId/repost', requireAuth, async (req: AuthenticatedReque
       .insert({
         session_id: session_id || original.session_id,
         platform: original.platform,
-        author_handle: `@${user.displayName?.replace(/\s+/g, '_').toLowerCase() || user.id.slice(0, 8)}`,
-        author_display_name: user.displayName || 'Player',
+        author_handle: `@${(user.email || user.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`,
+        author_display_name: (user.metadata?.full_name as string) || user.email || 'Player',
         author_type: 'player',
         content: original.content,
         is_repost: true,
@@ -311,8 +319,8 @@ router.post(
         .insert({
           session_id,
           direction: 'outbound',
-          from_address: `${user.displayName?.replace(/\s+/g, '.').toLowerCase() || 'player'}@harmony.gov.sg`,
-          from_name: user.displayName || 'Player',
+          from_address: `${(user.email || 'player').replace(/@.*/, '').replace(/\s+/g, '.')}@harmony.gov.sg`,
+          from_name: (user.metadata?.full_name as string) || user.email || 'Player',
           to_addresses,
           cc_addresses: cc_addresses || [],
           subject,
