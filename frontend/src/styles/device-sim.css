@@ -116,7 +116,16 @@
 }
 
 .dock-blur {
-  background: rgba(30, 30, 30, 0.7);
-  backdrop-filter: blur(25px);
-  -webkit-backdrop-filter: blur(25px);
+  background: rgba(30, 30, 30, 0.55);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+}
+
+@keyframes appOpen {
+  from { transform: scale(0.92); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.app-content-enter {
+  animation: appOpen 0.25s ease-out forwards;
 }

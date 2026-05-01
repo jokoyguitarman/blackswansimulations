@@ -107,47 +107,66 @@ export default function DraftPadApp() {
     return '#FF3B30';
   }
 
+  function getScoreBg(score: number): string {
+    if (score >= 70) return 'rgba(52,199,89,0.12)';
+    if (score >= 40) return 'rgba(255,149,0,0.12)';
+    return 'rgba(255,59,48,0.12)';
+  }
+
   function getStatusStyle(status: string): { bg: string; text: string } {
     switch (status) {
       case 'published':
-        return { bg: '#E8F5E9', text: '#34C759' };
+        return { bg: 'rgba(52,199,89,0.12)', text: '#34C759' };
       case 'approved':
-        return { bg: '#E3F2FD', text: '#007AFF' };
+        return { bg: 'rgba(0,122,255,0.12)', text: '#007AFF' };
       case 'submitted':
-        return { bg: '#FFF8E1', text: '#FF9500' };
+        return { bg: 'rgba(255,149,0,0.12)', text: '#FF9500' };
       default:
-        return { bg: '#F2F2F7', text: '#8E8E93' };
+        return { bg: 'rgba(142,142,147,0.12)', text: '#8E8E93' };
     }
+  }
+
+  function formatDate(dateStr: string): string {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   }
 
   // Editor View
   if (editing) {
     return (
-      <div className="h-full flex flex-col" style={{ backgroundColor: '#F2F2F7' }}>
+      <div className="h-full flex flex-col" style={{ backgroundColor: '#FFFFFF' }}>
         {/* Nav */}
         <div
-          className="flex items-center justify-between px-4 ios-blur-nav"
+          className="flex items-center justify-between px-4 ios-blur-nav flex-shrink-0"
           style={{
             height: 44,
-            backgroundColor: 'rgba(242,242,247,0.85)',
-            borderBottom: '0.5px solid #C6C6C8',
+            backgroundColor: 'rgba(255,255,255,0.92)',
+            borderBottom: '0.5px solid rgba(60,60,67,0.18)',
+            backdropFilter: 'blur(20px)',
           }}
         >
           <button
             onClick={() => setEditing(false)}
-            className="text-[17px] ios-btn-bounce"
-            style={{ color: '#007AFF' }}
+            className="flex items-center gap-0.5 ios-btn-bounce"
+            style={{ color: '#FF9500' }}
           >
-            Cancel
+            <svg width="12" height="20" viewBox="0 0 12 20" fill="none">
+              <path
+                d="M10 2L2 10l8 8"
+                stroke="#FF9500"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="text-[17px]">Notes</span>
           </button>
           <div className="flex items-center gap-3">
-            <button
-              onClick={saveDraft}
-              className="text-[15px] font-medium ios-btn-bounce"
-              style={{ color: '#007AFF' }}
-            >
-              Save
-            </button>
             <button
               onClick={gradeDraft}
               disabled={grading}
@@ -158,55 +177,78 @@ export default function DraftPadApp() {
             </button>
             <button
               onClick={publishDraft}
-              className="px-3 py-1 rounded-full text-[14px] font-semibold text-white ios-btn-bounce"
-              style={{ backgroundColor: '#007AFF' }}
+              className="text-[15px] font-semibold ios-btn-bounce"
+              style={{ color: '#FF9500' }}
             >
               Publish
+            </button>
+            <button onClick={saveDraft} className="ios-btn-bounce" style={{ color: '#FF9500' }}>
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
             </button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#FFFFFF' }}>
           {/* Title */}
-          <div style={{ backgroundColor: '#FFFFFF', borderBottom: '0.5px solid #C6C6C8' }}>
-            <input
-              value={currentDraft.title}
-              onChange={(e) => setCurrentDraft({ ...currentDraft, title: e.target.value })}
-              placeholder="Title..."
-              className="w-full px-4 py-3 text-[22px] font-bold outline-none"
-              style={{ color: '#000000' }}
-            />
-          </div>
+          <input
+            value={currentDraft.title}
+            onChange={(e) => setCurrentDraft({ ...currentDraft, title: e.target.value })}
+            placeholder="Title"
+            className="w-full px-5 pt-5 pb-1 text-[24px] font-bold outline-none placeholder:text-[#C7C7CC]"
+            style={{ color: '#1C1C1E' }}
+          />
+
+          {/* Date line */}
+          <p className="px-5 pb-3 text-[13px]" style={{ color: '#8E8E93' }}>
+            {new Date().toLocaleDateString([], {
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric',
+              year: 'numeric',
+            })}
+          </p>
 
           {/* Content */}
-          <div style={{ backgroundColor: '#FFFFFF' }}>
-            <textarea
-              value={currentDraft.content}
-              onChange={(e) => setCurrentDraft({ ...currentDraft, content: e.target.value })}
-              placeholder="Write your official response..."
-              className="w-full px-4 py-3 text-[15px] outline-none resize-none min-h-[200px]"
-              style={{ color: '#1C1C1E', lineHeight: 1.5 }}
-              autoFocus
-            />
-          </div>
+          <textarea
+            value={currentDraft.content}
+            onChange={(e) => setCurrentDraft({ ...currentDraft, content: e.target.value })}
+            placeholder="Start writing your official response..."
+            className="w-full px-5 text-[16px] outline-none resize-none min-h-[200px] placeholder:text-[#C7C7CC]"
+            style={{ color: '#1C1C1E', lineHeight: '1.6' }}
+            autoFocus
+          />
 
           {/* Grade Card */}
           {grade && (
             <div
-              className="mx-4 mt-4 rounded-xl overflow-hidden"
-              style={{ backgroundColor: '#FFFFFF' }}
+              className="mx-4 mt-4 mb-4 rounded-xl overflow-hidden"
+              style={{ backgroundColor: '#F2F2F7' }}
             >
-              <div className="px-4 py-3" style={{ borderBottom: '0.5px solid #E5E5EA' }}>
-                <div className="flex items-center gap-2">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="#5856D6">
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                  </svg>
-                  <span className="text-[17px] font-bold" style={{ color: '#000000' }}>
-                    AI Grade
-                  </span>
-                </div>
+              <div
+                className="px-4 py-3 flex items-center gap-2"
+                style={{ borderBottom: '0.5px solid rgba(60,60,67,0.12)' }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#5856D6">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                </svg>
+                <span className="text-[15px] font-semibold" style={{ color: '#1C1C1E' }}>
+                  AI Grade
+                </span>
               </div>
-              <div className="p-4 grid grid-cols-2 gap-3">
+              <div className="p-4 space-y-2.5">
                 {[
                   'accuracy',
                   'tone',
@@ -216,14 +258,16 @@ export default function DraftPadApp() {
                   'overall',
                 ].map((key) => {
                   const score = Number(grade[key]) || 0;
+                  const color = getScoreColor(score);
+                  const bg = getScoreBg(score);
                   return (
                     <div key={key} className="flex items-center justify-between">
-                      <span className="text-[13px] capitalize" style={{ color: '#8E8E93' }}>
+                      <span className="text-[14px] capitalize" style={{ color: '#6C6C70' }}>
                         {key.replace('_', ' ')}
                       </span>
                       <span
-                        className="text-[15px] font-bold"
-                        style={{ color: getScoreColor(score) }}
+                        className="text-[14px] font-bold px-2.5 py-0.5 rounded-md"
+                        style={{ color, backgroundColor: bg }}
                       >
                         {String(grade[key])}/100
                       </span>
@@ -233,12 +277,11 @@ export default function DraftPadApp() {
               </div>
               {typeof grade.feedback === 'string' && grade.feedback.length > 0 && (
                 <div className="px-4 pb-4">
-                  <p
-                    className="text-[13px] leading-relaxed"
-                    style={{ color: '#6C6C70', borderTop: '0.5px solid #E5E5EA', paddingTop: 12 }}
-                  >
-                    {grade.feedback}
-                  </p>
+                  <div style={{ borderTop: '0.5px solid rgba(60,60,67,0.12)', paddingTop: 12 }}>
+                    <p className="text-[13px] leading-relaxed" style={{ color: '#6C6C70' }}>
+                      {grade.feedback}
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
@@ -253,25 +296,29 @@ export default function DraftPadApp() {
     <div className="h-full flex flex-col" style={{ backgroundColor: '#F2F2F7' }}>
       {/* Nav */}
       <div
-        className="ios-blur-nav"
-        style={{ backgroundColor: 'rgba(242,242,247,0.85)', borderBottom: '0.5px solid #C6C6C8' }}
+        className="ios-blur-nav flex-shrink-0"
+        style={{
+          backgroundColor: 'rgba(242,242,247,0.92)',
+          borderBottom: '0.5px solid rgba(60,60,67,0.18)',
+          backdropFilter: 'blur(20px)',
+        }}
       >
         <div className="flex items-center justify-between px-4" style={{ height: 44 }}>
           <button
             onClick={() => navigate(`/sim/${sessionId}/device/home`)}
-            className="flex items-center gap-1 ios-btn-bounce"
+            className="flex items-center gap-0.5 ios-btn-bounce"
             style={{ color: '#FF9500' }}
           >
-            <svg width="10" height="16" viewBox="0 0 10 16" fill="none">
+            <svg width="12" height="20" viewBox="0 0 12 20" fill="none">
               <path
-                d="M9 1L2 8l7 7"
+                d="M10 2L2 10l8 8"
                 stroke="#FF9500"
-                strokeWidth="2"
+                strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
             </svg>
-            <span className="text-[17px]">Home</span>
+            <span className="text-[17px]">Back</span>
           </button>
           <button onClick={createNew} className="ios-btn-bounce" style={{ color: '#FF9500' }}>
             <svg
@@ -290,8 +337,8 @@ export default function DraftPadApp() {
           </button>
         </div>
         <div className="px-4 pb-2">
-          <h1 className="ios-large-title" style={{ color: '#000000' }}>
-            DraftPad
+          <h1 className="text-[34px] font-bold tracking-tight" style={{ color: '#000000' }}>
+            Notes
           </h1>
         </div>
       </div>
@@ -301,68 +348,105 @@ export default function DraftPadApp() {
         {drafts.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 gap-3">
             <svg
-              width="56"
-              height="56"
+              width="52"
+              height="52"
               viewBox="0 0 24 24"
               fill="none"
               stroke="#C7C7CC"
-              strokeWidth="1"
+              strokeWidth="0.8"
             >
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="16" y1="13" x2="8" y2="13" />
-              <line x1="16" y1="17" x2="8" y2="17" />
-              <polyline points="10 9 9 9 8 9" />
+              <rect x="4" y="2" width="16" height="20" rx="2" />
+              <line x1="8" y1="6" x2="16" y2="6" />
+              <line x1="8" y1="10" x2="16" y2="10" />
+              <line x1="8" y1="14" x2="12" y2="14" />
             </svg>
-            <p className="text-[15px]" style={{ color: '#8E8E93' }}>
-              No drafts yet
+            <p className="text-[17px] font-semibold" style={{ color: '#3C3C43' }}>
+              No Notes
+            </p>
+            <p className="text-[14px]" style={{ color: '#8E8E93' }}>
+              Your draft responses will appear here.
             </p>
             <button
               onClick={createNew}
-              className="px-4 py-2 rounded-full text-[15px] font-semibold text-white ios-btn-bounce"
+              className="mt-1 px-5 py-2 rounded-full text-[15px] font-semibold text-white ios-btn-bounce"
               style={{ backgroundColor: '#FF9500' }}
             >
-              Create Your First Draft
+              New Note
             </button>
           </div>
         ) : (
-          <div
-            className="mx-4 mt-3 rounded-xl overflow-hidden"
-            style={{ backgroundColor: '#FFFFFF' }}
-          >
-            {drafts.map((draft, idx) => {
-              const statusStyle = getStatusStyle(draft.status);
-              return (
-                <button
-                  key={draft.id}
-                  onClick={() => {
-                    setCurrentDraft({ title: draft.title, content: draft.content });
-                    setGrade(draft.grade || null);
-                    setEditing(true);
-                  }}
-                  className="w-full text-left px-4 py-3 ios-btn-bounce"
-                  style={{ borderBottom: idx < drafts.length - 1 ? '0.5px solid #C6C6C8' : 'none' }}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span
-                      className="text-[15px] font-semibold truncate"
-                      style={{ color: '#000000' }}
+          <div>
+            {/* Section header */}
+            <p
+              className="text-[13px] font-normal px-8 pb-2 pt-4 uppercase"
+              style={{ color: '#6C6C70', letterSpacing: '0.02em' }}
+            >
+              {drafts.length} {drafts.length === 1 ? 'Note' : 'Notes'}
+            </p>
+            <div
+              className="mx-4 rounded-[10px] overflow-hidden"
+              style={{ backgroundColor: '#FFFFFF' }}
+            >
+              {drafts.map((draft, idx) => {
+                const statusStyle = getStatusStyle(draft.status);
+                return (
+                  <button
+                    key={draft.id}
+                    onClick={() => {
+                      setCurrentDraft({ title: draft.title, content: draft.content });
+                      setGrade(draft.grade || null);
+                      setEditing(true);
+                    }}
+                    className="w-full text-left flex items-center px-4 py-3 ios-btn-bounce active:bg-gray-50"
+                    style={{
+                      borderBottom:
+                        idx < drafts.length - 1 ? '0.5px solid rgba(60,60,67,0.12)' : 'none',
+                    }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="text-[15px] font-semibold truncate"
+                          style={{ color: '#1C1C1E' }}
+                        >
+                          {draft.title}
+                        </span>
+                        <span
+                          className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: statusStyle.bg, color: statusStyle.text }}
+                        >
+                          {draft.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[13px]" style={{ color: '#8E8E93' }}>
+                          {formatDate(draft.created_at)}
+                        </span>
+                        <span className="text-[13px] truncate" style={{ color: '#AEAEB2' }}>
+                          {draft.content.substring(0, 50)}
+                        </span>
+                      </div>
+                    </div>
+                    {/* Chevron */}
+                    <svg
+                      width="7"
+                      height="12"
+                      viewBox="0 0 7 12"
+                      fill="none"
+                      className="flex-shrink-0 ml-2"
                     >
-                      {draft.title}
-                    </span>
-                    <span
-                      className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: statusStyle.bg, color: statusStyle.text }}
-                    >
-                      {draft.status}
-                    </span>
-                  </div>
-                  <p className="text-[13px] mt-0.5 truncate" style={{ color: '#8E8E93' }}>
-                    {draft.content.substring(0, 80)}
-                  </p>
-                </button>
-              );
-            })}
+                      <path
+                        d="M1 1l5 5-5 5"
+                        stroke="#C7C7CC"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

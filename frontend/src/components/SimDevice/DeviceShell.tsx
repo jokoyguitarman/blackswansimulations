@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Outlet, useParams, useNavigate } from 'react-router-dom';
+import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
 import '../../styles/device-sim.css';
 
 export default function DeviceShell() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -136,7 +137,11 @@ export default function DeviceShell() {
           </div>
 
           {/* App Content */}
-          <div className="flex-1 overflow-hidden" style={{ height: 852 - 54 - 34 }}>
+          <div
+            className="flex-1 overflow-hidden app-content-enter"
+            style={{ height: 852 - 54 - 34 }}
+            key={location.pathname}
+          >
             <Outlet />
           </div>
 

@@ -1,11 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 interface AppDef {
   id: string;
   label: string;
-  emoji: string;
-  gradient: string;
+  icon: string;
   path: string;
   badge?: number;
   inDock?: boolean;
@@ -15,13 +14,26 @@ export default function HomeScreen() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const [badges] = useState<Record<string, number>>({});
+  const [time, setTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setTime(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const hours = time.getHours();
+  const minutes = time.getMinutes().toString().padStart(2, '0');
+  const dateStr = time.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
 
   const apps: AppDef[] = [
     {
       id: 'social',
-      label: 'SocialFeed',
-      emoji: '𝕏',
-      gradient: 'bg-black',
+      label: 'X',
+      icon: '/icons/icon-social.png',
       path: 'social',
       badge: badges.social,
       inDock: true,
@@ -29,8 +41,7 @@ export default function HomeScreen() {
     {
       id: 'chat',
       label: 'TeamChat',
-      emoji: '💬',
-      gradient: 'bg-[#25D366]',
+      icon: '/icons/icon-chat.png',
       path: 'chat',
       badge: badges.chat,
       inDock: true,
@@ -38,8 +49,7 @@ export default function HomeScreen() {
     {
       id: 'email',
       label: 'Mail',
-      emoji: '✉️',
-      gradient: 'bg-[#007AFF]',
+      icon: '/icons/icon-mail.png',
       path: 'email',
       badge: badges.email,
       inDock: true,
@@ -47,45 +57,95 @@ export default function HomeScreen() {
     {
       id: 'news',
       label: 'News',
-      emoji: '📰',
-      gradient: 'bg-[#FF3B30]',
+      icon: '/icons/icon-news.png',
       path: 'news',
       badge: badges.news,
       inDock: true,
     },
-    { id: 'browser', label: 'FactCheck', emoji: '🔍', gradient: 'bg-[#5856D6]', path: 'browser' },
-    { id: 'drafts', label: 'DraftPad', emoji: '📝', gradient: 'bg-[#FF9500]', path: 'drafts' },
+    { id: 'browser', label: 'FactCheck', icon: '/icons/icon-factcheck.png', path: 'browser' },
+    { id: 'drafts', label: 'DraftPad', icon: '/icons/icon-drafts.png', path: 'drafts' },
   ];
 
+  const gridApps = apps.filter((a) => !a.inDock);
   const dockApps = apps.filter((a) => a.inDock);
 
   return (
     <div
       className="h-full flex flex-col relative overflow-hidden"
-      style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
+      style={{
+        backgroundImage: 'url(/icons/wallpaper.png)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }}
     >
-      {/* Grid Apps */}
-      <div className="flex-1 flex flex-col items-center justify-center px-8 pt-16">
-        <div className="grid grid-cols-4 gap-x-6 gap-y-5">
+      {/* Time & Date Widget */}
+      <div className="flex flex-col items-center pt-12 pb-6">
+        <div
+          className="text-white font-light tracking-tight"
+          style={{
+            fontSize: 72,
+            lineHeight: 1,
+            fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+          }}
+        >
+          {hours}:{minutes}
+        </div>
+        <div
+          className="text-white/80 mt-1"
+          style={{
+            fontSize: 17,
+            fontWeight: 500,
+            letterSpacing: 0.3,
+            fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+          }}
+        >
+          {dateStr}
+        </div>
+      </div>
+
+      {/* App Grid */}
+      <div className="flex-1 flex flex-col items-center justify-start px-6 pt-6">
+        <div className="grid grid-cols-4 gap-x-5 gap-y-6">
           {apps.map((app) => (
             <button
               key={app.id}
               onClick={() => navigate(`/sim/${sessionId}/device/${app.path}`)}
-              className="flex flex-col items-center gap-1.5 ios-btn-bounce"
+              className="flex flex-col items-center gap-[6px] ios-btn-bounce"
             >
               <div className="relative">
-                <div
-                  className={`w-[60px] h-[60px] ${app.gradient} superellipse-icon flex items-center justify-center text-[28px] shadow-lg`}
-                >
-                  {app.emoji}
+                <div className="w-[62px] h-[62px] relative">
+                  <img
+                    src={app.icon}
+                    alt={app.label}
+                    className="w-full h-full superellipse-icon shadow-lg"
+                    draggable={false}
+                  />
+                  {/* iOS-style inner highlight */}
+                  <div
+                    className="absolute inset-0 superellipse-icon pointer-events-none"
+                    style={{
+                      boxShadow: 'inset 0 0 0 0.5px rgba(255,255,255,0.15)',
+                    }}
+                  />
                 </div>
                 {!!app.badge && app.badge > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[20px] h-[20px] bg-[#FF3B30] text-white text-[13px] font-bold rounded-full flex items-center justify-center px-1 border-2 border-[#302b63]">
+                  <span
+                    className="absolute -top-1 -right-1 min-w-[20px] h-[20px] bg-[#FF3B30] text-white text-[13px] font-bold rounded-full flex items-center justify-center px-1"
+                    style={{ borderWidth: 2, borderColor: 'rgba(0,0,0,0.2)', borderStyle: 'solid' }}
+                  >
                     {app.badge > 99 ? '99+' : app.badge}
                   </span>
                 )}
               </div>
-              <span className="text-[11px] text-white/90 font-medium tracking-tight">
+              <span
+                className="text-white text-center truncate w-[68px]"
+                style={{
+                  fontSize: 11,
+                  fontWeight: 500,
+                  textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+                  fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+                }}
+              >
                 {app.label}
               </span>
             </button>
@@ -93,13 +153,23 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      {/* Page Indicator */}
-      <div className="flex items-center justify-center py-2">
-        <div className="w-[6px] h-[6px] rounded-full bg-white/80" />
+      {/* Page Indicator Dots */}
+      <div className="flex items-center justify-center gap-1.5 py-2">
+        <div className="w-[7px] h-[7px] rounded-full bg-white" />
+        <div className="w-[7px] h-[7px] rounded-full bg-white/30" />
       </div>
 
       {/* Dock */}
-      <div className="dock-blur mx-3 mb-1 rounded-[26px] px-5 py-3">
+      <div
+        className="mx-2 mb-1 px-4 py-3"
+        style={{
+          background: 'rgba(30, 30, 30, 0.55)',
+          backdropFilter: 'blur(30px)',
+          WebkitBackdropFilter: 'blur(30px)',
+          borderRadius: 28,
+          borderTop: '0.5px solid rgba(255,255,255,0.1)',
+        }}
+      >
         <div className="flex items-center justify-around">
           {dockApps.map((app) => (
             <button
@@ -108,13 +178,23 @@ export default function HomeScreen() {
               className="flex flex-col items-center ios-btn-bounce"
             >
               <div className="relative">
-                <div
-                  className={`w-[60px] h-[60px] ${app.gradient} superellipse-icon flex items-center justify-center text-[28px] shadow-lg`}
-                >
-                  {app.emoji}
+                <div className="w-[58px] h-[58px] relative">
+                  <img
+                    src={app.icon}
+                    alt={app.label}
+                    className="w-full h-full superellipse-icon shadow-lg"
+                    draggable={false}
+                  />
+                  <div
+                    className="absolute inset-0 superellipse-icon pointer-events-none"
+                    style={{ boxShadow: 'inset 0 0 0 0.5px rgba(255,255,255,0.12)' }}
+                  />
                 </div>
                 {!!app.badge && app.badge > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[20px] h-[20px] bg-[#FF3B30] text-white text-[13px] font-bold rounded-full flex items-center justify-center px-1 border-2 border-black/30">
+                  <span
+                    className="absolute -top-1 -right-1 min-w-[20px] h-[20px] bg-[#FF3B30] text-white text-[13px] font-bold rounded-full flex items-center justify-center px-1"
+                    style={{ borderWidth: 2, borderColor: 'rgba(0,0,0,0.3)', borderStyle: 'solid' }}
+                  >
                     {app.badge > 99 ? '99+' : app.badge}
                   </span>
                 )}

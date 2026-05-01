@@ -44,83 +44,6 @@ interface SocialPost {
   reply_to_post_id: string | null;
 }
 
-function RepostIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M17 1l4 4-4 4" />
-      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-      <path d="M7 23l-4-4 4-4" />
-      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-    </svg>
-  );
-}
-
-function HeartIcon({ filled }: { filled?: boolean }) {
-  if (filled) {
-    return (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="#F91880">
-        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-      </svg>
-    );
-  }
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-    </svg>
-  );
-}
-
-function ViewsIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-    >
-      <path d="M18 20V10M12 20V4M6 20v-6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function FlagIcon({ flagged }: { flagged?: boolean }) {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill={flagged ? '#F59E0B' : 'none'}
-      stroke={flagged ? '#F59E0B' : 'currentColor'}
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-      <line x1="4" y1="22" x2="4" y2="15" />
-    </svg>
-  );
-}
-
 function formatCount(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
@@ -273,20 +196,19 @@ export default function SocialFeedApp() {
     <div className="h-full flex flex-col" style={{ backgroundColor: '#000000', color: '#E7E9EA' }}>
       {/* Header */}
       <div className="flex-shrink-0" style={{ borderBottom: '1px solid #2F3336' }}>
-        {/* Top row */}
-        <div className="flex items-center justify-between px-4" style={{ height: 44 }}>
+        <div className="flex items-center justify-between px-4" style={{ height: 53 }}>
           <button
             onClick={() => navigate(`/sim/${sessionId}/device/home`)}
-            className="ios-btn-bounce"
+            className="ios-btn-bounce w-8 h-8 flex items-center justify-center"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="#E7E9EA">
               <path d="M7.414 13l5.293 5.293a1 1 0 0 1-1.414 1.414l-7-7a1 1 0 0 1 0-1.414l7-7a1 1 0 1 1 1.414 1.414L7.414 11H20a1 1 0 1 1 0 2H7.414z" />
             </svg>
           </button>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="#E7E9EA">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="#E7E9EA">
             <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
           </svg>
-          <button onClick={() => {}} className="ios-btn-bounce">
+          <button className="ios-btn-bounce w-8 h-8 flex items-center justify-center">
             <svg
               width="20"
               height="20"
@@ -306,7 +228,7 @@ export default function SocialFeedApp() {
         <div className="flex">
           <button
             onClick={() => setActiveTab('foryou')}
-            className="flex-1 py-3 text-center text-[15px] font-bold relative"
+            className="flex-1 py-3 text-center text-[15px] font-bold relative transition-colors"
             style={{ color: activeTab === 'foryou' ? '#E7E9EA' : '#71767B' }}
           >
             For You
@@ -319,7 +241,7 @@ export default function SocialFeedApp() {
           </button>
           <button
             onClick={() => setActiveTab('following')}
-            className="flex-1 py-3 text-center text-[15px] font-bold relative"
+            className="flex-1 py-3 text-center text-[15px] font-bold relative transition-colors"
             style={{ color: activeTab === 'following' ? '#E7E9EA' : '#71767B' }}
           >
             Following
@@ -336,19 +258,34 @@ export default function SocialFeedApp() {
       {/* Feed */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-32" style={{ color: '#71767B' }}>
+          <div className="flex items-center justify-center h-32">
             <div
-              className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin"
+              className="w-7 h-7 border-2 border-t-transparent rounded-full animate-spin"
               style={{ borderColor: '#1D9BF0', borderTopColor: 'transparent' }}
             />
           </div>
         ) : posts.length === 0 ? (
-          <div
-            className="flex flex-col items-center justify-center h-40 gap-2"
-            style={{ color: '#71767B' }}
-          >
-            <p className="text-[15px]">No posts yet</p>
-            <p className="text-[13px]">Posts will appear here as the simulation progresses.</p>
+          <div className="flex flex-col items-center justify-center h-48 gap-3 px-8 text-center">
+            <svg
+              width="40"
+              height="40"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#333639"
+              strokeWidth="1.5"
+            >
+              <path
+                d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <p className="text-[15px] font-bold" style={{ color: '#E7E9EA' }}>
+              Welcome to X
+            </p>
+            <p className="text-[13px]" style={{ color: '#71767B' }}>
+              Posts will appear here as the simulation progresses.
+            </p>
           </div>
         ) : (
           posts
@@ -358,10 +295,12 @@ export default function SocialFeedApp() {
               return (
                 <div
                   key={post.id}
-                  className="x-feed-post px-4 py-3"
-                  style={{ borderLeft: getSentimentBorder(post.sentiment) }}
+                  className="px-4 py-3 transition-colors"
+                  style={{
+                    borderBottom: '1px solid #2F3336',
+                    borderLeft: getSentimentBorder(post.sentiment),
+                  }}
                 >
-                  {/* Requires Response */}
                   {post.requires_response && !post.responded_at && (
                     <div className="flex items-center gap-1.5 mb-2 ml-[52px]">
                       <span className="relative flex h-2 w-2">
@@ -384,7 +323,6 @@ export default function SocialFeedApp() {
                   )}
 
                   <div className="flex gap-3">
-                    {/* Avatar */}
                     <div
                       className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
                       style={{ backgroundColor: getAvatarColor(post.author_display_name) }}
@@ -393,7 +331,6 @@ export default function SocialFeedApp() {
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      {/* Author line */}
                       <div className="flex items-center gap-1 flex-wrap">
                         <span
                           className="font-bold text-[15px] truncate"
@@ -418,26 +355,47 @@ export default function SocialFeedApp() {
                         </span>
                       </div>
 
-                      {/* Content */}
+                      {post.is_repost && (
+                        <div
+                          className="flex items-center gap-1 mt-0.5"
+                          style={{ color: '#71767B' }}
+                        >
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M17 1l4 4-4 4" />
+                            <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                            <path d="M7 23l-4-4 4-4" />
+                            <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                          </svg>
+                          <span className="text-[12px]">Reposted</span>
+                        </div>
+                      )}
+
                       <p
-                        className="text-[15px] mt-0.5 whitespace-pre-wrap break-words leading-[1.35]"
-                        style={{ color: '#E7E9EA' }}
+                        className="text-[15px] mt-1 whitespace-pre-wrap break-words"
+                        style={{ color: '#E7E9EA', lineHeight: '1.4' }}
                       >
                         {String(post.content)
                           .split(/(#\w+)/g)
-                          .map((part: string, i: number) => {
-                            if (part.startsWith('#')) {
-                              return (
-                                <span key={i} style={{ color: '#1D9BF0' }}>
-                                  {part}
-                                </span>
-                              );
-                            }
-                            return <span key={i}>{part}</span>;
-                          })}
+                          .map((part: string, i: number) =>
+                            part.startsWith('#') ? (
+                              <span key={i} style={{ color: '#1D9BF0' }}>
+                                {part}
+                              </span>
+                            ) : (
+                              <span key={i}>{part}</span>
+                            ),
+                          )}
                       </p>
 
-                      {/* Content Flags */}
                       {!!(
                         post.content_flags &&
                         (post.content_flags.is_hate_speech || post.content_flags.is_misinformation)
@@ -470,11 +428,12 @@ export default function SocialFeedApp() {
                         </div>
                       )}
 
-                      {/* Engagement Bar */}
+                      {/* Engagement bar */}
                       <div
                         className="flex items-center justify-between mt-3 max-w-[340px]"
                         style={{ color: '#71767B' }}
                       >
+                        {/* Reply */}
                         <button
                           onClick={() => {
                             setReplyingTo(post);
@@ -500,43 +459,91 @@ export default function SocialFeedApp() {
                             {post.reply_count > 0 ? formatCount(post.reply_count) : ''}
                           </span>
                         </button>
-
+                        {/* Repost */}
                         <button className="flex items-center gap-1.5 group transition-colors hover:text-[#00BA7C]">
                           <div className="p-1.5 rounded-full group-hover:bg-[#00BA7C]/10 transition-colors">
-                            <RepostIcon />
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M17 1l4 4-4 4" />
+                              <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                              <path d="M7 23l-4-4 4-4" />
+                              <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                            </svg>
                           </div>
                           <span className="text-[13px]">
                             {post.repost_count > 0 ? formatCount(post.repost_count) : ''}
                           </span>
                         </button>
-
+                        {/* Like */}
                         <button
                           onClick={() => handleLike(post.id)}
                           className="flex items-center gap-1.5 group transition-colors hover:text-[#F91880]"
                         >
                           <div className="p-1.5 rounded-full group-hover:bg-[#F91880]/10 transition-colors">
-                            <HeartIcon />
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                            </svg>
                           </div>
                           <span className="text-[13px]">
                             {post.like_count > 0 ? formatCount(post.like_count) : ''}
                           </span>
                         </button>
-
+                        {/* Views */}
                         <div className="flex items-center gap-1.5">
                           <div className="p-1.5">
-                            <ViewsIcon />
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M18 20V10M12 20V4M6 20v-6" />
+                            </svg>
                           </div>
                           <span className="text-[13px]">
                             {post.view_count > 0 ? formatCount(post.view_count) : ''}
                           </span>
                         </div>
-
+                        {/* Flag */}
                         <button
                           onClick={() => handleFlag(post.id)}
                           className="flex items-center group transition-colors hover:text-[#F59E0B]"
                         >
                           <div className="p-1.5 rounded-full group-hover:bg-[#F59E0B]/10 transition-colors">
-                            <FlagIcon flagged={post.is_flagged_by_player} />
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill={post.is_flagged_by_player ? '#F59E0B' : 'none'}
+                              stroke={post.is_flagged_by_player ? '#F59E0B' : 'currentColor'}
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                              <line x1="4" y1="22" x2="4" y2="15" />
+                            </svg>
                           </div>
                         </button>
                       </div>
@@ -548,11 +555,11 @@ export default function SocialFeedApp() {
         )}
       </div>
 
-      {/* Floating Compose Button (FAB) */}
+      {/* Compose FAB */}
       {!composing && (
         <button
           onClick={() => setComposing(true)}
-          className="absolute ios-btn-bounce shadow-lg flex items-center justify-center"
+          className="absolute ios-btn-bounce flex items-center justify-center"
           style={{
             bottom: 24,
             right: 20,
@@ -560,34 +567,27 @@ export default function SocialFeedApp() {
             height: 56,
             borderRadius: 28,
             backgroundColor: '#1D9BF0',
+            boxShadow: '0 4px 12px rgba(29,155,240,0.4)',
           }}
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-            <path
-              d="M23 3c-6.62-.1-10.38 2.421-13.424 6.614C7.26 13.026 5.518 16.42 3.48 19.14c-.296.4.022.86.504.86h2.18c.403 0 .758-.247.918-.618C9.004 14.498 12.27 10.926 19.07 10.204V14a.5.5 0 0 0 .86.354l3.5-3.5a.5.5 0 0 0 0-.708l-3.5-3.5A.5.5 0 0 0 19.07 7V3z"
-              fill="none"
-              stroke="white"
-              strokeWidth="1.5"
-            />
-            <path d="M22.5 3.5L3 20.5" stroke="white" strokeWidth="0" fill="none" />
-            <path d="M23 3a1 1 0 0 0-1-1H12a1 1 0 0 0 0 2h10a1 1 0 0 0 1-1z" fill="none" />
-          </svg>
           <svg
             width="24"
             height="24"
             viewBox="0 0 24 24"
-            fill="white"
-            style={{ position: 'absolute' }}
+            fill="none"
+            stroke="white"
+            strokeWidth="2.5"
+            strokeLinecap="round"
           >
-            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
         </button>
       )}
 
-      {/* Compose Modal (slide up) */}
+      {/* Compose Modal */}
       {composing && (
         <div className="absolute inset-0 flex flex-col" style={{ zIndex: 60 }}>
-          {/* Backdrop */}
           <div
             className="flex-1"
             style={{ backgroundColor: 'rgba(91, 112, 131, 0.4)' }}
@@ -596,7 +596,6 @@ export default function SocialFeedApp() {
               setReplyingTo(null);
             }}
           />
-          {/* Sheet */}
           <div
             className="flex flex-col"
             style={{
@@ -607,8 +606,10 @@ export default function SocialFeedApp() {
               minHeight: 280,
             }}
           >
-            {/* Sheet header */}
-            <div className="flex items-center justify-between px-4 py-3">
+            <div
+              className="flex items-center justify-between px-4 py-3"
+              style={{ borderBottom: '1px solid #2F3336' }}
+            >
               <button
                 onClick={() => {
                   setComposing(false);
@@ -629,18 +630,16 @@ export default function SocialFeedApp() {
               </button>
             </div>
 
-            {/* Reply context */}
             {replyingTo && (
-              <div className="px-4 pb-2">
+              <div className="px-4 pb-2 pt-3">
                 <span className="text-[14px]" style={{ color: '#71767B' }}>
                   Replying to <span style={{ color: '#1D9BF0' }}>{replyingTo.author_handle}</span>
                 </span>
               </div>
             )}
 
-            {/* Compose area */}
             <div className="flex-1 px-4 pb-2 overflow-y-auto">
-              <div className="flex gap-3">
+              <div className="flex gap-3 pt-3">
                 <div
                   className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
                   style={{ backgroundColor: '#1D9BF0' }}
@@ -651,32 +650,47 @@ export default function SocialFeedApp() {
                   value={composeText}
                   onChange={(e) => setComposeText(e.target.value)}
                   placeholder={replyingTo ? 'Post your reply...' : "What's happening?"}
-                  className="flex-1 bg-transparent text-[17px] resize-none outline-none min-h-[120px] placeholder:text-[#71767B]"
-                  style={{ color: '#E7E9EA' }}
+                  className="flex-1 bg-transparent text-[18px] resize-none outline-none min-h-[120px] placeholder:text-[#71767B]"
+                  style={{ color: '#E7E9EA', lineHeight: '1.4' }}
                   maxLength={500}
                   autoFocus
                 />
               </div>
             </div>
 
-            {/* Bottom toolbar */}
             <div
-              className="flex items-center justify-between px-4 py-2"
+              className="flex items-center justify-between px-4 py-2.5"
               style={{ borderTop: '1px solid #2F3336' }}
             >
               <div className="flex items-center gap-4" style={{ color: '#1D9BF0' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <path
-                    d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-7 14.5a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z"
-                    opacity="0.3"
-                  />
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21 15 16 10 5 21" />
                 </svg>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <path
-                    d="M3 5.5C3 4.119 4.12 3 5.5 3h13C19.88 3 21 4.119 21 5.5v13c0 1.381-1.12 2.5-2.5 2.5h-13C4.12 21 3 19.881 3 18.5v-13z"
-                    opacity="0"
-                  />
-                  <path d="M15.712 11.823a.75.75 0 0 1 0 1.354l-5.474 2.953a.75.75 0 0 1-1.113-.677V9.547a.75.75 0 0 1 1.113-.676l5.474 2.952z" />
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                  <line x1="9" y1="9" x2="9.01" y2="9" />
+                  <line x1="15" y1="9" x2="15.01" y2="9" />
                 </svg>
               </div>
               <div className="flex items-center gap-2">
