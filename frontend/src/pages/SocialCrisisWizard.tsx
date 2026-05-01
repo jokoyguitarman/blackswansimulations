@@ -155,8 +155,8 @@ export const SocialCrisisWizard = () => {
   const [compileProgress, setCompileProgress] = useState<string[]>([]);
   const [scenarioId, setScenarioId] = useState<string | null>(null);
 
-  /* Difficulty & duration */
-  const [difficulty, setDifficulty] = useState('medium');
+  /* Duration */
+  const difficulty = 'expert';
   const [duration, setDuration] = useState(60);
 
   /* ─── Validation ────────────────────────────────────────────────── */
@@ -1044,20 +1044,6 @@ export const SocialCrisisWizard = () => {
                   </p>
 
                   <div className="grid grid-cols-2 gap-4 mb-6">
-                    <div>
-                      <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
-                        Difficulty
-                      </label>
-                      <select
-                        value={difficulty}
-                        onChange={(e) => setDifficulty(e.target.value)}
-                        className="w-full bg-robotic-gray-300 border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none"
-                      >
-                        <option value="easy">Easy</option>
-                        <option value="medium">Medium</option>
-                        <option value="hard">Hard</option>
-                      </select>
-                    </div>
                     <div>
                       <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
                         Duration (minutes)
