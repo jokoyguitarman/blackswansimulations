@@ -126,7 +126,7 @@ export interface SocialCrisisPayload {
 async function callAI(
   systemPrompt: string,
   userPrompt: string,
-  maxTokens = 4096,
+  maxTokens = 8000,
   temperature = 0.7,
 ): Promise<Record<string, unknown> | null> {
   if (!env.openAiApiKey) return null;
@@ -138,7 +138,7 @@ async function callAI(
         Authorization: `Bearer ${env.openAiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5.2',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
@@ -204,7 +204,7 @@ Consider the country context and typical social media dynamics. Return 2-5 speci
 
 Return ONLY valid JSON: { "communities": ["community1", "community2", ...] }`,
     `Crisis type: ${crisisType}\nCountry: ${country}\nAdditional context: ${context || 'None'}`,
-    512,
+    8000,
   );
   return (
     (result?.communities as string[]) ||
@@ -231,7 +231,7 @@ Each team should have a clear, distinct role in the social media response effort
 Return ONLY valid JSON:
 { "teams": [{ "team_name": "...", "team_description": "...", "min_participants": 1, "max_participants": 4 }] }`,
     `Crisis: ${crisisType}\nTargeted communities: ${communities.join(', ')}`,
-    1024,
+    8000,
   );
 
   return (
@@ -295,7 +295,7 @@ Return ONLY valid JSON:
   }
 }`,
     `Crisis: ${crisisType}\nAffected communities: ${communities.join(', ')}\nTeams: ${teams.map((t) => t.team_name).join(', ')}`,
-    2048,
+    8000,
   );
 
   if (result) return result as unknown as SOPDefinition;
@@ -397,7 +397,7 @@ Country context: ${country}
 Return ONLY valid JSON:
 { "personas": [{ "handle": "@username", "name": "Display Name", "type": "npc_public|npc_media|npc_politician|npc_influencer", "personality": "...", "bias": "anti-X|general xenophobia|none|...", "follower_count": 1000 }] }`,
     `Crisis: ${crisisType}\nTargeted communities: ${communities.join(', ')}\nCountry: ${country}`,
-    2048,
+    8000,
   );
 
   return (result?.personas as NPCPersona[]) || [];
@@ -419,7 +419,7 @@ Return ONLY valid JSON:
   "unconfirmed_claims": [{ "claim": "...", "status": "FALSE|UNVERIFIED", "truth": "..." }]
 }`,
     `Crisis: ${crisisType}\nLocation: ${location}\nContext: ${context || 'Standard crisis scenario'}`,
-    1536,
+    8000,
   );
 
   if (result) return result as unknown as FactSheet;
@@ -487,7 +487,7 @@ Return ONLY valid JSON:
   "objectives": [{ "objective_id": "...", "objective_name": "...", "description": "...", "weight": 25 }]
 }`,
     `Context: ${context || 'Standard crisis'}\nDuration: ${durationMinutes} minutes\nDifficulty: ${difficulty}\nTeams: ${teams.map((t) => t.team_name).join(', ')}`,
-    2048,
+    8000,
   );
 
   const narrative = narrativeResult || {
@@ -560,7 +560,7 @@ For social_feed injects, include content_flags: { is_hate_speech, is_misinformat
 Return ONLY valid JSON:
 { "time_injects": [{ "trigger_time_minutes": 0, "type": "social_post", "title": "...", "content": "...", "severity": "low|medium|high|critical", "inject_scope": "universal", "target_teams": [], "requires_response": false, "response_deadline_minutes": null, "delivery_config": { "app": "social_feed", "platform": "x_twitter", "author_handle": "@...", "author_display_name": "...", "author_type": "npc_public", "virality_score": 50, "content_flags": {}, "engagement_seed": { "likes": 100, "reposts": 30, "replies": 20 } } }] }`,
     `Crisis: ${crisisType} in ${location}, ${country}\nDuration: ${durationMinutes}min\nDifficulty: ${difficulty}`,
-    8192,
+    8000,
     0.8,
   );
 
@@ -586,7 +586,7 @@ Generate 6-10 condition-based injects. These create consequences for player acti
 Return ONLY valid JSON:
 { "condition_injects": [{ "title": "...", "content": "...", "type": "social_post", "severity": "high", "inject_scope": "universal", "target_teams": [], "requires_response": false, "delivery_config": { "app": "social_feed", ... }, "conditions_to_appear": { "threshold": 1, "conditions": ["hate_post_unaddressed_count_gt_3"] }, "conditions_to_cancel": ["team_published_counter_narrative"], "eligible_after_minutes": 10 }] }`,
     `Crisis: ${crisisType}\nPersonas: ${personas.map((p) => p.handle).join(', ')}\nTeams: ${teams.map((t) => t.team_name).join(', ')}`,
-    4096,
+    8000,
     0.7,
   );
 
@@ -606,7 +606,7 @@ Each needs a trigger_condition in JSON format: { "type": "decision_based", "matc
 Return ONLY valid JSON:
 { "decision_injects": [{ "trigger_condition": "{ ... JSON ... }", "title": "...", "content": "...", "type": "social_post", "severity": "medium", "inject_scope": "universal", "target_teams": [], "delivery_config": { "app": "social_feed", ... } }] }`,
     `Crisis: ${crisisType}\nPersonas: ${personas.map((p) => `${p.handle}: ${p.personality}`).join('; ')}`,
-    2048,
+    8000,
     0.7,
   );
 
