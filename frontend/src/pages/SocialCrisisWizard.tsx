@@ -1,35 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { api } from '../lib/api';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
-
-interface TeamEntry {
-  team_name: string;
-  team_description: string;
-  min_participants: number;
-  max_participants: number;
-}
-
-interface SOPStep {
-  step_id: string;
-  name: string;
-  description: string;
-  time_limit_minutes: number;
-}
-
-interface SOPDefinition {
-  sop_name: string;
-  description: string;
-  steps: SOPStep[];
-  response_time_limit_minutes: number;
-  content_guidelines: {
-    tone: string[];
-    avoid: string[];
-    include: string[];
-    language_sensitivity: string[];
-  };
-}
 
 interface NPCPersona {
   handle: string;
@@ -49,6 +21,48 @@ interface FactSheetEntry {
 interface FactSheet {
   confirmed_facts: string[];
   unconfirmed_claims: FactSheetEntry[];
+}
+
+interface TeamDef {
+  team_name: string;
+  team_description: string;
+  min_participants: number;
+  max_participants: number;
+}
+
+interface SocialInject {
+  inject_id: string;
+  team: string;
+  type: string;
+  title: string;
+  description: string;
+  trigger_time_minutes: number;
+  platform?: string;
+  author_handle?: string;
+  severity?: string;
+}
+
+interface ConvergenceGate {
+  gate_id: string;
+  title: string;
+  description: string;
+  trigger_time_minutes: number;
+  required_teams: string[];
+  conditions: string[];
+}
+
+interface ResearchGuideline {
+  category: string;
+  title: string;
+  source?: string;
+  summary: string;
+  recommendations: string[];
+}
+
+interface ResearchGuidelines {
+  guidelines: ResearchGuideline[];
+  best_practices: string[];
+  case_studies: string[];
 }
 
 /* ─── Constants ─────────────────────────────────────────────────────── */
@@ -104,49 +118,17 @@ const CRISIS_TYPES = [
   },
 ];
 
-const CRISIS_FALLBACK_COMMUNITIES: Record<string, string[]> = {
-  racial_tension: [
-    'Targeted ethnic minority community',
-    'Mixed-race families and individuals',
-    'Community leaders and advocacy groups',
-  ],
-  religious_incident: [
-    'Targeted religious community',
-    'Interfaith organizations',
-    'Religious minority youth',
-  ],
-  xenophobic_attack: [
-    'Foreign worker community',
-    'Migrant families and dependents',
-    'Employers of foreign workers',
-  ],
-  terror_aftermath: [
-    'Muslim community',
-    'South Asian community',
-    'Interfaith and community harmony groups',
-  ],
-  police_incident: [
-    'Targeted minority community',
-    'Civil rights advocacy groups',
-    'Law enforcement families',
-  ],
-  fake_news_spiral: [
-    'Targeted ethnic community',
-    'Small business owners from targeted community',
-    'Parents and students from targeted community',
-  ],
-};
-
 const STEP_LABELS: Record<number, string> = {
   1: 'Crisis Event',
-  2: 'Communities',
-  3: 'Teams',
-  4: 'SOP & Guidelines',
-  5: 'NPCs & Facts',
-  6: 'Compile',
+  2: 'Characters & Facts',
+  3: 'Response Teams',
+  4: 'Team Storylines',
+  5: 'Convergence',
+  6: 'Research',
+  7: 'Review & Compile',
 };
 
-const VISIBLE_STEPS = [1, 2, 3, 4, 5, 6];
+const VISIBLE_STEPS = [1, 2, 3, 4, 5, 6, 7];
 
 /* ─── Helpers ───────────────────────────────────────────────────────── */
 
@@ -166,10 +148,21 @@ async function authHeaders(): Promise<Record<string, string>> {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 }
 
+/* ─── Spinner ────────────────────────────────────────────────────────── */
+
+function Spinner({ text }: { text: string }) {
+  return (
+    <div className="flex items-center gap-3 py-8 justify-center">
+      <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
+      <span className="text-sm terminal-text text-robotic-yellow/60 animate-pulse">{text}</span>
+    </div>
+  );
+}
+
 /* ─── Component ─────────────────────────────────────────────────────── */
 
 export const SocialCrisisWizard = () => {
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
+  const [step, setStep] = useState(1);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const resumedRef = useRef(false);
@@ -183,34 +176,45 @@ export const SocialCrisisWizard = () => {
   const [country, setCountry] = useState('Singapore');
   const [context, setContext] = useState('');
 
-  /* Step 2 — Affected Communities */
-  const [communities, setCommunities] = useState<string[]>([]);
-  const [communitiesLoading, setCommunitiesLoading] = useState(false);
-  const [newCommunity, setNewCommunity] = useState('');
-
-  /* Step 3 — Response Teams */
-  const [teams, setTeams] = useState<TeamEntry[]>([]);
-  const [teamsLoading, setTeamsLoading] = useState(false);
-
-  /* Step 4 — SOP & Guidelines */
-  const [sop, setSop] = useState<SOPDefinition | null>(null);
-  const [sopLoading, setSopLoading] = useState(false);
-
-  /* Step 5 — NPC Personas & Fact Sheet */
+  /* Step 2 — NPCs, Fact Sheet & Communities */
   const [personas, setPersonas] = useState<NPCPersona[]>([]);
   const [factSheet, setFactSheet] = useState<FactSheet | null>(null);
-  const [personasLoading, setPersonasLoading] = useState(false);
+  const [communities, setCommunities] = useState<string[]>([]);
+  const [step2Loading, setStep2Loading] = useState(false);
+  const [step2Error, setStep2Error] = useState<string | null>(null);
 
-  /* Step 6 — Compile */
+  /* Step 3 — Response Teams */
+  const [teams, setTeams] = useState<TeamDef[]>([]);
+  const [step3Loading, setStep3Loading] = useState(false);
+  const [step3Error, setStep3Error] = useState<string | null>(null);
+
+  /* Step 4 — Per-Team Storylines (NDJSON streaming) */
+  const [teamStorylines, setTeamStorylines] = useState<Record<string, SocialInject[]>>({});
+  const [step4Loading, setStep4Loading] = useState(false);
+  const [step4Progress, setStep4Progress] = useState<string[]>([]);
+  const [step4Error, setStep4Error] = useState<string | null>(null);
+
+  /* Step 5 — Convergence + Shared Chaos */
+  const [sharedInjects, setSharedInjects] = useState<SocialInject[]>([]);
+  const [convergenceGates, setConvergenceGates] = useState<ConvergenceGate[]>([]);
+  const [narrative, setNarrative] = useState('');
+  const [objectives, setObjectives] = useState<string[]>([]);
+  const [step5Loading, setStep5Loading] = useState(false);
+  const [step5Error, setStep5Error] = useState<string | null>(null);
+
+  /* Step 6 — Research (NDJSON streaming) */
+  const [research, setResearch] = useState<ResearchGuidelines | null>(null);
+  const [step6Loading, setStep6Loading] = useState(false);
+  const [step6Progress, setStep6Progress] = useState<string[]>([]);
+  const [step6Error, setStep6Error] = useState<string | null>(null);
+
+  /* Step 7 — Compile */
   const [compiling, setCompiling] = useState(false);
   const [compileProgress, setCompileProgress] = useState<string[]>([]);
   const [scenarioId, setScenarioId] = useState<string | null>(null);
+  const [scenarioTitle, setScenarioTitle] = useState('');
 
-  /* Duration */
-  const difficulty = 'expert';
-  const [duration, setDuration] = useState(60);
-
-  /* ─── Draft save/resume ────────────────────────────────────────── */
+  /* ─── Draft save/resume ──────────────────────────────────────────── */
 
   const buildDraftInput = useCallback(
     () => ({
@@ -219,42 +223,60 @@ export const SocialCrisisWizard = () => {
       location,
       country,
       context,
-      communities,
-      teams,
-      sop,
       personas,
       fact_sheet: factSheet,
-      duration,
+      communities,
+      teams,
+      team_storylines: teamStorylines,
+      shared_injects: sharedInjects,
+      convergence_gates: convergenceGates,
+      narrative,
+      objectives,
+      research,
     }),
     [
       crisisType,
       location,
       country,
       context,
-      communities,
-      teams,
-      sop,
       personas,
       factSheet,
-      duration,
+      communities,
+      teams,
+      teamStorylines,
+      sharedInjects,
+      convergenceGates,
+      narrative,
+      objectives,
+      research,
     ],
   );
 
   const saveDraftState = useCallback(
     async (nextStep: number) => {
       try {
+        const headers = await authHeaders();
         if (!wizardDraftId) {
-          const { data: created } = await api.warroom.wizardDraftCreate({
-            input: buildDraftInput(),
+          const res = await fetchJSON(apiUrl('/api/warroom/wizard/drafts'), {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ input: buildDraftInput() }),
           });
-          const newId = created.draft_id;
-          setWizardDraftId(newId);
-          setSearchParams({ draft: newId }, { replace: true });
-          return newId;
+          if (res.ok) {
+            const json = await res.json();
+            const newId = String(json.data?.draft_id || '');
+            if (newId) {
+              setWizardDraftId(newId);
+              setSearchParams({ draft: newId }, { replace: true });
+            }
+            return newId;
+          }
+          return null;
         }
-        await api.warroom.wizardDraftPatch(wizardDraftId, {
-          current_step: nextStep,
-          input: buildDraftInput(),
+        await fetchJSON(apiUrl(`/api/warroom/wizard/drafts/${wizardDraftId}`), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ current_step: nextStep, input: buildDraftInput() }),
         });
         return wizardDraftId;
       } catch (err) {
@@ -273,27 +295,40 @@ export const SocialCrisisWizard = () => {
 
     const resume = async () => {
       try {
-        const { data: draft } = await api.warroom.wizardDraftGet(draftParam);
+        const headers = await authHeaders();
+        const res = await fetchJSON(apiUrl(`/api/warroom/wizard/drafts/${draftParam}`), {
+          headers,
+        });
+        if (!res.ok) return;
+        const json = await res.json();
+        const draft = json.data;
         if (!draft) return;
 
         setWizardDraftId(draftParam);
-        const input = ((draft as Record<string, unknown>).input ?? {}) as Record<string, unknown>;
-        const savedStep = ((draft as Record<string, unknown>).current_step as number) || 1;
-        const validSteps = [1, 2, 3, 4, 5, 6];
-        const validStep = validSteps.includes(savedStep) ? savedStep : 1;
+        const input = (draft.input ?? {}) as Record<string, unknown>;
+        const savedStep = Number(draft.current_step) || 1;
+        const validStep = VISIBLE_STEPS.includes(savedStep) ? savedStep : 1;
 
-        if (input.crisis_type) setCrisisType(input.crisis_type as string);
-        if (input.location) setLocation(input.location as string);
-        if (input.country) setCountry(input.country as string);
-        if (input.context) setContext(input.context as string);
-        if (Array.isArray(input.communities)) setCommunities(input.communities as string[]);
-        if (Array.isArray(input.teams)) setTeams(input.teams as TeamEntry[]);
-        if (input.sop) setSop(input.sop as SOPDefinition);
+        if (input.crisis_type) setCrisisType(String(input.crisis_type));
+        if (input.location) setLocation(String(input.location));
+        if (input.country) setCountry(String(input.country));
+        if (input.context) setContext(String(input.context));
+        if (Array.isArray(input.communities)) setCommunities(input.communities.map(String));
         if (Array.isArray(input.personas)) setPersonas(input.personas as NPCPersona[]);
         if (input.fact_sheet) setFactSheet(input.fact_sheet as FactSheet);
-        if (input.duration) setDuration(input.duration as number);
+        if (Array.isArray(input.teams)) setTeams(input.teams as TeamDef[]);
+        if (input.team_storylines && typeof input.team_storylines === 'object') {
+          setTeamStorylines(input.team_storylines as Record<string, SocialInject[]>);
+        }
+        if (Array.isArray(input.shared_injects))
+          setSharedInjects(input.shared_injects as SocialInject[]);
+        if (Array.isArray(input.convergence_gates))
+          setConvergenceGates(input.convergence_gates as ConvergenceGate[]);
+        if (input.narrative) setNarrative(String(input.narrative));
+        if (Array.isArray(input.objectives)) setObjectives(input.objectives.map(String));
+        if (input.research) setResearch(input.research as ResearchGuidelines);
 
-        setStep(validStep as 1 | 2 | 3 | 4 | 5 | 6);
+        setStep(validStep);
       } catch (err) {
         console.error('Failed to resume social crisis draft', err);
       }
@@ -301,21 +336,31 @@ export const SocialCrisisWizard = () => {
     resume();
   }, [searchParams]);
 
-  /* ─── Validation ────────────────────────────────────────────────── */
+  /* ─── Effective context (use default_context as fallback) ────────── */
+
+  const effectiveContext = useMemo(() => {
+    if (context.trim()) return context.trim();
+    const match = CRISIS_TYPES.find((t) => t.id === crisisType);
+    return match?.default_context || '';
+  }, [context, crisisType]);
+
+  /* ─── Validation ───────────────────────────────────────────────────── */
 
   const canProceed = useMemo(() => {
     switch (step) {
       case 1:
         return !!crisisType && location.trim().length > 0;
       case 2:
-        return communities.length > 0 && !communitiesLoading;
+        return personas.length > 0 && !!factSheet && !step2Loading;
       case 3:
-        return teams.length > 0 && !teamsLoading;
+        return teams.length > 0 && !step3Loading;
       case 4:
-        return !!sop && !sopLoading;
+        return Object.keys(teamStorylines).length > 0 && !step4Loading;
       case 5:
-        return personas.length > 0 && !!factSheet && !personasLoading;
+        return (sharedInjects.length > 0 || convergenceGates.length > 0) && !step5Loading;
       case 6:
+        return !!research && !step6Loading;
+      case 7:
         return true;
       default:
         return false;
@@ -324,168 +369,91 @@ export const SocialCrisisWizard = () => {
     step,
     crisisType,
     location,
-    communities,
-    communitiesLoading,
-    teams,
-    teamsLoading,
-    sop,
-    sopLoading,
     personas,
     factSheet,
-    personasLoading,
+    step2Loading,
+    teams,
+    step3Loading,
+    teamStorylines,
+    step4Loading,
+    sharedInjects,
+    convergenceGates,
+    step5Loading,
+    research,
+    step6Loading,
   ]);
 
-  /* ─── Effective context (use default_context as fallback) ────── */
+  /* ─── API calls ──────────────────────────────────────────────────── */
 
-  const effectiveContext = useMemo(() => {
-    if (context.trim()) return context.trim();
-    const match = CRISIS_TYPES.find((t) => t.id === crisisType);
-    return match?.default_context || '';
-  }, [context, crisisType]);
-
-  /* ─── API calls ─────────────────────────────────────────────────── */
-
-  const generateCommunities = useCallback(async () => {
+  const generateNPCs = useCallback(async () => {
     if (!crisisType) return;
-    setCommunitiesLoading(true);
+    setStep2Loading(true);
+    setStep2Error(null);
     try {
       const headers = await authHeaders();
-      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/suggest-communities'), {
+      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-npcs'), {
         method: 'POST',
         headers,
-        body: JSON.stringify({ crisis_type: crisisType, context: effectiveContext, country }),
+        body: JSON.stringify({
+          crisis_type: crisisType,
+          location,
+          country,
+          context: effectiveContext,
+        }),
       });
       if (res.ok) {
         const json = await res.json();
-        setCommunities(Array.isArray(json.data) ? json.data : json.data?.communities || []);
+        const d = json.data || json;
+        if (Array.isArray(d.personas)) setPersonas(d.personas);
+        if (d.fact_sheet) setFactSheet(d.fact_sheet);
+        if (Array.isArray(d.communities)) setCommunities(d.communities);
+      } else {
+        setStep2Error('Failed to generate NPCs. Try again.');
       }
     } catch {
-      /* fallback below */
+      setStep2Error('Network error generating NPCs.');
     }
-    if (communities.length === 0) {
-      setCommunities(
-        CRISIS_FALLBACK_COMMUNITIES[crisisType] || ['Affected community', 'Advocacy groups'],
-      );
-    }
-    setCommunitiesLoading(false);
-  }, [crisisType, effectiveContext, country, communities.length]);
+    setStep2Loading(false);
+  }, [crisisType, location, country, effectiveContext]);
 
   const generateTeams = useCallback(async () => {
-    if (!crisisType || communities.length === 0) return;
-    setTeamsLoading(true);
+    if (!crisisType) return;
+    setStep3Loading(true);
+    setStep3Error(null);
     try {
       const headers = await authHeaders();
       const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/suggest-teams'), {
         method: 'POST',
         headers,
-        body: JSON.stringify({ crisis_type: crisisType, communities }),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        setTeams(Array.isArray(json.data) ? json.data : json.data?.teams || []);
-      }
-    } catch {
-      /* use fallback */
-    }
-    if (teams.length === 0) {
-      setTeams([
-        {
-          team_name: 'Social Media Monitoring',
-          team_description: 'Monitor feeds, flag hate speech and misinformation',
-          min_participants: 2,
-          max_participants: 4,
-        },
-        {
-          team_name: 'Content Response',
-          team_description: 'Draft and publish counter-narratives and corrections',
-          min_participants: 2,
-          max_participants: 4,
-        },
-        {
-          team_name: 'Community Liaison',
-          team_description: 'Coordinate with community leaders and grassroots networks',
-          min_participants: 1,
-          max_participants: 3,
-        },
-        {
-          team_name: 'Escalation & Coordination',
-          team_description: 'Escalate to authorities, manage inter-agency comms',
-          min_participants: 1,
-          max_participants: 2,
-        },
-      ]);
-    }
-    setTeamsLoading(false);
-  }, [crisisType, communities, teams.length]);
-
-  const generateSOP = useCallback(async () => {
-    if (!crisisType || communities.length === 0 || teams.length === 0) return;
-    setSopLoading(true);
-    try {
-      const headers = await authHeaders();
-      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-sop'), {
-        method: 'POST',
-        headers,
         body: JSON.stringify({
           crisis_type: crisisType,
           communities,
-          teams: teams.map((t) => ({ team_name: t.team_name })),
+          personas: personas.map((p) => ({ handle: p.handle, type: p.type })),
         }),
       });
       if (res.ok) {
         const json = await res.json();
-        setSop(json.data?.steps ? json.data : json.data?.sop || null);
+        const d = json.data;
+        setTeams(Array.isArray(d) ? d : d?.teams || []);
+      } else {
+        setStep3Error('Failed to suggest teams. Try again.');
       }
     } catch {
-      /* fallback */
+      setStep3Error('Network error suggesting teams.');
     }
-    setSopLoading(false);
-  }, [crisisType, communities, teams]);
+    setStep3Loading(false);
+  }, [crisisType, communities, personas]);
 
-  const generatePersonasAndFacts = useCallback(async () => {
-    if (!crisisType) return;
-    setPersonasLoading(true);
-    try {
-      const headers = await authHeaders();
-      const [pRes, fRes] = await Promise.all([
-        fetchJSON(apiUrl('/api/warroom/social-crisis/generate-personas'), {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ crisis_type: crisisType, communities, country }),
-        }),
-        fetchJSON(apiUrl('/api/warroom/social-crisis/generate-factsheet'), {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ crisis_type: crisisType, location, context: effectiveContext }),
-        }),
-      ]);
-      if (pRes.ok) {
-        const pJson = await pRes.json();
-        setPersonas(Array.isArray(pJson.data) ? pJson.data : pJson.data?.personas || []);
-      }
-      if (fRes.ok) {
-        const fJson = await fRes.json();
-        setFactSheet(fJson.data?.confirmed_facts ? fJson.data : fJson.data?.fact_sheet || null);
-      }
-    } catch {
-      /* fallback */
-    }
-    setPersonasLoading(false);
-  }, [crisisType, communities, country, location, context]);
-
-  const compileScenario = useCallback(async () => {
-    if (!crisisType || !sop || !factSheet) return;
-    setCompiling(true);
-    setCompileProgress([]);
-
-    const addProgress = (msg: string) => setCompileProgress((prev) => [...prev, msg]);
-    addProgress('Initiating scenario compilation...');
+  const generateStorylines = useCallback(async () => {
+    if (!crisisType || teams.length === 0) return;
+    setStep4Loading(true);
+    setStep4Error(null);
+    setStep4Progress([]);
+    setTeamStorylines({});
 
     try {
       const headers = await authHeaders();
-      addProgress('Generating narrative and objectives...');
-
-      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/compile'), {
+      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-storylines'), {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -495,11 +463,8 @@ export const SocialCrisisWizard = () => {
           context: effectiveContext,
           communities,
           teams,
-          sop,
           personas,
           fact_sheet: factSheet,
-          duration_minutes: duration,
-          difficulty,
         }),
       });
 
@@ -512,7 +477,225 @@ export const SocialCrisisWizard = () => {
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
 
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const msg = JSON.parse(line);
+              if (msg.type === 'progress' && msg.message) {
+                setStep4Progress((prev) => [...prev, msg.message]);
+              } else if (
+                msg.type === 'team_storyline' &&
+                msg.team_name &&
+                Array.isArray(msg.injects)
+              ) {
+                setTeamStorylines((prev) => ({
+                  ...prev,
+                  [String(msg.team_name)]: msg.injects,
+                }));
+                setStep4Progress((prev) => [
+                  ...prev,
+                  `Generated ${msg.injects.length} injects for ${String(msg.team_name)}`,
+                ]);
+              } else if (msg.type === 'error') {
+                setStep4Error(String(msg.message || 'Storyline generation failed'));
+              }
+            } catch {
+              /* skip malformed */
+            }
+          }
+        }
+      } else {
+        setStep4Error('Failed to generate storylines.');
+      }
+    } catch {
+      setStep4Error('Network error generating storylines.');
+    }
+    setStep4Loading(false);
+  }, [crisisType, location, country, effectiveContext, communities, teams, personas, factSheet]);
+
+  const generateConvergence = useCallback(async () => {
+    if (!crisisType || Object.keys(teamStorylines).length === 0) return;
+    setStep5Loading(true);
+    setStep5Error(null);
+
+    try {
+      const headers = await authHeaders();
+      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-convergence'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          crisis_type: crisisType,
+          location,
+          country,
+          context: effectiveContext,
+          communities,
+          teams,
+          personas,
+          fact_sheet: factSheet,
+          team_storylines: teamStorylines,
+        }),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        const d = json.data || json;
+        if (Array.isArray(d.shared_injects)) setSharedInjects(d.shared_injects);
+        if (Array.isArray(d.convergence_gates)) setConvergenceGates(d.convergence_gates);
+        if (d.narrative) setNarrative(String(d.narrative));
+        if (Array.isArray(d.objectives)) setObjectives(d.objectives.map(String));
+      } else {
+        setStep5Error('Failed to generate convergence. Try again.');
+      }
+    } catch {
+      setStep5Error('Network error generating convergence.');
+    }
+    setStep5Loading(false);
+  }, [
+    crisisType,
+    location,
+    country,
+    effectiveContext,
+    communities,
+    teams,
+    personas,
+    factSheet,
+    teamStorylines,
+  ]);
+
+  const generateResearch = useCallback(async () => {
+    if (!crisisType) return;
+    setStep6Loading(true);
+    setStep6Error(null);
+    setStep6Progress([]);
+    setResearch(null);
+
+    try {
+      const headers = await authHeaders();
+      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/research'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          crisis_type: crisisType,
+          location,
+          country,
+          context: effectiveContext,
+          communities,
+          teams: teams.map((t) => t.team_name),
+        }),
+      });
+
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        const accGuidelines: ResearchGuideline[] = [];
+        const accBestPractices: string[] = [];
+        const accCaseStudies: string[] = [];
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const msg = JSON.parse(line);
+              if (msg.type === 'progress' && msg.message) {
+                setStep6Progress((prev) => [...prev, msg.message]);
+              } else if (msg.type === 'guideline' && msg.data) {
+                accGuidelines.push(msg.data);
+                setResearch({
+                  guidelines: [...accGuidelines],
+                  best_practices: [...accBestPractices],
+                  case_studies: [...accCaseStudies],
+                });
+              } else if (msg.type === 'best_practice' && msg.data) {
+                accBestPractices.push(String(msg.data));
+                setResearch({
+                  guidelines: [...accGuidelines],
+                  best_practices: [...accBestPractices],
+                  case_studies: [...accCaseStudies],
+                });
+              } else if (msg.type === 'case_study' && msg.data) {
+                accCaseStudies.push(String(msg.data));
+                setResearch({
+                  guidelines: [...accGuidelines],
+                  best_practices: [...accBestPractices],
+                  case_studies: [...accCaseStudies],
+                });
+              } else if (msg.type === 'complete' && msg.data) {
+                setResearch(msg.data);
+              } else if (msg.type === 'error') {
+                setStep6Error(String(msg.message || 'Research generation failed'));
+              }
+            } catch {
+              /* skip malformed */
+            }
+          }
+        }
+
+        if (accGuidelines.length > 0 && !research) {
+          setResearch({
+            guidelines: accGuidelines,
+            best_practices: accBestPractices,
+            case_studies: accCaseStudies,
+          });
+        }
+      } else {
+        setStep6Error('Failed to generate research.');
+      }
+    } catch {
+      setStep6Error('Network error generating research.');
+    }
+    setStep6Loading(false);
+  }, [crisisType, location, country, effectiveContext, communities, teams, research]);
+
+  const compileScenario = useCallback(async () => {
+    if (!crisisType) return;
+    setCompiling(true);
+    setCompileProgress([]);
+
+    const addProgress = (msg: string) => setCompileProgress((prev) => [...prev, msg]);
+    addProgress('Initiating scenario compilation...');
+
+    try {
+      const headers = await authHeaders();
+      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/compile'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          crisis_type: crisisType,
+          location,
+          country,
+          context: effectiveContext,
+          communities,
+          teams,
+          personas,
+          fact_sheet: factSheet,
+          team_storylines: teamStorylines,
+          shared_injects: sharedInjects,
+          convergence_gates: convergenceGates,
+          narrative,
+          objectives,
+          research,
+        }),
+      });
+
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
 
@@ -524,6 +707,7 @@ export const SocialCrisisWizard = () => {
                 addProgress(msg.message);
               } else if (msg.type === 'complete' && msg.scenario_id) {
                 setScenarioId(String(msg.scenario_id));
+                if (msg.title) setScenarioTitle(String(msg.title));
                 addProgress(
                   `Scenario created successfully! ID: ${String(msg.scenario_id).slice(0, 8)}`,
                 );
@@ -531,12 +715,12 @@ export const SocialCrisisWizard = () => {
                 addProgress(`Error: ${String(msg.message || 'Compilation failed')}`);
               }
             } catch {
-              /* skip malformed lines */
+              /* skip malformed */
             }
           }
         }
       } else {
-        addProgress('Error: Failed to compile scenario. Check server logs.');
+        addProgress('Error: Failed to compile scenario.');
       }
     } catch {
       addProgress('Error: Network error during compilation.');
@@ -549,14 +733,17 @@ export const SocialCrisisWizard = () => {
     effectiveContext,
     communities,
     teams,
-    sop,
     personas,
     factSheet,
-    duration,
-    difficulty,
+    teamStorylines,
+    sharedInjects,
+    convergenceGates,
+    narrative,
+    objectives,
+    research,
   ]);
 
-  /* ─── Step transition ───────────────────────────────────────────── */
+  /* ─── Step transition ────────────────────────────────────────────── */
 
   const currentStepIndex = VISIBLE_STEPS.indexOf(step);
   const canGoBack = currentStepIndex > 0;
@@ -567,66 +754,921 @@ export const SocialCrisisWizard = () => {
       return;
     }
     if (canGoBack) {
-      setStep(VISIBLE_STEPS[currentStepIndex - 1] as typeof step);
+      setStep(VISIBLE_STEPS[currentStepIndex - 1]);
     }
   };
 
   const goNext = async () => {
-    const nextStep = VISIBLE_STEPS[currentStepIndex + 1] as typeof step | undefined;
-    if (!nextStep) return;
+    const nextIdx = currentStepIndex + 1;
+    if (nextIdx >= VISIBLE_STEPS.length) return;
+    const nextStep = VISIBLE_STEPS[nextIdx];
 
     await saveDraftState(nextStep);
+    setStep(nextStep);
 
-    if (step === 1 && communities.length === 0) {
-      setStep(nextStep);
-      generateCommunities();
+    if (step === 1 && personas.length === 0) {
+      generateNPCs();
       return;
     }
     if (step === 2 && teams.length === 0) {
-      setStep(nextStep);
       generateTeams();
       return;
     }
-    if (step === 3 && !sop) {
-      setStep(nextStep);
-      generateSOP();
+    if (step === 3 && Object.keys(teamStorylines).length === 0) {
+      generateStorylines();
       return;
     }
-    if (step === 4 && personas.length === 0) {
-      setStep(nextStep);
-      generatePersonasAndFacts();
+    if (step === 4 && sharedInjects.length === 0 && convergenceGates.length === 0) {
+      generateConvergence();
       return;
     }
-    if (step === 5) {
-      setStep(6);
+    if (step === 5 && !research) {
+      generateResearch();
       return;
-    }
-
-    setStep(nextStep);
-  };
-
-  /* ─── Render helpers ────────────────────────────────────────────── */
-
-  const removeCommunity = (idx: number) =>
-    setCommunities((prev) => prev.filter((_, i) => i !== idx));
-
-  const addCommunity = () => {
-    const trimmed = newCommunity.trim();
-    if (trimmed && !communities.includes(trimmed)) {
-      setCommunities((prev) => [...prev, trimmed]);
-      setNewCommunity('');
     }
   };
 
-  const removeTeam = (idx: number) => setTeams((prev) => prev.filter((_, i) => i !== idx));
+  /* ─── Computed stats for step 7 ──────────────────────────────────── */
 
-  const updateTeam = (idx: number, field: keyof TeamEntry, value: string | number) => {
-    setTeams((prev) => prev.map((t, i) => (i === idx ? { ...t, [field]: value } : t)));
+  const totalTeamInjects = useMemo(() => {
+    let count = 0;
+    for (const key of Object.keys(teamStorylines)) {
+      count += teamStorylines[key].length;
+    }
+    return count;
+  }, [teamStorylines]);
+
+  const crisisLabel = useMemo(() => {
+    return CRISIS_TYPES.find((c) => c.id === crisisType)?.label || crisisType || 'Unknown';
+  }, [crisisType]);
+
+  /* ─── Render ─────────────────────────────────────────────────────── */
+
+  const progressBar = (
+    <div className="military-border p-2 sm:p-3 mb-4 sm:mb-6 bg-robotic-gray-300 flex-shrink-0">
+      <div className="flex items-center gap-1 overflow-x-auto">
+        {VISIBLE_STEPS.map((s, i) => {
+          const isCurrent = s === step;
+          const isPast = currentStepIndex > i;
+          return (
+            <div key={s} className="flex items-center">
+              {i > 0 && (
+                <div
+                  className={`w-4 h-px mx-1 ${isPast ? 'bg-robotic-yellow' : 'bg-robotic-gray-200'}`}
+                />
+              )}
+              <div
+                className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] terminal-text uppercase whitespace-nowrap ${
+                  isCurrent
+                    ? 'border border-robotic-yellow bg-robotic-yellow/10 text-robotic-yellow'
+                    : isPast
+                      ? 'text-robotic-yellow/70'
+                      : 'text-robotic-yellow/30'
+                }`}
+              >
+                <span
+                  className={`w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-bold ${
+                    isCurrent
+                      ? 'bg-robotic-yellow text-black'
+                      : isPast
+                        ? 'bg-robotic-yellow/30 text-robotic-yellow'
+                        : 'bg-robotic-gray-200 text-robotic-yellow/30'
+                  }`}
+                >
+                  {isPast ? '✓' : i + 1}
+                </span>
+                <span className="hidden sm:inline">{STEP_LABELS[s]}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  /* ── Step 1: Crisis Event ──────────────────────────────────────────── */
+
+  const renderStep1 = () => (
+    <div>
+      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 1: CRISIS EVENT]</h2>
+      <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
+        Select the type of social media crisis and provide location details.
+      </p>
+
+      <div className="mb-6">
+        <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
+          Crisis Type
+        </label>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {CRISIS_TYPES.map((ct) => (
+            <button
+              key={ct.id}
+              onClick={() => setCrisisType(ct.id)}
+              className={`p-4 border rounded text-left transition-all ${
+                crisisType === ct.id
+                  ? 'border-cyan-400 bg-cyan-900/30'
+                  : 'border-robotic-gray-200 hover:border-robotic-yellow/50'
+              }`}
+            >
+              <div className="text-2xl mb-2">{ct.icon}</div>
+              <div className="text-xs terminal-text font-bold mb-1">{ct.label}</div>
+              <div className="text-[10px] terminal-text text-robotic-yellow/40">
+                {ct.description}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
+            Location
+          </label>
+          <input
+            type="text"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="e.g. Woodlands, Singapore"
+            className="w-full bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
+            Country
+          </label>
+          <input
+            type="text"
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+            className="w-full bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
+          Additional Context (optional)
+        </label>
+        <textarea
+          value={context}
+          onChange={(e) => setContext(e.target.value)}
+          rows={3}
+          placeholder="Any specific scenario details, recent events, or nuances to incorporate..."
+          className="w-full bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none resize-none"
+        />
+      </div>
+    </div>
+  );
+
+  /* ── Step 2: Characters & Facts (read-only preview) ────────────────── */
+
+  const renderStep2 = () => (
+    <div>
+      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 2: CHARACTERS & FACTS]</h2>
+      <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
+        AI-generated NPC personas, fact sheet, and inferred affected communities. Read-only preview.
+      </p>
+
+      {step2Loading ? (
+        <Spinner text="Generating NPC personas, fact sheet & communities..." />
+      ) : step2Error ? (
+        <div className="text-center py-8">
+          <p className="text-sm terminal-text text-red-400 mb-4">{step2Error}</p>
+          <button
+            onClick={generateNPCs}
+            className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
+          >
+            Retry
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* NPC Personas */}
+          <div className="mb-6">
+            <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+              NPC Personas ({personas.length})
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {personas.map((p, i) => (
+                <div key={i} className="border border-robotic-gray-200 rounded p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs terminal-text text-cyan-400">{p.handle}</span>
+                    <span
+                      className={`text-[9px] terminal-text px-1.5 py-0.5 rounded uppercase ${
+                        p.type === 'npc_media'
+                          ? 'bg-blue-900/30 text-blue-400'
+                          : p.type === 'npc_politician'
+                            ? 'bg-purple-900/30 text-purple-400'
+                            : p.type === 'npc_influencer'
+                              ? 'bg-pink-900/30 text-pink-400'
+                              : 'bg-robotic-gray-200/30 text-robotic-yellow/60'
+                      }`}
+                    >
+                      {p.type.replace('npc_', '')}
+                    </span>
+                  </div>
+                  <div className="text-xs terminal-text font-bold mb-1">{p.name}</div>
+                  <div className="text-[10px] terminal-text text-robotic-yellow/50 mb-1">
+                    {p.personality}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] terminal-text text-robotic-yellow/30">
+                      Bias: {p.bias}
+                    </span>
+                    <span className="text-[9px] terminal-text text-robotic-yellow/30">
+                      {p.follower_count.toLocaleString()} followers
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Fact Sheet */}
+          {factSheet && (
+            <div className="mb-6">
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+                Fact Sheet
+              </h3>
+              <div className="mb-3">
+                <div className="text-[10px] terminal-text text-green-400/60 uppercase mb-2">
+                  Confirmed Facts
+                </div>
+                <div className="space-y-1">
+                  {factSheet.confirmed_facts.map((f, i) => (
+                    <div
+                      key={i}
+                      className="flex items-start gap-2 text-xs terminal-text text-robotic-yellow/70"
+                    >
+                      <span className="text-green-400 mt-0.5">✓</span>
+                      <span>{f}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] terminal-text text-red-400/60 uppercase mb-2">
+                  Unconfirmed / False Claims
+                </div>
+                <div className="space-y-2">
+                  {factSheet.unconfirmed_claims.map((c, i) => (
+                    <div key={i} className="border border-robotic-gray-200 rounded px-3 py-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span
+                          className={`text-[9px] terminal-text px-1.5 py-0.5 rounded uppercase ${
+                            c.status === 'FALSE'
+                              ? 'bg-red-900/30 text-red-400'
+                              : 'bg-yellow-900/30 text-yellow-400'
+                          }`}
+                        >
+                          {c.status}
+                        </span>
+                        <span className="text-xs terminal-text">{c.claim}</span>
+                      </div>
+                      <div className="text-[10px] terminal-text text-robotic-yellow/40 ml-4">
+                        Truth: {c.truth}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Inferred Communities */}
+          {communities.length > 0 && (
+            <div>
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+                Inferred Communities ({communities.length})
+              </h3>
+              <div className="space-y-1">
+                {communities.map((c, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 border border-robotic-gray-200 px-4 py-2 rounded"
+                  >
+                    <span className="text-cyan-400 text-xs">▸</span>
+                    <span className="text-sm terminal-text">{c}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  /* ── Step 3: Response Teams (read-only preview) ────────────────────── */
+
+  const renderStep3 = () => (
+    <div>
+      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 3: RESPONSE TEAMS]</h2>
+      <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
+        AI-suggested response team structure. Read-only preview.
+      </p>
+
+      {step3Loading ? (
+        <Spinner text="Generating response team structure..." />
+      ) : step3Error ? (
+        <div className="text-center py-8">
+          <p className="text-sm terminal-text text-red-400 mb-4">{step3Error}</p>
+          <button
+            onClick={generateTeams}
+            className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
+          >
+            Retry
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {teams.map((t, i) => (
+            <div key={i} className="border border-robotic-gray-200 rounded p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="text-sm terminal-text text-robotic-yellow font-bold mb-1">
+                    {t.team_name}
+                  </div>
+                  <div className="text-xs terminal-text text-robotic-yellow/60 mb-2">
+                    {t.team_description}
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-[10px] terminal-text text-robotic-yellow/40">
+                      Participants: {t.min_participants}–{t.max_participants}
+                    </span>
+                  </div>
+                </div>
+                <span className="text-lg">
+                  {i === 0 ? '🛡️' : i === 1 ? '📢' : i === 2 ? '🤝' : '📋'}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  /* ── Step 4: Team Storylines (NDJSON streaming, read-only) ─────────── */
+
+  const renderStep4 = () => {
+    const teamNames = Object.keys(teamStorylines);
+    return (
+      <div>
+        <h2 className="text-lg terminal-text uppercase mb-4">[STEP 4: TEAM STORYLINES]</h2>
+        <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
+          AI-generated per-team inject timelines via streaming. Read-only preview.
+        </p>
+
+        {step4Loading && (
+          <div className="mb-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
+              <span className="text-sm terminal-text text-robotic-yellow animate-pulse">
+                Generating storylines...
+              </span>
+            </div>
+            <div className="border border-robotic-gray-200 rounded p-3 bg-black/30 font-mono text-xs space-y-1 max-h-40 overflow-y-auto">
+              {step4Progress.map((msg, i) => (
+                <div key={i} className="text-robotic-yellow/70">
+                  <span className="text-robotic-yellow/30">[{String(i + 1).padStart(2, '0')}]</span>{' '}
+                  {msg}
+                </div>
+              ))}
+              <div className="animate-pulse text-robotic-yellow/40">▌</div>
+            </div>
+          </div>
+        )}
+
+        {step4Error && (
+          <div className="text-center py-4 mb-4">
+            <p className="text-sm terminal-text text-red-400 mb-4">{step4Error}</p>
+            <button
+              onClick={generateStorylines}
+              className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {teamNames.length > 0 && (
+          <div className="space-y-6">
+            {teamNames.map((teamName) => {
+              const injects = teamStorylines[teamName];
+              return (
+                <div key={teamName} className="border border-robotic-gray-200 rounded p-4">
+                  <h3 className="text-sm terminal-text text-cyan-400 font-bold uppercase mb-3">
+                    {teamName}
+                    <span className="text-[10px] text-robotic-yellow/40 ml-2 normal-case">
+                      ({injects.length} injects)
+                    </span>
+                  </h3>
+                  <div className="space-y-2">
+                    {injects.map((inj, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start gap-3 border-l-2 border-robotic-yellow/20 pl-3 py-1"
+                      >
+                        <span className="text-[10px] terminal-text text-cyan-400 whitespace-nowrap mt-0.5">
+                          T+{inj.trigger_time_minutes}m
+                        </span>
+                        <div className="flex-1">
+                          <div className="text-xs terminal-text font-bold">{inj.title}</div>
+                          <div className="text-[10px] terminal-text text-robotic-yellow/50">
+                            {inj.description}
+                          </div>
+                          <div className="flex gap-2 mt-1">
+                            {inj.platform && (
+                              <span className="text-[9px] terminal-text bg-blue-900/20 text-blue-400 px-1.5 py-0.5 rounded">
+                                {inj.platform}
+                              </span>
+                            )}
+                            {inj.severity && (
+                              <span
+                                className={`text-[9px] terminal-text px-1.5 py-0.5 rounded ${
+                                  inj.severity === 'critical'
+                                    ? 'bg-red-900/20 text-red-400'
+                                    : inj.severity === 'high'
+                                      ? 'bg-orange-900/20 text-orange-400'
+                                      : 'bg-yellow-900/20 text-yellow-400'
+                                }`}
+                              >
+                                {inj.severity}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
   };
 
-  const removePersona = (idx: number) => setPersonas((prev) => prev.filter((_, i) => i !== idx));
+  /* ── Step 5: Convergence + Shared Chaos (read-only) ────────────────── */
 
-  /* ─── Render ────────────────────────────────────────────────────── */
+  const renderStep5 = () => (
+    <div>
+      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 5: CONVERGENCE]</h2>
+      <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
+        Merged timeline with shared injects and convergence gates. Read-only preview.
+      </p>
+
+      {step5Loading ? (
+        <Spinner text="Generating convergence layer..." />
+      ) : step5Error ? (
+        <div className="text-center py-8">
+          <p className="text-sm terminal-text text-red-400 mb-4">{step5Error}</p>
+          <button
+            onClick={generateConvergence}
+            className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
+          >
+            Retry
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Narrative */}
+          {narrative && (
+            <div className="mb-6">
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
+                Scenario Narrative
+              </h3>
+              <div className="border border-robotic-gray-200 rounded p-4 text-xs terminal-text text-robotic-yellow/70 leading-relaxed">
+                {narrative}
+              </div>
+            </div>
+          )}
+
+          {/* Objectives */}
+          {objectives.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
+                Training Objectives
+              </h3>
+              <div className="space-y-1">
+                {objectives.map((obj, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-2 text-xs terminal-text text-robotic-yellow/70"
+                  >
+                    <span className="text-cyan-400 mt-0.5">{String(i + 1).padStart(2, '0')}.</span>
+                    <span>{obj}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Convergence Gates */}
+          {convergenceGates.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+                Convergence Gates ({convergenceGates.length})
+              </h3>
+              <div className="space-y-3">
+                {convergenceGates.map((gate, i) => (
+                  <div key={i} className="border border-cyan-700/30 bg-cyan-900/10 rounded p-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-[10px] terminal-text text-cyan-400 whitespace-nowrap">
+                        T+{gate.trigger_time_minutes}m
+                      </span>
+                      <span className="text-xs terminal-text text-cyan-300 font-bold uppercase">
+                        {gate.title}
+                      </span>
+                    </div>
+                    <div className="text-[10px] terminal-text text-robotic-yellow/50 mb-2">
+                      {gate.description}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {gate.required_teams.map((team, ti) => (
+                        <span
+                          key={ti}
+                          className="text-[9px] terminal-text bg-cyan-900/30 text-cyan-400 px-1.5 py-0.5 rounded"
+                        >
+                          {team}
+                        </span>
+                      ))}
+                    </div>
+                    {gate.conditions.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {gate.conditions.map((cond, ci) => (
+                          <div
+                            key={ci}
+                            className="text-[9px] terminal-text text-robotic-yellow/40 flex gap-1"
+                          >
+                            <span className="text-cyan-400">•</span> {cond}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Shared Injects */}
+          {sharedInjects.length > 0 && (
+            <div>
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+                Shared Injects ({sharedInjects.length})
+              </h3>
+              <div className="space-y-2">
+                {sharedInjects.map((inj, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-3 border-l-2 border-cyan-400/30 pl-3 py-1"
+                  >
+                    <span className="text-[10px] terminal-text text-cyan-400 whitespace-nowrap mt-0.5">
+                      T+{inj.trigger_time_minutes}m
+                    </span>
+                    <div className="flex-1">
+                      <div className="text-xs terminal-text font-bold">{inj.title}</div>
+                      <div className="text-[10px] terminal-text text-robotic-yellow/50">
+                        {inj.description}
+                      </div>
+                      {inj.platform && (
+                        <span className="text-[9px] terminal-text bg-blue-900/20 text-blue-400 px-1.5 py-0.5 rounded mt-1 inline-block">
+                          {inj.platform}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  /* ── Step 6: Research (NDJSON streaming, read-only) ─────────────────── */
+
+  const renderStep6 = () => (
+    <div>
+      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 6: RESEARCH]</h2>
+      <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
+        AI-researched guidelines and best practices for this crisis type. Read-only preview.
+      </p>
+
+      {step6Loading && (
+        <div className="mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
+            <span className="text-sm terminal-text text-robotic-yellow animate-pulse">
+              Researching best practices...
+            </span>
+          </div>
+          <div className="border border-robotic-gray-200 rounded p-3 bg-black/30 font-mono text-xs space-y-1 max-h-40 overflow-y-auto">
+            {step6Progress.map((msg, i) => (
+              <div key={i} className="text-robotic-yellow/70">
+                <span className="text-robotic-yellow/30">[{String(i + 1).padStart(2, '0')}]</span>{' '}
+                {msg}
+              </div>
+            ))}
+            <div className="animate-pulse text-robotic-yellow/40">▌</div>
+          </div>
+        </div>
+      )}
+
+      {step6Error && (
+        <div className="text-center py-4 mb-4">
+          <p className="text-sm terminal-text text-red-400 mb-4">{step6Error}</p>
+          <button
+            onClick={generateResearch}
+            className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {research && (
+        <>
+          {/* Guidelines */}
+          {research.guidelines.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+                Guidelines ({research.guidelines.length})
+              </h3>
+              <div className="space-y-3">
+                {research.guidelines.map((g, i) => (
+                  <div key={i} className="border border-robotic-gray-200 rounded p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-[9px] terminal-text bg-green-900/20 text-green-400 px-1.5 py-0.5 rounded uppercase">
+                        {g.category}
+                      </span>
+                      {g.source && (
+                        <span className="text-[9px] terminal-text text-robotic-yellow/30">
+                          Source: {g.source}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs terminal-text font-bold mb-1">{g.title}</div>
+                    <div className="text-[10px] terminal-text text-robotic-yellow/50 mb-2">
+                      {g.summary}
+                    </div>
+                    {g.recommendations.length > 0 && (
+                      <div className="space-y-1">
+                        {g.recommendations.map((r, ri) => (
+                          <div
+                            key={ri}
+                            className="text-[10px] terminal-text text-robotic-yellow/40 flex gap-1"
+                          >
+                            <span className="text-green-400">▸</span> {r}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Best Practices */}
+          {research.best_practices.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+                Best Practices ({research.best_practices.length})
+              </h3>
+              <div className="space-y-1">
+                {research.best_practices.map((bp, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-2 text-xs terminal-text text-robotic-yellow/70"
+                  >
+                    <span className="text-green-400 mt-0.5">✓</span>
+                    <span>{bp}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Case Studies */}
+          {research.case_studies.length > 0 && (
+            <div>
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+                Case Studies ({research.case_studies.length})
+              </h3>
+              <div className="space-y-2">
+                {research.case_studies.map((cs, i) => (
+                  <div key={i} className="border border-robotic-gray-200 rounded px-4 py-3">
+                    <div className="text-xs terminal-text text-robotic-yellow/70">{cs}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  /* ── Step 7: Review & Compile ──────────────────────────────────────── */
+
+  const renderStep7 = () => (
+    <div>
+      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 7: REVIEW & COMPILE]</h2>
+
+      {!scenarioId && !compiling && (
+        <div className="space-y-6">
+          <p className="text-xs terminal-text text-robotic-yellow/50 mb-4">
+            Review the full scenario summary, then compile to persist.
+          </p>
+
+          {/* Summary Dashboard */}
+          <div className="border border-robotic-gray-200 rounded p-4 mb-4">
+            <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-4">
+              Scenario Summary
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs terminal-text">
+              <div className="border border-robotic-gray-200 rounded p-3 text-center">
+                <div className="text-2xl mb-1">
+                  {CRISIS_TYPES.find((c) => c.id === crisisType)?.icon || '📋'}
+                </div>
+                <div className="text-[10px] text-robotic-yellow/40 uppercase">Crisis Type</div>
+                <div className="text-robotic-yellow font-bold">{crisisLabel}</div>
+              </div>
+              <div className="border border-robotic-gray-200 rounded p-3 text-center">
+                <div className="text-2xl mb-1">📍</div>
+                <div className="text-[10px] text-robotic-yellow/40 uppercase">Location</div>
+                <div className="text-robotic-yellow font-bold">
+                  {location}, {country}
+                </div>
+              </div>
+              <div className="border border-robotic-gray-200 rounded p-3 text-center">
+                <div className="text-2xl mb-1">👥</div>
+                <div className="text-[10px] text-robotic-yellow/40 uppercase">Teams</div>
+                <div className="text-robotic-yellow font-bold text-lg">{teams.length}</div>
+              </div>
+              <div className="border border-robotic-gray-200 rounded p-3 text-center">
+                <div className="text-2xl mb-1">🎭</div>
+                <div className="text-[10px] text-robotic-yellow/40 uppercase">NPC Count</div>
+                <div className="text-robotic-yellow font-bold text-lg">{personas.length}</div>
+              </div>
+              <div className="border border-robotic-gray-200 rounded p-3 text-center">
+                <div className="text-2xl mb-1">💉</div>
+                <div className="text-[10px] text-robotic-yellow/40 uppercase">Team Injects</div>
+                <div className="text-robotic-yellow font-bold text-lg">{totalTeamInjects}</div>
+              </div>
+              <div className="border border-robotic-gray-200 rounded p-3 text-center">
+                <div className="text-2xl mb-1">🌐</div>
+                <div className="text-[10px] text-robotic-yellow/40 uppercase">Shared Injects</div>
+                <div className="text-robotic-yellow font-bold text-lg">{sharedInjects.length}</div>
+              </div>
+              <div className="border border-robotic-gray-200 rounded p-3 text-center">
+                <div className="text-2xl mb-1">🚪</div>
+                <div className="text-[10px] text-robotic-yellow/40 uppercase">Conv. Gates</div>
+                <div className="text-robotic-yellow font-bold text-lg">
+                  {convergenceGates.length}
+                </div>
+              </div>
+              <div className="border border-robotic-gray-200 rounded p-3 text-center">
+                <div className="text-2xl mb-1">📚</div>
+                <div className="text-[10px] text-robotic-yellow/40 uppercase">
+                  Research Guidelines
+                </div>
+                <div className="text-robotic-yellow font-bold text-lg">
+                  {research?.guidelines.length || 0}
+                </div>
+              </div>
+              <div className="border border-robotic-gray-200 rounded p-3 text-center">
+                <div className="text-2xl mb-1">🏆</div>
+                <div className="text-[10px] text-robotic-yellow/40 uppercase">Best Practices</div>
+                <div className="text-robotic-yellow font-bold text-lg">
+                  {research?.best_practices.length || 0}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Per-team inject breakdown */}
+          {Object.keys(teamStorylines).length > 0 && (
+            <div className="border border-robotic-gray-200 rounded p-4 mb-4">
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+                Injects Per Team
+              </h3>
+              <div className="space-y-2">
+                {Object.keys(teamStorylines).map((teamName) => (
+                  <div
+                    key={teamName}
+                    className="flex items-center justify-between text-xs terminal-text"
+                  >
+                    <span className="text-robotic-yellow/70">{teamName}</span>
+                    <span className="text-cyan-400 font-bold">
+                      {teamStorylines[teamName].length} injects
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Narrative preview */}
+          {narrative && (
+            <div className="border border-robotic-gray-200 rounded p-4 mb-4">
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
+                Narrative
+              </h3>
+              <div className="text-[10px] terminal-text text-robotic-yellow/50 leading-relaxed line-clamp-4">
+                {narrative}
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={compileScenario}
+            className="military-button px-8 py-3 w-full text-center"
+          >
+            [COMPILE SCENARIO]
+          </button>
+        </div>
+      )}
+
+      {compiling && (
+        <div className="py-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
+            <span className="text-sm terminal-text text-robotic-yellow animate-pulse">
+              Compiling scenario...
+            </span>
+          </div>
+          <div className="border border-robotic-gray-200 rounded p-4 bg-black/30 font-mono text-xs space-y-1 max-h-64 overflow-y-auto">
+            {compileProgress.map((msg, i) => (
+              <div key={i} className="text-robotic-yellow/70">
+                <span className="text-robotic-yellow/30">[{String(i + 1).padStart(2, '0')}]</span>{' '}
+                {msg}
+              </div>
+            ))}
+            <div className="animate-pulse text-robotic-yellow/40">▌</div>
+          </div>
+        </div>
+      )}
+
+      {scenarioId && !compiling && (
+        <div className="text-center py-8">
+          <div className="text-4xl mb-4">✅</div>
+          <h3 className="text-lg terminal-text font-bold mb-2">Scenario Created Successfully</h3>
+          {scenarioTitle && (
+            <p className="text-sm terminal-text text-cyan-400 mb-1">{scenarioTitle}</p>
+          )}
+          <p className="text-xs terminal-text text-robotic-yellow/50 mb-2">
+            Scenario ID: {scenarioId}
+          </p>
+
+          {/* Final stats */}
+          <div className="border border-robotic-gray-200 rounded p-4 bg-black/20 text-xs terminal-text mb-4 text-left max-w-md mx-auto">
+            <div className="grid grid-cols-2 gap-2">
+              <span className="text-robotic-yellow/40">Teams:</span>
+              <span className="text-robotic-yellow">{teams.length}</span>
+              <span className="text-robotic-yellow/40">NPCs:</span>
+              <span className="text-robotic-yellow">{personas.length}</span>
+              <span className="text-robotic-yellow/40">Team Injects:</span>
+              <span className="text-robotic-yellow">{totalTeamInjects}</span>
+              <span className="text-robotic-yellow/40">Shared Injects:</span>
+              <span className="text-robotic-yellow">{sharedInjects.length}</span>
+              <span className="text-robotic-yellow/40">Convergence Gates:</span>
+              <span className="text-robotic-yellow">{convergenceGates.length}</span>
+            </div>
+          </div>
+
+          <div className="border border-robotic-gray-200 rounded p-4 bg-black/30 font-mono text-xs space-y-1 max-h-48 overflow-y-auto mb-6">
+            {compileProgress.map((msg, i) => (
+              <div key={i} className="text-robotic-yellow/70">
+                <span className="text-robotic-yellow/30">[{String(i + 1).padStart(2, '0')}]</span>{' '}
+                {msg}
+              </div>
+            ))}
+          </div>
+
+          <div className="flex justify-center gap-4">
+            <a href="/scenarios" className="military-button px-8 py-3 text-center">
+              [VIEW SCENARIOS]
+            </a>
+            <button
+              onClick={() => navigate('/sessions')}
+              className="px-8 py-3 text-xs terminal-text uppercase border border-cyan-500/50 text-cyan-400 hover:bg-cyan-900/20"
+            >
+              [CREATE SESSION]
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  /* ─── Main return ──────────────────────────────────────────────────── */
 
   return (
     <div className="min-h-screen scanline p-2 sm:p-6">
@@ -648,694 +1690,17 @@ export const SocialCrisisWizard = () => {
         </div>
 
         {/* Progress bar */}
-        <div className="military-border p-2 sm:p-3 mb-4 sm:mb-6 bg-robotic-gray-300 flex-shrink-0">
-          <div className="flex items-center gap-1 overflow-x-auto">
-            {VISIBLE_STEPS.map((s, i) => {
-              const isCurrent = s === step;
-              const isPast = VISIBLE_STEPS.indexOf(step) > i;
-              return (
-                <div key={s} className="flex items-center">
-                  {i > 0 && (
-                    <div
-                      className={`w-4 h-px mx-1 ${isPast ? 'bg-robotic-yellow' : 'bg-robotic-gray-200'}`}
-                    />
-                  )}
-                  <div
-                    className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] terminal-text uppercase whitespace-nowrap ${
-                      isCurrent
-                        ? 'border border-robotic-yellow bg-robotic-yellow/10 text-robotic-yellow'
-                        : isPast
-                          ? 'text-robotic-yellow/70'
-                          : 'text-robotic-yellow/30'
-                    }`}
-                  >
-                    <span
-                      className={`w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-bold ${
-                        isCurrent
-                          ? 'bg-robotic-yellow text-black'
-                          : isPast
-                            ? 'bg-robotic-yellow/30 text-robotic-yellow'
-                            : 'bg-robotic-gray-200 text-robotic-yellow/30'
-                      }`}
-                    >
-                      {isPast ? '✓' : i + 1}
-                    </span>
-                    <span className="hidden sm:inline">{STEP_LABELS[s]}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        {progressBar}
 
         {/* Step content */}
         <div className="military-border p-4 sm:p-6 mb-4 sm:mb-6">
-          {/* ── Step 1: Crisis Event ─────────────────────────────── */}
-          {step === 1 && (
-            <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">[STEP 1: CRISIS EVENT]</h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
-                Select the type of social media crisis and provide location details.
-              </p>
-
-              <div className="mb-6">
-                <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
-                  Crisis Type
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {CRISIS_TYPES.map((ct) => (
-                    <button
-                      key={ct.id}
-                      onClick={() => setCrisisType(ct.id)}
-                      className={`p-4 border rounded text-left transition-all ${
-                        crisisType === ct.id
-                          ? 'border-cyan-400 bg-cyan-900/30'
-                          : 'border-robotic-gray-200 hover:border-robotic-yellow/50'
-                      }`}
-                    >
-                      <div className="text-2xl mb-2">{ct.icon}</div>
-                      <div className="text-xs terminal-text font-bold mb-1">{ct.label}</div>
-                      <div className="text-[10px] terminal-text text-robotic-yellow/40">
-                        {ct.description}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
-                    Location
-                  </label>
-                  <input
-                    type="text"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="e.g. Woodlands, Singapore"
-                    className="w-full bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
-                    Country
-                  </label>
-                  <input
-                    type="text"
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                    className="w-full bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
-                  Additional Context (optional)
-                </label>
-                <textarea
-                  value={context}
-                  onChange={(e) => setContext(e.target.value)}
-                  rows={3}
-                  placeholder="Any specific scenario details, recent events, or nuances to incorporate..."
-                  className="w-full bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none resize-none"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* ── Step 2: Affected Communities ──────────────────────── */}
-          {step === 2 && (
-            <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">
-                [STEP 2: AFFECTED COMMUNITIES]
-              </h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
-                Communities likely targeted by hate speech and misinformation. AI-suggested — edit
-                as needed.
-              </p>
-
-              {communitiesLoading ? (
-                <div className="flex items-center gap-3 py-8 justify-center">
-                  <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
-                  <span className="text-sm terminal-text text-robotic-yellow/60 animate-pulse">
-                    Analyzing crisis context for affected communities...
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <div className="space-y-2 mb-4">
-                    {communities.map((c, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between border border-robotic-gray-200 px-4 py-3 rounded"
-                      >
-                        <span className="text-sm terminal-text">{c}</span>
-                        <button
-                          onClick={() => removeCommunity(i)}
-                          className="text-xs terminal-text text-red-400/60 hover:text-red-400"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newCommunity}
-                      onChange={(e) => setNewCommunity(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && addCommunity()}
-                      placeholder="Add a community..."
-                      className="flex-1 bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none"
-                    />
-                    <button
-                      onClick={addCommunity}
-                      className="px-4 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
-                    >
-                      + Add
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={generateCommunities}
-                    className="mt-4 text-xs terminal-text text-cyan-400 hover:text-cyan-300 underline"
-                  >
-                    ↻ Regenerate suggestions
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* ── Step 3: Response Teams ────────────────────────────── */}
-          {step === 3 && (
-            <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">[STEP 3: RESPONSE TEAMS]</h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
-                AI-suggested response team structure. Edit team names, descriptions, and participant
-                counts.
-              </p>
-
-              {teamsLoading ? (
-                <div className="flex items-center gap-3 py-8 justify-center">
-                  <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
-                  <span className="text-sm terminal-text text-robotic-yellow/60 animate-pulse">
-                    Generating response team structure...
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <div className="space-y-3 mb-4">
-                    {teams.map((t, i) => (
-                      <div key={i} className="border border-robotic-gray-200 rounded p-4">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 space-y-3">
-                            <input
-                              type="text"
-                              value={t.team_name}
-                              onChange={(e) => updateTeam(i, 'team_name', e.target.value)}
-                              className="w-full bg-transparent border-b border-robotic-gray-200 pb-1 text-sm terminal-text text-robotic-yellow font-bold focus:border-robotic-yellow/70 focus:outline-none"
-                            />
-                            <textarea
-                              value={t.team_description}
-                              onChange={(e) => updateTeam(i, 'team_description', e.target.value)}
-                              rows={2}
-                              className="w-full bg-transparent border border-robotic-gray-200 px-2 py-1 text-xs terminal-text text-robotic-yellow/70 focus:border-robotic-yellow/70 focus:outline-none resize-none"
-                            />
-                            <div className="flex items-center gap-4">
-                              <label className="text-[10px] terminal-text text-robotic-yellow/40">
-                                Min:
-                                <input
-                                  type="number"
-                                  min={1}
-                                  max={10}
-                                  value={t.min_participants}
-                                  onChange={(e) =>
-                                    updateTeam(i, 'min_participants', Number(e.target.value))
-                                  }
-                                  className="w-12 ml-1 bg-transparent border border-robotic-gray-200 px-1 py-0.5 text-xs terminal-text text-robotic-yellow text-center focus:outline-none"
-                                />
-                              </label>
-                              <label className="text-[10px] terminal-text text-robotic-yellow/40">
-                                Max:
-                                <input
-                                  type="number"
-                                  min={1}
-                                  max={10}
-                                  value={t.max_participants}
-                                  onChange={(e) =>
-                                    updateTeam(i, 'max_participants', Number(e.target.value))
-                                  }
-                                  className="w-12 ml-1 bg-transparent border border-robotic-gray-200 px-1 py-0.5 text-xs terminal-text text-robotic-yellow text-center focus:outline-none"
-                                />
-                              </label>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => removeTeam(i)}
-                            className="text-xs terminal-text text-red-400/60 hover:text-red-400 mt-1"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <button
-                    onClick={generateTeams}
-                    className="text-xs terminal-text text-cyan-400 hover:text-cyan-300 underline"
-                  >
-                    ↻ Regenerate teams
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* ── Step 4: SOP & Guidelines ──────────────────────────── */}
-          {step === 4 && (
-            <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">[STEP 4: SOP & GUIDELINES]</h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
-                AI-generated Standard Operating Procedure for crisis response. Review and edit
-                before proceeding.
-              </p>
-
-              {sopLoading ? (
-                <div className="flex items-center gap-3 py-8 justify-center">
-                  <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
-                  <span className="text-sm terminal-text text-robotic-yellow/60 animate-pulse">
-                    Generating SOP and content guidelines...
-                  </span>
-                </div>
-              ) : sop ? (
-                <>
-                  <div className="border border-robotic-gray-200 rounded p-4 mb-4">
-                    <input
-                      type="text"
-                      value={sop.sop_name}
-                      onChange={(e) => setSop({ ...sop, sop_name: e.target.value })}
-                      className="w-full bg-transparent border-b border-robotic-gray-200 pb-1 mb-2 text-sm terminal-text text-robotic-yellow font-bold focus:border-robotic-yellow/70 focus:outline-none"
-                    />
-                    <textarea
-                      value={sop.description}
-                      onChange={(e) => setSop({ ...sop, description: e.target.value })}
-                      rows={2}
-                      className="w-full bg-transparent border border-robotic-gray-200 px-2 py-1 mb-3 text-xs terminal-text text-robotic-yellow/70 focus:border-robotic-yellow/70 focus:outline-none resize-none"
-                    />
-                    <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase mb-2">
-                      Response Time Limit: {sop.response_time_limit_minutes} min
-                    </div>
-                  </div>
-
-                  <div className="mb-4">
-                    <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                      SOP Steps
-                    </h3>
-                    <div className="space-y-2">
-                      {sop.steps.map((s, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center gap-3 border border-robotic-gray-200 px-3 py-2 rounded"
-                        >
-                          <span className="text-[10px] terminal-text text-robotic-yellow/30 w-6">
-                            {String(i + 1).padStart(2, '0')}
-                          </span>
-                          <div className="flex-1">
-                            <div className="text-xs terminal-text font-bold">{s.name}</div>
-                            <div className="text-[10px] terminal-text text-robotic-yellow/50">
-                              {s.description}
-                            </div>
-                          </div>
-                          <span className="text-[10px] terminal-text text-cyan-400">
-                            T+{s.time_limit_minutes}m
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="border border-robotic-gray-200 rounded p-4">
-                    <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                      Content Guidelines
-                    </h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <div className="text-[10px] terminal-text text-green-400/60 uppercase mb-1">
-                          Tone
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {sop.content_guidelines.tone.map((t, i) => (
-                            <span
-                              key={i}
-                              className="text-[10px] terminal-text bg-green-900/20 border border-green-700/30 px-2 py-0.5 rounded"
-                            >
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] terminal-text text-red-400/60 uppercase mb-1">
-                          Avoid
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {sop.content_guidelines.avoid.map((t, i) => (
-                            <span
-                              key={i}
-                              className="text-[10px] terminal-text bg-red-900/20 border border-red-700/30 px-2 py-0.5 rounded"
-                            >
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] terminal-text text-cyan-400/60 uppercase mb-1">
-                          Include
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {sop.content_guidelines.include.map((t, i) => (
-                            <span
-                              key={i}
-                              className="text-[10px] terminal-text bg-cyan-900/20 border border-cyan-700/30 px-2 py-0.5 rounded"
-                            >
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] terminal-text text-yellow-400/60 uppercase mb-1">
-                          Language Sensitivity
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {sop.content_guidelines.language_sensitivity.map((t, i) => (
-                            <span
-                              key={i}
-                              className="text-[10px] terminal-text bg-yellow-900/20 border border-yellow-700/30 px-2 py-0.5 rounded"
-                            >
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={generateSOP}
-                    className="mt-4 text-xs terminal-text text-cyan-400 hover:text-cyan-300 underline"
-                  >
-                    ↻ Regenerate SOP
-                  </button>
-                </>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-sm terminal-text text-robotic-yellow/50 mb-4">
-                    No SOP generated yet.
-                  </p>
-                  <button
-                    onClick={generateSOP}
-                    className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
-                  >
-                    Generate SOP
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Step 5: NPC Personas & Fact Sheet ─────────────────── */}
-          {step === 5 && (
-            <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">
-                [STEP 5: NPC PERSONAS & FACT SHEET]
-              </h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
-                AI-generated social media personas and fact/misinformation sheet for the simulation.
-              </p>
-
-              {personasLoading ? (
-                <div className="flex items-center gap-3 py-8 justify-center">
-                  <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
-                  <span className="text-sm terminal-text text-robotic-yellow/60 animate-pulse">
-                    Generating NPC personas and fact sheet...
-                  </span>
-                </div>
-              ) : (
-                <>
-                  {/* Personas */}
-                  <div className="mb-6">
-                    <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                      NPC Personas ({personas.length})
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {personas.map((p, i) => (
-                        <div
-                          key={i}
-                          className="border border-robotic-gray-200 rounded p-3 relative"
-                        >
-                          <button
-                            onClick={() => removePersona(i)}
-                            className="absolute top-2 right-2 text-xs terminal-text text-red-400/60 hover:text-red-400"
-                          >
-                            ✕
-                          </button>
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xs terminal-text text-cyan-400">{p.handle}</span>
-                            <span
-                              className={`text-[9px] terminal-text px-1.5 py-0.5 rounded uppercase ${
-                                p.type === 'npc_media'
-                                  ? 'bg-blue-900/30 text-blue-400'
-                                  : p.type === 'npc_politician'
-                                    ? 'bg-purple-900/30 text-purple-400'
-                                    : p.type === 'npc_influencer'
-                                      ? 'bg-pink-900/30 text-pink-400'
-                                      : 'bg-robotic-gray-200/30 text-robotic-yellow/60'
-                              }`}
-                            >
-                              {p.type.replace('npc_', '')}
-                            </span>
-                          </div>
-                          <div className="text-xs terminal-text font-bold mb-1">{p.name}</div>
-                          <div className="text-[10px] terminal-text text-robotic-yellow/50 mb-1">
-                            {p.personality}
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-[9px] terminal-text text-robotic-yellow/30">
-                              Bias: {p.bias}
-                            </span>
-                            <span className="text-[9px] terminal-text text-robotic-yellow/30">
-                              {p.follower_count.toLocaleString()} followers
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Fact Sheet */}
-                  {factSheet && (
-                    <div className="mb-4">
-                      <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                        Fact Sheet
-                      </h3>
-
-                      <div className="mb-3">
-                        <div className="text-[10px] terminal-text text-green-400/60 uppercase mb-2">
-                          Confirmed Facts
-                        </div>
-                        <div className="space-y-1">
-                          {factSheet.confirmed_facts.map((f, i) => (
-                            <div
-                              key={i}
-                              className="flex items-start gap-2 text-xs terminal-text text-robotic-yellow/70"
-                            >
-                              <span className="text-green-400 mt-0.5">✓</span>
-                              <span>{f}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="text-[10px] terminal-text text-red-400/60 uppercase mb-2">
-                          Unconfirmed / False Claims
-                        </div>
-                        <div className="space-y-2">
-                          {factSheet.unconfirmed_claims.map((c, i) => (
-                            <div
-                              key={i}
-                              className="border border-robotic-gray-200 rounded px-3 py-2"
-                            >
-                              <div className="flex items-center gap-2 mb-1">
-                                <span
-                                  className={`text-[9px] terminal-text px-1.5 py-0.5 rounded uppercase ${
-                                    c.status === 'FALSE'
-                                      ? 'bg-red-900/30 text-red-400'
-                                      : 'bg-yellow-900/30 text-yellow-400'
-                                  }`}
-                                >
-                                  {c.status}
-                                </span>
-                                <span className="text-xs terminal-text">{c.claim}</span>
-                              </div>
-                              <div className="text-[10px] terminal-text text-robotic-yellow/40 ml-4">
-                                Truth: {c.truth}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={generatePersonasAndFacts}
-                    className="text-xs terminal-text text-cyan-400 hover:text-cyan-300 underline"
-                  >
-                    ↻ Regenerate all
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* ── Step 6: Compile ───────────────────────────────────── */}
-          {step === 6 && (
-            <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">[STEP 6: COMPILE SCENARIO]</h2>
-
-              {!scenarioId && !compiling && (
-                <div className="space-y-6">
-                  <p className="text-xs terminal-text text-robotic-yellow/50 mb-4">
-                    Configure final settings, then compile the full social crisis scenario with
-                    AI-generated inject timeline.
-                  </p>
-
-                  <div className="grid grid-cols-2 gap-4 mb-6">
-                    <div>
-                      <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
-                        Duration (minutes)
-                      </label>
-                      <input
-                        type="number"
-                        value={duration}
-                        onChange={(e) => setDuration(Number(e.target.value))}
-                        min={15}
-                        max={180}
-                        step={15}
-                        className="w-full bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Summary */}
-                  <div className="border border-robotic-gray-200 rounded p-4 mb-4">
-                    <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                      Scenario Summary
-                    </h3>
-                    <div className="grid grid-cols-2 gap-3 text-xs terminal-text">
-                      <div>
-                        <span className="text-robotic-yellow/40">Crisis:</span>{' '}
-                        <span className="text-robotic-yellow">
-                          {CRISIS_TYPES.find((c) => c.id === crisisType)?.label || crisisType}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-robotic-yellow/40">Location:</span>{' '}
-                        <span className="text-robotic-yellow">
-                          {location}, {country}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-robotic-yellow/40">Communities:</span>{' '}
-                        <span className="text-robotic-yellow">{communities.join(', ')}</span>
-                      </div>
-                      <div>
-                        <span className="text-robotic-yellow/40">Teams:</span>{' '}
-                        <span className="text-robotic-yellow">{teams.length}</span>
-                      </div>
-                      <div>
-                        <span className="text-robotic-yellow/40">SOP Steps:</span>{' '}
-                        <span className="text-robotic-yellow">{sop?.steps.length || 0}</span>
-                      </div>
-                      <div>
-                        <span className="text-robotic-yellow/40">NPC Personas:</span>{' '}
-                        <span className="text-robotic-yellow">{personas.length}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={compileScenario}
-                    className="military-button px-8 py-3 w-full text-center"
-                  >
-                    [COMPILE SCENARIO]
-                  </button>
-                </div>
-              )}
-
-              {compiling && (
-                <div className="py-6">
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
-                    <span className="text-sm terminal-text text-robotic-yellow animate-pulse">
-                      Compiling scenario...
-                    </span>
-                  </div>
-                  <div className="border border-robotic-gray-200 rounded p-4 bg-black/30 font-mono text-xs space-y-1 max-h-64 overflow-y-auto">
-                    {compileProgress.map((msg, i) => (
-                      <div key={i} className="text-robotic-yellow/70">
-                        <span className="text-robotic-yellow/30">
-                          [{String(i + 1).padStart(2, '0')}]
-                        </span>{' '}
-                        {msg}
-                      </div>
-                    ))}
-                    <div className="animate-pulse text-robotic-yellow/40">▌</div>
-                  </div>
-                </div>
-              )}
-
-              {scenarioId && !compiling && (
-                <div className="text-center py-8">
-                  <div className="text-4xl mb-4">✅</div>
-                  <h3 className="text-lg terminal-text font-bold mb-2">
-                    Scenario Created Successfully
-                  </h3>
-                  <p className="text-xs terminal-text text-robotic-yellow/50 mb-2">
-                    Scenario ID: {scenarioId}
-                  </p>
-                  <div className="border border-robotic-gray-200 rounded p-4 bg-black/30 font-mono text-xs space-y-1 max-h-48 overflow-y-auto mb-6">
-                    {compileProgress.map((msg, i) => (
-                      <div key={i} className="text-robotic-yellow/70">
-                        <span className="text-robotic-yellow/30">
-                          [{String(i + 1).padStart(2, '0')}]
-                        </span>{' '}
-                        {msg}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex justify-center gap-4">
-                    <a href="/scenarios" className="military-button px-8 py-3 text-center">
-                      [VIEW SCENARIOS]
-                    </a>
-                    <button
-                      onClick={() => navigate('/sessions')}
-                      className="px-8 py-3 text-xs terminal-text uppercase border border-cyan-500/50 text-cyan-400 hover:bg-cyan-900/20"
-                    >
-                      [CREATE SESSION]
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          {step === 1 && renderStep1()}
+          {step === 2 && renderStep2()}
+          {step === 3 && renderStep3()}
+          {step === 4 && renderStep4()}
+          {step === 5 && renderStep5()}
+          {step === 6 && renderStep6()}
+          {step === 7 && renderStep7()}
         </div>
 
         {/* Navigation buttons */}
@@ -1347,16 +1712,16 @@ export const SocialCrisisWizard = () => {
             {step === 1 ? '[← WAR ROOM]' : '[BACK]'}
           </button>
           <span className="text-xs terminal-text text-robotic-yellow/40">
-            Step {VISIBLE_STEPS.indexOf(step) + 1} of {VISIBLE_STEPS.length}
+            Step {currentStepIndex + 1} of {VISIBLE_STEPS.length}
           </span>
-          {step === 6 ? (
+          {step === 7 ? (
             scenarioId ? (
               <a href="/scenarios" className="military-button px-8 py-3 text-center">
                 [VIEW SCENARIOS]
               </a>
             ) : (
               <span className="text-xs terminal-text text-robotic-yellow/30">
-                {compiling ? 'Compiling...' : 'Configure & compile above'}
+                {compiling ? 'Compiling...' : 'Review & compile above'}
               </span>
             )
           ) : (
