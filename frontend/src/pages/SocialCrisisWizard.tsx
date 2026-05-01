@@ -1,5 +1,6 @@
-import { useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { api } from '../lib/api';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -125,6 +126,11 @@ async function authHeaders(): Promise<Record<string, string>> {
 export const SocialCrisisWizard = () => {
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const resumedRef = useRef(false);
+
+  /* Draft persistence */
+  const [wizardDraftId, setWizardDraftId] = useState<string | null>(null);
 
   /* Step 1 — Crisis Event */
   const [crisisType, setCrisisType] = useState<string | null>(null);
@@ -158,6 +164,97 @@ export const SocialCrisisWizard = () => {
   /* Duration */
   const difficulty = 'expert';
   const [duration, setDuration] = useState(60);
+
+  /* ─── Draft save/resume ────────────────────────────────────────── */
+
+  const buildDraftInput = useCallback(
+    () => ({
+      sim_mode: 'social_media',
+      crisis_type: crisisType,
+      location,
+      country,
+      context,
+      communities,
+      teams,
+      sop,
+      personas,
+      fact_sheet: factSheet,
+      duration,
+    }),
+    [
+      crisisType,
+      location,
+      country,
+      context,
+      communities,
+      teams,
+      sop,
+      personas,
+      factSheet,
+      duration,
+    ],
+  );
+
+  const saveDraftState = useCallback(
+    async (nextStep: number) => {
+      try {
+        if (!wizardDraftId) {
+          const { data: created } = await api.warroom.wizardDraftCreate({
+            input: buildDraftInput(),
+          });
+          const newId = created.draft_id;
+          setWizardDraftId(newId);
+          setSearchParams({ draft: newId }, { replace: true });
+          return newId;
+        }
+        await api.warroom.wizardDraftPatch(wizardDraftId, {
+          current_step: nextStep,
+          input: buildDraftInput(),
+        });
+        return wizardDraftId;
+      } catch (err) {
+        console.error('Failed to save social crisis draft', err);
+        return wizardDraftId;
+      }
+    },
+    [wizardDraftId, buildDraftInput, setSearchParams],
+  );
+
+  useEffect(() => {
+    if (resumedRef.current) return;
+    const draftParam = searchParams.get('draft');
+    if (!draftParam) return;
+    resumedRef.current = true;
+
+    const resume = async () => {
+      try {
+        const { data: draft } = await api.warroom.wizardDraftGet(draftParam);
+        if (!draft) return;
+
+        setWizardDraftId(draftParam);
+        const input = ((draft as Record<string, unknown>).input ?? {}) as Record<string, unknown>;
+        const savedStep = ((draft as Record<string, unknown>).current_step as number) || 1;
+        const validSteps = [1, 2, 3, 4, 5, 6];
+        const validStep = validSteps.includes(savedStep) ? savedStep : 1;
+
+        if (input.crisis_type) setCrisisType(input.crisis_type as string);
+        if (input.location) setLocation(input.location as string);
+        if (input.country) setCountry(input.country as string);
+        if (input.context) setContext(input.context as string);
+        if (Array.isArray(input.communities)) setCommunities(input.communities as string[]);
+        if (Array.isArray(input.teams)) setTeams(input.teams as TeamEntry[]);
+        if (input.sop) setSop(input.sop as SOPDefinition);
+        if (Array.isArray(input.personas)) setPersonas(input.personas as NPCPersona[]);
+        if (input.fact_sheet) setFactSheet(input.fact_sheet as FactSheet);
+        if (input.duration) setDuration(input.duration as number);
+
+        setStep(validStep as 1 | 2 | 3 | 4 | 5 | 6);
+      } catch (err) {
+        console.error('Failed to resume social crisis draft', err);
+      }
+    };
+    resume();
+  }, [searchParams]);
 
   /* ─── Validation ────────────────────────────────────────────────── */
 
@@ -402,6 +499,8 @@ export const SocialCrisisWizard = () => {
   const goNext = async () => {
     const nextStep = VISIBLE_STEPS[currentStepIndex + 1] as typeof step | undefined;
     if (!nextStep) return;
+
+    await saveDraftState(nextStep);
 
     if (step === 1 && communities.length === 0) {
       setStep(nextStep);
