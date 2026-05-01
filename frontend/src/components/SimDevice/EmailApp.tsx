@@ -100,45 +100,125 @@ export default function EmailApp() {
     }
   }
 
-  function getPriorityColor(priority: string): string {
+  function getPriorityBadge(priority: string): { bg: string; text: string; label: string } | null {
     switch (priority) {
       case 'urgent':
-        return 'text-red-400 bg-red-900/30';
+        return { bg: '#FFE5E5', text: '#FF3B30', label: 'Urgent' };
       case 'high':
-        return 'text-orange-400 bg-orange-900/30';
+        return { bg: '#FFF3E0', text: '#FF9500', label: 'High' };
       default:
-        return 'text-gray-400';
+        return null;
     }
   }
 
+  function formatTime(dateStr: string): string {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+    if (diffHours < 24) {
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+
+  function getInitialsColor(name: string): string {
+    const colors = ['#007AFF', '#34C759', '#FF9500', '#FF3B30', '#5856D6', '#AF52DE'];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
+  }
+
+  // Email Detail View
   if (selectedEmail) {
+    const priorityBadge = getPriorityBadge(selectedEmail.priority);
     return (
-      <div className="h-full flex flex-col bg-gray-950 text-white">
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-800">
-          <button onClick={() => setSelectedEmail(null)} className="text-blue-400 text-sm">
-            ← Back
+      <div className="h-full flex flex-col" style={{ backgroundColor: '#F2F2F7' }}>
+        {/* Nav Bar */}
+        <div
+          className="flex items-center gap-3 px-4 ios-blur-nav"
+          style={{
+            height: 44,
+            backgroundColor: 'rgba(242,242,247,0.85)',
+            borderBottom: '0.5px solid #C6C6C8',
+          }}
+        >
+          <button
+            onClick={() => setSelectedEmail(null)}
+            className="flex items-center gap-1 ios-btn-bounce"
+            style={{ color: '#007AFF' }}
+          >
+            <svg width="10" height="16" viewBox="0 0 10 16" fill="none">
+              <path
+                d="M9 1L2 8l7 7"
+                stroke="#007AFF"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="text-[17px]">Inbox</span>
           </button>
-          <span className="flex-1 truncate font-medium">{selectedEmail.subject}</span>
         </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="font-semibold text-sm">{selectedEmail.from_name}</p>
-              <p className="text-xs text-gray-500">{selectedEmail.from_address}</p>
+
+        <div className="flex-1 overflow-y-auto">
+          {/* Subject */}
+          <div className="px-4 pt-4 pb-2" style={{ backgroundColor: '#FFFFFF' }}>
+            <div className="flex items-start justify-between gap-2">
+              <h1 className="text-[22px] font-bold leading-tight" style={{ color: '#000000' }}>
+                {selectedEmail.subject}
+              </h1>
+              {priorityBadge && (
+                <span
+                  className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: priorityBadge.bg, color: priorityBadge.text }}
+                >
+                  {priorityBadge.label}
+                </span>
+              )}
             </div>
-            {selectedEmail.priority !== 'normal' && (
-              <span
-                className={`text-xs px-2 py-0.5 rounded ${getPriorityColor(selectedEmail.priority)}`}
-              >
-                {selectedEmail.priority.toUpperCase()}
-              </span>
-            )}
           </div>
-          <div className="text-sm whitespace-pre-wrap leading-relaxed text-gray-300">
-            {selectedEmail.body_text}
+
+          {/* Sender info */}
+          <div
+            className="flex items-center gap-3 px-4 py-3"
+            style={{ backgroundColor: '#FFFFFF', borderBottom: '0.5px solid #C6C6C8' }}
+          >
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-[16px]"
+              style={{ backgroundColor: getInitialsColor(selectedEmail.from_name) }}
+            >
+              {selectedEmail.from_name.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1">
+              <p className="text-[15px] font-semibold" style={{ color: '#000000' }}>
+                {selectedEmail.from_name}
+              </p>
+              <p className="text-[13px]" style={{ color: '#8E8E93' }}>
+                {selectedEmail.from_address}
+              </p>
+            </div>
+            <span className="text-[13px]" style={{ color: '#8E8E93' }}>
+              {formatTime(selectedEmail.created_at)}
+            </span>
+          </div>
+
+          {/* Body */}
+          <div className="px-4 py-4" style={{ backgroundColor: '#FFFFFF' }}>
+            <p
+              className="text-[15px] leading-relaxed whitespace-pre-wrap"
+              style={{ color: '#000000' }}
+            >
+              {selectedEmail.body_text}
+            </p>
           </div>
         </div>
-        <div className="p-3 border-t border-gray-800">
+
+        {/* Reply bar */}
+        <div
+          className="px-4 py-3"
+          style={{ backgroundColor: '#FFFFFF', borderTop: '0.5px solid #C6C6C8' }}
+        >
           <button
             onClick={() => {
               setComposing(true);
@@ -148,7 +228,8 @@ export default function EmailApp() {
                 body: '',
               });
             }}
-            className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium"
+            className="w-full py-2.5 rounded-xl text-[17px] font-semibold text-white ios-btn-bounce"
+            style={{ backgroundColor: '#007AFF' }}
           >
             Reply
           </button>
@@ -157,92 +238,217 @@ export default function EmailApp() {
     );
   }
 
+  // Compose View
   if (composing) {
     return (
-      <div className="h-full flex flex-col bg-gray-950 text-white">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-          <button onClick={() => setComposing(false)} className="text-blue-400 text-sm">
+      <div className="h-full flex flex-col" style={{ backgroundColor: '#F2F2F7' }}>
+        <div
+          className="flex items-center justify-between px-4 ios-blur-nav"
+          style={{
+            height: 44,
+            backgroundColor: 'rgba(242,242,247,0.85)',
+            borderBottom: '0.5px solid #C6C6C8',
+          }}
+        >
+          <button
+            onClick={() => setComposing(false)}
+            className="text-[17px] ios-btn-bounce"
+            style={{ color: '#007AFF' }}
+          >
             Cancel
           </button>
-          <span className="font-medium">New Email</span>
-          <button onClick={sendEmail} className="text-blue-400 text-sm font-bold">
+          <span className="ios-nav-title" style={{ color: '#000000' }}>
+            New Message
+          </span>
+          <button
+            onClick={sendEmail}
+            className="text-[17px] font-semibold ios-btn-bounce"
+            style={{ color: '#007AFF' }}
+          >
             Send
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          <input
-            value={replyData.to}
-            onChange={(e) => setReplyData({ ...replyData, to: e.target.value })}
-            placeholder="To"
-            className="w-full bg-gray-900 text-white px-3 py-2 rounded border border-gray-800 text-sm"
-          />
-          <input
-            value={replyData.subject}
-            onChange={(e) => setReplyData({ ...replyData, subject: e.target.value })}
-            placeholder="Subject"
-            className="w-full bg-gray-900 text-white px-3 py-2 rounded border border-gray-800 text-sm"
-          />
+        <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#FFFFFF' }}>
+          <div style={{ borderBottom: '0.5px solid #C6C6C8' }}>
+            <div className="flex items-center px-4 py-2.5">
+              <span className="text-[15px] w-16" style={{ color: '#8E8E93' }}>
+                To:
+              </span>
+              <input
+                value={replyData.to}
+                onChange={(e) => setReplyData({ ...replyData, to: e.target.value })}
+                className="flex-1 text-[15px] outline-none"
+                style={{ color: '#000000' }}
+              />
+            </div>
+          </div>
+          <div style={{ borderBottom: '0.5px solid #C6C6C8' }}>
+            <div className="flex items-center px-4 py-2.5">
+              <span className="text-[15px] w-16" style={{ color: '#8E8E93' }}>
+                Subject:
+              </span>
+              <input
+                value={replyData.subject}
+                onChange={(e) => setReplyData({ ...replyData, subject: e.target.value })}
+                className="flex-1 text-[15px] outline-none"
+                style={{ color: '#000000' }}
+              />
+            </div>
+          </div>
           <textarea
             value={replyData.body}
             onChange={(e) => setReplyData({ ...replyData, body: e.target.value })}
             placeholder="Write your email..."
-            className="w-full flex-1 bg-gray-900 text-white px-3 py-2 rounded border border-gray-800 text-sm min-h-[200px] resize-none"
+            className="w-full px-4 py-3 text-[15px] outline-none resize-none min-h-[240px]"
+            style={{ color: '#000000' }}
+            autoFocus
           />
         </div>
       </div>
     );
   }
 
+  // Inbox List
   return (
-    <div className="h-full flex flex-col bg-gray-950 text-white">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-        <button
-          onClick={() => navigate(`/sim/${sessionId}/device/home`)}
-          className="text-blue-400 text-sm"
-        >
-          ← Home
-        </button>
-        <span className="font-bold">Email</span>
-        <button onClick={() => setComposing(true)} className="text-blue-400 text-sm">
-          Compose
-        </button>
+    <div className="h-full flex flex-col" style={{ backgroundColor: '#F2F2F7' }}>
+      {/* Nav */}
+      <div
+        className="ios-blur-nav"
+        style={{ backgroundColor: 'rgba(242,242,247,0.85)', borderBottom: '0.5px solid #C6C6C8' }}
+      >
+        <div className="flex items-center justify-between px-4" style={{ height: 44 }}>
+          <button
+            onClick={() => navigate(`/sim/${sessionId}/device/home`)}
+            className="flex items-center gap-1 ios-btn-bounce"
+            style={{ color: '#007AFF' }}
+          >
+            <svg width="10" height="16" viewBox="0 0 10 16" fill="none">
+              <path
+                d="M9 1L2 8l7 7"
+                stroke="#007AFF"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="text-[17px]">Home</span>
+          </button>
+          <button
+            onClick={() => setComposing(true)}
+            className="ios-btn-bounce"
+            style={{ color: '#007AFF' }}
+          >
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#007AFF"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+            </svg>
+          </button>
+        </div>
+        <div className="px-4 pb-2">
+          <h1 className="ios-large-title" style={{ color: '#000000' }}>
+            Inbox
+          </h1>
+        </div>
       </div>
+
+      {/* Email List */}
       <div className="flex-1 overflow-y-auto">
         {emails.length === 0 ? (
-          <div className="flex items-center justify-center h-32 text-gray-500 text-sm">
-            No emails
+          <div className="flex flex-col items-center justify-center h-40 gap-1">
+            <svg
+              width="48"
+              height="48"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#C7C7CC"
+              strokeWidth="1"
+            >
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+              <polyline points="22,6 12,13 2,6" />
+            </svg>
+            <p className="text-[15px]" style={{ color: '#8E8E93' }}>
+              No emails
+            </p>
           </div>
         ) : (
-          emails.map((email) => (
-            <button
-              key={email.id}
-              onClick={() => {
-                setSelectedEmail(email);
-                if (!email.is_read) markRead(email.id);
-              }}
-              className={`w-full text-left px-4 py-3 border-b border-gray-800 hover:bg-gray-900 transition-colors ${!email.is_read ? 'bg-gray-900/50' : ''}`}
-            >
-              <div className="flex items-center gap-2">
-                {!email.is_read && (
-                  <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
-                )}
-                <span className={`text-sm ${!email.is_read ? 'font-bold' : ''} flex-1 truncate`}>
-                  {email.direction === 'inbound' ? email.from_name : `To: ${email.to_addresses[0]}`}
-                </span>
-                {email.priority !== 'normal' && (
-                  <span
-                    className={`text-[10px] px-1 py-0.5 rounded ${getPriorityColor(email.priority)}`}
-                  >
-                    {email.priority}
-                  </span>
-                )}
-              </div>
-              <p className="text-sm font-medium mt-0.5 truncate">{email.subject}</p>
-              <p className="text-xs text-gray-500 mt-0.5 truncate">
-                {email.body_text.substring(0, 80)}
-              </p>
-            </button>
-          ))
+          <div style={{ backgroundColor: '#FFFFFF' }}>
+            {emails.map((email, idx) => {
+              const priorityBadge = getPriorityBadge(email.priority);
+              return (
+                <button
+                  key={email.id}
+                  onClick={() => {
+                    setSelectedEmail(email);
+                    if (!email.is_read) markRead(email.id);
+                  }}
+                  className="w-full text-left flex gap-3 px-4 py-3 ios-btn-bounce"
+                  style={{ borderBottom: idx < emails.length - 1 ? '0.5px solid #C6C6C8' : 'none' }}
+                >
+                  {/* Unread dot */}
+                  <div className="flex items-start pt-1.5" style={{ width: 10 }}>
+                    {!email.is_read && (
+                      <div
+                        className="w-[10px] h-[10px] rounded-full"
+                        style={{ backgroundColor: '#007AFF' }}
+                      />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`text-[15px] truncate ${!email.is_read ? 'font-semibold' : ''}`}
+                        style={{ color: '#000000' }}
+                      >
+                        {email.direction === 'inbound'
+                          ? email.from_name
+                          : `To: ${email.to_addresses[0]}`}
+                      </span>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {priorityBadge && (
+                          <span
+                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                            style={{ backgroundColor: priorityBadge.bg, color: priorityBadge.text }}
+                          >
+                            {priorityBadge.label}
+                          </span>
+                        )}
+                        <span className="text-[13px]" style={{ color: '#8E8E93' }}>
+                          {formatTime(email.created_at)}
+                        </span>
+                        <svg width="8" height="13" viewBox="0 0 8 13" fill="none">
+                          <path
+                            d="M1 1l5.5 5.5L1 12"
+                            stroke="#C7C7CC"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </div>
+                    </div>
+                    <p
+                      className={`text-[14px] mt-0.5 truncate ${!email.is_read ? 'font-medium' : ''}`}
+                      style={{ color: '#000000' }}
+                    >
+                      {email.subject}
+                    </p>
+                    <p className="text-[13px] mt-0.5 truncate" style={{ color: '#8E8E93' }}>
+                      {email.body_text.substring(0, 90)}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

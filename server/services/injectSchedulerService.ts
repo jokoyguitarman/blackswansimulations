@@ -28,6 +28,9 @@ import {
   type ConditionsToAppear,
   type ConditionsToCancel,
 } from './conditionEvaluatorService.js';
+import { shouldCancelSocialInject } from './socialCrisisAiService.js';
+import { computeSessionSentiment } from './sentimentSimService.js';
+import { checkResponseDeadlines } from './responseTrackerService.js';
 import type { Server as SocketServer } from 'socket.io';
 /**
  * Shared AI cancellation gate for any inject about to be published.
@@ -277,7 +280,7 @@ export class InjectSchedulerService {
       const { data: sessions, error: sessionsError } = await supabaseAdmin
         .from('sessions')
         .select(
-          'id, scenario_id, start_time, trainer_id, status, current_state, inject_state_effects',
+          'id, scenario_id, start_time, trainer_id, status, current_state, inject_state_effects, sim_mode',
         )
         .eq('status', 'in_progress')
         .not('start_time', 'is', null);
@@ -332,6 +335,7 @@ export class InjectSchedulerService {
     status: string;
     current_state?: Record<string, unknown> | null;
     inject_state_effects?: Record<string, unknown> | null;
+    sim_mode?: string | null;
   }): Promise<void> {
     // Calculate elapsed minutes
     const startTime = new Date(session.start_time).getTime();
@@ -661,20 +665,55 @@ export class InjectSchedulerService {
             this.io = io;
           }
 
-          const cancelled = await runAiCancellationGate(
-            {
-              id: inject.id,
-              title: inject.title ?? null,
-              content: (inject as { content?: string }).content,
-              target_teams: (inject as InjectRow).target_teams,
-              severity: (inject as InjectRow).severity,
-              inject_scope: (inject as InjectRow).inject_scope,
-            },
-            { id: session.id, scenario_id: session.scenario_id, trainer_id: session.trainer_id },
-            allDecisionsForAi,
-            userIdToTeam,
-            this.io,
-          );
+          let cancelled = false;
+          if (session.sim_mode === 'social_media') {
+            const { data: playerActions } = await supabaseAdmin
+              .from('player_actions')
+              .select('action_type, content, created_at, metadata')
+              .eq('session_id', session.id)
+              .order('created_at', { ascending: false })
+              .limit(30);
+
+            const sentiment = await computeSessionSentiment(session.id);
+
+            const { count: pendingCount } = await supabaseAdmin
+              .from('social_posts')
+              .select('id', { count: 'exact', head: true })
+              .eq('session_id', session.id)
+              .eq('requires_response', true)
+              .is('responded_at', null);
+
+            const result = await shouldCancelSocialInject(
+              {
+                title: inject.title ?? '',
+                content: (inject as { content?: string }).content ?? '',
+              },
+              (playerActions || []).map((a) => ({
+                action_type: a.action_type as string,
+                content: a.content as string | null,
+                created_at: a.created_at as string,
+                metadata: (a.metadata || {}) as Record<string, unknown>,
+              })),
+              sentiment,
+              pendingCount ?? 0,
+            );
+            cancelled = result.cancel;
+          } else {
+            cancelled = await runAiCancellationGate(
+              {
+                id: inject.id,
+                title: inject.title ?? null,
+                content: (inject as { content?: string }).content,
+                target_teams: (inject as InjectRow).target_teams,
+                severity: (inject as InjectRow).severity,
+                inject_scope: (inject as InjectRow).inject_scope,
+              },
+              { id: session.id, scenario_id: session.scenario_id, trainer_id: session.trainer_id },
+              allDecisionsForAi,
+              userIdToTeam,
+              this.io,
+            );
+          }
           if (cancelled) continue;
 
           logger.info(
@@ -917,6 +956,18 @@ export class InjectSchedulerService {
       await this.checkHazardQueue(session.id, session.scenario_id, elapsedMinutes);
     } catch (hazardErr) {
       logger.warn({ err: hazardErr, sessionId: session.id }, 'Hazard queue processing error');
+    }
+
+    // --- Social media crisis: check response deadlines ---
+    if (session.sim_mode === 'social_media') {
+      try {
+        await checkResponseDeadlines(session.id);
+      } catch (socialErr) {
+        logger.warn(
+          { err: socialErr, sessionId: session.id },
+          'Social response deadline check error',
+        );
+      }
     }
   }
 

@@ -1050,6 +1050,12 @@ export const SessionView = () => {
     }
   }, [id, user?.id]);
 
+  useEffect(() => {
+    if (session && (session as Record<string, unknown>).sim_mode === 'social_media' && id) {
+      navigate(`/sim/${id}/device`, { replace: true });
+    }
+  }, [session, id, navigate]);
+
   // Load scenario teams when session has scenario (for dynamic team counters)
   useEffect(() => {
     const scenarioId = session?.scenarios?.id ?? session?.scenario_id;

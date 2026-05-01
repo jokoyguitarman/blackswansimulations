@@ -38,6 +38,7 @@ import { debugRouter } from './routes/debug.js';
 import { rtsScenesRouter } from './routes/rtsScenes.js';
 import { tileProxyRouter } from './routes/tileProxy.js';
 import { socialMediaRouter } from './routes/socialMedia.js';
+import { socialCrisisWarroomRouter } from './routes/socialCrisisWarroom.js';
 import { setupWebSocket } from './websocket/index.js';
 import { initializeWebSocketService } from './services/websocketService.js';
 import { initializeInjectScheduler } from './services/injectSchedulerService.js';
@@ -199,6 +200,7 @@ app.use('/api/debug', debugRouter);
 app.use('/api/rts-scenes', rtsScenesRouter);
 app.use('/api/tiles', tileProxyRouter);
 app.use('/api/social', socialMediaRouter);
+app.use('/api/warroom/social-crisis', socialCrisisWarroomRouter);
 
 // 404 handler
 app.use((req, res) => {

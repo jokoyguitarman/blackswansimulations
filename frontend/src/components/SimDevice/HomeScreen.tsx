@@ -3,13 +3,14 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../lib/api';
 
-interface AppIcon {
+interface AppDef {
   id: string;
-  name: string;
-  icon: string;
+  label: string;
+  emoji: string;
+  gradient: string;
   path: string;
-  color: string;
   badge?: number;
+  inDock?: boolean;
 }
 
 export default function HomeScreen() {
@@ -31,8 +32,8 @@ export default function HomeScreen() {
         const s = result.data as Record<string, unknown>;
         const scenarioData = s.scenario as Record<string, unknown> | undefined;
         setScenario({
-          title: (scenarioData?.title as string) || 'Crisis Simulation',
-          description: (scenarioData?.description as string) || '',
+          title: String(scenarioData?.title || 'Crisis Simulation'),
+          description: String(scenarioData?.description || ''),
         });
       }
     } catch {
@@ -40,76 +41,113 @@ export default function HomeScreen() {
     }
   }
 
-  const apps: AppIcon[] = [
+  const apps: AppDef[] = [
     {
       id: 'social',
-      name: 'SocialFeed',
-      icon: '𝕏',
+      label: 'SocialFeed',
+      emoji: '𝕏',
+      gradient: 'bg-black',
       path: 'social',
-      color: 'bg-black',
       badge: badges.social,
+      inDock: true,
     },
     {
       id: 'chat',
-      name: 'TeamChat',
-      icon: '💬',
+      label: 'TeamChat',
+      emoji: '💬',
+      gradient: 'bg-[#25D366]',
       path: 'chat',
-      color: 'bg-green-600',
       badge: badges.chat,
+      inDock: true,
     },
     {
       id: 'email',
-      name: 'Email',
-      icon: '✉️',
+      label: 'Mail',
+      emoji: '✉️',
+      gradient: 'bg-[#007AFF]',
       path: 'email',
-      color: 'bg-blue-600',
       badge: badges.email,
+      inDock: true,
     },
-    { id: 'news', name: 'News', icon: '📰', path: 'news', color: 'bg-red-600', badge: badges.news },
-    { id: 'browser', name: 'FactCheck', icon: '🔍', path: 'browser', color: 'bg-purple-600' },
-    { id: 'drafts', name: 'DraftPad', icon: '📝', path: 'drafts', color: 'bg-yellow-600' },
+    {
+      id: 'news',
+      label: 'News',
+      emoji: '📰',
+      gradient: 'bg-[#FF3B30]',
+      path: 'news',
+      badge: badges.news,
+      inDock: true,
+    },
+    { id: 'browser', label: 'FactCheck', emoji: '🔍', gradient: 'bg-[#5856D6]', path: 'browser' },
+    { id: 'drafts', label: 'DraftPad', emoji: '📝', gradient: 'bg-[#FF9500]', path: 'drafts' },
   ];
 
-  return (
-    <div className="h-full flex flex-col bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-white">
-      {/* Scenario Banner */}
-      <div className="px-6 pt-4 pb-2">
-        <h2 className="text-lg font-semibold truncate">{scenario?.title || 'Loading...'}</h2>
-        <p className="text-xs text-gray-400 truncate">{scenario?.description?.substring(0, 80)}</p>
-      </div>
+  const gridApps = apps.filter((a) => !a.inDock);
+  const dockApps = apps.filter((a) => a.inDock);
 
-      {/* App Grid */}
-      <div className="flex-1 flex items-center justify-center px-6">
-        <div className="grid grid-cols-3 gap-6">
+  return (
+    <div
+      className="h-full flex flex-col relative overflow-hidden"
+      style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}
+    >
+      {/* Grid Apps */}
+      <div className="flex-1 flex flex-col items-center justify-center px-8 pt-16">
+        <div className="grid grid-cols-4 gap-x-6 gap-y-5">
           {apps.map((app) => (
             <button
               key={app.id}
               onClick={() => navigate(`/sim/${sessionId}/device/${app.path}`)}
-              className="flex flex-col items-center gap-2 group"
+              className="flex flex-col items-center gap-1.5 ios-btn-bounce"
             >
               <div className="relative">
                 <div
-                  className={`w-16 h-16 ${app.color} rounded-2xl flex items-center justify-center text-2xl shadow-lg group-hover:scale-110 transition-transform`}
+                  className={`w-[60px] h-[60px] ${app.gradient} superellipse-icon flex items-center justify-center text-[28px] shadow-lg`}
                 >
-                  {app.icon}
+                  {app.emoji}
                 </div>
-                {app.badge && app.badge > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                {!!app.badge && app.badge > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[20px] h-[20px] bg-[#FF3B30] text-white text-[13px] font-bold rounded-full flex items-center justify-center px-1 border-2 border-[#302b63]">
                     {app.badge > 99 ? '99+' : app.badge}
                   </span>
                 )}
               </div>
-              <span className="text-xs text-gray-300 group-hover:text-white transition-colors">
-                {app.name}
+              <span className="text-[11px] text-white/90 font-medium tracking-tight">
+                {app.label}
               </span>
             </button>
           ))}
         </div>
       </div>
 
-      {/* User Info */}
-      <div className="px-6 pb-4 text-center">
-        <p className="text-xs text-gray-500">Logged in as {user?.displayName || 'Player'}</p>
+      {/* Page Indicator */}
+      <div className="flex items-center justify-center py-2">
+        <div className="w-[6px] h-[6px] rounded-full bg-white/80" />
+      </div>
+
+      {/* Dock */}
+      <div className="dock-blur mx-3 mb-1 rounded-[26px] px-5 py-3">
+        <div className="flex items-center justify-around">
+          {dockApps.map((app) => (
+            <button
+              key={app.id}
+              onClick={() => navigate(`/sim/${sessionId}/device/${app.path}`)}
+              className="flex flex-col items-center ios-btn-bounce"
+            >
+              <div className="relative">
+                <div
+                  className={`w-[60px] h-[60px] ${app.gradient} superellipse-icon flex items-center justify-center text-[28px] shadow-lg`}
+                >
+                  {app.emoji}
+                </div>
+                {!!app.badge && app.badge > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[20px] h-[20px] bg-[#FF3B30] text-white text-[13px] font-bold rounded-full flex items-center justify-center px-1 border-2 border-black/30">
+                    {app.badge > 99 ? '99+' : app.badge}
+                  </span>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -381,6 +381,74 @@ conditionRegistry.crowd_compliance_above_70 = (ctx) =>
   ((getEvacuationState(ctx).crowd_compliance_score as number) ?? 1) >= 0.7;
 
 // ---------------------------------------------------------------------------
+// Social Media Crisis conditions
+// ---------------------------------------------------------------------------
+
+function getSocialState(ctx: EvaluationContext): Record<string, unknown> {
+  return (
+    ((ctx.currentState as Record<string, unknown>).social_state as Record<string, unknown>) || {}
+  );
+}
+
+conditionRegistry.hate_post_unaddressed_count_gt_3 = (ctx) =>
+  ((getSocialState(ctx).unaddressed_hate_count as number) ?? 0) > 3;
+
+conditionRegistry.misinformation_unaddressed_10min = (ctx) =>
+  ((getSocialState(ctx).oldest_unaddressed_misinfo_minutes as number) ?? 0) >= 10;
+
+conditionRegistry.sentiment_below_30 = (ctx) =>
+  ((getSocialState(ctx).sentiment_score as number) ?? 65) < 30;
+
+conditionRegistry.sentiment_above_60 = (ctx) =>
+  ((getSocialState(ctx).sentiment_score as number) ?? 65) > 60;
+
+conditionRegistry.team_published_counter_narrative = (ctx) =>
+  ((getSocialState(ctx).counter_narratives_published as number) ?? 0) > 0;
+
+conditionRegistry.team_flagged_misinformation = (ctx) =>
+  ((getSocialState(ctx).misinformation_flagged_count as number) ?? 0) > 0;
+
+conditionRegistry.community_leader_contacted = (ctx) =>
+  getSocialState(ctx).community_leader_contacted === true;
+
+conditionRegistry.player_post_count_gt_3 = (ctx) =>
+  ((getSocialState(ctx).player_post_count as number) ?? 0) > 3;
+
+conditionRegistry.player_post_count_gt_5 = (ctx) =>
+  ((getSocialState(ctx).player_post_count as number) ?? 0) > 5;
+
+conditionRegistry.rally_call_active = (ctx) => getSocialState(ctx).rally_call_active === true;
+
+conditionRegistry.sop_step_monitor_completed = (ctx) =>
+  getSocialState(ctx).sop_monitor_completed === true;
+
+conditionRegistry.sop_step_assess_completed = (ctx) =>
+  getSocialState(ctx).sop_assess_completed === true;
+
+conditionRegistry.sop_step_fact_check_completed = (ctx) =>
+  getSocialState(ctx).sop_fact_check_completed === true;
+
+conditionRegistry.sop_step_escalate_completed = (ctx) =>
+  getSocialState(ctx).sop_escalate_completed === true;
+
+conditionRegistry.sop_step_draft_completed = (ctx) =>
+  getSocialState(ctx).sop_draft_completed === true;
+
+conditionRegistry.sop_step_publish_completed = (ctx) =>
+  getSocialState(ctx).sop_publish_completed === true;
+
+conditionRegistry.sop_step_monitor_overdue = (ctx) =>
+  getSocialState(ctx).sop_monitor_overdue === true;
+
+conditionRegistry.sop_step_assess_overdue = (ctx) =>
+  getSocialState(ctx).sop_assess_overdue === true;
+
+conditionRegistry.sop_step_draft_overdue = (ctx) => getSocialState(ctx).sop_draft_overdue === true;
+
+conditionRegistry.sop_step_publish_overdue = (ctx) =>
+  getSocialState(ctx).sop_publish_overdue === true;
+
+// ---------------------------------------------------------------------------
 // Internal: resolve one condition key (prefix rules + state_path + registry)
 // ---------------------------------------------------------------------------
 

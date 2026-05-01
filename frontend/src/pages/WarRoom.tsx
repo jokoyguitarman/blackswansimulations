@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
 import { SceneEditor } from '../components/SceneEditor/SceneEditor';
@@ -17,6 +17,7 @@ interface TeamEntry {
 }
 
 const STEP_LABELS: Record<number, string> = {
+  0: 'Mode',
   1: 'Incident',
   2: 'Teams',
   3: 'Scene Editor',
@@ -25,7 +26,7 @@ const STEP_LABELS: Record<number, string> = {
   7: 'Compile',
 };
 
-const VISIBLE_STEPS = [1, 2, 3, 5, 6, 7];
+const VISIBLE_STEPS = [0, 1, 2, 3, 5, 6, 7];
 
 const INCIDENT_TYPES = [
   { id: 'bombing', label: 'Bombing (General)', group: 'Explosives', enabled: true, icon: '💣' },
@@ -121,7 +122,9 @@ export const WarRoom = () => {
   const [showDraftPicker, setShowDraftPicker] = useState(false);
   const [draftsLoaded, setDraftsLoaded] = useState(false);
 
-  const [step, setStep] = useState<1 | 2 | 3 | 5 | 6 | 7>(1);
+  const [step, setStep] = useState<0 | 1 | 2 | 3 | 5 | 6 | 7>(0);
+  const [simMode, setSimMode] = useState<'field_ops' | 'social_media' | null>(null);
+  const navigate = useNavigate();
 
   // Step 1: Incident selection
   const [incidentType, setIncidentType] = useState<string | null>(null);
@@ -435,15 +438,17 @@ export const WarRoom = () => {
   const currentStepIndex = VISIBLE_STEPS.indexOf(step);
   const canGoBack = currentStepIndex > 0;
   const stepValid =
-    step === 1
-      ? !!incidentType
-      : step === 2
-        ? teams.length > 0 && !teamsLoading
-        : step === 3
-          ? !!rtsSceneId
-          : step === 6
-            ? !!researchResults
-            : true;
+    step === 0
+      ? simMode !== null
+      : step === 1
+        ? !!incidentType
+        : step === 2
+          ? teams.length > 0 && !teamsLoading
+          : step === 3
+            ? !!rtsSceneId
+            : step === 6
+              ? !!researchResults
+              : true;
   const canGoNext = step < 7 && stepValid;
 
   const goBack = () => {
@@ -455,6 +460,10 @@ export const WarRoom = () => {
   };
 
   const goNext = () => {
+    if (step === 0 && simMode === 'social_media') {
+      navigate('/warroom/social-crisis');
+      return;
+    }
     if (step === 3) {
       saveDraftState(5);
       setStep(5);
@@ -584,6 +593,52 @@ export const WarRoom = () => {
 
         {/* Step content */}
         <div className={`military-border mb-4 sm:mb-6 ${step === 3 ? 'p-0' : 'p-4 sm:p-6'}`}>
+          {step === 0 && (
+            <div className="space-y-6">
+              <h2 className="text-xl terminal-text font-bold">Select Simulation Mode</h2>
+              <p className="text-sm text-robotic-yellow/60">
+                Choose the type of crisis simulation to create
+              </p>
+              <div className="grid grid-cols-2 gap-6">
+                <button
+                  onClick={() => {
+                    setSimMode('field_ops');
+                  }}
+                  className={`p-6 rounded-xl border-2 transition-all text-left ${
+                    simMode === 'field_ops'
+                      ? 'border-robotic-yellow bg-robotic-yellow/10'
+                      : 'border-robotic-gray-200/30 hover:border-robotic-yellow/50'
+                  }`}
+                >
+                  <div className="text-4xl mb-3">🏗️</div>
+                  <h3 className="text-lg font-bold terminal-text mb-2">Field Operations</h3>
+                  <p className="text-sm text-robotic-yellow/60">
+                    Physical crisis simulation with map, teams, hazards, casualties, and tactical
+                    response. For bombing, shooting, CBRN, and other physical incident scenarios.
+                  </p>
+                </button>
+                <button
+                  onClick={() => {
+                    setSimMode('social_media');
+                  }}
+                  className={`p-6 rounded-xl border-2 transition-all text-left ${
+                    simMode === 'social_media'
+                      ? 'border-robotic-yellow bg-robotic-yellow/10'
+                      : 'border-robotic-gray-200/30 hover:border-robotic-yellow/50'
+                  }`}
+                >
+                  <div className="text-4xl mb-3">📱</div>
+                  <h3 className="text-lg font-bold terminal-text mb-2">Social Media Crisis</h3>
+                  <p className="text-sm text-robotic-yellow/60">
+                    Social media crisis response simulation. Players use a simulated phone to
+                    monitor feeds, counter hate speech, and coordinate responses during racial
+                    tension events.
+                  </p>
+                </button>
+              </div>
+            </div>
+          )}
+
           {step === 1 && (
             <div>
               <h2 className="text-lg terminal-text uppercase mb-4">[STEP 1: INCIDENT SELECTION]</h2>
