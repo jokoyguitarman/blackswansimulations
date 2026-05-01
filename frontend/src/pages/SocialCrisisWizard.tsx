@@ -336,9 +336,10 @@ export const SocialCrisisWizard = () => {
         if (Array.isArray(input.shared_injects))
           setSharedInjects(input.shared_injects as SocialInject[]);
         if (Array.isArray(input.convergence_gates))
-          setConvergenceGates(input.convergence_gates as ConvergenceGate[]);
-        if (input.narrative) setNarrative(String(input.narrative));
-        if (Array.isArray(input.objectives)) setObjectives(input.objectives.map(String));
+          setConvergenceGates(input.convergence_gates as SocialInject[]);
+        if (input.narrative && typeof input.narrative === 'object')
+          setNarrative(input.narrative as { title: string; description: string; briefing: string });
+        if (Array.isArray(input.objectives)) setObjectives(input.objectives as ObjectiveDef[]);
         if (input.research) setResearch(input.research as ResearchGuidelines);
 
         setStep(validStep);
@@ -1123,17 +1124,19 @@ export const SocialCrisisWizard = () => {
                         className="flex items-start gap-3 border-l-2 border-robotic-yellow/20 pl-3 py-1"
                       >
                         <span className="text-[10px] terminal-text text-cyan-400 whitespace-nowrap mt-0.5">
-                          T+{inj.trigger_time_minutes}m
+                          T+{inj.trigger_time_minutes ?? '?'}m
                         </span>
                         <div className="flex-1">
                           <div className="text-xs terminal-text font-bold">{inj.title}</div>
                           <div className="text-[10px] terminal-text text-robotic-yellow/50">
-                            {inj.description}
+                            {inj.content}
                           </div>
                           <div className="flex gap-2 mt-1">
-                            {inj.platform && (
+                            {inj.delivery_config && (
                               <span className="text-[9px] terminal-text bg-blue-900/20 text-blue-400 px-1.5 py-0.5 rounded">
-                                {inj.platform}
+                                {String(
+                                  (inj.delivery_config as Record<string, unknown>).app || inj.type,
+                                )}
                               </span>
                             )}
                             {inj.severity && (
@@ -1192,8 +1195,13 @@ export const SocialCrisisWizard = () => {
               <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
                 Scenario Narrative
               </h3>
-              <div className="border border-robotic-gray-200 rounded p-4 text-xs terminal-text text-robotic-yellow/70 leading-relaxed">
-                {narrative}
+              <div className="border border-robotic-gray-200 rounded p-4">
+                <div className="text-sm terminal-text text-cyan-400 font-bold mb-2">
+                  {narrative.title}
+                </div>
+                <div className="text-xs terminal-text text-robotic-yellow/70 leading-relaxed">
+                  {narrative.description}
+                </div>
               </div>
             </div>
           )}
@@ -1204,14 +1212,20 @@ export const SocialCrisisWizard = () => {
               <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
                 Training Objectives
               </h3>
-              <div className="space-y-1">
+              <div className="space-y-2">
                 {objectives.map((obj, i) => (
                   <div
                     key={i}
                     className="flex items-start gap-2 text-xs terminal-text text-robotic-yellow/70"
                   >
                     <span className="text-cyan-400 mt-0.5">{String(i + 1).padStart(2, '0')}.</span>
-                    <span>{obj}</span>
+                    <div className="flex-1">
+                      <span className="font-bold">{obj.objective_name}</span>
+                      <span className="text-robotic-yellow/40 ml-2">(weight: {obj.weight})</span>
+                      <div className="text-[10px] text-robotic-yellow/50 mt-0.5">
+                        {obj.description}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1225,43 +1239,56 @@ export const SocialCrisisWizard = () => {
                 Convergence Gates ({convergenceGates.length})
               </h3>
               <div className="space-y-3">
-                {convergenceGates.map((gate, i) => (
-                  <div key={i} className="border border-cyan-700/30 bg-cyan-900/10 rounded p-4">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="text-[10px] terminal-text text-cyan-400 whitespace-nowrap">
-                        T+{gate.trigger_time_minutes}m
-                      </span>
-                      <span className="text-xs terminal-text text-cyan-300 font-bold uppercase">
-                        {gate.title}
-                      </span>
-                    </div>
-                    <div className="text-[10px] terminal-text text-robotic-yellow/50 mb-2">
-                      {gate.description}
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {gate.required_teams.map((team, ti) => (
-                        <span
-                          key={ti}
-                          className="text-[9px] terminal-text bg-cyan-900/30 text-cyan-400 px-1.5 py-0.5 rounded"
-                        >
-                          {team}
+                {convergenceGates.map((gate, i) => {
+                  const conditions = gate.conditions_to_appear;
+                  const condList: string[] =
+                    conditions && typeof conditions === 'object'
+                      ? (((conditions as Record<string, unknown>).conditions ||
+                          (conditions as Record<string, unknown>).all ||
+                          []) as string[])
+                      : [];
+                  return (
+                    <div key={i} className="border border-cyan-700/30 bg-cyan-900/10 rounded p-4">
+                      <div className="flex items-center gap-3 mb-2">
+                        {gate.eligible_after_minutes != null && (
+                          <span className="text-[10px] terminal-text text-cyan-400 whitespace-nowrap">
+                            after T+{gate.eligible_after_minutes}m
+                          </span>
+                        )}
+                        <span className="text-xs terminal-text text-cyan-300 font-bold uppercase">
+                          {gate.title}
                         </span>
-                      ))}
-                    </div>
-                    {gate.conditions.length > 0 && (
-                      <div className="mt-2 space-y-1">
-                        {gate.conditions.map((cond, ci) => (
-                          <div
-                            key={ci}
-                            className="text-[9px] terminal-text text-robotic-yellow/40 flex gap-1"
-                          >
-                            <span className="text-cyan-400">•</span> {cond}
-                          </div>
-                        ))}
+                        <span
+                          className={`text-[9px] terminal-text px-1.5 py-0.5 rounded ${
+                            gate.severity === 'critical'
+                              ? 'bg-red-900/20 text-red-400'
+                              : 'bg-orange-900/20 text-orange-400'
+                          }`}
+                        >
+                          {gate.severity}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                ))}
+                      <div className="text-[10px] terminal-text text-robotic-yellow/50 mb-2">
+                        {gate.content}
+                      </div>
+                      {condList.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          <div className="text-[9px] terminal-text text-cyan-400/60 uppercase">
+                            Conditions:
+                          </div>
+                          {condList.map((cond, ci) => (
+                            <div
+                              key={ci}
+                              className="text-[9px] terminal-text text-robotic-yellow/40 flex gap-1"
+                            >
+                              <span className="text-cyan-400">•</span> {String(cond)}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1279,16 +1306,16 @@ export const SocialCrisisWizard = () => {
                     className="flex items-start gap-3 border-l-2 border-cyan-400/30 pl-3 py-1"
                   >
                     <span className="text-[10px] terminal-text text-cyan-400 whitespace-nowrap mt-0.5">
-                      T+{inj.trigger_time_minutes}m
+                      T+{inj.trigger_time_minutes ?? '?'}m
                     </span>
                     <div className="flex-1">
                       <div className="text-xs terminal-text font-bold">{inj.title}</div>
                       <div className="text-[10px] terminal-text text-robotic-yellow/50">
-                        {inj.description}
+                        {inj.content}
                       </div>
-                      {inj.platform && (
+                      {inj.delivery_config && (
                         <span className="text-[9px] terminal-text bg-blue-900/20 text-blue-400 px-1.5 py-0.5 rounded mt-1 inline-block">
-                          {inj.platform}
+                          {String((inj.delivery_config as Record<string, unknown>).app || inj.type)}
                         </span>
                       )}
                     </div>
@@ -1345,77 +1372,138 @@ export const SocialCrisisWizard = () => {
 
       {research && (
         <>
-          {/* Guidelines */}
-          {research.guidelines.length > 0 && (
+          {/* Per-Team Guidelines */}
+          {research.per_team.length > 0 && (
             <div className="mb-6">
               <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Guidelines ({research.guidelines.length})
+                Per-Team Guidelines
               </h3>
-              <div className="space-y-3">
-                {research.guidelines.map((g, i) => (
-                  <div key={i} className="border border-robotic-gray-200 rounded p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-[9px] terminal-text bg-green-900/20 text-green-400 px-1.5 py-0.5 rounded uppercase">
-                        {g.category}
+              <div className="space-y-4">
+                {research.per_team.map((team, ti) => (
+                  <div key={ti} className="border border-robotic-gray-200 rounded p-4">
+                    <div className="text-sm terminal-text text-cyan-400 font-bold uppercase mb-3">
+                      {team.team_name}
+                      <span className="text-[10px] text-robotic-yellow/40 ml-2 normal-case">
+                        ({team.guidelines.length} guidelines)
                       </span>
-                      {g.source && (
-                        <span className="text-[9px] terminal-text text-robotic-yellow/30">
-                          Source: {g.source}
-                        </span>
-                      )}
                     </div>
-                    <div className="text-xs terminal-text font-bold mb-1">{g.title}</div>
-                    <div className="text-[10px] terminal-text text-robotic-yellow/50 mb-2">
-                      {g.summary}
-                    </div>
-                    {g.recommendations.length > 0 && (
-                      <div className="space-y-1">
-                        {g.recommendations.map((r, ri) => (
-                          <div
-                            key={ri}
-                            className="text-[10px] terminal-text text-robotic-yellow/40 flex gap-1"
-                          >
-                            <span className="text-green-400">▸</span> {r}
+                    <div className="space-y-3">
+                      {team.guidelines.map((g, gi) => (
+                        <div key={gi} className="border-l-2 border-green-400/20 pl-3 py-1">
+                          <div className="text-xs terminal-text font-bold mb-1">
+                            {g.best_practice}
                           </div>
-                        ))}
-                      </div>
-                    )}
+                          <div className="text-[10px] terminal-text text-robotic-yellow/40 mb-1">
+                            Source: {g.source_basis}
+                          </div>
+                          {g.timing_window && (
+                            <div className="text-[10px] terminal-text text-cyan-400/60 mb-1">
+                              Timing: {g.timing_window}
+                            </div>
+                          )}
+                          <div className="grid grid-cols-2 gap-2 mt-1">
+                            <div className="text-[10px] terminal-text text-red-400/60">
+                              If violated: {g.if_violated}
+                            </div>
+                            <div className="text-[10px] terminal-text text-green-400/60">
+                              If followed: {g.if_followed}
+                            </div>
+                          </div>
+                          {g.detection_signals.length > 0 && (
+                            <div className="mt-1 space-y-0.5">
+                              {g.detection_signals.map((sig, si) => (
+                                <div
+                                  key={si}
+                                  className="text-[9px] terminal-text text-robotic-yellow/30 flex gap-1"
+                                >
+                                  <span className="text-green-400">▸</span> {sig}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Best Practices */}
-          {research.best_practices.length > 0 && (
+          {/* Group-Wide */}
+          {research.group_wide && (
             <div className="mb-6">
               <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Best Practices ({research.best_practices.length})
+                Group-Wide Protocols
               </h3>
-              <div className="space-y-1">
-                {research.best_practices.map((bp, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-2 text-xs terminal-text text-robotic-yellow/70"
-                  >
-                    <span className="text-green-400 mt-0.5">✓</span>
-                    <span>{bp}</span>
+
+              {research.group_wide.coordination_guidelines.length > 0 && (
+                <div className="mb-4">
+                  <div className="text-[10px] terminal-text text-green-400/60 uppercase mb-2">
+                    Coordination Guidelines
                   </div>
-                ))}
-              </div>
+                  <div className="space-y-1">
+                    {research.group_wide.coordination_guidelines.map((cg, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start gap-2 text-xs terminal-text text-robotic-yellow/70"
+                      >
+                        <span className="text-green-400 mt-0.5">✓</span>
+                        <span>{cg}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {research.group_wide.escalation_protocols.length > 0 && (
+                <div className="mb-4">
+                  <div className="text-[10px] terminal-text text-orange-400/60 uppercase mb-2">
+                    Escalation Protocols
+                  </div>
+                  <div className="space-y-1">
+                    {research.group_wide.escalation_protocols.map((ep, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start gap-2 text-xs terminal-text text-robotic-yellow/70"
+                      >
+                        <span className="text-orange-400 mt-0.5">▸</span>
+                        <span>{ep}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {/* Case Studies */}
-          {research.case_studies.length > 0 && (
+          {research.group_wide?.case_studies.length > 0 && (
             <div>
               <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Case Studies ({research.case_studies.length})
+                Case Studies ({research.group_wide.case_studies.length})
               </h3>
-              <div className="space-y-2">
-                {research.case_studies.map((cs, i) => (
+              <div className="space-y-3">
+                {research.group_wide.case_studies.map((cs, i) => (
                   <div key={i} className="border border-robotic-gray-200 rounded px-4 py-3">
-                    <div className="text-xs terminal-text text-robotic-yellow/70">{cs}</div>
+                    <div className="text-xs terminal-text text-cyan-400 font-bold mb-1">
+                      {cs.name}
+                    </div>
+                    <div className="text-[10px] terminal-text text-robotic-yellow/60 mb-2">
+                      {cs.summary}
+                    </div>
+                    {cs.lessons.length > 0 && (
+                      <div className="space-y-1">
+                        {cs.lessons.map((lesson, li) => (
+                          <div
+                            key={li}
+                            className="text-[10px] terminal-text text-robotic-yellow/40 flex gap-1"
+                          >
+                            <span className="text-green-400">•</span> {lesson}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1487,18 +1575,16 @@ export const SocialCrisisWizard = () => {
               </div>
               <div className="border border-robotic-gray-200 rounded p-3 text-center">
                 <div className="text-2xl mb-1">📚</div>
-                <div className="text-[10px] text-robotic-yellow/40 uppercase">
-                  Research Guidelines
-                </div>
+                <div className="text-[10px] text-robotic-yellow/40 uppercase">Research Teams</div>
                 <div className="text-robotic-yellow font-bold text-lg">
-                  {research?.guidelines.length || 0}
+                  {research?.per_team.length || 0}
                 </div>
               </div>
               <div className="border border-robotic-gray-200 rounded p-3 text-center">
                 <div className="text-2xl mb-1">🏆</div>
-                <div className="text-[10px] text-robotic-yellow/40 uppercase">Best Practices</div>
+                <div className="text-[10px] text-robotic-yellow/40 uppercase">Case Studies</div>
                 <div className="text-robotic-yellow font-bold text-lg">
-                  {research?.best_practices.length || 0}
+                  {research?.group_wide.case_studies.length || 0}
                 </div>
               </div>
             </div>
@@ -1532,8 +1618,11 @@ export const SocialCrisisWizard = () => {
               <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
                 Narrative
               </h3>
+              <div className="text-sm terminal-text text-cyan-400 font-bold mb-1">
+                {narrative.title}
+              </div>
               <div className="text-[10px] terminal-text text-robotic-yellow/50 leading-relaxed line-clamp-4">
-                {narrative}
+                {narrative.description}
               </div>
             </div>
           )}
