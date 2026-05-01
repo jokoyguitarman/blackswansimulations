@@ -448,17 +448,37 @@ export const SocialCrisisWizard = () => {
         }),
       });
 
-      if (res.ok) {
-        addProgress('Generating social media inject timeline...');
-        const json = await res.json();
-        const id = json.data?.scenario_id || json.scenario_id || json.data?.scenarioId || null;
-        addProgress('Generating escalation triggers...');
-        addProgress('Assembling final scenario...');
-        if (id) {
-          setScenarioId(String(id));
-          addProgress(`Scenario created successfully! ID: ${String(id)}`);
-        } else {
-          addProgress('Scenario compiled but no ID returned.');
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const msg = JSON.parse(line);
+              if (msg.type === 'progress' && msg.message) {
+                addProgress(msg.message);
+              } else if (msg.type === 'complete' && msg.scenario_id) {
+                setScenarioId(String(msg.scenario_id));
+                addProgress(
+                  `Scenario created successfully! ID: ${String(msg.scenario_id).slice(0, 8)}`,
+                );
+              } else if (msg.type === 'error') {
+                addProgress(`Error: ${String(msg.message || 'Compilation failed')}`);
+              }
+            } catch {
+              /* skip malformed lines */
+            }
+          }
         }
       } else {
         addProgress('Error: Failed to compile scenario. Check server logs.');
