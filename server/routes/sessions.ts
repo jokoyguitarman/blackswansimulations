@@ -1128,10 +1128,10 @@ router.post(
         return res.status(403).json({ error: 'Only trainers can create sessions' });
       }
 
-      // Get scenario initial state
+      // Get scenario initial state and category
       const { data: scenario } = await supabaseAdmin
         .from('scenarios')
-        .select('initial_state')
+        .select('initial_state, category')
         .eq('id', scenario_id)
         .single();
 
@@ -1145,6 +1145,8 @@ router.post(
         ? new Date(new Date(scheduled_start_time).getTime() + 2 * 60 * 60 * 1000).toISOString()
         : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
+      const simMode = scenario.category === 'social_media_crisis' ? 'social_media' : null;
+
       const { data, error } = await supabaseAdmin
         .from('sessions')
         .insert({
@@ -1157,6 +1159,7 @@ router.post(
           join_token: joinToken,
           join_enabled: true,
           join_expires_at: joinExpiresAt,
+          sim_mode: simMode,
         })
         .select()
         .single();
