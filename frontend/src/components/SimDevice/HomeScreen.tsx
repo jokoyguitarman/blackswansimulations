@@ -103,8 +103,8 @@ export default function HomeScreen() {
       </div>
 
       {/* App Grid */}
-      <div className="flex-1 flex flex-col items-center justify-start px-6 pt-6">
-        <div className="grid grid-cols-4 gap-x-5 gap-y-6">
+      <div className="flex-1 flex flex-col items-center justify-start px-10 pt-6">
+        <div className="grid grid-cols-4 gap-x-7 gap-y-7">
           {apps.map((app) => (
             <button
               key={app.id}
@@ -112,7 +112,7 @@ export default function HomeScreen() {
               className="flex flex-col items-center gap-[6px] ios-btn-bounce"
             >
               <div className="relative">
-                <div className="w-[62px] h-[62px] relative">
+                <div className="w-[56px] h-[56px] relative">
                   <img
                     src={app.icon}
                     alt={app.label}
@@ -137,7 +137,7 @@ export default function HomeScreen() {
                 )}
               </div>
               <span
-                className="text-white text-center truncate w-[68px]"
+                className="text-white text-center truncate w-[64px]"
                 style={{
                   fontSize: 11,
                   fontWeight: 500,
@@ -177,7 +177,7 @@ export default function HomeScreen() {
               className="flex flex-col items-center ios-btn-bounce"
             >
               <div className="relative">
-                <div className="w-[58px] h-[58px] relative">
+                <div className="w-[52px] h-[52px] relative">
                   <img
                     src={app.icon}
                     alt={app.label}
