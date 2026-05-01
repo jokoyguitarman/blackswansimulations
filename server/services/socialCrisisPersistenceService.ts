@@ -2,6 +2,19 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import type { SocialCrisisPayload } from './socialCrisisGeneratorService.js';
 
+const VALID_INJECT_SCOPES = ['universal', 'role_specific', 'team_specific'];
+const VALID_SEVERITIES = ['low', 'medium', 'high', 'critical'];
+
+function sanitizeScope(scope: string | undefined): string {
+  if (scope && VALID_INJECT_SCOPES.includes(scope)) return scope;
+  return 'universal';
+}
+
+function sanitizeSeverity(severity: string | undefined): string {
+  if (severity && VALID_SEVERITIES.includes(severity)) return severity;
+  return 'medium';
+}
+
 export async function persistSocialCrisisScenario(
   payload: SocialCrisisPayload,
   createdBy: string,
@@ -78,8 +91,8 @@ export async function persistSocialCrisisScenario(
         type: inj.type || 'social_post',
         title: inj.title,
         content: inj.content,
-        severity: inj.severity || 'medium',
-        inject_scope: inj.inject_scope || 'universal',
+        severity: sanitizeSeverity(inj.severity),
+        inject_scope: sanitizeScope(inj.inject_scope),
         target_teams: inj.target_teams || [],
         requires_response: inj.requires_response || false,
         delivery_config: inj.delivery_config,
@@ -96,8 +109,8 @@ export async function persistSocialCrisisScenario(
         type: inj.type || 'social_post',
         title: inj.title,
         content: inj.content,
-        severity: inj.severity || 'medium',
-        inject_scope: inj.inject_scope || 'universal',
+        severity: sanitizeSeverity(inj.severity),
+        inject_scope: sanitizeScope(inj.inject_scope),
         target_teams: inj.target_teams || [],
         requires_response: inj.requires_response || false,
         delivery_config: inj.delivery_config,
@@ -116,8 +129,8 @@ export async function persistSocialCrisisScenario(
         type: inj.type || 'social_post',
         title: inj.title,
         content: inj.content,
-        severity: inj.severity || 'medium',
-        inject_scope: inj.inject_scope || 'universal',
+        severity: sanitizeSeverity(inj.severity),
+        inject_scope: sanitizeScope(inj.inject_scope),
         target_teams: inj.target_teams || [],
         requires_response: false,
         delivery_config: inj.delivery_config,
