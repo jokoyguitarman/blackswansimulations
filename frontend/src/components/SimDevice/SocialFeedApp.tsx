@@ -44,25 +44,6 @@ interface SocialPost {
   reply_to_post_id: string | null;
 }
 
-function ReplyIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <path
-        d="M1.751 10c.08-.544.234-1.073.456-1.573a8.014 8.014 0 0 1 7.532-5.424c2.048 0 3.91.768 5.325 2.032l2.185-2.185A1 1 0 0 1 19 3.55V9a1 1 0 0 1-1 1h-5.45a1 1 0 0 1-.707-1.707l1.953-1.953A4.98 4.98 0 0 0 9.74 5.003a4.98 4.98 0 0 0-4.688 3.384A5.01 5.01 0 0 0 4.999 12a5.006 5.006 0 0 0 4.688 3.613 4.98 4.98 0 0 0 3.555-1.487l1.414 1.414A6.985 6.985 0 0 1 9.74 18.003 7.013 7.013 0 0 1 2.727 12c0-.68.098-1.363.283-2.012Z"
-        fill="currentColor"
-        stroke="none"
-      />
-    </svg>
-  );
-}
-
 function RepostIcon() {
   return (
     <svg

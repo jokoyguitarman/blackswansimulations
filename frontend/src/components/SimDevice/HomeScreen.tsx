@@ -1,7 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
-import { api } from '../../lib/api';
 
 interface AppDef {
   id: string;
@@ -16,30 +14,7 @@ interface AppDef {
 export default function HomeScreen() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [badges] = useState<Record<string, number>>({});
-  const [scenario, setScenario] = useState<{ title: string; description: string } | null>(null);
-
-  useEffect(() => {
-    loadSessionInfo();
-  }, [sessionId]);
-
-  async function loadSessionInfo() {
-    if (!sessionId) return;
-    try {
-      const result = await api.sessions.get(sessionId);
-      if (result?.data) {
-        const s = result.data as Record<string, unknown>;
-        const scenarioData = s.scenario as Record<string, unknown> | undefined;
-        setScenario({
-          title: String(scenarioData?.title || 'Crisis Simulation'),
-          description: String(scenarioData?.description || ''),
-        });
-      }
-    } catch {
-      /* ignore */
-    }
-  }
 
   const apps: AppDef[] = [
     {
@@ -82,7 +57,6 @@ export default function HomeScreen() {
     { id: 'drafts', label: 'DraftPad', emoji: '📝', gradient: 'bg-[#FF9500]', path: 'drafts' },
   ];
 
-  const gridApps = apps.filter((a) => !a.inDock);
   const dockApps = apps.filter((a) => a.inDock);
 
   return (

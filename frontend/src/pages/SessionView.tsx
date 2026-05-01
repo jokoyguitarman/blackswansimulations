@@ -1051,7 +1051,11 @@ export const SessionView = () => {
   }, [id, user?.id]);
 
   useEffect(() => {
-    if (session && (session as Record<string, unknown>).sim_mode === 'social_media' && id) {
+    if (
+      session &&
+      (session as unknown as Record<string, unknown>).sim_mode === 'social_media' &&
+      id
+    ) {
       navigate(`/sim/${id}/device`, { replace: true });
     }
   }, [session, id, navigate]);

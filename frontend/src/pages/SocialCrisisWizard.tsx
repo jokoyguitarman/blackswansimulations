@@ -1,7 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { api } from '../lib/api';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -127,7 +125,6 @@ async function authHeaders(): Promise<Record<string, string>> {
 export const SocialCrisisWizard = () => {
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
   const navigate = useNavigate();
-  const { user } = useAuth();
 
   /* Step 1 — Crisis Event */
   const [crisisType, setCrisisType] = useState<string | null>(null);

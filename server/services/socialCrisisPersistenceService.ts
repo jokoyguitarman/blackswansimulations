@@ -111,7 +111,8 @@ export async function persistSocialCrisisScenario(
       ...decision_injects.map((inj) => ({
         scenario_id: scenarioId,
         trigger_time_minutes: null,
-        trigger_condition: ((inj as Record<string, unknown>).trigger_condition as string) || null,
+        trigger_condition:
+          ((inj as unknown as Record<string, unknown>).trigger_condition as string) || null,
         type: inj.type || 'social_post',
         title: inj.title,
         content: inj.content,

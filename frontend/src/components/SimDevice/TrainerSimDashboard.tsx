@@ -88,85 +88,256 @@ export default function TrainerSimDashboard() {
   });
 
   function getSentimentColor(score: number): string {
-    if (score >= 70) return 'text-green-400';
-    if (score >= 40) return 'text-yellow-400';
-    return 'text-red-400';
+    if (score >= 70) return '#34C759';
+    if (score >= 40) return '#FFD60A';
+    return '#FF453A';
+  }
+
+  function getTrendIcon(trend: string): { icon: string; color: string } {
+    switch (trend) {
+      case 'rising':
+        return { icon: '↑', color: '#34C759' };
+      case 'falling':
+        return { icon: '↓', color: '#FF453A' };
+      default:
+        return { icon: '→', color: '#8E8E93' };
+    }
+  }
+
+  function getStepStatusStyle(status: string): { bg: string; text: string; dot: string } {
+    switch (status) {
+      case 'completed':
+        return { bg: 'rgba(52,199,89,0.12)', text: '#34C759', dot: '#34C759' };
+      case 'overdue':
+        return { bg: 'rgba(255,69,58,0.12)', text: '#FF453A', dot: '#FF453A' };
+      case 'in_progress':
+        return { bg: 'rgba(0,122,255,0.12)', text: '#0A84FF', dot: '#0A84FF' };
+      default:
+        return { bg: 'rgba(142,142,147,0.12)', text: '#8E8E93', dot: '#48484A' };
+    }
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-6">
+    <div className="min-h-screen p-6" style={{ backgroundColor: '#1C1C1E', color: '#E5E5EA' }}>
       <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold">Trainer Dashboard</h1>
-            <p className="text-gray-500 text-sm">Social Media Crisis Simulation Control</p>
+            <h1 className="text-[28px] font-bold tracking-tight" style={{ color: '#FFFFFF' }}>
+              Dashboard
+            </h1>
+            <p className="text-[15px] mt-0.5" style={{ color: '#8E8E93' }}>
+              Crisis Simulation Control Center
+            </p>
           </div>
           <button
             onClick={() => navigate(`/sessions/${sessionId}`)}
-            className="text-blue-400 text-sm"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl ios-btn-bounce"
+            style={{ backgroundColor: '#2C2C2E', color: '#0A84FF' }}
           >
-            ← Back to Session
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+            <span className="text-[14px] font-medium">Back to Session</span>
           </button>
         </div>
 
         {/* Metrics Grid */}
         <div className="grid grid-cols-4 gap-4 mb-6">
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <p className="text-xs text-gray-500 uppercase">Sentiment</p>
+          {/* Sentiment Card */}
+          <div className="rounded-2xl p-5" style={{ backgroundColor: '#2C2C2E' }}>
+            <div className="flex items-center justify-between mb-3">
+              <p
+                className="text-[12px] font-semibold tracking-wider uppercase"
+                style={{ color: '#8E8E93' }}
+              >
+                Sentiment
+              </p>
+              {sentiment && (
+                <span
+                  className="text-[12px] font-semibold"
+                  style={{ color: getTrendIcon(sentiment.trend).color }}
+                >
+                  {getTrendIcon(sentiment.trend).icon} {sentiment.trend}
+                </span>
+              )}
+            </div>
             <p
-              className={`text-3xl font-bold ${sentiment ? getSentimentColor(sentiment.overall) : 'text-gray-500'}`}
+              className="text-[36px] font-bold tracking-tight"
+              style={{ color: sentiment ? getSentimentColor(sentiment.overall) : '#48484A' }}
             >
-              {sentiment?.overall ?? '--'}/100
+              {sentiment?.overall ?? '--'}
             </p>
-            <p className="text-xs text-gray-500 mt-1">
-              {sentiment?.trend === 'rising'
-                ? '↑ Rising'
-                : sentiment?.trend === 'falling'
-                  ? '↓ Falling'
-                  : '→ Stable'}
+            <p className="text-[12px] mt-1" style={{ color: '#8E8E93' }}>
+              out of 100
+            </p>
+            {sentiment && (
+              <div
+                className="mt-3 h-1.5 rounded-full overflow-hidden"
+                style={{ backgroundColor: '#3A3A3C' }}
+              >
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${sentiment.overall}%`,
+                    backgroundColor: getSentimentColor(sentiment.overall),
+                  }}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Hate Posts Card */}
+          <div className="rounded-2xl p-5" style={{ backgroundColor: '#2C2C2E' }}>
+            <p
+              className="text-[12px] font-semibold tracking-wider uppercase mb-3"
+              style={{ color: '#8E8E93' }}
+            >
+              Hate Posts
+            </p>
+            <p className="text-[36px] font-bold tracking-tight" style={{ color: '#FF453A' }}>
+              {sentiment?.hate_speech_volume ?? 0}
+            </p>
+            <p className="text-[12px] mt-1" style={{ color: '#8E8E93' }}>
+              flagged content
+            </p>
+            <div className="mt-3 flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#FF453A' }} />
+              <span className="text-[11px]" style={{ color: '#FF453A' }}>
+                Requires attention
+              </span>
+            </div>
+          </div>
+
+          {/* Total Posts Card */}
+          <div className="rounded-2xl p-5" style={{ backgroundColor: '#2C2C2E' }}>
+            <p
+              className="text-[12px] font-semibold tracking-wider uppercase mb-3"
+              style={{ color: '#8E8E93' }}
+            >
+              Total Posts
+            </p>
+            <p className="text-[36px] font-bold tracking-tight" style={{ color: '#0A84FF' }}>
+              {postCount}
+            </p>
+            <p className="text-[12px] mt-1" style={{ color: '#8E8E93' }}>
+              in simulation
             </p>
           </div>
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <p className="text-xs text-gray-500 uppercase">Hate Posts</p>
-            <p className="text-3xl font-bold text-red-400">{sentiment?.hate_speech_volume ?? 0}</p>
-          </div>
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <p className="text-xs text-gray-500 uppercase">Total Posts</p>
-            <p className="text-3xl font-bold text-blue-400">{postCount}</p>
-          </div>
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
-            <p className="text-xs text-gray-500 uppercase">Player Actions</p>
-            <p className="text-3xl font-bold text-green-400">{actionCount}</p>
+
+          {/* Player Actions Card */}
+          <div className="rounded-2xl p-5" style={{ backgroundColor: '#2C2C2E' }}>
+            <p
+              className="text-[12px] font-semibold tracking-wider uppercase mb-3"
+              style={{ color: '#8E8E93' }}
+            >
+              Actions
+            </p>
+            <p className="text-[36px] font-bold tracking-tight" style={{ color: '#34C759' }}>
+              {actionCount}
+            </p>
+            <p className="text-[12px] mt-1" style={{ color: '#8E8E93' }}>
+              player responses
+            </p>
           </div>
         </div>
 
         {/* SOP Compliance */}
-        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <h2 className="text-lg font-bold mb-4">SOP Compliance Tracker</h2>
+        <div className="rounded-2xl p-6" style={{ backgroundColor: '#2C2C2E' }}>
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ backgroundColor: 'rgba(0,122,255,0.15)' }}
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#0A84FF"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M9 11l3 3L22 4" />
+                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                </svg>
+              </div>
+              <h2 className="text-[20px] font-bold" style={{ color: '#FFFFFF' }}>
+                SOP Compliance
+              </h2>
+            </div>
+            {sopSteps.length > 0 && (
+              <span className="text-[13px] font-medium" style={{ color: '#8E8E93' }}>
+                {sopSteps.filter((s) => s.status === 'completed').length}/{sopSteps.length}{' '}
+                completed
+              </span>
+            )}
+          </div>
           {sopSteps.length === 0 ? (
-            <p className="text-gray-500 text-sm">No SOP steps defined for this scenario</p>
+            <div className="flex items-center justify-center py-8">
+              <p className="text-[15px]" style={{ color: '#48484A' }}>
+                No SOP steps defined for this scenario
+              </p>
+            </div>
           ) : (
-            <div className="space-y-3">
-              {sopSteps.map((step) => (
-                <div key={step.step_id} className="flex items-center gap-3">
+            <div className="space-y-2">
+              {sopSteps.map((step) => {
+                const style = getStepStatusStyle(step.status);
+                const isOverdue = step.status === 'overdue';
+                return (
                   <div
-                    className={`w-3 h-3 rounded-full flex-shrink-0 ${step.status === 'completed' ? 'bg-green-500' : step.status === 'overdue' ? 'bg-red-500 animate-pulse' : 'bg-gray-600'}`}
-                  />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{step.step_name}</p>
-                    {step.time_limit_minutes && (
-                      <p className="text-xs text-gray-500">
-                        Deadline: {step.time_limit_minutes}min | Elapsed: {step.elapsed_minutes}min
-                      </p>
-                    )}
-                  </div>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded ${step.status === 'completed' ? 'bg-green-900 text-green-400' : step.status === 'overdue' ? 'bg-red-900 text-red-400' : 'bg-gray-800 text-gray-400'}`}
+                    key={step.step_id}
+                    className="flex items-center gap-4 p-3 rounded-xl"
+                    style={{ backgroundColor: '#3A3A3C' }}
                   >
-                    {step.status}
-                  </span>
-                </div>
-              ))}
+                    <div
+                      className={`w-3 h-3 rounded-full flex-shrink-0 ${isOverdue ? 'animate-pulse' : ''}`}
+                      style={{ backgroundColor: style.dot }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[15px] font-medium" style={{ color: '#E5E5EA' }}>
+                        {step.step_name}
+                      </p>
+                      {step.time_limit_minutes && (
+                        <div className="flex items-center gap-3 mt-1">
+                          <span className="text-[12px]" style={{ color: '#8E8E93' }}>
+                            {step.elapsed_minutes}m / {step.time_limit_minutes}m
+                          </span>
+                          <div
+                            className="flex-1 h-1 rounded-full overflow-hidden"
+                            style={{ backgroundColor: '#48484A', maxWidth: 120 }}
+                          >
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{
+                                width: `${Math.min(100, (step.elapsed_minutes / step.time_limit_minutes) * 100)}%`,
+                                backgroundColor: style.dot,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <span
+                      className="text-[12px] font-semibold px-2.5 py-1 rounded-lg"
+                      style={{ backgroundColor: style.bg, color: style.text }}
+                    >
+                      {step.status}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
