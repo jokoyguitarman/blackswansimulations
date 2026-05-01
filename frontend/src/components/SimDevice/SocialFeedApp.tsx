@@ -276,15 +276,18 @@ export default function SocialFeedApp() {
 
                     {/* Content */}
                     <p className="text-sm mt-1 whitespace-pre-wrap break-words">
-                      {post.content.split(/(#\w+)/g).map((part: string, i: number) =>
-                        part.startsWith('#') ? (
-                          <span key={i} className="text-blue-400">
-                            {part}
-                          </span>
-                        ) : (
-                          <span key={i}>{part}</span>
-                        ),
-                      )}
+                      {String(post.content)
+                        .split(/(#\w+)/g)
+                        .map((part: string, i: number) => {
+                          if (part.startsWith('#')) {
+                            return (
+                              <span key={i} className="text-blue-400">
+                                {part}
+                              </span>
+                            );
+                          }
+                          return <span key={i}>{part}</span>;
+                        })}
                     </p>
 
                     {/* Content Flags */}

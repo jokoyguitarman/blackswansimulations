@@ -162,8 +162,8 @@ export default function DraftPadApp() {
                   </div>
                 ))}
               </div>
-              {grade.feedback && (
-                <p className="text-xs text-gray-300 mt-2">{String(grade.feedback)}</p>
+              {typeof grade.feedback === 'string' && grade.feedback.length > 0 && (
+                <p className="text-xs text-gray-300 mt-2">{grade.feedback}</p>
               )}
             </div>
           )}
