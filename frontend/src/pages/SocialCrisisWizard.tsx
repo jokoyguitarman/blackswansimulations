@@ -405,7 +405,7 @@ export const SocialCrisisWizard = () => {
         const json = await res.json();
         const d = json.data || json;
         if (Array.isArray(d.personas)) setPersonas(d.personas);
-        if (d.fact_sheet) setFactSheet(d.fact_sheet);
+        if (d.factSheet || d.fact_sheet) setFactSheet((d.factSheet || d.fact_sheet) as FactSheet);
         if (Array.isArray(d.communities)) setCommunities(d.communities);
       } else {
         setStep2Error('Failed to generate NPCs. Try again.');
