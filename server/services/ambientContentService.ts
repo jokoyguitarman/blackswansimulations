@@ -141,10 +141,10 @@ Return ONLY valid JSON:
           sentiment: post.sentiment || 'neutral',
           virality_score: post.virality_score || 20,
           content_flags: post.content_flags || {},
-          like_count: Math.floor(Math.random() * 200),
-          repost_count: Math.floor(Math.random() * 50),
-          reply_count: Math.floor(Math.random() * 30),
-          view_count: Math.floor(Math.random() * 2000),
+          like_count: 0,
+          repost_count: 0,
+          reply_count: 0,
+          view_count: 0,
         })
         .select()
         .single();
@@ -159,7 +159,112 @@ Return ONLY valid JSON:
     }
 
     logger.info({ sessionId, count: postsArray.length, elapsedMinutes }, 'Ambient posts generated');
+
+    if (Math.random() < 0.4) {
+      await generateAmbientReply(sessionId, elapsedMinutes, scenario.description || '');
+    }
   } catch (err) {
     logger.error({ err, sessionId }, 'Ambient content generation failed');
+  }
+}
+
+async function generateAmbientReply(
+  sessionId: string,
+  elapsedMinutes: number,
+  crisisDescription: string,
+): Promise<void> {
+  const { data: existingPosts } = await supabaseAdmin
+    .from('social_posts')
+    .select('id, content, author_handle, author_display_name')
+    .eq('session_id', sessionId)
+    .is('reply_to_post_id', null)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  if (!existingPosts || existingPosts.length === 0) return;
+
+  const targetPost = existingPosts[Math.floor(Math.random() * Math.min(existingPosts.length, 5))];
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-5.2',
+        messages: [
+          {
+            role: 'system',
+            content: `Generate a single realistic reply to a social media post during a crisis. The reply should feel natural -- it could be agreement, disagreement, a question, sharing personal experience, or adding context. Keep it 1-2 sentences. Crisis context: ${crisisDescription.substring(0, 200)}
+
+Return ONLY valid JSON: { "author_handle": "@username", "author_display_name": "Name", "content": "reply text", "sentiment": "neutral|negative|supportive|hateful" }`,
+          },
+          {
+            role: 'user',
+            content: `Reply to this post by ${String(targetPost.author_handle)}:\n"${String(targetPost.content).substring(0, 200)}"`,
+          },
+        ],
+        temperature: 0.85,
+        max_completion_tokens: 500,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) return;
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) return;
+
+    const reply = JSON.parse(content);
+
+    await new Promise((r) => setTimeout(r, 3000 + Math.floor(Math.random() * 5000)));
+
+    const { data: replyPost, error } = await supabaseAdmin
+      .from('social_posts')
+      .insert({
+        session_id: sessionId,
+        platform: 'x_twitter',
+        author_handle: reply.author_handle || '@random_user',
+        author_display_name: reply.author_display_name || 'User',
+        author_type: 'npc_public',
+        content: reply.content,
+        reply_to_post_id: targetPost.id,
+        sentiment: reply.sentiment || 'neutral',
+        like_count: 0,
+        repost_count: 0,
+        reply_count: 0,
+        view_count: 0,
+        hashtags: (reply.content as string).match(/#\w+/g) || [],
+        content_flags: {},
+        virality_score: Math.floor(Math.random() * 20),
+      })
+      .select()
+      .single();
+
+    if (!error && replyPost) {
+      const { data: parentNow } = await supabaseAdmin
+        .from('social_posts')
+        .select('reply_count')
+        .eq('id', targetPost.id)
+        .single();
+
+      await supabaseAdmin
+        .from('social_posts')
+        .update({ reply_count: ((parentNow?.reply_count as number) || 0) + 1 })
+        .eq('id', targetPost.id);
+
+      getWebSocketService().broadcastToSession(sessionId, {
+        type: 'social_post.created',
+        data: { post: replyPost },
+        timestamp: new Date().toISOString(),
+      });
+
+      logger.info({ sessionId, parentPostId: targetPost.id }, 'Ambient reply generated');
+    }
+  } catch (err) {
+    logger.warn({ err, sessionId }, 'Ambient reply generation failed');
   }
 }
