@@ -110,55 +110,92 @@ export const Scenarios = () => {
 
         {/* Scenarios Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {scenarios.map((scenario) => (
-            <div
-              key={scenario.id}
-              className="military-border p-6 cursor-pointer hover:border-robotic-orange transition-all"
-              onClick={() => handleViewScenario(scenario)}
-            >
-              <div className="flex justify-between items-start mb-4">
-                <h3 className="text-lg terminal-text uppercase">{scenario.title}</h3>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`text-xs terminal-text px-2 py-1 ${
-                      scenario.is_active
-                        ? 'bg-robotic-yellow/20 text-robotic-yellow'
-                        : 'bg-robotic-gray-200 text-robotic-gray-50'
-                    }`}
-                  >
-                    {scenario.is_active ? 'ACTIVE' : 'DRAFT'}
-                  </span>
-                  {isTrainer && (
-                    <button
-                      onClick={(e) => handleDeleteScenario(e, scenario)}
-                      disabled={deleting === scenario.id}
-                      className="text-xs terminal-text px-2 py-1 border border-red-600/50 text-red-500 hover:bg-red-600/20 hover:text-red-400 transition-all disabled:opacity-40"
-                      title="Delete scenario and all related data"
+          {scenarios.map((scenario) => {
+            const isSocialCrisis = scenario.category === 'social_media_crisis';
+
+            return (
+              <div
+                key={scenario.id}
+                className={`p-6 cursor-pointer transition-all ${
+                  isSocialCrisis
+                    ? 'border border-blue-500/30 bg-gradient-to-br from-blue-950/40 to-purple-950/30 rounded-xl hover:border-blue-400/50'
+                    : 'military-border hover:border-robotic-orange'
+                }`}
+                onClick={() => handleViewScenario(scenario)}
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-center gap-2">
+                    {isSocialCrisis && <span className="text-xl">📱</span>}
+                    <h3
+                      className={`text-lg ${isSocialCrisis ? 'text-blue-100 font-semibold' : 'terminal-text uppercase'}`}
                     >
-                      {deleting === scenario.id ? '...' : 'DEL'}
-                    </button>
+                      {scenario.title}
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-xs px-2 py-1 ${
+                        isSocialCrisis
+                          ? 'bg-blue-500/20 text-blue-300 rounded'
+                          : scenario.is_active
+                            ? 'bg-robotic-yellow/20 text-robotic-yellow terminal-text'
+                            : 'bg-robotic-gray-200 text-robotic-gray-50 terminal-text'
+                      }`}
+                    >
+                      {isSocialCrisis ? 'SOCIAL MEDIA' : scenario.is_active ? 'ACTIVE' : 'DRAFT'}
+                    </span>
+                    {isTrainer && (
+                      <button
+                        onClick={(e) => handleDeleteScenario(e, scenario)}
+                        disabled={deleting === scenario.id}
+                        className="text-xs terminal-text px-2 py-1 border border-red-600/50 text-red-500 hover:bg-red-600/20 hover:text-red-400 transition-all disabled:opacity-40"
+                        title="Delete scenario and all related data"
+                      >
+                        {deleting === scenario.id ? '...' : 'DEL'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <p
+                  className={`text-sm mb-4 line-clamp-3 ${
+                    isSocialCrisis ? 'text-blue-200/70' : 'terminal-text text-robotic-yellow/70'
+                  }`}
+                >
+                  {scenario.description}
+                </p>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {isSocialCrisis ? (
+                    <>
+                      <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded">
+                        Crisis Response
+                      </span>
+                      <span className="text-xs px-2 py-0.5 bg-gray-500/20 text-gray-300 rounded">
+                        {scenario.duration_minutes}min
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs terminal-text text-robotic-yellow/50">
+                        [{scenario.category.toUpperCase()}]
+                      </span>
+                      <span className="text-xs terminal-text text-robotic-yellow/50">
+                        [{scenario.difficulty.toUpperCase()}]
+                      </span>
+                      <span className="text-xs terminal-text text-robotic-yellow/50">
+                        [{scenario.duration_minutes}MIN]
+                      </span>
+                    </>
                   )}
                 </div>
+                <div
+                  className={`text-xs ${isSocialCrisis ? 'text-blue-300/50' : 'terminal-text text-robotic-yellow/50'}`}
+                >
+                  {scenario.objectives.length} objective
+                  {scenario.objectives.length !== 1 ? 's' : ''}
+                </div>
               </div>
-              <p className="text-sm terminal-text text-robotic-yellow/70 mb-4 line-clamp-3">
-                {scenario.description}
-              </p>
-              <div className="flex flex-wrap gap-2 mb-4">
-                <span className="text-xs terminal-text text-robotic-yellow/50">
-                  [{scenario.category.toUpperCase()}]
-                </span>
-                <span className="text-xs terminal-text text-robotic-yellow/50">
-                  [{scenario.difficulty.toUpperCase()}]
-                </span>
-                <span className="text-xs terminal-text text-robotic-yellow/50">
-                  [{scenario.duration_minutes}MIN]
-                </span>
-              </div>
-              <div className="text-xs terminal-text text-robotic-yellow/50">
-                {scenario.objectives.length} objective{scenario.objectives.length !== 1 ? 's' : ''}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {scenarios.length === 0 && (

@@ -379,6 +379,264 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
     );
   }
 
+  if (scenario.category === 'social_media_crisis') {
+    const is = (scenario as Record<string, unknown>).initial_state as
+      | Record<string, unknown>
+      | undefined;
+    const npcPersonas = (is?.npc_personas || []) as Array<Record<string, unknown>>;
+    const factSheet = (is?.fact_sheet || {}) as Record<string, unknown>;
+    const confirmedFacts = (factSheet.confirmed_facts || []) as string[];
+    const unconfirmedClaims = (factSheet.unconfirmed_claims || []) as Array<
+      Record<string, unknown>
+    >;
+    const communities = (is?.affected_communities || []) as string[];
+    const research = (is?.research_guidelines || {}) as Record<string, unknown>;
+    const perTeam = (research.per_team || []) as Array<Record<string, unknown>>;
+    const groupWide = (research.group_wide || {}) as Record<string, unknown>;
+    const caseStudies = (groupWide.case_studies || []) as Array<Record<string, unknown>>;
+
+    return (
+      <div className="fixed inset-0 bg-black/90 z-50 overflow-y-auto">
+        <div className="max-w-4xl mx-auto py-8 px-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">📱</span>
+              <div>
+                <h1 className="text-xl text-blue-100 font-bold">{scenario.title}</h1>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded">
+                    Social Media Crisis
+                  </span>
+                  <span className="text-xs text-gray-500">{scenario.duration_minutes}min</span>
+                  <span className="text-xs text-gray-500">{teams.length} teams</span>
+                </div>
+              </div>
+            </div>
+            <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl px-2">
+              x
+            </button>
+          </div>
+
+          <p className="text-sm text-gray-300 mb-6 leading-relaxed">{scenario.description}</p>
+
+          {scenario.briefing && (
+            <div className="bg-blue-950/30 border border-blue-500/20 rounded-lg p-4 mb-6">
+              <h3 className="text-sm font-bold text-blue-300 mb-2">Briefing</h3>
+              <p className="text-xs text-blue-200/70 whitespace-pre-wrap">{scenario.briefing}</p>
+            </div>
+          )}
+
+          {communities.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-bold text-gray-300 mb-2">Affected Communities</h3>
+              <div className="flex flex-wrap gap-2">
+                {communities.map((c: string, i: number) => (
+                  <span
+                    key={i}
+                    className="text-xs px-2 py-1 bg-purple-500/20 text-purple-300 rounded"
+                  >
+                    {c}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {teams.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-bold text-gray-300 mb-3">Response Teams</h3>
+              <div className="grid grid-cols-2 gap-3">
+                {teams.map((t) => (
+                  <div key={t.id} className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
+                    <div className="text-sm font-semibold text-white">{t.team_name}</div>
+                    <div className="text-xs text-gray-400 mt-1">{t.team_description}</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {t.min_participants}-{t.max_participants} participants
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {npcPersonas.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-bold text-gray-300 mb-3">
+                NPC Personas ({npcPersonas.length})
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                {npcPersonas.map((npc, i) => (
+                  <div key={i} className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
+                        {String(npc.name || '?').charAt(0)}
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold text-white">{String(npc.name)}</div>
+                        <div className="text-xs text-gray-500">{String(npc.handle)}</div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {String(npc.personality || '').substring(0, 100)}
+                    </div>
+                    {npc.bias && String(npc.bias) !== 'none' && (
+                      <span className="text-[10px] px-1.5 py-0.5 bg-red-900/30 text-red-400 rounded mt-1 inline-block">
+                        bias: {String(npc.bias)}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {confirmedFacts.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-bold text-gray-300 mb-2">Fact Sheet</h3>
+              <div className="bg-green-950/20 border border-green-500/20 rounded-lg p-4 mb-3">
+                <h4 className="text-xs font-bold text-green-400 mb-2">Confirmed Facts</h4>
+                {confirmedFacts.map((f: string, i: number) => (
+                  <div key={i} className="text-xs text-green-200/70 mb-1 flex items-start gap-2">
+                    <span className="text-green-400 mt-0.5">+</span> {f}
+                  </div>
+                ))}
+              </div>
+              {unconfirmedClaims.length > 0 && (
+                <div className="bg-red-950/20 border border-red-500/20 rounded-lg p-4">
+                  <h4 className="text-xs font-bold text-red-400 mb-2">False/Unverified Claims</h4>
+                  {unconfirmedClaims.map((c: Record<string, unknown>, i: number) => (
+                    <div key={i} className="text-xs mb-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-1 py-0.5 rounded text-[10px] font-bold ${String(c.status) === 'FALSE' ? 'bg-red-600 text-white' : 'bg-yellow-600 text-black'}`}
+                        >
+                          {String(c.status)}
+                        </span>
+                        <span className="text-red-200/70">{String(c.claim)}</span>
+                      </div>
+                      <div className="text-gray-500 ml-10 mt-0.5">Truth: {String(c.truth)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {injects.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-bold text-gray-300 mb-3">Injects ({injects.length})</h3>
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {injects
+                  .filter((inj) => inj.trigger_time_minutes != null)
+                  .sort((a, b) => (a.trigger_time_minutes || 0) - (b.trigger_time_minutes || 0))
+                  .map((inj) => {
+                    const dc = (inj as Record<string, unknown>).delivery_config as
+                      | Record<string, unknown>
+                      | undefined;
+                    const app = dc?.app ? String(dc.app) : inj.type;
+                    return (
+                      <div
+                        key={inj.id}
+                        className="bg-gray-800/50 border border-gray-700 rounded-lg p-3"
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs text-cyan-400 font-mono">
+                            T+{inj.trigger_time_minutes}m
+                          </span>
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded ${app === 'social_feed' ? 'bg-black text-white border border-gray-600' : app === 'email' ? 'bg-blue-600 text-white' : app === 'news' ? 'bg-red-600 text-white' : app === 'group_chat' ? 'bg-green-600 text-white' : 'bg-gray-600 text-white'}`}
+                          >
+                            {app === 'social_feed'
+                              ? 'X Post'
+                              : app === 'email'
+                                ? 'Email'
+                                : app === 'news'
+                                  ? 'News'
+                                  : app === 'group_chat'
+                                    ? 'Chat'
+                                    : app}
+                          </span>
+                          {inj.severity === 'critical' && (
+                            <span className="text-[10px] px-1 py-0.5 bg-red-900 text-red-300 rounded">
+                              CRITICAL
+                            </span>
+                          )}
+                          {(inj as Record<string, unknown>).requires_response && (
+                            <span className="text-[10px] px-1 py-0.5 bg-amber-900 text-amber-300 rounded">
+                              REQUIRES RESPONSE
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-300 font-medium">{inj.title}</div>
+                        <div className="text-xs text-gray-500 mt-0.5 line-clamp-2">
+                          {inj.content}
+                        </div>
+                        {inj.target_teams && inj.target_teams.length > 0 && (
+                          <div className="flex gap-1 mt-1">
+                            {inj.target_teams.map((team: string, ti: number) => (
+                              <span
+                                key={ti}
+                                className="text-[10px] px-1 py-0.5 bg-gray-700 text-gray-400 rounded"
+                              >
+                                {team}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
+          {perTeam.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-bold text-gray-300 mb-3">Research Guidelines</h3>
+              {perTeam.map((team, ti) => (
+                <div key={ti} className="mb-3">
+                  <h4 className="text-xs font-bold text-blue-300 mb-1">{String(team.team_name)}</h4>
+                  <div className="space-y-1">
+                    {((team.guidelines || []) as Array<Record<string, unknown>>).map((g, gi) => (
+                      <div
+                        key={gi}
+                        className="text-xs text-gray-400 flex items-start gap-2 bg-gray-800/30 rounded p-2"
+                      >
+                        <span className="text-blue-400 mt-0.5">*</span>
+                        <div>
+                          <div className="text-gray-300">{String(g.best_practice)}</div>
+                          <div className="text-gray-600 text-[10px] mt-0.5">
+                            {String(g.source_basis)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {caseStudies.length > 0 && (
+                <div className="mt-3">
+                  <h4 className="text-xs font-bold text-blue-300 mb-1">Case Studies</h4>
+                  {caseStudies.map((cs, ci) => (
+                    <div key={ci} className="text-xs text-gray-400 bg-gray-800/30 rounded p-2 mb-1">
+                      <span className="text-gray-300 font-medium">{String(cs.name)}</span>
+                      <span className="text-gray-500"> - {String(cs.summary)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="text-xs text-gray-600 mt-8">
+            Created {new Date(scenario.created_at).toLocaleDateString()} |{' '}
+            {scenario.objectives.length} objectives | {injects.length} injects
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const ik = scenario.insider_knowledge;
   const structuredStandards = Array.isArray(ik?.sector_standards_structured)
     ? ik.sector_standards_structured
