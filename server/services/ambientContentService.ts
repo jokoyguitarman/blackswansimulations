@@ -4,6 +4,144 @@ import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
 import { computeSessionSentiment } from './sentimentSimService.js';
 
+interface RegisteredNPC {
+  handle: string;
+  display_name: string;
+  personality: string;
+  bias: string;
+}
+
+const sessionNPCRegistry = new Map<string, Map<string, RegisteredNPC>>();
+
+function getRegistry(sessionId: string): Map<string, RegisteredNPC> {
+  if (!sessionNPCRegistry.has(sessionId)) {
+    sessionNPCRegistry.set(sessionId, new Map());
+  }
+  return sessionNPCRegistry.get(sessionId)!;
+}
+
+function registerNPC(sessionId: string, npc: RegisteredNPC): void {
+  getRegistry(sessionId).set(npc.handle, npc);
+}
+
+function getRegisteredNPCs(sessionId: string): RegisteredNPC[] {
+  return Array.from(getRegistry(sessionId).values());
+}
+
+function loadDesignedPersonas(initialState: Record<string, unknown>, sessionId: string): void {
+  const personas = (initialState.npc_personas || []) as Array<Record<string, unknown>>;
+  for (const p of personas) {
+    registerNPC(sessionId, {
+      handle: String(p.handle || ''),
+      display_name: String(p.name || ''),
+      personality: String(p.personality || ''),
+      bias: String(p.bias || 'none'),
+    });
+  }
+}
+
+async function callAI(
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens = 2000,
+  temperature = 0.85,
+): Promise<Record<string, unknown> | null> {
+  if (!env.openAiApiKey) return null;
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-5.2',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature,
+        max_completion_tokens: maxTokens,
+        response_format: { type: 'json_object' },
+      }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) return null;
+    return JSON.parse(content);
+  } catch (err) {
+    logger.warn({ err }, 'Ambient AI call failed');
+    return null;
+  }
+}
+
+async function insertPost(
+  sessionId: string,
+  post: Record<string, unknown>,
+  replyToId?: string,
+): Promise<Record<string, unknown> | null> {
+  const handle = String(post.author_handle || '@anon');
+  const displayName = String(post.author_display_name || 'User');
+  const content = String(post.content || '');
+
+  registerNPC(sessionId, {
+    handle,
+    display_name: displayName,
+    personality: String(post.personality || ''),
+    bias: String(post.bias || 'none'),
+  });
+
+  const { data: inserted, error } = await supabaseAdmin
+    .from('social_posts')
+    .insert({
+      session_id: sessionId,
+      platform: 'x_twitter',
+      author_handle: handle,
+      author_display_name: displayName,
+      author_type: String(post.author_type || 'npc_public'),
+      content,
+      hashtags: content.match(/#\w+/g) || [],
+      reply_to_post_id: replyToId || null,
+      sentiment: String(post.sentiment || 'neutral'),
+      virality_score: Number(post.virality_score) || 0,
+      content_flags: (post.content_flags as Record<string, unknown>) || {},
+      like_count: 0,
+      repost_count: 0,
+      reply_count: 0,
+      view_count: 0,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    logger.warn({ error, sessionId }, 'Failed to insert ambient post');
+    return null;
+  }
+
+  if (replyToId) {
+    const { data: parent } = await supabaseAdmin
+      .from('social_posts')
+      .select('reply_count')
+      .eq('id', replyToId)
+      .single();
+    await supabaseAdmin
+      .from('social_posts')
+      .update({ reply_count: ((parent?.reply_count as number) || 0) + 1 })
+      .eq('id', replyToId);
+  }
+
+  getWebSocketService().broadcastToSession(sessionId, {
+    type: 'social_post.created',
+    data: { post: inserted },
+    timestamp: new Date().toISOString(),
+  });
+
+  return inserted;
+}
+
+// ─── Main entry point (called from inject scheduler) ────────────────────────
+
 export async function generateAmbientPosts(sessionId: string): Promise<void> {
   if (!env.openAiApiKey) return;
 
@@ -28,6 +166,9 @@ export async function generateAmbientPosts(sessionId: string): Promise<void> {
 
     if (!scenario) return;
 
+    const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
+    loadDesignedPersonas(initialState, sessionId);
+
     const sentiment = await computeSessionSentiment(sessionId);
 
     const { data: recentPosts } = await supabaseAdmin
@@ -38,233 +179,219 @@ export async function generateAmbientPosts(sessionId: string): Promise<void> {
       .limit(10);
 
     const recentContext = (recentPosts || [])
-      .map((p) => `${p.author_handle}: ${p.content.substring(0, 100)}`)
+      .map((p) => `${String(p.author_handle)}: ${String(p.content).substring(0, 80)}`)
       .join('\n');
 
-    const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
-    const npcPersonas = (initialState.npc_personas || []) as Array<Record<string, unknown>>;
-    const npcContext =
-      npcPersonas.length > 0
-        ? npcPersonas
-            .slice(0, 8)
-            .map((p) => `${p.handle} (${p.name}): ${p.personality}, bias: ${p.bias}`)
-            .join('\n')
-        : '';
+    const knownNPCs = getRegisteredNPCs(sessionId);
+    const npcList = knownNPCs
+      .slice(0, 10)
+      .map(
+        (n) =>
+          `${n.handle} (${n.display_name}): ${n.personality || 'regular user'}, bias: ${n.bias}`,
+      )
+      .join('\n');
 
-    const systemPrompt = `You generate realistic social media posts for a crisis simulation exercise. Your job is to make the social media feed feel ALIVE and REAL -- like an actual X/Twitter timeline during a crisis.
+    const result = await callAI(
+      `You generate realistic social media posts for a crisis simulation. Make the feed feel ALIVE.
 
-THE CRISIS: ${scenario.description}
+THE CRISIS: ${String(scenario.description).substring(0, 300)}
+Sentiment: ${sentiment.overall}/100 (${sentiment.trend}). Elapsed: ${elapsedMinutes}min.
 
-Current sentiment: ${sentiment.overall}/100 (${sentiment.trend})
-Elapsed time: ${elapsedMinutes} minutes since the incident.
-Hate speech volume: ${sentiment.hate_speech_volume} posts
-Supportive volume: ${sentiment.supportive_volume} posts
+${npcList ? `KNOWN USERS (use these OR create new ones):\n${npcList}\n` : ''}
 
-${npcContext ? `AVAILABLE NPC PERSONAS (use these or create new random users):\n${npcContext}\n` : ''}
+Recent feed:\n${recentContext || '(empty)'}
 
-Recent posts already on the feed:
-${recentContext || '(empty feed)'}
-
-Generate 3-5 realistic social media posts. The mix should include:
-- 1-2 posts ABOUT the crisis (reactions, opinions, sharing news, expressing concern or anger)
-- 1 post that is NORMAL LIFE (someone posting about food, work, sports, weather -- unrelated to the crisis, to make the feed feel real)
-- 1 post that is TANGENTIALLY related (e.g. "traffic is crazy near the station" or "schools are sending kids home early")
-${sentiment.overall < 40 ? '- Include 1 more fearful/angry post -- sentiment is critically low' : ''}
-${sentiment.overall > 60 ? '- Include 1 more calm/supportive post -- sentiment is recovering' : ''}
-${elapsedMinutes < 5 ? '- This is the FIRST MINUTES of the crisis. Posts should be confused, alarmed, sharing breaking news, asking what happened.' : ''}
-${elapsedMinutes > 20 ? '- The crisis has been ongoing for 20+ minutes. Posts should show opinions forming, blame emerging, some people calling for calm.' : ''}
-
-Use realistic handles, display names, and posting styles. Vary the follower counts (some posts from accounts with 50 followers, some with 5000). Include hashtags where natural.
+Generate 3-5 posts. Mix:
+- 1-2 about the crisis (reactions, opinions, news sharing)
+- 1 normal life (food, sports, weather -- unrelated)
+- 1 tangentially related (traffic, school closures)
+${elapsedMinutes < 5 ? '- Early crisis: confused, alarmed, asking what happened' : ''}
+${elapsedMinutes > 20 ? '- Ongoing: opinions forming, blame emerging, some calling for calm' : ''}
+${sentiment.overall < 40 ? '- Sentiment critical: more fear/anger' : ''}
 
 Return ONLY valid JSON:
-{ "posts": [{
-  "author_handle": "@username",
-  "author_display_name": "Display Name",
-  "author_type": "npc_public",
-  "content": "Post content with #hashtags",
-  "sentiment": "neutral|negative|supportive|hateful|inflammatory|positive",
-  "virality_score": 5-80,
-  "content_flags": { "is_misinformation": false, "is_hate_speech": false }
-}] }`;
+{ "posts": [{ "author_handle": "@user", "author_display_name": "Name", "author_type": "npc_public", "content": "text", "sentiment": "neutral|negative|supportive|hateful|inflammatory", "virality_score": 5, "content_flags": {} }] }`,
+      'Generate ambient posts.',
+      1500,
+    );
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.2',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          {
-            role: 'user',
-            content: 'Generate ambient social media posts for the current moment in the crisis.',
-          },
-        ],
-        temperature: 0.8,
-        max_completion_tokens: 1024,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!response.ok) return;
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return;
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      return;
-    }
-
-    const postsArray = Array.isArray(parsed) ? parsed : (parsed as Record<string, unknown>).posts;
+    const postsArray = Array.isArray(result)
+      ? result
+      : ((result as Record<string, unknown>)?.posts as unknown[]);
     if (!Array.isArray(postsArray)) return;
 
-    for (let pi = 0; pi < postsArray.length; pi++) {
-      if (pi > 0) await new Promise((r) => setTimeout(r, 2000 + Math.floor(Math.random() * 6000)));
-      const post = postsArray[pi];
-      const hashtags = (post.content as string).match(/#\w+/g) || [];
-      const { data: inserted, error } = await supabaseAdmin
-        .from('social_posts')
-        .insert({
-          session_id: sessionId,
-          platform: 'x_twitter',
-          author_handle: post.author_handle,
-          author_display_name: post.author_display_name,
-          author_type: post.author_type || 'npc_public',
-          content: post.content,
-          hashtags,
-          sentiment: post.sentiment || 'neutral',
-          virality_score: post.virality_score || 20,
-          content_flags: post.content_flags || {},
-          like_count: 0,
-          repost_count: 0,
-          reply_count: 0,
-          view_count: 0,
-        })
-        .select()
-        .single();
-
-      if (!error && inserted) {
-        getWebSocketService().broadcastToSession(sessionId, {
-          type: 'social_post.created',
-          data: { post: inserted },
-          timestamp: new Date().toISOString(),
-        });
-      }
+    for (let i = 0; i < postsArray.length; i++) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 2000 + Math.floor(Math.random() * 6000)));
+      await insertPost(sessionId, postsArray[i] as Record<string, unknown>);
     }
 
     logger.info({ sessionId, count: postsArray.length, elapsedMinutes }, 'Ambient posts generated');
 
-    if (Math.random() < 0.4) {
-      await generateAmbientReply(sessionId, elapsedMinutes, scenario.description || '');
+    if (Math.random() < 0.5) {
+      await simulateThreadActivity(sessionId, String(scenario.description || ''));
     }
+
+    await bumpOrganicEngagement(sessionId);
   } catch (err) {
     logger.error({ err, sessionId }, 'Ambient content generation failed');
   }
 }
 
-async function generateAmbientReply(
-  sessionId: string,
-  elapsedMinutes: number,
-  crisisDescription: string,
-): Promise<void> {
-  const { data: existingPosts } = await supabaseAdmin
+// ─── Thread simulator (NPC-to-NPC conversations) ───────────────────────────
+
+async function simulateThreadActivity(sessionId: string, crisisDescription: string): Promise<void> {
+  const { data: postsWithReplies } = await supabaseAdmin
+    .from('social_posts')
+    .select('id, content, author_handle, author_display_name, reply_count')
+    .eq('session_id', sessionId)
+    .is('reply_to_post_id', null)
+    .gt('reply_count', 0)
+    .order('reply_count', { ascending: false })
+    .limit(5);
+
+  const { data: postsWithoutReplies } = await supabaseAdmin
+    .from('social_posts')
+    .select('id, content, author_handle, author_display_name, reply_count')
+    .eq('session_id', sessionId)
+    .is('reply_to_post_id', null)
+    .eq('reply_count', 0)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  const candidates = [...(postsWithReplies || []), ...(postsWithoutReplies || [])];
+  if (candidates.length === 0) return;
+
+  const targetPost = candidates[Math.floor(Math.random() * candidates.length)];
+
+  const { data: existingReplies } = await supabaseAdmin
     .from('social_posts')
     .select('id, content, author_handle, author_display_name')
     .eq('session_id', sessionId)
-    .is('reply_to_post_id', null)
-    .order('created_at', { ascending: false })
-    .limit(10);
+    .eq('reply_to_post_id', targetPost.id)
+    .order('created_at', { ascending: true })
+    .limit(15);
 
-  if (!existingPosts || existingPosts.length === 0) return;
+  const threadParticipants = new Map<string, string>();
+  threadParticipants.set(String(targetPost.author_handle), String(targetPost.author_display_name));
+  for (const r of existingReplies || []) {
+    threadParticipants.set(String(r.author_handle), String(r.author_display_name));
+  }
 
-  const targetPost = existingPosts[Math.floor(Math.random() * Math.min(existingPosts.length, 5))];
+  const threadContext = [
+    `ORIGINAL POST by ${String(targetPost.author_handle)}: "${String(targetPost.content).substring(0, 200)}"`,
+    ...(existingReplies || []).map(
+      (r) => `  REPLY by ${String(r.author_handle)}: "${String(r.content).substring(0, 150)}"`,
+    ),
+  ].join('\n');
 
+  const participantList = Array.from(threadParticipants.entries())
+    .map(([handle, name]) => {
+      const reg = getRegistry(sessionId).get(handle);
+      return `${handle} (${name})${reg?.personality ? `: ${reg.personality}` : ''}${reg?.bias && reg.bias !== 'none' ? `, bias: ${reg.bias}` : ''}`;
+    })
+    .join('\n');
+
+  const knownNPCs = getRegisteredNPCs(sessionId)
+    .slice(0, 5)
+    .filter((n) => !threadParticipants.has(n.handle))
+    .map((n) => `${n.handle} (${n.display_name}): ${n.personality}`)
+    .join('\n');
+
+  const result = await callAI(
+    `You are simulating a social media comment thread during a crisis.
+
+THREAD SO FAR:
+${threadContext}
+
+USERS ALREADY IN THIS THREAD:
+${participantList}
+
+${knownNPCs ? `OTHER KNOWN USERS WHO COULD JOIN:\n${knownNPCs}\n` : ''}
+
+Generate 1-2 new replies to continue this thread. Rules:
+- 70% chance: pick someone ALREADY in the thread to reply again (stay in character!)
+- 30% chance: introduce ONE new commenter (either from known users or create a new one)
+- If a user is already in the thread, you MUST use their EXACT handle and display name
+- Replies can be to the original post OR to another reply (arguments, agreements, corrections)
+- Characters should stay consistent with their personality and bias
+- Make it feel like a real argument/discussion -- people interrupt each other, quote each other, get emotional
+- 1-2 sentences per reply
+
+Crisis context: ${crisisDescription.substring(0, 200)}
+
+Return ONLY valid JSON:
+{ "replies": [{ "author_handle": "@exact_handle", "author_display_name": "Exact Name", "content": "reply text", "sentiment": "neutral|negative|supportive|hateful" }] }`,
+    'Continue the thread conversation.',
+    1000,
+  );
+
+  const replies = (result?.replies as Array<Record<string, unknown>>) || [];
+
+  for (let i = 0; i < replies.length; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 2000 + Math.floor(Math.random() * 4000)));
+    const reply = replies[i];
+    await insertPost(sessionId, reply, targetPost.id as string);
+  }
+
+  if (replies.length > 0) {
+    logger.info(
+      { sessionId, postId: targetPost.id, newReplies: replies.length },
+      'Thread activity simulated',
+    );
+  }
+}
+
+// ─── Organic engagement bumps (no AI needed) ────────────────────────────────
+
+async function bumpOrganicEngagement(sessionId: string): Promise<void> {
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.2',
-        messages: [
-          {
-            role: 'system',
-            content: `Generate a single realistic reply to a social media post during a crisis. The reply should feel natural -- it could be agreement, disagreement, a question, sharing personal experience, or adding context. Keep it 1-2 sentences. Crisis context: ${crisisDescription.substring(0, 200)}
-
-Return ONLY valid JSON: { "author_handle": "@username", "author_display_name": "Name", "content": "reply text", "sentiment": "neutral|negative|supportive|hateful" }`,
-          },
-          {
-            role: 'user',
-            content: `Reply to this post by ${String(targetPost.author_handle)}:\n"${String(targetPost.content).substring(0, 200)}"`,
-          },
-        ],
-        temperature: 0.85,
-        max_completion_tokens: 500,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!response.ok) return;
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return;
-
-    const reply = JSON.parse(content);
-
-    await new Promise((r) => setTimeout(r, 3000 + Math.floor(Math.random() * 5000)));
-
-    const { data: replyPost, error } = await supabaseAdmin
+    const { data: posts } = await supabaseAdmin
       .from('social_posts')
-      .insert({
-        session_id: sessionId,
-        platform: 'x_twitter',
-        author_handle: reply.author_handle || '@random_user',
-        author_display_name: reply.author_display_name || 'User',
-        author_type: 'npc_public',
-        content: reply.content,
-        reply_to_post_id: targetPost.id,
-        sentiment: reply.sentiment || 'neutral',
-        like_count: 0,
-        repost_count: 0,
-        reply_count: 0,
-        view_count: 0,
-        hashtags: (reply.content as string).match(/#\w+/g) || [],
-        content_flags: {},
-        virality_score: Math.floor(Math.random() * 20),
-      })
-      .select()
-      .single();
+      .select('id, like_count, view_count, virality_score')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: false })
+      .limit(20);
 
-    if (!error && replyPost) {
-      const { data: parentNow } = await supabaseAdmin
-        .from('social_posts')
-        .select('reply_count')
-        .eq('id', targetPost.id)
-        .single();
+    if (!posts || posts.length === 0) return;
+
+    const postsToBump = posts
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 3 + Math.floor(Math.random() * 3));
+
+    for (const post of postsToBump) {
+      const virality = Number(post.virality_score) || 10;
+      const likeBump = Math.floor(Math.random() * Math.max(1, virality / 10)) + 1;
+      const viewBump = Math.floor(Math.random() * Math.max(10, virality)) + 5;
 
       await supabaseAdmin
         .from('social_posts')
-        .update({ reply_count: ((parentNow?.reply_count as number) || 0) + 1 })
-        .eq('id', targetPost.id);
+        .update({
+          like_count: ((post.like_count as number) || 0) + likeBump,
+          view_count: ((post.view_count as number) || 0) + viewBump,
+        })
+        .eq('id', post.id);
+    }
 
-      getWebSocketService().broadcastToSession(sessionId, {
-        type: 'social_post.created',
-        data: { post: replyPost },
-        timestamp: new Date().toISOString(),
-      });
+    const { data: replies } = await supabaseAdmin
+      .from('social_posts')
+      .select('id, like_count')
+      .eq('session_id', sessionId)
+      .not('reply_to_post_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(10);
 
-      logger.info({ sessionId, parentPostId: targetPost.id }, 'Ambient reply generated');
+    if (replies && replies.length > 0) {
+      const repliesToBump = replies.sort(() => Math.random() - 0.5).slice(0, 2);
+      for (const reply of repliesToBump) {
+        await supabaseAdmin
+          .from('social_posts')
+          .update({
+            like_count: ((reply.like_count as number) || 0) + Math.floor(Math.random() * 3) + 1,
+          })
+          .eq('id', reply.id);
+      }
     }
   } catch (err) {
-    logger.warn({ err, sessionId }, 'Ambient reply generation failed');
+    logger.warn({ err, sessionId }, 'Organic engagement bump failed');
   }
 }
