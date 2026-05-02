@@ -191,7 +191,10 @@ Return ONLY valid JSON:
     const parsed = JSON.parse(content);
     const replies = Array.isArray(parsed) ? parsed : parsed.replies || [];
 
-    for (const reply of replies.slice(0, count)) {
+    const replyBatch = replies.slice(0, count);
+    for (let ri = 0; ri < replyBatch.length; ri++) {
+      if (ri > 0) await new Promise((r) => setTimeout(r, 1500 + Math.floor(Math.random() * 4000)));
+      const reply = replyBatch[ri];
       const { data: replyPost, error: replyErr } = await supabaseAdmin
         .from('social_posts')
         .insert({

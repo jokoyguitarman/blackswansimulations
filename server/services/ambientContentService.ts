@@ -124,7 +124,9 @@ Return ONLY valid JSON:
     const postsArray = Array.isArray(parsed) ? parsed : (parsed as Record<string, unknown>).posts;
     if (!Array.isArray(postsArray)) return;
 
-    for (const post of postsArray) {
+    for (let pi = 0; pi < postsArray.length; pi++) {
+      if (pi > 0) await new Promise((r) => setTimeout(r, 2000 + Math.floor(Math.random() * 6000)));
+      const post = postsArray[pi];
       const hashtags = (post.content as string).match(/#\w+/g) || [];
       const { data: inserted, error } = await supabaseAdmin
         .from('social_posts')
