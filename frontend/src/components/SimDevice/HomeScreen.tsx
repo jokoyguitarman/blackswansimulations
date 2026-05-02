@@ -116,10 +116,9 @@ export default function HomeScreen() {
                   <img
                     src={app.icon}
                     alt={app.label}
-                    className="w-full h-full superellipse-icon shadow-lg"
+                    className="w-full h-full object-cover superellipse-icon shadow-lg"
                     draggable={false}
                   />
-                  {/* iOS-style inner highlight */}
                   <div
                     className="absolute inset-0 superellipse-icon pointer-events-none"
                     style={{
@@ -181,7 +180,7 @@ export default function HomeScreen() {
                   <img
                     src={app.icon}
                     alt={app.label}
-                    className="w-full h-full superellipse-icon shadow-lg"
+                    className="w-full h-full object-cover superellipse-icon shadow-lg"
                     draggable={false}
                   />
                   <div
