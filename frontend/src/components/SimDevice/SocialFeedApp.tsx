@@ -82,9 +82,34 @@ export default function SocialFeedApp() {
 
   useWebSocket({
     sessionId: sessionId || '',
-    eventTypes: ['social_post.created', 'social_post.flagged'],
+    eventTypes: ['social_post.created', 'social_post.flagged', 'social_posts.engagement_update'],
     onEvent: (event) => {
-      if (event.type === 'social_post.created') {
+      if (event.type === 'social_posts.engagement_update') {
+        const updates = (
+          event.data as {
+            updates: Array<{
+              id: string;
+              like_count?: number;
+              view_count?: number;
+              repost_count?: number;
+            }>;
+          }
+        ).updates;
+        if (Array.isArray(updates)) {
+          setPosts((prev) =>
+            prev.map((p) => {
+              const up = updates.find((u) => u.id === p.id);
+              if (!up) return p;
+              return {
+                ...p,
+                like_count: up.like_count ?? p.like_count,
+                view_count: up.view_count ?? p.view_count,
+                repost_count: up.repost_count ?? p.repost_count,
+              };
+            }),
+          );
+        }
+      } else if (event.type === 'social_post.created') {
         const newPost = (event.data as { post: SocialPost }).post;
 
         if (newPost.reply_to_post_id) {
