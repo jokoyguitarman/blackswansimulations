@@ -85,6 +85,7 @@ export default function HomeScreen() {
             fontSize: 72,
             lineHeight: 1,
             fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+            textShadow: '0 2px 8px rgba(0,0,0,0.3)',
           }}
         >
           {hours}:{minutes}
@@ -96,6 +97,7 @@ export default function HomeScreen() {
             fontWeight: 500,
             letterSpacing: 0.3,
             fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+            textShadow: '0 1px 4px rgba(0,0,0,0.4)',
           }}
         >
           {dateStr}
@@ -109,23 +111,16 @@ export default function HomeScreen() {
             <button
               key={app.id}
               onClick={() => navigate(`/sim/${sessionId}/device/${app.path}`)}
-              className="flex flex-col items-center gap-[6px] ios-btn-bounce"
+              className="flex flex-col items-center gap-[6px] ios-btn-bounce bg-transparent border-0 p-0"
             >
               <div className="relative">
-                <div className="w-[56px] h-[56px] relative">
-                  <img
-                    src={app.icon}
-                    alt={app.label}
-                    className="w-full h-full object-cover superellipse-icon shadow-lg"
-                    draggable={false}
-                  />
-                  <div
-                    className="absolute inset-0 superellipse-icon pointer-events-none"
-                    style={{
-                      boxShadow: 'inset 0 0 0 0.5px rgba(255,255,255,0.15)',
-                    }}
-                  />
-                </div>
+                <img
+                  src={app.icon}
+                  alt={app.label}
+                  className="w-[56px] h-[56px] object-cover superellipse-icon"
+                  draggable={false}
+                  style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.3))' }}
+                />
                 {!!app.badge && app.badge > 0 && (
                   <span
                     className="absolute -top-1 -right-1 min-w-[20px] h-[20px] bg-[#FF3B30] text-white text-[13px] font-bold rounded-full flex items-center justify-center px-1"
@@ -140,7 +135,7 @@ export default function HomeScreen() {
                 style={{
                   fontSize: 11,
                   fontWeight: 500,
-                  textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.8), 0 0px 6px rgba(0,0,0,0.4)',
                   fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
                 }}
               >
@@ -173,21 +168,16 @@ export default function HomeScreen() {
             <button
               key={app.id}
               onClick={() => navigate(`/sim/${sessionId}/device/${app.path}`)}
-              className="flex flex-col items-center ios-btn-bounce"
+              className="flex flex-col items-center ios-btn-bounce bg-transparent border-0 p-0"
             >
               <div className="relative">
-                <div className="w-[52px] h-[52px] relative">
-                  <img
-                    src={app.icon}
-                    alt={app.label}
-                    className="w-full h-full object-cover superellipse-icon shadow-lg"
-                    draggable={false}
-                  />
-                  <div
-                    className="absolute inset-0 superellipse-icon pointer-events-none"
-                    style={{ boxShadow: 'inset 0 0 0 0.5px rgba(255,255,255,0.12)' }}
-                  />
-                </div>
+                <img
+                  src={app.icon}
+                  alt={app.label}
+                  className="w-[52px] h-[52px] object-cover superellipse-icon"
+                  draggable={false}
+                  style={{ filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.25))' }}
+                />
                 {!!app.badge && app.badge > 0 && (
                   <span
                     className="absolute -top-1 -right-1 min-w-[20px] h-[20px] bg-[#FF3B30] text-white text-[13px] font-bold rounded-full flex items-center justify-center px-1"
