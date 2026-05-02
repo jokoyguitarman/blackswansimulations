@@ -41,32 +41,51 @@ export async function generateAmbientPosts(sessionId: string): Promise<void> {
       .map((p) => `${p.author_handle}: ${p.content.substring(0, 100)}`)
       .join('\n');
 
-    const systemPrompt = `You generate realistic social media posts for a crisis simulation exercise.
-The crisis: ${scenario.description}
+    const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
+    const npcPersonas = (initialState.npc_personas || []) as Array<Record<string, unknown>>;
+    const npcContext =
+      npcPersonas.length > 0
+        ? npcPersonas
+            .slice(0, 8)
+            .map((p) => `${p.handle} (${p.name}): ${p.personality}, bias: ${p.bias}`)
+            .join('\n')
+        : '';
+
+    const systemPrompt = `You generate realistic social media posts for a crisis simulation exercise. Your job is to make the social media feed feel ALIVE and REAL -- like an actual X/Twitter timeline during a crisis.
+
+THE CRISIS: ${scenario.description}
+
 Current sentiment: ${sentiment.overall}/100 (${sentiment.trend})
 Elapsed time: ${elapsedMinutes} minutes since the incident.
 Hate speech volume: ${sentiment.hate_speech_volume} posts
 Supportive volume: ${sentiment.supportive_volume} posts
 
-Recent posts on the feed:
-${recentContext}
+${npcContext ? `AVAILABLE NPC PERSONAS (use these or create new random users):\n${npcContext}\n` : ''}
 
-Generate 1-3 realistic social media posts from different fictional users reacting to this crisis. 
-Posts should reflect a mix of sentiments appropriate to the current state.
-${sentiment.overall < 40 ? 'Sentiment is very negative - generate more concerned/fearful posts.' : ''}
-${sentiment.overall > 60 ? 'Sentiment is improving - generate more supportive/calm posts.' : ''}
-${elapsedMinutes > 20 && sentiment.hate_speech_volume > 3 ? 'Hate speech is prevalent - some users are pushing back against it.' : ''}
+Recent posts already on the feed:
+${recentContext || '(empty feed)'}
 
-Return ONLY valid JSON array:
-[{
+Generate 3-5 realistic social media posts. The mix should include:
+- 1-2 posts ABOUT the crisis (reactions, opinions, sharing news, expressing concern or anger)
+- 1 post that is NORMAL LIFE (someone posting about food, work, sports, weather -- unrelated to the crisis, to make the feed feel real)
+- 1 post that is TANGENTIALLY related (e.g. "traffic is crazy near the station" or "schools are sending kids home early")
+${sentiment.overall < 40 ? '- Include 1 more fearful/angry post -- sentiment is critically low' : ''}
+${sentiment.overall > 60 ? '- Include 1 more calm/supportive post -- sentiment is recovering' : ''}
+${elapsedMinutes < 5 ? '- This is the FIRST MINUTES of the crisis. Posts should be confused, alarmed, sharing breaking news, asking what happened.' : ''}
+${elapsedMinutes > 20 ? '- The crisis has been ongoing for 20+ minutes. Posts should show opinions forming, blame emerging, some people calling for calm.' : ''}
+
+Use realistic handles, display names, and posting styles. Vary the follower counts (some posts from accounts with 50 followers, some with 5000). Include hashtags where natural.
+
+Return ONLY valid JSON:
+{ "posts": [{
   "author_handle": "@username",
   "author_display_name": "Display Name",
   "author_type": "npc_public",
   "content": "Post content with #hashtags",
-  "sentiment": "neutral|negative|supportive|hateful|inflammatory",
-  "virality_score": 10-80,
+  "sentiment": "neutral|negative|supportive|hateful|inflammatory|positive",
+  "virality_score": 5-80,
   "content_flags": { "is_misinformation": false, "is_hate_speech": false }
-}]`;
+}] }`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',

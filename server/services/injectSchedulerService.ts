@@ -31,6 +31,7 @@ import {
 import { shouldCancelSocialInject } from './socialCrisisAiService.js';
 import { computeSessionSentiment } from './sentimentSimService.js';
 import { checkResponseDeadlines } from './responseTrackerService.js';
+import { generateAmbientPosts } from './ambientContentService.js';
 import type { Server as SocketServer } from 'socket.io';
 /**
  * Shared AI cancellation gate for any inject about to be published.
@@ -965,7 +966,7 @@ export class InjectSchedulerService {
       logger.warn({ err: hazardErr, sessionId: session.id }, 'Hazard queue processing error');
     }
 
-    // --- Social media crisis: check response deadlines ---
+    // --- Social media crisis: check response deadlines + ambient posts ---
     if (session.sim_mode === 'social_media') {
       try {
         await checkResponseDeadlines(session.id);
@@ -974,6 +975,12 @@ export class InjectSchedulerService {
           { err: socialErr, sessionId: session.id },
           'Social response deadline check error',
         );
+      }
+
+      try {
+        await generateAmbientPosts(session.id);
+      } catch (ambientErr) {
+        logger.warn({ err: ambientErr, sessionId: session.id }, 'Ambient post generation error');
       }
     }
   }
