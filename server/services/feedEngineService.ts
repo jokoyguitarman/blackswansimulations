@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
 
 export interface DeliveryConfig {
@@ -111,6 +112,129 @@ async function routeToSocialFeed(
   });
 
   logger.info({ sessionId, injectId, postId: post.id }, 'Inject routed to social feed');
+
+  if (config.spawn_replies && config.spawn_replies > 0 && env.openAiApiKey) {
+    void spawnNPCReplies(sessionId, post, config).catch((err) =>
+      logger.warn({ err, postId: post.id }, 'Failed to spawn NPC replies'),
+    );
+  }
+}
+
+async function spawnNPCReplies(
+  sessionId: string,
+  parentPost: Record<string, unknown>,
+  config: DeliveryConfig,
+): Promise<void> {
+  const count = Math.min(config.spawn_replies || 3, 8);
+  const dist = config.reply_sentiment_distribution || {
+    neutral: 0.5,
+    negative: 0.3,
+    supportive: 0.2,
+  };
+
+  const { data: scenario } = await supabaseAdmin
+    .from('sessions')
+    .select('scenarios!inner(initial_state)')
+    .eq('id', sessionId)
+    .single();
+
+  const initialState = ((scenario as Record<string, unknown>)?.scenarios as Record<string, unknown>)
+    ?.initial_state as Record<string, unknown> | undefined;
+  const npcPersonas = (initialState?.npc_personas || []) as Array<Record<string, unknown>>;
+  const npcContext = npcPersonas
+    .slice(0, 6)
+    .map((p) => `${String(p.handle)} (${String(p.name)}): ${String(p.personality)}`)
+    .join('; ');
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-5.2',
+        messages: [
+          {
+            role: 'system',
+            content: `Generate ${count} realistic reply tweets to a social media post. The replies should feel like real X/Twitter replies during a crisis.
+
+Sentiment distribution: ${Object.entries(dist)
+              .map(([k, v]) => `${k}: ${Math.round(Number(v) * 100)}%`)
+              .join(', ')}
+
+${npcContext ? `Available personas: ${npcContext}` : ''}
+
+Each reply should be 1-3 sentences. Include a mix of reactions: agreement, disagreement, emotional responses, questions, sharing personal experiences.
+
+Return ONLY valid JSON:
+{ "replies": [{ "author_handle": "@username", "author_display_name": "Name", "content": "reply text", "sentiment": "neutral|negative|supportive|hateful|inflammatory" }] }`,
+          },
+          {
+            role: 'user',
+            content: `Original post by ${String(parentPost.author_handle)}:\n"${String(parentPost.content)}"`,
+          },
+        ],
+        temperature: 0.85,
+        max_completion_tokens: 2000,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) return;
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) return;
+
+    const parsed = JSON.parse(content);
+    const replies = Array.isArray(parsed) ? parsed : parsed.replies || [];
+
+    for (const reply of replies.slice(0, count)) {
+      const { data: replyPost, error: replyErr } = await supabaseAdmin
+        .from('social_posts')
+        .insert({
+          session_id: sessionId,
+          platform: 'x_twitter',
+          author_handle: reply.author_handle || '@anon_user',
+          author_display_name: reply.author_display_name || 'Anonymous',
+          author_type: 'npc_public',
+          content: reply.content,
+          reply_to_post_id: parentPost.id,
+          sentiment: reply.sentiment || 'neutral',
+          like_count: Math.floor(Math.random() * 50),
+          repost_count: Math.floor(Math.random() * 10),
+          reply_count: 0,
+          view_count: Math.floor(Math.random() * 500),
+          hashtags: (reply.content as string).match(/#\w+/g) || [],
+          content_flags: {},
+          virality_score: Math.floor(Math.random() * 30),
+        })
+        .select()
+        .single();
+
+      if (!replyErr && replyPost) {
+        await supabaseAdmin
+          .from('social_posts')
+          .update({ reply_count: ((parentPost.reply_count as number) || 0) + 1 })
+          .eq('id', parentPost.id);
+
+        getWebSocketService().broadcastToSession(sessionId, {
+          type: 'social_post.created',
+          data: { post: replyPost },
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+
+    logger.info(
+      { sessionId, parentPostId: parentPost.id, repliesSpawned: replies.length },
+      'NPC replies spawned',
+    );
+  } catch (err) {
+    logger.error({ err, sessionId }, 'NPC reply generation failed');
+  }
 }
 
 async function routeToEmail(

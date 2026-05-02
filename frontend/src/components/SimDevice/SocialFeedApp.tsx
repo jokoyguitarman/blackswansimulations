@@ -59,6 +59,8 @@ export default function SocialFeedApp() {
   const [composeText, setComposeText] = useState('');
   const [replyingTo, setReplyingTo] = useState<SocialPost | null>(null);
   const [activeTab, setActiveTab] = useState<'foryou' | 'following'>('foryou');
+  const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
+  const [threadReplies, setThreadReplies] = useState<SocialPost[]>([]);
 
   const loadPosts = useCallback(async () => {
     if (!sessionId) return;
@@ -121,6 +123,21 @@ export default function SocialFeedApp() {
       setPosts((prev) =>
         prev.map((p) => (p.id === postId ? { ...p, like_count: p.like_count + 1 } : p)),
       );
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function openThread(post: SocialPost) {
+    setSelectedPost(post);
+    setThreadReplies([]);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/social/posts/${post.id}`), { headers });
+      const result = await res.json();
+      if (result.data?.replies) {
+        setThreadReplies(result.data.replies);
+      }
     } catch {
       /* ignore */
     }
@@ -190,6 +207,224 @@ export default function SocialFeedApp() {
     let hash = 0;
     for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
     return colors[Math.abs(hash) % colors.length];
+  }
+
+  if (selectedPost) {
+    const badge = getAuthorBadge(selectedPost.author_type);
+    return (
+      <div
+        className="h-full flex flex-col"
+        style={{ backgroundColor: '#000000', color: '#E7E9EA' }}
+      >
+        {/* Thread Header */}
+        <div
+          className="flex items-center gap-3 px-4 flex-shrink-0"
+          style={{ height: 53, borderBottom: '1px solid #2F3336' }}
+        >
+          <button
+            onClick={() => {
+              setSelectedPost(null);
+              setThreadReplies([]);
+            }}
+            className="ios-btn-bounce"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#E7E9EA">
+              <path d="M7.414 13l5.293 5.293a1 1 0 0 1-1.414 1.414l-7-7a1 1 0 0 1 0-1.414l7-7a1 1 0 1 1 1.414 1.414L7.414 11H20a1 1 0 1 1 0 2H7.414z" />
+            </svg>
+          </button>
+          <span className="text-[17px] font-bold">Post</span>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {/* Original Post (expanded) */}
+          <div className="px-4 pt-4 pb-3" style={{ borderBottom: '1px solid #2F3336' }}>
+            <div className="flex items-center gap-3 mb-3">
+              <div
+                className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-[18px]"
+                style={{ backgroundColor: getAvatarColor(selectedPost.author_display_name) }}
+              >
+                {selectedPost.author_display_name.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div className="flex items-center gap-1">
+                  <span className="font-bold text-[15px]">{selectedPost.author_display_name}</span>
+                  {badge && (
+                    <span className="text-[14px]" style={{ color: badge.color }}>
+                      {badge.label}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[13px]" style={{ color: '#71767B' }}>
+                  {selectedPost.author_handle}
+                </span>
+              </div>
+            </div>
+            <p className="text-[17px] leading-relaxed mb-3 whitespace-pre-wrap">
+              {selectedPost.content}
+            </p>
+            <div className="text-[13px] mb-3" style={{ color: '#71767B' }}>
+              {new Date(selectedPost.created_at).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+              {' · '}
+              {new Date(selectedPost.created_at).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              })}
+            </div>
+            <div
+              className="flex items-center gap-5 py-2 text-[13px]"
+              style={{ borderTop: '1px solid #2F3336', color: '#71767B' }}
+            >
+              <span>
+                <strong style={{ color: '#E7E9EA' }}>
+                  {formatCount(selectedPost.reply_count)}
+                </strong>{' '}
+                Replies
+              </span>
+              <span>
+                <strong style={{ color: '#E7E9EA' }}>
+                  {formatCount(selectedPost.repost_count)}
+                </strong>{' '}
+                Reposts
+              </span>
+              <span>
+                <strong style={{ color: '#E7E9EA' }}>{formatCount(selectedPost.like_count)}</strong>{' '}
+                Likes
+              </span>
+            </div>
+            <div
+              className="flex items-center justify-around py-2"
+              style={{ borderTop: '1px solid #2F3336' }}
+            >
+              <button
+                onClick={() => {
+                  setReplyingTo(selectedPost);
+                  setComposing(true);
+                }}
+                className="ios-btn-bounce p-2"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#71767B"
+                  strokeWidth="1.5"
+                >
+                  <path
+                    d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <button onClick={() => handleLike(selectedPost.id)} className="ios-btn-bounce p-2">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#71767B"
+                  strokeWidth="1.5"
+                >
+                  <path
+                    d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <button onClick={() => handleFlag(selectedPost.id)} className="ios-btn-bounce p-2">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill={selectedPost.is_flagged_by_player ? '#F59E0B' : 'none'}
+                  stroke={selectedPost.is_flagged_by_player ? '#F59E0B' : '#71767B'}
+                  strokeWidth="1.5"
+                >
+                  <path
+                    d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <line x1="4" y1="22" x2="4" y2="15" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Replies */}
+          {threadReplies.length === 0 ? (
+            <div className="flex items-center justify-center h-24">
+              <p className="text-[13px]" style={{ color: '#71767B' }}>
+                No replies yet
+              </p>
+            </div>
+          ) : (
+            threadReplies.map((reply) => {
+              const replyBadge = getAuthorBadge(reply.author_type);
+              return (
+                <div
+                  key={reply.id}
+                  className="px-4 py-3"
+                  style={{ borderBottom: '1px solid #2F3336' }}
+                >
+                  <div className="flex gap-3">
+                    <div
+                      className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-[14px] flex-shrink-0"
+                      style={{ backgroundColor: getAvatarColor(reply.author_display_name) }}
+                    >
+                      {reply.author_display_name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className="font-bold text-[14px]">{reply.author_display_name}</span>
+                        {replyBadge && (
+                          <span className="text-[12px]" style={{ color: replyBadge.color }}>
+                            {replyBadge.label}
+                          </span>
+                        )}
+                        <span className="text-[13px]" style={{ color: '#71767B' }}>
+                          {reply.author_handle}
+                        </span>
+                        <span className="text-[13px]" style={{ color: '#71767B' }}>
+                          · {timeAgo(reply.created_at)}
+                        </span>
+                      </div>
+                      <p className="text-[14px] mt-1 whitespace-pre-wrap">{reply.content}</p>
+                      <div className="flex items-center gap-5 mt-2">
+                        <button
+                          onClick={() => handleLike(reply.id)}
+                          className="ios-btn-bounce flex items-center gap-1"
+                        >
+                          <svg
+                            width="15"
+                            height="15"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="#71767B"
+                            strokeWidth="1.5"
+                          >
+                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                          </svg>
+                          <span className="text-[12px]" style={{ color: '#71767B' }}>
+                            {formatCount(reply.like_count)}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -295,11 +530,12 @@ export default function SocialFeedApp() {
               return (
                 <div
                   key={post.id}
-                  className="px-4 py-3 transition-colors"
+                  className="px-4 py-3 transition-colors cursor-pointer hover:bg-white/[0.03]"
                   style={{
                     borderBottom: '1px solid #2F3336',
                     borderLeft: getSentimentBorder(post.sentiment),
                   }}
+                  onClick={() => openThread(post)}
                 >
                   {post.requires_response && !post.responded_at && (
                     <div className="flex items-center gap-1.5 mb-2 ml-[52px]">
@@ -435,7 +671,8 @@ export default function SocialFeedApp() {
                       >
                         {/* Reply */}
                         <button
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setReplyingTo(post);
                             setComposing(true);
                           }}
@@ -460,7 +697,10 @@ export default function SocialFeedApp() {
                           </span>
                         </button>
                         {/* Repost */}
-                        <button className="flex items-center gap-1.5 group transition-colors hover:text-[#00BA7C]">
+                        <button
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center gap-1.5 group transition-colors hover:text-[#00BA7C]"
+                        >
                           <div className="p-1.5 rounded-full group-hover:bg-[#00BA7C]/10 transition-colors">
                             <svg
                               width="16"
@@ -484,7 +724,10 @@ export default function SocialFeedApp() {
                         </button>
                         {/* Like */}
                         <button
-                          onClick={() => handleLike(post.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleLike(post.id);
+                          }}
                           className="flex items-center gap-1.5 group transition-colors hover:text-[#F91880]"
                         >
                           <div className="p-1.5 rounded-full group-hover:bg-[#F91880]/10 transition-colors">
@@ -527,7 +770,10 @@ export default function SocialFeedApp() {
                         </div>
                         {/* Flag */}
                         <button
-                          onClick={() => handleFlag(post.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleFlag(post.id);
+                          }}
                           className="flex items-center group transition-colors hover:text-[#F59E0B]"
                         >
                           <div className="p-1.5 rounded-full group-hover:bg-[#F59E0B]/10 transition-colors">
