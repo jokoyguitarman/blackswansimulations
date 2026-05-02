@@ -380,7 +380,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
   }
 
   if (scenario.category === 'social_media_crisis') {
-    const is = (scenario as Record<string, unknown>).initial_state as
+    const is = (scenario as unknown as Record<string, unknown>).initial_state as
       | Record<string, unknown>
       | undefined;
     const npcPersonas = (is?.npc_personas || []) as Array<Record<string, unknown>>;
@@ -479,7 +479,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                     <div className="text-xs text-gray-400 mt-1">
                       {String(npc.personality || '').substring(0, 100)}
                     </div>
-                    {npc.bias && String(npc.bias) !== 'none' && (
+                    {!!npc.bias && String(npc.bias) !== 'none' && (
                       <span className="text-[10px] px-1.5 py-0.5 bg-red-900/30 text-red-400 rounded mt-1 inline-block">
                         bias: {String(npc.bias)}
                       </span>
@@ -530,7 +530,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                   .filter((inj) => inj.trigger_time_minutes != null)
                   .sort((a, b) => (a.trigger_time_minutes || 0) - (b.trigger_time_minutes || 0))
                   .map((inj) => {
-                    const dc = (inj as Record<string, unknown>).delivery_config as
+                    const dc = (inj as unknown as Record<string, unknown>).delivery_config as
                       | Record<string, unknown>
                       | undefined;
                     const app = dc?.app ? String(dc.app) : inj.type;
@@ -561,7 +561,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                               CRITICAL
                             </span>
                           )}
-                          {(inj as Record<string, unknown>).requires_response && (
+                          {!!(inj as unknown as Record<string, unknown>).requires_response && (
                             <span className="text-[10px] px-1 py-0.5 bg-amber-900 text-amber-300 rounded">
                               REQUIRES RESPONSE
                             </span>
