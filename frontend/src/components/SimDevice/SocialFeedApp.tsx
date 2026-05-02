@@ -86,7 +86,35 @@ export default function SocialFeedApp() {
     onEvent: (event) => {
       if (event.type === 'social_post.created') {
         const newPost = (event.data as { post: SocialPost }).post;
-        setPosts((prev) => [newPost, ...prev]);
+
+        if (newPost.reply_to_post_id) {
+          setPosts((prev) =>
+            prev.map((p) =>
+              p.id === newPost.reply_to_post_id
+                ? { ...p, reply_count: (p.reply_count || 0) + 1 }
+                : p,
+            ),
+          );
+
+          setThreadReplies((prev) => {
+            if (selectedPost && selectedPost.id === newPost.reply_to_post_id) {
+              if (prev.some((r) => r.id === newPost.id)) return prev;
+              return [...prev, newPost];
+            }
+            return prev;
+          });
+
+          if (selectedPost && selectedPost.id === newPost.reply_to_post_id) {
+            setSelectedPost((prev) =>
+              prev ? { ...prev, reply_count: (prev.reply_count || 0) + 1 } : prev,
+            );
+          }
+        } else {
+          setPosts((prev) => {
+            if (prev.some((p) => p.id === newPost.id)) return prev;
+            return [newPost, ...prev];
+          });
+        }
       }
     },
   });
