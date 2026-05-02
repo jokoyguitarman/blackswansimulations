@@ -201,10 +201,9 @@ ${npcList ? `KNOWN USERS (use these OR create new ones):\n${npcList}\n` : ''}
 
 Recent feed:\n${recentContext || '(empty)'}
 
-Generate 3-5 posts. Mix:
+Generate 2-3 posts. Mix:
 - 1-2 about the crisis (reactions, opinions, news sharing)
-- 1 normal life (food, sports, weather -- unrelated)
-- 1 tangentially related (traffic, school closures)
+- 0-1 normal life or tangentially related posts
 ${elapsedMinutes < 5 ? '- Early crisis: confused, alarmed, asking what happened' : ''}
 ${elapsedMinutes > 20 ? '- Ongoing: opinions forming, blame emerging, some calling for calm' : ''}
 ${sentiment.overall < 40 ? '- Sentiment critical: more fear/anger' : ''}
@@ -227,7 +226,9 @@ Return ONLY valid JSON:
 
     logger.info({ sessionId, count: postsArray.length, elapsedMinutes }, 'Ambient posts generated');
 
-    if (Math.random() < 0.5) {
+    await simulateThreadActivity(sessionId, String(scenario.description || ''));
+
+    if (Math.random() < 0.6) {
       await simulateThreadActivity(sessionId, String(scenario.description || ''));
     }
 
@@ -308,7 +309,7 @@ ${participantList}
 
 ${knownNPCs ? `OTHER KNOWN USERS WHO COULD JOIN:\n${knownNPCs}\n` : ''}
 
-Generate 1-2 new replies to continue this thread. Rules:
+Generate 2-3 new replies to continue this thread. Rules:
 - 70% chance: pick someone ALREADY in the thread to reply again (stay in character!)
 - 30% chance: introduce ONE new commenter (either from known users or create a new one)
 - If a user is already in the thread, you MUST use their EXACT handle and display name
@@ -328,7 +329,7 @@ Return ONLY valid JSON:
   const replies = (result?.replies as Array<Record<string, unknown>>) || [];
 
   for (let i = 0; i < replies.length; i++) {
-    if (i > 0) await new Promise((r) => setTimeout(r, 2000 + Math.floor(Math.random() * 4000)));
+    if (i > 0) await new Promise((r) => setTimeout(r, 1000 + Math.floor(Math.random() * 3000)));
     const reply = replies[i];
     await insertPost(sessionId, reply, targetPost.id as string);
   }
