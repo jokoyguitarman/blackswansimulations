@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { getWebSocketService } from './websocketService.js';
+import { logger } from '../lib/logger.js';
 
 export interface SocialState {
   total_posts: number;
@@ -346,5 +347,136 @@ export async function computeSocialState(
     timestamp: new Date().toISOString(),
   });
 
+  void evaluateConsequenceTriggers(sessionId, state, elapsedMinutes).catch((err) =>
+    logger.warn({ err, sessionId }, 'Consequence trigger evaluation failed'),
+  );
+
   return state;
+}
+
+const previousStates = new Map<string, Record<string, unknown>>();
+
+export async function evaluateConsequenceTriggers(
+  sessionId: string,
+  state: SocialState,
+  elapsedMinutes: number,
+): Promise<void> {
+  const { generateConsequenceInject } = await import('./ambientContentService.js');
+
+  const prev = (previousStates.get(sessionId) || {}) as Partial<SocialState>;
+  previousStates.set(sessionId, { ...state });
+
+  if (
+    state.oldest_unaddressed_hate_minutes > 10 &&
+    (prev.oldest_unaddressed_hate_minutes || 0) <= 10
+  ) {
+    void generateConsequenceInject(
+      sessionId,
+      'hate_unaddressed_10min',
+      'A community member from the targeted group posts about feeling abandoned. Hate speech has been circulating for over 10 minutes with no official response or flagging.',
+      'negative',
+      false,
+    );
+  }
+
+  if (
+    state.oldest_unaddressed_misinfo_minutes > 10 &&
+    (prev.oldest_unaddressed_misinfo_minutes || 0) <= 10
+  ) {
+    void generateConsequenceInject(
+      sessionId,
+      'misinfo_unaddressed_10min',
+      'Someone shares the unaddressed misinformation as if it were confirmed fact. "Just saw that [the false claim] is true! Why isn\'t anyone saying anything?"',
+      'negative',
+      false,
+    );
+  }
+
+  if (
+    elapsedMinutes > 20 &&
+    !state.official_statement_published &&
+    prev.official_statement_published === undefined
+  ) {
+    void generateConsequenceInject(
+      sessionId,
+      'no_statement_20min',
+      'A journalist or media commentator notes that 20 minutes have passed since the crisis began and there has been no official response from the response team.',
+      'negative',
+      false,
+    );
+  }
+
+  if (elapsedMinutes > 35 && !state.official_statement_published) {
+    void generateConsequenceInject(
+      sessionId,
+      'no_statement_35min',
+      'A senior journalist tweets about the conspicuous silence from the official response team, questioning whether anyone is managing the situation at all.',
+      'inflammatory',
+      false,
+    );
+  }
+
+  if (
+    state.strategic_ratio < 0.15 &&
+    state.tier1_reactive_actions > 10 &&
+    (prev.tier1_reactive_actions || 0) <= 10
+  ) {
+    void generateConsequenceInject(
+      sessionId,
+      'trench_warfare',
+      'A media observer notes that the response team seems to be stuck replying to individual posts rather than publishing an official coordinated response.',
+      'negative',
+      false,
+    );
+  }
+
+  if (state.rally_call_active && !prev.rally_call_active) {
+    void generateConsequenceInject(
+      sessionId,
+      'rally_gaining_traction',
+      'People are sharing and responding positively to a call for a real-world gathering or "citizen patrol." The rally is gaining traction online.',
+      'inflammatory',
+      false,
+    );
+  }
+
+  if (state.community_leader_contacted && !prev.community_leader_contacted) {
+    void generateConsequenceInject(
+      sessionId,
+      'leader_contacted',
+      'A community or religious leader posts a message of support and calm after being contacted by the response team. They thank the team for reaching out.',
+      'supportive',
+      true,
+    );
+  }
+
+  if (state.official_statement_published && !prev.official_statement_published) {
+    void generateConsequenceInject(
+      sessionId,
+      'statement_published',
+      'A news outlet or verified media account shares the official statement from the response team, noting it as the first official response to the crisis.',
+      'positive',
+      true,
+    );
+  }
+
+  if (state.narrative_control > 50 && (prev.narrative_control || 0) <= 50) {
+    void generateConsequenceInject(
+      sessionId,
+      'narrative_recovering',
+      'A regular citizen posts something supportive: "Finally seeing some sanity in this feed. Facts matter. Don\'t let hate win."',
+      'supportive',
+      true,
+    );
+  }
+
+  if (state.narrative_control < 20 && (prev.narrative_control || 0) >= 20) {
+    void generateConsequenceInject(
+      sessionId,
+      'narrative_collapsing',
+      'The hateful narrative is now dominant. A scared community member posts about being afraid to go outside. Mainstream media is picking up the story of online hate spiraling out of control.',
+      'negative',
+      false,
+    );
+  }
 }

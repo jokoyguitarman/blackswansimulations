@@ -201,6 +201,28 @@ router.post(
               .update({ sop_compliance_score: grade })
               .eq('id', post.id);
 
+            if (grade.overall >= 70) {
+              const { generateConsequenceInject } =
+                await import('../services/ambientContentService.js');
+              void generateConsequenceInject(
+                session_id,
+                'player_good_response',
+                `A player posted a high-quality response (scored ${grade.overall}/100) to a hateful/misinformation post. Generate a supportive reaction -- a community leader or verified account amplifying the good response.`,
+                'supportive',
+                true,
+              );
+            } else if (grade.overall < 40) {
+              const { generateConsequenceInject } =
+                await import('../services/ambientContentService.js');
+              void generateConsequenceInject(
+                session_id,
+                'player_poor_response',
+                `A player posted a poor response (scored ${grade.overall}/100) to a hateful/misinformation post. Their reply contained issues. Generate a skeptical reaction from a journalist or observer questioning the response.`,
+                'negative',
+                false,
+              );
+            }
+
             logger.info(
               { postId: post.id, overall: grade.overall },
               'Auto-graded reply to harmful post',
@@ -607,5 +629,25 @@ router.post(
     }
   },
 );
+
+router.get('/state/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('current_state')
+      .eq('id', sessionId)
+      .single();
+
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    const socialState =
+      ((session.current_state || {}) as Record<string, unknown>).social_state || {};
+    res.json({ data: socialState });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /social/state/session/:sessionId');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 export { router as socialMediaRouter };

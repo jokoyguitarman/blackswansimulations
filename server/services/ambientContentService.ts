@@ -420,3 +420,119 @@ async function bumpOrganicEngagement(sessionId: string): Promise<void> {
     logger.warn({ err, sessionId }, 'Organic engagement bump failed');
   }
 }
+
+// ─── Consequence Inject Generator ───────────────────────────────────────────
+
+const consequenceCooldowns = new Map<string, Map<string, number>>();
+
+function isOnCooldown(sessionId: string, triggerId: string, cooldownMs = 300000): boolean {
+  const sessionCooldowns = consequenceCooldowns.get(sessionId);
+  if (!sessionCooldowns) return false;
+  const lastFired = sessionCooldowns.get(triggerId);
+  if (!lastFired) return false;
+  return Date.now() - lastFired < cooldownMs;
+}
+
+function setCooldown(sessionId: string, triggerId: string): void {
+  if (!consequenceCooldowns.has(sessionId)) {
+    consequenceCooldowns.set(sessionId, new Map());
+  }
+  consequenceCooldowns.get(sessionId)!.set(triggerId, Date.now());
+}
+
+export async function generateConsequenceInject(
+  sessionId: string,
+  triggerId: string,
+  description: string,
+  sentiment: string,
+  isPositive: boolean,
+): Promise<void> {
+  if (!env.openAiApiKey) return;
+  if (isOnCooldown(sessionId, triggerId)) return;
+
+  setCooldown(sessionId, triggerId);
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-5.2',
+        messages: [
+          {
+            role: 'system',
+            content: `Generate a single realistic social media post that serves as an organic consequence in a crisis simulation. The post should feel natural -- like a real person reacting to the situation. Keep it 1-3 sentences. Do NOT mention that this is a simulation.
+
+Return ONLY valid JSON: { "author_handle": "@handle", "author_display_name": "Name", "content": "post text", "author_type": "npc_public|npc_media" }`,
+          },
+          { role: 'user', content: description },
+        ],
+        temperature: 0.8,
+        max_completion_tokens: 500,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) return;
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) return;
+
+    const post = JSON.parse(content);
+
+    await new Promise((r) => setTimeout(r, 2000 + Math.floor(Math.random() * 4000)));
+
+    const { data: inserted, error } = await supabaseAdmin
+      .from('social_posts')
+      .insert({
+        session_id: sessionId,
+        platform: 'x_twitter',
+        author_handle: post.author_handle || '@consequence_npc',
+        author_display_name: post.author_display_name || 'Observer',
+        author_type: post.author_type || 'npc_public',
+        content: post.content,
+        hashtags: (post.content as string).match(/#\w+/g) || [],
+        sentiment: sentiment,
+        like_count: 0,
+        repost_count: 0,
+        reply_count: 0,
+        view_count: 0,
+        content_flags: {},
+        virality_score: isPositive ? 40 : 60,
+      })
+      .select()
+      .single();
+
+    if (!error && inserted) {
+      getWebSocketService().broadcastToSession(sessionId, {
+        type: 'social_post.created',
+        data: { post: inserted },
+        timestamp: new Date().toISOString(),
+      });
+
+      await supabaseAdmin.from('session_events').insert({
+        session_id: sessionId,
+        event_type: 'consequence_inject',
+        description: `Consequence: ${triggerId} - ${isPositive ? 'positive' : 'negative'}`,
+        metadata: {
+          trigger_id: triggerId,
+          is_positive: isPositive,
+          post_id: inserted.id,
+          post_content: post.content,
+          consequence_description: description,
+        },
+      });
+
+      logger.info(
+        { sessionId, triggerId, isPositive, postId: inserted.id },
+        'Consequence inject fired',
+      );
+    }
+  } catch (err) {
+    logger.warn({ err, sessionId, triggerId }, 'Consequence inject generation failed');
+  }
+}
