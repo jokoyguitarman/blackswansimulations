@@ -432,8 +432,8 @@ export default function TrainerSimDashboard() {
       'social_posts.engagement_update',
     ],
     onEvent: (evt) => {
-      if (evt.type === 'social_state.updated' && evt.payload) {
-        setSocialState(evt.payload as unknown as SocialState);
+      if (evt.type === 'social_state.updated' && evt.data) {
+        setSocialState(evt.data as unknown as SocialState);
       } else {
         loadPosts();
         loadGradedReplies();
