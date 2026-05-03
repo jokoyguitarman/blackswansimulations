@@ -1054,6 +1054,7 @@ export const SessionView = () => {
     if (
       session &&
       (session as unknown as Record<string, unknown>).sim_mode === 'social_media' &&
+      session.status === 'in_progress' &&
       id
     ) {
       navigate(`/sim/${id}/device`, { replace: true });
