@@ -170,6 +170,9 @@ export async function generateAmbientPosts(sessionId: string): Promise<void> {
     loadDesignedPersonas(initialState, sessionId);
 
     const sentiment = await computeSessionSentiment(sessionId);
+    const socialState = ((session.current_state || {}) as Record<string, unknown>).social_state as
+      | Record<string, unknown>
+      | undefined;
 
     const { data: recentPosts } = await supabaseAdmin
       .from('social_posts')
@@ -195,7 +198,20 @@ export async function generateAmbientPosts(sessionId: string): Promise<void> {
       `You generate realistic social media posts for a crisis simulation. Make the feed feel ALIVE.
 
 THE CRISIS: ${String(scenario.description).substring(0, 300)}
-Sentiment: ${sentiment.overall}/100 (${sentiment.trend}). Elapsed: ${elapsedMinutes}min.
+Current situation:
+- Overall sentiment: ${socialState?.sentiment_score ?? sentiment.overall}/100
+- Public trust: ${socialState?.public_trust ?? 50}/100
+- Community safety: ${socialState?.community_safety ?? 40}/100
+- Narrative control: ${socialState?.narrative_control ?? 30}/100
+- Escalation risk: ${socialState?.escalation_risk ?? 20}/100
+- Unaddressed hate posts: ${socialState?.unaddressed_hate_count ?? 0}
+- Rally/violence calls active: ${socialState?.rally_call_active ? 'YES' : 'no'}
+
+${Number(socialState?.narrative_control ?? 30) < 30 ? 'NARRATIVE CONTROL IS LOW: Generate more hate posts and misinformation spreading. The response team is losing control of the conversation.' : ''}
+${Number(socialState?.community_safety ?? 40) < 30 ? 'COMMUNITY SAFETY IS LOW: Generate fear posts from targeted community members reporting harassment and feeling unsafe.' : ''}
+${Number(socialState?.escalation_risk ?? 20) > 70 ? 'ESCALATION RISK IS HIGH: Generate posts organizing real-world action, sharing locations, citizen patrol calls.' : ''}
+${Number(socialState?.narrative_control ?? 30) > 60 ? 'NARRATIVE IS STABILIZING: Reduce hate post frequency. More neutral and supportive voices emerging.' : ''}
+Elapsed: ${elapsedMinutes}min.
 
 ${npcList ? `KNOWN USERS (use these OR create new ones):\n${npcList}\n` : ''}
 

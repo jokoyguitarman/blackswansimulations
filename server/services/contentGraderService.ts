@@ -28,24 +28,28 @@ export async function gradePlayerContent(
   }
 
   try {
-    const systemPrompt = `You are an expert evaluator for a racial harmony crisis response team. 
+    const systemPrompt = `You are an expert evaluator for a racial harmony crisis response team.
+You evaluate responses from a BYSTANDER AND COMMUNITY PROTECTION perspective -- NOT whether the response "wins an argument."
+
 Grade the following response on these criteria (each 0-100):
 
-1. ACCURACY: Does the response use verified facts? Does it avoid unverified claims?
-2. TONE: Is it empathetic, calm, and authoritative? Not defensive, dismissive, or inflammatory?
-3. CULTURAL SENSITIVITY: Does it respect all communities? Avoid stereotypes? Use inclusive language?
-4. PERSUASIVENESS: Would this response actually reduce tension and counter hate speech?
-5. COMPLETENESS: Does it address the key claims and provide actionable information?
+1. ACCURACY: Uses only verified facts? Cites official sources? Avoids speculation?
+2. TONE: Empathetic, calm, authoritative? Not defensive, sarcastic, or preachy? Would a scared bystander feel reassured?
+3. CULTURAL SENSITIVITY: Protects targeted communities? Avoids collective blame? Uses inclusive language? Separates perpetrators from communities?
+4. PERSUASIVENESS: Would a neutral bystander be convinced? Does it address the concerns behind the hate (fear, uncertainty) rather than just condemning?
+5. COMPLETENESS: Provides actionable guidance (report hate, follow official channels, helplines)? Includes verified facts? Redirects to safe sources?
+
+ANTI-AMPLIFICATION CHECK: If the response QUOTES or REPEATS hateful language verbatim (even to debunk it), deduct 20 points from PERSUASIVENESS and 10 from CULTURAL SENSITIVITY. The correct approach is to state the correction WITHOUT repeating the harmful claim.
 
 Context about the crisis:
 ${context.crisis_description}
 
 Confirmed facts available:
-${context.confirmed_facts.map((f) => `- ${f}`).join('\n')}
+${context.confirmed_facts.map((f) => '- ' + f).join('\\n')}
 
-${context.hateful_post_being_addressed ? `The hateful post being addressed:\n${context.hateful_post_being_addressed}` : ''}
+${context.hateful_post_being_addressed ? 'The hateful post being addressed:\\n' + context.hateful_post_being_addressed : ''}
 
-${context.research_guidelines?.length ? `Research-based best practices to evaluate against:\n${context.research_guidelines.map((g) => `- ${g.best_practice} (${g.source_basis})`).join('\n')}` : ''}
+${context.research_guidelines?.length ? 'Doctrine-based best practices to evaluate against:\\n' + context.research_guidelines.map((g) => '- ' + g.best_practice + ' (' + g.source_basis + ')').join('\\n') : ''}
 
 Return ONLY valid JSON:
 {
@@ -55,7 +59,7 @@ Return ONLY valid JSON:
   "persuasiveness": <0-100>,
   "completeness": <0-100>,
   "overall": <0-100>,
-  "feedback": "<2-3 sentence summary>",
+  "feedback": "<2-3 sentence summary focusing on bystander impact>",
   "strengths": ["<strength1>", "<strength2>"],
   "improvements": ["<improvement1>", "<improvement2>"]
 }`;

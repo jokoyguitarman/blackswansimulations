@@ -29,6 +29,7 @@ import {
   type ConditionsToCancel,
 } from './conditionEvaluatorService.js';
 import { shouldCancelSocialInject } from './socialCrisisAiService.js';
+import { computeSocialState } from './socialStateUpdaterService.js';
 import { computeSessionSentiment } from './sentimentSimService.js';
 import { checkResponseDeadlines } from './responseTrackerService.js';
 import { generateAmbientPosts } from './ambientContentService.js';
@@ -756,6 +757,15 @@ export class InjectSchedulerService {
             'Failed to auto-publish inject',
           );
         }
+      }
+    }
+
+    // --- Social media crisis: compute social state before condition evaluation ---
+    if (session.sim_mode === 'social_media') {
+      try {
+        await computeSocialState(session.id, elapsedMinutes);
+      } catch (stateErr) {
+        logger.warn({ err: stateErr, sessionId: session.id }, 'Social state computation error');
       }
     }
 

@@ -53,10 +53,50 @@ export interface SocialMediaAARData {
     actions_by_type: Record<string, number>;
     avg_internal_messages_before_response: number;
   };
+  strategic_scorecard: {
+    tier1_count: number;
+    tier2_count: number;
+    tier3_count: number;
+    strategic_ratio: number;
+    total_actions: number;
+  };
+  sentiment_dimensions: {
+    final_public_trust: number;
+    final_community_safety: number;
+    final_narrative_control: number;
+    final_escalation_risk: number;
+    final_overall: number;
+  };
+  doctrine_compliance: {
+    benchmarks_met: number;
+    benchmarks_missed: number;
+    benchmarks_total: number;
+    details: Array<{
+      action: string;
+      status: string;
+      timing: string;
+    }>;
+  };
 }
 
+const TIER1_ACTIONS = ['reply_posted', 'post_liked', 'post_reposted', 'post_flagged', 'news_read'];
+const TIER2_ACTIONS = [
+  'post_created',
+  'draft_created',
+  'draft_published',
+  'fact_checked',
+  'email_read',
+];
+const TIER3_ACTIONS = [
+  'email_sent',
+  'escalated',
+  'draft_submitted_for_approval',
+  'draft_approved',
+  'call_answered',
+];
+
 export async function buildSocialMediaAARData(sessionId: string): Promise<SocialMediaAARData> {
-  const [postsResult, emailsResult, actionsResult, sentimentResult, messagesResult] =
+  const [postsResult, emailsResult, actionsResult, sentimentResult, messagesResult, sessionResult] =
     await Promise.all([
       supabaseAdmin
         .from('social_posts')
@@ -79,6 +119,11 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
         .eq('session_id', sessionId)
         .order('recorded_at', { ascending: true }),
       supabaseAdmin.from('chat_messages').select('id').eq('session_id', sessionId),
+      supabaseAdmin
+        .from('sessions')
+        .select('current_state, scenario_data')
+        .eq('id', sessionId)
+        .single(),
     ]);
 
   const posts = postsResult.data || [];
@@ -152,6 +197,70 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
 
   const outboundEmails = emails.filter((e: Record<string, unknown>) => e.direction === 'outbound');
 
+  const session = sessionResult.data as Record<string, unknown> | null;
+  const currentState = (session?.current_state || {}) as Record<string, unknown>;
+  const socialState = (currentState.social_state || {}) as Record<string, unknown>;
+  const scenarioData = (session?.scenario_data || {}) as Record<string, unknown>;
+  const scenario = (scenarioData.scenario || {}) as Record<string, unknown>;
+  const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
+
+  let tier1 = 0,
+    tier2 = 0,
+    tier3 = 0;
+  for (const action of actions) {
+    const type = action.action_type as string;
+    if (TIER1_ACTIONS.includes(type)) tier1++;
+    else if (TIER2_ACTIONS.includes(type)) tier2++;
+    else if (TIER3_ACTIONS.includes(type)) tier3++;
+  }
+  const totalTiered = tier1 + tier2 + tier3;
+  const strategicRatio =
+    totalTiered > 0 ? Math.round(((tier2 + tier3) / totalTiered) * 100) / 100 : 0;
+
+  const benchmarks = (initialState.strategic_benchmarks || []) as Array<Record<string, unknown>>;
+  const sessionStartedAt = session
+    ? new Date(((session as Record<string, unknown>).created_at as string) || 0)
+    : null;
+  const doctrineDetails: Array<{ action: string; status: string; timing: string }> = [];
+  let benchmarksMet = 0;
+  let benchmarksMissed = 0;
+  for (const bm of benchmarks) {
+    const detectionType = bm.detection_action_type as string;
+    const timingLimit = bm.timing_benchmark_minutes as number | null;
+    const matchingAction = actions.find(
+      (a: Record<string, unknown>) => a.action_type === detectionType,
+    );
+    if (matchingAction) {
+      const actionTime = new Date(matchingAction.created_at as string);
+      const elapsedMin = sessionStartedAt
+        ? (actionTime.getTime() - sessionStartedAt.getTime()) / 60000
+        : 0;
+      const withinTime = timingLimit == null || elapsedMin <= timingLimit;
+      if (withinTime) {
+        benchmarksMet++;
+        doctrineDetails.push({
+          action: bm.description as string,
+          status: 'met',
+          timing: `${Math.round(elapsedMin)}min`,
+        });
+      } else {
+        benchmarksMissed++;
+        doctrineDetails.push({
+          action: bm.description as string,
+          status: 'late',
+          timing: `${Math.round(elapsedMin)}min (limit: ${timingLimit}min)`,
+        });
+      }
+    } else {
+      benchmarksMissed++;
+      doctrineDetails.push({
+        action: bm.description as string,
+        status: 'missed',
+        timing: timingLimit != null ? `limit was ${timingLimit}min` : 'no limit',
+      });
+    }
+  }
+
   return {
     response_timeline: responseTimeline,
     sop_compliance: {
@@ -193,6 +302,26 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
       total_player_actions: actions.length,
       actions_by_type: actionsByType,
       avg_internal_messages_before_response: 0,
+    },
+    strategic_scorecard: {
+      tier1_count: tier1,
+      tier2_count: tier2,
+      tier3_count: tier3,
+      strategic_ratio: strategicRatio,
+      total_actions: totalTiered,
+    },
+    sentiment_dimensions: {
+      final_public_trust: (socialState.public_trust as number) ?? 50,
+      final_community_safety: (socialState.community_safety as number) ?? 50,
+      final_narrative_control: (socialState.narrative_control as number) ?? 50,
+      final_escalation_risk: (socialState.escalation_risk as number) ?? 50,
+      final_overall: (socialState.sentiment_score as number) ?? 50,
+    },
+    doctrine_compliance: {
+      benchmarks_met: benchmarksMet,
+      benchmarks_missed: benchmarksMissed,
+      benchmarks_total: benchmarks.length,
+      details: doctrineDetails,
     },
   };
 }

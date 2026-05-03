@@ -96,6 +96,21 @@ export interface ResearchGuidelines {
   };
 }
 
+export interface StrategicActionBenchmark {
+  action_id: string;
+  description: string;
+  tier: 1 | 2 | 3;
+  team: string;
+  doctrine_source: string;
+  detection_action_type: string;
+  timing_benchmark_minutes: number | null;
+  sentiment_dimension: string;
+  impact_if_done: number;
+  impact_if_missed: number;
+  consequence_if_done: string;
+  consequence_if_missed: string;
+}
+
 export interface SentimentCurve {
   baseline: number;
   crisis_drop: number;
@@ -148,6 +163,7 @@ export interface SocialCrisisPayload {
       sentiment_curve: SentimentCurve;
       affected_communities: string[];
       research_guidelines: ResearchGuidelines;
+      strategic_benchmarks?: StrategicActionBenchmark[];
     };
   };
   teams: TeamDef[];
@@ -638,6 +654,39 @@ export async function researchBestPractices(
     per_team: teamResults,
     group_wide: groupResult,
   };
+}
+
+// ─── Stage 5b: Strategic Action Benchmarks ──────────────────────────────────
+
+export async function generateStrategicBenchmarks(
+  crisisType: string,
+  context: string,
+  teams: TeamDef[],
+): Promise<StrategicActionBenchmark[]> {
+  const result = await callAI(
+    `You are generating strategic action benchmarks for a social media crisis simulation. These benchmarks define what the response team SHOULD do (based on crisis communication doctrine) and when they should do it.
+
+For each benchmark, specify:
+- What action is expected
+- Which tier it belongs to (1=reactive like flagging, 2=strategic like drafting statements, 3=advanced like contacting leaders)
+- Which team is primarily responsible
+- What player_action type would detect it (post_flagged, email_sent, draft_published, fact_checked, post_created, escalated, etc.)
+- Timing benchmark in minutes from session start (when should this be done by?)
+- Which sentiment dimension it affects (public_trust, community_safety, narrative_control, escalation_risk)
+- Numeric impact (+/- points on that dimension)
+- Narrative consequence if done or missed (what NPC posts as a result)
+
+Teams: ${teams.map((t) => t.team_name).join(', ')}
+
+Generate 10-15 benchmarks covering the full response lifecycle.
+
+Return ONLY valid JSON:
+{ "benchmarks": [{ "action_id": "monitor_hate", "description": "Monitor and flag hate speech", "tier": 1, "team": "Social Media Monitoring", "doctrine_source": "UNESCO Handbook", "detection_action_type": "post_flagged", "timing_benchmark_minutes": 5, "sentiment_dimension": "narrative_control", "impact_if_done": 5, "impact_if_missed": -3, "consequence_if_done": "Monitoring team has identified key threats", "consequence_if_missed": "Hate speech is spreading unchecked" }] }`,
+    `Crisis: ${crisisType}\nContext: ${context}`,
+    8000,
+  );
+
+  return (result?.benchmarks as StrategicActionBenchmark[]) || [];
 }
 
 // ─── Stage 6: Generate SOP from Research ────────────────────────────────────

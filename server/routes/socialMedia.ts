@@ -129,6 +129,72 @@ router.post(
         await recordPlayerAction(session_id, user.id, 'post_created', post.id, content);
       }
 
+      // Auto-grade replies to harmful posts
+      if (reply_to_post_id) {
+        void (async () => {
+          try {
+            const { data: parentPost } = await supabaseAdmin
+              .from('social_posts')
+              .select('content, content_flags, session_id')
+              .eq('id', reply_to_post_id)
+              .single();
+
+            if (!parentPost) return;
+            const flags = (parentPost.content_flags || {}) as Record<string, unknown>;
+            const isHarmful = !!(
+              flags.is_hate_speech ||
+              flags.is_misinformation ||
+              flags.is_racist ||
+              flags.incites_violence
+            );
+            if (!isHarmful) return;
+
+            const { data: sessionData } = await supabaseAdmin
+              .from('sessions')
+              .select('scenario_id')
+              .eq('id', session_id)
+              .single();
+            if (!sessionData) return;
+
+            const { data: scenario } = await supabaseAdmin
+              .from('scenarios')
+              .select('description, initial_state')
+              .eq('id', sessionData.scenario_id)
+              .single();
+            if (!scenario) return;
+
+            const is = (scenario.initial_state || {}) as Record<string, unknown>;
+            const factSheet = (is.fact_sheet || {}) as Record<string, unknown>;
+            const confirmedFacts = (factSheet.confirmed_facts || []) as string[];
+            const researchGuidelines = ((is.research_guidelines as Record<string, unknown>)
+              ?.per_team || []) as Array<{
+              guidelines: Array<{ best_practice: string; source_basis: string }>;
+            }>;
+            const flatGuidelines = researchGuidelines.flatMap((t) => t.guidelines || []);
+
+            const { gradePlayerContent } = await import('../services/contentGraderService.js');
+            const grade = await gradePlayerContent(content, {
+              crisis_description: scenario.description || '',
+              confirmed_facts: confirmedFacts,
+              hateful_post_being_addressed: String(parentPost.content || ''),
+              research_guidelines: flatGuidelines.slice(0, 5),
+            });
+
+            await supabaseAdmin
+              .from('social_posts')
+              .update({ sop_compliance_score: grade })
+              .eq('id', post.id);
+
+            logger.info(
+              { postId: post.id, overall: grade.overall },
+              'Auto-graded reply to harmful post',
+            );
+          } catch (gradeErr) {
+            logger.warn({ err: gradeErr }, 'Auto-grade failed (non-critical)');
+          }
+        })();
+      }
+
       getWebSocketService().broadcastToSession(session_id, {
         type: 'social_post.created',
         data: { post },
