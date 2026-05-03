@@ -229,7 +229,7 @@ router.post(
             ct,
             cx,
             ts as TeamDef[],
-            sl as Record<string, SocialInject[]>,
+            sl as unknown as Record<string, SocialInject[]>,
             onComplete,
           );
         },
