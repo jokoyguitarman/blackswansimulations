@@ -42,6 +42,8 @@ interface SocialPost {
   platform: string;
   virality_score: number;
   reply_to_post_id: string | null;
+  liked_by_me?: boolean;
+  flagged_by_me?: boolean;
 }
 
 function formatCount(n: number): string {
@@ -166,6 +168,15 @@ export default function SocialFeedApp() {
   }
 
   async function handleLike(postId: string) {
+    const post = posts.find((p) => p.id === postId);
+    if (post?.liked_by_me) return;
+
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId ? { ...p, like_count: p.like_count + 1, liked_by_me: true } : p,
+      ),
+    );
+
     try {
       const headers = await getAuthHeaders();
       await fetch(apiUrl(`/api/social/posts/${postId}/like`), {
@@ -173,11 +184,12 @@ export default function SocialFeedApp() {
         headers,
         body: JSON.stringify({ session_id: sessionId }),
       });
-      setPosts((prev) =>
-        prev.map((p) => (p.id === postId ? { ...p, like_count: p.like_count + 1 } : p)),
-      );
     } catch {
-      /* ignore */
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId ? { ...p, like_count: p.like_count - 1, liked_by_me: false } : p,
+        ),
+      );
     }
   }
 
@@ -197,17 +209,23 @@ export default function SocialFeedApp() {
   }
 
   async function handleFlag(postId: string) {
+    const post = posts.find((p) => p.id === postId);
+    if (post?.flagged_by_me) return;
+
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId ? { ...p, flagged_by_me: true, is_flagged_by_player: true } : p,
+      ),
+    );
+
     try {
       const headers = await getAuthHeaders();
       await fetch(apiUrl(`/api/social/posts/${postId}/flag`), {
         method: 'POST',
         headers,
       });
-      setPosts((prev) =>
-        prev.map((p) => (p.id === postId ? { ...p, is_flagged_by_player: true } : p)),
-      );
     } catch {
-      /* ignore */
+      setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, flagged_by_me: false } : p)));
     }
   }
 
@@ -781,15 +799,15 @@ export default function SocialFeedApp() {
                             e.stopPropagation();
                             handleLike(post.id);
                           }}
-                          className="flex items-center gap-1.5 group transition-colors hover:text-[#F91880]"
+                          className={`flex items-center gap-1.5 group transition-colors ${post.liked_by_me ? 'text-[#F91880]' : 'hover:text-[#F91880]'}`}
                         >
                           <div className="p-1.5 rounded-full group-hover:bg-[#F91880]/10 transition-colors">
                             <svg
                               width="16"
                               height="16"
                               viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
+                              fill={post.liked_by_me ? '#F91880' : 'none'}
+                              stroke={post.liked_by_me ? '#F91880' : 'currentColor'}
                               strokeWidth="1.8"
                               strokeLinecap="round"
                               strokeLinejoin="round"
@@ -827,15 +845,15 @@ export default function SocialFeedApp() {
                             e.stopPropagation();
                             handleFlag(post.id);
                           }}
-                          className="flex items-center group transition-colors hover:text-[#F59E0B]"
+                          className={`flex items-center group transition-colors ${post.flagged_by_me ? 'text-[#F59E0B]' : 'hover:text-[#F59E0B]'}`}
                         >
                           <div className="p-1.5 rounded-full group-hover:bg-[#F59E0B]/10 transition-colors">
                             <svg
                               width="16"
                               height="16"
                               viewBox="0 0 24 24"
-                              fill={post.is_flagged_by_player ? '#F59E0B' : 'none'}
-                              stroke={post.is_flagged_by_player ? '#F59E0B' : 'currentColor'}
+                              fill={post.flagged_by_me ? '#F59E0B' : 'none'}
+                              stroke={post.flagged_by_me ? '#F59E0B' : 'currentColor'}
                               strokeWidth="1.8"
                               strokeLinecap="round"
                               strokeLinejoin="round"

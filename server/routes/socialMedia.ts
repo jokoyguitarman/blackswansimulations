@@ -18,23 +18,39 @@ const router = Router();
 router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
+    const user = req.user!;
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 50;
     const offset = (page - 1) * limit;
 
-    const { data, error, count } = await supabaseAdmin
-      .from('social_posts')
-      .select('*', { count: 'exact' })
-      .eq('session_id', sessionId)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const [postsResult, likesResult, flagsResult] = await Promise.all([
+      supabaseAdmin
+        .from('social_posts')
+        .select('*', { count: 'exact' })
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1),
+      supabaseAdmin.from('social_post_likes').select('post_id').eq('player_id', user.id),
+      supabaseAdmin.from('social_post_flags').select('post_id').eq('player_id', user.id),
+    ]);
+
+    const { data, error, count } = postsResult;
 
     if (error) {
       logger.error({ error, sessionId }, 'Failed to fetch social posts');
       return res.status(500).json({ error: 'Failed to fetch social posts' });
     }
 
-    res.json({ data, count, page, limit });
+    const likedPostIds = new Set((likesResult.data || []).map((l) => l.post_id));
+    const flaggedPostIds = new Set((flagsResult.data || []).map((f) => f.post_id));
+
+    const enrichedData = (data || []).map((post) => ({
+      ...post,
+      liked_by_me: likedPostIds.has(post.id),
+      flagged_by_me: flaggedPostIds.has(post.id),
+    }));
+
+    res.json({ data: enrichedData, count, page, limit });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /social/posts/session/:sessionId');
     res.status(500).json({ error: 'Internal server error' });
@@ -214,19 +230,32 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
     const user = req.user!;
     const { postId } = req.params;
 
-    const { data } = await supabaseAdmin
+    const { data: existing } = await supabaseAdmin
+      .from('social_post_likes')
+      .select('id')
+      .eq('post_id', postId)
+      .eq('player_id', user.id)
+      .single();
+
+    if (existing) {
+      return res.json({ success: true, already_liked: true });
+    }
+
+    await supabaseAdmin.from('social_post_likes').insert({ post_id: postId, player_id: user.id });
+
+    const { data: post } = await supabaseAdmin
       .from('social_posts')
       .select('like_count, session_id')
       .eq('id', postId)
       .single();
 
-    if (data) {
+    if (post) {
       await supabaseAdmin
         .from('social_posts')
-        .update({ like_count: (data.like_count || 0) + 1 })
+        .update({ like_count: (post.like_count || 0) + 1 })
         .eq('id', postId);
 
-      await recordPlayerAction(data.session_id, user.id, 'post_liked', postId, null);
+      await recordPlayerAction(post.session_id, user.id, 'post_liked', postId, null);
     }
 
     res.json({ success: true });
@@ -241,6 +270,17 @@ router.post('/posts/:postId/flag', requireAuth, async (req: AuthenticatedRequest
     const user = req.user!;
     const { postId } = req.params;
 
+    const { data: existing } = await supabaseAdmin
+      .from('social_post_flags')
+      .select('id')
+      .eq('post_id', postId)
+      .eq('player_id', user.id)
+      .single();
+
+    if (existing) {
+      return res.json({ success: true, already_flagged: true });
+    }
+
     const { data: post } = await supabaseAdmin
       .from('social_posts')
       .select('session_id')
@@ -248,6 +288,8 @@ router.post('/posts/:postId/flag', requireAuth, async (req: AuthenticatedRequest
       .single();
 
     if (!post) return res.status(404).json({ error: 'Post not found' });
+
+    await supabaseAdmin.from('social_post_flags').insert({ post_id: postId, player_id: user.id });
 
     await supabaseAdmin
       .from('social_posts')
