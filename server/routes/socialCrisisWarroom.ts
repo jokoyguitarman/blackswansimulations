@@ -18,6 +18,7 @@ import {
   type ResearchGuidelines,
 } from '../services/socialCrisisGeneratorService.js';
 import { persistSocialCrisisScenario } from '../services/socialCrisisPersistenceService.js';
+import { getOrResearchTeamDoctrines } from '../services/doctrineCacheService.js';
 
 const router = Router();
 
@@ -218,11 +219,20 @@ router.post(
 
       const { crisis_type, context, teams, team_storylines } = req.body;
 
-      const research = await researchBestPractices(
+      const research = await getOrResearchTeamDoctrines(
+        teams as TeamDef[],
         crisis_type,
         context,
-        teams as TeamDef[],
-        team_storylines as Record<string, SocialInject[]>,
+        team_storylines as Record<string, Array<Record<string, unknown>>>,
+        async (ct, cx, ts, sl, onComplete) => {
+          return researchBestPractices(
+            ct,
+            cx,
+            ts as TeamDef[],
+            sl as Record<string, SocialInject[]>,
+            onComplete,
+          );
+        },
         (teamName: string) => {
           res.write(JSON.stringify({ type: 'team_research_complete', team: teamName }) + '\n');
         },
