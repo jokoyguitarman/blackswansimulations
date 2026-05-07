@@ -130,7 +130,7 @@ router.get('/posts/:postId', requireAuth, async (req: AuthenticatedRequest, res)
 const createPostSchema = z.object({
   body: z.object({
     session_id: z.string().uuid(),
-    content: z.string().min(1).max(500),
+    content: z.string().min(1).max(2000),
     reply_to_post_id: z.string().uuid().optional(),
     platform: z
       .enum(['x_twitter', 'facebook', 'instagram', 'tiktok', 'reddit', 'forum'])
@@ -346,6 +346,7 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
   try {
     const user = req.user!;
     const { postId } = req.params;
+    const reactionType = req.body?.reaction_type || 'like';
 
     const { data: existing } = await supabaseAdmin
       .from('social_post_likes')
@@ -358,7 +359,9 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
       return res.json({ success: true, already_liked: true });
     }
 
-    await supabaseAdmin.from('social_post_likes').insert({ post_id: postId, player_id: user.id });
+    await supabaseAdmin
+      .from('social_post_likes')
+      .insert({ post_id: postId, player_id: user.id, reaction_type: reactionType });
 
     const { data: post } = await supabaseAdmin
       .from('social_posts')
@@ -372,12 +375,38 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
         .update({ like_count: (post.like_count || 0) + 1 })
         .eq('id', postId);
 
-      await recordPlayerAction(post.session_id, user.id, 'post_liked', postId, null);
+      await recordPlayerAction(post.session_id, user.id, 'post_liked', postId, null, {
+        reaction_type: reactionType,
+      });
     }
 
     res.json({ success: true });
   } catch (err) {
     logger.error({ error: err }, 'Error in POST /social/posts/:postId/like');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/posts/:postId/reactions', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { postId } = req.params;
+
+    const { data, error } = await supabaseAdmin
+      .from('social_post_likes')
+      .select('reaction_type')
+      .eq('post_id', postId);
+
+    if (error) return res.status(500).json({ error: 'Failed to fetch reactions' });
+
+    const counts: Record<string, number> = {};
+    for (const row of data || []) {
+      const rt = (row.reaction_type as string) || 'like';
+      counts[rt] = (counts[rt] || 0) + 1;
+    }
+
+    res.json({ data: counts });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /social/posts/:postId/reactions');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

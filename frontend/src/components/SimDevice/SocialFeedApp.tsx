@@ -122,7 +122,9 @@ export default function SocialFeedApp() {
     if (!sessionId) return;
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(apiUrl(`/api/social/posts/session/${sessionId}`), { headers });
+      const res = await fetch(apiUrl(`/api/social/posts/session/${sessionId}?platform=x_twitter`), {
+        headers,
+      });
       const result = await res.json();
       if (result.data) setPosts(result.data);
     } catch {
@@ -175,6 +177,7 @@ export default function SocialFeedApp() {
         setPosts((prev) => prev.map((p) => (p.id === post_id ? { ...p, media_urls } : p)));
       } else if (event.type === 'social_post.created') {
         const newPost = (event.data as { post: SocialPost }).post;
+        if (newPost.platform && newPost.platform !== 'x_twitter') return;
 
         if (newPost.reply_to_post_id) {
           setPosts((prev) =>

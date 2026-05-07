@@ -331,9 +331,9 @@ Elapsed: ${elapsedMinutes}min
 
 ${npcList ? `KNOWN USERS (use these OR create new ones):\n${npcList}\n` : ''}
 
-Generate 1-2 Facebook posts. These should feel different from what's on Twitter.
+Generate 2-3 Facebook posts. These should feel different from what's on Twitter. Facebook posts are longer (3-6 sentences), more personal, and more emotional.
 
-For posts that would naturally have images (sharing a news article photo, posting about a gathering, sharing a screenshot), include an "image_prompt" field describing the image. Facebook posts frequently include images. Leave as "" for text-only posts.
+IMPORTANT: Facebook is a very visual platform. At least 2 out of 3 posts MUST include an "image_prompt" field with a description of the photo, video thumbnail, or shared article image. Examples: "A news article thumbnail showing emergency vehicles at a scene", "A candid phone photo of a community gathering", "A screenshot of a news headline about the incident", "A video thumbnail of a bystander filming police response". Only leave image_prompt as "" for purely text-based status updates.
 
 Return ONLY valid JSON:
 { "posts": [{ "author_handle": "@user", "author_display_name": "Name", "author_type": "npc_public", "content": "text", "sentiment": "neutral|negative|supportive|hateful|inflammatory", "virality_score": 5, "platform": "facebook", "image_prompt": "" }] }`,

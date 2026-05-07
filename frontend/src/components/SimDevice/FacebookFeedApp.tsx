@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { supabase } from '../../lib/supabase';
@@ -46,15 +46,13 @@ const FORMAT_BADGE: Record<string, { label: string; bg: string; fg: string }> = 
   personal_story: { label: 'Personal Story', bg: '#FFF3E0', fg: '#E65100' },
 };
 
-type Reaction = 'like' | 'love' | 'haha' | 'wow' | 'angry' | 'sad';
-
-const REACTIONS: Array<{ type: Reaction; emoji: string; label: string }> = [
-  { type: 'like', emoji: '👍', label: 'Like' },
-  { type: 'love', emoji: '❤️', label: 'Love' },
-  { type: 'haha', emoji: '😂', label: 'Haha' },
-  { type: 'wow', emoji: '😮', label: 'Wow' },
-  { type: 'angry', emoji: '😡', label: 'Angry' },
-  { type: 'sad', emoji: '😢', label: 'Sad' },
+const REACTIONS = [
+  { type: 'like', emoji: '👍', bg: '#1877F2' },
+  { type: 'love', emoji: '❤️', bg: '#F33E58' },
+  { type: 'haha', emoji: '😂', bg: '#F7B928' },
+  { type: 'wow', emoji: '😮', bg: '#F7B928' },
+  { type: 'angry', emoji: '😡', bg: '#E9710F' },
+  { type: 'sad', emoji: '😢', bg: '#F7B928' },
 ];
 
 interface SocialPost {
@@ -90,15 +88,33 @@ function formatCount(n: number): string {
   return String(n);
 }
 
+function getAvatarColor(name: string): string {
+  const colors = ['#1877F2', '#42B72A', '#F02849', '#FF6D00', '#8B5CF6', '#0EA5E9'];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function getReactionEmojis(likeCount: number): string[] {
+  if (likeCount === 0) return [];
+  if (likeCount < 10) return ['👍'];
+  if (likeCount < 50) return ['👍', '❤️'];
+  return ['👍', '❤️', '😮'];
+}
+
 export default function FacebookFeedApp() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const [posts, setPosts] = useState<SocialPost[]>([]);
+  const [postReplies, setPostReplies] = useState<Record<string, SocialPost[]>>({});
   const [loading, setLoading] = useState(true);
   const [composing, setComposing] = useState(false);
   const [composeText, setComposeText] = useState('');
   const [selectedFormat, setSelectedFormat] = useState<PostFormat>('text');
   const [showReactions, setShowReactions] = useState<string | null>(null);
+  const [commentText, setCommentText] = useState<Record<string, string>>({});
+  const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set());
+  const reactionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadPosts = useCallback(async () => {
     if (!sessionId) return;
@@ -108,12 +124,22 @@ export default function FacebookFeedApp() {
         headers,
       });
       const result = await res.json();
-      if (result.data) setPosts(result.data);
+      if (result.data) {
+        const topLevel = (result.data as SocialPost[]).filter((p) => !p.reply_to_post_id);
+        const replies = (result.data as SocialPost[]).filter((p) => !!p.reply_to_post_id);
+        setPosts(topLevel);
+        const replyMap: Record<string, SocialPost[]> = {};
+        for (const r of replies) {
+          const pid = r.reply_to_post_id!;
+          if (!replyMap[pid]) replyMap[pid] = [];
+          replyMap[pid].push(r);
+        }
+        setPostReplies(replyMap);
+      }
     } catch {
       /* ignore */
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   }, [sessionId]);
 
   useEffect(() => {
@@ -159,7 +185,21 @@ export default function FacebookFeedApp() {
       } else if (event.type === 'social_post.created') {
         const newPost = (event.data as { post: SocialPost }).post;
         if (newPost.platform !== 'facebook') return;
-        if (!newPost.reply_to_post_id) {
+        if (newPost.reply_to_post_id) {
+          setPostReplies((prev) => {
+            const pid = newPost.reply_to_post_id!;
+            const existing = prev[pid] || [];
+            if (existing.some((r) => r.id === newPost.id)) return prev;
+            return { ...prev, [pid]: [...existing, newPost] };
+          });
+          setPosts((prev) =>
+            prev.map((p) =>
+              p.id === newPost.reply_to_post_id
+                ? { ...p, reply_count: (p.reply_count || 0) + 1 }
+                : p,
+            ),
+          );
+        } else {
           setPosts((prev) => {
             if (prev.some((p) => p.id === newPost.id)) return prev;
             return [newPost, ...prev];
@@ -191,7 +231,7 @@ export default function FacebookFeedApp() {
     }
   }
 
-  async function handleLike(postId: string) {
+  async function handleReaction(postId: string, reactionType: string = 'like') {
     const post = posts.find((p) => p.id === postId);
     if (post?.liked_by_me) return;
     setPosts((prev) =>
@@ -204,7 +244,7 @@ export default function FacebookFeedApp() {
       await fetch(apiUrl(`/api/social/posts/${postId}/like`), {
         method: 'POST',
         headers,
-        body: JSON.stringify({ session_id: sessionId }),
+        body: JSON.stringify({ session_id: sessionId, reaction_type: reactionType }),
       });
     } catch {
       setPosts((prev) =>
@@ -229,16 +269,34 @@ export default function FacebookFeedApp() {
     }
   }
 
+  async function handleComment(postId: string) {
+    const text = commentText[postId]?.trim();
+    if (!text || !sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(apiUrl('/api/social/posts'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          session_id: sessionId,
+          content: text,
+          reply_to_post_id: postId,
+          platform: 'facebook',
+        }),
+      });
+      setCommentText((prev) => ({ ...prev, [postId]: '' }));
+    } catch {
+      /* ignore */
+    }
+  }
+
   async function handleFlag(postId: string) {
     const post = posts.find((p) => p.id === postId);
     if (post?.flagged_by_me) return;
     setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, flagged_by_me: true } : p)));
     try {
       const headers = await getAuthHeaders();
-      await fetch(apiUrl(`/api/social/posts/${postId}/flag`), {
-        method: 'POST',
-        headers,
-      });
+      await fetch(apiUrl(`/api/social/posts/${postId}/flag`), { method: 'POST', headers });
     } catch {
       setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, flagged_by_me: false } : p)));
     }
@@ -254,80 +312,201 @@ export default function FacebookFeedApp() {
     return `${Math.floor(hours / 24)}d`;
   }
 
-  function getAvatarColor(name: string): string {
-    const colors = ['#1877F2', '#42B72A', '#F02849', '#FF6D00', '#8B5CF6', '#0EA5E9'];
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    return colors[Math.abs(hash) % colors.length];
+  function getBadge(type: string): string | null {
+    if (type === 'npc_media' || type === 'official_account') return '✓';
+    if (type === 'npc_politician') return '🏛️';
+    if (type === 'npc_influencer') return '⭐';
+    return null;
   }
 
-  function getAuthorBadge(type: string): string | null {
-    switch (type) {
-      case 'npc_media':
-      case 'official_account':
-        return '✓';
-      case 'npc_politician':
-        return '🏛️';
-      case 'npc_influencer':
-        return '⭐';
-      default:
-        return null;
-    }
-  }
+  const maxChars = 2000;
 
   return (
-    <div className="h-full flex flex-col" style={{ backgroundColor: '#F0F2F5', color: '#050505' }}>
-      {/* Header */}
+    <div className="h-full flex flex-col" style={{ backgroundColor: '#F0F2F5' }}>
+      {/* ── Facebook Header ── */}
       <div
-        className="flex items-center justify-between px-4 flex-shrink-0"
-        style={{ height: 50, backgroundColor: '#FFFFFF', borderBottom: '1px solid #DADDE1' }}
+        style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid #DADDE1' }}
+        className="flex-shrink-0"
       >
-        <button
-          onClick={() => navigate(`/sim/${sessionId}/device/home`)}
-          className="w-8 h-8 flex items-center justify-center"
+        <div className="flex items-center justify-between px-3" style={{ height: 48 }}>
+          <span
+            className="text-[22px] font-bold"
+            style={{ color: '#1877F2', fontFamily: 'Helvetica, Arial, sans-serif' }}
+          >
+            facebook
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => navigate(`/sim/${sessionId}/device/social`)}
+              className="w-9 h-9 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: '#000' }}
+              title="Switch to X"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#FFF">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+              </svg>
+            </button>
+            <button
+              onClick={() => navigate(`/sim/${sessionId}/device/home`)}
+              className="w-9 h-9 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: '#E4E6EB' }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#050505"
+                strokeWidth="2"
+              >
+                <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Nav Icons */}
+        <div
+          className="flex items-center justify-around px-2 pb-1"
+          style={{ borderBottom: '2px solid transparent' }}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="#65676B">
-            <path d="M7.414 13l5.293 5.293a1 1 0 0 1-1.414 1.414l-7-7a1 1 0 0 1 0-1.414l7-7a1 1 0 1 1 1.414 1.414L7.414 11H20a1 1 0 1 1 0 2H7.414z" />
-          </svg>
-        </button>
-        <span className="text-[20px] font-bold" style={{ color: '#1877F2' }}>
-          facebook
-        </span>
-        <button
-          onClick={() => navigate(`/sim/${sessionId}/device/social`)}
-          className="w-8 h-8 flex items-center justify-center rounded-full"
-          style={{ backgroundColor: '#000000' }}
-          title="Switch to X"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="#FFFFFF">
-            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-          </svg>
-        </button>
+          {[
+            {
+              label: 'Home',
+              active: true,
+              icon: (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="#1877F2">
+                  <path d="M3 9.5L12 2l9 7.5V22H15v-6H9v6H3V9.5z" />
+                </svg>
+              ),
+            },
+            {
+              label: 'Friends',
+              active: false,
+              icon: (
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#65676B"
+                  strokeWidth="2"
+                >
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+                </svg>
+              ),
+            },
+            {
+              label: 'Watch',
+              active: false,
+              icon: (
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#65676B"
+                  strokeWidth="2"
+                >
+                  <rect x="2" y="7" width="20" height="15" rx="2" ry="2" />
+                  <polyline points="17 2 12 7 7 2" />
+                </svg>
+              ),
+            },
+            {
+              label: 'Notif',
+              active: false,
+              icon: (
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#65676B"
+                  strokeWidth="2"
+                >
+                  <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.73 21a2 2 0 01-3.46 0" />
+                </svg>
+              ),
+            },
+            {
+              label: 'Menu',
+              active: false,
+              icon: (
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#65676B"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+              ),
+            },
+          ].map((tab) => (
+            <div key={tab.label} className="flex flex-col items-center py-2 px-3 relative">
+              {tab.icon}
+              {tab.active && (
+                <div
+                  className="absolute bottom-0 left-0 right-0 h-[2px]"
+                  style={{ backgroundColor: '#1877F2' }}
+                />
+              )}
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Create Post Card */}
+      {/* ── Create Post Bar ── */}
       <div
-        className="mx-3 mt-3 px-4 py-3 rounded-lg"
-        style={{ backgroundColor: '#FFFFFF', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}
+        className="mx-0 mt-2 px-3 py-2.5"
+        style={{
+          backgroundColor: '#FFFFFF',
+          borderBottom: '1px solid #CED0D4',
+          borderTop: '1px solid #CED0D4',
+        }}
       >
-        <button onClick={() => setComposing(true)} className="w-full flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <div
-            className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
+            className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[15px] flex-shrink-0"
             style={{ backgroundColor: '#1877F2' }}
           >
             Y
           </div>
-          <div
-            className="flex-1 text-left px-3 py-2 rounded-full text-[15px]"
+          <button
+            onClick={() => setComposing(true)}
+            className="flex-1 text-left px-3.5 py-2 rounded-full text-[15px]"
             style={{ backgroundColor: '#F0F2F5', color: '#65676B' }}
           >
             What&apos;s on your mind?
-          </div>
-        </button>
+          </button>
+          <button onClick={() => setComposing(true)} className="px-2">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <rect x="3" y="3" width="18" height="18" rx="3" stroke="#45BD62" strokeWidth="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" fill="#45BD62" />
+              <path
+                d="M21 15l-5-5L5 21"
+                stroke="#45BD62"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {/* Feed */}
-      <div className="flex-1 overflow-y-auto pb-4">
+      {/* ── Feed ── */}
+      <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center h-32">
             <div
@@ -345,245 +524,374 @@ export default function FacebookFeedApp() {
             </p>
           </div>
         ) : (
-          posts
-            .filter((p) => !p.reply_to_post_id)
-            .map((post) => {
-              const badge = getAuthorBadge(post.author_type);
-              return (
-                <div
-                  key={post.id}
-                  className="mx-3 mt-3 rounded-lg overflow-hidden"
-                  style={{ backgroundColor: '#FFFFFF', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}
-                >
-                  {/* Post Header */}
-                  <div className="flex items-center gap-3 px-4 pt-3 pb-2">
-                    <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px]"
-                      style={{ backgroundColor: getAvatarColor(post.author_display_name) }}
-                    >
-                      {post.author_display_name.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-1">
-                        <span className="font-semibold text-[15px]" style={{ color: '#050505' }}>
-                          {post.author_display_name}
-                        </span>
-                        {badge && (
-                          <span className="text-[12px]" style={{ color: '#1877F2' }}>
-                            {badge}
-                          </span>
-                        )}
-                      </div>
-                      <div
-                        className="flex items-center gap-1 text-[13px]"
-                        style={{ color: '#65676B' }}
-                      >
-                        <span>{timeAgo(post.created_at)}</span>
-                        <span>·</span>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="#65676B">
-                          <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.4 0-8-3.6-8-8s3.6-8 8-8 8 3.6 8 8-3.6 8-8 8z" />
-                        </svg>
-                      </div>
-                    </div>
-                    <button onClick={() => handleFlag(post.id)} className="p-1">
-                      <svg
-                        width="20"
-                        height="20"
-                        viewBox="0 0 24 24"
-                        fill={post.flagged_by_me ? '#F59E0B' : '#65676B'}
-                      >
-                        <circle cx="12" cy="6" r="1.5" />
-                        <circle cx="12" cy="12" r="1.5" />
-                        <circle cx="12" cy="18" r="1.5" />
-                      </svg>
-                    </button>
+          posts.map((post) => {
+            const badge = getBadge(post.author_type);
+            const reactionEmojis = getReactionEmojis(post.like_count);
+            const replies = postReplies[post.id] || [];
+            const isExpanded = expandedPosts.has(post.id);
+            const isLong = post.content.length > 200;
+
+            return (
+              <div
+                key={post.id}
+                className="mt-2"
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderTop: '1px solid #CED0D4',
+                  borderBottom: '1px solid #CED0D4',
+                }}
+              >
+                {/* Author Row */}
+                <div className="flex items-center gap-2.5 px-3 pt-3 pb-1.5">
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[15px] flex-shrink-0"
+                    style={{ backgroundColor: getAvatarColor(post.author_display_name) }}
+                  >
+                    {post.author_display_name.charAt(0).toUpperCase()}
                   </div>
-
-                  {post.requires_response && !post.responded_at && (
-                    <div className="px-4 pb-2">
-                      <span
-                        className="text-[12px] font-bold px-2 py-0.5 rounded"
-                        style={{ backgroundColor: '#FFF3CD', color: '#856404' }}
-                      >
-                        REQUIRES RESPONSE
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1">
+                      <span className="font-semibold text-[15px]" style={{ color: '#050505' }}>
+                        {post.author_display_name}
                       </span>
+                      {badge && (
+                        <span className="text-[13px]" style={{ color: '#1877F2' }}>
+                          {badge}
+                        </span>
+                      )}
                     </div>
-                  )}
+                    <div
+                      className="flex items-center gap-1 text-[13px]"
+                      style={{ color: '#65676B' }}
+                    >
+                      <span>{timeAgo(post.created_at)}</span>
+                      <span>·</span>
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="#65676B">
+                        <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm0 14.5a6.5 6.5 0 110-13 6.5 6.5 0 010 13z" />
+                      </svg>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleFlag(post.id)}
+                    className="p-1.5 rounded-full hover:bg-gray-100"
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill={post.flagged_by_me ? '#F59E0B' : '#65676B'}
+                    >
+                      <circle cx="12" cy="5" r="2" />
+                      <circle cx="12" cy="12" r="2" />
+                      <circle cx="12" cy="19" r="2" />
+                    </svg>
+                  </button>
+                </div>
 
-                  {post.post_format && FORMAT_BADGE[post.post_format] && (
-                    <div className="px-4 pb-1">
+                {/* Content Flags */}
+                {!!(
+                  post.content_flags?.is_hate_speech || post.content_flags?.is_misinformation
+                ) && (
+                  <div className="px-3 pb-1 flex gap-1.5">
+                    {!!post.content_flags.is_hate_speech && (
                       <span
                         className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                        style={{ backgroundColor: '#FDECEA', color: '#D32F2F' }}
+                      >
+                        Hate Speech
+                      </span>
+                    )}
+                    {!!post.content_flags.is_misinformation && (
+                      <span
+                        className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                        style={{ backgroundColor: '#FFF3E0', color: '#E65100' }}
+                      >
+                        Misinformation
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {post.requires_response && !post.responded_at && (
+                  <div className="px-3 pb-1">
+                    <span
+                      className="text-[11px] font-bold px-2 py-0.5 rounded"
+                      style={{ backgroundColor: '#FFF3CD', color: '#856404' }}
+                    >
+                      REQUIRES RESPONSE
+                    </span>
+                  </div>
+                )}
+
+                {post.post_format && FORMAT_BADGE[post.post_format] && (
+                  <div className="px-3 pb-1">
+                    <span
+                      className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                      style={{
+                        backgroundColor: FORMAT_BADGE[post.post_format].bg,
+                        color: FORMAT_BADGE[post.post_format].fg,
+                      }}
+                    >
+                      {FORMAT_BADGE[post.post_format].label}
+                    </span>
+                  </div>
+                )}
+
+                {/* Content Text */}
+                <div className="px-3 pb-2">
+                  <p
+                    className="text-[15px] leading-[20px] whitespace-pre-wrap"
+                    style={{ color: '#050505' }}
+                  >
+                    {isLong && !isExpanded ? (
+                      <>
+                        {post.content.substring(0, 200)}...
+                        <button
+                          onClick={() => setExpandedPosts((prev) => new Set([...prev, post.id]))}
+                          className="font-semibold ml-1"
+                          style={{ color: '#65676B' }}
+                        >
+                          See more
+                        </button>
+                      </>
+                    ) : (
+                      post.content
+                    )}
+                  </p>
+                </div>
+
+                {/* Media (full width, no padding) */}
+                {Array.isArray(post.media_urls) && post.media_urls.length > 0 && (
+                  <div className="relative">
+                    <img
+                      src={post.media_urls[0]}
+                      alt=""
+                      className="w-full"
+                      style={{ maxHeight: 400, objectFit: 'cover' }}
+                    />
+                    {post.post_format === 'video_concept' && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div
+                          className="w-16 h-16 rounded-full flex items-center justify-center"
+                          style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+                        >
+                          <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
+                            <polygon points="8,5 19,12 8,19" />
+                          </svg>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Reaction + Comment Counts */}
+                <div
+                  className="flex items-center justify-between px-3 py-2"
+                  style={{ borderBottom: '1px solid #CED0D4' }}
+                >
+                  <div className="flex items-center gap-1">
+                    {reactionEmojis.length > 0 && (
+                      <div className="flex -space-x-0.5">
+                        {reactionEmojis.map((emoji, i) => (
+                          <span key={i} className="text-[14px]">
+                            {emoji}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {post.like_count > 0 && (
+                      <span className="text-[14px] ml-1" style={{ color: '#65676B' }}>
+                        {formatCount(post.like_count)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 text-[14px]" style={{ color: '#65676B' }}>
+                    {post.reply_count > 0 && <span>{formatCount(post.reply_count)} comments</span>}
+                    {post.repost_count > 0 && <span>{formatCount(post.repost_count)} shares</span>}
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div
+                  className="flex items-center justify-around px-1 py-0.5"
+                  style={{ borderBottom: '1px solid #CED0D4' }}
+                >
+                  <div className="relative flex-1">
+                    <button
+                      onClick={() => handleReaction(post.id, 'like')}
+                      onMouseEnter={() => {
+                        if (reactionTimeoutRef.current) clearTimeout(reactionTimeoutRef.current);
+                        setShowReactions(post.id);
+                      }}
+                      onMouseLeave={() => {
+                        reactionTimeoutRef.current = setTimeout(() => setShowReactions(null), 600);
+                      }}
+                      className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-gray-100 transition-colors"
+                      style={{ color: post.liked_by_me ? '#1877F2' : '#65676B' }}
+                    >
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" />
+                      </svg>
+                      <span className="text-[14px] font-semibold">Like</span>
+                    </button>
+                    {showReactions === post.id && (
+                      <div
+                        className="absolute bottom-full left-0 mb-1 flex gap-0.5 px-2 py-1.5 rounded-full z-50"
                         style={{
-                          backgroundColor: FORMAT_BADGE[post.post_format].bg,
-                          color: FORMAT_BADGE[post.post_format].fg,
+                          backgroundColor: '#FFFFFF',
+                          boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
+                        }}
+                        onMouseEnter={() => {
+                          if (reactionTimeoutRef.current) clearTimeout(reactionTimeoutRef.current);
+                          setShowReactions(post.id);
+                        }}
+                        onMouseLeave={() => {
+                          reactionTimeoutRef.current = setTimeout(
+                            () => setShowReactions(null),
+                            300,
+                          );
                         }}
                       >
-                        {FORMAT_BADGE[post.post_format].label}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Content */}
-                  <div className="px-4 pb-3">
-                    <p className="text-[15px] leading-relaxed" style={{ color: '#050505' }}>
-                      {post.content}
-                    </p>
-                  </div>
-
-                  {/* Media */}
-                  {Array.isArray(post.media_urls) && post.media_urls.length > 0 && (
-                    <div className="relative">
-                      <img
-                        src={post.media_urls[0]}
-                        alt=""
-                        className="w-full max-h-[350px] object-cover"
-                      />
-                      {post.post_format === 'video_concept' && (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div
-                            className="w-16 h-16 rounded-full flex items-center justify-center"
-                            style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+                        {REACTIONS.map((r) => (
+                          <button
+                            key={r.type}
+                            onClick={() => handleReaction(post.id, r.type)}
+                            className="text-[28px] hover:scale-125 transition-transform px-0.5"
+                            title={r.type}
                           >
-                            <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
-                              <polygon points="8,5 19,12 8,19" />
-                            </svg>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Content Flags */}
-                  {!!(
-                    post.content_flags?.is_hate_speech || post.content_flags?.is_misinformation
-                  ) && (
-                    <div className="px-4 pb-2 flex gap-1.5">
-                      {!!post.content_flags.is_hate_speech && (
-                        <span
-                          className="text-[11px] px-2 py-0.5 rounded font-semibold"
-                          style={{ backgroundColor: '#FDECEA', color: '#D32F2F' }}
-                        >
-                          Hate Speech
-                        </span>
-                      )}
-                      {!!post.content_flags.is_misinformation && (
-                        <span
-                          className="text-[11px] px-2 py-0.5 rounded font-semibold"
-                          style={{ backgroundColor: '#FFF3E0', color: '#E65100' }}
-                        >
-                          Misinformation
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Engagement Stats */}
-                  <div
-                    className="flex items-center justify-between px-4 py-2 text-[13px]"
-                    style={{ color: '#65676B', borderTop: '1px solid #DADDE1' }}
-                  >
-                    <span>👍 {formatCount(post.like_count)}</span>
-                    <div className="flex gap-3">
-                      <span>{formatCount(post.reply_count)} comments</span>
-                      <span>{formatCount(post.repost_count)} shares</span>
-                    </div>
+                            {r.emoji}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-
-                  {/* Action Bar */}
-                  <div
-                    className="flex items-center justify-around px-2 py-1"
-                    style={{ borderTop: '1px solid #DADDE1' }}
+                  <button
+                    className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-gray-100 transition-colors"
+                    style={{ color: '#65676B' }}
                   >
-                    <div className="relative">
-                      <button
-                        onClick={() => handleLike(post.id)}
-                        onMouseEnter={() => setShowReactions(post.id)}
-                        onMouseLeave={() => setTimeout(() => setShowReactions(null), 500)}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-md transition-colors hover:bg-gray-100"
-                        style={{ color: post.liked_by_me ? '#1877F2' : '#65676B' }}
-                      >
-                        <svg
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
-                        </svg>
-                        <span className="text-[14px] font-semibold">Like</span>
-                      </button>
-                      {showReactions === post.id && (
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+                    </svg>
+                    <span className="text-[14px] font-semibold">Comment</span>
+                  </button>
+                  <button
+                    onClick={() => handleShare(post.id)}
+                    className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-gray-100 transition-colors"
+                    style={{ color: '#65676B' }}
+                  >
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" />
+                    </svg>
+                    <span className="text-[14px] font-semibold">Share</span>
+                  </button>
+                </div>
+
+                {/* Inline Comments */}
+                {replies.length > 0 && (
+                  <div className="px-3 pt-2 pb-1">
+                    {replies.slice(0, 2).map((reply) => (
+                      <div key={reply.id} className="flex gap-2 mb-2">
                         <div
-                          className="absolute bottom-full left-0 mb-1 flex gap-1 p-1.5 rounded-full"
-                          style={{
-                            backgroundColor: '#FFFFFF',
-                            boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
-                          }}
-                          onMouseEnter={() => setShowReactions(post.id)}
-                          onMouseLeave={() => setShowReactions(null)}
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[12px] flex-shrink-0"
+                          style={{ backgroundColor: getAvatarColor(reply.author_display_name) }}
                         >
-                          {REACTIONS.map((r) => (
-                            <button
-                              key={r.type}
-                              onClick={() => handleLike(post.id)}
-                              className="text-[24px] hover:scale-125 transition-transform p-0.5"
-                              title={r.label}
-                            >
-                              {r.emoji}
-                            </button>
-                          ))}
+                          {reply.author_display_name.charAt(0).toUpperCase()}
                         </div>
-                      )}
-                    </div>
-                    <button
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-md transition-colors hover:bg-gray-100"
-                      style={{ color: '#65676B' }}
-                    >
-                      <svg
-                        width="18"
-                        height="18"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
+                        <div
+                          className="rounded-2xl px-3 py-1.5"
+                          style={{ backgroundColor: '#F0F2F5' }}
+                        >
+                          <span className="text-[13px] font-semibold" style={{ color: '#050505' }}>
+                            {reply.author_display_name}
+                          </span>
+                          <p className="text-[14px]" style={{ color: '#050505' }}>
+                            {reply.content}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                    {replies.length > 2 && (
+                      <button
+                        className="text-[14px] font-semibold mb-1"
+                        style={{ color: '#65676B' }}
                       >
-                        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                      </svg>
-                      <span className="text-[14px] font-semibold">Comment</span>
-                    </button>
-                    <button
-                      onClick={() => handleShare(post.id)}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-md transition-colors hover:bg-gray-100"
-                      style={{ color: '#65676B' }}
-                    >
+                        View all {replies.length} comments
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Comment Input */}
+                <div className="flex items-center gap-2 px-3 py-2">
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[12px] flex-shrink-0"
+                    style={{ backgroundColor: '#1877F2' }}
+                  >
+                    Y
+                  </div>
+                  <div
+                    className="flex-1 flex items-center rounded-full px-3 py-1.5"
+                    style={{ backgroundColor: '#F0F2F5' }}
+                  >
+                    <input
+                      type="text"
+                      value={commentText[post.id] || ''}
+                      onChange={(e) =>
+                        setCommentText((prev) => ({ ...prev, [post.id]: e.target.value }))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleComment(post.id);
+                      }}
+                      placeholder="Write a comment..."
+                      className="flex-1 bg-transparent text-[14px] outline-none"
+                      style={{ color: '#050505' }}
+                    />
+                    <button onClick={() => handleComment(post.id)} className="ml-1">
                       <svg
-                        width="18"
-                        height="18"
+                        width="16"
+                        height="16"
                         viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
+                        fill={commentText[post.id]?.trim() ? '#1877F2' : '#BEC3C9'}
                       >
-                        <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13" />
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
                       </svg>
-                      <span className="text-[14px] font-semibold">Share</span>
                     </button>
                   </div>
                 </div>
-              );
-            })
+              </div>
+            );
+          })
         )}
+        <div style={{ height: 16 }} />
       </div>
 
-      {/* Compose Modal */}
+      {/* ── Compose Modal ── */}
       {composing && (
         <div className="absolute inset-0 flex flex-col" style={{ zIndex: 60 }}>
           <div
             className="flex-1"
-            style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)' }}
+            style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
             onClick={() => setComposing(false)}
           />
           <div
@@ -591,23 +899,24 @@ export default function FacebookFeedApp() {
             style={{
               backgroundColor: '#FFFFFF',
               borderRadius: '12px 12px 0 0',
-              maxHeight: '75%',
-              minHeight: 300,
+              maxHeight: '80%',
+              minHeight: 320,
             }}
           >
+            {/* Header */}
             <div
               className="flex items-center justify-between px-4 py-3"
               style={{ borderBottom: '1px solid #DADDE1' }}
             >
               <button
                 onClick={() => setComposing(false)}
-                className="text-[15px]"
+                className="text-[15px] font-semibold"
                 style={{ color: '#65676B' }}
               >
                 Cancel
               </button>
-              <span className="font-bold text-[16px]" style={{ color: '#050505' }}>
-                Create Post
+              <span className="font-bold text-[17px]" style={{ color: '#050505' }}>
+                Create post
               </span>
               <button
                 onClick={handlePost}
@@ -619,6 +928,7 @@ export default function FacebookFeedApp() {
               </button>
             </div>
 
+            {/* Format Picker */}
             <div className="px-4 pt-3 pb-1 flex gap-1.5 flex-wrap">
               {POST_FORMATS.map((fmt) => (
                 <button
@@ -635,6 +945,7 @@ export default function FacebookFeedApp() {
               ))}
             </div>
 
+            {/* Compose Area */}
             <div className="flex-1 px-4 pb-2 overflow-y-auto">
               <div className="flex gap-3 pt-3">
                 <div
@@ -647,23 +958,52 @@ export default function FacebookFeedApp() {
                   value={composeText}
                   onChange={(e) => setComposeText(e.target.value)}
                   placeholder="What's on your mind?"
-                  className="flex-1 bg-transparent text-[16px] resize-none outline-none min-h-[120px]"
+                  className="flex-1 bg-transparent text-[16px] resize-none outline-none min-h-[140px]"
                   style={{ color: '#050505', lineHeight: '1.5' }}
-                  maxLength={500}
+                  maxLength={maxChars}
                   autoFocus
                 />
               </div>
             </div>
 
+            {/* Bottom toolbar */}
             <div
               className="flex items-center justify-between px-4 py-2.5"
               style={{ borderTop: '1px solid #DADDE1' }}
             >
-              <div className="flex items-center gap-4" style={{ color: '#65676B' }}>
-                <span className="text-[13px]">Add to your post</span>
+              <div className="flex items-center gap-4">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                  <rect
+                    x="3"
+                    y="3"
+                    width="18"
+                    height="18"
+                    rx="3"
+                    stroke="#45BD62"
+                    strokeWidth="2"
+                  />
+                  <circle cx="8.5" cy="8.5" r="1.5" fill="#45BD62" />
+                  <path
+                    d="M21 15l-5-5L5 21"
+                    stroke="#45BD62"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="9" stroke="#F7B928" strokeWidth="2" />
+                  <path
+                    d="M8 14s1.5 2 4 2 4-2 4-2"
+                    stroke="#F7B928"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                  <circle cx="9" cy="9" r="1" fill="#F7B928" />
+                  <circle cx="15" cy="9" r="1" fill="#F7B928" />
+                </svg>
               </div>
               <span className="text-[13px]" style={{ color: '#65676B' }}>
-                {composeText.length}/500
+                {composeText.length}/{maxChars}
               </span>
             </div>
           </div>
