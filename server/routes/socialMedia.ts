@@ -51,7 +51,10 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
 
     const [postsResult, likesResult, flagsResult, participantResult] = await Promise.all([
       postsQuery,
-      supabaseAdmin.from('social_post_likes').select('post_id').eq('player_id', user.id),
+      supabaseAdmin
+        .from('social_post_likes')
+        .select('post_id, reaction_type')
+        .eq('player_id', user.id),
       supabaseAdmin.from('social_post_flags').select('post_id').eq('player_id', user.id),
       supabaseAdmin
         .from('session_participants')
@@ -69,6 +72,10 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
     }
 
     const likedPostIds = new Set((likesResult.data || []).map((l) => l.post_id));
+    const reactionByPost = new Map<string, string>();
+    for (const l of likesResult.data || []) {
+      reactionByPost.set(l.post_id, String(l.reaction_type || 'like'));
+    }
     const flaggedPostIds = new Set((flagsResult.data || []).map((f) => f.post_id));
     const playerDemographics = (participantResult.data?.demographics || null) as Record<
       string,
@@ -90,6 +97,7 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
       .map((post) => ({
         ...post,
         liked_by_me: likedPostIds.has(post.id),
+        my_reaction: reactionByPost.get(post.id) || null,
         flagged_by_me: flaggedPostIds.has(post.id),
       }));
 
@@ -195,6 +203,11 @@ router.post(
         }
         await markPostResponded(session_id, reply_to_post_id, post.id);
         await recordPlayerAction(session_id, user.id, 'reply_posted', reply_to_post_id, content);
+
+        // Trigger NPC reactions to player replies on NPC posts (non-blocking)
+        void triggerNPCReactions(session_id, post).catch((err) =>
+          logger.warn({ err, postId: post.id }, 'NPC reply reaction failed (non-critical)'),
+        );
       } else {
         await recordPlayerAction(session_id, user.id, 'post_created', post.id, content, {
           post_format: post_format || 'text',
@@ -350,13 +363,19 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
 
     const { data: existing } = await supabaseAdmin
       .from('social_post_likes')
-      .select('id')
+      .select('id, reaction_type')
       .eq('post_id', postId)
       .eq('player_id', user.id)
       .single();
 
     if (existing) {
-      return res.json({ success: true, already_liked: true });
+      if (existing.reaction_type !== reactionType) {
+        await supabaseAdmin
+          .from('social_post_likes')
+          .update({ reaction_type: reactionType })
+          .eq('id', existing.id);
+      }
+      return res.json({ success: true, updated: true, reaction_type: reactionType });
     }
 
     await supabaseAdmin

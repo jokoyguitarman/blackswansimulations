@@ -77,6 +77,7 @@ interface SocialPost {
   virality_score: number;
   reply_to_post_id: string | null;
   liked_by_me?: boolean;
+  my_reaction?: string | null;
   flagged_by_me?: boolean;
   post_format?: string;
   media_urls?: string[];
@@ -138,6 +139,12 @@ export default function FacebookFeedApp() {
           replyMap[pid].push(r);
         }
         setPostReplies(replyMap);
+        // Restore reactions from API data
+        const rxMap: Record<string, string> = {};
+        for (const p of result.data as SocialPost[]) {
+          if (p.my_reaction) rxMap[p.id] = p.my_reaction;
+        }
+        setMyReactions(rxMap);
       }
     } catch {
       /* ignore */
@@ -236,12 +243,14 @@ export default function FacebookFeedApp() {
 
   async function handleReaction(postId: string, reactionType: string = 'like') {
     const post = posts.find((p) => p.id === postId);
-    if (post?.liked_by_me) return;
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === postId ? { ...p, like_count: p.like_count + 1, liked_by_me: true } : p,
-      ),
-    );
+    const alreadyLiked = post?.liked_by_me;
+    if (!alreadyLiked) {
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId ? { ...p, like_count: p.like_count + 1, liked_by_me: true } : p,
+        ),
+      );
+    }
     setMyReactions((prev) => ({ ...prev, [postId]: reactionType }));
     try {
       const headers = await getAuthHeaders();
@@ -251,11 +260,13 @@ export default function FacebookFeedApp() {
         body: JSON.stringify({ session_id: sessionId, reaction_type: reactionType }),
       });
     } catch {
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId ? { ...p, like_count: p.like_count - 1, liked_by_me: false } : p,
-        ),
-      );
+      if (!alreadyLiked) {
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === postId ? { ...p, like_count: p.like_count - 1, liked_by_me: false } : p,
+          ),
+        );
+      }
     }
     setShowReactions(null);
   }
@@ -994,7 +1005,7 @@ export default function FacebookFeedApp() {
             {/* Header */}
             <div
               className="flex items-center justify-between px-4 py-3"
-              style={{ borderBottom: '1px solid #DADDE1' }}
+              style={{ borderBottom: '1px solid #DADDE1', backgroundColor: '#FFFFFF' }}
             >
               <button
                 onClick={() => setComposing(false)}
@@ -1017,7 +1028,10 @@ export default function FacebookFeedApp() {
             </div>
 
             {/* Format Picker */}
-            <div className="px-4 pt-3 pb-1 flex gap-1.5 flex-wrap">
+            <div
+              className="px-4 pt-3 pb-1 flex gap-1.5 flex-wrap"
+              style={{ backgroundColor: '#FFFFFF' }}
+            >
               {POST_FORMATS.map((fmt) => (
                 <button
                   key={fmt.value}
@@ -1034,7 +1048,10 @@ export default function FacebookFeedApp() {
             </div>
 
             {/* Compose Area */}
-            <div className="flex-1 px-4 pb-2 overflow-y-auto">
+            <div
+              className="flex-1 px-4 pb-2 overflow-y-auto"
+              style={{ backgroundColor: '#FFFFFF' }}
+            >
               <div className="flex gap-3 pt-3">
                 <div
                   className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
@@ -1057,7 +1074,7 @@ export default function FacebookFeedApp() {
             {/* Bottom toolbar */}
             <div
               className="flex items-center justify-between px-4 py-2.5"
-              style={{ borderTop: '1px solid #DADDE1' }}
+              style={{ borderTop: '1px solid #DADDE1', backgroundColor: '#FFFFFF' }}
             >
               <div className="flex items-center gap-4">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
