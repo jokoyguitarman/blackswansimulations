@@ -9,6 +9,7 @@ import {
   generateAllTeamStorylines,
   generateConvergenceLayer,
   generateUnifiedStoryline,
+  generateStrategyWindows,
   researchBestPractices,
   researchGeneralBestPractices,
   buildSOPFromResearch,
@@ -352,6 +353,7 @@ router.post(
     z.object({
       body: z.object({
         narrative: z.object({ title: z.string(), description: z.string(), briefing: z.string() }),
+        crisis_type: z.string().optional().default(''),
         teams: z
           .array(
             z.object({
@@ -390,6 +392,25 @@ router.post(
       const body = req.body;
       const sop = buildSOPFromResearch(body.research as ResearchGuidelines);
 
+      // Generate strategy windows (success/backlash branches for player tactics)
+      let strategyWindows;
+      try {
+        strategyWindows = await generateStrategyWindows(
+          {
+            crisisType: body.crisis_type || '',
+            location: '',
+            country: body.country || 'Singapore',
+            context: '',
+            duration: body.duration,
+          },
+          body.personas as NPCPersona[],
+          body.fact_sheet as FactSheet,
+        );
+        logger.info({ windowCount: strategyWindows?.length || 0 }, 'Strategy windows generated');
+      } catch (swErr) {
+        logger.warn({ swErr }, 'Strategy windows generation failed (non-critical)');
+      }
+
       const payload = assemblePayload(
         body.narrative,
         (body.teams || []) as TeamDef[],
@@ -408,7 +429,7 @@ router.post(
         body.research as ResearchGuidelines,
         sop,
         body.duration,
-        undefined,
+        strategyWindows,
         body.storyline_injects as SocialInject[] | undefined,
       );
 

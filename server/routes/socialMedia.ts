@@ -232,94 +232,91 @@ router.post(
         });
       }
 
-      // Auto-grade replies to harmful posts
-      if (reply_to_post_id) {
-        void (async () => {
-          try {
+      // Auto-grade ALL player posts (replies and top-level)
+      void (async () => {
+        try {
+          const { data: sessionData } = await supabaseAdmin
+            .from('sessions')
+            .select('scenario_id, start_time')
+            .eq('id', session_id)
+            .single();
+          if (!sessionData) return;
+
+          const { data: scenario } = await supabaseAdmin
+            .from('scenarios')
+            .select('description, initial_state')
+            .eq('id', sessionData.scenario_id)
+            .single();
+          if (!scenario) return;
+
+          const is = (scenario.initial_state || {}) as Record<string, unknown>;
+          const factSheet = (is.fact_sheet || {}) as Record<string, unknown>;
+          const confirmedFacts = (factSheet.confirmed_facts || []) as string[];
+          const researchGuidelines = ((is.research_guidelines as Record<string, unknown>)
+            ?.per_team || []) as Array<{
+            guidelines: Array<{ best_practice: string; source_basis: string }>;
+          }>;
+          const flatGuidelines = researchGuidelines.flatMap((t) => t.guidelines || []);
+
+          let parentContent: string | undefined;
+          if (reply_to_post_id) {
             const { data: parentPost } = await supabaseAdmin
               .from('social_posts')
-              .select('content, content_flags, session_id')
+              .select('content')
               .eq('id', reply_to_post_id)
               .single();
-
-            if (!parentPost) return;
-            const flags = (parentPost.content_flags || {}) as Record<string, unknown>;
-            const isHarmful = !!(
-              flags.is_hate_speech ||
-              flags.is_misinformation ||
-              flags.is_racist ||
-              flags.incites_violence
-            );
-            if (!isHarmful) return;
-
-            const { data: sessionData } = await supabaseAdmin
-              .from('sessions')
-              .select('scenario_id')
-              .eq('id', session_id)
-              .single();
-            if (!sessionData) return;
-
-            const { data: scenario } = await supabaseAdmin
-              .from('scenarios')
-              .select('description, initial_state')
-              .eq('id', sessionData.scenario_id)
-              .single();
-            if (!scenario) return;
-
-            const is = (scenario.initial_state || {}) as Record<string, unknown>;
-            const factSheet = (is.fact_sheet || {}) as Record<string, unknown>;
-            const confirmedFacts = (factSheet.confirmed_facts || []) as string[];
-            const researchGuidelines = ((is.research_guidelines as Record<string, unknown>)
-              ?.per_team || []) as Array<{
-              guidelines: Array<{ best_practice: string; source_basis: string }>;
-            }>;
-            const flatGuidelines = researchGuidelines.flatMap((t) => t.guidelines || []);
-
-            const { gradePlayerContent } = await import('../services/contentGraderService.js');
-            const grade = await gradePlayerContent(content, {
-              crisis_description: scenario.description || '',
-              confirmed_facts: confirmedFacts,
-              hateful_post_being_addressed: String(parentPost.content || ''),
-              research_guidelines: flatGuidelines.slice(0, 5),
-              post_format: post_format || 'text',
-            });
-
-            await supabaseAdmin
-              .from('social_posts')
-              .update({ sop_compliance_score: grade })
-              .eq('id', post.id);
-
-            if (grade.overall >= 70) {
-              const { generateConsequenceInject } =
-                await import('../services/ambientContentService.js');
-              void generateConsequenceInject(
-                session_id,
-                'player_good_response',
-                `A player posted a high-quality response (scored ${grade.overall}/100) to a hateful/misinformation post. Generate a supportive reaction -- a community leader or verified account amplifying the good response.`,
-                'supportive',
-                true,
-              );
-            } else if (grade.overall < 40) {
-              const { generateConsequenceInject } =
-                await import('../services/ambientContentService.js');
-              void generateConsequenceInject(
-                session_id,
-                'player_poor_response',
-                `A player posted a poor response (scored ${grade.overall}/100) to a hateful/misinformation post. Their reply contained issues. Generate a skeptical reaction from a journalist or observer questioning the response.`,
-                'negative',
-                false,
-              );
-            }
-
-            logger.info(
-              { postId: post.id, overall: grade.overall },
-              'Auto-graded reply to harmful post',
-            );
-          } catch (gradeErr) {
-            logger.warn({ err: gradeErr }, 'Auto-grade failed (non-critical)');
+            parentContent = parentPost ? String(parentPost.content || '') : undefined;
           }
-        })();
-      }
+
+          const elapsedMinutes = sessionData.start_time
+            ? Math.floor((Date.now() - new Date(sessionData.start_time).getTime()) / 60000)
+            : undefined;
+
+          const { gradePlayerContent } = await import('../services/contentGraderService.js');
+          const grade = await gradePlayerContent(content, {
+            crisis_description: scenario.description || '',
+            confirmed_facts: confirmedFacts,
+            hateful_post_being_addressed: parentContent,
+            research_guidelines: flatGuidelines.slice(0, 5),
+            post_format: post_format || 'text',
+            elapsed_minutes: elapsedMinutes,
+          });
+
+          await supabaseAdmin
+            .from('social_posts')
+            .update({ sop_compliance_score: grade })
+            .eq('id', post.id);
+
+          if (grade.overall >= 70) {
+            const { generateConsequenceInject } =
+              await import('../services/ambientContentService.js');
+            void generateConsequenceInject(
+              session_id,
+              'player_good_response',
+              `A player posted a high-quality ${post_format || 'text'} response (scored ${grade.overall}/100). Generate a supportive reaction amplifying the good response.`,
+              'supportive',
+              true,
+            );
+          } else if (grade.overall < 40) {
+            const { generateConsequenceInject } =
+              await import('../services/ambientContentService.js');
+            void generateConsequenceInject(
+              session_id,
+              'player_poor_response',
+              `A player posted a poor ${post_format || 'text'} response (scored ${grade.overall}/100). Generate a skeptical reaction questioning the response quality.`,
+              'negative',
+              false,
+            );
+          }
+
+          logger.info(
+            { postId: post.id, overall: grade.overall, format: post_format },
+            'Auto-graded player post',
+          );
+        } catch (gradeErr) {
+          logger.warn({ err: gradeErr }, 'Auto-grade failed (non-critical)');
+        }
+      })();
 
       getWebSocketService().broadcastToSession(session_id, {
         type: 'social_post.created',

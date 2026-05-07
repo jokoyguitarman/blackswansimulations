@@ -105,6 +105,7 @@ interface FeedPost {
     feedback: string;
   } | null;
   reply_to_post_id: string | null;
+  is_flagged_by_player?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -217,13 +218,52 @@ function Badge({ text, variant }: { text: string; variant: 'red' | 'amber' | 'bl
   );
 }
 
-function CheckItem({ label, done }: { label: string; done: boolean }) {
+function CheckItem({
+  label,
+  done,
+  details,
+}: {
+  label: string;
+  done: boolean;
+  details?: Array<{ content: string; time?: string }>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const hasDetails = details && details.length > 0;
   return (
-    <div className="flex items-center gap-2 py-1">
-      <span style={{ color: done ? '#22c55e' : '#ef4444' }}>{done ? '✓' : '✗'}</span>
-      <span className="text-xs" style={{ color: done ? '#e5e5e5' : '#64748b' }}>
-        {label}
-      </span>
+    <div>
+      <button
+        onClick={() => hasDetails && setExpanded(!expanded)}
+        className="flex items-center gap-2 py-1 w-full text-left"
+        style={{ cursor: hasDetails ? 'pointer' : 'default' }}
+      >
+        <span style={{ color: done ? '#22c55e' : '#ef4444' }}>{done ? '✓' : '✗'}</span>
+        <span className="text-xs flex-1" style={{ color: done ? '#e5e5e5' : '#64748b' }}>
+          {label}
+        </span>
+        {hasDetails && (
+          <span className="text-[10px]" style={{ color: '#475569' }}>
+            {expanded ? '▾' : '▸'}
+          </span>
+        )}
+      </button>
+      {expanded && details && (
+        <div className="ml-6 mb-1 space-y-1">
+          {details.map((d, i) => (
+            <div
+              key={i}
+              className="text-[10px] rounded px-2 py-1"
+              style={{ backgroundColor: '#141414', color: '#94a3b8' }}
+            >
+              {d.time && (
+                <span className="mr-2" style={{ color: '#475569' }}>
+                  {d.time}
+                </span>
+              )}
+              {d.content.substring(0, 150)}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -737,6 +777,15 @@ export default function TrainerSimDashboard() {
                   <CheckItem
                     label="Official statement published"
                     done={socialState.official_statement_published}
+                    details={posts
+                      .filter(
+                        (p) =>
+                          p.author_type === 'player' &&
+                          !p.reply_to_post_id &&
+                          String((p as Record<string, unknown>).post_format || '') ===
+                            'official_statement',
+                      )
+                      .map((p) => ({ content: p.content, time: timeLabel(p.created_at) }))}
                   />
                   <CheckItem
                     label="Community leader contacted"
@@ -745,10 +794,23 @@ export default function TrainerSimDashboard() {
                   <CheckItem
                     label={`Counter-narratives (${socialState.counter_narratives_published})`}
                     done={socialState.counter_narratives_published > 0}
+                    details={posts
+                      .filter((p) => p.author_type === 'player' && !p.reply_to_post_id)
+                      .map((p) => ({ content: p.content, time: timeLabel(p.created_at) }))}
                   />
                   <CheckItem
                     label={`Misinfo flagged (${socialState.misinformation_flagged_count})`}
                     done={socialState.misinformation_flagged_count > 0}
+                    details={posts
+                      .filter(
+                        (p) =>
+                          p.is_flagged_by_player ||
+                          (p as unknown as Record<string, unknown>).flagged_by_me,
+                      )
+                      .map((p) => ({
+                        content: `${p.author_handle}: ${p.content}`,
+                        time: timeLabel(p.created_at),
+                      }))}
                   />
                   <CheckItem label="Rally call active" done={socialState.rally_call_active} />
                 </div>

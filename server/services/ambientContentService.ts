@@ -256,7 +256,14 @@ ${elapsedMinutes < 5 ? '- Early crisis: confused, alarmed, asking what happened'
 ${elapsedMinutes > 20 ? '- Ongoing: opinions forming, blame emerging, some calling for calm' : ''}
 ${sentiment.overall < 40 ? '- Sentiment critical: more fear/anger' : ''}
 
-For 1 out of every 3 posts, include an "image_prompt" field with a short description of a photo, meme, or video the user would attach. Examples: "A bystander phone photo of police vehicles at the scene", "A screenshot of a WhatsApp group spreading rumors", "A meme mocking the government response". Leave image_prompt as "" for text-only posts.
+For 1 out of every 3 posts, include an "image_prompt" field with a short description of a photo, meme, or video the user would attach. Leave image_prompt as "" for text-only posts.
+
+IMPORTANT: For each post, set "content_flags" based on the content:
+- is_hate_speech: true if the post contains hate speech targeting an ethnic/religious/racial group
+- is_misinformation: true if the post spreads false or unverified claims as fact
+- is_racist: true if the post contains racist generalizations or slurs
+- incites_violence: true if the post calls for violence, vigilante action, or physical harm
+Leave content_flags as {} for neutral, factual, or supportive posts.
 
 Return ONLY valid JSON:
 { "posts": [{ "author_handle": "@user", "author_display_name": "Name", "author_type": "npc_public", "content": "text", "sentiment": "neutral|negative|supportive|hateful|inflammatory", "virality_score": 5, "content_flags": {}, "image_prompt": "" }] }`,
@@ -334,10 +341,17 @@ ${npcList ? `KNOWN USERS (use these OR create new ones):\n${npcList}\n` : ''}
 
 Generate 3-5 Facebook posts. Use a DIFFERENT author for each post -- rotate through the NPC list. These should feel different from what's on Twitter. Facebook posts are longer (3-6 sentences), more personal, and more emotional.
 
-IMPORTANT: Facebook is a very visual platform. At least 2 out of 3 posts MUST include an "image_prompt" field with a description of the photo, video thumbnail, or shared article image. Examples: "A news article thumbnail showing emergency vehicles at a scene", "A candid phone photo of a community gathering", "A screenshot of a news headline about the incident", "A video thumbnail of a bystander filming police response". Only leave image_prompt as "" for purely text-based status updates.
+IMPORTANT: Facebook is a very visual platform. At least 2 out of 3 posts MUST include an "image_prompt" field with a description of the image. Only leave image_prompt as "" for purely text-based status updates.
+
+For each post, set "content_flags" based on the content:
+- is_hate_speech: true if hate speech targeting a group
+- is_misinformation: true if spreading false claims
+- is_racist: true if racist content
+- incites_violence: true if calling for violence
+Leave content_flags as {} for neutral/supportive posts.
 
 Return ONLY valid JSON:
-{ "posts": [{ "author_handle": "@user", "author_display_name": "Name", "author_type": "npc_public", "content": "text", "sentiment": "neutral|negative|supportive|hateful|inflammatory", "virality_score": 5, "platform": "facebook", "image_prompt": "" }] }`,
+{ "posts": [{ "author_handle": "@user", "author_display_name": "Name", "author_type": "npc_public", "content": "text", "sentiment": "neutral|negative|supportive|hateful|inflammatory", "virality_score": 5, "platform": "facebook", "content_flags": {}, "image_prompt": "" }] }`,
       'Generate Facebook ambient posts.',
       1000,
     );
