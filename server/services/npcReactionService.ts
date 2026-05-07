@@ -2,6 +2,12 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
+import {
+  notifyPostReply,
+  notifyPostLike,
+  notifyMention,
+  extractMentions,
+} from './socialNotificationService.js';
 
 interface NPCPersona {
   handle: string;
@@ -107,22 +113,27 @@ export async function triggerNPCReactions(
             role: 'system',
             content: `You are generating NPC reactions to a player's social media post during a crisis simulation.
 
-The player posted a ${postFormat} format post. Generate realistic reactions from these NPCs:
+The player posted a ${postFormat} format post. Their handle is ${String(playerPost.author_handle || '@player')}. Generate realistic reactions from these NPCs:
 
 ${npcContext}
 
 Reaction types:
 - "attack": hostile reply -- twist their words, mock them, double down on misinformation, accuse them of bias
 - "cover": media-style coverage -- neutral to positive news angle about the response team's communication
-- "support": endorsing reply or repost with supportive commentary
+- "support": endorsing reply or repost with supportive commentary, OR just "like" the post
 - "neutral": ambiguous reaction that could go either way
+
+IMPORTANT RULES:
+- When replying, START the reply by tagging the player: "${String(playerPost.author_handle || '@player')} ..." so they get notified
+- Some NPCs can just LIKE the post instead of replying. Use action: "like" for this.
+- Supportive NPCs are more likely to like; hostile NPCs are more likely to reply attacking.
 
 Crisis context: ${String(scenario.description || '').substring(0, 300)}
 
 Each reaction should be 1-3 sentences, feel like a real social media reply/post. Stay in character.
 
 Return ONLY valid JSON:
-{ "reactions": [{ "author_handle": "@exact_handle", "author_display_name": "Exact Name", "author_type": "npc_public|npc_media|npc_politician|npc_influencer", "content": "reaction text", "sentiment": "negative|supportive|neutral|hateful", "is_reply": true, "action": "reply|repost_with_comment|new_post" }] }`,
+{ "reactions": [{ "author_handle": "@exact_handle", "author_display_name": "Exact Name", "author_type": "npc_public|npc_media|npc_politician|npc_influencer", "content": "reaction text", "sentiment": "negative|supportive|neutral|hateful", "is_reply": true, "action": "reply|repost_with_comment|new_post|like" }] }`,
           },
           {
             role: 'user',
@@ -144,27 +155,62 @@ Return ONLY valid JSON:
     const parsed = JSON.parse(content);
     const reactions = (parsed.reactions || []) as Array<Record<string, unknown>>;
 
+    const postPlatform = String(playerPost.platform || 'x_twitter');
+    const playerHandle = String(playerPost.author_handle || '@player');
+
     for (let i = 0; i < reactions.length; i++) {
-      // Stagger delivery: 30s to 3min between reactions
       const delay = 30000 + Math.floor(Math.random() * 150000);
       setTimeout(
         async () => {
           try {
             const reaction = reactions[i];
-            const isReply = reaction.action === 'reply' || reaction.is_reply;
+            const actionType = String(reaction.action || 'reply');
+            const npcName = String(reaction.author_display_name || 'NPC');
+            const npcHandle = String(reaction.author_handle || '@npc');
+
+            // Handle "like" action -- NPC likes the player's post
+            if (actionType === 'like') {
+              await supabaseAdmin
+                .from('social_posts')
+                .update({ like_count: ((playerPost.like_count as number) || 0) + 1 })
+                .eq('id', playerPost.id);
+
+              // Notify player about the NPC like
+              void notifyPostLike(sessionId, playerHandle, npcName, 'like', postPlatform);
+
+              getWebSocketService().broadcastToSession(sessionId, {
+                type: 'social_posts.engagement_update',
+                data: {
+                  updates: [
+                    {
+                      id: playerPost.id,
+                      like_count: ((playerPost.like_count as number) || 0) + 1,
+                    },
+                  ],
+                },
+                timestamp: new Date().toISOString(),
+              });
+
+              logger.info({ sessionId, npcHandle, playerPostId: playerPost.id }, 'NPC liked post');
+              return;
+            }
+
+            // Handle reply/repost/new_post actions
+            const isReply = actionType === 'reply' || reaction.is_reply;
+            const replyContent = String(reaction.content || '');
 
             const { data: inserted, error } = await supabaseAdmin
               .from('social_posts')
               .insert({
                 session_id: sessionId,
-                platform: playerPost.platform || 'x_twitter',
-                author_handle: String(reaction.author_handle || '@npc'),
-                author_display_name: String(reaction.author_display_name || 'NPC'),
+                platform: postPlatform,
+                author_handle: npcHandle,
+                author_display_name: npcName,
                 author_type: String(reaction.author_type || 'npc_public'),
-                content: String(reaction.content || ''),
+                content: replyContent,
                 reply_to_post_id: isReply ? playerPost.id : null,
                 sentiment: String(reaction.sentiment || 'neutral'),
-                hashtags: String(reaction.content || '').match(/#\w+/g) || [],
+                hashtags: replyContent.match(/#\w+/g) || [],
                 like_count: 0,
                 repost_count: 0,
                 reply_count: 0,
@@ -187,6 +233,24 @@ Return ONLY valid JSON:
                   reply_count: ((playerPost.reply_count as number) || 0) + 1,
                 })
                 .eq('id', playerPost.id);
+
+              // Notify player about the NPC reply
+              void notifyPostReply(
+                sessionId,
+                npcName,
+                playerHandle,
+                String(playerPost.id),
+                replyContent,
+                postPlatform,
+              );
+            }
+
+            // Check for @mentions in the NPC reply and notify mentioned players
+            const mentions = extractMentions(replyContent);
+            for (const mentionedHandle of mentions) {
+              if (mentionedHandle !== npcHandle) {
+                void notifyMention(sessionId, mentionedHandle, npcName, replyContent, postPlatform);
+              }
             }
 
             getWebSocketService().broadcastToSession(sessionId, {
@@ -196,12 +260,7 @@ Return ONLY valid JSON:
             });
 
             logger.info(
-              {
-                sessionId,
-                npcHandle: reaction.author_handle,
-                reactionType: reaction.action,
-                playerPostId: playerPost.id,
-              },
+              { sessionId, npcHandle, reactionType: actionType, playerPostId: playerPost.id },
               'NPC reaction posted',
             );
           } catch (err) {

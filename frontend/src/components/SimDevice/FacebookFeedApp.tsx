@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { supabase } from '../../lib/supabase';
 
@@ -106,6 +106,7 @@ function getReactionEmojis(likeCount: number): string[] {
 export default function FacebookFeedApp() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [postReplies, setPostReplies] = useState<Record<string, SocialPost[]>>({});
   const [loading, setLoading] = useState(true);
@@ -155,6 +156,11 @@ export default function FacebookFeedApp() {
   useEffect(() => {
     loadPosts();
   }, [loadPosts]);
+
+  // Re-fetch when navigating back to this view
+  useEffect(() => {
+    if (location.pathname.includes('/facebook')) loadPosts();
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useWebSocket({
     sessionId: sessionId || '',
@@ -337,7 +343,10 @@ export default function FacebookFeedApp() {
   const maxChars = 2000;
 
   return (
-    <div className="h-full flex flex-col" style={{ backgroundColor: '#F0F2F5' }}>
+    <div
+      className="h-full flex flex-col"
+      style={{ backgroundColor: '#F0F2F5', colorScheme: 'light' as const }}
+    >
       {/* ── Facebook Header ── */}
       <div
         style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid #DADDE1' }}

@@ -128,7 +128,7 @@ const DEFAULT_RACE_OPTIONS = [
 export default function HomeScreen() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
-  const [badges] = useState<Record<string, number>>({});
+  const [badges, setBadges] = useState<Record<string, number>>({});
   const [time, setTime] = useState(new Date());
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
@@ -150,6 +150,34 @@ export default function HomeScreen() {
     const timer = setInterval(() => setTime(new Date()), 30000);
     return () => clearInterval(timer);
   }, []);
+
+  // Poll notification badge counts
+  useEffect(() => {
+    if (!sessionId) return;
+    const fetchBadges = async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(apiUrl(`/api/notifications/unread/count?session_id=${sessionId}`), {
+          headers,
+        });
+        if (res.ok) {
+          const json = await res.json();
+          const total = Number(json.count) || 0;
+          if (total > 0) {
+            const half = Math.ceil(total / 2);
+            setBadges({ social: half, facebook: total - half });
+          } else {
+            setBadges({});
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    fetchBadges();
+    const interval = setInterval(fetchBadges, 15000);
+    return () => clearInterval(interval);
+  }, [sessionId]);
 
   const checkDemographics = useCallback(async () => {
     if (!sessionId || onboardingChecked) return;

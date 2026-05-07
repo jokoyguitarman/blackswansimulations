@@ -11,6 +11,7 @@ import { markPostResponded } from '../services/responseTrackerService.js';
 import { evaluateSOPCompliance } from '../services/sopCheckerService.js';
 import { computeSessionSentiment } from '../services/sentimentSimService.js';
 import { triggerNPCReactions } from '../services/npcReactionService.js';
+import { notifyPostReply, notifyPostLike } from '../services/socialNotificationService.js';
 import {
   generatePostImage,
   generateVideoThumbnail,
@@ -203,6 +204,23 @@ router.post(
         }
         await markPostResponded(session_id, reply_to_post_id, post.id);
         await recordPlayerAction(session_id, user.id, 'reply_posted', reply_to_post_id, content);
+
+        // Notify the parent post author about the reply
+        const { data: parentForNotif } = await supabaseAdmin
+          .from('social_posts')
+          .select('author_handle, author_type, platform')
+          .eq('id', reply_to_post_id)
+          .single();
+        if (parentForNotif && parentForNotif.author_type === 'player') {
+          void notifyPostReply(
+            session_id,
+            (user.metadata?.full_name as string) || user.email || 'Player',
+            parentForNotif.author_handle,
+            reply_to_post_id,
+            content,
+            parentForNotif.platform || platform,
+          );
+        }
 
         // Trigger NPC reactions to player replies on NPC posts (non-blocking)
         void triggerNPCReactions(session_id, post).catch((err) =>
@@ -397,6 +415,22 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
       await recordPlayerAction(post.session_id, user.id, 'post_liked', postId, null, {
         reaction_type: reactionType,
       });
+
+      // Notify the post author about the like
+      const { data: likedPost } = await supabaseAdmin
+        .from('social_posts')
+        .select('author_handle, author_type, platform')
+        .eq('id', postId)
+        .single();
+      if (likedPost && likedPost.author_type === 'player') {
+        void notifyPostLike(
+          post.session_id,
+          likedPost.author_handle,
+          (user.metadata?.full_name as string) || user.email || 'Player',
+          reactionType,
+          likedPost.platform || 'x_twitter',
+        );
+      }
     }
 
     res.json({ success: true });

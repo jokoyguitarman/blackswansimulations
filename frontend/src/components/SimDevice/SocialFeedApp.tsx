@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { supabase } from '../../lib/supabase';
 
@@ -108,6 +108,7 @@ function formatCount(n: number): string {
 export default function SocialFeedApp() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [composing, setComposing] = useState(false);
@@ -137,6 +138,10 @@ export default function SocialFeedApp() {
   useEffect(() => {
     loadPosts();
   }, [loadPosts]);
+
+  useEffect(() => {
+    if (location.pathname.includes('/social')) loadPosts();
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useWebSocket({
     sessionId: sessionId || '',
