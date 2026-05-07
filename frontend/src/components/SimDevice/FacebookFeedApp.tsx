@@ -294,12 +294,13 @@ export default function FacebookFeedApp() {
           facebook
         </span>
         <button
+          onClick={() => navigate(`/sim/${sessionId}/device/social`)}
           className="w-8 h-8 flex items-center justify-center rounded-full"
-          style={{ backgroundColor: '#E4E6EB' }}
+          style={{ backgroundColor: '#000000' }}
+          title="Switch to X"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="#050505">
-            <circle cx="11" cy="11" r="8" fill="none" stroke="#050505" strokeWidth="2" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" stroke="#050505" strokeWidth="2" />
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="#FFFFFF">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
           </svg>
         </button>
       </div>

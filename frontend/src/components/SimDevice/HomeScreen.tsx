@@ -39,6 +39,14 @@ export default function HomeScreen() {
       inDock: true,
     },
     {
+      id: 'facebook',
+      label: 'Facebook',
+      icon: '/icons/icon-facebook.png',
+      path: 'facebook',
+      badge: badges.facebook,
+      inDock: true,
+    },
+    {
       id: 'chat',
       label: 'TeamChat',
       icon: '/icons/icon-chat.png',

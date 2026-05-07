@@ -67,18 +67,21 @@ export async function generatePostImage(
         Authorization: `Bearer ${env.openAiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'dall-e-3',
+        model: 'gpt-image-2',
         prompt: fullPrompt,
         n: 1,
         size: config.size,
-        quality: 'standard',
+        quality: 'medium',
         response_format: 'b64_json',
       }),
     });
 
     if (!response.ok) {
       const errBody = await response.text().catch(() => '');
-      logger.warn({ status: response.status, body: errBody.substring(0, 200) }, 'DALL-E API error');
+      logger.warn(
+        { status: response.status, body: errBody.substring(0, 200) },
+        'Image generation API error',
+      );
       return null;
     }
 

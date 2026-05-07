@@ -578,19 +578,13 @@ export default function SocialFeedApp() {
           <svg width="26" height="26" viewBox="0 0 24 24" fill="#E7E9EA">
             <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
           </svg>
-          <button className="ios-btn-bounce w-8 h-8 flex items-center justify-center">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#E7E9EA"
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
+          <button
+            onClick={() => navigate(`/sim/${sessionId}/device/facebook`)}
+            className="ios-btn-bounce w-8 h-8 flex items-center justify-center rounded-full"
+            style={{ backgroundColor: '#1877F2' }}
+            title="Switch to Facebook"
+          >
+            <span className="text-white text-[14px] font-bold">f</span>
           </button>
         </div>
 

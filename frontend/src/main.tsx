@@ -22,6 +22,7 @@ import { SupabaseConfigError } from './components/SupabaseConfigError';
 import DeviceShell from './components/SimDevice/DeviceShell';
 import HomeScreen from './components/SimDevice/HomeScreen';
 import SocialFeedApp from './components/SimDevice/SocialFeedApp';
+import FacebookFeedApp from './components/SimDevice/FacebookFeedApp';
 import GroupChatApp from './components/SimDevice/GroupChatApp';
 import EmailApp from './components/SimDevice/EmailApp';
 import NewsApp from './components/SimDevice/NewsApp';
@@ -164,6 +165,7 @@ const App = () => {
               <Route index element={<HomeScreen />} />
               <Route path="home" element={<HomeScreen />} />
               <Route path="social" element={<SocialFeedApp />} />
+              <Route path="facebook" element={<FacebookFeedApp />} />
               <Route path="chat" element={<GroupChatApp />} />
               <Route path="email" element={<EmailApp />} />
               <Route path="news" element={<NewsApp />} />
