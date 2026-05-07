@@ -81,6 +81,7 @@ interface SocialPost {
   liked_by_me?: boolean;
   flagged_by_me?: boolean;
   post_format?: string;
+  media_urls?: string[];
 }
 
 function formatCount(n: number): string {
@@ -121,7 +122,11 @@ export default function FacebookFeedApp() {
 
   useWebSocket({
     sessionId: sessionId || '',
-    eventTypes: ['social_post.created', 'social_posts.engagement_update'],
+    eventTypes: [
+      'social_post.created',
+      'social_posts.engagement_update',
+      'social_post.media_updated',
+    ],
     onEvent: (event) => {
       if (event.type === 'social_posts.engagement_update') {
         const updates = (
@@ -148,6 +153,9 @@ export default function FacebookFeedApp() {
             }),
           );
         }
+      } else if (event.type === 'social_post.media_updated') {
+        const { post_id, media_urls } = event.data as { post_id: string; media_urls: string[] };
+        setPosts((prev) => prev.map((p) => (p.id === post_id ? { ...p, media_urls } : p)));
       } else if (event.type === 'social_post.created') {
         const newPost = (event.data as { post: SocialPost }).post;
         if (newPost.platform !== 'facebook') return;
@@ -421,6 +429,29 @@ export default function FacebookFeedApp() {
                       {post.content}
                     </p>
                   </div>
+
+                  {/* Media */}
+                  {Array.isArray(post.media_urls) && post.media_urls.length > 0 && (
+                    <div className="relative">
+                      <img
+                        src={post.media_urls[0]}
+                        alt=""
+                        className="w-full max-h-[350px] object-cover"
+                      />
+                      {post.post_format === 'video_concept' && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div
+                            className="w-16 h-16 rounded-full flex items-center justify-center"
+                            style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+                          >
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
+                              <polygon points="8,5 19,12 8,19" />
+                            </svg>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Content Flags */}
                   {!!(

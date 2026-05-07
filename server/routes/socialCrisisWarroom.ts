@@ -19,6 +19,7 @@ import {
 } from '../services/socialCrisisGeneratorService.js';
 import { persistSocialCrisisScenario } from '../services/socialCrisisPersistenceService.js';
 import { getOrResearchTeamDoctrines } from '../services/doctrineCacheService.js';
+import { generatePostImage } from '../services/mediaGenerationService.js';
 
 const router = Router();
 
@@ -314,6 +315,37 @@ router.post(
       );
 
       const scenarioId = await persistSocialCrisisScenario(payload, user.id);
+
+      // Pre-generate images from NPC persona image_prompts (non-blocking)
+      const personas = body.personas as NPCPersona[];
+      void (async () => {
+        try {
+          const allPrompts: Array<{ handle: string; prompt: string; style: string }> = [];
+          for (const p of personas) {
+            for (const ip of p.image_prompts || []) {
+              if (ip) {
+                const style = p.bias && p.bias !== 'none' ? 'evidence_photo' : 'news_photo';
+                allPrompts.push({ handle: p.handle, prompt: ip, style });
+              }
+            }
+          }
+          const limited = allPrompts.slice(0, 10);
+          for (const item of limited) {
+            const url = await generatePostImage(
+              item.prompt,
+              item.style as 'evidence_photo' | 'news_photo' | 'meme',
+            );
+            if (url) {
+              logger.info(
+                { scenarioId, handle: item.handle, url: url.substring(0, 80) },
+                'Pre-generated NPC image',
+              );
+            }
+          }
+        } catch (imgErr) {
+          logger.warn({ imgErr, scenarioId }, 'NPC image pre-generation failed (non-critical)');
+        }
+      })();
 
       res.json({
         data: {

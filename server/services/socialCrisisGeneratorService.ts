@@ -13,6 +13,7 @@ export interface NPCPersona {
   backstory: string;
   posting_pattern: string;
   specific_claims: string[];
+  image_prompts?: string[];
 }
 
 export interface FactSheetEntry {
@@ -247,6 +248,7 @@ Given the crisis event, generate:
    - backstory (2-3 sentences: who they are in real life, why they care about this crisis, what personal stake they have)
    - posting_pattern (how they behave online: frequency, style, what triggers them to post more)
    - specific_claims (array of 1-3 specific false claims or narratives THIS persona will push, or empty for factual/supportive personas)
+   - image_prompts (array of 0-2 image descriptions for posts this persona would share. Hostile personas should have prompts for fake evidence photos, manipulated images, or inflammatory memes. Media personas should have news photo prompts. Supportive personas can have unity/community images. Leave empty for personas who mainly post text.)
 
 3. FACT SHEET: The ground truth for the simulation.
    - confirmed_facts: 6-10 facts that emergency services and police have confirmed
@@ -261,7 +263,7 @@ Country: ${country}
 Return ONLY valid JSON:
 {
   "communities": ["..."],
-  "personas": [{ "handle": "...", "name": "...", "type": "...", "personality": "...", "bias": "...", "follower_count": 0, "backstory": "...", "posting_pattern": "...", "specific_claims": ["..."] }],
+  "personas": [{ "handle": "...", "name": "...", "type": "...", "personality": "...", "bias": "...", "follower_count": 0, "backstory": "...", "posting_pattern": "...", "specific_claims": ["..."], "image_prompts": ["..."] }],
   "fact_sheet": {
     "confirmed_facts": ["..."],
     "unconfirmed_claims": [{ "claim": "...", "status": "FALSE", "truth": "...", "spread_by": ["@handle1"] }]
@@ -367,7 +369,7 @@ You must generate 8-15 injects that ONLY this team will experience. These create
 The injects should be a MIX of:
 - EMAILS (app: "email") addressed to this team from stakeholders relevant to their role. Use from_name and from_address matching real-world senders this team would hear from.
 - DIRECT MESSAGES or GROUP CHAT (app: "group_chat") from NPCs or colleagues with tips, requests, or pressure.
-- SOCIAL MEDIA POSTS (app: "social_feed") that are particularly relevant to this team's monitoring responsibility. Use the NPC personas and their specific claims.
+- SOCIAL MEDIA POSTS (app: "social_feed") that are particularly relevant to this team's monitoring responsibility. Use the NPC personas and their specific claims. For social_feed injects, set "platform" in the delivery_config to either "x_twitter" or "facebook". Vary the platform -- short reactions and hashtag trends go on X/Twitter, longer community posts and group discussions go on Facebook.
 - PHONE CALLS (app: "phone_call") from leadership or stakeholders demanding updates.
 
 Each inject should create PRESSURE specific to this team's role. The storyline should have:
@@ -464,7 +466,7 @@ export async function generateConvergenceLayer(
 
 2. OBJECTIVES: 4-6 measurable objectives for the overall exercise.
 
-3. SHARED SOCIAL MEDIA CHAOS: 10-15 social posts that ALL teams see in their feeds. These create the ambient environment of a social media crisis — hate speech, misinformation, supportive voices, breaking news. These should use the NPC personas and their claims. These injects have inject_scope: "universal" and target_teams: [].
+3. SHARED SOCIAL MEDIA CHAOS: 10-15 social posts that ALL teams see in their feeds. These create the ambient environment of a social media crisis — hate speech, misinformation, supportive voices, breaking news. These should use the NPC personas and their claims. These injects have inject_scope: "universal" and target_teams: []. IMPORTANT: For each social_feed inject, set "platform" in delivery_config to either "x_twitter" or "facebook". Aim for roughly 60% X/Twitter posts and 40% Facebook posts. X/Twitter posts should be short, punchy, hashtag-heavy. Facebook posts should be longer, more personal, community-oriented.
 
 4. CONVERGENCE GATES: 5-8 condition-based injects that create CROSS-TEAM consequences. These fire based on what players do or don't do. Use these condition keys:
    - hate_post_unaddressed_count_gt_3

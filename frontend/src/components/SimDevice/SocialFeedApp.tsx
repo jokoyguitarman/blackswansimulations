@@ -96,6 +96,7 @@ interface SocialPost {
   liked_by_me?: boolean;
   flagged_by_me?: boolean;
   post_format?: string;
+  media_urls?: string[];
 }
 
 function formatCount(n: number): string {
@@ -137,7 +138,12 @@ export default function SocialFeedApp() {
 
   useWebSocket({
     sessionId: sessionId || '',
-    eventTypes: ['social_post.created', 'social_post.flagged', 'social_posts.engagement_update'],
+    eventTypes: [
+      'social_post.created',
+      'social_post.flagged',
+      'social_posts.engagement_update',
+      'social_post.media_updated',
+    ],
     onEvent: (event) => {
       if (event.type === 'social_posts.engagement_update') {
         const updates = (
@@ -164,6 +170,9 @@ export default function SocialFeedApp() {
             }),
           );
         }
+      } else if (event.type === 'social_post.media_updated') {
+        const { post_id, media_urls } = event.data as { post_id: string; media_urls: string[] };
+        setPosts((prev) => prev.map((p) => (p.id === post_id ? { ...p, media_urls } : p)));
       } else if (event.type === 'social_post.created') {
         const newPost = (event.data as { post: SocialPost }).post;
 
@@ -785,6 +794,29 @@ export default function SocialFeedApp() {
                             ),
                           )}
                       </p>
+
+                      {Array.isArray(post.media_urls) && post.media_urls.length > 0 && (
+                        <div className="mt-2 relative rounded-xl overflow-hidden">
+                          <img
+                            src={post.media_urls[0]}
+                            alt=""
+                            className="w-full max-h-[300px] object-cover"
+                            style={{ borderRadius: 12 }}
+                          />
+                          {post.post_format === 'video_concept' && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <div
+                                className="w-14 h-14 rounded-full flex items-center justify-center"
+                                style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+                              >
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                                  <polygon points="8,5 19,12 8,19" />
+                                </svg>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {!!(
                         post.content_flags &&

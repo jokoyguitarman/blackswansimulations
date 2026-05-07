@@ -11,6 +11,11 @@ import { markPostResponded } from '../services/responseTrackerService.js';
 import { evaluateSOPCompliance } from '../services/sopCheckerService.js';
 import { computeSessionSentiment } from '../services/sentimentSimService.js';
 import { triggerNPCReactions } from '../services/npcReactionService.js';
+import {
+  generatePostImage,
+  generateVideoThumbnail,
+  getImageStyleForFormat,
+} from '../services/mediaGenerationService.js';
 
 const router = Router();
 
@@ -296,6 +301,37 @@ router.post(
         void triggerNPCReactions(session_id, post).catch((err) =>
           logger.warn({ err, postId: post.id }, 'NPC reaction trigger failed (non-critical)'),
         );
+      }
+
+      // Generate image for creative format posts (non-blocking)
+      const imageStyle = getImageStyleForFormat(post_format || 'text');
+      if (imageStyle && !reply_to_post_id) {
+        void (async () => {
+          try {
+            const imageUrl =
+              imageStyle === 'video_thumbnail'
+                ? await generateVideoThumbnail(content)
+                : await generatePostImage(content, imageStyle);
+
+            if (imageUrl) {
+              const mediaUrls = [imageUrl];
+              await supabaseAdmin
+                .from('social_posts')
+                .update({ media_urls: mediaUrls })
+                .eq('id', post.id);
+
+              getWebSocketService().broadcastToSession(session_id, {
+                type: 'social_post.media_updated',
+                data: { post_id: post.id, media_urls: mediaUrls },
+                timestamp: new Date().toISOString(),
+              });
+
+              logger.info({ postId: post.id, format: post_format }, 'Player post image generated');
+            }
+          } catch (imgErr) {
+            logger.warn({ imgErr, postId: post.id }, 'Player post image generation failed');
+          }
+        })();
       }
 
       res.status(201).json({ data: post });

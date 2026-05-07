@@ -199,7 +199,7 @@ Return ONLY valid JSON:
         .from('social_posts')
         .insert({
           session_id: sessionId,
-          platform: 'x_twitter',
+          platform: String(parentPost.platform || config.platform || 'x_twitter'),
           author_handle: reply.author_handle || '@anon_user',
           author_display_name: reply.author_display_name || 'Anonymous',
           author_type: 'npc_public',

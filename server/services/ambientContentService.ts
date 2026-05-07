@@ -80,6 +80,7 @@ async function insertPost(
   sessionId: string,
   post: Record<string, unknown>,
   replyToId?: string,
+  platform: string = 'x_twitter',
 ): Promise<Record<string, unknown> | null> {
   const handle = String(post.author_handle || '@anon');
   const displayName = String(post.author_display_name || 'User');
@@ -96,7 +97,7 @@ async function insertPost(
     .from('social_posts')
     .insert({
       session_id: sessionId,
-      platform: 'x_twitter',
+      platform: String(post.platform || platform),
       author_handle: handle,
       author_display_name: displayName,
       author_type: String(post.author_type || 'npc_public'),
@@ -242,6 +243,15 @@ Return ONLY valid JSON:
 
     logger.info({ sessionId, count: postsArray.length, elapsedMinutes }, 'Ambient posts generated');
 
+    // Generate 1-2 Facebook-specific ambient posts
+    await generateFacebookAmbientPosts(
+      sessionId,
+      String(scenario.description || ''),
+      elapsedMinutes,
+      knownNPCs,
+      socialState,
+    );
+
     // Generate demographic-targeted echo chamber posts
     await generateEchoChamberPosts(sessionId, String(scenario.description || ''), elapsedMinutes);
 
@@ -253,6 +263,65 @@ Return ONLY valid JSON:
     }
   } catch (err) {
     logger.error({ err, sessionId }, 'Ambient content generation failed');
+  }
+}
+
+// ─── Facebook Ambient Posts ──────────────────────────────────────────────────
+
+async function generateFacebookAmbientPosts(
+  sessionId: string,
+  crisisDescription: string,
+  elapsedMinutes: number,
+  knownNPCs: RegisteredNPC[],
+  socialState: Record<string, unknown> | undefined,
+): Promise<void> {
+  if (!env.openAiApiKey) return;
+
+  try {
+    const npcList = knownNPCs
+      .slice(0, 6)
+      .map((n) => `${n.handle} (${n.display_name}): ${n.personality || 'regular user'}`)
+      .join('\n');
+
+    const result = await callAI(
+      `You generate realistic FACEBOOK posts for a crisis simulation. Facebook posts are DIFFERENT from tweets:
+- Longer (2-5 sentences), more personal and emotional
+- No hashtags (or very few)
+- Written like someone sharing with friends/family, not broadcasting
+- Often start with personal reactions ("I can't believe...", "My heart goes out to...", "This is what happens when...")
+- May reference Facebook Groups or community pages
+
+THE CRISIS: ${crisisDescription.substring(0, 300)}
+Sentiment: ${socialState?.sentiment_score ?? 50}/100
+Elapsed: ${elapsedMinutes}min
+
+${npcList ? `KNOWN USERS (use these OR create new ones):\n${npcList}\n` : ''}
+
+Generate 1-2 Facebook posts. These should feel different from what's on Twitter.
+
+Return ONLY valid JSON:
+{ "posts": [{ "author_handle": "@user", "author_display_name": "Name", "author_type": "npc_public", "content": "text", "sentiment": "neutral|negative|supportive|hateful|inflammatory", "virality_score": 5, "platform": "facebook" }] }`,
+      'Generate Facebook ambient posts.',
+      1000,
+    );
+
+    const postsArray = Array.isArray(result)
+      ? result
+      : ((result as Record<string, unknown>)?.posts as unknown[]);
+    if (!Array.isArray(postsArray)) return;
+
+    for (let i = 0; i < postsArray.length; i++) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 2000 + Math.floor(Math.random() * 4000)));
+      const fbPost = postsArray[i] as Record<string, unknown>;
+      fbPost.platform = 'facebook';
+      await insertPost(sessionId, fbPost, undefined, 'facebook');
+    }
+
+    if (postsArray.length > 0) {
+      logger.info({ sessionId, count: postsArray.length }, 'Facebook ambient posts generated');
+    }
+  } catch (err) {
+    logger.warn({ err, sessionId }, 'Facebook ambient post generation failed (non-critical)');
   }
 }
 
@@ -309,11 +378,12 @@ Return ONLY valid JSON:
 
       if (result?.post) {
         const post = result.post as Record<string, unknown>;
+        const echoPlatform = Math.random() < 0.4 ? 'facebook' : 'x_twitter';
         const { data: inserted, error } = await supabaseAdmin
           .from('social_posts')
           .insert({
             session_id: sessionId,
-            platform: 'x_twitter',
+            platform: echoPlatform,
             author_handle: String(post.author_handle || '@echo_user'),
             author_display_name: String(post.author_display_name || 'User'),
             author_type: 'npc_public',
@@ -523,11 +593,12 @@ Return ONLY valid JSON: { "author_handle": "@handle", "author_display_name": "Na
 
     await new Promise((r) => setTimeout(r, 2000 + Math.floor(Math.random() * 4000)));
 
+    const consequencePlatform = Math.random() < 0.3 ? 'facebook' : 'x_twitter';
     const { data: inserted, error } = await supabaseAdmin
       .from('social_posts')
       .insert({
         session_id: sessionId,
-        platform: 'x_twitter',
+        platform: consequencePlatform,
         author_handle: post.author_handle || '@consequence_npc',
         author_display_name: post.author_display_name || 'Observer',
         author_type: post.author_type || 'npc_public',
