@@ -174,7 +174,7 @@ Return ONLY valid JSON:
           },
           {
             role: 'user',
-            content: `Player post by ${String(playerPost.author_handle)}:\n"${postContent}"`,
+            content: `Player post by ${String(playerPost.author_handle)}:\n"${String(playerPost.content || '')}"`,
           },
         ],
         temperature: 0.85,
