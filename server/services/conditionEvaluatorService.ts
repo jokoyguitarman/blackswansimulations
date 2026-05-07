@@ -448,6 +448,32 @@ conditionRegistry.sop_step_draft_overdue = (ctx) => getSocialState(ctx).sop_draf
 conditionRegistry.sop_step_publish_overdue = (ctx) =>
   getSocialState(ctx).sop_publish_overdue === true;
 
+// --- Post format and strategy conditions ---
+conditionRegistry.player_posted_creative_format = (ctx) =>
+  getSocialState(ctx).player_posted_creative_format === true;
+
+conditionRegistry.player_posted_official_statement = (ctx) =>
+  getSocialState(ctx).player_posted_official_statement === true;
+
+conditionRegistry.player_posted_infographic = (ctx) => {
+  const s = getSocialState(ctx);
+  return s.player_posted_creative_format === true; // simplified: use same flag
+};
+
+conditionRegistry.player_posted_video_concept = (ctx) =>
+  getSocialState(ctx).player_posted_creative_format === true;
+
+conditionRegistry.player_posted_personal_story = (ctx) =>
+  getSocialState(ctx).player_posted_creative_format === true;
+
+conditionRegistry.official_response_exists = (ctx) =>
+  getSocialState(ctx).official_statement_published === true;
+
+conditionRegistry.facts_confirmed = (ctx) => getSocialState(ctx).sop_fact_check_completed === true;
+
+conditionRegistry.impression_dominance_player = (ctx) =>
+  ((getSocialState(ctx).impression_dominance_ratio as number) ?? 0) > 1.0;
+
 // ---------------------------------------------------------------------------
 // Internal: resolve one condition key (prefix rules + state_path + registry)
 // ---------------------------------------------------------------------------

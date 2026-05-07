@@ -77,6 +77,20 @@ export interface SocialMediaAARData {
       timing: string;
     }>;
   };
+  format_analysis: Array<{
+    post_id: string;
+    post_format: string;
+    content_preview: string;
+    grade: Record<string, unknown>;
+    peak_views: number;
+    peak_likes: number;
+    engagement_trajectory: Array<{ tick: number; views: number; likes: number }>;
+  }>;
+  impression_dominance: {
+    player_total_views: number;
+    hostile_total_views: number;
+    ratio: number;
+  };
 }
 
 const TIER1_ACTIONS = ['reply_posted', 'post_liked', 'post_reposted', 'post_flagged', 'news_read'];
@@ -261,6 +275,46 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
     }
   }
 
+  // Build format analysis from player posts with engagement logs
+  const formattedPosts = posts.filter(
+    (p: Record<string, unknown>) =>
+      p.author_type === 'player' && p.post_format && p.post_format !== 'text',
+  );
+
+  const formatAnalysis: SocialMediaAARData['format_analysis'] = [];
+  for (const fp of formattedPosts) {
+    const { data: engLogs } = await supabaseAdmin
+      .from('post_engagement_log')
+      .select('tick_number, impressions_added, npc_likes_added')
+      .eq('post_id', fp.id as string)
+      .order('tick_number', { ascending: true });
+
+    formatAnalysis.push({
+      post_id: fp.id as string,
+      post_format: fp.post_format as string,
+      content_preview: (fp.content as string).substring(0, 200),
+      grade: (fp.sop_compliance_score || {}) as Record<string, unknown>,
+      peak_views: (fp.view_count as number) || 0,
+      peak_likes: (fp.like_count as number) || 0,
+      engagement_trajectory: (engLogs || []).map((l: Record<string, unknown>) => ({
+        tick: l.tick_number as number,
+        views: l.impressions_added as number,
+        likes: l.npc_likes_added as number,
+      })),
+    });
+  }
+
+  // Impression dominance
+  const playerViews = posts
+    .filter((p: Record<string, unknown>) => p.author_type === 'player')
+    .reduce((s: number, p: Record<string, unknown>) => s + (Number(p.view_count) || 0), 0);
+  const hostileViews = posts
+    .filter((p: Record<string, unknown>) => {
+      const flags = (p.content_flags || {}) as Record<string, unknown>;
+      return !!(flags.is_hate_speech || flags.is_misinformation || flags.is_racist);
+    })
+    .reduce((s: number, p: Record<string, unknown>) => s + (Number(p.view_count) || 0), 0);
+
   return {
     response_timeline: responseTimeline,
     sop_compliance: {
@@ -322,6 +376,17 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
       benchmarks_missed: benchmarksMissed,
       benchmarks_total: benchmarks.length,
       details: doctrineDetails,
+    },
+    format_analysis: formatAnalysis,
+    impression_dominance: {
+      player_total_views: playerViews,
+      hostile_total_views: hostileViews,
+      ratio:
+        hostileViews > 0
+          ? Math.round((playerViews / hostileViews) * 100) / 100
+          : playerViews > 0
+            ? 999
+            : 0,
     },
   };
 }

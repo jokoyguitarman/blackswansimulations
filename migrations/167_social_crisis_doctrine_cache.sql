@@ -38,11 +38,14 @@ CREATE TABLE IF NOT EXISTS social_crisis_benchmarks_cache (
 CREATE INDEX IF NOT EXISTS idx_social_doctrines_role ON social_crisis_doctrines(team_role_type);
 CREATE INDEX IF NOT EXISTS idx_social_doctrines_category ON social_crisis_doctrines(crisis_category);
 
+DROP TRIGGER IF EXISTS update_social_crisis_doctrines_updated_at ON social_crisis_doctrines;
 CREATE TRIGGER update_social_crisis_doctrines_updated_at BEFORE UPDATE ON social_crisis_doctrines
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_social_crisis_group_doctrines_updated_at ON social_crisis_group_doctrines;
 CREATE TRIGGER update_social_crisis_group_doctrines_updated_at BEFORE UPDATE ON social_crisis_group_doctrines
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_social_crisis_benchmarks_cache_updated_at ON social_crisis_benchmarks_cache;
 CREATE TRIGGER update_social_crisis_benchmarks_cache_updated_at BEFORE UPDATE ON social_crisis_benchmarks_cache
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

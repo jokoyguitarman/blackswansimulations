@@ -242,16 +242,115 @@ Return ONLY valid JSON:
 
     logger.info({ sessionId, count: postsArray.length, elapsedMinutes }, 'Ambient posts generated');
 
+    // Generate demographic-targeted echo chamber posts
+    await generateEchoChamberPosts(sessionId, String(scenario.description || ''), elapsedMinutes);
+
     await simulateThreadActivity(sessionId, String(scenario.description || ''));
     await simulateThreadActivity(sessionId, String(scenario.description || ''));
 
     if (Math.random() < 0.5) {
       await simulateThreadActivity(sessionId, String(scenario.description || ''));
     }
-
-    await bumpOrganicEngagement(sessionId);
   } catch (err) {
     logger.error({ err, sessionId }, 'Ambient content generation failed');
+  }
+}
+
+// ─── Echo Chamber Posts (demographic-targeted) ──────────────────────────────
+
+async function generateEchoChamberPosts(
+  sessionId: string,
+  crisisDescription: string,
+  elapsedMinutes: number,
+): Promise<void> {
+  if (!env.openAiApiKey) return;
+
+  try {
+    const { data: participants } = await supabaseAdmin
+      .from('session_participants')
+      .select('demographics')
+      .eq('session_id', sessionId)
+      .not('demographics', 'is', null);
+
+    if (!participants || participants.length === 0) return;
+
+    const demographicClusters = new Map<string, Record<string, string>>();
+    for (const p of participants) {
+      const demo = p.demographics as Record<string, string>;
+      if (!demo?.race) continue;
+      const key = `${demo.race}_${demo.age_bracket || 'any'}`;
+      if (!demographicClusters.has(key)) {
+        demographicClusters.set(key, demo);
+      }
+    }
+
+    if (demographicClusters.size === 0) return;
+
+    // Generate 1 echo chamber post per demographic cluster (max 3)
+    let count = 0;
+    for (const [, demographics] of demographicClusters) {
+      if (count >= 3) break;
+
+      const result = await callAI(
+        `You generate a social media post tailored for a specific demographic echo chamber during a crisis simulation. The post should feel like content this person would naturally see in their feed -- culturally specific language, references, and concerns.
+
+Demographic: race=${demographics.race || 'any'}, age=${demographics.age_bracket || 'any'}, religion=${demographics.religion || 'any'}
+
+Crisis: ${crisisDescription.substring(0, 200)}
+Elapsed: ${elapsedMinutes} minutes
+
+Generate 1 post that reflects what this demographic group would be saying/sharing about the crisis. It should feel organic to their social media bubble.
+
+Return ONLY valid JSON:
+{ "post": { "author_handle": "@user", "author_display_name": "Name", "author_type": "npc_public", "content": "text", "sentiment": "neutral|negative|supportive|hateful", "virality_score": 10 } }`,
+        'Generate echo chamber post.',
+        800,
+      );
+
+      if (result?.post) {
+        const post = result.post as Record<string, unknown>;
+        const { data: inserted, error } = await supabaseAdmin
+          .from('social_posts')
+          .insert({
+            session_id: sessionId,
+            platform: 'x_twitter',
+            author_handle: String(post.author_handle || '@echo_user'),
+            author_display_name: String(post.author_display_name || 'User'),
+            author_type: 'npc_public',
+            content: String(post.content || ''),
+            hashtags: String(post.content || '').match(/#\w+/g) || [],
+            sentiment: String(post.sentiment || 'neutral'),
+            virality_score: Number(post.virality_score) || 10,
+            target_demographics: { race: demographics.race },
+            like_count: 0,
+            repost_count: 0,
+            reply_count: 0,
+            view_count: 0,
+            content_flags: {},
+          })
+          .select()
+          .single();
+
+        if (!error && inserted) {
+          getWebSocketService().broadcastToMatchingPlayers(
+            sessionId,
+            { race: demographics.race },
+            {
+              type: 'social_post.created',
+              data: { post: inserted },
+              timestamp: new Date().toISOString(),
+            },
+          );
+        }
+      }
+      count++;
+    }
+
+    if (count > 0) {
+      logger.info({ sessionId, echoChamberPosts: count }, 'Echo chamber posts generated');
+    }
+  } catch (err) {
+    logger.warn({ err, sessionId }, 'Echo chamber post generation failed (non-critical)');
   }
 }
 
@@ -356,68 +455,6 @@ Return ONLY valid JSON:
       { sessionId, postId: targetPost.id, newReplies: replies.length },
       'Thread activity simulated',
     );
-  }
-}
-
-// ─── Organic engagement bumps (no AI needed) ────────────────────────────────
-
-async function bumpOrganicEngagement(sessionId: string): Promise<void> {
-  try {
-    const { data: allPosts } = await supabaseAdmin
-      .from('social_posts')
-      .select('id, like_count, repost_count, view_count, virality_score, reply_to_post_id')
-      .eq('session_id', sessionId)
-      .order('created_at', { ascending: false })
-      .limit(40);
-
-    if (!allPosts || allPosts.length === 0) return;
-
-    const topLevel = allPosts.filter((p) => !p.reply_to_post_id);
-    const replies = allPosts.filter((p) => !!p.reply_to_post_id);
-
-    const postsToBump = topLevel
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 5 + Math.floor(Math.random() * 5));
-
-    const updates: Array<{ id: string; changes: Record<string, number> }> = [];
-
-    for (const post of postsToBump) {
-      const virality = Number(post.virality_score) || 10;
-      const likeBump = Math.floor(Math.random() * Math.max(2, virality / 5)) + 1;
-      const viewBump = Math.floor(Math.random() * Math.max(20, virality * 2)) + 10;
-      const repostBump = Math.random() < 0.3 ? Math.floor(Math.random() * 3) + 1 : 0;
-
-      const newLikes = ((post.like_count as number) || 0) + likeBump;
-      const newViews = ((post.view_count as number) || 0) + viewBump;
-      const newReposts = ((post.repost_count as number) || 0) + repostBump;
-
-      updates.push({
-        id: post.id as string,
-        changes: { like_count: newLikes, view_count: newViews, repost_count: newReposts },
-      });
-    }
-
-    const repliesToBump = replies
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 3 + Math.floor(Math.random() * 3));
-
-    for (const reply of repliesToBump) {
-      const likeBump = Math.floor(Math.random() * 5) + 1;
-      const newLikes = ((reply.like_count as number) || 0) + likeBump;
-      updates.push({ id: reply.id as string, changes: { like_count: newLikes } });
-    }
-
-    for (const up of updates) {
-      await supabaseAdmin.from('social_posts').update(up.changes).eq('id', up.id);
-    }
-
-    getWebSocketService().broadcastToSession(sessionId, {
-      type: 'social_posts.engagement_update',
-      data: { updates: updates.map((u) => ({ id: u.id, ...u.changes })) },
-      timestamp: new Date().toISOString(),
-    });
-  } catch (err) {
-    logger.warn({ err, sessionId }, 'Organic engagement bump failed');
   }
 }
 

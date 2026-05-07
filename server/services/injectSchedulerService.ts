@@ -32,7 +32,7 @@ import { shouldCancelSocialInject } from './socialCrisisAiService.js';
 import { computeSocialState } from './socialStateUpdaterService.js';
 import { computeSessionSentiment } from './sentimentSimService.js';
 import { checkResponseDeadlines } from './responseTrackerService.js';
-import { generateAmbientPosts } from './ambientContentService.js';
+import { runEngagementTick } from './engagementAlgorithmService.js';
 import type { Server as SocketServer } from 'socket.io';
 /**
  * Shared AI cancellation gate for any inject about to be published.
@@ -988,9 +988,9 @@ export class InjectSchedulerService {
       }
 
       try {
-        await generateAmbientPosts(session.id);
-      } catch (ambientErr) {
-        logger.warn({ err: ambientErr, sessionId: session.id }, 'Ambient post generation error');
+        await runEngagementTick(session.id);
+      } catch (engErr) {
+        logger.warn({ err: engErr, sessionId: session.id }, 'Engagement tick error');
       }
     }
   }

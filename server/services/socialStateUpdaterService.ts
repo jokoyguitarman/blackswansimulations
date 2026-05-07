@@ -41,6 +41,10 @@ export interface SocialState {
   tier2_strategic_actions: number;
   tier3_advanced_actions: number;
   strategic_ratio: number;
+
+  player_posted_creative_format: boolean;
+  player_posted_official_statement: boolean;
+  impression_dominance_ratio: number;
 }
 
 const TIER1_ACTIONS = ['reply_posted', 'post_liked', 'post_reposted', 'post_flagged', 'news_read'];
@@ -69,7 +73,7 @@ export async function computeSocialState(
     supabaseAdmin
       .from('social_posts')
       .select(
-        'id, author_type, author_handle, content_flags, sentiment, is_flagged_by_player, reply_to_post_id, created_at, inject_id, sop_compliance_score, virality_score, content',
+        'id, author_type, author_handle, content_flags, sentiment, is_flagged_by_player, reply_to_post_id, created_at, inject_id, sop_compliance_score, virality_score, content, view_count, post_format',
       )
       .eq('session_id', sessionId),
     supabaseAdmin
@@ -237,12 +241,30 @@ export async function computeSocialState(
   communitySafety -= Math.min(fearPosts.length, 10) * 1.5;
   if (rallyCallActive) communitySafety -= 10;
 
-  let narrativeControl = 30;
-  narrativeControl += counterNarratives * 8;
-  narrativeControl += officialPublished ? 15 : 0;
+  // Impression-dominance-based narrative control
+  const playerTotalViews = playerPosts.reduce((s, p) => s + (Number(p.view_count) || 0), 0);
+  const hostileTotalViews = harmfulPosts.reduce((s, p) => s + (Number(p.view_count) || 0), 0);
+  const impressionRatio =
+    hostileTotalViews > 0 ? playerTotalViews / hostileTotalViews : playerTotalViews > 0 ? 2.0 : 0;
+
+  let narrativeControl = 20 + Math.min(impressionRatio, 2.0) * 30;
+  narrativeControl += officialPublished ? 10 : 0;
   narrativeControl += avgGradePersuasiveness > 0 ? (avgGradePersuasiveness - 50) / 5 : 0;
-  narrativeControl -= weightedHatePenalty * 0.8;
-  if (strategicRatio < 0.2 && totalActions > 5) narrativeControl -= 3;
+  narrativeControl -= weightedHatePenalty * 0.5;
+
+  // Strategy pattern detection bonuses
+  const factCheckAction = allActions.find((a) => a.action_type === 'fact_checked');
+  const factCheckThenPost =
+    !!factCheckAction &&
+    allActions.some(
+      (a) =>
+        a.action_type === 'post_created' &&
+        new Date(a.created_at) > new Date(factCheckAction.created_at),
+    );
+  const draftApprovePublish =
+    sopCompleted('draft') && sopCompleted('approve') && sopCompleted('publish');
+  if (factCheckThenPost) narrativeControl += 5;
+  if (draftApprovePublish) narrativeControl += 5;
 
   let escalationRisk = 20;
   escalationRisk += rallyPosts.length * 12;
@@ -259,12 +281,18 @@ export async function computeSocialState(
   narrativeControl = Math.max(0, Math.min(100, Math.round(narrativeControl)));
   escalationRisk = Math.max(0, Math.min(100, Math.round(escalationRisk)));
 
-  const sentimentScore = Math.round(
-    0.25 * publicTrust +
-      0.25 * communitySafety +
-      0.3 * narrativeControl +
+  // Reweighted composite: narrative_control at 40%
+  let sentimentScore = Math.round(
+    0.2 * publicTrust +
+      0.2 * communitySafety +
+      0.4 * narrativeControl +
       0.2 * (100 - escalationRisk),
   );
+
+  // Strategic ratio multiplier
+  if (strategicRatio > 0.4 && totalActions > 5) sentimentScore = Math.round(sentimentScore * 1.1);
+  if (strategicRatio < 0.2 && totalActions > 5) sentimentScore = Math.round(sentimentScore * 0.85);
+  sentimentScore = Math.max(0, Math.min(100, sentimentScore));
 
   const sopActions = new Set(
     allActions.filter((a) => a.sop_step_matched).map((a) => a.sop_step_matched),
@@ -334,6 +362,14 @@ export async function computeSocialState(
     tier2_strategic_actions: tier2,
     tier3_advanced_actions: tier3,
     strategic_ratio: Math.round(strategicRatio * 100) / 100,
+
+    player_posted_creative_format: playerPosts.some((p) =>
+      ['humor_meme', 'video_concept'].includes(String(p.post_format || '')),
+    ),
+    player_posted_official_statement: playerPosts.some(
+      (p) => String(p.post_format || '') === 'official_statement',
+    ),
+    impression_dominance_ratio: Math.round(impressionRatio * 100) / 100,
   };
 
   const currentState = (sessionRow?.current_state as Record<string, unknown>) || {};
@@ -417,9 +453,9 @@ export async function evaluateConsequenceTriggers(
   }
 
   if (
-    state.strategic_ratio < 0.15 &&
-    state.tier1_reactive_actions > 10 &&
-    (prev.tier1_reactive_actions || 0) <= 10
+    state.strategic_ratio < 0.2 &&
+    state.tier1_reactive_actions > 6 &&
+    (prev.tier1_reactive_actions || 0) <= 6
   ) {
     void generateConsequenceInject(
       sessionId,

@@ -794,6 +794,76 @@ export function buildSOPFromResearch(research: ResearchGuidelines): SOPDefinitio
   };
 }
 
+// ─── Stage 4b: Strategy Windows ──────────────────────────────────────────────
+
+export interface StrategyWindow {
+  strategy_id: string;
+  strategy_name: string;
+  success_injects: SocialInject[];
+  backlash_injects: SocialInject[];
+}
+
+export async function generateStrategyWindows(
+  crisisContext: {
+    crisisType: string;
+    location: string;
+    country: string;
+    context: string;
+    duration: number;
+  },
+  npcs: NPCPersona[],
+  factSheet: FactSheet,
+): Promise<StrategyWindow[]> {
+  const npcHandles = npcs
+    .slice(0, 8)
+    .map((p) => `${p.handle} (${p.name}, ${p.type}, bias: ${p.bias})`)
+    .join(', ');
+
+  const result = await callAI(
+    `You are designing STRATEGY WINDOWS for a social media crisis simulation. Strategy windows define what happens when the player team tries different communication strategies.
+
+For each strategy below, generate:
+1. SUCCESS BRANCH: 3 social media posts that appear as organic consequences when the strategy is well-timed (prerequisites met). These should feel like genuine public reactions.
+2. BACKLASH BRANCH: 3 social media posts that appear when the strategy is poorly timed (prerequisites NOT met). These should feel like genuine backlash.
+
+Strategies to cover:
+- "humor_creative": Team posts humor/meme content
+- "leader_amplification": Team contacts a community leader who then amplifies their message
+- "multi_platform_blitz": Team publishes coordinated messaging across platforms
+- "strategic_silence": Team deliberately does NOT engage with bait/troll posts
+
+NPCs available: ${npcHandles}
+Facts: ${factSheet.confirmed_facts.slice(0, 5).join('; ')}
+
+Each inject should have: title, content (the social media post text), severity, delivery_config with app="social_feed" and appropriate author details from the NPC list.
+
+SUCCESS injects should have conditions_to_appear requiring the strategy format + prerequisites (fact_check completed, official statement published, etc).
+BACKLASH injects should fire when the strategy format is used WITHOUT prerequisites.
+
+Return ONLY valid JSON:
+{
+  "windows": [
+    {
+      "strategy_id": "humor_creative",
+      "strategy_name": "Humor/Creative Format",
+      "success_injects": [
+        { "title": "...", "content": "...", "type": "social_post", "severity": "medium", "inject_scope": "universal", "target_teams": [], "delivery_config": { "app": "social_feed", "author_handle": "@npc", "author_display_name": "Name", "author_type": "npc_public", "virality_score": 70 }, "conditions_to_appear": { "threshold": 3, "conditions": ["player_posted_creative_format", "sop_step_fact_check_completed", "official_response_exists"] }, "conditions_to_cancel": [], "eligible_after_minutes": 15 }
+      ],
+      "backlash_injects": [
+        { "title": "...", "content": "...", "type": "social_post", "severity": "high", "inject_scope": "universal", "target_teams": [], "delivery_config": { "app": "social_feed", "author_handle": "@npc", "author_display_name": "Name", "author_type": "npc_public", "virality_score": 80 }, "conditions_to_appear": { "threshold": 1, "conditions": ["player_posted_creative_format"] }, "conditions_to_cancel": ["sop_step_fact_check_completed", "official_response_exists"] }
+      ]
+    }
+  ]
+}`,
+    `Crisis: ${crisisContext.crisisType} in ${crisisContext.location}, ${crisisContext.country}\nContext: ${crisisContext.context}\nDuration: ${crisisContext.duration} minutes`,
+    8000,
+    0.8,
+  );
+
+  const windows = (result?.windows as StrategyWindow[]) || [];
+  return windows;
+}
+
 // ─── Full Assembly ──────────────────────────────────────────────────────────
 
 export function assemblePayload(
@@ -809,17 +879,27 @@ export function assemblePayload(
   research: ResearchGuidelines,
   sop: SOPDefinition,
   duration: number,
+  strategyWindows?: StrategyWindow[],
 ): SocialCrisisPayload {
   const allTeamInjects: SocialInject[] = [];
   for (const injects of Object.values(teamStorylines)) {
     allTeamInjects.push(...injects);
   }
 
+  // Flatten strategy window injects into condition injects
+  const strategyInjects: SocialInject[] = [];
+  if (strategyWindows) {
+    for (const window of strategyWindows) {
+      if (window.success_injects) strategyInjects.push(...window.success_injects);
+      if (window.backlash_injects) strategyInjects.push(...window.backlash_injects);
+    }
+  }
+
   const timeInjects = [
     ...allTeamInjects.filter((i) => i.trigger_time_minutes != null),
     ...sharedInjects,
   ];
-  const conditionInjects = convergenceGates;
+  const conditionInjects = [...convergenceGates, ...strategyInjects];
   const decisionInjects = allTeamInjects.filter((i) => i.trigger_condition);
 
   return {

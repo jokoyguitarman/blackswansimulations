@@ -21,6 +21,57 @@ async function getAuthHeaders() {
   };
 }
 
+type PostFormat =
+  | 'text'
+  | 'official_statement'
+  | 'infographic'
+  | 'humor_meme'
+  | 'video_concept'
+  | 'personal_story';
+
+const POST_FORMATS: Array<{ value: PostFormat; label: string; icon: string; placeholder: string }> =
+  [
+    { value: 'text', label: 'Text', icon: '✏️', placeholder: "What's happening?" },
+    {
+      value: 'official_statement',
+      label: 'Statement',
+      icon: '📋',
+      placeholder: 'Draft your official statement...',
+    },
+    {
+      value: 'infographic',
+      label: 'Infographic',
+      icon: '📊',
+      placeholder: 'Describe your infographic content...',
+    },
+    {
+      value: 'humor_meme',
+      label: 'Meme/Humor',
+      icon: '😄',
+      placeholder: 'Describe your meme or humorous post concept...',
+    },
+    {
+      value: 'video_concept',
+      label: 'Video',
+      icon: '🎬',
+      placeholder: 'Describe your video concept...',
+    },
+    {
+      value: 'personal_story',
+      label: 'Story',
+      icon: '💬',
+      placeholder: 'Share a personal story or testimony...',
+    },
+  ];
+
+const FORMAT_BADGE: Record<string, { label: string; bg: string; fg: string }> = {
+  official_statement: { label: 'Official Statement', bg: 'rgba(29,155,240,0.15)', fg: '#1D9BF0' },
+  infographic: { label: 'Infographic', bg: 'rgba(0,186,124,0.15)', fg: '#00BA7C' },
+  humor_meme: { label: 'Meme/Humor', bg: 'rgba(249,24,128,0.15)', fg: '#F91880' },
+  video_concept: { label: 'Video', bg: 'rgba(120,86,255,0.15)', fg: '#7856FF' },
+  personal_story: { label: 'Personal Story', bg: 'rgba(255,122,0,0.15)', fg: '#FF7A00' },
+};
+
 interface SocialPost {
   id: string;
   author_handle: string;
@@ -44,6 +95,7 @@ interface SocialPost {
   reply_to_post_id: string | null;
   liked_by_me?: boolean;
   flagged_by_me?: boolean;
+  post_format?: string;
 }
 
 function formatCount(n: number): string {
@@ -60,7 +112,8 @@ export default function SocialFeedApp() {
   const [composing, setComposing] = useState(false);
   const [composeText, setComposeText] = useState('');
   const [replyingTo, setReplyingTo] = useState<SocialPost | null>(null);
-  const [activeTab, setActiveTab] = useState<'foryou' | 'following'>('foryou');
+  const [activeTab, setActiveTab] = useState<'foryou' | 'latest'>('foryou');
+  const [selectedFormat, setSelectedFormat] = useState<PostFormat>('text');
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
   const [threadReplies, setThreadReplies] = useState<SocialPost[]>([]);
 
@@ -157,11 +210,13 @@ export default function SocialFeedApp() {
           session_id: sessionId,
           content: composeText,
           reply_to_post_id: replyingTo?.id,
+          post_format: replyingTo ? 'text' : selectedFormat,
         }),
       });
       setComposeText('');
       setComposing(false);
       setReplyingTo(null);
+      setSelectedFormat('text');
     } catch {
       /* ignore */
     }
@@ -546,12 +601,12 @@ export default function SocialFeedApp() {
             )}
           </button>
           <button
-            onClick={() => setActiveTab('following')}
+            onClick={() => setActiveTab('latest')}
             className="flex-1 py-3 text-center text-[15px] font-bold relative transition-colors"
-            style={{ color: activeTab === 'following' ? '#E7E9EA' : '#71767B' }}
+            style={{ color: activeTab === 'latest' ? '#E7E9EA' : '#71767B' }}
           >
-            Following
-            {activeTab === 'following' && (
+            Latest
+            {activeTab === 'latest' && (
               <div
                 className="absolute bottom-0 left-1/2 -translate-x-1/2 h-1 w-14 rounded-full"
                 style={{ backgroundColor: '#1D9BF0' }}
@@ -596,6 +651,22 @@ export default function SocialFeedApp() {
         ) : (
           posts
             .filter((p) => !p.reply_to_post_id)
+            .sort((a, b) => {
+              if (activeTab === 'latest') {
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+              }
+              const recencyA = Math.max(
+                0,
+                1 - (Date.now() - new Date(a.created_at).getTime()) / (45 * 60000),
+              );
+              const recencyB = Math.max(
+                0,
+                1 - (Date.now() - new Date(b.created_at).getTime()) / (45 * 60000),
+              );
+              const scoreA = (a.virality_score || 0) * 0.6 + recencyA * 100 * 0.4;
+              const scoreB = (b.virality_score || 0) * 0.6 + recencyB * 100 * 0.4;
+              return scoreB - scoreA;
+            })
             .map((post) => {
               const badge = getAuthorBadge(post.author_type);
               return (
@@ -684,6 +755,18 @@ export default function SocialFeedApp() {
                           </svg>
                           <span className="text-[12px]">Reposted</span>
                         </div>
+                      )}
+
+                      {post.post_format && FORMAT_BADGE[post.post_format] && (
+                        <span
+                          className="text-[11px] px-2 py-0.5 rounded-sm font-semibold inline-block mt-1"
+                          style={{
+                            backgroundColor: FORMAT_BADGE[post.post_format].bg,
+                            color: FORMAT_BADGE[post.post_format].fg,
+                          }}
+                        >
+                          {FORMAT_BADGE[post.post_format].label}
+                        </span>
                       )}
 
                       <p
@@ -955,6 +1038,24 @@ export default function SocialFeedApp() {
               </div>
             )}
 
+            {!replyingTo && (
+              <div className="px-4 pt-3 pb-1 flex gap-1.5 flex-wrap">
+                {POST_FORMATS.map((fmt) => (
+                  <button
+                    key={fmt.value}
+                    onClick={() => setSelectedFormat(fmt.value)}
+                    className="px-2.5 py-1 rounded-full text-[12px] font-semibold transition-colors"
+                    style={{
+                      backgroundColor: selectedFormat === fmt.value ? '#1D9BF0' : '#2F3336',
+                      color: selectedFormat === fmt.value ? '#FFFFFF' : '#71767B',
+                    }}
+                  >
+                    {fmt.icon} {fmt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="flex-1 px-4 pb-2 overflow-y-auto">
               <div className="flex gap-3 pt-3">
                 <div
@@ -966,7 +1067,12 @@ export default function SocialFeedApp() {
                 <textarea
                   value={composeText}
                   onChange={(e) => setComposeText(e.target.value)}
-                  placeholder={replyingTo ? 'Post your reply...' : "What's happening?"}
+                  placeholder={
+                    replyingTo
+                      ? 'Post your reply...'
+                      : POST_FORMATS.find((f) => f.value === selectedFormat)?.placeholder ||
+                        "What's happening?"
+                  }
                   className="flex-1 bg-transparent text-[18px] resize-none outline-none min-h-[120px] placeholder:text-[#71767B]"
                   style={{ color: '#E7E9EA', lineHeight: '1.4' }}
                   maxLength={500}

@@ -1,0 +1,22 @@
+feat: social crisis simulation overhaul — algorithm engine, format system, NPC reactions, scoring reweight
+
+Major overhaul of the social media crisis simulation to shift from
+granular comment-war scoring to grand strategy evaluation.
+
+New services: engagementAlgorithmService (per-tick reach model),
+npcReactionService (persona-driven counter-posts).
+
+Schema (migration 169): post_format, impression_pool, engagement_rate,
+target_demographics, platform_removed on social_posts; demographics on
+session_participants; post_engagement_log table for AAR.
+
+Scoring: narrative_control at 40%, impression-dominance-based, strategic
+ratio multiplier, pattern detection, earlier trench warfare trigger.
+
+Post format system with 6 formats, format-specific AI grading rubrics,
+format picker UI, and strategy windows (pre-authored branches).
+
+Demographics, echo chamber content, Facebook clone UI, feed algorithm
+sorting, and AAR enhancements with engagement trajectories.
+
+Also fixes migration 167 NOW() syntax and idempotent triggers.

@@ -73,6 +73,29 @@ export class WebSocketService {
   }
 
   /**
+   * Broadcast event only to players whose demographics match the target.
+   * Falls back to session-wide broadcast if targeting is not possible.
+   */
+  broadcastToMatchingPlayers(
+    sessionId: string,
+    targetDemographics: Record<string, unknown>,
+    event: WebSocketEvent,
+  ): void {
+    try {
+      // Socket.IO rooms are per-session; we embed the target in the event
+      // and let the client filter. For true per-player targeting we would
+      // need per-user rooms, which can be added later.
+      this.io.to(`session:${sessionId}`).emit('event', {
+        ...event,
+        data: { ...event.data, target_demographics: targetDemographics },
+      });
+      this.internalBus.emit(`session:${sessionId}`, event);
+    } catch (err) {
+      logger.error({ error: err, sessionId }, 'Error broadcasting to matching players');
+    }
+  }
+
+  /**
    * Broadcast event to a specific channel room
    */
   broadcastToChannel(channelId: string, event: WebSocketEvent): void {

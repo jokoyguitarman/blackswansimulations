@@ -10,6 +10,7 @@ import { gradePlayerContent } from '../services/contentGraderService.js';
 import { markPostResponded } from '../services/responseTrackerService.js';
 import { evaluateSOPCompliance } from '../services/sopCheckerService.js';
 import { computeSessionSentiment } from '../services/sentimentSimService.js';
+import { triggerNPCReactions } from '../services/npcReactionService.js';
 
 const router = Router();
 
@@ -22,16 +23,37 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 50;
     const offset = (page - 1) * limit;
+    const sortMode = (req.query.sort as string) || 'algorithm';
+    const platformFilter = req.query.platform as string | undefined;
 
-    const [postsResult, likesResult, flagsResult] = await Promise.all([
-      supabaseAdmin
-        .from('social_posts')
-        .select('*', { count: 'exact' })
-        .eq('session_id', sessionId)
-        .order('created_at', { ascending: false })
-        .range(offset, offset + limit - 1),
+    let postsQuery = supabaseAdmin
+      .from('social_posts')
+      .select('*', { count: 'exact' })
+      .eq('session_id', sessionId)
+      .eq('platform_removed', false);
+
+    if (platformFilter) {
+      postsQuery = postsQuery.eq('platform', platformFilter);
+    }
+
+    if (sortMode === 'chronological') {
+      postsQuery = postsQuery.order('created_at', { ascending: false });
+    } else {
+      postsQuery = postsQuery.order('virality_score', { ascending: false });
+    }
+
+    postsQuery = postsQuery.range(offset, offset + limit - 1);
+
+    const [postsResult, likesResult, flagsResult, participantResult] = await Promise.all([
+      postsQuery,
       supabaseAdmin.from('social_post_likes').select('post_id').eq('player_id', user.id),
       supabaseAdmin.from('social_post_flags').select('post_id').eq('player_id', user.id),
+      supabaseAdmin
+        .from('session_participants')
+        .select('demographics')
+        .eq('session_id', sessionId)
+        .eq('user_id', user.id)
+        .single(),
     ]);
 
     const { data, error, count } = postsResult;
@@ -43,12 +65,28 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
 
     const likedPostIds = new Set((likesResult.data || []).map((l) => l.post_id));
     const flaggedPostIds = new Set((flagsResult.data || []).map((f) => f.post_id));
+    const playerDemographics = (participantResult.data?.demographics || null) as Record<
+      string,
+      string
+    > | null;
 
-    const enrichedData = (data || []).map((post) => ({
-      ...post,
-      liked_by_me: likedPostIds.has(post.id),
-      flagged_by_me: flaggedPostIds.has(post.id),
-    }));
+    const enrichedData = (data || [])
+      .filter((post) => {
+        if (!post.target_demographics) return true;
+        if (!playerDemographics) return true;
+        const target = post.target_demographics as Record<string, string | string[]>;
+        return Object.entries(target).every(([key, vals]) => {
+          const playerVal = playerDemographics[key];
+          if (!playerVal) return true;
+          if (Array.isArray(vals)) return vals.includes(playerVal);
+          return vals === playerVal;
+        });
+      })
+      .map((post) => ({
+        ...post,
+        liked_by_me: likedPostIds.has(post.id),
+        flagged_by_me: flaggedPostIds.has(post.id),
+      }));
 
     res.json({ data: enrichedData, count, page, limit });
   } catch (err) {
@@ -92,6 +130,16 @@ const createPostSchema = z.object({
     platform: z
       .enum(['x_twitter', 'facebook', 'instagram', 'tiktok', 'reddit', 'forum'])
       .default('x_twitter'),
+    post_format: z
+      .enum([
+        'text',
+        'official_statement',
+        'infographic',
+        'humor_meme',
+        'video_concept',
+        'personal_story',
+      ])
+      .default('text'),
   }),
 });
 
@@ -102,7 +150,7 @@ router.post(
   async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      const { session_id, content, reply_to_post_id, platform } = req.body;
+      const { session_id, content, reply_to_post_id, platform, post_format } = req.body;
 
       const hashtags = content.match(/#\w+/g) || [];
 
@@ -118,6 +166,7 @@ router.post(
           hashtags,
           reply_to_post_id: reply_to_post_id || null,
           sentiment: 'neutral',
+          post_format: post_format || 'text',
         })
         .select()
         .single();
@@ -142,7 +191,9 @@ router.post(
         await markPostResponded(session_id, reply_to_post_id, post.id);
         await recordPlayerAction(session_id, user.id, 'reply_posted', reply_to_post_id, content);
       } else {
-        await recordPlayerAction(session_id, user.id, 'post_created', post.id, content);
+        await recordPlayerAction(session_id, user.id, 'post_created', post.id, content, {
+          post_format: post_format || 'text',
+        });
       }
 
       // Auto-grade replies to harmful posts
@@ -194,6 +245,7 @@ router.post(
               confirmed_facts: confirmedFacts,
               hateful_post_being_addressed: String(parentPost.content || ''),
               research_guidelines: flatGuidelines.slice(0, 5),
+              post_format: post_format || 'text',
             });
 
             await supabaseAdmin
@@ -238,6 +290,13 @@ router.post(
         data: { post },
         timestamp: new Date().toISOString(),
       });
+
+      // Trigger NPC reactions to player top-level posts (non-blocking)
+      if (!reply_to_post_id) {
+        void triggerNPCReactions(session_id, post).catch((err) =>
+          logger.warn({ err, postId: post.id }, 'NPC reaction trigger failed (non-critical)'),
+        );
+      }
 
       res.status(201).json({ data: post });
     } catch (err) {
@@ -613,6 +672,7 @@ router.post(
         crisis_description: scenario?.description || 'Crisis simulation',
         confirmed_facts: [],
         hateful_post_being_addressed: hateful_post_content,
+        post_format: req.body.post_format || 'text',
       });
 
       if (post_id) {
@@ -649,5 +709,83 @@ router.get('/state/session/:sessionId', requireAuth, async (req: AuthenticatedRe
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// ─── Player Demographics ─────────────────────────────────────────────────────
+
+const demographicsSchema = z.object({
+  body: z.object({
+    session_id: z.string().uuid(),
+    demographics: z.object({
+      age_bracket: z.enum(['under_18', '18_25', '26_35', '36_50', '51_plus']).optional(),
+      gender: z.enum(['male', 'female', 'other', 'prefer_not_to_say']).optional(),
+      religion: z
+        .enum([
+          'buddhism',
+          'christianity',
+          'hinduism',
+          'islam',
+          'sikhism',
+          'taoism',
+          'none',
+          'other',
+        ])
+        .optional(),
+      race: z.string().max(50).optional(),
+    }),
+  }),
+});
+
+router.post(
+  '/demographics',
+  requireAuth,
+  validate(demographicsSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { session_id, demographics } = req.body;
+
+      const { error } = await supabaseAdmin
+        .from('session_participants')
+        .update({ demographics })
+        .eq('session_id', session_id)
+        .eq('user_id', user.id);
+
+      if (error) {
+        logger.error({ error }, 'Failed to update demographics');
+        return res.status(500).json({ error: 'Failed to update demographics' });
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in POST /social/demographics');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+router.get(
+  '/demographics/session/:sessionId',
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { sessionId } = req.params;
+
+      const { data, error } = await supabaseAdmin
+        .from('session_participants')
+        .select('demographics')
+        .eq('session_id', sessionId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (error) return res.status(404).json({ error: 'Participant not found' });
+
+      res.json({ data: data?.demographics || null });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in GET /social/demographics/session/:sessionId');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
 
 export { router as socialMediaRouter };
