@@ -3,6 +3,7 @@ import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
 import { computeSessionSentiment } from './sentimentSimService.js';
+import { generatePostImage, generateVideoThumbnail } from './mediaGenerationService.js';
 
 interface RegisteredNPC {
   handle: string;
@@ -93,6 +94,10 @@ async function insertPost(
     bias: String(post.bias || 'none'),
   });
 
+  // If the AI included an image_prompt, generate the image (non-blocking update after insert)
+  const imagePrompt = String(post.image_prompt || '');
+  const existingMedia = (post.media_urls as string[]) || [];
+
   const { data: inserted, error } = await supabaseAdmin
     .from('social_posts')
     .insert({
@@ -107,6 +112,7 @@ async function insertPost(
       sentiment: String(post.sentiment || 'neutral'),
       virality_score: Number(post.virality_score) || 0,
       content_flags: (post.content_flags as Record<string, unknown>) || {},
+      media_urls: existingMedia.length > 0 ? existingMedia : [],
       like_count: 0,
       repost_count: 0,
       reply_count: 0,
@@ -137,6 +143,32 @@ async function insertPost(
     data: { post: inserted },
     timestamp: new Date().toISOString(),
   });
+
+  // Generate image if the AI included an image_prompt (non-blocking)
+  if (imagePrompt && inserted) {
+    void (async () => {
+      try {
+        const isVideo = /video|clip|footage/i.test(imagePrompt);
+        const url = isVideo
+          ? await generateVideoThumbnail(imagePrompt)
+          : await generatePostImage(imagePrompt, 'evidence_photo');
+        if (url) {
+          const mediaUrls = [url];
+          await supabaseAdmin
+            .from('social_posts')
+            .update({ media_urls: mediaUrls })
+            .eq('id', inserted.id);
+          getWebSocketService().broadcastToSession(sessionId, {
+            type: 'social_post.media_updated',
+            data: { post_id: inserted.id, media_urls: mediaUrls },
+            timestamp: new Date().toISOString(),
+          });
+        }
+      } catch (imgErr) {
+        logger.warn({ imgErr }, 'NPC ambient image generation failed (non-critical)');
+      }
+    })();
+  }
 
   return inserted;
 }
@@ -225,8 +257,10 @@ ${elapsedMinutes < 5 ? '- Early crisis: confused, alarmed, asking what happened'
 ${elapsedMinutes > 20 ? '- Ongoing: opinions forming, blame emerging, some calling for calm' : ''}
 ${sentiment.overall < 40 ? '- Sentiment critical: more fear/anger' : ''}
 
+For 1 out of every 3 posts, include an "image_prompt" field with a short description of a photo, meme, or video the user would attach. Examples: "A bystander phone photo of police vehicles at the scene", "A screenshot of a WhatsApp group spreading rumors", "A meme mocking the government response". Leave image_prompt as "" for text-only posts.
+
 Return ONLY valid JSON:
-{ "posts": [{ "author_handle": "@user", "author_display_name": "Name", "author_type": "npc_public", "content": "text", "sentiment": "neutral|negative|supportive|hateful|inflammatory", "virality_score": 5, "content_flags": {} }] }`,
+{ "posts": [{ "author_handle": "@user", "author_display_name": "Name", "author_type": "npc_public", "content": "text", "sentiment": "neutral|negative|supportive|hateful|inflammatory", "virality_score": 5, "content_flags": {}, "image_prompt": "" }] }`,
       'Generate ambient posts.',
       1500,
     );
@@ -299,8 +333,10 @@ ${npcList ? `KNOWN USERS (use these OR create new ones):\n${npcList}\n` : ''}
 
 Generate 1-2 Facebook posts. These should feel different from what's on Twitter.
 
+For posts that would naturally have images (sharing a news article photo, posting about a gathering, sharing a screenshot), include an "image_prompt" field describing the image. Facebook posts frequently include images. Leave as "" for text-only posts.
+
 Return ONLY valid JSON:
-{ "posts": [{ "author_handle": "@user", "author_display_name": "Name", "author_type": "npc_public", "content": "text", "sentiment": "neutral|negative|supportive|hateful|inflammatory", "virality_score": 5, "platform": "facebook" }] }`,
+{ "posts": [{ "author_handle": "@user", "author_display_name": "Name", "author_type": "npc_public", "content": "text", "sentiment": "neutral|negative|supportive|hateful|inflammatory", "virality_score": 5, "platform": "facebook", "image_prompt": "" }] }`,
       'Generate Facebook ambient posts.',
       1000,
     );
