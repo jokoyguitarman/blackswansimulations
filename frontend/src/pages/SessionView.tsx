@@ -1057,9 +1057,13 @@ export const SessionView = () => {
       session.status === 'in_progress' &&
       id
     ) {
-      navigate(`/sim/${id}/device`, { replace: true });
+      if (isTrainer) {
+        navigate(`/sim/${id}/trainer`, { replace: true });
+      } else {
+        navigate(`/sim/${id}/device`, { replace: true });
+      }
     }
-  }, [session, id, navigate]);
+  }, [session, id, navigate, isTrainer]);
 
   // Load scenario teams when session has scenario (for dynamic team counters)
   useEffect(() => {

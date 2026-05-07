@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import SocialFeedApp from './SocialFeedApp';
+import FacebookFeedApp from './FacebookFeedApp';
 import EmailApp from './EmailApp';
 import NewsApp from './NewsApp';
 import GroupChatApp from './GroupChatApp';
@@ -20,7 +21,8 @@ interface WindowState {
 }
 
 const APP_REGISTRY: Record<string, { title: string; icon: string; component: React.FC }> = {
-  social: { title: 'SocialFeed', icon: '𝕏', component: SocialFeedApp },
+  social: { title: 'X / Twitter', icon: '𝕏', component: SocialFeedApp },
+  facebook: { title: 'Facebook', icon: '📘', component: FacebookFeedApp },
   email: { title: 'Email', icon: '✉️', component: EmailApp },
   news: { title: 'News', icon: '📰', component: NewsApp },
   chat: { title: 'TeamChat', icon: '💬', component: GroupChatApp },

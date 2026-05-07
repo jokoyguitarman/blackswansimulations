@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 function apiUrl(path: string): string {
@@ -128,6 +129,7 @@ const DEFAULT_RACE_OPTIONS = [
 export default function HomeScreen() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const { isTrainer } = useRoleVisibility();
   const [badges, setBadges] = useState<Record<string, number>>({});
   const [time, setTime] = useState(new Date());
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -552,10 +554,32 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      {/* Page Indicator Dots */}
-      <div className="flex items-center justify-center gap-1.5 py-2">
-        <div className="w-[7px] h-[7px] rounded-full bg-white" />
-        <div className="w-[7px] h-[7px] rounded-full bg-white/30" />
+      {/* Mode Switcher */}
+      <div className="flex items-center justify-center gap-2 py-2">
+        <button
+          onClick={() => navigate(`/sim/${sessionId}/desktop`)}
+          className="px-3 py-1 rounded-full text-[11px] font-medium"
+          style={{
+            backgroundColor: 'rgba(255,255,255,0.15)',
+            color: 'rgba(255,255,255,0.7)',
+            backdropFilter: 'blur(10px)',
+          }}
+        >
+          Desktop Mode
+        </button>
+        {isTrainer && (
+          <button
+            onClick={() => navigate(`/sim/${sessionId}/trainer`)}
+            className="px-3 py-1 rounded-full text-[11px] font-medium"
+            style={{
+              backgroundColor: 'rgba(239,68,68,0.3)',
+              color: 'rgba(255,255,255,0.9)',
+              backdropFilter: 'blur(10px)',
+            }}
+          >
+            Trainer Dashboard
+          </button>
+        )}
       </div>
 
       {/* Dock */}

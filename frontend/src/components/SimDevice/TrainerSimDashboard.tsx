@@ -554,6 +554,20 @@ export default function TrainerSimDashboard() {
       >
         <div className="flex items-center gap-4">
           <button
+            onClick={() => navigate(`/sim/${sessionId}/device`)}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity"
+            style={{ backgroundColor: '#1877F2', color: '#fff' }}
+          >
+            Player View
+          </button>
+          <button
+            onClick={() => navigate(`/sim/${sessionId}/desktop`)}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity"
+            style={{ backgroundColor: '#2a2a2a', color: '#94a3b8' }}
+          >
+            Desktop View
+          </button>
+          <button
             onClick={() => navigate(`/sessions/${sessionId || ''}`)}
             className="text-xs font-medium px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity"
             style={{ backgroundColor: '#1a1a1a', color: '#3b82f6', border: '1px solid #2a2a2a' }}

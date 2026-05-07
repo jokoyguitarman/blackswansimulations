@@ -939,7 +939,7 @@ export default function FacebookFeedApp() {
                             </button>
                           )}
                           {visibleReplies.map((reply) => (
-                            <div key={reply.id} className="flex gap-2 mb-2">
+                            <div key={reply.id} className="flex gap-2 mb-2.5">
                               <div
                                 className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[12px] flex-shrink-0"
                                 style={{
@@ -948,19 +948,55 @@ export default function FacebookFeedApp() {
                               >
                                 {reply.author_display_name.charAt(0).toUpperCase()}
                               </div>
-                              <div
-                                className="rounded-2xl px-3 py-1.5"
-                                style={{ backgroundColor: '#F0F2F5' }}
-                              >
-                                <span
-                                  className="text-[13px] font-semibold"
-                                  style={{ color: '#050505' }}
+                              <div>
+                                <div
+                                  className="rounded-2xl px-3 py-1.5"
+                                  style={{ backgroundColor: '#F0F2F5' }}
                                 >
-                                  {reply.author_display_name}
-                                </span>
-                                <p className="text-[14px]" style={{ color: '#050505' }}>
-                                  {reply.content}
-                                </p>
+                                  <span
+                                    className="text-[13px] font-semibold"
+                                    style={{ color: '#050505' }}
+                                  >
+                                    {reply.author_display_name}
+                                  </span>
+                                  <p className="text-[14px]" style={{ color: '#050505' }}>
+                                    {reply.content}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-3 ml-3 mt-0.5">
+                                  <button
+                                    onClick={() => handleReaction(reply.id, 'like')}
+                                    className="text-[12px] font-semibold hover:underline"
+                                    style={{ color: reply.liked_by_me ? '#1877F2' : '#65676B' }}
+                                  >
+                                    Like
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setCommentText((prev) => ({
+                                        ...prev,
+                                        [post.id]: `${reply.author_handle} `,
+                                      }));
+                                      setExpandedComments((prev) => new Set([...prev, post.id]));
+                                      setTimeout(
+                                        () => commentInputRefs.current[post.id]?.focus(),
+                                        100,
+                                      );
+                                    }}
+                                    className="text-[12px] font-semibold hover:underline"
+                                    style={{ color: '#65676B' }}
+                                  >
+                                    Reply
+                                  </button>
+                                  <span className="text-[12px]" style={{ color: '#65676B' }}>
+                                    {timeAgo(reply.created_at)}
+                                  </span>
+                                  {reply.like_count > 0 && (
+                                    <span className="text-[12px]" style={{ color: '#65676B' }}>
+                                      👍 {reply.like_count}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           ))}
