@@ -115,7 +115,9 @@ export default function FacebookFeedApp() {
   const [myReactions, setMyReactions] = useState<Record<string, string>>({});
   const [commentText, setCommentText] = useState<Record<string, string>>({});
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set());
+  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   const reactionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const commentInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const loadPosts = useCallback(async () => {
     if (!sessionId) return;
@@ -575,7 +577,7 @@ export default function FacebookFeedApp() {
                   </div>
                   <button
                     onClick={() => handleFlag(post.id)}
-                    className="p-1.5 rounded-full hover:bg-gray-100"
+                    className="p-1.5 rounded-full hover:bg-[#F2F3F5]"
                   >
                     <svg
                       width="20"
@@ -657,7 +659,24 @@ export default function FacebookFeedApp() {
                         </button>
                       </>
                     ) : (
-                      post.content
+                      <>
+                        {post.content}
+                        {isLong && (
+                          <button
+                            onClick={() =>
+                              setExpandedPosts((prev) => {
+                                const n = new Set(prev);
+                                n.delete(post.id);
+                                return n;
+                              })
+                            }
+                            className="font-semibold ml-1"
+                            style={{ color: '#65676B' }}
+                          >
+                            See less
+                          </button>
+                        )}
+                      </>
                     )}
                   </p>
                 </div>
@@ -716,7 +735,7 @@ export default function FacebookFeedApp() {
                 {/* Action Buttons */}
                 <div
                   className="flex items-center justify-around px-1 py-0.5"
-                  style={{ borderBottom: '1px solid #CED0D4' }}
+                  style={{ borderBottom: '1px solid #CED0D4', backgroundColor: '#FFFFFF' }}
                 >
                   <div className="relative flex-1">
                     {(() => {
@@ -746,7 +765,7 @@ export default function FacebookFeedApp() {
                               600,
                             );
                           }}
-                          className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-gray-100 transition-colors"
+                          className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
                           style={{ color: post.liked_by_me ? rxColor : '#65676B' }}
                         >
                           {rxInfo ? (
@@ -804,7 +823,11 @@ export default function FacebookFeedApp() {
                     )}
                   </div>
                   <button
-                    className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-gray-100 transition-colors"
+                    onClick={() => {
+                      setExpandedComments((prev) => new Set([...prev, post.id]));
+                      setTimeout(() => commentInputRefs.current[post.id]?.focus(), 100);
+                    }}
+                    className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
                     style={{ color: '#65676B' }}
                   >
                     <svg
@@ -821,7 +844,7 @@ export default function FacebookFeedApp() {
                   </button>
                   <button
                     onClick={() => handleShare(post.id)}
-                    className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-gray-100 transition-colors"
+                    className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
                     style={{ color: '#65676B' }}
                   >
                     <svg
@@ -839,74 +862,111 @@ export default function FacebookFeedApp() {
                 </div>
 
                 {/* Inline Comments */}
-                {replies.length > 0 && (
-                  <div className="px-3 pt-2 pb-1">
-                    {replies.slice(0, 2).map((reply) => (
-                      <div key={reply.id} className="flex gap-2 mb-2">
+                {(() => {
+                  const commentsExpanded = expandedComments.has(post.id);
+                  const visibleReplies = commentsExpanded ? replies : replies.slice(-2);
+                  return (
+                    <>
+                      {replies.length > 0 && (
+                        <div className="px-3 pt-2 pb-1" style={{ backgroundColor: '#FFFFFF' }}>
+                          {replies.length > 2 && !commentsExpanded && (
+                            <button
+                              onClick={() =>
+                                setExpandedComments((prev) => new Set([...prev, post.id]))
+                              }
+                              className="text-[14px] font-semibold mb-2"
+                              style={{ color: '#65676B' }}
+                            >
+                              View all {replies.length} comments
+                            </button>
+                          )}
+                          {commentsExpanded && replies.length > 2 && (
+                            <button
+                              onClick={() =>
+                                setExpandedComments((prev) => {
+                                  const n = new Set(prev);
+                                  n.delete(post.id);
+                                  return n;
+                                })
+                              }
+                              className="text-[14px] font-semibold mb-2"
+                              style={{ color: '#65676B' }}
+                            >
+                              Hide comments
+                            </button>
+                          )}
+                          {visibleReplies.map((reply) => (
+                            <div key={reply.id} className="flex gap-2 mb-2">
+                              <div
+                                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[12px] flex-shrink-0"
+                                style={{
+                                  backgroundColor: getAvatarColor(reply.author_display_name),
+                                }}
+                              >
+                                {reply.author_display_name.charAt(0).toUpperCase()}
+                              </div>
+                              <div
+                                className="rounded-2xl px-3 py-1.5"
+                                style={{ backgroundColor: '#F0F2F5' }}
+                              >
+                                <span
+                                  className="text-[13px] font-semibold"
+                                  style={{ color: '#050505' }}
+                                >
+                                  {reply.author_display_name}
+                                </span>
+                                <p className="text-[14px]" style={{ color: '#050505' }}>
+                                  {reply.content}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Comment Input */}
+                      <div
+                        className="flex items-center gap-2 px-3 py-1.5"
+                        style={{ backgroundColor: '#FFFFFF' }}
+                      >
                         <div
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[12px] flex-shrink-0"
-                          style={{ backgroundColor: getAvatarColor(reply.author_display_name) }}
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-[10px] flex-shrink-0"
+                          style={{ backgroundColor: '#1877F2' }}
                         >
-                          {reply.author_display_name.charAt(0).toUpperCase()}
+                          Y
                         </div>
                         <div
-                          className="rounded-2xl px-3 py-1.5"
+                          className="flex-1 flex items-center rounded-full px-3 py-1"
                           style={{ backgroundColor: '#F0F2F5' }}
                         >
-                          <span className="text-[13px] font-semibold" style={{ color: '#050505' }}>
-                            {reply.author_display_name}
-                          </span>
-                          <p className="text-[14px]" style={{ color: '#050505' }}>
-                            {reply.content}
-                          </p>
+                          <input
+                            ref={(el) => {
+                              commentInputRefs.current[post.id] = el;
+                            }}
+                            type="text"
+                            value={commentText[post.id] || ''}
+                            onChange={(e) =>
+                              setCommentText((prev) => ({ ...prev, [post.id]: e.target.value }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleComment(post.id);
+                            }}
+                            placeholder="Write a comment..."
+                            className="flex-1 bg-transparent text-[13px] outline-none"
+                            style={{ color: '#050505' }}
+                          />
+                          {commentText[post.id]?.trim() && (
+                            <button onClick={() => handleComment(post.id)} className="ml-1">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877F2">
+                                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                              </svg>
+                            </button>
+                          )}
                         </div>
                       </div>
-                    ))}
-                    {replies.length > 2 && (
-                      <button
-                        className="text-[14px] font-semibold mb-1"
-                        style={{ color: '#65676B' }}
-                      >
-                        View all {replies.length} comments
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Comment Input */}
-                <div className="flex items-center gap-2 px-3 py-1.5">
-                  <div
-                    className="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-[10px] flex-shrink-0"
-                    style={{ backgroundColor: '#1877F2' }}
-                  >
-                    Y
-                  </div>
-                  <div
-                    className="flex-1 flex items-center rounded-full px-3 py-1"
-                    style={{ backgroundColor: '#F0F2F5' }}
-                  >
-                    <input
-                      type="text"
-                      value={commentText[post.id] || ''}
-                      onChange={(e) =>
-                        setCommentText((prev) => ({ ...prev, [post.id]: e.target.value }))
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleComment(post.id);
-                      }}
-                      placeholder="Write a comment..."
-                      className="flex-1 bg-transparent text-[13px] outline-none"
-                      style={{ color: '#050505' }}
-                    />
-                    {commentText[post.id]?.trim() && (
-                      <button onClick={() => handleComment(post.id)} className="ml-1">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877F2">
-                          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
+                    </>
+                  );
+                })()}
               </div>
             );
           })

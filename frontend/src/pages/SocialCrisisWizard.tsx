@@ -1560,7 +1560,7 @@ export const SocialCrisisWizard = () => {
             ))}
           </div>
 
-          <div className="flex justify-center gap-4">
+          <div className="flex justify-center gap-4 flex-wrap">
             <a href="/scenarios" className="military-button px-8 py-3 text-center">
               [VIEW SCENARIOS]
             </a>
@@ -1570,6 +1570,18 @@ export const SocialCrisisWizard = () => {
             >
               [CREATE SESSION]
             </button>
+            {wizardDraftId && (
+              <button
+                onClick={() => {
+                  setScenarioId(null);
+                  setCompileProgress([]);
+                  setStep(1);
+                }}
+                className="px-8 py-3 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
+              >
+                [MODIFY & RECOMPILE]
+              </button>
+            )}
           </div>
         </div>
       )}
