@@ -762,7 +762,15 @@ export default function FacebookFeedApp() {
                     )}
                   </div>
                   <div className="flex items-center gap-3 text-[14px]" style={{ color: '#65676B' }}>
-                    {post.reply_count > 0 && <span>{formatCount(post.reply_count)} comments</span>}
+                    {post.reply_count > 0 && (
+                      <button
+                        onClick={() => setExpandedComments((prev) => new Set([...prev, post.id]))}
+                        className="hover:underline"
+                        style={{ color: '#65676B' }}
+                      >
+                        {formatCount(post.reply_count)} comments
+                      </button>
+                    )}
                     {post.repost_count > 0 && <span>{formatCount(post.repost_count)} shares</span>}
                   </div>
                 </div>
@@ -961,7 +969,7 @@ export default function FacebookFeedApp() {
 
                       {/* Comment Input */}
                       <div
-                        className="flex items-center gap-2 px-3 py-1.5"
+                        className="flex items-center gap-2 px-3 py-1.5 relative"
                         style={{ backgroundColor: '#FFFFFF' }}
                       >
                         <div
@@ -971,7 +979,7 @@ export default function FacebookFeedApp() {
                           Y
                         </div>
                         <div
-                          className="flex-1 flex items-center rounded-full px-3 py-1"
+                          className="flex-1 flex items-center rounded-full px-3 py-1 relative"
                           style={{ backgroundColor: '#F0F2F5' }}
                         >
                           <input
@@ -980,23 +988,83 @@ export default function FacebookFeedApp() {
                             }}
                             type="text"
                             value={commentText[post.id] || ''}
-                            onChange={(e) =>
-                              setCommentText((prev) => ({ ...prev, [post.id]: e.target.value }))
-                            }
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCommentText((prev) => ({ ...prev, [post.id]: val }));
+                              const match = val.match(/@(\w*)$/);
+                              if (match) {
+                                setMentionQuery(match[1].toLowerCase());
+                                setShowMentions(true);
+                              } else {
+                                setShowMentions(false);
+                              }
+                            }}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleComment(post.id);
+                              if (e.key === 'Enter') {
+                                handleComment(post.id);
+                                setShowMentions(false);
+                              }
                             }}
                             placeholder="Write a comment..."
                             className="flex-1 bg-transparent text-[13px] outline-none"
                             style={{ color: '#050505' }}
                           />
                           {commentText[post.id]?.trim() && (
-                            <button onClick={() => handleComment(post.id)} className="ml-1">
+                            <button
+                              onClick={() => {
+                                handleComment(post.id);
+                                setShowMentions(false);
+                              }}
+                              className="ml-1"
+                            >
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877F2">
                                 <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
                               </svg>
                             </button>
                           )}
+                          {showMentions &&
+                            document.activeElement === commentInputRefs.current[post.id] && (
+                              <div
+                                className="absolute left-0 right-0 bottom-full mb-1 rounded-lg overflow-hidden z-50"
+                                style={{
+                                  backgroundColor: '#FFFFFF',
+                                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                                  maxHeight: 120,
+                                  overflowY: 'auto',
+                                }}
+                              >
+                                {knownHandles
+                                  .filter((h) => h.handle.toLowerCase().includes(mentionQuery))
+                                  .slice(0, 5)
+                                  .map((h) => (
+                                    <button
+                                      key={h.handle}
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        setCommentText((prev) => ({
+                                          ...prev,
+                                          [post.id]: (prev[post.id] || '').replace(
+                                            /@\w*$/,
+                                            h.handle + ' ',
+                                          ),
+                                        }));
+                                        setShowMentions(false);
+                                        commentInputRefs.current[post.id]?.focus();
+                                      }}
+                                      className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-[#F2F3F5]"
+                                      style={{ color: '#050505' }}
+                                    >
+                                      <span style={{ color: '#1877F2' }}>{h.handle}</span>
+                                      <span
+                                        className="ml-1 text-[11px]"
+                                        style={{ color: '#65676B' }}
+                                      >
+                                        {h.display_name}
+                                      </span>
+                                    </button>
+                                  ))}
+                              </div>
+                            )}
                         </div>
                       </div>
                     </>
