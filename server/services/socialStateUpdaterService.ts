@@ -252,20 +252,6 @@ export async function computeSocialState(
   narrativeControl += avgGradePersuasiveness > 0 ? (avgGradePersuasiveness - 50) / 5 : 0;
   narrativeControl -= weightedHatePenalty * 0.5;
 
-  // Strategy pattern detection bonuses
-  const factCheckAction = allActions.find((a) => a.action_type === 'fact_checked');
-  const factCheckThenPost =
-    !!factCheckAction &&
-    allActions.some(
-      (a) =>
-        a.action_type === 'post_created' &&
-        new Date(a.created_at) > new Date(factCheckAction.created_at),
-    );
-  const draftApprovePublish =
-    sopCompleted('draft') && sopCompleted('approve') && sopCompleted('publish');
-  if (factCheckThenPost) narrativeControl += 5;
-  if (draftApprovePublish) narrativeControl += 5;
-
   let escalationRisk = 20;
   escalationRisk += rallyPosts.length * 12;
   const violencePosts = unattendedPosts.filter((p) => {
@@ -322,6 +308,21 @@ export async function computeSocialState(
     !sopCompleted(stepId) &&
     sopTimeLimits[stepId] != null &&
     elapsedMinutes > sopTimeLimits[stepId];
+
+  // Strategy pattern detection bonuses (must be after sopCompleted is defined)
+  const factCheckAction = allActions.find((a) => a.action_type === 'fact_checked');
+  const factCheckThenPost =
+    !!factCheckAction &&
+    allActions.some(
+      (a) =>
+        a.action_type === 'post_created' &&
+        new Date(a.created_at) > new Date(factCheckAction.created_at),
+    );
+  const draftApprovePublish =
+    sopCompleted('draft') && sopCompleted('approve') && sopCompleted('publish');
+  if (factCheckThenPost) narrativeControl += 5;
+  if (draftApprovePublish) narrativeControl += 5;
+  narrativeControl = Math.max(0, Math.min(100, Math.round(narrativeControl)));
 
   const state: SocialState = {
     total_posts: allPosts.length,

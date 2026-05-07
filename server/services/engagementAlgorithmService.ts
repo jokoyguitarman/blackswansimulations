@@ -130,20 +130,16 @@ export async function runEngagementTick(sessionId: string): Promise<void> {
   const now = Date.now();
 
   try {
-    const { data: activePosts } = await supabaseAdmin
+    const { data: rawPosts } = await supabaseAdmin
       .from('social_posts')
-      .select(
-        'id, author_type, author_handle, content, sentiment, post_format, platform, ' +
-          'like_count, repost_count, reply_count, view_count, virality_score, ' +
-          'impression_pool, engagement_rate, content_flags, ' +
-          'reply_to_post_id, created_at, platform_removed, sop_compliance_score',
-      )
+      .select('*')
       .eq('session_id', sessionId)
       .eq('platform_removed', false)
       .gte('created_at', new Date(now - 45 * 60 * 1000).toISOString())
       .is('reply_to_post_id', null);
 
-    if (!activePosts || activePosts.length === 0) return;
+    const activePosts = (rawPosts || []) as Array<Record<string, unknown>>;
+    if (activePosts.length === 0) return;
 
     const { data: session } = await supabaseAdmin
       .from('sessions')
@@ -165,13 +161,12 @@ export async function runEngagementTick(sessionId: string): Promise<void> {
       }
     }
 
+    const postIds = activePosts.map((p) => String(p.id));
+
     const { data: recentFlags } = await supabaseAdmin
       .from('social_post_flags')
       .select('post_id')
-      .in(
-        'post_id',
-        activePosts.map((p) => p.id),
-      );
+      .in('post_id', postIds);
 
     const flagCounts = new Map<string, number>();
     for (const f of recentFlags || []) {
@@ -181,10 +176,7 @@ export async function runEngagementTick(sessionId: string): Promise<void> {
     const { data: recentPlayerLikes } = await supabaseAdmin
       .from('social_post_likes')
       .select('post_id, created_at')
-      .in(
-        'post_id',
-        activePosts.map((p) => p.id),
-      );
+      .in('post_id', postIds);
 
     const playerLikesPerPost = new Map<string, number>();
     for (const l of recentPlayerLikes || []) {
@@ -242,23 +234,30 @@ export async function runEngagementTick(sessionId: string): Promise<void> {
     const logEntries: Array<Record<string, unknown>> = [];
 
     for (const post of activePosts) {
-      const ageMs = now - new Date(post.created_at).getTime();
+      const pid = String(post.id);
+      const ageMs = now - new Date(String(post.created_at)).getTime();
       const ageMinutes = ageMs / 60000;
-      const platform = post.platform || 'x_twitter';
-      const postFormat = post.post_format || 'text';
-      const followerCount = npcFollowerCounts.get(post.author_handle) || 500;
+      const platform = String(post.platform || 'x_twitter');
+      const postFormat = String(post.post_format || 'text');
+      const authorHandle = String(post.author_handle || '');
+      const authorType = String(post.author_type || 'npc_public');
+      const followerCount = npcFollowerCounts.get(authorHandle) || 500;
+      const postLikeCount = Number(post.like_count) || 0;
+      const postViewCount = Number(post.view_count) || 0;
+      const postRepostCount = Number(post.repost_count) || 0;
+      const postImpressionPool = Number(post.impression_pool) || 0;
+      const isRemoved = !!post.platform_removed;
 
-      const baseRate = deriveBaseRate(post.author_type, followerCount, postFormat);
+      const baseRate = deriveBaseRate(authorType, followerCount, postFormat);
       const recencyDecay = getRecencyDecay(ageMinutes, platform);
-      const flagCount = flagCounts.get(post.id) || 0;
-      const isReported = reportedPosts.has(post.id);
-      const suppression = getSuppressionFactor(flagCount, isReported, post.platform_removed);
+      const flagCount = flagCounts.get(pid) || 0;
+      const isReported = reportedPosts.has(pid);
+      const suppression = getSuppressionFactor(flagCount, isReported, isRemoved);
 
-      // Engagement velocity: player interactions count 5x
-      const pLikes = playerLikesPerPost.get(post.id) || 0;
-      const pReposts = playerRepostsPerPost.get(post.id) || 0;
+      const pLikes = playerLikesPerPost.get(pid) || 0;
+      const pReposts = playerRepostsPerPost.get(pid) || 0;
       const playerInteractions = pLikes + pReposts;
-      const npcInteractions = Math.max(0, (post.like_count || 0) - pLikes);
+      const npcInteractions = Math.max(0, postLikeCount - pLikes);
       const velocity =
         ageMinutes > 0
           ? (playerInteractions * 5 + npcInteractions * 0.1) / Math.max(1, ageMinutes)
@@ -266,40 +265,35 @@ export async function runEngagementTick(sessionId: string): Promise<void> {
 
       let algorithmBoost = 1.0 + Math.min(velocity * 0.5, 10.0);
 
-      // Team rally bonus
-      if (teamRallyPosts.has(post.id)) {
+      if (teamRallyPosts.has(pid)) {
         algorithmBoost *= 3.0;
       }
 
-      // Leader amplification: boost player posts with extra impression pool
       let leaderBoost = 0;
-      if (leaderAmplificationActive && post.author_type === 'player') {
+      if (leaderAmplificationActive && authorType === 'player') {
         leaderBoost = 5000 + Math.floor(Math.random() * 10000);
       }
 
-      // Social proof snowball
-      const socialProof = 1.0 + Math.log10(Math.max(1, post.like_count || 1)) * 0.3;
+      const socialProof = 1.0 + Math.log10(Math.max(1, postLikeCount || 1)) * 0.3;
 
-      // Grade-based quality multiplier for player posts
       let qualityMultiplier = 1.0;
-      if (post.author_type === 'player' && post.sop_compliance_score) {
+      if (authorType === 'player' && post.sop_compliance_score) {
         const grade = post.sop_compliance_score as Record<string, unknown>;
         const overall = Number(grade.overall) || 50;
         qualityMultiplier = overall / 50;
       }
 
-      // Calculate new impressions this tick
       const rawImpressions =
         baseRate * algorithmBoost * recencyDecay * suppression * qualityMultiplier;
       const newImpressions = Math.floor(Math.max(0, rawImpressions));
 
-      // NPC organic engagement from new impressions
-      const { likeRate, repostRate } = getContentEngagementRates(post.sentiment || 'neutral');
+      const { likeRate, repostRate } = getContentEngagementRates(
+        String(post.sentiment || 'neutral'),
+      );
       const npcLikes = Math.floor(newImpressions * likeRate * socialProof);
       const npcReposts = Math.floor(newImpressions * repostRate * socialProof);
 
-      // Update impression pool based on engagement rate
-      let currentPool = (post.impression_pool || 0) + leaderBoost;
+      let currentPool = postImpressionPool + leaderBoost;
       const totalEngagementThisTick = pLikes + pReposts + npcLikes + npcReposts;
       const currentEngagementRate =
         newImpressions > 0 ? totalEngagementThisTick / newImpressions : 0;
@@ -322,7 +316,6 @@ export async function runEngagementTick(sessionId: string): Promise<void> {
         currentPool = Math.floor(currentPool * 0.6);
       }
 
-      // Compute new virality score (used for feed ordering)
       const newVirality = Math.round(
         Math.min(
           100,
@@ -330,12 +323,12 @@ export async function runEngagementTick(sessionId: string): Promise<void> {
         ),
       );
 
-      const newViews = (post.view_count || 0) + newImpressions;
-      const newLikes = (post.like_count || 0) + npcLikes;
-      const newReposts = (post.repost_count || 0) + npcReposts;
+      const newViews = postViewCount + newImpressions;
+      const newLikes = postLikeCount + npcLikes;
+      const newReposts = postRepostCount + npcReposts;
 
       updates.push({
-        id: post.id,
+        id: pid,
         changes: {
           view_count: newViews,
           like_count: newLikes,
@@ -347,7 +340,7 @@ export async function runEngagementTick(sessionId: string): Promise<void> {
       });
 
       logEntries.push({
-        post_id: post.id,
+        post_id: pid,
         session_id: sessionId,
         tick_number: tickNumber,
         impressions_added: newImpressions,
