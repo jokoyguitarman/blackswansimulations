@@ -153,28 +153,11 @@ export default function HomeScreen() {
 
   const checkDemographics = useCallback(async () => {
     if (!sessionId || onboardingChecked) return;
+    setOnboardingChecked(true);
     try {
       const headers = await getAuthHeaders();
 
-      // Fetch session country from scenario
-      const sessionRes = await fetch(apiUrl(`/api/sessions/${sessionId}`), { headers });
-      if (sessionRes.ok) {
-        const sessionJson = await sessionRes.json();
-        const session = sessionJson.data || sessionJson;
-        if (session?.scenario_id) {
-          const scenarioRes = await fetch(apiUrl(`/api/scenarios/${session.scenario_id}`), {
-            headers,
-          });
-          if (scenarioRes.ok) {
-            const scenarioJson = await scenarioRes.json();
-            const scenario = scenarioJson.data || scenarioJson;
-            const is = (scenario?.initial_state || {}) as Record<string, unknown>;
-            const country = String(is.country || scenario?.country || '');
-            if (country) setScenarioCountry(country);
-          }
-        }
-      }
-
+      // Check demographics first (fast, single call) -- show modal immediately if needed
       const res = await fetch(apiUrl(`/api/social/demographics/session/${sessionId}`), { headers });
       if (res.ok) {
         const json = await res.json();
@@ -182,10 +165,29 @@ export default function HomeScreen() {
           setShowOnboarding(true);
         }
       }
+
+      // Fetch country in the background (non-blocking for modal display)
+      fetch(apiUrl(`/api/sessions/${sessionId}`), { headers })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((sessionJson) => {
+          const session = sessionJson?.data || sessionJson;
+          if (!session?.scenario_id) return;
+          return fetch(apiUrl(`/api/scenarios/${session.scenario_id}`), { headers });
+        })
+        .then((r) => (r && r.ok ? r.json() : null))
+        .then((scenarioJson) => {
+          if (!scenarioJson) return;
+          const scenario = scenarioJson.data || scenarioJson;
+          const is = (scenario?.initial_state || {}) as Record<string, unknown>;
+          const foundCountry = String(is.country || scenario?.country || '');
+          if (foundCountry) setScenarioCountry(foundCountry);
+        })
+        .catch(() => {
+          /* ignore */
+        });
     } catch {
       /* ignore */
     }
-    setOnboardingChecked(true);
   }, [sessionId, onboardingChecked]);
 
   useEffect(() => {

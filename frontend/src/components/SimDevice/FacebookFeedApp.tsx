@@ -112,6 +112,7 @@ export default function FacebookFeedApp() {
   const [composeText, setComposeText] = useState('');
   const [selectedFormat, setSelectedFormat] = useState<PostFormat>('text');
   const [showReactions, setShowReactions] = useState<string | null>(null);
+  const [myReactions, setMyReactions] = useState<Record<string, string>>({});
   const [commentText, setCommentText] = useState<Record<string, string>>({});
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set());
   const reactionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -239,6 +240,7 @@ export default function FacebookFeedApp() {
         p.id === postId ? { ...p, like_count: p.like_count + 1, liked_by_me: true } : p,
       ),
     );
+    setMyReactions((prev) => ({ ...prev, [postId]: reactionType }));
     try {
       const headers = await getAuthHeaders();
       await fetch(apiUrl(`/api/social/posts/${postId}/like`), {
@@ -717,33 +719,61 @@ export default function FacebookFeedApp() {
                   style={{ borderBottom: '1px solid #CED0D4' }}
                 >
                   <div className="relative flex-1">
-                    <button
-                      onClick={() => handleReaction(post.id, 'like')}
-                      onMouseEnter={() => {
-                        if (reactionTimeoutRef.current) clearTimeout(reactionTimeoutRef.current);
-                        setShowReactions(post.id);
-                      }}
-                      onMouseLeave={() => {
-                        reactionTimeoutRef.current = setTimeout(() => setShowReactions(null), 600);
-                      }}
-                      className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-gray-100 transition-colors"
-                      style={{ color: post.liked_by_me ? '#1877F2' : '#65676B' }}
-                    >
-                      <svg
-                        width="18"
-                        height="18"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" />
-                      </svg>
-                      <span className="text-[14px] font-semibold">Like</span>
-                    </button>
+                    {(() => {
+                      const myRx = myReactions[post.id];
+                      const rxInfo = myRx ? REACTIONS.find((r) => r.type === myRx) : null;
+                      const rxColor =
+                        myRx === 'like'
+                          ? '#1877F2'
+                          : myRx === 'love'
+                            ? '#F33E58'
+                            : myRx === 'angry'
+                              ? '#E9710F'
+                              : myRx
+                                ? '#F7B928'
+                                : '#65676B';
+                      return (
+                        <button
+                          onClick={() => handleReaction(post.id, 'like')}
+                          onMouseEnter={() => {
+                            if (reactionTimeoutRef.current)
+                              clearTimeout(reactionTimeoutRef.current);
+                            setShowReactions(post.id);
+                          }}
+                          onMouseLeave={() => {
+                            reactionTimeoutRef.current = setTimeout(
+                              () => setShowReactions(null),
+                              600,
+                            );
+                          }}
+                          className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-gray-100 transition-colors"
+                          style={{ color: post.liked_by_me ? rxColor : '#65676B' }}
+                        >
+                          {rxInfo ? (
+                            <span className="text-[18px] leading-none">{rxInfo.emoji}</span>
+                          ) : (
+                            <svg
+                              width="18"
+                              height="18"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" />
+                            </svg>
+                          )}
+                          <span className="text-[14px] font-semibold">
+                            {rxInfo
+                              ? rxInfo.type.charAt(0).toUpperCase() + rxInfo.type.slice(1)
+                              : 'Like'}
+                          </span>
+                        </button>
+                      );
+                    })()}
                     {showReactions === post.id && (
                       <div
-                        className="absolute bottom-full left-0 mb-1 flex gap-0.5 px-2 py-1.5 rounded-full z-50"
+                        className="absolute bottom-full left-0 mb-1 flex gap-1 px-2.5 py-2 rounded-full z-50"
                         style={{
                           backgroundColor: '#FFFFFF',
                           boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
@@ -763,7 +793,8 @@ export default function FacebookFeedApp() {
                           <button
                             key={r.type}
                             onClick={() => handleReaction(post.id, r.type)}
-                            className="text-[28px] hover:scale-125 transition-transform px-0.5"
+                            className="hover:scale-125 transition-transform leading-none bg-transparent border-0 p-0 cursor-pointer"
+                            style={{ fontSize: 28, lineHeight: 1 }}
                             title={r.type}
                           >
                             {r.emoji}
@@ -843,15 +874,15 @@ export default function FacebookFeedApp() {
                 )}
 
                 {/* Comment Input */}
-                <div className="flex items-center gap-2 px-3 py-2">
+                <div className="flex items-center gap-2 px-3 py-1.5">
                   <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[12px] flex-shrink-0"
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-[10px] flex-shrink-0"
                     style={{ backgroundColor: '#1877F2' }}
                   >
                     Y
                   </div>
                   <div
-                    className="flex-1 flex items-center rounded-full px-3 py-1.5"
+                    className="flex-1 flex items-center rounded-full px-3 py-1"
                     style={{ backgroundColor: '#F0F2F5' }}
                   >
                     <input
@@ -864,19 +895,16 @@ export default function FacebookFeedApp() {
                         if (e.key === 'Enter') handleComment(post.id);
                       }}
                       placeholder="Write a comment..."
-                      className="flex-1 bg-transparent text-[14px] outline-none"
+                      className="flex-1 bg-transparent text-[13px] outline-none"
                       style={{ color: '#050505' }}
                     />
-                    <button onClick={() => handleComment(post.id)} className="ml-1">
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill={commentText[post.id]?.trim() ? '#1877F2' : '#BEC3C9'}
-                      >
-                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                      </svg>
-                    </button>
+                    {commentText[post.id]?.trim() && (
+                      <button onClick={() => handleComment(post.id)} className="ml-1">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877F2">
+                          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

@@ -591,6 +591,7 @@ export const SocialCrisisWizard = () => {
         body: JSON.stringify({
           narrative,
           objectives,
+          country,
           personas,
           fact_sheet: factSheet,
           communities,

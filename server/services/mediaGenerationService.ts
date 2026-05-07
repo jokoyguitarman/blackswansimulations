@@ -72,7 +72,7 @@ export async function generatePostImage(
         n: 1,
         size: config.size,
         quality: 'medium',
-        response_format: 'b64_json',
+        output_format: 'png',
       }),
     });
 
@@ -86,9 +86,9 @@ export async function generatePostImage(
     }
 
     const data = await response.json();
-    const b64 = data.data?.[0]?.b64_json;
+    const b64 = data.data?.[0]?.b64 || data.data?.[0]?.b64_json;
     if (!b64) {
-      logger.warn('DALL-E returned no image data');
+      logger.warn({ keys: Object.keys(data.data?.[0] || {}) }, 'Image API returned no image data');
       return null;
     }
 

@@ -362,6 +362,7 @@ router.post(
           )
           .optional()
           .default([]),
+        country: z.string().optional().default('Singapore'),
         objectives: z.array(z.unknown()),
         personas: z.array(z.unknown()),
         fact_sheet: z.object({
@@ -409,6 +410,11 @@ router.post(
         undefined,
         body.storyline_injects as SocialInject[] | undefined,
       );
+
+      // Persist the country in initial_state for demographics lookup
+      if (body.country) {
+        (payload.scenario.initial_state as Record<string, unknown>).country = body.country;
+      }
 
       const scenarioId = await persistSocialCrisisScenario(payload, user.id);
 
