@@ -220,7 +220,6 @@ export async function generateAmbientPosts(sessionId: string): Promise<void> {
 
     const knownNPCs = getRegisteredNPCs(sessionId);
     const npcList = knownNPCs
-      .slice(0, 10)
       .map(
         (n) =>
           `${n.handle} (${n.display_name}): ${n.personality || 'regular user'}, bias: ${n.bias}`,
@@ -250,7 +249,7 @@ ${npcList ? `KNOWN USERS (use these OR create new ones):\n${npcList}\n` : ''}
 
 Recent feed:\n${recentContext || '(empty)'}
 
-Generate 2-3 posts. Mix:
+Generate 4-6 posts. IMPORTANT: Use a DIFFERENT author for each post -- do NOT repeat the same persona. Rotate through the full NPC list. Mix:
 - 1-2 about the crisis (reactions, opinions, news sharing)
 - 0-1 normal life or tangentially related posts
 ${elapsedMinutes < 5 ? '- Early crisis: confused, alarmed, asking what happened' : ''}
@@ -291,6 +290,8 @@ Return ONLY valid JSON:
 
     await simulateThreadActivity(sessionId, String(scenario.description || ''), 'x_twitter');
     await simulateThreadActivity(sessionId, String(scenario.description || ''), 'x_twitter');
+    await simulateThreadActivity(sessionId, String(scenario.description || ''), 'x_twitter');
+    await simulateThreadActivity(sessionId, String(scenario.description || ''), 'facebook');
     await simulateThreadActivity(sessionId, String(scenario.description || ''), 'facebook');
 
     if (Math.random() < 0.5) {
@@ -314,7 +315,6 @@ async function generateFacebookAmbientPosts(
 
   try {
     const npcList = knownNPCs
-      .slice(0, 6)
       .map((n) => `${n.handle} (${n.display_name}): ${n.personality || 'regular user'}`)
       .join('\n');
 
@@ -332,7 +332,7 @@ Elapsed: ${elapsedMinutes}min
 
 ${npcList ? `KNOWN USERS (use these OR create new ones):\n${npcList}\n` : ''}
 
-Generate 2-3 Facebook posts. These should feel different from what's on Twitter. Facebook posts are longer (3-6 sentences), more personal, and more emotional.
+Generate 3-5 Facebook posts. Use a DIFFERENT author for each post -- rotate through the NPC list. These should feel different from what's on Twitter. Facebook posts are longer (3-6 sentences), more personal, and more emotional.
 
 IMPORTANT: Facebook is a very visual platform. At least 2 out of 3 posts MUST include an "image_prompt" field with a description of the photo, video thumbnail, or shared article image. Examples: "A news article thumbnail showing emergency vehicles at a scene", "A candid phone photo of a community gathering", "A screenshot of a news headline about the incident", "A video thumbnail of a bystander filming police response". Only leave image_prompt as "" for purely text-based status updates.
 
@@ -527,7 +527,6 @@ async function simulateThreadActivity(
     .join('\n');
 
   const knownNPCs = getRegisteredNPCs(sessionId)
-    .slice(0, 5)
     .filter((n) => !threadParticipants.has(n.handle))
     .map((n) => `${n.handle} (${n.display_name}): ${n.personality}`)
     .join('\n');

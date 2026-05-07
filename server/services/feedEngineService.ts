@@ -77,15 +77,49 @@ async function routeToSocialFeed(
   const hashtags = inject.content.match(/#\w+/g) || [];
   const seed = config.engagement_seed || {};
 
+  // Fallback: if no author specified, pick a random NPC from the scenario
+  let authorHandle = config.author_handle || '';
+  let authorName = config.author_display_name || '';
+  let authorType = config.author_type || 'npc_public';
+
+  if (!authorHandle || authorHandle === '@system' || !authorName || authorName === 'System') {
+    try {
+      const { data: sessionRow } = await supabaseAdmin
+        .from('sessions')
+        .select('scenario_id')
+        .eq('id', sessionId)
+        .single();
+      if (sessionRow?.scenario_id) {
+        const { data: scenario } = await supabaseAdmin
+          .from('scenarios')
+          .select('initial_state')
+          .eq('id', sessionRow.scenario_id)
+          .single();
+        const personas = ((scenario?.initial_state as Record<string, unknown>)?.npc_personas ||
+          []) as Array<Record<string, unknown>>;
+        if (personas.length > 0) {
+          const picked = personas[Math.floor(Math.random() * personas.length)];
+          authorHandle = String(picked.handle || '@npc');
+          authorName = String(picked.name || 'NPC');
+          authorType = String(picked.type || 'npc_public');
+        }
+      }
+    } catch {
+      /* use defaults */
+    }
+    if (!authorHandle || authorHandle === '@system') authorHandle = '@npc_user';
+    if (!authorName || authorName === 'System') authorName = 'User';
+  }
+
   const { data: post, error } = await supabaseAdmin
     .from('social_posts')
     .insert({
       session_id: sessionId,
       inject_id: injectId,
       platform: config.platform || 'x_twitter',
-      author_handle: config.author_handle || '@system',
-      author_display_name: config.author_display_name || 'System',
-      author_type: config.author_type || 'npc_public',
+      author_handle: authorHandle,
+      author_display_name: authorName,
+      author_type: authorType,
       content: inject.content,
       hashtags,
       like_count: seed.likes || 0,

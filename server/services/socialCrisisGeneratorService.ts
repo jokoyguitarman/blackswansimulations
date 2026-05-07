@@ -468,6 +468,8 @@ The storyline should have a clear PRESSURE ARC:
 Mark critical injects with requires_response: true and response_deadline_minutes.
 ALL injects must have inject_scope: "universal" and target_teams: [].
 
+CRITICAL: For every social_feed inject, you MUST set "author_handle" and "author_display_name" in the delivery_config using one of the NPC personas below. Do NOT leave them blank or use "@system". Each social post must come from a specific NPC character.
+
 Available NPCs:
 ${npcContext}
 
@@ -475,7 +477,7 @@ Facts and claims:
 ${factsContext}
 
 Return ONLY valid JSON:
-{ "injects": [{ "trigger_time_minutes": 0, "type": "social_post|email_inbound|group_chat_message|phone_call", "title": "...", "content": "...", "severity": "low|medium|high|critical", "inject_scope": "universal", "target_teams": [], "requires_response": false, "response_deadline_minutes": null, "delivery_config": { "app": "social_feed|email|group_chat|phone_call", "platform": "x_twitter|facebook", ... } }] }`,
+{ "injects": [{ "trigger_time_minutes": 0, "type": "social_post|email_inbound|group_chat_message|phone_call", "title": "...", "content": "...", "severity": "low|medium|high|critical", "inject_scope": "universal", "target_teams": [], "requires_response": false, "response_deadline_minutes": null, "delivery_config": { "app": "social_feed|email|group_chat|phone_call", "platform": "x_twitter|facebook", "author_handle": "@npc_handle", "author_display_name": "NPC Name", "author_type": "npc_public|npc_media|npc_politician|npc_influencer", ... } }] }`,
     `Crisis: ${crisisContext.crisisType}\nCountry: ${crisisContext.country}\nContext: ${crisisContext.context}\nDuration: ${crisisContext.duration} minutes`,
     12000,
     0.8,
@@ -639,12 +641,14 @@ NPCs: ${npcHandles}
 Confirmed facts: ${factSheet.confirmed_facts.join('; ')}
 False claims: ${factSheet.unconfirmed_claims.map((c) => c.claim).join('; ')}
 
+CRITICAL: For ALL social_feed injects (shared and convergence), you MUST include "author_handle", "author_display_name", and "author_type" in delivery_config from the NPC list above. Never use "@system" or "System".
+
 Return ONLY valid JSON:
 {
   "narrative": { "title": "...", "description": "...", "briefing": "..." },
   "objectives": [{ "objective_id": "...", "objective_name": "...", "description": "...", "weight": 25 }],
-  "shared_injects": [{ "trigger_time_minutes": 0, "type": "social_post", "title": "...", "content": "...", "severity": "...", "inject_scope": "universal", "target_teams": [], "delivery_config": { "app": "social_feed", ... } }],
-  "convergence_gates": [{ "title": "...", "content": "...", "type": "social_post", "severity": "critical", "inject_scope": "universal", "target_teams": [], "delivery_config": { ... }, "conditions_to_appear": { "threshold": 1, "conditions": ["..."] }, "conditions_to_cancel": ["..."], "eligible_after_minutes": 10 }]
+  "shared_injects": [{ "trigger_time_minutes": 0, "type": "social_post", "title": "...", "content": "...", "severity": "...", "inject_scope": "universal", "target_teams": [], "delivery_config": { "app": "social_feed", "author_handle": "@npc", "author_display_name": "Name", "author_type": "npc_public", "platform": "x_twitter|facebook", ... } }],
+  "convergence_gates": [{ "title": "...", "content": "...", "type": "social_post", "severity": "critical", "inject_scope": "universal", "target_teams": [], "delivery_config": { "app": "social_feed", "author_handle": "@npc", "author_display_name": "Name", "author_type": "npc_public", ... }, "conditions_to_appear": { "threshold": 1, "conditions": ["..."] }, "conditions_to_cancel": ["..."], "eligible_after_minutes": 10 }]
 }`,
     `Crisis: ${crisisContext.crisisType} in ${crisisContext.location}, ${crisisContext.country}\nDuration: ${crisisContext.duration} minutes\nContext: ${crisisContext.context}`,
     8000,

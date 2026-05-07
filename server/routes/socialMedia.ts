@@ -906,4 +906,34 @@ router.get(
   },
 );
 
+// ─── Handles for @mention autocomplete ───────────────────────────────────────
+
+router.get('/handles/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    const { data: posts } = await supabaseAdmin
+      .from('social_posts')
+      .select('author_handle, author_display_name, author_type')
+      .eq('session_id', sessionId)
+      .limit(500);
+
+    const handleMap = new Map<string, { handle: string; display_name: string; type: string }>();
+    for (const p of posts || []) {
+      if (!handleMap.has(p.author_handle)) {
+        handleMap.set(p.author_handle, {
+          handle: p.author_handle,
+          display_name: p.author_display_name,
+          type: p.author_type,
+        });
+      }
+    }
+
+    res.json({ data: Array.from(handleMap.values()) });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /social/handles/session/:sessionId');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export { router as socialMediaRouter };

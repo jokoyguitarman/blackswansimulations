@@ -118,6 +118,11 @@ export default function SocialFeedApp() {
   const [selectedFormat, setSelectedFormat] = useState<PostFormat>('text');
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
   const [threadReplies, setThreadReplies] = useState<SocialPost[]>([]);
+  const [knownHandles, setKnownHandles] = useState<Array<{ handle: string; display_name: string }>>(
+    [],
+  );
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [showMentions, setShowMentions] = useState(false);
 
   const loadPosts = useCallback(async () => {
     if (!sessionId) return;
@@ -137,7 +142,17 @@ export default function SocialFeedApp() {
 
   useEffect(() => {
     loadPosts();
-  }, [loadPosts]);
+    if (sessionId) {
+      getAuthHeaders().then((h) =>
+        fetch(apiUrl(`/api/social/handles/session/${sessionId}`), { headers: h })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => {
+            if (j?.data) setKnownHandles(j.data);
+          })
+          .catch(() => {}),
+      );
+    }
+  }, [loadPosts, sessionId]);
 
   useEffect(() => {
     if (location.pathname.includes('/social')) loadPosts();
@@ -1098,20 +1113,58 @@ export default function SocialFeedApp() {
                 >
                   Y
                 </div>
-                <textarea
-                  value={composeText}
-                  onChange={(e) => setComposeText(e.target.value)}
-                  placeholder={
-                    replyingTo
-                      ? 'Post your reply...'
-                      : POST_FORMATS.find((f) => f.value === selectedFormat)?.placeholder ||
-                        "What's happening?"
-                  }
-                  className="flex-1 bg-transparent text-[18px] resize-none outline-none min-h-[120px] placeholder:text-[#71767B]"
-                  style={{ color: '#E7E9EA', lineHeight: '1.4' }}
-                  maxLength={500}
-                  autoFocus
-                />
+                <div className="flex-1 relative">
+                  <textarea
+                    value={composeText}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setComposeText(val);
+                      const match = val.match(/@(\w*)$/);
+                      if (match) {
+                        setMentionQuery(match[1].toLowerCase());
+                        setShowMentions(true);
+                      } else {
+                        setShowMentions(false);
+                      }
+                    }}
+                    placeholder={
+                      replyingTo
+                        ? 'Post your reply...'
+                        : POST_FORMATS.find((f) => f.value === selectedFormat)?.placeholder ||
+                          "What's happening?"
+                    }
+                    className="flex-1 bg-transparent text-[18px] resize-none outline-none min-h-[120px] placeholder:text-[#71767B]"
+                    style={{ color: '#E7E9EA', lineHeight: '1.4' }}
+                    maxLength={500}
+                    autoFocus
+                  />
+                  {showMentions && (
+                    <div
+                      className="absolute left-0 right-0 top-full mt-1 rounded-lg overflow-hidden z-50"
+                      style={{ backgroundColor: '#2F3336', maxHeight: 150, overflowY: 'auto' }}
+                    >
+                      {knownHandles
+                        .filter((h) => h.handle.toLowerCase().includes(mentionQuery))
+                        .slice(0, 6)
+                        .map((h) => (
+                          <button
+                            key={h.handle}
+                            onClick={() => {
+                              setComposeText((prev) => prev.replace(/@\w*$/, h.handle + ' '));
+                              setShowMentions(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-[14px] hover:bg-[#1D9BF0]/20"
+                            style={{ color: '#E7E9EA' }}
+                          >
+                            <span style={{ color: '#1D9BF0' }}>{h.handle}</span>
+                            <span className="ml-2 text-[12px]" style={{ color: '#71767B' }}>
+                              {h.display_name}
+                            </span>
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 

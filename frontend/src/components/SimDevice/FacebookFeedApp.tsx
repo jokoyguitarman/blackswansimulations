@@ -118,6 +118,11 @@ export default function FacebookFeedApp() {
   const [commentText, setCommentText] = useState<Record<string, string>>({});
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set());
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
+  const [knownHandles, setKnownHandles] = useState<Array<{ handle: string; display_name: string }>>(
+    [],
+  );
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [showMentions, setShowMentions] = useState(false);
   const reactionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const commentInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -155,7 +160,17 @@ export default function FacebookFeedApp() {
 
   useEffect(() => {
     loadPosts();
-  }, [loadPosts]);
+    if (sessionId) {
+      getAuthHeaders().then((h) =>
+        fetch(apiUrl(`/api/social/handles/session/${sessionId}`), { headers: h })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => {
+            if (j?.data) setKnownHandles(j.data);
+          })
+          .catch(() => {}),
+      );
+    }
+  }, [loadPosts, sessionId]);
 
   // Re-fetch when navigating back to this view
   useEffect(() => {
@@ -1068,15 +1083,58 @@ export default function FacebookFeedApp() {
                 >
                   Y
                 </div>
-                <textarea
-                  value={composeText}
-                  onChange={(e) => setComposeText(e.target.value)}
-                  placeholder="What's on your mind?"
-                  className="flex-1 bg-transparent text-[16px] resize-none outline-none min-h-[140px]"
-                  style={{ color: '#050505', lineHeight: '1.5' }}
-                  maxLength={maxChars}
-                  autoFocus
-                />
+                <div className="flex-1 relative">
+                  <textarea
+                    value={composeText}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setComposeText(val);
+                      const match = val.match(/@(\w*)$/);
+                      if (match) {
+                        setMentionQuery(match[1].toLowerCase());
+                        setShowMentions(true);
+                      } else {
+                        setShowMentions(false);
+                      }
+                    }}
+                    placeholder="What's on your mind?"
+                    className="w-full bg-transparent text-[16px] resize-none outline-none min-h-[140px]"
+                    style={{ color: '#050505', lineHeight: '1.5' }}
+                    maxLength={maxChars}
+                    autoFocus
+                  />
+                  {showMentions && (
+                    <div
+                      className="absolute left-0 right-0 top-full mt-1 rounded-lg overflow-hidden z-50"
+                      style={{
+                        backgroundColor: '#FFFFFF',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                        maxHeight: 150,
+                        overflowY: 'auto',
+                      }}
+                    >
+                      {knownHandles
+                        .filter((h) => h.handle.toLowerCase().includes(mentionQuery))
+                        .slice(0, 6)
+                        .map((h) => (
+                          <button
+                            key={h.handle}
+                            onClick={() => {
+                              setComposeText((prev) => prev.replace(/@\w*$/, h.handle + ' '));
+                              setShowMentions(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-[14px] hover:bg-[#F2F3F5]"
+                            style={{ color: '#050505' }}
+                          >
+                            <span style={{ color: '#1877F2' }}>{h.handle}</span>
+                            <span className="ml-2 text-[12px]" style={{ color: '#65676B' }}>
+                              {h.display_name}
+                            </span>
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
