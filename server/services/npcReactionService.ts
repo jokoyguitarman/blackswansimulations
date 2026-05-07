@@ -47,38 +47,66 @@ export async function triggerNPCReactions(
     if (personas.length === 0) return;
 
     const postFormat = String(playerPost.post_format || 'text');
-    const postContent = String(playerPost.content || '');
+    const isReply = !!playerPost.reply_to_post_id;
 
-    // Determine which NPCs react based on type and bias
+    // Fetch thread context if this is a reply
+    let threadContext = '';
+    if (isReply) {
+      const { data: parentPost } = await supabaseAdmin
+        .from('social_posts')
+        .select('content, author_handle, author_display_name, author_type')
+        .eq('id', String(playerPost.reply_to_post_id))
+        .single();
+
+      if (parentPost) {
+        const { data: threadReplies } = await supabaseAdmin
+          .from('social_posts')
+          .select('content, author_handle')
+          .eq('reply_to_post_id', String(playerPost.reply_to_post_id))
+          .order('created_at', { ascending: true })
+          .limit(10);
+
+        threadContext = `\n\nTHREAD CONTEXT:\nOriginal post by ${parentPost.author_handle}: "${String(parentPost.content).substring(0, 200)}"`;
+        if (threadReplies && threadReplies.length > 0) {
+          threadContext +=
+            '\nPrevious replies:\n' +
+            threadReplies
+              .map((r) => `  ${r.author_handle}: "${String(r.content).substring(0, 100)}"`)
+              .join('\n');
+        }
+        threadContext += `\n\nThe player just replied in this thread. NPCs who are part of this conversation should respond directly to what the player said, continuing the argument/discussion.`;
+      }
+    }
+
+    // Higher probability for thread replies -- NPCs should almost always respond in threads
+    const probabilityBoost = isReply ? 2.0 : 1.0;
+
     const reactingNPCs: Array<{ persona: NPCPersona; reactionType: string }> = [];
 
     for (const persona of personas) {
       const roll = Math.random();
 
       if (persona.bias && persona.bias !== 'none') {
-        // Hostile persona
-        const threshold = postFormat === 'humor_meme' ? 0.5 : 0.3;
-        if (roll < threshold) {
+        const threshold = (postFormat === 'humor_meme' ? 0.5 : 0.3) * probabilityBoost;
+        if (roll < Math.min(threshold, 0.9)) {
           reactingNPCs.push({ persona, reactionType: 'attack' });
         }
       } else if (persona.type === 'npc_media') {
-        // Media coverage for official statements and creative content
         const threshold =
-          postFormat === 'official_statement'
+          (postFormat === 'official_statement'
             ? 0.7
             : postFormat === 'humor_meme' || postFormat === 'video_concept'
               ? 0.8
-              : 0.2;
-        if (roll < threshold) {
+              : 0.2) * probabilityBoost;
+        if (roll < Math.min(threshold, 0.9)) {
           reactingNPCs.push({ persona, reactionType: 'cover' });
         }
       } else if (/supportive|community|interfaith|unity/i.test(persona.personality)) {
-        if (roll < 0.6) {
+        if (roll < Math.min(0.6 * probabilityBoost, 0.9)) {
           reactingNPCs.push({ persona, reactionType: 'support' });
         }
       } else if (persona.type === 'npc_politician' || persona.type === 'npc_influencer') {
-        // Wildcard -- reacts based on content quality grade if available
-        if (roll < 0.4) {
+        if (roll < Math.min(0.4 * probabilityBoost, 0.9)) {
           const grade = (playerPost.sop_compliance_score as Record<string, unknown>) || {};
           const overall = Number(grade.overall) || 50;
           reactingNPCs.push({
@@ -89,8 +117,16 @@ export async function triggerNPCReactions(
       }
     }
 
-    // Limit to 1-3 reactions
-    const selected = reactingNPCs.slice(0, Math.min(3, reactingNPCs.length));
+    // For thread replies, guarantee at least 1 NPC responds
+    if (isReply && reactingNPCs.length === 0 && personas.length > 0) {
+      const randomPersona = personas[Math.floor(Math.random() * personas.length)];
+      reactingNPCs.push({
+        persona: randomPersona,
+        reactionType: randomPersona.bias && randomPersona.bias !== 'none' ? 'attack' : 'neutral',
+      });
+    }
+
+    const selected = reactingNPCs.slice(0, Math.min(isReply ? 2 : 3, reactingNPCs.length));
     if (selected.length === 0) return;
 
     const npcContext = selected
@@ -129,8 +165,9 @@ IMPORTANT RULES:
 - Supportive NPCs are more likely to like; hostile NPCs are more likely to reply attacking.
 
 Crisis context: ${String(scenario.description || '').substring(0, 300)}
+${threadContext}
 
-Each reaction should be 1-3 sentences, feel like a real social media reply/post. Stay in character.
+Each reaction should be 1-3 sentences, feel like a real social media reply/post. Stay in character.${isReply ? ' Since this is a thread reply, respond DIRECTLY to what the player said -- argue, agree, counter, or react to their specific words.' : ''}
 
 Return ONLY valid JSON:
 { "reactions": [{ "author_handle": "@exact_handle", "author_display_name": "Exact Name", "author_type": "npc_public|npc_media|npc_politician|npc_influencer", "content": "reaction text", "sentiment": "negative|supportive|neutral|hateful", "is_reply": true, "action": "reply|repost_with_comment|new_post|like" }] }`,
@@ -159,7 +196,10 @@ Return ONLY valid JSON:
     const playerHandle = String(playerPost.author_handle || '@player');
 
     for (let i = 0; i < reactions.length; i++) {
-      const delay = 30000 + Math.floor(Math.random() * 150000);
+      // Thread replies get faster responses (10-30s), top-level posts get 30s-3min
+      const delay = isReply
+        ? 10000 + Math.floor(Math.random() * 20000)
+        : 30000 + Math.floor(Math.random() * 150000);
       setTimeout(
         async () => {
           try {
@@ -196,7 +236,6 @@ Return ONLY valid JSON:
             }
 
             // Handle reply/repost/new_post actions
-            const isReply = actionType === 'reply' || reaction.is_reply;
             const replyContent = String(reaction.content || '');
 
             const { data: inserted, error } = await supabaseAdmin
@@ -208,7 +247,10 @@ Return ONLY valid JSON:
                 author_display_name: npcName,
                 author_type: String(reaction.author_type || 'npc_public'),
                 content: replyContent,
-                reply_to_post_id: isReply ? playerPost.id : null,
+                reply_to_post_id:
+                  actionType === 'reply' || reaction.is_reply
+                    ? String(playerPost.reply_to_post_id || playerPost.id)
+                    : null,
                 sentiment: String(reaction.sentiment || 'neutral'),
                 hashtags: replyContent.match(/#\w+/g) || [],
                 like_count: 0,
@@ -226,13 +268,19 @@ Return ONLY valid JSON:
               return;
             }
 
-            if (isReply) {
-              await supabaseAdmin
+            if (actionType === 'reply' || reaction.is_reply) {
+              const parentId = String(playerPost.reply_to_post_id || playerPost.id);
+              const { data: parentRow } = await supabaseAdmin
                 .from('social_posts')
-                .update({
-                  reply_count: ((playerPost.reply_count as number) || 0) + 1,
-                })
-                .eq('id', playerPost.id);
+                .select('reply_count')
+                .eq('id', parentId)
+                .single();
+              if (parentRow) {
+                await supabaseAdmin
+                  .from('social_posts')
+                  .update({ reply_count: ((parentRow.reply_count as number) || 0) + 1 })
+                  .eq('id', parentId);
+              }
 
               // Notify player about the NPC reply
               void notifyPostReply(
