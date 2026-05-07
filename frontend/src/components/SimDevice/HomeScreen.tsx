@@ -53,13 +53,76 @@ const RELIGION_OPTIONS = [
   { value: 'other', label: 'Other' },
 ];
 
-const RACE_OPTIONS = [
-  { value: 'chinese', label: 'Chinese' },
-  { value: 'malay', label: 'Malay' },
-  { value: 'indian', label: 'Indian' },
-  { value: 'eurasian', label: 'Eurasian' },
-  { value: 'caucasian', label: 'Caucasian' },
-  { value: 'other', label: 'Other' },
+const RACE_BY_COUNTRY: Record<string, Array<{ value: string; label: string }>> = {
+  singapore: [
+    { value: 'chinese', label: 'Chinese' },
+    { value: 'malay', label: 'Malay' },
+    { value: 'indian', label: 'Indian' },
+    { value: 'eurasian', label: 'Eurasian' },
+  ],
+  malaysia: [
+    { value: 'malay', label: 'Malay' },
+    { value: 'chinese', label: 'Chinese' },
+    { value: 'indian', label: 'Indian' },
+    { value: 'orang_asli', label: 'Orang Asli' },
+  ],
+  indonesia: [
+    { value: 'javanese', label: 'Javanese' },
+    { value: 'sundanese', label: 'Sundanese' },
+    { value: 'malay', label: 'Malay' },
+    { value: 'chinese_indonesian', label: 'Chinese Indonesian' },
+    { value: 'batak', label: 'Batak' },
+  ],
+  philippines: [
+    { value: 'tagalog', label: 'Tagalog' },
+    { value: 'cebuano', label: 'Cebuano' },
+    { value: 'ilocano', label: 'Ilocano' },
+    { value: 'chinese_filipino', label: 'Chinese Filipino' },
+    { value: 'moro', label: 'Moro' },
+  ],
+  'united states': [
+    { value: 'white', label: 'White' },
+    { value: 'black', label: 'Black / African American' },
+    { value: 'hispanic_latino', label: 'Hispanic / Latino' },
+    { value: 'asian', label: 'Asian' },
+    { value: 'native_american', label: 'Native American' },
+    { value: 'pacific_islander', label: 'Pacific Islander' },
+  ],
+  'united kingdom': [
+    { value: 'white_british', label: 'White British' },
+    { value: 'asian_british', label: 'Asian British' },
+    { value: 'black_british', label: 'Black British' },
+    { value: 'mixed', label: 'Mixed' },
+  ],
+  germany: [
+    { value: 'german', label: 'German' },
+    { value: 'turkish', label: 'Turkish' },
+    { value: 'arab', label: 'Arab' },
+    { value: 'eastern_european', label: 'Eastern European' },
+    { value: 'african', label: 'African' },
+  ],
+  australia: [
+    { value: 'anglo_australian', label: 'Anglo-Australian' },
+    { value: 'indigenous', label: 'Aboriginal / Torres Strait Islander' },
+    { value: 'asian_australian', label: 'Asian Australian' },
+    { value: 'middle_eastern', label: 'Middle Eastern' },
+    { value: 'european', label: 'European' },
+  ],
+  india: [
+    { value: 'hindu', label: 'Hindu' },
+    { value: 'muslim', label: 'Muslim' },
+    { value: 'sikh', label: 'Sikh' },
+    { value: 'christian', label: 'Christian' },
+    { value: 'dalit', label: 'Dalit' },
+    { value: 'adivasi', label: 'Adivasi' },
+  ],
+};
+
+const DEFAULT_RACE_OPTIONS = [
+  { value: 'majority', label: 'Majority group' },
+  { value: 'minority_1', label: 'Minority group 1' },
+  { value: 'minority_2', label: 'Minority group 2' },
+  { value: 'immigrant', label: 'Immigrant community' },
 ];
 
 export default function HomeScreen() {
@@ -75,6 +138,11 @@ export default function HomeScreen() {
   const [gender, setGender] = useState('');
   const [religion, setReligion] = useState('');
   const [race, setRace] = useState('');
+  const [customRace, setCustomRace] = useState('');
+  const [scenarioCountry, setScenarioCountry] = useState('');
+
+  const raceOptions = RACE_BY_COUNTRY[scenarioCountry.toLowerCase()] || DEFAULT_RACE_OPTIONS;
+  const effectiveRace = race === 'other' ? customRace.trim() : race;
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 30000);
@@ -85,6 +153,26 @@ export default function HomeScreen() {
     if (!sessionId || onboardingChecked) return;
     try {
       const headers = await getAuthHeaders();
+
+      // Fetch session country from scenario
+      const sessionRes = await fetch(apiUrl(`/api/sessions/${sessionId}`), { headers });
+      if (sessionRes.ok) {
+        const sessionJson = await sessionRes.json();
+        const session = sessionJson.data || sessionJson;
+        if (session?.scenario_id) {
+          const scenarioRes = await fetch(apiUrl(`/api/scenarios/${session.scenario_id}`), {
+            headers,
+          });
+          if (scenarioRes.ok) {
+            const scenarioJson = await scenarioRes.json();
+            const scenario = scenarioJson.data || scenarioJson;
+            const is = (scenario?.initial_state || {}) as Record<string, unknown>;
+            const country = String(is.country || scenario?.country || '');
+            if (country) setScenarioCountry(country);
+          }
+        }
+      }
+
       const res = await fetch(apiUrl(`/api/social/demographics/session/${sessionId}`), { headers });
       if (res.ok) {
         const json = await res.json();
@@ -103,7 +191,7 @@ export default function HomeScreen() {
   }, [checkDemographics]);
 
   async function saveDemographics() {
-    if (!sessionId || !ageBracket || !gender || !race) return;
+    if (!sessionId || !ageBracket || !gender || !effectiveRace) return;
     setSaving(true);
     try {
       const headers = await getAuthHeaders();
@@ -116,7 +204,7 @@ export default function HomeScreen() {
             age_bracket: ageBracket,
             gender,
             religion: religion || 'none',
-            race,
+            race: effectiveRace,
           },
         }),
       });
@@ -291,13 +379,16 @@ export default function HomeScreen() {
                   className="text-[11px] font-semibold uppercase tracking-wider mb-1 block"
                   style={{ color: 'rgba(255,255,255,0.4)' }}
                 >
-                  Race / Ethnicity
+                  Race / Ethnicity{scenarioCountry ? ` (${scenarioCountry})` : ''}
                 </label>
                 <div className="flex flex-wrap gap-1.5">
-                  {RACE_OPTIONS.map((opt) => (
+                  {raceOptions.map((opt) => (
                     <button
                       key={opt.value}
-                      onClick={() => setRace(opt.value)}
+                      onClick={() => {
+                        setRace(opt.value);
+                        setCustomRace('');
+                      }}
                       className="px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors"
                       style={{
                         backgroundColor: race === opt.value ? '#0A84FF' : '#2C2C2E',
@@ -307,14 +398,35 @@ export default function HomeScreen() {
                       {opt.label}
                     </button>
                   ))}
+                  <button
+                    onClick={() => setRace('other')}
+                    className="px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors"
+                    style={{
+                      backgroundColor: race === 'other' ? '#0A84FF' : '#2C2C2E',
+                      color: race === 'other' ? '#FFF' : 'rgba(255,255,255,0.6)',
+                    }}
+                  >
+                    Other
+                  </button>
                 </div>
+                {race === 'other' && (
+                  <input
+                    type="text"
+                    value={customRace}
+                    onChange={(e) => setCustomRace(e.target.value)}
+                    placeholder="Enter your ethnicity..."
+                    className="mt-2 w-full bg-transparent border rounded-lg px-3 py-1.5 text-[13px] outline-none"
+                    style={{ borderColor: '#3A3A3C', color: '#FFF' }}
+                    maxLength={50}
+                  />
+                )}
               </div>
             </div>
 
             <div className="px-5 pb-5">
               <button
                 onClick={saveDemographics}
-                disabled={!ageBracket || !gender || !race || saving}
+                disabled={!ageBracket || !gender || !effectiveRace || saving}
                 className="w-full py-2.5 rounded-xl text-[15px] font-semibold text-white disabled:opacity-40 transition-opacity"
                 style={{ backgroundColor: '#0A84FF' }}
               >

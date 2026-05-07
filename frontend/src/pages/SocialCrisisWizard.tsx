@@ -23,13 +23,6 @@ interface FactSheet {
   unconfirmed_claims: FactSheetEntry[];
 }
 
-interface TeamDef {
-  team_name: string;
-  team_description: string;
-  min_participants: number;
-  max_participants: number;
-}
-
 interface SocialInject {
   trigger_time_minutes?: number;
   type: string;
@@ -1032,7 +1025,7 @@ export const SocialCrisisWizard = () => {
                       </span>
                     )}
                     {inj.delivery_config &&
-                      (inj.delivery_config as Record<string, unknown>).platform && (
+                      !!(inj.delivery_config as Record<string, unknown>).platform && (
                         <span className="text-[9px] terminal-text bg-purple-900/20 text-purple-400 px-1.5 py-0.5 rounded">
                           {String((inj.delivery_config as Record<string, unknown>).platform)}
                         </span>
