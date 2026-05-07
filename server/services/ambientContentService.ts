@@ -289,11 +289,12 @@ Return ONLY valid JSON:
     // Generate demographic-targeted echo chamber posts
     await generateEchoChamberPosts(sessionId, String(scenario.description || ''), elapsedMinutes);
 
-    await simulateThreadActivity(sessionId, String(scenario.description || ''));
-    await simulateThreadActivity(sessionId, String(scenario.description || ''));
+    await simulateThreadActivity(sessionId, String(scenario.description || ''), 'x_twitter');
+    await simulateThreadActivity(sessionId, String(scenario.description || ''), 'x_twitter');
+    await simulateThreadActivity(sessionId, String(scenario.description || ''), 'facebook');
 
     if (Math.random() < 0.5) {
-      await simulateThreadActivity(sessionId, String(scenario.description || ''));
+      await simulateThreadActivity(sessionId, String(scenario.description || ''), 'facebook');
     }
   } catch (err) {
     logger.error({ err, sessionId }, 'Ambient content generation failed');
@@ -462,24 +463,35 @@ Return ONLY valid JSON:
 
 // ─── Thread simulator (NPC-to-NPC conversations) ───────────────────────────
 
-async function simulateThreadActivity(sessionId: string, crisisDescription: string): Promise<void> {
-  const { data: postsWithReplies } = await supabaseAdmin
+async function simulateThreadActivity(
+  sessionId: string,
+  crisisDescription: string,
+  platform: string = 'x_twitter',
+): Promise<void> {
+  const queryWith = supabaseAdmin
     .from('social_posts')
-    .select('id, content, author_handle, author_display_name, reply_count')
+    .select('id, content, author_handle, author_display_name, reply_count, platform')
     .eq('session_id', sessionId)
+    .eq('platform', platform)
     .is('reply_to_post_id', null)
     .gt('reply_count', 0)
     .order('reply_count', { ascending: false })
     .limit(5);
 
-  const { data: postsWithoutReplies } = await supabaseAdmin
+  const queryWithout = supabaseAdmin
     .from('social_posts')
-    .select('id, content, author_handle, author_display_name, reply_count')
+    .select('id, content, author_handle, author_display_name, reply_count, platform')
     .eq('session_id', sessionId)
+    .eq('platform', platform)
     .is('reply_to_post_id', null)
     .eq('reply_count', 0)
     .order('created_at', { ascending: false })
     .limit(5);
+
+  const [{ data: postsWithReplies }, { data: postsWithoutReplies }] = await Promise.all([
+    queryWith,
+    queryWithout,
+  ]);
 
   const candidates = [...(postsWithReplies || []), ...(postsWithoutReplies || [])];
   if (candidates.length === 0) return;
@@ -553,12 +565,12 @@ Return ONLY valid JSON:
   for (let i = 0; i < replies.length; i++) {
     if (i > 0) await new Promise((r) => setTimeout(r, 1000 + Math.floor(Math.random() * 3000)));
     const reply = replies[i];
-    await insertPost(sessionId, reply, targetPost.id as string);
+    await insertPost(sessionId, reply, targetPost.id as string, platform);
   }
 
   if (replies.length > 0) {
     logger.info(
-      { sessionId, postId: targetPost.id, newReplies: replies.length },
+      { sessionId, postId: targetPost.id, newReplies: replies.length, platform },
       'Thread activity simulated',
     );
   }
