@@ -180,10 +180,12 @@ export const SocialCrisisWizard = () => {
   const [wizardDraftId, setWizardDraftId] = useState<string | null>(null);
 
   /* Step 1 — Crisis Event */
-  const [crisisType, setCrisisType] = useState<string | null>(null);
-  const [location, setLocation] = useState('');
+  const [crisisTypes, setCrisisTypes] = useState<string[]>([]);
   const [country, setCountry] = useState('Singapore');
   const [context, setContext] = useState('');
+
+  const crisisType = crisisTypes.length > 0 ? crisisTypes.join(' + ') : null;
+  const location = '';
 
   /* Step 2 — NPCs, Fact Sheet & Communities */
   const [personas, setPersonas] = useState<NPCPersona[]>([]);
@@ -233,7 +235,7 @@ export const SocialCrisisWizard = () => {
     () => ({
       sim_mode: 'social_media',
       crisis_type: crisisType,
-      location,
+      crisis_types: crisisTypes,
       country,
       context,
       personas,
@@ -322,8 +324,14 @@ export const SocialCrisisWizard = () => {
         const savedStep = Number(draft.current_step) || 1;
         const validStep = VISIBLE_STEPS.includes(savedStep) ? savedStep : 1;
 
-        if (input.crisis_type) setCrisisType(String(input.crisis_type));
-        if (input.location) setLocation(String(input.location));
+        if (input.crisis_type) {
+          if (Array.isArray(input.crisis_types)) {
+            setCrisisTypes(input.crisis_types as string[]);
+          } else {
+            const ct = String(input.crisis_type);
+            setCrisisTypes(ct.includes(' + ') ? ct.split(' + ') : [ct]);
+          }
+        }
         if (input.country) setCountry(String(input.country));
         if (input.context) setContext(String(input.context));
         if (Array.isArray(input.communities)) setCommunities(input.communities.map(String));
@@ -353,17 +361,22 @@ export const SocialCrisisWizard = () => {
   /* ─── Effective context (use default_context as fallback) ────────── */
 
   const effectiveContext = useMemo(() => {
-    if (context.trim()) return context.trim();
-    const match = CRISIS_TYPES.find((t) => t.id === crisisType);
-    return match?.default_context || '';
-  }, [context, crisisType]);
+    const userContext = context.trim();
+    const defaults = crisisTypes
+      .map((id) => CRISIS_TYPES.find((t) => t.id === id)?.default_context)
+      .filter(Boolean)
+      .join('\n\nADDITIONAL CRISIS DIMENSION:\n');
+    if (userContext && defaults) return `${userContext}\n\nBACKGROUND CONTEXT:\n${defaults}`;
+    if (userContext) return userContext;
+    return defaults || '';
+  }, [context, crisisTypes]);
 
   /* ─── Validation ───────────────────────────────────────────────────── */
 
   const canProceed = useMemo(() => {
     switch (step) {
       case 1:
-        return !!crisisType && location.trim().length > 0;
+        return crisisTypes.length > 0;
       case 2:
         return personas.length > 0 && !!factSheet && !step2Loading;
       case 3:
@@ -381,8 +394,7 @@ export const SocialCrisisWizard = () => {
     }
   }, [
     step,
-    crisisType,
-    location,
+    crisisTypes,
     personas,
     factSheet,
     step2Loading,
@@ -751,8 +763,9 @@ export const SocialCrisisWizard = () => {
   }, [teamStorylines]);
 
   const crisisLabel = useMemo(() => {
-    return CRISIS_TYPES.find((c) => c.id === crisisType)?.label || crisisType || 'Unknown';
-  }, [crisisType]);
+    if (crisisTypes.length === 0) return 'Unknown';
+    return crisisTypes.map((id) => CRISIS_TYPES.find((c) => c.id === id)?.label || id).join(' + ');
+  }, [crisisTypes]);
 
   /* ─── Render ─────────────────────────────────────────────────────── */
 
@@ -800,62 +813,70 @@ export const SocialCrisisWizard = () => {
 
   /* ── Step 1: Crisis Event ──────────────────────────────────────────── */
 
+  const toggleCrisisType = (id: string) => {
+    setCrisisTypes((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
+  };
+
   const renderStep1 = () => (
     <div>
       <h2 className="text-lg terminal-text uppercase mb-4">[STEP 1: CRISIS EVENT]</h2>
       <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
-        Select the type of social media crisis and provide location details.
+        Select one or more crisis types to create a compound scenario. Multiple types create
+        overlapping narrative fronts that the response team must address simultaneously.
       </p>
 
       <div className="mb-6">
         <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
-          Crisis Type
+          Crisis Types (select one or more)
         </label>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {CRISIS_TYPES.map((ct) => (
-            <button
-              key={ct.id}
-              onClick={() => setCrisisType(ct.id)}
-              className={`p-4 border rounded text-left transition-all ${
-                crisisType === ct.id
-                  ? 'border-cyan-400 bg-cyan-900/30'
-                  : 'border-robotic-gray-200 hover:border-robotic-yellow/50'
-              }`}
-            >
-              <div className="text-2xl mb-2">{ct.icon}</div>
-              <div className="text-xs terminal-text font-bold mb-1">{ct.label}</div>
-              <div className="text-[10px] terminal-text text-robotic-yellow/40">
-                {ct.description}
-              </div>
-            </button>
-          ))}
+          {CRISIS_TYPES.map((ct) => {
+            const isSelected = crisisTypes.includes(ct.id);
+            return (
+              <button
+                key={ct.id}
+                onClick={() => toggleCrisisType(ct.id)}
+                className={`p-4 border rounded text-left transition-all relative ${
+                  isSelected
+                    ? 'border-cyan-400 bg-cyan-900/30'
+                    : 'border-robotic-gray-200 hover:border-robotic-yellow/50'
+                }`}
+              >
+                {isSelected && (
+                  <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-cyan-400 flex items-center justify-center text-[10px] text-black font-bold">
+                    {crisisTypes.indexOf(ct.id) + 1}
+                  </div>
+                )}
+                <div className="text-2xl mb-2">{ct.icon}</div>
+                <div className="text-xs terminal-text font-bold mb-1">{ct.label}</div>
+                <div className="text-[10px] terminal-text text-robotic-yellow/40">
+                  {ct.description}
+                </div>
+              </button>
+            );
+          })}
         </div>
+        {crisisTypes.length > 1 && (
+          <div className="mt-3 p-2 border border-cyan-400/30 rounded bg-cyan-900/10">
+            <p className="text-[10px] terminal-text text-cyan-400">
+              COMPOUND CRISIS:{' '}
+              {crisisTypes.map((id) => CRISIS_TYPES.find((c) => c.id === id)?.label).join(' + ')}
+              {' — '}NPCs will attack from {crisisTypes.length} different angles simultaneously.
+            </p>
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <div>
-          <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
-            Location
-          </label>
-          <input
-            type="text"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder="e.g. Woodlands, Singapore"
-            className="w-full bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none"
-          />
-        </div>
-        <div>
-          <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
-            Country
-          </label>
-          <input
-            type="text"
-            value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            className="w-full bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none"
-          />
-        </div>
+      <div className="mb-4">
+        <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
+          Country
+        </label>
+        <input
+          type="text"
+          value={country}
+          onChange={(e) => setCountry(e.target.value)}
+          className="w-full bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none"
+        />
       </div>
 
       <div>

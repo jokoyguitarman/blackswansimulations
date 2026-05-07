@@ -228,10 +228,10 @@ export async function generateNPCsAndFactSheet(
 
 Given the crisis event, generate:
 
-1. AFFECTED COMMUNITIES: 2-5 specific communities that will be targeted by hate speech and misinformation in this crisis. Name them concretely (e.g. "Malay-Muslim community" not "minority group").
+1. AFFECTED COMMUNITIES: 2-6 specific communities that will be targeted by hate speech and misinformation in this crisis. Name them concretely (e.g. "Malay-Muslim community" not "minority group"). If the crisis type is compound (multiple types separated by " + "), each crisis dimension may target different communities.
 
 2. NPC PERSONAS: 10-15 fictional social media accounts that will populate the simulation. These are the characters whose posts the response team will encounter. Create a diverse, realistic cast:
-   - 4-5 HOSTILE personas: people spreading hate speech, racist content, calls for violence, scapegoating. Each should have a different angle of attack.
+   - 4-6 HOSTILE personas: people spreading hate speech, racist content, calls for violence, scapegoating. IMPORTANT: If the crisis type contains multiple dimensions (e.g. "racial_tension + religious_incident"), ensure hostile personas attack from DIFFERENT angles — some from the racial angle, some from the religious angle, some from the xenophobic angle. Each persona should have a distinct attack vector, not all the same.
    - 2-3 FEAR/AMPLIFIER personas: scared people who share unverified info, amplify rumors, demand extreme action out of fear.
    - 2-3 SUPPORTIVE personas: interfaith leaders, community advocates, reasonable voices calling for calm and unity.
    - 2 MEDIA personas: news outlets or journalists reporting facts.
@@ -267,7 +267,7 @@ Return ONLY valid JSON:
     "unconfirmed_claims": [{ "claim": "...", "status": "FALSE", "truth": "...", "spread_by": ["@handle1"] }]
   }
 }`,
-    `Crisis type: ${crisisType}\nLocation: ${location}, ${country}\nContext: ${context}`,
+    `Crisis type: ${crisisType}${crisisType.includes('+') ? '\nNOTE: This is a COMPOUND crisis — multiple crisis types are happening simultaneously. Generate NPCs that cover each dimension with distinct attack angles.' : ''}\n${location ? `Location: ${location}, ` : ''}Country: ${country}\nContext: ${context}`,
     8000,
     0.8,
   );
