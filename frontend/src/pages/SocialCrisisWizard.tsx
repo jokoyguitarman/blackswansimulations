@@ -130,14 +130,13 @@ const CRISIS_TYPES = [
 const STEP_LABELS: Record<number, string> = {
   1: 'Crisis Event',
   2: 'Characters & Facts',
-  3: 'Response Teams',
-  4: 'Team Storylines',
-  5: 'Convergence',
-  6: 'Research',
-  7: 'Review & Compile',
+  3: 'Storyline',
+  4: 'Convergence',
+  5: 'Research',
+  6: 'Review & Compile',
 };
 
-const VISIBLE_STEPS = [1, 2, 3, 4, 5, 6, 7];
+const VISIBLE_STEPS = [1, 2, 3, 4, 5, 6];
 
 /* ─── Helpers ───────────────────────────────────────────────────────── */
 
@@ -194,18 +193,13 @@ export const SocialCrisisWizard = () => {
   const [step2Loading, setStep2Loading] = useState(false);
   const [step2Error, setStep2Error] = useState<string | null>(null);
 
-  /* Step 3 — Response Teams */
-  const [teams, setTeams] = useState<TeamDef[]>([]);
+  /* Step 3 — Unified Storyline (NDJSON streaming) */
+  const [storylineInjects, setStorylineInjects] = useState<SocialInject[]>([]);
   const [step3Loading, setStep3Loading] = useState(false);
+  const [step3Progress, setStep3Progress] = useState<string[]>([]);
   const [step3Error, setStep3Error] = useState<string | null>(null);
 
-  /* Step 4 — Per-Team Storylines (NDJSON streaming) */
-  const [teamStorylines, setTeamStorylines] = useState<Record<string, SocialInject[]>>({});
-  const [step4Loading, setStep4Loading] = useState(false);
-  const [step4Progress, setStep4Progress] = useState<string[]>([]);
-  const [step4Error, setStep4Error] = useState<string | null>(null);
-
-  /* Step 5 — Convergence + Shared Chaos */
+  /* Step 4 — Convergence + Shared Chaos */
   const [sharedInjects, setSharedInjects] = useState<SocialInject[]>([]);
   const [convergenceGates, setConvergenceGates] = useState<SocialInject[]>([]);
   const [narrative, setNarrative] = useState<{
@@ -214,16 +208,16 @@ export const SocialCrisisWizard = () => {
     briefing: string;
   } | null>(null);
   const [objectives, setObjectives] = useState<ObjectiveDef[]>([]);
+  const [step4Loading, setStep4Loading] = useState(false);
+  const [step4Error, setStep4Error] = useState<string | null>(null);
+
+  /* Step 5 — Research (NDJSON streaming) */
+  const [research, setResearch] = useState<ResearchGuidelines | null>(null);
   const [step5Loading, setStep5Loading] = useState(false);
+  const [step5Progress, setStep5Progress] = useState<string[]>([]);
   const [step5Error, setStep5Error] = useState<string | null>(null);
 
-  /* Step 6 — Research (NDJSON streaming) */
-  const [research, setResearch] = useState<ResearchGuidelines | null>(null);
-  const [step6Loading, setStep6Loading] = useState(false);
-  const [step6Progress, setStep6Progress] = useState<string[]>([]);
-  const [step6Error, setStep6Error] = useState<string | null>(null);
-
-  /* Step 7 — Compile */
+  /* Step 6 — Compile */
   const [compiling, setCompiling] = useState(false);
   const [compileProgress, setCompileProgress] = useState<string[]>([]);
   const [scenarioId, setScenarioId] = useState<string | null>(null);
@@ -241,8 +235,7 @@ export const SocialCrisisWizard = () => {
       personas,
       fact_sheet: factSheet,
       communities,
-      teams,
-      team_storylines: teamStorylines,
+      storyline_injects: storylineInjects,
       shared_injects: sharedInjects,
       convergence_gates: convergenceGates,
       narrative,
@@ -251,14 +244,12 @@ export const SocialCrisisWizard = () => {
     }),
     [
       crisisType,
-      location,
       country,
       context,
       personas,
       factSheet,
       communities,
-      teams,
-      teamStorylines,
+      storylineInjects,
       sharedInjects,
       convergenceGates,
       narrative,
@@ -337,10 +328,8 @@ export const SocialCrisisWizard = () => {
         if (Array.isArray(input.communities)) setCommunities(input.communities.map(String));
         if (Array.isArray(input.personas)) setPersonas(input.personas as NPCPersona[]);
         if (input.fact_sheet) setFactSheet(input.fact_sheet as FactSheet);
-        if (Array.isArray(input.teams)) setTeams(input.teams as TeamDef[]);
-        if (input.team_storylines && typeof input.team_storylines === 'object') {
-          setTeamStorylines(input.team_storylines as Record<string, SocialInject[]>);
-        }
+        if (Array.isArray(input.storyline_injects))
+          setStorylineInjects(input.storyline_injects as SocialInject[]);
         if (Array.isArray(input.shared_injects))
           setSharedInjects(input.shared_injects as SocialInject[]);
         if (Array.isArray(input.convergence_gates))
@@ -380,14 +369,12 @@ export const SocialCrisisWizard = () => {
       case 2:
         return personas.length > 0 && !!factSheet && !step2Loading;
       case 3:
-        return teams.length > 0 && !step3Loading;
+        return storylineInjects.length > 0 && !step3Loading;
       case 4:
-        return Object.keys(teamStorylines).length > 0 && !step4Loading;
+        return (sharedInjects.length > 0 || convergenceGates.length > 0) && !step4Loading;
       case 5:
-        return (sharedInjects.length > 0 || convergenceGates.length > 0) && !step5Loading;
+        return !!research && !step5Loading;
       case 6:
-        return !!research && !step6Loading;
-      case 7:
         return true;
       default:
         return false;
@@ -398,15 +385,13 @@ export const SocialCrisisWizard = () => {
     personas,
     factSheet,
     step2Loading,
-    teams,
+    storylineInjects,
     step3Loading,
-    teamStorylines,
-    step4Loading,
     sharedInjects,
     convergenceGates,
-    step5Loading,
+    step4Loading,
     research,
-    step6Loading,
+    step5Loading,
   ]);
 
   /* ─── API calls ──────────────────────────────────────────────────── */
@@ -442,54 +427,23 @@ export const SocialCrisisWizard = () => {
     setStep2Loading(false);
   }, [crisisType, location, country, effectiveContext]);
 
-  const generateTeams = useCallback(async () => {
+  const generateStoryline = useCallback(async () => {
     if (!crisisType) return;
     setStep3Loading(true);
     setStep3Error(null);
+    setStep3Progress([]);
+    setStorylineInjects([]);
+
     try {
       const headers = await authHeaders();
-      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/suggest-teams'), {
+      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-storyline'), {
         method: 'POST',
         headers,
         body: JSON.stringify({
           crisis_type: crisisType,
-          communities,
-          context: effectiveContext,
-          country,
-        }),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        const d = json.data;
-        setTeams(Array.isArray(d) ? d : d?.teams || []);
-      } else {
-        setStep3Error('Failed to suggest teams. Try again.');
-      }
-    } catch {
-      setStep3Error('Network error suggesting teams.');
-    }
-    setStep3Loading(false);
-  }, [crisisType, communities, effectiveContext, country]);
-
-  const generateStorylines = useCallback(async () => {
-    if (!crisisType || teams.length === 0) return;
-    setStep4Loading(true);
-    setStep4Error(null);
-    setStep4Progress([]);
-    setTeamStorylines({});
-
-    try {
-      const headers = await authHeaders();
-      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-storylines'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          crisis_type: crisisType,
-          location,
           country,
           context: effectiveContext,
-          communities,
-          teams,
+          duration: 60,
           personas,
           fact_sheet: factSheet,
         }),
@@ -511,15 +465,12 @@ export const SocialCrisisWizard = () => {
             if (!line.trim()) continue;
             try {
               const msg = JSON.parse(line);
-              if (msg.type === 'team_complete') {
-                setStep4Progress((prev) => [
-                  ...prev,
-                  `Generated ${Number(msg.inject_count)} injects for ${String(msg.team)}`,
-                ]);
-              } else if (msg.type === 'complete' && msg.storylines) {
-                setTeamStorylines(msg.storylines);
+              if (msg.type === 'progress') {
+                setStep3Progress((prev) => [...prev, String(msg.message)]);
+              } else if (msg.type === 'complete' && msg.injects) {
+                setStorylineInjects(msg.injects);
               } else if (msg.type === 'error') {
-                setStep4Error(String(msg.message || 'Storyline generation failed'));
+                setStep3Error(String(msg.message || 'Storyline generation failed'));
               }
             } catch {
               /* skip malformed */
@@ -527,18 +478,18 @@ export const SocialCrisisWizard = () => {
           }
         }
       } else {
-        setStep4Error('Failed to generate storylines.');
+        setStep3Error('Failed to generate storyline.');
       }
     } catch {
-      setStep4Error('Network error generating storylines.');
+      setStep3Error('Network error generating storyline.');
     }
-    setStep4Loading(false);
-  }, [crisisType, location, country, effectiveContext, communities, teams, personas, factSheet]);
+    setStep3Loading(false);
+  }, [crisisType, country, effectiveContext, personas, factSheet]);
 
   const generateConvergence = useCallback(async () => {
-    if (!crisisType || Object.keys(teamStorylines).length === 0) return;
-    setStep5Loading(true);
-    setStep5Error(null);
+    if (!crisisType) return;
+    setStep4Loading(true);
+    setStep4Error(null);
 
     try {
       const headers = await authHeaders();
@@ -547,14 +498,14 @@ export const SocialCrisisWizard = () => {
         headers,
         body: JSON.stringify({
           crisis_type: crisisType,
-          location,
+          location: '',
           country,
           context: effectiveContext,
+          duration: 60,
           communities,
-          teams,
           personas,
           fact_sheet: factSheet,
-          team_storylines: teamStorylines,
+          team_storylines: {},
         }),
       });
 
@@ -568,41 +519,29 @@ export const SocialCrisisWizard = () => {
         if (d.narrative && typeof d.narrative === 'object') setNarrative(d.narrative);
         if (Array.isArray(d.objectives)) setObjectives(d.objectives);
       } else {
-        setStep5Error('Failed to generate convergence. Try again.');
+        setStep4Error('Failed to generate convergence. Try again.');
       }
     } catch {
-      setStep5Error('Network error generating convergence.');
+      setStep4Error('Network error generating convergence.');
     }
-    setStep5Loading(false);
-  }, [
-    crisisType,
-    location,
-    country,
-    effectiveContext,
-    communities,
-    teams,
-    personas,
-    factSheet,
-    teamStorylines,
-  ]);
+    setStep4Loading(false);
+  }, [crisisType, country, effectiveContext, communities, personas, factSheet]);
 
   const generateResearch = useCallback(async () => {
     if (!crisisType) return;
-    setStep6Loading(true);
-    setStep6Error(null);
-    setStep6Progress([]);
+    setStep5Loading(true);
+    setStep5Error(null);
+    setStep5Progress([]);
     setResearch(null);
 
     try {
       const headers = await authHeaders();
-      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/research'), {
+      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/research-general'), {
         method: 'POST',
         headers,
         body: JSON.stringify({
           crisis_type: crisisType,
           context: effectiveContext,
-          teams,
-          team_storylines: teamStorylines,
         }),
       });
 
@@ -622,12 +561,12 @@ export const SocialCrisisWizard = () => {
             if (!line.trim()) continue;
             try {
               const msg = JSON.parse(line);
-              if (msg.type === 'team_research_complete') {
-                setStep6Progress((prev) => [...prev, `Completed research for ${String(msg.team)}`]);
+              if (msg.type === 'progress') {
+                setStep5Progress((prev) => [...prev, String(msg.message)]);
               } else if (msg.type === 'complete' && msg.research) {
                 setResearch(msg.research);
               } else if (msg.type === 'error') {
-                setStep6Error(String(msg.message || 'Research generation failed'));
+                setStep5Error(String(msg.message || 'Research generation failed'));
               }
             } catch {
               /* skip malformed */
@@ -635,13 +574,13 @@ export const SocialCrisisWizard = () => {
           }
         }
       } else {
-        setStep6Error('Failed to generate research.');
+        setStep5Error('Failed to generate research.');
       }
     } catch {
-      setStep6Error('Network error generating research.');
+      setStep5Error('Network error generating research.');
     }
-    setStep6Loading(false);
-  }, [crisisType, effectiveContext, teams, teamStorylines]);
+    setStep5Loading(false);
+  }, [crisisType, effectiveContext]);
 
   const compileScenario = useCallback(async () => {
     if (!crisisType) return;
@@ -658,12 +597,11 @@ export const SocialCrisisWizard = () => {
         headers,
         body: JSON.stringify({
           narrative,
-          teams,
           objectives,
           personas,
           fact_sheet: factSheet,
           communities,
-          team_storylines: teamStorylines,
+          storyline_injects: storylineInjects,
           shared_injects: sharedInjects,
           convergence_gates: convergenceGates,
           research,
@@ -692,14 +630,12 @@ export const SocialCrisisWizard = () => {
     setCompiling(false);
   }, [
     crisisType,
-    location,
     country,
     effectiveContext,
     communities,
-    teams,
     personas,
     factSheet,
-    teamStorylines,
+    storylineInjects,
     sharedInjects,
     convergenceGates,
     narrative,
@@ -734,19 +670,15 @@ export const SocialCrisisWizard = () => {
       generateNPCs();
       return;
     }
-    if (step === 2 && teams.length === 0) {
-      generateTeams();
+    if (step === 2 && storylineInjects.length === 0) {
+      generateStoryline();
       return;
     }
-    if (step === 3 && Object.keys(teamStorylines).length === 0) {
-      generateStorylines();
-      return;
-    }
-    if (step === 4 && sharedInjects.length === 0 && convergenceGates.length === 0) {
+    if (step === 3 && sharedInjects.length === 0 && convergenceGates.length === 0) {
       generateConvergence();
       return;
     }
-    if (step === 5 && !research) {
+    if (step === 4 && !research) {
       generateResearch();
       return;
     }
@@ -755,12 +687,8 @@ export const SocialCrisisWizard = () => {
   /* ─── Computed stats for step 7 ──────────────────────────────────── */
 
   const totalTeamInjects = useMemo(() => {
-    let count = 0;
-    for (const key of Object.keys(teamStorylines)) {
-      count += teamStorylines[key].length;
-    }
-    return count;
-  }, [teamStorylines]);
+    return storylineInjects.length;
+  }, [storylineInjects]);
 
   const crisisLabel = useMemo(() => {
     if (crisisTypes.length === 0) return 'Unknown';
@@ -1037,170 +965,115 @@ export const SocialCrisisWizard = () => {
 
   const renderStep3 = () => (
     <div>
-      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 3: RESPONSE TEAMS]</h2>
+      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 3: CRISIS STORYLINE]</h2>
       <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
-        AI-suggested response team structure. Read-only preview.
+        AI-generated crisis storyline with escalating pressure arc. All players experience the same
+        events.
       </p>
 
-      {step3Loading ? (
-        <Spinner text="Generating response team structure..." />
-      ) : step3Error ? (
-        <div className="text-center py-8">
+      {step3Loading && (
+        <div className="mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
+            <span className="text-sm terminal-text text-robotic-yellow animate-pulse">
+              Generating storyline...
+            </span>
+          </div>
+          <div className="border border-robotic-gray-200 rounded p-3 bg-black/30 font-mono text-xs space-y-1 max-h-40 overflow-y-auto">
+            {step3Progress.map((msg, i) => (
+              <div key={i} className="text-robotic-yellow/70">
+                <span className="text-robotic-yellow/30">[{String(i + 1).padStart(2, '0')}]</span>{' '}
+                {msg}
+              </div>
+            ))}
+            <div className="animate-pulse text-robotic-yellow/40">▌</div>
+          </div>
+        </div>
+      )}
+
+      {step3Error && (
+        <div className="text-center py-4 mb-4">
           <p className="text-sm terminal-text text-red-400 mb-4">{step3Error}</p>
           <button
-            onClick={generateTeams}
+            onClick={generateStoryline}
             className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
           >
             Retry
           </button>
         </div>
-      ) : (
-        <div className="space-y-3">
-          {teams.map((t, i) => (
-            <div key={i} className="border border-robotic-gray-200 rounded p-4">
-              <div className="flex items-start justify-between gap-4">
+      )}
+
+      {storylineInjects.length > 0 && (
+        <div className="border border-robotic-gray-200 rounded p-4">
+          <h3 className="text-sm terminal-text text-cyan-400 font-bold uppercase mb-3">
+            Crisis Timeline
+            <span className="text-[10px] text-robotic-yellow/40 ml-2 normal-case">
+              ({storylineInjects.length} injects)
+            </span>
+          </h3>
+          <div className="space-y-2">
+            {storylineInjects.map((inj, i) => (
+              <div
+                key={i}
+                className="flex items-start gap-3 border-l-2 border-robotic-yellow/20 pl-3 py-1"
+              >
+                <span className="text-[10px] terminal-text text-cyan-400 whitespace-nowrap mt-0.5">
+                  T+{inj.trigger_time_minutes ?? '?'}m
+                </span>
                 <div className="flex-1">
-                  <div className="text-sm terminal-text text-robotic-yellow font-bold mb-1">
-                    {t.team_name}
+                  <div className="text-xs terminal-text font-bold">{inj.title}</div>
+                  <div className="text-[10px] terminal-text text-robotic-yellow/50">
+                    {inj.content}
                   </div>
-                  <div className="text-xs terminal-text text-robotic-yellow/60 mb-2">
-                    {t.team_description}
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-[10px] terminal-text text-robotic-yellow/40">
-                      Participants: {t.min_participants}–{t.max_participants}
-                    </span>
+                  <div className="flex gap-2 mt-1">
+                    {inj.delivery_config && (
+                      <span className="text-[9px] terminal-text bg-blue-900/20 text-blue-400 px-1.5 py-0.5 rounded">
+                        {String((inj.delivery_config as Record<string, unknown>).app || inj.type)}
+                      </span>
+                    )}
+                    {inj.delivery_config &&
+                      (inj.delivery_config as Record<string, unknown>).platform && (
+                        <span className="text-[9px] terminal-text bg-purple-900/20 text-purple-400 px-1.5 py-0.5 rounded">
+                          {String((inj.delivery_config as Record<string, unknown>).platform)}
+                        </span>
+                      )}
+                    {inj.severity && (
+                      <span
+                        className={`text-[9px] terminal-text px-1.5 py-0.5 rounded ${
+                          inj.severity === 'critical'
+                            ? 'bg-red-900/20 text-red-400'
+                            : inj.severity === 'high'
+                              ? 'bg-orange-900/20 text-orange-400'
+                              : 'bg-yellow-900/20 text-yellow-400'
+                        }`}
+                      >
+                        {inj.severity}
+                      </span>
+                    )}
                   </div>
                 </div>
-                <span className="text-lg">
-                  {i === 0 ? '🛡️' : i === 1 ? '📢' : i === 2 ? '🤝' : '📋'}
-                </span>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </div>
   );
 
-  /* ── Step 4: Team Storylines (NDJSON streaming, read-only) ─────────── */
+  /* ── Step 4: Convergence + Shared Chaos (read-only) ────────────────── */
 
-  const renderStep4 = () => {
-    const teamNames = Object.keys(teamStorylines);
-    return (
-      <div>
-        <h2 className="text-lg terminal-text uppercase mb-4">[STEP 4: TEAM STORYLINES]</h2>
-        <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
-          AI-generated per-team inject timelines via streaming. Read-only preview.
-        </p>
-
-        {step4Loading && (
-          <div className="mb-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
-              <span className="text-sm terminal-text text-robotic-yellow animate-pulse">
-                Generating storylines...
-              </span>
-            </div>
-            <div className="border border-robotic-gray-200 rounded p-3 bg-black/30 font-mono text-xs space-y-1 max-h-40 overflow-y-auto">
-              {step4Progress.map((msg, i) => (
-                <div key={i} className="text-robotic-yellow/70">
-                  <span className="text-robotic-yellow/30">[{String(i + 1).padStart(2, '0')}]</span>{' '}
-                  {msg}
-                </div>
-              ))}
-              <div className="animate-pulse text-robotic-yellow/40">▌</div>
-            </div>
-          </div>
-        )}
-
-        {step4Error && (
-          <div className="text-center py-4 mb-4">
-            <p className="text-sm terminal-text text-red-400 mb-4">{step4Error}</p>
-            <button
-              onClick={generateStorylines}
-              className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
-        {teamNames.length > 0 && (
-          <div className="space-y-6">
-            {teamNames.map((teamName) => {
-              const injects = teamStorylines[teamName];
-              return (
-                <div key={teamName} className="border border-robotic-gray-200 rounded p-4">
-                  <h3 className="text-sm terminal-text text-cyan-400 font-bold uppercase mb-3">
-                    {teamName}
-                    <span className="text-[10px] text-robotic-yellow/40 ml-2 normal-case">
-                      ({injects.length} injects)
-                    </span>
-                  </h3>
-                  <div className="space-y-2">
-                    {injects.map((inj, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-3 border-l-2 border-robotic-yellow/20 pl-3 py-1"
-                      >
-                        <span className="text-[10px] terminal-text text-cyan-400 whitespace-nowrap mt-0.5">
-                          T+{inj.trigger_time_minutes ?? '?'}m
-                        </span>
-                        <div className="flex-1">
-                          <div className="text-xs terminal-text font-bold">{inj.title}</div>
-                          <div className="text-[10px] terminal-text text-robotic-yellow/50">
-                            {inj.content}
-                          </div>
-                          <div className="flex gap-2 mt-1">
-                            {inj.delivery_config && (
-                              <span className="text-[9px] terminal-text bg-blue-900/20 text-blue-400 px-1.5 py-0.5 rounded">
-                                {String(
-                                  (inj.delivery_config as Record<string, unknown>).app || inj.type,
-                                )}
-                              </span>
-                            )}
-                            {inj.severity && (
-                              <span
-                                className={`text-[9px] terminal-text px-1.5 py-0.5 rounded ${
-                                  inj.severity === 'critical'
-                                    ? 'bg-red-900/20 text-red-400'
-                                    : inj.severity === 'high'
-                                      ? 'bg-orange-900/20 text-orange-400'
-                                      : 'bg-yellow-900/20 text-yellow-400'
-                                }`}
-                              >
-                                {inj.severity}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  /* ── Step 5: Convergence + Shared Chaos (read-only) ────────────────── */
-
-  const renderStep5 = () => (
+  const renderStep4 = () => (
     <div>
-      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 5: CONVERGENCE]</h2>
+      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 4: CONVERGENCE]</h2>
       <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
         Merged timeline with shared injects and convergence gates. Read-only preview.
       </p>
 
-      {step5Loading ? (
+      {step4Loading ? (
         <Spinner text="Generating convergence layer..." />
-      ) : step5Error ? (
+      ) : step4Error ? (
         <div className="text-center py-8">
-          <p className="text-sm terminal-text text-red-400 mb-4">{step5Error}</p>
+          <p className="text-sm terminal-text text-red-400 mb-4">{step4Error}</p>
           <button
             onClick={generateConvergence}
             className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
@@ -1352,14 +1225,14 @@ export const SocialCrisisWizard = () => {
 
   /* ── Step 6: Research (NDJSON streaming, read-only) ─────────────────── */
 
-  const renderStep6 = () => (
+  const renderStep5 = () => (
     <div>
-      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 6: RESEARCH]</h2>
+      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 5: BEST PRACTICES]</h2>
       <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
         AI-researched guidelines and best practices for this crisis type. Read-only preview.
       </p>
 
-      {step6Loading && (
+      {step5Loading && (
         <div className="mb-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
@@ -1368,7 +1241,7 @@ export const SocialCrisisWizard = () => {
             </span>
           </div>
           <div className="border border-robotic-gray-200 rounded p-3 bg-black/30 font-mono text-xs space-y-1 max-h-40 overflow-y-auto">
-            {step6Progress.map((msg, i) => (
+            {step5Progress.map((msg, i) => (
               <div key={i} className="text-robotic-yellow/70">
                 <span className="text-robotic-yellow/30">[{String(i + 1).padStart(2, '0')}]</span>{' '}
                 {msg}
@@ -1379,9 +1252,9 @@ export const SocialCrisisWizard = () => {
         </div>
       )}
 
-      {step6Error && (
+      {step5Error && (
         <div className="text-center py-4 mb-4">
-          <p className="text-sm terminal-text text-red-400 mb-4">{step6Error}</p>
+          <p className="text-sm terminal-text text-red-400 mb-4">{step5Error}</p>
           <button
             onClick={generateResearch}
             className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
@@ -1537,9 +1410,9 @@ export const SocialCrisisWizard = () => {
 
   /* ── Step 7: Review & Compile ──────────────────────────────────────── */
 
-  const renderStep7 = () => (
+  const renderStep6 = () => (
     <div>
-      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 7: REVIEW & COMPILE]</h2>
+      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 6: REVIEW & COMPILE]</h2>
 
       {!scenarioId && !compiling && (
         <div className="space-y-6">
@@ -1569,8 +1442,10 @@ export const SocialCrisisWizard = () => {
               </div>
               <div className="border border-robotic-gray-200 rounded p-3 text-center">
                 <div className="text-2xl mb-1">👥</div>
-                <div className="text-[10px] text-robotic-yellow/40 uppercase">Teams</div>
-                <div className="text-robotic-yellow font-bold text-lg">{teams.length}</div>
+                <div className="text-[10px] text-robotic-yellow/40 uppercase">Storyline</div>
+                <div className="text-robotic-yellow font-bold text-lg">
+                  {storylineInjects.length}
+                </div>
               </div>
               <div className="border border-robotic-gray-200 rounded p-3 text-center">
                 <div className="text-2xl mb-1">🎭</div>
@@ -1610,28 +1485,6 @@ export const SocialCrisisWizard = () => {
               </div>
             </div>
           </div>
-
-          {/* Per-team inject breakdown */}
-          {Object.keys(teamStorylines).length > 0 && (
-            <div className="border border-robotic-gray-200 rounded p-4 mb-4">
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Injects Per Team
-              </h3>
-              <div className="space-y-2">
-                {Object.keys(teamStorylines).map((teamName) => (
-                  <div
-                    key={teamName}
-                    className="flex items-center justify-between text-xs terminal-text"
-                  >
-                    <span className="text-robotic-yellow/70">{teamName}</span>
-                    <span className="text-cyan-400 font-bold">
-                      {teamStorylines[teamName].length} injects
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Narrative preview */}
           {narrative && (
@@ -1691,8 +1544,8 @@ export const SocialCrisisWizard = () => {
           {/* Final stats */}
           <div className="border border-robotic-gray-200 rounded p-4 bg-black/20 text-xs terminal-text mb-4 text-left max-w-md mx-auto">
             <div className="grid grid-cols-2 gap-2">
-              <span className="text-robotic-yellow/40">Teams:</span>
-              <span className="text-robotic-yellow">{teams.length}</span>
+              <span className="text-robotic-yellow/40">Injects:</span>
+              <span className="text-robotic-yellow">{storylineInjects.length}</span>
               <span className="text-robotic-yellow/40">NPCs:</span>
               <span className="text-robotic-yellow">{personas.length}</span>
               <span className="text-robotic-yellow/40">Team Injects:</span>
@@ -1761,7 +1614,6 @@ export const SocialCrisisWizard = () => {
           {step === 4 && renderStep4()}
           {step === 5 && renderStep5()}
           {step === 6 && renderStep6()}
-          {step === 7 && renderStep7()}
         </div>
 
         {/* Navigation buttons */}

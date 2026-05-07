@@ -429,6 +429,152 @@ export async function generateAllTeamStorylines(
   return results;
 }
 
+// ─── Stage 3b: Unified Storyline (no teams) ─────────────────────────────────
+
+export async function generateUnifiedStoryline(
+  crisisContext: { crisisType: string; country: string; context: string; duration: number },
+  npcs: NPCPersona[],
+  factSheet: FactSheet,
+  onProgress?: (msg: string) => void,
+): Promise<SocialInject[]> {
+  const npcContext = npcs
+    .map(
+      (p) =>
+        `${p.handle} (${p.name}): ${p.type}, ${p.personality}, bias: ${p.bias}, claims: ${p.specific_claims.join('; ')}`,
+    )
+    .join('\n');
+  const factsContext = `Confirmed: ${factSheet.confirmed_facts.join('; ')}\nFalse claims: ${factSheet.unconfirmed_claims.map((c) => `"${c.claim}" (${c.status})`).join('; ')}`;
+
+  onProgress?.('Generating unified crisis storyline...');
+
+  const result = await callAI(
+    `You are designing the STORYLINE for a social media crisis simulation. There are NO teams -- all players see the same feed and work together as one crisis response group.
+
+Generate 20-30 injects that create a cohesive, escalating crisis narrative. These are the events the response team will face.
+
+The injects should be a MIX of:
+- SOCIAL MEDIA POSTS (app: "social_feed") from NPC personas spreading hate speech, misinformation, fear, and some supportive voices. For social_feed injects, set "platform" in delivery_config to either "x_twitter" or "facebook". Aim for 60% X/Twitter and 40% Facebook. X posts are short and hashtag-heavy; Facebook posts are longer and more personal.
+- EMAILS (app: "email") from stakeholders, leadership, community leaders, journalists, and government officials demanding information, offering help, or applying pressure.
+- GROUP CHAT messages (app: "group_chat") with internal coordination challenges, tips from the public, or leaked information.
+- PHONE CALLS (app: "phone_call") from senior leadership or media wanting statements.
+
+The storyline should have a clear PRESSURE ARC:
+- OPENING (T+0 to T+5): Crisis breaks. First social media posts appear. Team becomes aware.
+- BUILDING (T+5 to T+15): Hate speech and misinformation intensify. Pressure mounts from multiple channels.
+- ESCALATION (T+15 to T+30): Crisis peaks. Rally calls, viral misinformation, media pressure, community fear.
+- TURNING POINT (T+30 to T+45): Consequences of team actions (or inaction) start appearing. Narrative shifts based on response quality.
+- RESOLUTION (T+45 to T+60): Final consequences. Either stabilization or further deterioration.
+
+Mark critical injects with requires_response: true and response_deadline_minutes.
+ALL injects must have inject_scope: "universal" and target_teams: [].
+
+Available NPCs:
+${npcContext}
+
+Facts and claims:
+${factsContext}
+
+Return ONLY valid JSON:
+{ "injects": [{ "trigger_time_minutes": 0, "type": "social_post|email_inbound|group_chat_message|phone_call", "title": "...", "content": "...", "severity": "low|medium|high|critical", "inject_scope": "universal", "target_teams": [], "requires_response": false, "response_deadline_minutes": null, "delivery_config": { "app": "social_feed|email|group_chat|phone_call", "platform": "x_twitter|facebook", ... } }] }`,
+    `Crisis: ${crisisContext.crisisType}\nCountry: ${crisisContext.country}\nContext: ${crisisContext.context}\nDuration: ${crisisContext.duration} minutes`,
+    12000,
+    0.8,
+  );
+
+  const injects = (result?.injects as SocialInject[]) || [];
+  onProgress?.(`Generated ${injects.length} storyline injects`);
+
+  return injects.map((inj) => ({
+    ...inj,
+    target_teams: [],
+    inject_scope: 'universal',
+  }));
+}
+
+// ─── Research: General Best Practices (no teams) ────────────────────────────
+
+export async function researchGeneralBestPractices(
+  crisisType: string,
+  context: string,
+  onProgress?: (msg: string) => void,
+): Promise<ResearchGuidelines> {
+  onProgress?.('Researching crisis communication best practices...');
+
+  const [perTeamResult, groupResult] = await Promise.all([
+    callAI(
+      `You are an expert researcher in crisis communication, social media response, and racial/religious harmony.
+
+Research general best practices for a social media crisis response team. This is NOT for a specific team role -- it covers the FULL range of crisis communication activities that any responder should know.
+
+Based on real-world frameworks (UNESCO Handbook on Countering Online Hate Speech, Christchurch Call protocols, IMDA Singapore guidelines, EU Code of Practice on Disinformation), generate 8-12 specific, actionable guidelines.
+
+Each guideline should specify:
+- What the best practice IS (concrete, not vague)
+- What source/framework it comes from
+- What happens narratively if VIOLATED (consequence in simulation)
+- What happens narratively if FOLLOWED (reward in simulation)
+- What player actions would SIGNAL violation or compliance
+
+Return ONLY valid JSON:
+{
+  "team_name": "Crisis Response Team",
+  "guidelines": [{
+    "guideline_id": "...",
+    "best_practice": "...",
+    "source_basis": "...",
+    "timing_window": "...",
+    "if_violated": "...",
+    "if_followed": "...",
+    "detection_signals": ["..."]
+  }]
+}`,
+      `Crisis: ${crisisType}\nContext: ${context}`,
+      8000,
+    ),
+    callAI(
+      `You are an expert researcher in crisis coordination and social media crisis management.
+
+Research best practices for coordinating a social media crisis response. Cover:
+
+1. COORDINATION GUIDELINES: How the response team should share information and coordinate actions
+2. ESCALATION PROTOCOLS: When and how to escalate issues to leadership, law enforcement, or platform operators
+3. TIMING BENCHMARKS: Critical time thresholds (e.g., "first official response within 30 minutes", "misinformation debunked within 1 hour")
+4. CASE STUDIES: 2-3 real-world examples of social media crises with lessons learned
+
+Base this on established frameworks: UNESCO, Christchurch Call, IMDA, EU Code of Practice on Disinformation.
+
+Return ONLY valid JSON:
+{
+  "coordination_guidelines": ["..."],
+  "escalation_protocols": ["..."],
+  "timing_benchmarks": { "first_response_minutes": 30, "misinformation_debunk_minutes": 60 },
+  "case_studies": [{ "name": "...", "summary": "...", "lessons": ["..."] }]
+}`,
+      `Crisis: ${crisisType}\nContext: ${context}`,
+      8000,
+    ),
+  ]);
+
+  onProgress?.('Best practices research complete');
+
+  const teamBP = (perTeamResult as unknown as TeamBestPractice) || {
+    team_name: 'Crisis Response Team',
+    guidelines: [],
+  };
+
+  const groupBP = (groupResult as unknown as ResearchGuidelines['group_wide']) || {
+    coordination_guidelines: [],
+    escalation_protocols: [],
+    timing_benchmarks: {},
+    case_studies: [],
+  };
+
+  return {
+    per_team: [teamBP],
+    group_wide: groupBP,
+  };
+}
+
 // ─── Stage 4: Convergence Layer ─────────────────────────────────────────────
 
 export async function generateConvergenceLayer(
@@ -882,13 +1028,16 @@ export function assemblePayload(
   sop: SOPDefinition,
   duration: number,
   strategyWindows?: StrategyWindow[],
+  storylineInjects?: SocialInject[],
 ): SocialCrisisPayload {
-  const allTeamInjects: SocialInject[] = [];
-  for (const injects of Object.values(teamStorylines)) {
-    allTeamInjects.push(...injects);
+  // Support both team-based (legacy) and unified (new) storyline modes
+  const allStoryInjects: SocialInject[] = storylineInjects || [];
+  if (!storylineInjects) {
+    for (const injects of Object.values(teamStorylines)) {
+      allStoryInjects.push(...injects);
+    }
   }
 
-  // Flatten strategy window injects into condition injects
   const strategyInjects: SocialInject[] = [];
   if (strategyWindows) {
     for (const window of strategyWindows) {
@@ -898,11 +1047,11 @@ export function assemblePayload(
   }
 
   const timeInjects = [
-    ...allTeamInjects.filter((i) => i.trigger_time_minutes != null),
+    ...allStoryInjects.filter((i) => i.trigger_time_minutes != null),
     ...sharedInjects,
   ];
   const conditionInjects = [...convergenceGates, ...strategyInjects];
-  const decisionInjects = allTeamInjects.filter((i) => i.trigger_condition);
+  const decisionInjects = allStoryInjects.filter((i) => i.trigger_condition);
 
   return {
     scenario: {

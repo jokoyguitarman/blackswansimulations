@@ -8,7 +8,9 @@ import {
   suggestSocialCrisisTeams,
   generateAllTeamStorylines,
   generateConvergenceLayer,
+  generateUnifiedStoryline,
   researchBestPractices,
+  researchGeneralBestPractices,
   buildSOPFromResearch,
   assemblePayload,
   type NPCPersona,
@@ -75,7 +77,95 @@ router.post(
   },
 );
 
-// Step 4: Generate per-team storylines (NDJSON streaming)
+// Step 3b: Generate unified storyline (no teams -- NDJSON streaming)
+router.post(
+  '/generate-storyline',
+  requireAuth,
+  validate(
+    z.object({
+      body: z.object({
+        crisis_type: z.string(),
+        country: z.string().default('Singapore'),
+        context: z.string().default(''),
+        duration: z.number().default(60),
+        personas: z.array(z.unknown()),
+        fact_sheet: z.object({
+          confirmed_facts: z.array(z.string()),
+          unconfirmed_claims: z.array(z.unknown()),
+        }),
+      }),
+    }),
+  ),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { crisis_type, country, context, duration, personas, fact_sheet } = req.body;
+
+      res.setHeader('Content-Type', 'application/x-ndjson');
+      res.setHeader('Transfer-Encoding', 'chunked');
+
+      const crisisContext = { crisisType: crisis_type, country, context, duration };
+
+      const injects = await generateUnifiedStoryline(
+        crisisContext,
+        personas as NPCPersona[],
+        fact_sheet as FactSheet,
+        (msg: string) => {
+          res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
+        },
+      );
+
+      res.write(JSON.stringify({ type: 'complete', injects }) + '\n');
+      res.end();
+    } catch (err) {
+      logger.error({ err }, 'Failed to generate unified storyline');
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to generate storyline' });
+      } else {
+        res.write(JSON.stringify({ type: 'error', message: 'Storyline generation failed' }) + '\n');
+        res.end();
+      }
+    }
+  },
+);
+
+// Step 5b: Research general best practices (no teams)
+router.post(
+  '/research-general',
+  requireAuth,
+  validate(
+    z.object({
+      body: z.object({
+        crisis_type: z.string(),
+        context: z.string().default(''),
+      }),
+    }),
+  ),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      res.setHeader('Content-Type', 'application/x-ndjson');
+      res.setHeader('Transfer-Encoding', 'chunked');
+
+      const { crisis_type, context } = req.body;
+
+      const research = await researchGeneralBestPractices(crisis_type, context, (msg: string) => {
+        res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
+      });
+
+      res.write(JSON.stringify({ type: 'complete', research }) + '\n');
+      res.end();
+    } catch (err) {
+      logger.error({ err }, 'Failed to research general best practices');
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Research failed' });
+      } else {
+        res.write(JSON.stringify({ type: 'error', message: 'Research failed' }) + '\n');
+        res.end();
+      }
+    }
+  },
+);
+
+// Step 4: Generate per-team storylines (NDJSON streaming) -- kept for backward compatibility
 router.post(
   '/generate-storylines',
   requireAuth,
@@ -261,14 +351,17 @@ router.post(
     z.object({
       body: z.object({
         narrative: z.object({ title: z.string(), description: z.string(), briefing: z.string() }),
-        teams: z.array(
-          z.object({
-            team_name: z.string(),
-            team_description: z.string(),
-            min_participants: z.number().default(1),
-            max_participants: z.number().default(4),
-          }),
-        ),
+        teams: z
+          .array(
+            z.object({
+              team_name: z.string(),
+              team_description: z.string(),
+              min_participants: z.number().default(1),
+              max_participants: z.number().default(4),
+            }),
+          )
+          .optional()
+          .default([]),
         objectives: z.array(z.unknown()),
         personas: z.array(z.unknown()),
         fact_sheet: z.object({
@@ -276,7 +369,8 @@ router.post(
           unconfirmed_claims: z.array(z.unknown()),
         }),
         communities: z.array(z.string()),
-        team_storylines: z.record(z.string(), z.unknown()),
+        team_storylines: z.record(z.string(), z.unknown()).optional().default({}),
+        storyline_injects: z.array(z.unknown()).optional(),
         shared_injects: z.array(z.unknown()),
         convergence_gates: z.array(z.unknown()),
         research: z.unknown(),
@@ -296,7 +390,7 @@ router.post(
 
       const payload = assemblePayload(
         body.narrative,
-        body.teams as TeamDef[],
+        (body.teams || []) as TeamDef[],
         body.objectives as Array<{
           objective_id: string;
           objective_name: string;
@@ -306,12 +400,14 @@ router.post(
         body.personas as NPCPersona[],
         body.fact_sheet as FactSheet,
         body.communities,
-        body.team_storylines as Record<string, SocialInject[]>,
+        (body.team_storylines || {}) as Record<string, SocialInject[]>,
         body.shared_injects as SocialInject[],
         body.convergence_gates as SocialInject[],
         body.research as ResearchGuidelines,
         sop,
         body.duration,
+        undefined,
+        body.storyline_injects as SocialInject[] | undefined,
       );
 
       const scenarioId = await persistSocialCrisisScenario(payload, user.id);
