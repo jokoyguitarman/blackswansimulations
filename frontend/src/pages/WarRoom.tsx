@@ -542,8 +542,13 @@ export const WarRoom = () => {
             </div>
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {existingDrafts.map((draft) => {
-                const input = draft.input || {};
-                const sceneName = (input.scenario_type as string) || 'Unknown';
+                const input = (draft.input || {}) as Record<string, unknown>;
+                const isSocialCrisis = input.sim_mode === 'social_media';
+                const sceneName = isSocialCrisis
+                  ? String(input.crisis_type || 'Social Crisis')
+                      .replace(/_/g, ' ')
+                      .replace(/\+/g, ' + ')
+                  : String(input.scenario_type || 'Unknown').replace(/_/g, ' ');
                 const isCompleted = draft.status === 'persisted' || !!draft.scenario_id;
                 const stepLabel = isCompleted
                   ? 'Compiled'
@@ -559,7 +564,10 @@ export const WarRoom = () => {
                   >
                     <div>
                       <div className="text-xs terminal-text text-robotic-yellow/70 capitalize">
-                        {sceneName.replace(/_/g, ' ')}
+                        {sceneName}
+                        {isSocialCrisis && (
+                          <span className="ml-2 text-[9px] text-purple-400 uppercase">social</span>
+                        )}
                         {isCompleted && (
                           <span className="ml-2 text-[9px] text-green-500 uppercase">
                             completed
@@ -573,13 +581,19 @@ export const WarRoom = () => {
                     <button
                       onClick={() => {
                         setShowDraftPicker(false);
-                        setSearchParams({ draft: draft.id }, { replace: true });
-                        window.location.reload();
+                        if (isSocialCrisis) {
+                          navigate(`/warroom/social-crisis?draft=${draft.id}`);
+                        } else {
+                          setSearchParams({ draft: draft.id }, { replace: true });
+                          window.location.reload();
+                        }
                       }}
                       className={`text-xs terminal-text border px-3 py-1 ${
                         isCompleted
                           ? 'text-green-400 border-green-500/50 hover:bg-green-900/20'
-                          : 'text-cyan-400 border-cyan-500/50 hover:bg-cyan-900/20'
+                          : isSocialCrisis
+                            ? 'text-purple-400 border-purple-500/50 hover:bg-purple-900/20'
+                            : 'text-cyan-400 border-cyan-500/50 hover:bg-cyan-900/20'
                       }`}
                     >
                       {isCompleted ? 'Re-compile' : 'Resume'}
