@@ -20,6 +20,7 @@ import {
   type ResearchGuidelines,
 } from '../services/socialCrisisGeneratorService.js';
 import { persistSocialCrisisScenario } from '../services/socialCrisisPersistenceService.js';
+import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { getOrResearchTeamDoctrines } from '../services/doctrineCacheService.js';
 import { generatePostImage } from '../services/mediaGenerationService.js';
 
@@ -418,7 +419,7 @@ router.post(
 
       const scenarioId = await persistSocialCrisisScenario(payload, user.id);
 
-      // Pre-generate images from NPC persona image_prompts (non-blocking)
+      // Pre-generate images from NPC persona image_prompts and attach to matching injects
       const personas = body.personas as NPCPersona[];
       void (async () => {
         try {
@@ -432,17 +433,47 @@ router.post(
             }
           }
           const limited = allPrompts.slice(0, 10);
+          const imagesByHandle = new Map<string, string[]>();
+
           for (const item of limited) {
             const url = await generatePostImage(
               item.prompt,
               item.style as 'evidence_photo' | 'news_photo' | 'meme',
             );
             if (url) {
-              logger.info(
-                { scenarioId, handle: item.handle, url: url.substring(0, 80) },
-                'Pre-generated NPC image',
-              );
+              if (!imagesByHandle.has(item.handle)) imagesByHandle.set(item.handle, []);
+              imagesByHandle.get(item.handle)!.push(url);
+              logger.info({ scenarioId, handle: item.handle }, 'Pre-generated NPC image');
             }
+          }
+
+          // Attach images to scenario injects that match the NPC handle
+          if (imagesByHandle.size > 0) {
+            const { data: injects } = await supabaseAdmin
+              .from('scenario_injects')
+              .select('id, delivery_config')
+              .eq('scenario_id', scenarioId)
+              .not('delivery_config', 'is', null);
+
+            for (const inject of injects || []) {
+              const dc = (inject.delivery_config || {}) as Record<string, unknown>;
+              const handle = String(dc.author_handle || '');
+              const urls = imagesByHandle.get(handle);
+              if (urls && urls.length > 0) {
+                const imageUrl = urls.shift();
+                if (imageUrl) {
+                  dc.media_urls = [imageUrl];
+                  await supabaseAdmin
+                    .from('scenario_injects')
+                    .update({ delivery_config: dc })
+                    .eq('id', inject.id);
+                }
+              }
+            }
+            logger.info(
+              { scenarioId, imagesAttached: imagesByHandle.size },
+              'Images attached to injects',
+            );
           }
         } catch (imgErr) {
           logger.warn({ imgErr, scenarioId }, 'NPC image pre-generation failed (non-critical)');
