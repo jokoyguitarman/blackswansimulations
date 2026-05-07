@@ -137,11 +137,13 @@ export default function HomeScreen() {
   const [ageBracket, setAgeBracket] = useState('');
   const [gender, setGender] = useState('');
   const [religion, setReligion] = useState('');
+  const [customReligion, setCustomReligion] = useState('');
   const [race, setRace] = useState('');
   const [customRace, setCustomRace] = useState('');
   const [scenarioCountry, setScenarioCountry] = useState('');
 
   const raceOptions = RACE_BY_COUNTRY[scenarioCountry.toLowerCase()] || DEFAULT_RACE_OPTIONS;
+  const effectiveReligion = religion === 'other' ? customReligion.trim() : religion;
   const effectiveRace = race === 'other' ? customRace.trim() : race;
 
   useEffect(() => {
@@ -203,7 +205,7 @@ export default function HomeScreen() {
           demographics: {
             age_bracket: ageBracket,
             gender,
-            religion: religion || 'none',
+            religion: effectiveReligion || 'none',
             race: effectiveRace,
           },
         }),
@@ -361,7 +363,10 @@ export default function HomeScreen() {
                   {RELIGION_OPTIONS.map((opt) => (
                     <button
                       key={opt.value}
-                      onClick={() => setReligion(opt.value)}
+                      onClick={() => {
+                        setReligion(opt.value);
+                        setCustomReligion('');
+                      }}
                       className="px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors"
                       style={{
                         backgroundColor: religion === opt.value ? '#0A84FF' : '#2C2C2E',
@@ -372,6 +377,17 @@ export default function HomeScreen() {
                     </button>
                   ))}
                 </div>
+                {religion === 'other' && (
+                  <input
+                    type="text"
+                    value={customReligion}
+                    onChange={(e) => setCustomReligion(e.target.value)}
+                    placeholder="Enter your religion..."
+                    className="mt-2 w-full bg-transparent border rounded-lg px-3 py-1.5 text-[13px] outline-none"
+                    style={{ borderColor: '#3A3A3C', color: '#FFF' }}
+                    maxLength={50}
+                  />
+                )}
               </div>
 
               <div>
