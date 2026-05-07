@@ -96,7 +96,7 @@ async function routeToSocialFeed(
       content_flags: config.content_flags || {},
       virality_score: config.virality_score || 0,
       requires_response: inject.requires_response || false,
-      media_urls: (config as Record<string, unknown>).media_urls || [],
+      media_urls: (config as unknown as Record<string, unknown>).media_urls || [],
     })
     .select()
     .single();
