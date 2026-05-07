@@ -67,12 +67,12 @@ export async function generatePostImage(
         Authorization: `Bearer ${env.openAiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-image-2',
+        model: 'dall-e-3',
         prompt: fullPrompt,
         n: 1,
         size: config.size,
-        quality: 'medium',
-        output_format: 'png',
+        quality: 'standard',
+        response_format: 'b64_json',
       }),
     });
 
