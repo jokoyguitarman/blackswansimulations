@@ -470,6 +470,44 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
   }
 });
 
+router.delete('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+    const { postId } = req.params;
+
+    const { data: existing } = await supabaseAdmin
+      .from('social_post_likes')
+      .select('id')
+      .eq('post_id', postId)
+      .eq('player_id', user.id)
+      .single();
+
+    if (!existing) {
+      return res.json({ success: true, already_removed: true });
+    }
+
+    await supabaseAdmin.from('social_post_likes').delete().eq('id', existing.id);
+
+    const { data: post } = await supabaseAdmin
+      .from('social_posts')
+      .select('like_count')
+      .eq('id', postId)
+      .single();
+
+    if (post) {
+      await supabaseAdmin
+        .from('social_posts')
+        .update({ like_count: Math.max(0, (post.like_count || 1) - 1) })
+        .eq('id', postId);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in DELETE /social/posts/:postId/like');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.get('/posts/:postId/reactions', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { postId } = req.params;
