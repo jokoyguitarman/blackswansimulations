@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import SocialFeedApp from './SocialFeedApp';
 import FacebookFeedApp from './FacebookFeedApp';
@@ -103,6 +103,91 @@ export default function DesktopShell() {
     setNextZ((z) => z + 1);
   }
 
+  const dragRef = useRef<{
+    windowId: string;
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+  } | null>(null);
+  const resizeRef = useRef<{
+    windowId: string;
+    startX: number;
+    startY: number;
+    origW: number;
+    origH: number;
+  } | null>(null);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (dragRef.current) {
+      const { windowId, startX, startY, origX, origY } = dragRef.current;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      setWindows((prev) =>
+        prev.map((w) => (w.id === windowId ? { ...w, x: origX + dx, y: origY + dy } : w)),
+      );
+    }
+    if (resizeRef.current) {
+      const { windowId, startX, startY, origW, origH } = resizeRef.current;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      setWindows((prev) =>
+        prev.map((w) =>
+          w.id === windowId
+            ? { ...w, width: Math.max(320, origW + dx), height: Math.max(200, origH + dy) }
+            : w,
+        ),
+      );
+    }
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    dragRef.current = null;
+    resizeRef.current = null;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [handleMouseMove, handleMouseUp]);
+
+  function startDrag(e: React.MouseEvent, windowId: string) {
+    const win = windows.find((w) => w.id === windowId);
+    if (!win) return;
+    dragRef.current = {
+      windowId,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: win.x,
+      origY: win.y,
+    };
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+    bringToFront(windowId);
+  }
+
+  function startResize(e: React.MouseEvent, windowId: string) {
+    e.stopPropagation();
+    const win = windows.find((w) => w.id === windowId);
+    if (!win) return;
+    resizeRef.current = {
+      windowId,
+      startX: e.clientX,
+      startY: e.clientY,
+      origW: win.width,
+      origH: win.height,
+    };
+    document.body.style.cursor = 'nwse-resize';
+    document.body.style.userSelect = 'none';
+    bringToFront(windowId);
+  }
+
   return (
     <div className="h-screen w-screen bg-gradient-to-br from-gray-900 via-blue-950 to-gray-900 flex flex-col overflow-hidden">
       {/* Desktop Area */}
@@ -144,8 +229,11 @@ export default function DesktopShell() {
                 className="bg-gray-900 rounded-lg shadow-2xl border border-gray-700 flex flex-col overflow-hidden"
                 onMouseDown={() => bringToFront(win.id)}
               >
-                {/* Title Bar */}
-                <div className="h-8 bg-gray-800 flex items-center justify-between px-3 flex-shrink-0 cursor-move">
+                {/* Title Bar (draggable) */}
+                <div
+                  className="h-8 bg-gray-800 flex items-center justify-between px-3 flex-shrink-0 cursor-grab active:cursor-grabbing select-none"
+                  onMouseDown={(e) => startDrag(e, win.id)}
+                >
                   <div className="flex items-center gap-2">
                     <span className="text-xs">{APP_REGISTRY[win.app]?.icon}</span>
                     <span className="text-xs text-gray-300 font-medium">{win.title}</span>
@@ -153,10 +241,12 @@ export default function DesktopShell() {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => minimizeWindow(win.id)}
+                      onMouseDown={(e) => e.stopPropagation()}
                       className="w-3 h-3 rounded-full bg-yellow-500 hover:bg-yellow-400"
                     />
                     <button
                       onClick={() => closeWindow(win.id)}
+                      onMouseDown={(e) => e.stopPropagation()}
                       className="w-3 h-3 rounded-full bg-red-500 hover:bg-red-400"
                     />
                   </div>
@@ -165,6 +255,27 @@ export default function DesktopShell() {
                 {/* Window Content */}
                 <div className="flex-1 overflow-hidden">
                   <AppComponent />
+                </div>
+
+                {/* Resize Handle */}
+                <div
+                  className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize"
+                  onMouseDown={(e) => startResize(e, win.id)}
+                  style={{ zIndex: 10 }}
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 12 12"
+                    className="absolute bottom-0.5 right-0.5 opacity-40"
+                  >
+                    <path
+                      d="M11 1L1 11M11 5L5 11M11 9L9 11"
+                      stroke="#9CA3AF"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
                 </div>
               </div>
             );
