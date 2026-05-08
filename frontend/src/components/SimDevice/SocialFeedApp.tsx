@@ -468,8 +468,8 @@ export default function SocialFeedApp() {
     const badge = getAuthorBadge(selectedPost.author_type);
     return (
       <div
-        className="h-full flex flex-col"
-        style={{ backgroundColor: '#000000', color: '#E7E9EA' }}
+        className="h-full flex flex-col overflow-hidden"
+        style={{ backgroundColor: '#000000', color: '#E7E9EA', maxWidth: '100%' }}
       >
         {/* Thread Header */}
         <div
@@ -491,7 +491,7 @@ export default function SocialFeedApp() {
           <span className="text-[17px] font-bold">Post</span>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
           {/* Original Post (expanded) */}
           <div className="px-4 pt-4 pb-3" style={{ borderBottom: '1px solid #2F3336' }}>
             <div className="flex items-center gap-3 mb-3">
@@ -722,7 +722,10 @@ export default function SocialFeedApp() {
   }
 
   return (
-    <div className="h-full flex flex-col" style={{ backgroundColor: '#000000', color: '#E7E9EA' }}>
+    <div
+      className="h-full flex flex-col overflow-hidden"
+      style={{ backgroundColor: '#000000', color: '#E7E9EA', maxWidth: '100%' }}
+    >
       {/* Header */}
       <div className="flex-shrink-0" style={{ borderBottom: '1px solid #2F3336' }}>
         <div className="flex items-center justify-between px-4" style={{ height: 53 }}>
@@ -785,7 +788,7 @@ export default function SocialFeedApp() {
       </div>
 
       {/* Feed */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-32">
             <div
@@ -840,7 +843,7 @@ export default function SocialFeedApp() {
               return (
                 <div
                   key={post.id}
-                  className="px-4 py-3 transition-colors cursor-pointer hover:bg-white/[0.03]"
+                  className="px-4 py-3 transition-colors cursor-pointer hover:bg-white/[0.03] overflow-hidden"
                   style={{
                     borderBottom: '1px solid #2F3336',
                     borderLeft: getSentimentBorder(post.sentiment),
