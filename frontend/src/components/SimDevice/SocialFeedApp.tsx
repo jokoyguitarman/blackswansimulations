@@ -117,6 +117,7 @@ export default function SocialFeedApp() {
   const [activeTab, setActiveTab] = useState<'foryou' | 'latest'>('foryou');
   const [selectedFormat, setSelectedFormat] = useState<PostFormat>('text');
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
+  const selectedPostRef = useRef<SocialPost | null>(null);
   const [threadReplies, setThreadReplies] = useState<SocialPost[]>([]);
   const [knownHandles, setKnownHandles] = useState<Array<{ handle: string; display_name: string }>>(
     [],
@@ -217,15 +218,16 @@ export default function SocialFeedApp() {
             ),
           );
 
+          const currentSelected = selectedPostRef.current;
           setThreadReplies((prev) => {
-            if (selectedPost && selectedPost.id === newPost.reply_to_post_id) {
+            if (currentSelected && currentSelected.id === newPost.reply_to_post_id) {
               if (prev.some((r) => r.id === newPost.id)) return prev;
               return [...prev, newPost];
             }
             return prev;
           });
 
-          if (selectedPost && selectedPost.id === newPost.reply_to_post_id) {
+          if (currentSelected && currentSelected.id === newPost.reply_to_post_id) {
             setSelectedPost((prev) =>
               prev ? { ...prev, reply_count: (prev.reply_count || 0) + 1 } : prev,
             );
@@ -256,8 +258,9 @@ export default function SocialFeedApp() {
           media_url: mediaPreviewUrl || undefined,
         }),
       });
-      if (replyingTo) {
-        const parentId = replyingTo.id;
+      const wasReplyingTo = replyingTo;
+      if (wasReplyingTo) {
+        const parentId = wasReplyingTo.id;
         setPosts((prev) =>
           prev.map((p) =>
             p.id === parentId ? { ...p, reply_count: (p.reply_count || 0) + 1 } : p,
@@ -273,6 +276,11 @@ export default function SocialFeedApp() {
       setComposing(false);
       setReplyingTo(null);
       setSelectedFormat('text');
+
+      // Re-fetch thread to show the new reply
+      if (wasReplyingTo && selectedPost) {
+        setTimeout(() => openThread(selectedPost), 500);
+      }
     } catch {
       /* ignore */
     }
@@ -362,6 +370,7 @@ export default function SocialFeedApp() {
 
   async function openThread(post: SocialPost) {
     setSelectedPost(post);
+    selectedPostRef.current = post;
     setThreadReplies([]);
     try {
       const headers = await getAuthHeaders();
@@ -462,6 +471,7 @@ export default function SocialFeedApp() {
           <button
             onClick={() => {
               setSelectedPost(null);
+              selectedPostRef.current = null;
               setThreadReplies([]);
             }}
             className="ios-btn-bounce"
