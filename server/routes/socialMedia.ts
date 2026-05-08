@@ -17,6 +17,10 @@ import {
   generateVideoThumbnail,
   getImageStyleForFormat,
 } from '../services/mediaGenerationService.js';
+import {
+  evaluateConditionKey,
+  type EvaluationContext,
+} from '../services/conditionEvaluatorService.js';
 
 const router = Router();
 
@@ -932,5 +936,168 @@ router.get('/handles/session/:sessionId', requireAuth, async (req: Authenticated
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// ─── Orchestration Panel (Trainer) ───────────────────────────────────────────
+
+router.get(
+  '/orchestration/session/:sessionId',
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { sessionId } = req.params;
+
+      // 1. Get session with scenario_id and current_state
+      const { data: session, error: sessErr } = await supabaseAdmin
+        .from('sessions')
+        .select('id, scenario_id, current_state, start_time, status')
+        .eq('id', sessionId)
+        .single();
+
+      if (sessErr || !session) {
+        return res.status(404).json({ error: 'Session not found' });
+      }
+
+      const elapsedMinutes = session.start_time
+        ? Math.round((Date.now() - new Date(session.start_time as string).getTime()) / 60000)
+        : 0;
+
+      // 2. Fetch all condition-driven injects for this scenario
+      const { data: condInjects } = await supabaseAdmin
+        .from('scenario_injects')
+        .select(
+          'id, title, severity, conditions_to_appear, conditions_to_cancel, eligible_after_minutes',
+        )
+        .eq('scenario_id', session.scenario_id)
+        .not('conditions_to_appear', 'is', null)
+        .is('trigger_time_minutes', null);
+
+      if (!condInjects || condInjects.length === 0) {
+        return res.json({ data: [] });
+      }
+
+      // 3. Fetch published and cancelled inject IDs
+      const { data: publishedEvents } = await supabaseAdmin
+        .from('session_events')
+        .select('event_type, metadata, created_at')
+        .eq('session_id', sessionId)
+        .in('event_type', ['inject', 'inject_cancelled']);
+
+      const publishedMap = new Map<string, string>();
+      const cancelledSet = new Set<string>();
+      for (const evt of publishedEvents ?? []) {
+        const meta = evt.metadata as { inject_id?: string; reason?: string } | null;
+        if (!meta?.inject_id) continue;
+        if (
+          (evt as Record<string, unknown>).event_type === 'inject_cancelled' ||
+          meta.reason === 'condition_cancel_met'
+        ) {
+          cancelledSet.add(meta.inject_id);
+        } else {
+          publishedMap.set(meta.inject_id, evt.created_at as string);
+        }
+      }
+
+      // 4. Fetch decisions for context
+      const { data: allDecisions } = await supabaseAdmin
+        .from('decisions')
+        .select('id, title, description, type')
+        .eq('session_id', sessionId)
+        .eq('status', 'executed');
+
+      // 5. Build evaluation context
+      const currentState = (session.current_state as Record<string, unknown>) || {};
+      const publishedKeysOrTags: string[] = [];
+      for (const evt of publishedEvents ?? []) {
+        const meta = evt.metadata as { title?: string; tags?: string[] } | null;
+        if (meta?.title) publishedKeysOrTags.push(meta.title);
+        if (meta?.tags) publishedKeysOrTags.push(...meta.tags);
+      }
+
+      const evalContext: EvaluationContext = {
+        sessionId,
+        scenarioId: session.scenario_id as string,
+        elapsedMinutes,
+        currentState,
+        executedDecisions: (allDecisions ?? []).map((d) => ({
+          id: d.id,
+          title: d.title ?? '',
+          description: d.description ?? '',
+          decision_type: d.type as string | undefined,
+        })),
+        publishedScenarioInjectIds: [...publishedMap.keys()],
+        publishedInjectKeysOrTags: publishedKeysOrTags,
+      };
+
+      // 6. Evaluate each inject's conditions individually
+      const results = condInjects.map((inj) => {
+        const condAppear = inj.conditions_to_appear as
+          | { all: string[] }
+          | { threshold: number; conditions: string[] }
+          | null;
+
+        let keys: string[] = [];
+        let mode: 'all' | 'threshold' = 'all';
+        let threshold: number | undefined;
+
+        if (condAppear && 'all' in condAppear) {
+          keys = condAppear.all || [];
+          mode = 'all';
+        } else if (condAppear && 'conditions' in condAppear) {
+          keys = condAppear.conditions || [];
+          mode = 'threshold';
+          threshold = Math.max(1, condAppear.threshold ?? 1);
+        }
+
+        const conditions = keys.map((key) => ({
+          key,
+          met: evaluateConditionKey(key, evalContext),
+        }));
+
+        const metCount = conditions.filter((c) => c.met).length;
+
+        let status: 'published' | 'cancelled' | 'eligible' | 'waiting';
+        if (publishedMap.has(inj.id)) {
+          status = 'published';
+        } else if (cancelledSet.has(inj.id)) {
+          status = 'cancelled';
+        } else if (
+          mode === 'all'
+            ? metCount === keys.length && keys.length > 0
+            : metCount >= (threshold ?? 1)
+        ) {
+          status = 'eligible';
+        } else {
+          status = 'waiting';
+        }
+
+        return {
+          id: inj.id,
+          title: inj.title,
+          severity: inj.severity,
+          status,
+          published_at: publishedMap.get(inj.id) ?? undefined,
+          conditions,
+          met_count: metCount,
+          total_count: keys.length,
+          mode,
+          threshold,
+        };
+      });
+
+      // Sort: published first, then eligible, then waiting by met_count desc, then cancelled
+      const statusOrder = { published: 0, eligible: 1, waiting: 2, cancelled: 3 };
+      results.sort((a, b) => {
+        const sDiff = statusOrder[a.status] - statusOrder[b.status];
+        if (sDiff !== 0) return sDiff;
+        return b.met_count - a.met_count;
+      });
+
+      return res.json({ data: results });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in GET /social/orchestration/session/:sessionId');
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
 
 export { router as socialMediaRouter };

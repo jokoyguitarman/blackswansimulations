@@ -108,6 +108,60 @@ interface FeedPost {
   is_flagged_by_player?: boolean;
 }
 
+interface OrchestrationInject {
+  id: string;
+  title: string;
+  severity: string;
+  status: 'published' | 'cancelled' | 'eligible' | 'waiting';
+  published_at?: string;
+  conditions: Array<{ key: string; met: boolean }>;
+  met_count: number;
+  total_count: number;
+  mode: 'all' | 'threshold';
+  threshold?: number;
+}
+
+const CONDITION_LABELS: Record<string, string> = {
+  player_acknowledged_victims_and_ongoing_investigation: 'Acknowledged victims',
+  player_message_includes_no_collective_blame: 'No collective blame',
+  player_included_support_resources: 'Included support resources',
+  player_avoided_group_targeting_language: 'Avoided group targeting',
+  player_included_public_safety_guidance: 'Included safety guidance',
+  player_provided_shareable_assets: 'Provided shareable assets/links',
+  leader_message_calls_for_unity: 'Leader calls for unity',
+  leader_message_includes_links_to_sources: 'Leader includes source links',
+  leader_has_preexisting_credibility: 'Leader has credibility',
+  player_addressed_fake_news_spiral: 'Addressed fake news',
+  player_used_leader_amplification: 'Leader amplification used',
+  player_executed_multi_platform_blitz: 'Multi-platform posting (X + Facebook)',
+  player_used_strategic_silence: 'Strategic silence (ignoring trolls)',
+  player_pinned_verified_update: 'Official statement posted',
+  player_is_actively_moderating_hate_speech: 'Actively moderating hate speech',
+  player_message_is_consistent_across_channels: 'Consistent messaging across platforms',
+  player_message_inconsistent_across_channels: 'Inconsistent messaging across platforms',
+  community_leader_contacted: 'Community leader contacted',
+  impression_dominance_player: 'Player impressions dominate hostile',
+  sentiment_above_60: 'Sentiment above 60',
+  sentiment_below_30: 'Sentiment below 30',
+  hate_post_unaddressed_count_gt_3: 'Hate posts unaddressed (>3)',
+  misinformation_unaddressed_10min: 'Misinfo unaddressed 10+ min',
+  team_published_counter_narrative: 'Counter-narrative published',
+  team_flagged_misinformation: 'Misinformation flagged',
+  player_post_count_gt_3: 'Player has 3+ posts',
+  player_post_count_gt_5: 'Player has 5+ posts',
+  official_response_exists: 'Official response exists',
+  facts_confirmed: 'Facts confirmed / fact-checked',
+  player_posted_creative_format: 'Creative format posted',
+  player_posted_official_statement: 'Official statement posted',
+  player_posted_infographic: 'Infographic posted',
+  player_posted_video_concept: 'Video concept posted',
+  player_posted_personal_story: 'Personal story posted',
+};
+
+function conditionLabel(key: string): string {
+  return CONDITION_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 // ---------------------------------------------------------------------------
 // Color helpers
 // ---------------------------------------------------------------------------
@@ -321,6 +375,144 @@ function SopTimeline({ steps }: { steps: SopDot[] }) {
 }
 
 // ---------------------------------------------------------------------------
+// Orchestration Ticker
+// ---------------------------------------------------------------------------
+
+function orchStatusDot(inj: OrchestrationInject): { color: string; pulse: boolean } {
+  if (inj.status === 'published') return { color: '#22c55e', pulse: false };
+  if (inj.status === 'cancelled') return { color: '#475569', pulse: false };
+  if (inj.status === 'eligible') return { color: '#22c55e', pulse: true };
+  if (inj.met_count > 0) return { color: '#f59e0b', pulse: false };
+  return { color: '#ef4444', pulse: false };
+}
+
+function OrchestrationTicker({ injects }: { injects: OrchestrationInject[] }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const publishedCount = injects.filter((i) => i.status === 'published').length;
+
+  if (injects.length === 0) {
+    return (
+      <p className="text-xs text-center py-6" style={{ color: '#64748b' }}>
+        No strategy windows in this scenario
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] font-semibold" style={{ color: '#64748b' }}>
+          {publishedCount} of {injects.length} published
+        </span>
+        <div className="flex items-center gap-3 text-[10px]" style={{ color: '#475569' }}>
+          <span className="flex items-center gap-1">
+            <span
+              className="inline-block w-2 h-2 rounded-full"
+              style={{ backgroundColor: '#22c55e' }}
+            />
+            Published
+          </span>
+          <span className="flex items-center gap-1">
+            <span
+              className="inline-block w-2 h-2 rounded-full"
+              style={{ backgroundColor: '#f59e0b' }}
+            />
+            Partial
+          </span>
+          <span className="flex items-center gap-1">
+            <span
+              className="inline-block w-2 h-2 rounded-full"
+              style={{ backgroundColor: '#ef4444' }}
+            />
+            Waiting
+          </span>
+        </div>
+      </div>
+
+      {injects.map((inj) => {
+        const dot = orchStatusDot(inj);
+        const isExpanded = expandedId === inj.id;
+
+        return (
+          <div key={inj.id}>
+            <button
+              onClick={() => setExpandedId(isExpanded ? null : inj.id)}
+              className="flex items-center gap-2.5 w-full text-left rounded-lg px-3 py-2 hover:opacity-90 transition-opacity"
+              style={{ backgroundColor: '#141414' }}
+            >
+              <span
+                className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dot.pulse ? 'animate-pulse' : ''}`}
+                style={{ backgroundColor: dot.color }}
+              />
+              <span
+                className={`text-xs flex-1 truncate ${inj.status === 'cancelled' ? 'line-through' : ''}`}
+                style={{
+                  color:
+                    inj.status === 'cancelled'
+                      ? '#475569'
+                      : inj.status === 'published'
+                        ? '#e5e5e5'
+                        : '#94a3b8',
+                }}
+              >
+                {inj.title}
+              </span>
+              <span
+                className="text-[10px] font-bold flex-shrink-0"
+                style={{
+                  color:
+                    inj.met_count === inj.total_count
+                      ? '#22c55e'
+                      : inj.met_count > 0
+                        ? '#f59e0b'
+                        : '#ef4444',
+                }}
+              >
+                {inj.met_count}/{inj.total_count}
+              </span>
+              {inj.status === 'published' && inj.published_at && (
+                <span className="text-[10px] flex-shrink-0" style={{ color: '#22c55e' }}>
+                  {new Date(inj.published_at).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              )}
+              {inj.status !== 'published' && (
+                <span className="text-[10px] flex-shrink-0" style={{ color: '#475569' }}>
+                  {inj.mode === 'all' ? 'ALL' : `${inj.threshold} of ${inj.total_count}`}
+                </span>
+              )}
+              <span className="text-[10px]" style={{ color: '#475569' }}>
+                {isExpanded ? '▾' : '▸'}
+              </span>
+            </button>
+
+            {isExpanded && (
+              <div
+                className="ml-5 mt-1 mb-2 rounded-lg px-3 py-2 space-y-1"
+                style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a' }}
+              >
+                {inj.conditions.map((c) => (
+                  <div key={c.key} className="flex items-center gap-2">
+                    <span style={{ color: c.met ? '#22c55e' : '#ef4444', fontSize: 11 }}>
+                      {c.met ? '✓' : '✗'}
+                    </span>
+                    <span className="text-[11px]" style={{ color: c.met ? '#e5e5e5' : '#64748b' }}>
+                      {conditionLabel(c.key)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Dashboard
 // ---------------------------------------------------------------------------
 
@@ -332,6 +524,7 @@ export default function TrainerSimDashboard() {
   const [gradedReplies, setGradedReplies] = useState<GradedReply[]>([]);
   const [consequences, setConsequences] = useState<ConsequenceEvent[]>([]);
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [orchestration, setOrchestration] = useState<OrchestrationInject[]>([]);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
   const [sessionInfo, setSessionInfo] = useState<Record<string, unknown> | null>(null);
   const feedEndRef = useRef<HTMLDivElement>(null);
@@ -435,13 +628,35 @@ export default function TrainerSimDashboard() {
     }
   }, [sessionId]);
 
+  const loadOrchestration = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/social/orchestration/session/${sessionId}`), {
+        headers,
+      });
+      const json = await res.json();
+      if (Array.isArray(json.data)) setOrchestration(json.data);
+    } catch {
+      /* retry on next poll */
+    }
+  }, [sessionId]);
+
   const loadAll = useCallback(() => {
     loadSocialState();
     loadPosts();
     loadGradedReplies();
     loadConsequences();
     loadSessionInfo();
-  }, [loadSocialState, loadPosts, loadGradedReplies, loadConsequences, loadSessionInfo]);
+    loadOrchestration();
+  }, [
+    loadSocialState,
+    loadPosts,
+    loadGradedReplies,
+    loadConsequences,
+    loadSessionInfo,
+    loadOrchestration,
+  ]);
 
   // ---- Initial load + polling ---------------------------------------------
 
@@ -933,6 +1148,13 @@ export default function TrainerSimDashboard() {
             )}
           </Card>
         </div>
+
+        {/* ============ ORCHESTRATION ROW: full width ============ */}
+        <Card
+          title={`Strategy Window Orchestration (${orchestration.filter((i) => i.status === 'published').length}/${orchestration.length})`}
+        >
+          <OrchestrationTicker injects={orchestration} />
+        </Card>
 
         {/* ============ BOTTOM ROW: 2 columns (3fr + 2fr) ============ */}
         <div className="grid gap-4" style={{ gridTemplateColumns: '3fr 2fr', minHeight: 220 }}>
