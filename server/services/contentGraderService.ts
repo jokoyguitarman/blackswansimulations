@@ -14,6 +14,8 @@ export interface ContentGrade {
   improvements: string[];
   dimensions: Record<string, number>;
   signals: Record<string, boolean>;
+  media_concept_grade?: number;
+  media_feedback?: string;
 }
 
 const FORMAT_RUBRICS: Record<string, string> = {
@@ -134,6 +136,7 @@ export async function gradePlayerContent(
     research_guidelines?: Array<{ best_practice: string; source_basis: string }>;
     post_format?: string;
     elapsed_minutes?: number;
+    image_prompt?: string;
   },
 ): Promise<ContentGrade> {
   if (!env.openAiApiKey) {
@@ -172,7 +175,21 @@ SEMANTIC SIGNALS: In addition to grading, evaluate these boolean signals about t
 - avoided_group_targeting: true if the post does not single out any community, ethnicity, or religion negatively
 - includes_links_to_sources: true if the post references official sources, police statements, or verified information
 - calls_for_unity: true if the post promotes community solidarity, togetherness, or mutual support
-- addresses_specific_misinfo: true if the post directly debunks or corrects a specific false claim circulating online`;
+- addresses_specific_misinfo: true if the post directly debunks or corrects a specific false claim circulating online
+
+${
+  context.image_prompt
+    ? `MEDIA CONCEPT: The player also described media they want to attach to this post:
+"${context.image_prompt}"
+
+Evaluate the media concept as part of your grading. Include these additional fields in your JSON response:
+- "media_concept_grade": 0-100 score evaluating:
+  * CONCEPT_CREATIVITY: Is the media idea original and strategic? Does it add value beyond text alone?
+  * VISUAL_STRATEGY: Would this visual support the narrative effectively? Is it appropriate for the crisis context?
+  * PRODUCTION_INTENT: Does the concept show understanding of visual communication in crisis management?
+- "media_feedback": A 1-2 sentence assessment of the media concept's strategic value and any improvements.`
+    : ''
+}`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',

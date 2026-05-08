@@ -147,6 +147,7 @@ const createPostSchema = z.object({
     content: z.string().min(1).max(2000),
     reply_to_post_id: z.string().uuid().optional(),
     image_prompt: z.string().max(500).optional(),
+    media_url: z.string().url().optional(),
     platform: z
       .enum(['x_twitter', 'facebook', 'instagram', 'tiktok', 'reddit', 'forum'])
       .default('x_twitter'),
@@ -170,8 +171,15 @@ router.post(
   async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      const { session_id, content, reply_to_post_id, platform, post_format, image_prompt } =
-        req.body;
+      const {
+        session_id,
+        content,
+        reply_to_post_id,
+        platform,
+        post_format,
+        image_prompt,
+        media_url,
+      } = req.body;
 
       const hashtags = content.match(/#\w+/g) || [];
 
@@ -189,6 +197,7 @@ router.post(
           sentiment: 'neutral',
           post_format: post_format || 'text',
           image_prompt: image_prompt || null,
+          media_urls: media_url ? [media_url] : null,
         })
         .select()
         .single();
@@ -288,6 +297,7 @@ router.post(
             research_guidelines: flatGuidelines.slice(0, 5),
             post_format: post_format || 'text',
             elapsed_minutes: elapsedMinutes,
+            image_prompt: image_prompt || undefined,
           });
 
           await supabaseAdmin
@@ -340,8 +350,10 @@ router.post(
       }
 
       // Generate media for creative format posts or when player provides an image prompt
+      // Skip if media_url already provided (pre-generated via preview)
       const imageStyle = getImageStyleForFormat(post_format || 'text');
-      const shouldGenerateMedia = (imageStyle && !reply_to_post_id) || !!image_prompt;
+      const shouldGenerateMedia =
+        !media_url && ((imageStyle && !reply_to_post_id) || !!image_prompt);
       if (shouldGenerateMedia) {
         void (async () => {
           try {
@@ -952,6 +964,100 @@ router.get('/handles/session/:sessionId', requireAuth, async (req: Authenticated
     logger.error({ error: err }, 'Error in GET /social/handles/session/:sessionId');
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// ─── Media Preview (Image/Video Generation) ─────────────────────────────────
+
+const mediaPreviewSchema = z.object({
+  body: z.object({
+    prompt: z.string().min(1).max(500),
+    media_type: z.enum(['image', 'video']),
+    style: z.string().optional(),
+  }),
+});
+
+router.post(
+  '/media/preview',
+  requireAuth,
+  validate(mediaPreviewSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { prompt, media_type, style } = req.body;
+
+      if (media_type === 'video') {
+        // Video generation is async -- start it and return immediately
+        // The client will poll for status
+        const previewId = `vp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+        // Fire off video generation in the background
+        void (async () => {
+          try {
+            const videoUrl = await generateVideo(prompt, 10, '16:9');
+            if (videoUrl) {
+              // Store the result so the polling endpoint can find it
+              videoPreviewCache.set(previewId, {
+                status: 'completed',
+                url: videoUrl,
+                media_type: 'video',
+              });
+            } else {
+              videoPreviewCache.set(previewId, {
+                status: 'failed',
+                url: null,
+                media_type: 'video',
+              });
+            }
+          } catch (err) {
+            logger.error({ err, previewId }, 'Video preview generation failed');
+            videoPreviewCache.set(previewId, { status: 'failed', url: null, media_type: 'video' });
+          }
+        })();
+
+        videoPreviewCache.set(previewId, { status: 'generating', url: null, media_type: 'video' });
+        return res.json({ preview_id: previewId, status: 'generating', media_type: 'video' });
+      }
+
+      // Image generation -- synchronous (fast enough)
+      const imageUrl = await generatePostImage(prompt, style || 'social_media_photo');
+      if (!imageUrl) {
+        return res.status(500).json({ error: 'Image generation failed' });
+      }
+
+      return res.json({ preview_url: imageUrl, media_type: 'image', status: 'completed' });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in POST /social/media/preview');
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// In-memory cache for video preview status (cleared after 30 min)
+const videoPreviewCache = new Map<
+  string,
+  { status: string; url: string | null; media_type: string }
+>();
+setInterval(
+  () => {
+    const cutoff = Date.now() - 30 * 60 * 1000;
+    for (const [key] of videoPreviewCache) {
+      if (parseInt(key.split('_')[1] || '0') < cutoff) videoPreviewCache.delete(key);
+    }
+  },
+  5 * 60 * 1000,
+);
+
+router.get('/media/preview/:previewId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { previewId } = req.params;
+  const entry = videoPreviewCache.get(previewId);
+  if (!entry) {
+    return res.status(404).json({ error: 'Preview not found' });
+  }
+  return res.json({
+    preview_id: previewId,
+    status: entry.status,
+    preview_url: entry.url,
+    media_type: entry.media_type,
+  });
 });
 
 // ─── Orchestration Panel (Trainer) ───────────────────────────────────────────

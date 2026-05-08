@@ -123,8 +123,11 @@ export default function SocialFeedApp() {
   );
   const [mentionQuery, setMentionQuery] = useState('');
   const [showMentions, setShowMentions] = useState(false);
-  const [showImagePrompt, setShowImagePrompt] = useState(false);
-  const [imagePromptText, setImagePromptText] = useState('');
+  const [showMediaPanel, setShowMediaPanel] = useState(false);
+  const [mediaType, setMediaType] = useState<'image' | 'video'>('image');
+  const [mediaPromptText, setMediaPromptText] = useState('');
+  const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
+  const [mediaGenerating, setMediaGenerating] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const composeRef = useRef<HTMLTextAreaElement>(null);
 
@@ -247,7 +250,8 @@ export default function SocialFeedApp() {
           content: composeText,
           reply_to_post_id: replyingTo?.id,
           post_format: replyingTo ? 'text' : selectedFormat,
-          image_prompt: imagePromptText || undefined,
+          image_prompt: mediaPromptText || undefined,
+          media_url: mediaPreviewUrl || undefined,
         }),
       });
       if (replyingTo) {
@@ -259,14 +263,70 @@ export default function SocialFeedApp() {
         );
       }
       setComposeText('');
-      setImagePromptText('');
-      setShowImagePrompt(false);
+      setMediaPromptText('');
+      setMediaPreviewUrl(null);
+      setShowMediaPanel(false);
       setShowEmojiPicker(false);
+      setMediaGenerating(false);
       setComposing(false);
       setReplyingTo(null);
       setSelectedFormat('text');
     } catch {
       /* ignore */
+    }
+  }
+
+  async function handleGeneratePreview() {
+    if (!mediaPromptText.trim()) return;
+    setMediaGenerating(true);
+    setMediaPreviewUrl(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl('/api/social/media/preview'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          prompt: mediaPromptText,
+          media_type: mediaType,
+        }),
+      });
+      const json = await res.json();
+
+      if (json.status === 'completed' && json.preview_url) {
+        setMediaPreviewUrl(json.preview_url);
+        setMediaGenerating(false);
+      } else if (json.status === 'generating' && json.preview_id) {
+        // Poll for video completion
+        const previewId = json.preview_id;
+        const poll = async () => {
+          for (let i = 0; i < 120; i++) {
+            await new Promise((r) => setTimeout(r, 3000));
+            try {
+              const pollRes = await fetch(apiUrl(`/api/social/media/preview/${previewId}`), {
+                headers,
+              });
+              const pollJson = await pollRes.json();
+              if (pollJson.status === 'completed' && pollJson.preview_url) {
+                setMediaPreviewUrl(pollJson.preview_url);
+                setMediaGenerating(false);
+                return;
+              }
+              if (pollJson.status === 'failed') {
+                setMediaGenerating(false);
+                return;
+              }
+            } catch {
+              /* continue polling */
+            }
+          }
+          setMediaGenerating(false);
+        };
+        void poll();
+      } else {
+        setMediaGenerating(false);
+      }
+    } catch {
+      setMediaGenerating(false);
     }
   }
 
@@ -1191,77 +1251,182 @@ export default function SocialFeedApp() {
               </div>
             </div>
 
-            {/* Image prompt indicator */}
-            {imagePromptText && (
+            {/* Media preview (confirmed) */}
+            {mediaPreviewUrl && !showMediaPanel && (
               <div
-                className="flex items-center gap-2 mx-4 mb-1 px-3 py-2 rounded-lg"
-                style={{
-                  backgroundColor: 'rgba(29,155,240,0.1)',
-                  border: '1px solid rgba(29,155,240,0.3)',
-                }}
+                className="mx-4 mb-2 rounded-xl overflow-hidden relative"
+                style={{ border: '1px solid #2F3336' }}
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#1D9BF0"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <polyline points="21 15 16 10 5 21" />
-                </svg>
-                <span className="text-[12px] flex-1 truncate" style={{ color: '#1D9BF0' }}>
-                  {imagePromptText}
-                </span>
-                <button
-                  onClick={() => setImagePromptText('')}
-                  className="text-[14px] outline-none focus:outline-none"
-                  style={{ color: '#71767B' }}
-                >
-                  ✕
-                </button>
+                {mediaPreviewUrl.endsWith('.mp4') ? (
+                  <video
+                    src={mediaPreviewUrl}
+                    controls
+                    className="w-full max-h-[200px] object-contain"
+                    style={{ backgroundColor: '#000' }}
+                  />
+                ) : (
+                  <img
+                    src={mediaPreviewUrl}
+                    alt="Media preview"
+                    className="w-full max-h-[200px] object-contain"
+                    style={{ backgroundColor: '#000' }}
+                  />
+                )}
+                <div className="absolute top-2 right-2 flex gap-1">
+                  <button
+                    onClick={() => setShowMediaPanel(true)}
+                    className="px-2 py-1 rounded text-[11px] font-semibold outline-none focus:outline-none"
+                    style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#1D9BF0' }}
+                  >
+                    Change
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMediaPreviewUrl(null);
+                      setMediaPromptText('');
+                    }}
+                    className="px-2 py-1 rounded text-[11px] font-semibold outline-none focus:outline-none"
+                    style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#ef4444' }}
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* Image prompt input */}
-            {showImagePrompt && (
+            {/* Unified media panel */}
+            {showMediaPanel && (
               <div
                 className="mx-4 mb-2 rounded-xl p-3"
                 style={{ backgroundColor: '#16181C', border: '1px solid #2F3336' }}
               >
-                <p className="text-[13px] mb-2" style={{ color: '#E7E9EA' }}>
-                  Describe the image you want to attach:
-                </p>
+                {/* Type toggle */}
+                <div
+                  className="flex items-center gap-1 mb-3 rounded-lg overflow-hidden"
+                  style={{ backgroundColor: '#000' }}
+                >
+                  <button
+                    onClick={() => setMediaType('image')}
+                    className="flex-1 py-2 text-[13px] font-semibold text-center outline-none focus:outline-none transition-colors"
+                    style={{
+                      backgroundColor: mediaType === 'image' ? '#1D9BF0' : 'transparent',
+                      color: mediaType === 'image' ? '#fff' : '#71767B',
+                    }}
+                  >
+                    Image
+                  </button>
+                  <button
+                    onClick={() => setMediaType('video')}
+                    className="flex-1 py-2 text-[13px] font-semibold text-center outline-none focus:outline-none transition-colors"
+                    style={{
+                      backgroundColor: mediaType === 'video' ? '#1D9BF0' : 'transparent',
+                      color: mediaType === 'video' ? '#fff' : '#71767B',
+                    }}
+                  >
+                    Video
+                  </button>
+                </div>
+
+                {/* Prompt */}
                 <textarea
                   autoFocus
-                  value={imagePromptText}
-                  onChange={(e) => setImagePromptText(e.target.value)}
-                  placeholder="e.g. An infographic showing verified facts about the incident with official police logo..."
+                  value={mediaPromptText}
+                  onChange={(e) => setMediaPromptText(e.target.value)}
+                  placeholder={
+                    mediaType === 'video'
+                      ? 'Describe your video concept... e.g. A 10-second clip of community members cleaning up the mosque, showing solidarity'
+                      : 'Describe the image... e.g. An infographic showing verified facts about the incident'
+                  }
                   className="w-full rounded-lg px-3 py-2 text-[14px] outline-none resize-none"
                   style={{
                     backgroundColor: '#000',
                     color: '#E7E9EA',
                     border: '1px solid #2F3336',
-                    minHeight: 60,
+                    minHeight: 50,
                   }}
                   rows={2}
                   maxLength={500}
                 />
+
+                {/* Generate / Loading */}
+                {mediaGenerating && (
+                  <div className="flex items-center gap-2 mt-2 px-1">
+                    <div
+                      className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
+                      style={{ borderColor: '#1D9BF0', borderTopColor: 'transparent' }}
+                    />
+                    <span className="text-[12px]" style={{ color: '#71767B' }}>
+                      {mediaType === 'video'
+                        ? 'Generating video (this may take a minute)...'
+                        : 'Generating image...'}
+                    </span>
+                  </div>
+                )}
+
+                {/* Preview inline */}
+                {mediaPreviewUrl && !mediaGenerating && (
+                  <div
+                    className="mt-2 rounded-lg overflow-hidden"
+                    style={{ border: '1px solid #2F3336' }}
+                  >
+                    {mediaPreviewUrl.endsWith('.mp4') ? (
+                      <video
+                        src={mediaPreviewUrl}
+                        controls
+                        className="w-full max-h-[180px] object-contain"
+                        style={{ backgroundColor: '#000' }}
+                      />
+                    ) : (
+                      <img
+                        src={mediaPreviewUrl}
+                        alt="Preview"
+                        className="w-full max-h-[180px] object-contain"
+                        style={{ backgroundColor: '#000' }}
+                      />
+                    )}
+                  </div>
+                )}
+
+                {/* Action buttons */}
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-[11px]" style={{ color: '#71767B' }}>
-                    AI will generate this image and grade its strategic value
+                    {mediaType === 'video'
+                      ? 'AI generates a 10s video clip'
+                      : 'AI generates and grades the media concept'}
                   </span>
-                  <button
-                    onClick={() => setShowImagePrompt(false)}
-                    className="text-[13px] font-bold px-3 py-1 rounded-full outline-none focus:outline-none"
-                    style={{ backgroundColor: '#1D9BF0', color: '#fff' }}
-                  >
-                    Done
-                  </button>
+                  <div className="flex gap-2">
+                    {mediaPreviewUrl && !mediaGenerating && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setMediaPreviewUrl(null);
+                            handleGeneratePreview();
+                          }}
+                          className="text-[12px] font-semibold px-3 py-1.5 rounded-full outline-none focus:outline-none"
+                          style={{ backgroundColor: '#2F3336', color: '#E7E9EA' }}
+                        >
+                          Regenerate
+                        </button>
+                        <button
+                          onClick={() => setShowMediaPanel(false)}
+                          className="text-[12px] font-semibold px-3 py-1.5 rounded-full outline-none focus:outline-none"
+                          style={{ backgroundColor: '#1D9BF0', color: '#fff' }}
+                        >
+                          Use This
+                        </button>
+                      </>
+                    )}
+                    {!mediaPreviewUrl && !mediaGenerating && (
+                      <button
+                        onClick={handleGeneratePreview}
+                        disabled={!mediaPromptText.trim()}
+                        className="text-[12px] font-semibold px-3 py-1.5 rounded-full outline-none focus:outline-none disabled:opacity-40"
+                        style={{ backgroundColor: '#1D9BF0', color: '#fff' }}
+                      >
+                        Generate Preview
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -1332,11 +1497,12 @@ export default function SocialFeedApp() {
               <div className="flex items-center gap-4" style={{ color: '#1D9BF0' }}>
                 <button
                   onClick={() => {
-                    setShowImagePrompt(!showImagePrompt);
+                    setShowMediaPanel(!showMediaPanel);
+                    setMediaType('image');
                     setShowEmojiPicker(false);
                   }}
                   className="outline-none focus:outline-none hover:opacity-80 transition-opacity"
-                  style={{ color: imagePromptText ? '#1D9BF0' : undefined }}
+                  style={{ color: mediaPreviewUrl ? '#1D9BF0' : undefined }}
                   title="Attach image"
                 >
                   <svg
@@ -1356,8 +1522,31 @@ export default function SocialFeedApp() {
                 </button>
                 <button
                   onClick={() => {
+                    setShowMediaPanel(!showMediaPanel);
+                    setMediaType('video');
+                    setShowEmojiPicker(false);
+                  }}
+                  className="outline-none focus:outline-none hover:opacity-80 transition-opacity"
+                  title="Attach video"
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect x="2" y="4" width="20" height="16" rx="2" ry="2" />
+                    <polygon points="10 9 15 12 10 15" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => {
                     setShowEmojiPicker(!showEmojiPicker);
-                    setShowImagePrompt(false);
+                    setShowMediaPanel(false);
                   }}
                   className="outline-none focus:outline-none hover:opacity-80 transition-opacity"
                   title="Add emoji"
