@@ -1023,10 +1023,7 @@ export default function SocialFeedApp() {
                       )}
 
                       {/* Engagement bar */}
-                      <div
-                        className="flex items-center justify-between mt-3 max-w-[280px]"
-                        style={{ color: '#71767B' }}
-                      >
+                      <div className="flex items-center gap-4 mt-3" style={{ color: '#71767B' }}>
                         {/* Reply */}
                         <button
                           onClick={(e) => {
