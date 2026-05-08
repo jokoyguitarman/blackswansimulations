@@ -55,6 +55,7 @@
 
 .ios-btn-bounce {
   transition: transform 0.15s ease;
+  outline: none;
 }
 
 .ios-blur-nav {

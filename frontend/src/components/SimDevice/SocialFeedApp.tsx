@@ -731,7 +731,7 @@ export default function SocialFeedApp() {
         <div className="flex items-center justify-between px-4" style={{ height: 53 }}>
           <button
             onClick={() => navigate(`/sim/${sessionId}/device/home`)}
-            className="ios-btn-bounce w-8 h-8 flex items-center justify-center"
+            className="ios-btn-bounce w-8 h-8 flex items-center justify-center outline-none focus:outline-none"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="#E7E9EA">
               <path d="M7.414 13l5.293 5.293a1 1 0 0 1-1.414 1.414l-7-7a1 1 0 0 1 0-1.414l7-7a1 1 0 1 1 1.414 1.414L7.414 11H20a1 1 0 1 1 0 2H7.414z" />
