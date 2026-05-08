@@ -130,9 +130,12 @@ export default function FacebookFeedApp() {
     if (!sessionId) return;
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(apiUrl(`/api/social/posts/session/${sessionId}?platform=facebook`), {
-        headers,
-      });
+      const res = await fetch(
+        apiUrl(`/api/social/posts/session/${sessionId}?platform=facebook&limit=1000`),
+        {
+          headers,
+        },
+      );
       const result = await res.json();
       if (result.data) {
         const topLevel = (result.data as SocialPost[]).filter((p) => !p.reply_to_post_id);

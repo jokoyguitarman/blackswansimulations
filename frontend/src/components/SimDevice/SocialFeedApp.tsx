@@ -138,9 +138,12 @@ export default function SocialFeedApp() {
     if (!sessionId) return;
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(apiUrl(`/api/social/posts/session/${sessionId}?platform=x_twitter`), {
-        headers,
-      });
+      const res = await fetch(
+        apiUrl(`/api/social/posts/session/${sessionId}?platform=x_twitter&limit=1000`),
+        {
+          headers,
+        },
+      );
       const result = await res.json();
       if (result.data) setPosts(result.data);
     } catch {
