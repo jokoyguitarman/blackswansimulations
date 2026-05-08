@@ -915,24 +915,34 @@ export default function SocialFeedApp() {
 
                       {Array.isArray(post.media_urls) && post.media_urls.length > 0 && (
                         <div className="mt-2 relative rounded-xl overflow-hidden">
-                          <img
-                            src={post.media_urls[0]}
-                            alt=""
-                            className="w-full max-h-[300px] object-cover"
-                            style={{ borderRadius: 12 }}
-                          />
-                          {post.post_format === 'video_concept' && (
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <div
-                                className="w-14 h-14 rounded-full flex items-center justify-center"
-                                style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
-                              >
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-                                  <polygon points="8,5 19,12 8,19" />
-                                </svg>
-                              </div>
-                            </div>
+                          {/\.(mp4|webm|mov)(\?|$)/i.test(post.media_urls[0]) ? (
+                            <video
+                              src={post.media_urls[0]}
+                              controls
+                              className="w-full max-h-[300px] object-contain"
+                              style={{ borderRadius: 12, backgroundColor: '#000' }}
+                            />
+                          ) : (
+                            <img
+                              src={post.media_urls[0]}
+                              alt=""
+                              className="w-full max-h-[300px] object-cover"
+                              style={{ borderRadius: 12 }}
+                            />
                           )}
+                          {post.post_format === 'video_concept' &&
+                            !/\.(mp4|webm|mov)(\?|$)/i.test(post.media_urls[0] || '') && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div
+                                  className="w-14 h-14 rounded-full flex items-center justify-center"
+                                  style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+                                >
+                                  <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                                    <polygon points="8,5 19,12 8,19" />
+                                  </svg>
+                                </div>
+                              </div>
+                            )}
                         </div>
                       )}
 
