@@ -246,18 +246,23 @@ export default function SocialFeedApp() {
     if (!composeText.trim() || !sessionId) return;
     try {
       const headers = await getAuthHeaders();
-      await fetch(apiUrl('/api/social/posts'), {
+      const postRes = await fetch(apiUrl('/api/social/posts'), {
         method: 'POST',
         headers,
         body: JSON.stringify({
           session_id: sessionId,
           content: composeText,
-          reply_to_post_id: replyingTo?.id,
+          reply_to_post_id: replyingTo?.id || undefined,
           post_format: replyingTo ? 'text' : selectedFormat,
-          image_prompt: mediaPromptText || undefined,
-          media_url: mediaPreviewUrl || undefined,
+          ...(mediaPromptText ? { image_prompt: mediaPromptText } : {}),
+          ...(mediaPreviewUrl ? { media_url: mediaPreviewUrl } : {}),
         }),
       });
+      if (!postRes.ok) {
+        const errBody = await postRes.json().catch(() => ({}));
+        console.error('Post failed:', postRes.status, errBody);
+        return;
+      }
       const wasReplyingTo = replyingTo;
       if (wasReplyingTo) {
         const parentId = wasReplyingTo.id;
