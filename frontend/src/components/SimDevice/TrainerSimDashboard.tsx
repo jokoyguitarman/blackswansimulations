@@ -782,7 +782,7 @@ export default function TrainerSimDashboard() {
                         (p) =>
                           p.author_type === 'player' &&
                           !p.reply_to_post_id &&
-                          String((p as Record<string, unknown>).post_format || '') ===
+                          String((p as unknown as Record<string, unknown>).post_format || '') ===
                             'official_statement',
                       )
                       .map((p) => ({ content: p.content, time: timeLabel(p.created_at) }))}
