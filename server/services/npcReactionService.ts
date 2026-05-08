@@ -168,13 +168,14 @@ Crisis context: ${String(scenario.description || '').substring(0, 300)}
 ${threadContext}
 
 Each reaction should be 1-3 sentences, feel like a real social media reply/post. Stay in character.${isReply ? ' Since this is a thread reply, respond DIRECTLY to what the player said -- argue, agree, counter, or react to their specific words.' : ''}
+If the player attached media (photo/video), the description is shown as [Attached media: ...]. React to the visual content as if you can see it -- reference what it shows, comment on its impact, or use it to fuel your argument.
 
 Return ONLY valid JSON:
 { "reactions": [{ "author_handle": "@exact_handle", "author_display_name": "Exact Name", "author_type": "npc_public|npc_media|npc_politician|npc_influencer", "content": "reaction text", "sentiment": "negative|supportive|neutral|hateful", "is_reply": true, "action": "reply|repost_with_comment|new_post|like" }] }`,
           },
           {
             role: 'user',
-            content: `Player post by ${String(playerPost.author_handle)}:\n"${String(playerPost.content || '')}"`,
+            content: `Player post by ${String(playerPost.author_handle)}:\n"${String(playerPost.content || '')}"${playerPost.image_prompt ? `\n\n[Attached media: ${String(playerPost.image_prompt)}]` : ''}`,
           },
         ],
         temperature: 0.85,
