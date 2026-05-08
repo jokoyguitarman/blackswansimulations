@@ -128,6 +128,8 @@ export default function SocialFeedApp() {
   const [mediaPromptText, setMediaPromptText] = useState('');
   const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
   const [mediaGenerating, setMediaGenerating] = useState(false);
+  const [videoDuration, setVideoDuration] = useState(10);
+  const [videoOrientation, setVideoOrientation] = useState<'16:9' | '9:16' | '1:1'>('16:9');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const composeRef = useRef<HTMLTextAreaElement>(null);
 
@@ -288,6 +290,8 @@ export default function SocialFeedApp() {
         body: JSON.stringify({
           prompt: mediaPromptText,
           media_type: mediaType,
+          duration: mediaType === 'video' ? videoDuration : undefined,
+          aspect_ratio: mediaType === 'video' ? videoOrientation : undefined,
         }),
       });
       const json = await res.json();
@@ -1347,6 +1351,68 @@ export default function SocialFeedApp() {
                   rows={2}
                   maxLength={500}
                 />
+
+                {/* Video options */}
+                {mediaType === 'video' && (
+                  <div className="mt-2 flex gap-3">
+                    {/* Duration */}
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[11px]" style={{ color: '#94a3b8' }}>
+                          Duration
+                        </span>
+                        <span className="text-[11px] font-bold" style={{ color: '#1D9BF0' }}>
+                          {videoDuration}s
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={5}
+                        max={15}
+                        step={1}
+                        value={videoDuration}
+                        onChange={(e) => setVideoDuration(Number(e.target.value))}
+                        className="w-full accent-[#1D9BF0]"
+                        style={{ height: 4 }}
+                      />
+                      <div
+                        className="flex justify-between text-[10px] mt-0.5"
+                        style={{ color: '#475569' }}
+                      >
+                        <span>5s</span>
+                        <span>10s</span>
+                        <span>15s</span>
+                      </div>
+                    </div>
+                    {/* Orientation */}
+                    <div>
+                      <span className="text-[11px] block mb-1" style={{ color: '#94a3b8' }}>
+                        Orientation
+                      </span>
+                      <div className="flex gap-1">
+                        {(
+                          [
+                            ['16:9', 'Landscape'],
+                            ['9:16', 'Portrait'],
+                            ['1:1', 'Square'],
+                          ] as const
+                        ).map(([ratio, label]) => (
+                          <button
+                            key={ratio}
+                            onClick={() => setVideoOrientation(ratio)}
+                            className="px-2 py-1.5 rounded text-[10px] font-semibold outline-none focus:outline-none transition-colors"
+                            style={{
+                              backgroundColor: videoOrientation === ratio ? '#1D9BF0' : '#2F3336',
+                              color: videoOrientation === ratio ? '#fff' : '#71767B',
+                            }}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Generate / Loading */}
                 {mediaGenerating && (

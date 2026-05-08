@@ -973,6 +973,8 @@ const mediaPreviewSchema = z.object({
     prompt: z.string().min(1).max(500),
     media_type: z.enum(['image', 'video']),
     style: z.string().optional(),
+    duration: z.number().min(5).max(15).optional(),
+    aspect_ratio: z.enum(['16:9', '9:16', '1:1']).optional(),
   }),
 });
 
@@ -982,17 +984,15 @@ router.post(
   validate(mediaPreviewSchema),
   async (req: AuthenticatedRequest, res) => {
     try {
-      const { prompt, media_type, style } = req.body;
+      const { prompt, media_type, style, duration, aspect_ratio } = req.body;
 
       if (media_type === 'video') {
-        // Video generation is async -- start it and return immediately
-        // The client will poll for status
+        const videoDuration = Math.min(15, Math.max(5, duration || 10));
         const previewId = `vp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-        // Fire off video generation in the background
         void (async () => {
           try {
-            const videoUrl = await generateVideo(prompt, 10, '16:9');
+            const videoUrl = await generateVideo(prompt, videoDuration, aspect_ratio || '16:9');
             if (videoUrl) {
               // Store the result so the polling endpoint can find it
               videoPreviewCache.set(previewId, {
