@@ -189,10 +189,20 @@ export async function generateVideo(
     }
 
     const startData = await startResponse.json();
+    logger.info(
+      {
+        startResponseKeys: Object.keys(startData),
+        startData: JSON.stringify(startData).substring(0, 500),
+      },
+      'Grok video start response',
+    );
     const requestId = startData.request_id || startData.id;
 
     if (!requestId) {
-      logger.warn({ keys: Object.keys(startData) }, 'Grok video API: no request_id returned');
+      logger.warn(
+        { startData: JSON.stringify(startData).substring(0, 500) },
+        'Grok video API: no request_id returned',
+      );
       return null;
     }
 
@@ -216,15 +226,36 @@ export async function generateVideo(
       });
 
       if (!pollResponse.ok) {
-        logger.warn({ status: pollResponse.status, attempt }, 'Grok video poll error');
+        const errBody = await pollResponse.text().catch(() => '');
+        logger.warn(
+          { status: pollResponse.status, attempt, body: errBody.substring(0, 300) },
+          'Grok video poll error',
+        );
         continue;
       }
 
       const pollData = await pollResponse.json();
       const status = pollData.status || pollData.state;
 
+      // Log first 3 polls and every 10th after that for diagnostics
+      if (attempt < 3 || attempt % 10 === 0) {
+        logger.info(
+          {
+            requestId,
+            attempt,
+            status,
+            pollKeys: Object.keys(pollData),
+            pollData: JSON.stringify(pollData).substring(0, 500),
+          },
+          'Grok video poll response',
+        );
+      }
+
       if (status === 'failed' || status === 'error') {
-        logger.warn({ pollData }, 'Grok video generation failed');
+        logger.warn(
+          { pollData: JSON.stringify(pollData).substring(0, 500) },
+          'Grok video generation failed',
+        );
         return null;
       }
 
