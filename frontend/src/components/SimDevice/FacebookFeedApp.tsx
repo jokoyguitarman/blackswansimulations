@@ -117,6 +117,13 @@ export default function FacebookFeedApp() {
   const [myReactions, setMyReactions] = useState<Record<string, string>>({});
   const [commentText, setCommentText] = useState<Record<string, string>>({});
   const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
+  const [showMediaPanel, setShowMediaPanel] = useState(false);
+  const [mediaType, setMediaType] = useState<'image' | 'video'>('image');
+  const [mediaPromptText, setMediaPromptText] = useState('');
+  const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
+  const [mediaGenerating, setMediaGenerating] = useState(false);
+  const [videoDuration, setVideoDuration] = useState(10);
+  const [videoOrientation, setVideoOrientation] = useState<'16:9' | '9:16' | '1:1'>('16:9');
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set());
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   const [knownHandles, setKnownHandles] = useState<Array<{ handle: string; display_name: string }>>(
@@ -256,13 +263,73 @@ export default function FacebookFeedApp() {
           content: composeText,
           platform: 'facebook',
           post_format: selectedFormat,
+          image_prompt: mediaPromptText || undefined,
+          media_url: mediaPreviewUrl || undefined,
         }),
       });
       setComposeText('');
+      setMediaPromptText('');
+      setMediaPreviewUrl(null);
+      setShowMediaPanel(false);
+      setMediaGenerating(false);
       setComposing(false);
       setSelectedFormat('text');
     } catch {
       /* ignore */
+    }
+  }
+
+  async function handleGeneratePreview() {
+    if (!mediaPromptText.trim()) return;
+    setMediaGenerating(true);
+    setMediaPreviewUrl(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl('/api/social/media/preview'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          prompt: mediaPromptText,
+          media_type: mediaType,
+          duration: mediaType === 'video' ? videoDuration : undefined,
+          aspect_ratio: mediaType === 'video' ? videoOrientation : undefined,
+        }),
+      });
+      const json = await res.json();
+      if (json.status === 'completed' && json.preview_url) {
+        setMediaPreviewUrl(json.preview_url);
+        setMediaGenerating(false);
+      } else if (json.status === 'generating' && json.preview_id) {
+        const previewId = json.preview_id;
+        const poll = async () => {
+          for (let i = 0; i < 120; i++) {
+            await new Promise((r) => setTimeout(r, 3000));
+            try {
+              const pollRes = await fetch(apiUrl(`/api/social/media/preview/${previewId}`), {
+                headers,
+              });
+              const pollJson = await pollRes.json();
+              if (pollJson.status === 'completed' && pollJson.preview_url) {
+                setMediaPreviewUrl(pollJson.preview_url);
+                setMediaGenerating(false);
+                return;
+              }
+              if (pollJson.status === 'failed') {
+                setMediaGenerating(false);
+                return;
+              }
+            } catch {
+              /* continue polling */
+            }
+          }
+          setMediaGenerating(false);
+        };
+        void poll();
+      } else {
+        setMediaGenerating(false);
+      }
+    } catch {
+      setMediaGenerating(false);
     }
   }
 
@@ -1274,30 +1341,270 @@ export default function FacebookFeedApp() {
               </div>
             </div>
 
+            {/* Media preview */}
+            {mediaPreviewUrl && !showMediaPanel && (
+              <div
+                className="mx-4 mb-2 rounded-xl overflow-hidden relative"
+                style={{ border: '1px solid #DADDE1' }}
+              >
+                {mediaPreviewUrl.endsWith('.mp4') ? (
+                  <video
+                    src={mediaPreviewUrl}
+                    controls
+                    className="w-full max-h-[200px] object-contain"
+                    style={{ backgroundColor: '#F0F2F5' }}
+                  />
+                ) : (
+                  <img
+                    src={mediaPreviewUrl}
+                    alt="Media preview"
+                    className="w-full max-h-[200px] object-contain"
+                    style={{ backgroundColor: '#F0F2F5' }}
+                  />
+                )}
+                <div className="absolute top-2 right-2 flex gap-1">
+                  <button
+                    onClick={() => setShowMediaPanel(true)}
+                    className="px-2 py-1 rounded text-[11px] font-semibold"
+                    style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: '#1877F2' }}
+                  >
+                    Change
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMediaPreviewUrl(null);
+                      setMediaPromptText('');
+                    }}
+                    className="px-2 py-1 rounded text-[11px] font-semibold"
+                    style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: '#e74c3c' }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Media panel */}
+            {showMediaPanel && (
+              <div
+                className="mx-4 mb-2 rounded-xl p-3"
+                style={{ backgroundColor: '#F0F2F5', border: '1px solid #DADDE1' }}
+              >
+                <div
+                  className="flex items-center gap-1 mb-3 rounded-lg overflow-hidden"
+                  style={{ backgroundColor: '#FFFFFF' }}
+                >
+                  <button
+                    onClick={() => setMediaType('image')}
+                    className="flex-1 py-2 text-[13px] font-semibold text-center"
+                    style={{
+                      backgroundColor: mediaType === 'image' ? '#1877F2' : 'transparent',
+                      color: mediaType === 'image' ? '#fff' : '#65676B',
+                    }}
+                  >
+                    Image
+                  </button>
+                  <button
+                    onClick={() => setMediaType('video')}
+                    className="flex-1 py-2 text-[13px] font-semibold text-center"
+                    style={{
+                      backgroundColor: mediaType === 'video' ? '#1877F2' : 'transparent',
+                      color: mediaType === 'video' ? '#fff' : '#65676B',
+                    }}
+                  >
+                    Video
+                  </button>
+                </div>
+                <textarea
+                  autoFocus
+                  value={mediaPromptText}
+                  onChange={(e) => setMediaPromptText(e.target.value)}
+                  placeholder={
+                    mediaType === 'video'
+                      ? 'Describe your video concept...'
+                      : 'Describe the image you want to create...'
+                  }
+                  className="w-full rounded-lg px-3 py-2 text-[14px] outline-none resize-none"
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    color: '#050505',
+                    border: '1px solid #DADDE1',
+                    minHeight: 50,
+                  }}
+                  rows={2}
+                  maxLength={500}
+                />
+                {mediaType === 'video' && (
+                  <div className="mt-2 flex gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[11px]" style={{ color: '#65676B' }}>
+                          Duration
+                        </span>
+                        <span className="text-[11px] font-bold" style={{ color: '#1877F2' }}>
+                          {videoDuration}s
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={5}
+                        max={15}
+                        step={1}
+                        value={videoDuration}
+                        onChange={(e) => setVideoDuration(Number(e.target.value))}
+                        className="w-full accent-[#1877F2]"
+                        style={{ height: 4 }}
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[11px] block mb-1" style={{ color: '#65676B' }}>
+                        Orientation
+                      </span>
+                      <div className="flex gap-1">
+                        {(
+                          [
+                            ['16:9', 'Landscape'],
+                            ['9:16', 'Portrait'],
+                            ['1:1', 'Square'],
+                          ] as const
+                        ).map(([ratio, label]) => (
+                          <button
+                            key={ratio}
+                            onClick={() => setVideoOrientation(ratio)}
+                            className="px-2 py-1.5 rounded text-[10px] font-semibold"
+                            style={{
+                              backgroundColor: videoOrientation === ratio ? '#1877F2' : '#E4E6EB',
+                              color: videoOrientation === ratio ? '#fff' : '#65676B',
+                            }}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {mediaGenerating && (
+                  <div className="flex items-center gap-2 mt-2 px-1">
+                    <div
+                      className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
+                      style={{ borderColor: '#1877F2', borderTopColor: 'transparent' }}
+                    />
+                    <span className="text-[12px]" style={{ color: '#65676B' }}>
+                      {mediaType === 'video' ? 'Generating video...' : 'Generating image...'}
+                    </span>
+                  </div>
+                )}
+                {mediaPreviewUrl && (
+                  <div
+                    className="mt-2 rounded-lg overflow-hidden"
+                    style={{ border: '1px solid #DADDE1' }}
+                  >
+                    {mediaPreviewUrl.endsWith('.mp4') ? (
+                      <video
+                        src={mediaPreviewUrl}
+                        controls
+                        className="w-full max-h-[180px] object-contain"
+                        style={{ backgroundColor: '#F0F2F5' }}
+                      />
+                    ) : (
+                      <img
+                        src={mediaPreviewUrl}
+                        alt="Preview"
+                        className="w-full max-h-[180px] object-contain"
+                        style={{ backgroundColor: '#F0F2F5' }}
+                      />
+                    )}
+                  </div>
+                )}
+                <div className="flex items-center justify-between mt-2">
+                  <div className="flex gap-2">
+                    {mediaPreviewUrl && (
+                      <button
+                        onClick={() => {
+                          setMediaPreviewUrl(null);
+                          handleGeneratePreview();
+                        }}
+                        className="text-[12px] font-semibold px-3 py-1.5 rounded-full"
+                        style={{ backgroundColor: '#E4E6EB', color: '#050505' }}
+                      >
+                        Regenerate
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setShowMediaPanel(false)}
+                      className="text-[12px] font-semibold px-3 py-1.5 rounded-full"
+                      style={{ backgroundColor: '#1877F2', color: '#fff' }}
+                    >
+                      Done
+                    </button>
+                  </div>
+                  {!mediaPreviewUrl && !mediaGenerating && (
+                    <button
+                      disabled={!mediaPromptText.trim()}
+                      onClick={handleGeneratePreview}
+                      className="text-[12px] font-semibold px-3 py-1.5 rounded-full disabled:opacity-40"
+                      style={{ backgroundColor: '#1877F2', color: '#fff' }}
+                    >
+                      Generate
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Bottom toolbar */}
             <div
               className="flex items-center justify-between px-4 py-2.5"
               style={{ borderTop: '1px solid #DADDE1', backgroundColor: '#FFFFFF' }}
             >
               <div className="flex items-center gap-4">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                  <rect
-                    x="3"
-                    y="3"
-                    width="18"
-                    height="18"
-                    rx="3"
-                    stroke="#45BD62"
-                    strokeWidth="2"
-                  />
-                  <circle cx="8.5" cy="8.5" r="1.5" fill="#45BD62" />
-                  <path
-                    d="M21 15l-5-5L5 21"
-                    stroke="#45BD62"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
+                <button
+                  onClick={() => {
+                    setShowMediaPanel(!showMediaPanel);
+                    setMediaType('image');
+                  }}
+                  className="outline-none focus:outline-none hover:opacity-70"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                    <rect
+                      x="3"
+                      y="3"
+                      width="18"
+                      height="18"
+                      rx="3"
+                      stroke="#45BD62"
+                      strokeWidth="2"
+                    />
+                    <circle cx="8.5" cy="8.5" r="1.5" fill="#45BD62" />
+                    <path
+                      d="M21 15l-5-5L5 21"
+                      stroke="#45BD62"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowMediaPanel(!showMediaPanel);
+                    setMediaType('video');
+                  }}
+                  className="outline-none focus:outline-none hover:opacity-70"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                    <rect
+                      x="2"
+                      y="4"
+                      width="20"
+                      height="16"
+                      rx="2"
+                      stroke="#F44336"
+                      strokeWidth="2"
+                    />
+                    <polygon points="10 9 15 12 10 15" fill="#F44336" />
+                  </svg>
+                </button>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
                   <circle cx="12" cy="12" r="9" stroke="#F7B928" strokeWidth="2" />
                   <path
