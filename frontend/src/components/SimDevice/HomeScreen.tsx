@@ -260,7 +260,7 @@ export default function HomeScreen() {
   const apps: AppDef[] = [
     {
       id: 'social',
-      label: 'X',
+      label: 'Z',
       icon: '/icons/icon-social.png',
       path: 'social',
       badge: badges.social,
@@ -519,7 +519,7 @@ export default function HomeScreen() {
             <button
               key={app.id}
               onClick={() => navigate(`/sim/${sessionId}/device/${app.path}`)}
-              className="flex flex-col items-center gap-[6px] ios-btn-bounce bg-transparent border-0 p-0"
+              className="flex flex-col items-center gap-[6px] ios-btn-bounce bg-transparent border-0 p-0 outline-none focus:outline-none"
             >
               <div className="relative">
                 <img
@@ -598,7 +598,7 @@ export default function HomeScreen() {
             <button
               key={app.id}
               onClick={() => navigate(`/sim/${sessionId}/device/${app.path}`)}
-              className="flex flex-col items-center ios-btn-bounce bg-transparent border-0 p-0"
+              className="flex flex-col items-center ios-btn-bounce bg-transparent border-0 p-0 outline-none focus:outline-none"
             >
               <div className="relative">
                 <img

@@ -21,7 +21,7 @@ interface WindowState {
 }
 
 const APP_REGISTRY: Record<string, { title: string; icon: string; component: React.FC }> = {
-  social: { title: 'X / Twitter', icon: '𝕏', component: SocialFeedApp },
+  social: { title: 'Z', icon: 'ℤ', component: SocialFeedApp },
   facebook: { title: 'Facebook', icon: '📘', component: FacebookFeedApp },
   email: { title: 'Email', icon: '✉️', component: EmailApp },
   news: { title: 'News', icon: '📰', component: NewsApp },

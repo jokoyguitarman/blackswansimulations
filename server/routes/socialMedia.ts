@@ -14,6 +14,7 @@ import { triggerNPCReactions } from '../services/npcReactionService.js';
 import { notifyPostReply, notifyPostLike } from '../services/socialNotificationService.js';
 import {
   generatePostImage,
+  generateVideo,
   generateVideoThumbnail,
   getImageStyleForFormat,
 } from '../services/mediaGenerationService.js';
@@ -145,6 +146,7 @@ const createPostSchema = z.object({
     session_id: z.string().uuid(),
     content: z.string().min(1).max(2000),
     reply_to_post_id: z.string().uuid().optional(),
+    image_prompt: z.string().max(500).optional(),
     platform: z
       .enum(['x_twitter', 'facebook', 'instagram', 'tiktok', 'reddit', 'forum'])
       .default('x_twitter'),
@@ -168,7 +170,8 @@ router.post(
   async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      const { session_id, content, reply_to_post_id, platform, post_format } = req.body;
+      const { session_id, content, reply_to_post_id, platform, post_format, image_prompt } =
+        req.body;
 
       const hashtags = content.match(/#\w+/g) || [];
 
@@ -185,6 +188,7 @@ router.post(
           reply_to_post_id: reply_to_post_id || null,
           sentiment: 'neutral',
           post_format: post_format || 'text',
+          image_prompt: image_prompt || null,
         })
         .select()
         .single();
@@ -335,18 +339,28 @@ router.post(
         );
       }
 
-      // Generate image for creative format posts (non-blocking)
+      // Generate media for creative format posts or when player provides an image prompt
       const imageStyle = getImageStyleForFormat(post_format || 'text');
-      if (imageStyle && !reply_to_post_id) {
+      const shouldGenerateMedia = (imageStyle && !reply_to_post_id) || !!image_prompt;
+      if (shouldGenerateMedia) {
         void (async () => {
           try {
-            const imageUrl =
-              imageStyle === 'video_thumbnail'
-                ? await generateVideoThumbnail(content)
-                : await generatePostImage(content, imageStyle);
+            const promptText = image_prompt || content;
+            const isVideo = post_format === 'video_concept';
+            let mediaUrl: string | null = null;
 
-            if (imageUrl) {
-              const mediaUrls = [imageUrl];
+            if (isVideo) {
+              // Generate actual video (10s for UGC-style)
+              mediaUrl = await generateVideo(promptText, 10, '16:9');
+              // Fall back to thumbnail if video gen fails
+              if (!mediaUrl) mediaUrl = await generateVideoThumbnail(promptText);
+            } else {
+              const style = imageStyle || 'social_media_photo';
+              mediaUrl = await generatePostImage(promptText, style);
+            }
+
+            if (mediaUrl) {
+              const mediaUrls = [mediaUrl];
               await supabaseAdmin
                 .from('social_posts')
                 .update({ media_urls: mediaUrls })
@@ -358,10 +372,13 @@ router.post(
                 timestamp: new Date().toISOString(),
               });
 
-              logger.info({ postId: post.id, format: post_format }, 'Player post image generated');
+              logger.info(
+                { postId: post.id, format: post_format, isVideo, hasImagePrompt: !!image_prompt },
+                'Player post media generated',
+              );
             }
           } catch (imgErr) {
-            logger.warn({ imgErr, postId: post.id }, 'Player post image generation failed');
+            logger.warn({ imgErr, postId: post.id }, 'Player post media generation failed');
           }
         })();
       }

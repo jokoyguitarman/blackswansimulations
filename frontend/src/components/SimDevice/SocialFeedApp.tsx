@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { supabase } from '../../lib/supabase';
@@ -123,6 +123,10 @@ export default function SocialFeedApp() {
   );
   const [mentionQuery, setMentionQuery] = useState('');
   const [showMentions, setShowMentions] = useState(false);
+  const [showImagePrompt, setShowImagePrompt] = useState(false);
+  const [imagePromptText, setImagePromptText] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const composeRef = useRef<HTMLTextAreaElement>(null);
 
   const loadPosts = useCallback(async () => {
     if (!sessionId) return;
@@ -243,9 +247,21 @@ export default function SocialFeedApp() {
           content: composeText,
           reply_to_post_id: replyingTo?.id,
           post_format: replyingTo ? 'text' : selectedFormat,
+          image_prompt: imagePromptText || undefined,
         }),
       });
+      if (replyingTo) {
+        const parentId = replyingTo.id;
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === parentId ? { ...p, reply_count: (p.reply_count || 0) + 1 } : p,
+          ),
+        );
+      }
       setComposeText('');
+      setImagePromptText('');
+      setShowImagePrompt(false);
+      setShowEmojiPicker(false);
       setComposing(false);
       setReplyingTo(null);
       setSelectedFormat('text');
@@ -598,8 +614,14 @@ export default function SocialFeedApp() {
               <path d="M7.414 13l5.293 5.293a1 1 0 0 1-1.414 1.414l-7-7a1 1 0 0 1 0-1.414l7-7a1 1 0 1 1 1.414 1.414L7.414 11H20a1 1 0 1 1 0 2H7.414z" />
             </svg>
           </button>
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="#E7E9EA">
-            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M4 4H20L4 20H20"
+              stroke="#E7E9EA"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
           <button
             onClick={() => navigate(`/sim/${sessionId}/device/facebook`)}
@@ -1115,6 +1137,7 @@ export default function SocialFeedApp() {
                 </div>
                 <div className="flex-1 relative">
                   <textarea
+                    ref={composeRef}
                     value={composeText}
                     onChange={(e) => {
                       const val = e.target.value;
@@ -1168,17 +1191,21 @@ export default function SocialFeedApp() {
               </div>
             </div>
 
-            <div
-              className="flex items-center justify-between px-4 py-2.5"
-              style={{ borderTop: '1px solid #2F3336' }}
-            >
-              <div className="flex items-center gap-4" style={{ color: '#1D9BF0' }}>
+            {/* Image prompt indicator */}
+            {imagePromptText && (
+              <div
+                className="flex items-center gap-2 mx-4 mb-1 px-3 py-2 rounded-lg"
+                style={{
+                  backgroundColor: 'rgba(29,155,240,0.1)',
+                  border: '1px solid rgba(29,155,240,0.3)',
+                }}
+              >
                 <svg
-                  width="20"
-                  height="20"
+                  width="14"
+                  height="14"
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke="currentColor"
+                  stroke="#1D9BF0"
                   strokeWidth="1.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -1187,21 +1214,170 @@ export default function SocialFeedApp() {
                   <circle cx="8.5" cy="8.5" r="1.5" />
                   <polyline points="21 15 16 10 5 21" />
                 </svg>
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+                <span className="text-[12px] flex-1 truncate" style={{ color: '#1D9BF0' }}>
+                  {imagePromptText}
+                </span>
+                <button
+                  onClick={() => setImagePromptText('')}
+                  className="text-[14px] outline-none focus:outline-none"
+                  style={{ color: '#71767B' }}
                 >
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-                  <line x1="9" y1="9" x2="9.01" y2="9" />
-                  <line x1="15" y1="9" x2="15.01" y2="9" />
-                </svg>
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* Image prompt input */}
+            {showImagePrompt && (
+              <div
+                className="mx-4 mb-2 rounded-xl p-3"
+                style={{ backgroundColor: '#16181C', border: '1px solid #2F3336' }}
+              >
+                <p className="text-[13px] mb-2" style={{ color: '#E7E9EA' }}>
+                  Describe the image you want to attach:
+                </p>
+                <textarea
+                  autoFocus
+                  value={imagePromptText}
+                  onChange={(e) => setImagePromptText(e.target.value)}
+                  placeholder="e.g. An infographic showing verified facts about the incident with official police logo..."
+                  className="w-full rounded-lg px-3 py-2 text-[14px] outline-none resize-none"
+                  style={{
+                    backgroundColor: '#000',
+                    color: '#E7E9EA',
+                    border: '1px solid #2F3336',
+                    minHeight: 60,
+                  }}
+                  rows={2}
+                  maxLength={500}
+                />
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-[11px]" style={{ color: '#71767B' }}>
+                    AI will generate this image and grade its strategic value
+                  </span>
+                  <button
+                    onClick={() => setShowImagePrompt(false)}
+                    className="text-[13px] font-bold px-3 py-1 rounded-full outline-none focus:outline-none"
+                    style={{ backgroundColor: '#1D9BF0', color: '#fff' }}
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Emoji picker */}
+            {showEmojiPicker && (
+              <div
+                className="mx-4 mb-2 rounded-xl p-3 grid grid-cols-8 gap-1"
+                style={{ backgroundColor: '#16181C', border: '1px solid #2F3336' }}
+              >
+                {[
+                  '😀',
+                  '😂',
+                  '🥺',
+                  '😢',
+                  '😡',
+                  '🤔',
+                  '👍',
+                  '👎',
+                  '❤️',
+                  '🙏',
+                  '💪',
+                  '🔥',
+                  '⚠️',
+                  '✅',
+                  '❌',
+                  '📢',
+                  '🕊️',
+                  '🤝',
+                  '😤',
+                  '💔',
+                  '🫡',
+                  '📸',
+                  '🎥',
+                  '📊',
+                ].map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={() => {
+                      const ta = composeRef.current;
+                      if (ta) {
+                        const start = ta.selectionStart;
+                        const end = ta.selectionEnd;
+                        const newText =
+                          composeText.slice(0, start) + emoji + composeText.slice(end);
+                        setComposeText(newText);
+                        setTimeout(() => {
+                          ta.focus();
+                          ta.setSelectionRange(start + emoji.length, start + emoji.length);
+                        }, 0);
+                      } else {
+                        setComposeText((prev) => prev + emoji);
+                      }
+                      setShowEmojiPicker(false);
+                    }}
+                    className="text-[22px] p-1.5 rounded-lg hover:bg-white/10 transition-colors outline-none focus:outline-none"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div
+              className="flex items-center justify-between px-4 py-2.5"
+              style={{ borderTop: '1px solid #2F3336' }}
+            >
+              <div className="flex items-center gap-4" style={{ color: '#1D9BF0' }}>
+                <button
+                  onClick={() => {
+                    setShowImagePrompt(!showImagePrompt);
+                    setShowEmojiPicker(false);
+                  }}
+                  className="outline-none focus:outline-none hover:opacity-80 transition-opacity"
+                  style={{ color: imagePromptText ? '#1D9BF0' : undefined }}
+                  title="Attach image"
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21 15 16 10 5 21" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowEmojiPicker(!showEmojiPicker);
+                    setShowImagePrompt(false);
+                  }}
+                  className="outline-none focus:outline-none hover:opacity-80 transition-opacity"
+                  title="Add emoji"
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                    <line x1="9" y1="9" x2="9.01" y2="9" />
+                    <line x1="15" y1="9" x2="15.01" y2="9" />
+                  </svg>
+                </button>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[13px]" style={{ color: '#71767B' }}>

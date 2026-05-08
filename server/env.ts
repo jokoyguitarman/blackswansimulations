@@ -26,6 +26,7 @@ export const env = {
     'SUPABASE_SERVICE_ROLE_KEY',
   ),
   openAiApiKey: process.env.OPENAI_API_KEY,
+  xaiApiKey: process.env.XAI_API_KEY,
   sessionSecret:
     nodeEnv === 'production'
       ? required(process.env.SESSION_SECRET, 'SESSION_SECRET')
