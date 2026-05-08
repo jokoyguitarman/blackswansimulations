@@ -966,6 +966,130 @@ router.get('/handles/session/:sessionId', requireAuth, async (req: Authenticated
   }
 });
 
+// ─── Trending & Suggested (Desktop Widgets) ─────────────────────────────────
+
+router.get('/trending/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    const { data: posts } = await supabaseAdmin
+      .from('social_posts')
+      .select(
+        'hashtags, content, like_count, repost_count, view_count, author_handle, created_at, content_flags',
+      )
+      .eq('session_id', sessionId)
+      .eq('platform', 'x_twitter')
+      .eq('platform_removed', false);
+
+    if (!posts || posts.length === 0) {
+      return res.json({ data: { hashtags: [], topics: [] } });
+    }
+
+    // Aggregate hashtags
+    const tagCounts = new Map<string, number>();
+    for (const post of posts) {
+      const tags = post.hashtags as string[] | null;
+      if (Array.isArray(tags)) {
+        for (const t of tags) {
+          const normalized = t.toLowerCase();
+          tagCounts.set(normalized, (tagCounts.get(normalized) || 0) + 1);
+        }
+      }
+    }
+    const sortedTags = [...tagCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([tag, count]) => ({ tag, count }));
+
+    // Hot topics from content flags
+    const topics: Array<{ label: string; count: number; trend: string }> = [];
+    let hateCount = 0,
+      misinfoCount = 0,
+      supportCount = 0;
+    for (const post of posts) {
+      const flags = (post.content_flags || {}) as Record<string, unknown>;
+      if (flags.is_hate_speech || flags.hate_speech) hateCount++;
+      if (flags.is_misinformation || flags.misinformation) misinfoCount++;
+      if (flags.is_supportive || flags.supportive) supportCount++;
+    }
+    if (hateCount > 0)
+      topics.push({ label: 'Hate speech incidents', count: hateCount, trend: 'rising' });
+    if (misinfoCount > 0)
+      topics.push({ label: 'Misinformation alerts', count: misinfoCount, trend: 'rising' });
+    if (supportCount > 0)
+      topics.push({ label: 'Community support', count: supportCount, trend: 'steady' });
+
+    // Most engaged posts as "hot" topics
+    const hotPosts = [...posts]
+      .sort(
+        (a, b) =>
+          (b.like_count || 0) +
+          (b.repost_count || 0) -
+          ((a.like_count || 0) + (a.repost_count || 0)),
+      )
+      .slice(0, 3)
+      .map((p) => ({
+        label:
+          ((p.content as string) || '').substring(0, 60) +
+          (((p.content as string) || '').length > 60 ? '...' : ''),
+        count: (p.view_count || 0) as number,
+        trend: 'hot',
+      }));
+
+    return res.json({
+      data: {
+        hashtags: sortedTags,
+        topics: [...topics, ...hotPosts].slice(0, 5),
+        total_posts: posts.length,
+      },
+    });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /social/trending');
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/suggested/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Get scenario from session
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('scenario_id')
+      .eq('id', sessionId)
+      .single();
+
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    const { data: scenario } = await supabaseAdmin
+      .from('scenarios')
+      .select('initial_state')
+      .eq('id', session.scenario_id)
+      .single();
+
+    if (!scenario) return res.json({ data: [] });
+
+    const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
+    const personas = (initialState.npc_personas || []) as Array<Record<string, unknown>>;
+
+    // Pick up to 5 random NPCs
+    const shuffled = [...personas].sort(() => Math.random() - 0.5).slice(0, 5);
+    const suggested = shuffled.map((p) => ({
+      handle: String(p.handle || ''),
+      display_name: String(p.name || p.display_name || ''),
+      type: String(p.type || 'npc_public'),
+      follower_count: Number(p.follower_count || 0),
+      personality: String(p.personality || '').substring(0, 80),
+    }));
+
+    return res.json({ data: suggested });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /social/suggested');
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── Media Preview (Image/Video Generation) ─────────────────────────────────
 
 const mediaPreviewSchema = z.object({

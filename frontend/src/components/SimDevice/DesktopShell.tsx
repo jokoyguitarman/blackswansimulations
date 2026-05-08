@@ -7,6 +7,7 @@ import NewsApp from './NewsApp';
 import GroupChatApp from './GroupChatApp';
 import FactCheckBrowser from './FactCheckBrowser';
 import DraftPadApp from './DraftPadApp';
+import ZDesktopLayout from './ZDesktopLayout';
 
 interface WindowState {
   id: string;
@@ -30,12 +31,15 @@ const APP_REGISTRY: Record<string, { title: string; icon: string; component: Rea
   drafts: { title: 'DraftPad', icon: '📝', component: DraftPadApp },
 };
 
+const FULLSCREEN_APPS = new Set(['social']);
+
 export default function DesktopShell() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const [windows, setWindows] = useState<WindowState[]>([]);
   const [time, setTime] = useState(new Date());
   const [nextZ, setNextZ] = useState(10);
+  const [fullScreenApp, setFullScreenApp] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 60000);
@@ -43,6 +47,11 @@ export default function DesktopShell() {
   }, []);
 
   function openApp(appId: string) {
+    if (FULLSCREEN_APPS.has(appId)) {
+      setFullScreenApp(appId);
+      return;
+    }
+
     const existing = windows.find((w) => w.app === appId && !w.minimized);
     if (existing) {
       bringToFront(existing.id);
@@ -85,6 +94,10 @@ export default function DesktopShell() {
   function bringToFront(windowId: string) {
     setWindows((prev) => prev.map((w) => (w.id === windowId ? { ...w, zIndex: nextZ } : w)));
     setNextZ((z) => z + 1);
+  }
+
+  if (fullScreenApp === 'social') {
+    return <ZDesktopLayout />;
   }
 
   return (
