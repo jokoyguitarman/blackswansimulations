@@ -268,7 +268,7 @@ export default function HomeScreen() {
     },
     {
       id: 'facebook',
-      label: 'Facebook',
+      label: 'Fakebook',
       icon: '/icons/icon-facebook.png',
       path: 'facebook',
       badge: badges.facebook,

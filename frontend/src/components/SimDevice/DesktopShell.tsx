@@ -38,7 +38,7 @@ const APP_REGISTRY: Record<
     defaultWidth: 1100,
     defaultHeight: 700,
   },
-  facebook: { title: 'Facebook', icon: '📘', component: FacebookFeedApp },
+  facebook: { title: 'Fakebook', icon: '📘', component: FacebookFeedApp },
   email: { title: 'Email', icon: '✉️', component: EmailApp },
   news: { title: 'News', icon: '📰', component: NewsApp },
   chat: { title: 'TeamChat', icon: '💬', component: GroupChatApp },

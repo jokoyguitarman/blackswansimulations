@@ -132,6 +132,7 @@ export default function SocialFeedApp() {
   const [videoDuration, setVideoDuration] = useState(10);
   const [videoOrientation, setVideoOrientation] = useState<'16:9' | '9:16' | '1:1'>('16:9');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
   const composeRef = useRef<HTMLTextAreaElement>(null);
 
   const loadPosts = useCallback(async () => {
@@ -352,25 +353,39 @@ export default function SocialFeedApp() {
 
   async function handleLike(postId: string) {
     const post = posts.find((p) => p.id === postId);
-    if (post?.liked_by_me) return;
+    if (!post) return;
+
+    const wasLiked = !!post.liked_by_me;
 
     setPosts((prev) =>
       prev.map((p) =>
-        p.id === postId ? { ...p, like_count: p.like_count + 1, liked_by_me: true } : p,
+        p.id === postId
+          ? {
+              ...p,
+              like_count: wasLiked ? Math.max(0, p.like_count - 1) : p.like_count + 1,
+              liked_by_me: !wasLiked,
+            }
+          : p,
       ),
     );
 
     try {
       const headers = await getAuthHeaders();
       await fetch(apiUrl(`/api/social/posts/${postId}/like`), {
-        method: 'POST',
+        method: wasLiked ? 'DELETE' : 'POST',
         headers,
-        body: JSON.stringify({ session_id: sessionId }),
+        body: wasLiked ? undefined : JSON.stringify({ session_id: sessionId }),
       });
     } catch {
       setPosts((prev) =>
         prev.map((p) =>
-          p.id === postId ? { ...p, like_count: p.like_count - 1, liked_by_me: false } : p,
+          p.id === postId
+            ? {
+                ...p,
+                like_count: wasLiked ? p.like_count + 1 : Math.max(0, p.like_count - 1),
+                liked_by_me: wasLiked,
+              }
+            : p,
         ),
       );
     }
@@ -411,6 +426,14 @@ export default function SocialFeedApp() {
     } catch {
       setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, flagged_by_me: false } : p)));
     }
+  }
+
+  function handleCopyLink(postId: string, authorHandle: string) {
+    const postUrl = `https://z.com/${authorHandle.replace('@', '')}/status/${postId.slice(0, 8)}`;
+    navigator.clipboard.writeText(postUrl).then(() => {
+      setCopiedPostId(postId);
+      setTimeout(() => setCopiedPostId(null), 2000);
+    });
   }
 
   function timeAgo(dateStr: string): string {
@@ -728,31 +751,33 @@ export default function SocialFeedApp() {
     >
       {/* Header */}
       <div className="flex-shrink-0" style={{ borderBottom: '1px solid #2F3336' }}>
-        <div className="flex items-center justify-between px-4" style={{ height: 53 }}>
+        <div className="flex items-center pl-12 pr-4" style={{ height: 53, gap: 12 }}>
           <button
             onClick={() => navigate(`/sim/${sessionId}/device/home`)}
-            className="ios-btn-bounce w-8 h-8 flex items-center justify-center outline-none focus:outline-none"
+            className="ios-btn-bounce w-8 h-8 flex items-center justify-center outline-none focus:outline-none flex-shrink-0"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="#E7E9EA">
-              <path d="M7.414 13l5.293 5.293a1 1 0 0 1-1.414 1.414l-7-7a1 1 0 0 1 0-1.414l7-7a1 1 0 1 1 1.414 1.414L7.414 11H20a1 1 0 1 1 0 2H7.414z" />
-            </svg>
+            <span className="text-[30px] font-bold leading-none" style={{ color: '#FFFFFF' }}>
+              &#8249;
+            </span>
           </button>
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M4 4H20L4 20H20"
-              stroke="#E7E9EA"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <div className="flex-1 flex justify-center">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M4 4H20L4 20H20"
+                stroke="#E7E9EA"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
           <button
             onClick={() => navigate(`/sim/${sessionId}/device/facebook`)}
-            className="ios-btn-bounce w-8 h-8 flex items-center justify-center rounded-full"
+            className="ios-btn-bounce w-8 h-8 flex items-center justify-center rounded-full flex-shrink-0"
             style={{ backgroundColor: '#1877F2' }}
-            title="Switch to Facebook"
+            title="Switch to Fakebook"
           >
-            <span className="text-white text-[14px] font-bold">f</span>
+            <span className="text-white text-[11px] font-black tracking-tight">fk</span>
           </button>
         </div>
 
@@ -843,7 +868,7 @@ export default function SocialFeedApp() {
               return (
                 <div
                   key={post.id}
-                  className="px-4 py-3 transition-colors cursor-pointer hover:bg-white/[0.03] overflow-hidden"
+                  className="px-4 py-3 transition-colors cursor-pointer hover:bg-white/[0.03]"
                   style={{
                     borderBottom: '1px solid #2F3336',
                     borderLeft: getSentimentBorder(post.sentiment),
@@ -1021,134 +1046,171 @@ export default function SocialFeedApp() {
                           )}
                         </div>
                       )}
-
-                      {/* Engagement bar */}
-                      <div className="flex items-center gap-4 mt-3" style={{ color: '#71767B' }}>
-                        {/* Reply */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setReplyingTo(post);
-                            setComposing(true);
-                          }}
-                          className="flex items-center gap-1.5 group transition-colors hover:text-[#1D9BF0]"
-                        >
-                          <div className="p-1.5 rounded-full group-hover:bg-[#1D9BF0]/10 transition-colors">
-                            <svg
-                              width="16"
-                              height="16"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                            </svg>
-                          </div>
-                          <span className="text-[13px]">
-                            {post.reply_count > 0 ? formatCount(post.reply_count) : ''}
-                          </span>
-                        </button>
-                        {/* Repost */}
-                        <button
-                          onClick={(e) => e.stopPropagation()}
-                          className="flex items-center gap-1.5 group transition-colors hover:text-[#00BA7C]"
-                        >
-                          <div className="p-1.5 rounded-full group-hover:bg-[#00BA7C]/10 transition-colors">
-                            <svg
-                              width="16"
-                              height="16"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M17 1l4 4-4 4" />
-                              <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                              <path d="M7 23l-4-4 4-4" />
-                              <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                            </svg>
-                          </div>
-                          <span className="text-[13px]">
-                            {post.repost_count > 0 ? formatCount(post.repost_count) : ''}
-                          </span>
-                        </button>
-                        {/* Like */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleLike(post.id);
-                          }}
-                          className={`flex items-center gap-1.5 group transition-colors ${post.liked_by_me ? 'text-[#F91880]' : 'hover:text-[#F91880]'}`}
-                        >
-                          <div className="p-1.5 rounded-full group-hover:bg-[#F91880]/10 transition-colors">
-                            <svg
-                              width="16"
-                              height="16"
-                              viewBox="0 0 24 24"
-                              fill={post.liked_by_me ? '#F91880' : 'none'}
-                              stroke={post.liked_by_me ? '#F91880' : 'currentColor'}
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                            </svg>
-                          </div>
-                          <span className="text-[13px]">
-                            {post.like_count > 0 ? formatCount(post.like_count) : ''}
-                          </span>
-                        </button>
-                        {/* Views */}
-                        <div className="flex items-center gap-1.5">
-                          <div className="p-1.5">
-                            <svg
-                              width="16"
-                              height="16"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M18 20V10M12 20V4M6 20v-6" />
-                            </svg>
-                          </div>
-                          <span className="text-[13px]">
-                            {post.view_count > 0 ? formatCount(post.view_count) : ''}
-                          </span>
-                        </div>
-                        {/* Flag */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleFlag(post.id);
-                          }}
-                          className={`flex items-center group transition-colors ${post.flagged_by_me ? 'text-[#F59E0B]' : 'hover:text-[#F59E0B]'}`}
-                        >
-                          <div className="p-1.5 rounded-full group-hover:bg-[#F59E0B]/10 transition-colors">
-                            <svg
-                              width="16"
-                              height="16"
-                              viewBox="0 0 24 24"
-                              fill={post.flagged_by_me ? '#F59E0B' : 'none'}
-                              stroke={post.flagged_by_me ? '#F59E0B' : 'currentColor'}
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-                              <line x1="4" y1="22" x2="4" y2="15" />
-                            </svg>
-                          </div>
-                        </button>
-                      </div>
                     </div>
+                  </div>
+
+                  {/* Engagement bar */}
+                  <div
+                    className="flex items-center justify-evenly mt-2 -mx-2"
+                    style={{ color: '#71767B' }}
+                  >
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setReplyingTo(post);
+                        setComposing(true);
+                      }}
+                      className="flex items-center gap-1 group transition-colors hover:text-[#1D9BF0]"
+                    >
+                      <div className="p-1 rounded-full group-hover:bg-[#1D9BF0]/10 transition-colors">
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                        </svg>
+                      </div>
+                      <span className="text-[11px]">
+                        {post.reply_count > 0 ? formatCount(post.reply_count) : ''}
+                      </span>
+                    </button>
+                    <button
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center gap-1 group transition-colors hover:text-[#00BA7C]"
+                    >
+                      <div className="p-1 rounded-full group-hover:bg-[#00BA7C]/10 transition-colors">
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M17 1l4 4-4 4" />
+                          <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                          <path d="M7 23l-4-4 4-4" />
+                          <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                        </svg>
+                      </div>
+                      <span className="text-[11px]">
+                        {post.repost_count > 0 ? formatCount(post.repost_count) : ''}
+                      </span>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleLike(post.id);
+                      }}
+                      className={`flex items-center gap-1 group transition-colors ${post.liked_by_me ? 'text-[#F91880]' : 'hover:text-[#F91880]'}`}
+                    >
+                      <div className="p-1 rounded-full group-hover:bg-[#F91880]/10 transition-colors">
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill={post.liked_by_me ? '#F91880' : 'none'}
+                          stroke={post.liked_by_me ? '#F91880' : 'currentColor'}
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                        </svg>
+                      </div>
+                      <span className="text-[11px]">
+                        {post.like_count > 0 ? formatCount(post.like_count) : ''}
+                      </span>
+                    </button>
+                    <div className="flex items-center gap-1">
+                      <div className="p-1">
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M18 20V10M12 20V4M6 20v-6" />
+                        </svg>
+                      </div>
+                      <span className="text-[11px]">
+                        {post.view_count > 0 ? formatCount(post.view_count) : ''}
+                      </span>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleFlag(post.id);
+                      }}
+                      className={`flex items-center group transition-colors ${post.flagged_by_me ? 'text-[#F59E0B]' : 'hover:text-[#F59E0B]'}`}
+                    >
+                      <div className="p-1 rounded-full group-hover:bg-[#F59E0B]/10 transition-colors">
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill={post.flagged_by_me ? '#F59E0B' : 'none'}
+                          stroke={post.flagged_by_me ? '#F59E0B' : 'currentColor'}
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                          <line x1="4" y1="22" x2="4" y2="15" />
+                        </svg>
+                      </div>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCopyLink(post.id, post.author_handle);
+                      }}
+                      className="flex items-center group transition-colors hover:text-[#1D9BF0]"
+                    >
+                      <div className="p-1 rounded-full group-hover:bg-[#1D9BF0]/10 transition-colors">
+                        {copiedPostId === post.id ? (
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="#22c55e"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        ) : (
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
+                            <polyline points="16 6 12 2 8 6" />
+                            <line x1="12" y1="2" x2="12" y2="15" />
+                          </svg>
+                        )}
+                      </div>
+                    </button>
                   </div>
                 </div>
               );

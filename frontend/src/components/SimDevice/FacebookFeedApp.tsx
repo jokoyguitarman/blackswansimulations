@@ -116,6 +116,7 @@ export default function FacebookFeedApp() {
   const [showReactions, setShowReactions] = useState<string | null>(null);
   const [myReactions, setMyReactions] = useState<Record<string, string>>({});
   const [commentText, setCommentText] = useState<Record<string, string>>({});
+  const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set());
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   const [knownHandles, setKnownHandles] = useState<Array<{ handle: string; display_name: string }>>(
@@ -295,17 +296,12 @@ export default function FacebookFeedApp() {
     setShowReactions(null);
   }
 
-  async function handleShare(postId: string) {
-    try {
-      const headers = await getAuthHeaders();
-      await fetch(apiUrl(`/api/social/posts/${postId}/repost`), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ session_id: sessionId }),
-      });
-    } catch {
-      /* ignore */
-    }
+  function handleShare(postId: string, authorHandle: string) {
+    const postUrl = `https://fakebook.sim/${authorHandle.replace('@', '')}/posts/${postId.slice(0, 8)}`;
+    navigator.clipboard.writeText(postUrl).then(() => {
+      setCopiedPostId(postId);
+      setTimeout(() => setCopiedPostId(null), 2000);
+    });
   }
 
   async function handleComment(postId: string) {
@@ -372,10 +368,10 @@ export default function FacebookFeedApp() {
       >
         <div className="flex items-center justify-between px-3" style={{ height: 48 }}>
           <span
-            className="text-[22px] font-bold"
-            style={{ color: '#1877F2', fontFamily: 'Helvetica, Arial, sans-serif' }}
+            className="text-[22px] font-extrabold italic"
+            style={{ color: '#2563EB', fontFamily: 'Georgia, serif', letterSpacing: '-0.5px' }}
           >
-            facebook
+            fakebook
           </span>
           <div className="flex items-center gap-1.5">
             <button
@@ -905,21 +901,38 @@ export default function FacebookFeedApp() {
                     <span className="text-[14px] font-semibold">Comment</span>
                   </button>
                   <button
-                    onClick={() => handleShare(post.id)}
+                    onClick={() => handleShare(post.id, post.author_handle)}
                     className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
-                    style={{ color: '#65676B' }}
+                    style={{ color: copiedPostId === post.id ? '#22c55e' : '#65676B' }}
                   >
-                    <svg
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" />
-                    </svg>
-                    <span className="text-[14px] font-semibold">Share</span>
+                    {copiedPostId === post.id ? (
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#22c55e"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    ) : (
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" />
+                      </svg>
+                    )}
+                    <span className="text-[14px] font-semibold">
+                      {copiedPostId === post.id ? 'Copied!' : 'Share'}
+                    </span>
                   </button>
                 </div>
 
