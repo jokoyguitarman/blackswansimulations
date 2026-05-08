@@ -518,6 +518,25 @@ export default function SocialFeedApp() {
             <p className="text-[17px] leading-relaxed mb-3 whitespace-pre-wrap">
               {selectedPost.content}
             </p>
+            {Array.isArray(selectedPost.media_urls) && selectedPost.media_urls.length > 0 && (
+              <div className="mb-3 rounded-xl overflow-hidden">
+                {/\.(mp4|webm|mov)(\?|$)/i.test(selectedPost.media_urls[0]) ? (
+                  <video
+                    src={selectedPost.media_urls[0]}
+                    controls
+                    className="w-full max-h-[300px] object-contain"
+                    style={{ borderRadius: 12, backgroundColor: '#000' }}
+                  />
+                ) : (
+                  <img
+                    src={selectedPost.media_urls[0]}
+                    alt=""
+                    className="w-full max-h-[300px] object-cover"
+                    style={{ borderRadius: 12 }}
+                  />
+                )}
+              </div>
+            )}
             <div className="text-[13px] mb-3" style={{ color: '#71767B' }}>
               {new Date(selectedPost.created_at).toLocaleTimeString([], {
                 hour: '2-digit',
