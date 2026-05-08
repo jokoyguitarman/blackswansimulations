@@ -3,7 +3,11 @@ import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
 import { computeSessionSentiment } from './sentimentSimService.js';
-import { generatePostImage, generateVideoThumbnail } from './mediaGenerationService.js';
+import {
+  generatePostImage,
+  generateVideo,
+  generateVideoThumbnail,
+} from './mediaGenerationService.js';
 
 interface RegisteredNPC {
   handle: string;
@@ -144,14 +148,21 @@ async function insertPost(
     timestamp: new Date().toISOString(),
   });
 
-  // Generate image if the AI included an image_prompt (non-blocking)
+  // Generate media if the AI included an image_prompt (non-blocking)
   if (imagePrompt && inserted) {
     void (async () => {
       try {
-        const isVideo = /video|clip|footage/i.test(imagePrompt);
-        const url = isVideo
-          ? await generateVideoThumbnail(imagePrompt)
-          : await generatePostImage(imagePrompt, 'evidence_photo');
+        const isVideo = /video|clip|footage|recording/i.test(imagePrompt);
+        let url: string | null = null;
+
+        if (isVideo) {
+          // Try generating actual video; fall back to thumbnail if it fails
+          url = await generateVideo(imagePrompt, 10, '16:9');
+          if (!url) url = await generateVideoThumbnail(imagePrompt);
+        } else {
+          url = await generatePostImage(imagePrompt, 'evidence_photo');
+        }
+
         if (url) {
           const mediaUrls = [url];
           await supabaseAdmin
@@ -163,9 +174,10 @@ async function insertPost(
             data: { post_id: inserted.id, media_urls: mediaUrls },
             timestamp: new Date().toISOString(),
           });
+          logger.info({ postId: inserted.id, isVideo }, 'NPC ambient media generated');
         }
       } catch (imgErr) {
-        logger.warn({ imgErr }, 'NPC ambient image generation failed (non-critical)');
+        logger.warn({ imgErr }, 'NPC ambient media generation failed (non-critical)');
       }
     })();
   }
@@ -256,7 +268,7 @@ ${elapsedMinutes < 5 ? '- Early crisis: confused, alarmed, asking what happened'
 ${elapsedMinutes > 20 ? '- Ongoing: opinions forming, blame emerging, some calling for calm' : ''}
 ${sentiment.overall < 40 ? '- Sentiment critical: more fear/anger' : ''}
 
-For 1 out of every 3 posts, include an "image_prompt" field with a short description of a photo, meme, or video the user would attach. Leave image_prompt as "" for text-only posts.
+For 1 out of every 3 posts, include an "image_prompt" field with a short description of a photo, meme, or video the user would attach. For video content, start the description with "video clip:" or "footage:" (e.g. "footage: shaky phone recording of crowd running from train station"). Leave image_prompt as "" for text-only posts.
 
 IMPORTANT: For each post, set "content_flags" based on the content:
 - is_hate_speech: true if the post contains hate speech targeting an ethnic/religious/racial group
@@ -341,7 +353,7 @@ ${npcList ? `KNOWN USERS (use these OR create new ones):\n${npcList}\n` : ''}
 
 Generate 3-5 Facebook posts. Use a DIFFERENT author for each post -- rotate through the NPC list. These should feel different from what's on Twitter. Facebook posts are longer (3-6 sentences), more personal, and more emotional.
 
-IMPORTANT: Facebook is a very visual platform. At least 2 out of 3 posts MUST include an "image_prompt" field with a description of the image. Only leave image_prompt as "" for purely text-based status updates.
+IMPORTANT: Facebook is a very visual platform. At least 2 out of 3 posts MUST include an "image_prompt" field with a description of the image or video. For video content, start the description with "video clip:" or "footage:" (e.g. "video clip: CCTV-style overhead view of emergency responders at station entrance"). Only leave image_prompt as "" for purely text-based status updates.
 
 For each post, set "content_flags" based on the content:
 - is_hate_speech: true if hate speech targeting a group
