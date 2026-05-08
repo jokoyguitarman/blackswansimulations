@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import SocialFeedApp from './SocialFeedApp';
 import FacebookFeedApp from './FacebookFeedApp';
 import EmailApp from './EmailApp';
 import NewsApp from './NewsApp';
