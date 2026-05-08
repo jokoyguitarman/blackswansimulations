@@ -1024,7 +1024,7 @@ export default function SocialFeedApp() {
 
                       {/* Engagement bar */}
                       <div
-                        className="flex items-center justify-between mt-3 max-w-[340px]"
+                        className="flex items-center justify-between mt-3 max-w-[280px]"
                         style={{ color: '#71767B' }}
                       >
                         {/* Reply */}
