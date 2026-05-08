@@ -259,8 +259,16 @@ export async function generateVideo(
         return null;
       }
 
-      if (status === 'completed' || status === 'succeeded' || pollData.url || pollData.video_url) {
-        const videoUrl = pollData.url || pollData.video_url || pollData.data?.url;
+      if (
+        status === 'completed' ||
+        status === 'succeeded' ||
+        status === 'done' ||
+        pollData.url ||
+        pollData.video_url ||
+        pollData.video?.url
+      ) {
+        const videoUrl =
+          pollData.video?.url || pollData.url || pollData.video_url || pollData.data?.url;
 
         if (!videoUrl) {
           logger.warn({ keys: Object.keys(pollData) }, 'Grok video completed but no URL');
