@@ -474,6 +474,59 @@ conditionRegistry.facts_confirmed = (ctx) => getSocialState(ctx).sop_fact_check_
 conditionRegistry.impression_dominance_player = (ctx) =>
   ((getSocialState(ctx).impression_dominance_ratio as number) ?? 0) > 1.0;
 
+// --- Semantic signal conditions (from AI content grading) ---
+conditionRegistry.player_acknowledged_victims_and_ongoing_investigation = (ctx) =>
+  getSocialState(ctx).signal_acknowledged_victims === true;
+
+conditionRegistry.player_message_includes_no_collective_blame = (ctx) =>
+  getSocialState(ctx).signal_no_collective_blame === true;
+
+conditionRegistry.player_included_support_resources = (ctx) =>
+  getSocialState(ctx).signal_includes_support_resources === true;
+
+conditionRegistry.player_avoided_group_targeting_language = (ctx) =>
+  getSocialState(ctx).signal_avoided_group_targeting === true;
+
+conditionRegistry.player_included_public_safety_guidance = (ctx) =>
+  getSocialState(ctx).signal_includes_safety_guidance === true;
+
+conditionRegistry.player_provided_shareable_assets = (ctx) =>
+  getSocialState(ctx).signal_includes_links_to_sources === true;
+
+conditionRegistry.leader_message_calls_for_unity = (ctx) =>
+  getSocialState(ctx).signal_calls_for_unity === true;
+
+conditionRegistry.leader_message_includes_links_to_sources = (ctx) =>
+  getSocialState(ctx).signal_includes_links_to_sources === true;
+
+conditionRegistry.leader_has_preexisting_credibility = (ctx) =>
+  getSocialState(ctx).community_leader_contacted === true;
+
+conditionRegistry.player_addressed_fake_news_spiral = (ctx) =>
+  getSocialState(ctx).signal_addresses_specific_misinfo === true;
+
+// --- Action-pattern conditions ---
+conditionRegistry.player_used_leader_amplification = (ctx) =>
+  getSocialState(ctx).player_used_leader_amplification === true;
+
+conditionRegistry.player_executed_multi_platform_blitz = (ctx) =>
+  getSocialState(ctx).player_executed_multi_platform_blitz === true;
+
+conditionRegistry.player_used_strategic_silence = (ctx) =>
+  getSocialState(ctx).player_used_strategic_silence === true;
+
+conditionRegistry.player_pinned_verified_update = (ctx) =>
+  getSocialState(ctx).player_pinned_verified_update === true;
+
+conditionRegistry.player_is_actively_moderating_hate_speech = (ctx) =>
+  getSocialState(ctx).player_is_actively_moderating_hate_speech === true;
+
+conditionRegistry.player_message_is_consistent_across_channels = (ctx) =>
+  getSocialState(ctx).player_message_is_consistent_across_channels === true;
+
+conditionRegistry.player_message_inconsistent_across_channels = (ctx) =>
+  getSocialState(ctx).player_message_inconsistent_across_channels === true;
+
 // ---------------------------------------------------------------------------
 // Internal: resolve one condition key (prefix rules + state_path + registry)
 // ---------------------------------------------------------------------------

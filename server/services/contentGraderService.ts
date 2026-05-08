@@ -13,6 +13,7 @@ export interface ContentGrade {
   strengths: string[];
   improvements: string[];
   dimensions: Record<string, number>;
+  signals: Record<string, boolean>;
 }
 
 const FORMAT_RUBRICS: Record<string, string> = {
@@ -160,7 +161,18 @@ ${context.research_guidelines?.length ? 'Doctrine-based best practices to evalua
 
 ${context.elapsed_minutes != null ? `Time elapsed since crisis began: ${context.elapsed_minutes} minutes. Consider whether the timing is appropriate for this type of content.` : ''}
 
-Post format declared by player: ${format}`;
+Post format declared by player: ${format}
+
+SEMANTIC SIGNALS: In addition to grading, evaluate these boolean signals about the player's post content. Return them in a "signals" object alongside the other fields:
+
+- acknowledged_victims: true if the post acknowledges victims, injuries, or expresses empathy for those affected
+- no_collective_blame: true if the post avoids blaming any ethnic, religious, or racial group collectively
+- includes_support_resources: true if the post mentions hotlines, reporting channels, helplines, or practical help
+- includes_safety_guidance: true if the post gives actionable safety advice (avoid areas, report suspicious items, follow official channels)
+- avoided_group_targeting: true if the post does not single out any community, ethnicity, or religion negatively
+- includes_links_to_sources: true if the post references official sources, police statements, or verified information
+- calls_for_unity: true if the post promotes community solidarity, togetherness, or mutual support
+- addresses_specific_misinfo: true if the post directly debunks or corrects a specific false claim circulating online`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -169,13 +181,13 @@ Post format declared by player: ${format}`;
         Authorization: `Bearer ${env.openAiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-5.2',
+        model: 'gpt-5.5',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `Grade this ${format} response:\n\n${playerContent}` },
         ],
         temperature: 0.3,
-        max_completion_tokens: 1024,
+        max_completion_tokens: 4096,
         response_format: { type: 'json_object' },
       }),
     });
@@ -199,6 +211,9 @@ Post format declared by player: ${format}`;
         persuasiveness: grade.persuasiveness || 50,
         completeness: grade.completeness || 50,
       };
+    }
+    if (!grade.signals) {
+      grade.signals = {};
     }
     return grade;
   } catch (err) {
@@ -226,5 +241,6 @@ function defaultGrade(feedback: string, format?: string): ContentGrade {
       persuasiveness: 50,
       completeness: 50,
     },
+    signals: {},
   };
 }

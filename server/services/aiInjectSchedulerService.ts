@@ -299,7 +299,7 @@ export class AIInjectSchedulerService {
       const { data: sessions, error: sessionsError } = await supabaseAdmin
         .from('sessions')
         .select(
-          'id, scenario_id, start_time, trainer_id, status, current_state, inject_state_effects',
+          'id, scenario_id, start_time, trainer_id, status, current_state, inject_state_effects, sim_mode',
         )
         .eq('status', 'in_progress')
         .not('start_time', 'is', null);
@@ -317,10 +317,23 @@ export class AIInjectSchedulerService {
         return;
       }
 
-      logger.info({ sessionCount: sessions.length }, 'Checking sessions for AI inject generation');
+      // Filter out social_media sessions -- they use their own systems
+      const c2eSessions = sessions.filter(
+        (s) => (s as Record<string, unknown>).sim_mode !== 'social_media',
+      );
+
+      if (c2eSessions.length === 0) {
+        logger.debug('No C2E sessions found for AI inject generation');
+        return;
+      }
+
+      logger.info(
+        { sessionCount: c2eSessions.length },
+        'Checking sessions for AI inject generation',
+      );
 
       // Process each session
-      for (const session of sessions) {
+      for (const session of c2eSessions) {
         try {
           await this.processSessionForAIInjects(session);
         } catch (sessionErr) {

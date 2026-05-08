@@ -45,6 +45,25 @@ export interface SocialState {
   player_posted_creative_format: boolean;
   player_posted_official_statement: boolean;
   impression_dominance_ratio: number;
+
+  // Semantic signals (aggregated from AI content grading)
+  signal_acknowledged_victims: boolean;
+  signal_no_collective_blame: boolean;
+  signal_includes_support_resources: boolean;
+  signal_includes_safety_guidance: boolean;
+  signal_avoided_group_targeting: boolean;
+  signal_includes_links_to_sources: boolean;
+  signal_calls_for_unity: boolean;
+  signal_addresses_specific_misinfo: boolean;
+
+  // Action-pattern flags
+  player_used_leader_amplification: boolean;
+  player_executed_multi_platform_blitz: boolean;
+  player_used_strategic_silence: boolean;
+  player_pinned_verified_update: boolean;
+  player_is_actively_moderating_hate_speech: boolean;
+  player_message_is_consistent_across_channels: boolean;
+  player_message_inconsistent_across_channels: boolean;
 }
 
 const TIER1_ACTIONS = ['reply_posted', 'post_liked', 'post_reposted', 'post_flagged', 'news_read'];
@@ -73,7 +92,7 @@ export async function computeSocialState(
     supabaseAdmin
       .from('social_posts')
       .select(
-        'id, author_type, author_handle, content_flags, sentiment, is_flagged_by_player, reply_to_post_id, created_at, inject_id, sop_compliance_score, virality_score, content, view_count, post_format',
+        'id, author_type, author_handle, content_flags, sentiment, is_flagged_by_player, reply_to_post_id, created_at, inject_id, sop_compliance_score, virality_score, content, view_count, post_format, platform',
       )
       .eq('session_id', sessionId),
     supabaseAdmin
@@ -371,6 +390,67 @@ export async function computeSocialState(
       (p) => String(p.post_format || '') === 'official_statement',
     ),
     impression_dominance_ratio: Math.round(impressionRatio * 100) / 100,
+
+    // Aggregate semantic signals from graded player posts
+    ...(() => {
+      const signalDefaults = {
+        signal_acknowledged_victims: false,
+        signal_no_collective_blame: false,
+        signal_includes_support_resources: false,
+        signal_includes_safety_guidance: false,
+        signal_avoided_group_targeting: false,
+        signal_includes_links_to_sources: false,
+        signal_calls_for_unity: false,
+        signal_addresses_specific_misinfo: false,
+      };
+      for (const gp of gradedPosts) {
+        const score = (gp.sop_compliance_score || {}) as Record<string, unknown>;
+        const signals = (score.signals || {}) as Record<string, boolean>;
+        if (signals.acknowledged_victims) signalDefaults.signal_acknowledged_victims = true;
+        if (signals.no_collective_blame) signalDefaults.signal_no_collective_blame = true;
+        if (signals.includes_support_resources)
+          signalDefaults.signal_includes_support_resources = true;
+        if (signals.includes_safety_guidance) signalDefaults.signal_includes_safety_guidance = true;
+        if (signals.avoided_group_targeting) signalDefaults.signal_avoided_group_targeting = true;
+        if (signals.includes_links_to_sources)
+          signalDefaults.signal_includes_links_to_sources = true;
+        if (signals.calls_for_unity) signalDefaults.signal_calls_for_unity = true;
+        if (signals.addresses_specific_misinfo)
+          signalDefaults.signal_addresses_specific_misinfo = true;
+      }
+      return signalDefaults;
+    })(),
+
+    // Action-pattern flags
+    player_used_leader_amplification: communityLeaderContacted,
+    player_executed_multi_platform_blitz: (() => {
+      const hasXPost = playerPosts.some(
+        (p) => String(p.platform || '') === 'x_twitter' && !p.reply_to_post_id,
+      );
+      const hasFBPost = playerPosts.some(
+        (p) => String(p.platform || '') === 'facebook' && !p.reply_to_post_id,
+      );
+      return hasXPost && hasFBPost;
+    })(),
+    player_used_strategic_silence: (() => {
+      const hostileCount = harmfulPosts.length;
+      return hostileCount > 3 && tier1 < hostileCount * 0.5;
+    })(),
+    player_pinned_verified_update: playerPosts.some(
+      (p) => String(p.post_format || '') === 'official_statement',
+    ),
+    player_is_actively_moderating_hate_speech: misinfoFlagged > 2,
+    player_message_is_consistent_across_channels: (() => {
+      const xPosts = playerPosts.filter(
+        (p) => String(p.platform || '') === 'x_twitter' && !p.reply_to_post_id,
+      );
+      const fbPosts = playerPosts.filter(
+        (p) => String(p.platform || '') === 'facebook' && !p.reply_to_post_id,
+      );
+      if (xPosts.length === 0 || fbPosts.length === 0) return false;
+      return true;
+    })(),
+    player_message_inconsistent_across_channels: false,
   };
 
   const currentState = (sessionRow?.current_state as Record<string, unknown>) || {};
