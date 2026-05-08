@@ -848,6 +848,37 @@ export default function TrainerSimDashboard() {
           >
             {socialState ? 'LIVE' : 'CONNECTING…'}
           </span>
+          <button
+            onClick={async () => {
+              if (!sessionId) return;
+              if (
+                !window.confirm(
+                  'Are you sure you want to conclude this session? This will end the simulation for all players.',
+                )
+              )
+                return;
+              try {
+                const headers = await getAuthHeaders();
+                const res = await fetch(apiUrl(`/api/sessions/${sessionId}`), {
+                  method: 'PATCH',
+                  headers,
+                  body: JSON.stringify({ status: 'completed' }),
+                });
+                if (res.ok) {
+                  alert('Session concluded successfully.');
+                  navigate(`/sessions/${sessionId}`);
+                } else {
+                  alert('Failed to conclude session.');
+                }
+              } catch {
+                alert('Error concluding session.');
+              }
+            }}
+            className="text-[11px] font-semibold px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity"
+            style={{ backgroundColor: '#ef4444', color: '#fff' }}
+          >
+            Conclude Session
+          </button>
         </div>
       </header>
 
