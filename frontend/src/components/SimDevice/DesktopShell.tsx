@@ -21,8 +21,23 @@ interface WindowState {
   minimized: boolean;
 }
 
-const APP_REGISTRY: Record<string, { title: string; icon: string; component: React.FC }> = {
-  social: { title: 'Z', icon: 'ℤ', component: SocialFeedApp },
+const APP_REGISTRY: Record<
+  string,
+  {
+    title: string;
+    icon: string;
+    component: React.FC;
+    defaultWidth?: number;
+    defaultHeight?: number;
+  }
+> = {
+  social: {
+    title: 'Z',
+    icon: 'ℤ',
+    component: ZDesktopLayout,
+    defaultWidth: 1100,
+    defaultHeight: 700,
+  },
   facebook: { title: 'Facebook', icon: '📘', component: FacebookFeedApp },
   email: { title: 'Email', icon: '✉️', component: EmailApp },
   news: { title: 'News', icon: '📰', component: NewsApp },
@@ -31,27 +46,18 @@ const APP_REGISTRY: Record<string, { title: string; icon: string; component: Rea
   drafts: { title: 'DraftPad', icon: '📝', component: DraftPadApp },
 };
 
-const FULLSCREEN_APPS = new Set(['social']);
-
 export default function DesktopShell() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const [windows, setWindows] = useState<WindowState[]>([]);
   const [time, setTime] = useState(new Date());
   const [nextZ, setNextZ] = useState(10);
-  const [fullScreenApp, setFullScreenApp] = useState<string | null>(null);
-
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
 
   function openApp(appId: string) {
-    if (FULLSCREEN_APPS.has(appId)) {
-      setFullScreenApp(appId);
-      return;
-    }
-
     const existing = windows.find((w) => w.app === appId && !w.minimized);
     if (existing) {
       bringToFront(existing.id);
@@ -68,14 +74,15 @@ export default function DesktopShell() {
     }
 
     const offset = windows.length * 30;
+    const appDef = APP_REGISTRY[appId];
     const newWindow: WindowState = {
       id: crypto.randomUUID(),
       app: appId,
-      title: APP_REGISTRY[appId]?.title || appId,
+      title: appDef?.title || appId,
       x: 80 + offset,
       y: 40 + offset,
-      width: 480,
-      height: 640,
+      width: appDef?.defaultWidth || 480,
+      height: appDef?.defaultHeight || 640,
       zIndex: nextZ,
       minimized: false,
     };
@@ -94,10 +101,6 @@ export default function DesktopShell() {
   function bringToFront(windowId: string) {
     setWindows((prev) => prev.map((w) => (w.id === windowId ? { ...w, zIndex: nextZ } : w)));
     setNextZ((z) => z + 1);
-  }
-
-  if (fullScreenApp === 'social') {
-    return <ZDesktopLayout />;
   }
 
   return (

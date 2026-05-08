@@ -171,11 +171,11 @@ export default function ZDesktopLayout() {
   }
 
   return (
-    <div className="h-screen w-screen flex" style={{ backgroundColor: '#000', color: '#E7E9EA' }}>
+    <div className="h-full w-full flex" style={{ backgroundColor: '#000', color: '#E7E9EA' }}>
       {/* ========== LEFT SIDEBAR ========== */}
       <div
-        className="flex flex-col h-full flex-shrink-0 px-3 py-4"
-        style={{ width: 240, borderRight: '1px solid #2F3336' }}
+        className="flex flex-col h-full flex-shrink-0 px-2 py-3 overflow-y-auto"
+        style={{ width: 200, borderRight: '1px solid #2F3336' }}
       >
         {/* Z Logo */}
         <div className="px-3 mb-6">
@@ -201,7 +201,7 @@ export default function ZDesktopLayout() {
             >
               <span style={{ opacity: activeNav === item.id ? 1 : 0.7 }}>{item.icon}</span>
               <span
-                className="text-[18px]"
+                className="text-[15px]"
                 style={{ fontWeight: activeNav === item.id ? 700 : 400 }}
               >
                 {item.label}
@@ -263,8 +263,8 @@ export default function ZDesktopLayout() {
 
       {/* ========== RIGHT SIDEBAR ========== */}
       <div
-        className="flex-1 h-full overflow-y-auto px-6 py-4"
-        style={{ maxWidth: 380, minWidth: 300 }}
+        className="flex-1 h-full overflow-y-auto px-4 py-3"
+        style={{ maxWidth: 320, minWidth: 220 }}
       >
         {/* Search */}
         <div className="mb-5">
