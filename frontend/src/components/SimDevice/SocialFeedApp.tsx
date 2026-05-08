@@ -649,6 +649,25 @@ export default function SocialFeedApp() {
                         </span>
                       </div>
                       <p className="text-[14px] mt-1 whitespace-pre-wrap">{reply.content}</p>
+                      {Array.isArray(reply.media_urls) && reply.media_urls.length > 0 && (
+                        <div className="mt-2 rounded-xl overflow-hidden">
+                          {/\.(mp4|webm|mov)(\?|$)/i.test(reply.media_urls[0]) ? (
+                            <video
+                              src={reply.media_urls[0]}
+                              controls
+                              className="w-full max-h-[200px] object-contain"
+                              style={{ borderRadius: 12, backgroundColor: '#000' }}
+                            />
+                          ) : (
+                            <img
+                              src={reply.media_urls[0]}
+                              alt=""
+                              className="w-full max-h-[200px] object-cover"
+                              style={{ borderRadius: 12 }}
+                            />
+                          )}
+                        </div>
+                      )}
                       <div className="flex items-center gap-5 mt-2">
                         <button
                           onClick={() => handleLike(reply.id)}
