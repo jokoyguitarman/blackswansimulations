@@ -112,6 +112,13 @@ export default function FacebookFeedApp() {
   const [loading, setLoading] = useState(true);
   const [composing, setComposing] = useState(false);
   const [composeText, setComposeText] = useState('');
+  const currentUserIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      currentUserIdRef.current = session?.user?.id || null;
+    });
+  }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFormat, setSelectedFormat] = useState<PostFormat>('text');
   const [showReactions, setShowReactions] = useState<string | null>(null);
@@ -258,7 +265,7 @@ export default function FacebookFeedApp() {
   async function markNotifRead(notifId: string) {
     try {
       const headers = await getAuthHeaders();
-      await fetch(apiUrl(`/api/notifications/${notifId}/read`), { method: 'PUT', headers });
+      await fetch(apiUrl(`/api/notifications/${notifId}/read`), { method: 'POST', headers });
       setNotifications((prev) => prev.map((n) => (n.id === notifId ? { ...n, read: true } : n)));
       setNotifCount((c) => Math.max(0, c - 1));
     } catch {
@@ -327,7 +334,10 @@ export default function FacebookFeedApp() {
           });
         }
       } else if (event.type === 'notification.created') {
-        setNotifCount((c) => c + 1);
+        const eventData = event.data as { user_id?: string } | undefined;
+        if (!eventData?.user_id || eventData.user_id === currentUserIdRef.current) {
+          setNotifCount((c) => c + 1);
+        }
       }
     },
   });
@@ -336,7 +346,7 @@ export default function FacebookFeedApp() {
     if (!composeText.trim() || !sessionId) return;
     try {
       const headers = await getAuthHeaders();
-      await fetch(apiUrl('/api/social/posts'), {
+      const postRes = await fetch(apiUrl('/api/social/posts'), {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -348,6 +358,20 @@ export default function FacebookFeedApp() {
           media_url: mediaPreviewUrl || undefined,
         }),
       });
+      if (!postRes.ok) {
+        console.error('Post failed:', postRes.status);
+        return;
+      }
+      const result = await postRes.json().catch(() => null);
+      const createdPost = result?.data as SocialPost | undefined;
+
+      if (createdPost) {
+        setPosts((prev) => {
+          if (prev.some((p) => p.id === createdPost.id)) return prev;
+          return [createdPost, ...prev];
+        });
+      }
+
       setComposeText('');
       setMediaPromptText('');
       setMediaPreviewUrl(null);
@@ -686,7 +710,7 @@ export default function FacebookFeedApp() {
                     try {
                       const headers = await getAuthHeaders();
                       await fetch(apiUrl(`/api/notifications/read-all`), {
-                        method: 'PUT',
+                        method: 'POST',
                         headers,
                         body: JSON.stringify({ session_id: sessionId }),
                       });
@@ -726,6 +750,15 @@ export default function FacebookFeedApp() {
                     onClick={() => {
                       if (!notif.read) markNotifRead(notif.id);
                       setShowNotifPanel(false);
+                      const postId = notif.metadata?.post_id as string | undefined;
+                      if (postId) {
+                        setExpandedComments((prev) => new Set([...prev, postId]));
+                        setTimeout(() => {
+                          document
+                            .getElementById(`fb-post-${postId}`)
+                            ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }, 100);
+                      }
                     }}
                     className="flex items-start gap-3 w-full text-left px-4 py-3 hover:bg-[#F2F3F5] transition-colors"
                     style={{
@@ -981,6 +1014,16 @@ export default function FacebookFeedApp() {
                 tags.some((t: string) => t.includes(q))
               );
             })
+            .sort((a, b) => {
+              const aIsPlayer = a.author_type === 'player';
+              const bIsPlayer = b.author_type === 'player';
+              if (aIsPlayer && !bIsPlayer) return -1;
+              if (!aIsPlayer && bIsPlayer) return 1;
+              if (aIsPlayer && bIsPlayer) {
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+              }
+              return (b.virality_score || 0) - (a.virality_score || 0);
+            })
             .map((post) => {
               const badge = getBadge(post.author_type);
               const reactionEmojis = getReactionEmojis(post.like_count);
@@ -991,6 +1034,7 @@ export default function FacebookFeedApp() {
               return (
                 <div
                   key={post.id}
+                  id={`fb-post-${post.id}`}
                   className="mt-2"
                   style={{
                     backgroundColor: '#FFFFFF',

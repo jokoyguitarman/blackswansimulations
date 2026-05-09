@@ -116,6 +116,13 @@ export default function SocialFeedApp({
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const prevExternalFilter = useRef(externalFilter);
+  const currentUserIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      currentUserIdRef.current = session?.user?.id || null;
+    });
+  }, []);
 
   useEffect(() => {
     if (externalFilter && externalFilter !== prevExternalFilter.current) {
@@ -261,7 +268,7 @@ export default function SocialFeedApp({
   async function markNotifRead(notifId: string) {
     try {
       const headers = await getAuthHeaders();
-      await fetch(apiUrl(`/api/notifications/${notifId}/read`), { method: 'PUT', headers });
+      await fetch(apiUrl(`/api/notifications/${notifId}/read`), { method: 'POST', headers });
       setNotifications((prev) => prev.map((n) => (n.id === notifId ? { ...n, read: true } : n)));
       setNotifCount((c) => Math.max(0, c - 1));
     } catch {
@@ -341,7 +348,10 @@ export default function SocialFeedApp({
           });
         }
       } else if (event.type === 'notification.created') {
-        setNotifCount((c) => c + 1);
+        const eventData = event.data as { user_id?: string } | undefined;
+        if (!eventData?.user_id || eventData.user_id === currentUserIdRef.current) {
+          setNotifCount((c) => c + 1);
+        }
       }
     },
   });
@@ -367,6 +377,9 @@ export default function SocialFeedApp({
         console.error('Post failed:', postRes.status, errBody);
         return;
       }
+      const result = await postRes.json().catch(() => null);
+      const createdPost = result?.data as SocialPost | undefined;
+
       const wasReplyingTo = replyingTo;
       if (wasReplyingTo) {
         const parentId = wasReplyingTo.id;
@@ -375,7 +388,13 @@ export default function SocialFeedApp({
             p.id === parentId ? { ...p, reply_count: (p.reply_count || 0) + 1 } : p,
           ),
         );
+      } else if (createdPost) {
+        setPosts((prev) => {
+          if (prev.some((p) => p.id === createdPost.id)) return prev;
+          return [createdPost, ...prev];
+        });
       }
+
       setComposeText('');
       setMediaPromptText('');
       setMediaPreviewUrl(null);
@@ -1512,6 +1531,13 @@ export default function SocialFeedApp({
               if (activeTab === 'latest') {
                 return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
               }
+              const aIsPlayer = a.author_type === 'player';
+              const bIsPlayer = b.author_type === 'player';
+              if (aIsPlayer && !bIsPlayer) return -1;
+              if (!aIsPlayer && bIsPlayer) return 1;
+              if (aIsPlayer && bIsPlayer) {
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+              }
               const recencyA = Math.max(
                 0,
                 1 - (Date.now() - new Date(a.created_at).getTime()) / (45 * 60000),
@@ -1919,7 +1945,7 @@ export default function SocialFeedApp({
                     try {
                       const headers = await getAuthHeaders();
                       await fetch(apiUrl(`/api/notifications/read-all`), {
-                        method: 'PUT',
+                        method: 'POST',
                         headers,
                         body: JSON.stringify({ session_id: sessionId }),
                       });
@@ -1961,6 +1987,13 @@ export default function SocialFeedApp({
                     onClick={() => {
                       if (!notif.read) markNotifRead(notif.id);
                       setShowNotifPanel(false);
+                      const postId = notif.metadata?.post_id as string | undefined;
+                      if (postId) {
+                        const targetPost = posts.find((p) => p.id === postId);
+                        if (targetPost) {
+                          openThread(targetPost);
+                        }
+                      }
                     }}
                     className="flex items-start gap-3 w-full text-left px-4 py-3 hover:bg-white/[0.03] transition-colors"
                     style={{

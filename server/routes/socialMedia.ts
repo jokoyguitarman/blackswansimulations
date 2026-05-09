@@ -183,6 +183,8 @@ router.post(
 
       const hashtags = content.match(/#\w+/g) || [];
 
+      const initialViralityScore = reply_to_post_id ? 0 : 35 + Math.floor(Math.random() * 15);
+
       const { data: post, error } = await supabaseAdmin
         .from('social_posts')
         .insert({
@@ -199,6 +201,7 @@ router.post(
           post_format: post_format || 'text',
           image_prompt: image_prompt || null,
           media_urls: media_url ? [media_url] : null,
+          virality_score: initialViralityScore,
         })
         .select()
         .single();
