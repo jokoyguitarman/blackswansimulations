@@ -53,6 +53,17 @@ export default function FactCheckBrowser() {
         confirmed: factSheet.confirmed_facts || [],
         unconfirmed: factSheet.unconfirmed_claims || [],
       });
+
+      // Record fact_check SOP step
+      void fetch(apiUrl('/api/social/action'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          session_id: sessionId,
+          action_type: 'fact_checked',
+          sop_step: 'fact_check',
+        }),
+      }).catch(() => {});
     } catch {
       /* ignore */
     }

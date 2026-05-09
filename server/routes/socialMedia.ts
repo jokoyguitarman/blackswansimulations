@@ -221,7 +221,31 @@ router.post(
             .eq('id', reply_to_post_id);
         }
         await markPostResponded(session_id, reply_to_post_id, post.id);
-        await recordPlayerAction(session_id, user.id, 'reply_posted', reply_to_post_id, content);
+
+        // Check if replying to harmful content -> assess SOP step
+        const { data: parentFlags } = await supabaseAdmin
+          .from('social_posts')
+          .select('content_flags')
+          .eq('id', reply_to_post_id)
+          .single();
+        const pFlags = (parentFlags?.content_flags || {}) as Record<string, unknown>;
+        const isHarmfulReply = !!(
+          pFlags.is_hate_speech ||
+          pFlags.hate_speech ||
+          pFlags.is_misinformation ||
+          pFlags.misinformation ||
+          pFlags.inflammatory ||
+          pFlags.threatening
+        );
+        await recordPlayerAction(
+          session_id,
+          user.id,
+          'reply_posted',
+          reply_to_post_id,
+          content,
+          {},
+          isHarmfulReply ? 'assess' : null,
+        );
 
         // Notify the parent post author about the reply
         const { data: parentForNotif } = await supabaseAdmin
@@ -245,9 +269,18 @@ router.post(
           logger.warn({ err, postId: post.id }, 'NPC reply reaction failed (non-critical)'),
         );
       } else {
-        await recordPlayerAction(session_id, user.id, 'post_created', post.id, content, {
-          post_format: post_format || 'text',
-        });
+        const publishStep = post_format === 'official_statement' ? 'publish' : null;
+        await recordPlayerAction(
+          session_id,
+          user.id,
+          'post_created',
+          post.id,
+          content,
+          {
+            post_format: post_format || 'text',
+          },
+          publishStep,
+        );
       }
 
       // Auto-grade ALL player posts (replies and top-level)
@@ -551,7 +584,7 @@ router.post('/posts/:postId/flag', requireAuth, async (req: AuthenticatedRequest
 
     const { data: post } = await supabaseAdmin
       .from('social_posts')
-      .select('session_id')
+      .select('session_id, content_flags')
       .eq('id', postId)
       .single();
 
@@ -564,7 +597,21 @@ router.post('/posts/:postId/flag', requireAuth, async (req: AuthenticatedRequest
       .update({ is_flagged_by_player: true })
       .eq('id', postId);
 
+    // Flagging misinformation also counts as fact_check SOP step
+    const flagFlags = (post.content_flags || {}) as Record<string, unknown>;
+    const isMisinfoFlag = !!(flagFlags.is_misinformation || flagFlags.misinformation);
     await recordPlayerAction(post.session_id, user.id, 'post_flagged', postId, null, {}, 'monitor');
+    if (isMisinfoFlag) {
+      await recordPlayerAction(
+        post.session_id,
+        user.id,
+        'misinfo_flagged',
+        postId,
+        null,
+        {},
+        'fact_check',
+      );
+    }
 
     getWebSocketService().broadcastToSession(post.session_id, {
       type: 'social_post.flagged',
@@ -711,7 +758,15 @@ router.post(
 
       if (error) return res.status(500).json({ error: 'Failed to send email' });
 
-      await recordPlayerAction(session_id, user.id, 'email_sent', email.id, body_text);
+      await recordPlayerAction(
+        session_id,
+        user.id,
+        'email_sent',
+        email.id,
+        body_text,
+        {},
+        'escalate',
+      );
 
       getWebSocketService().broadcastToSession(session_id, {
         type: 'sim_email.sent',
@@ -760,7 +815,15 @@ router.post('/news/:articleId/read', requireAuth, async (req: AuthenticatedReque
 
     if (!article) return res.status(404).json({ error: 'Article not found' });
 
-    await recordPlayerAction(article.session_id, user.id, 'news_read', articleId, null);
+    await recordPlayerAction(
+      article.session_id,
+      user.id,
+      'news_read',
+      articleId,
+      null,
+      {},
+      'monitor',
+    );
     res.json({ success: true });
   } catch (err) {
     logger.error({ error: err }, 'Error in POST /social/news/:articleId/read');
@@ -839,7 +902,19 @@ router.post(
   validate(gradeContentSchema),
   async (req: AuthenticatedRequest, res) => {
     try {
+      const user = req.user!;
       const { session_id, content, post_id, hateful_post_content } = req.body;
+
+      // Record draft SOP step when player grades content
+      void recordPlayerAction(
+        session_id,
+        user.id,
+        'content_graded',
+        post_id || null,
+        content?.substring(0, 200) || null,
+        {},
+        'draft',
+      ).catch(() => {});
 
       const { data: session } = await supabaseAdmin
         .from('sessions')
@@ -1004,6 +1079,43 @@ router.get('/handles/session/:sessionId', requireAuth, async (req: Authenticated
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// ─── Player Action Recording ─────────────────────────────────────────────────
+
+const actionSchema = z.object({
+  body: z.object({
+    session_id: z.string().uuid(),
+    action_type: z.string().min(1).max(100),
+    target_id: z.string().optional(),
+    content: z.string().max(2000).optional(),
+    sop_step: z.string().max(50).optional(),
+  }),
+});
+
+router.post(
+  '/action',
+  requireAuth,
+  validate(actionSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { session_id, action_type, target_id, content, sop_step } = req.body;
+      await recordPlayerAction(
+        session_id,
+        user.id,
+        action_type,
+        target_id || null,
+        content || null,
+        {},
+        sop_step || null,
+      );
+      return res.json({ success: true });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in POST /social/action');
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
 
 // ─── Trending & Suggested (Desktop Widgets) ─────────────────────────────────
 
