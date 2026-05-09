@@ -746,6 +746,7 @@ export default function SocialFeedApp({
               <button
                 onClick={() => {
                   setReplyingTo(selectedPost);
+                  setComposeText(`${selectedPost.author_handle} `);
                   setComposing(true);
                 }}
                 className="ios-btn-bounce p-2 group hover:text-[#1D9BF0] transition-colors"
@@ -904,6 +905,7 @@ export default function SocialFeedApp({
                         <button
                           onClick={() => {
                             setReplyingTo(reply);
+                            setComposeText(`${reply.author_handle} `);
                             setComposing(true);
                           }}
                           className="ios-btn-bounce flex items-center gap-1 hover:text-[#1D9BF0] transition-colors"

@@ -74,6 +74,21 @@ export async function triggerNPCReactions(
               .map((r) => `  ${r.author_handle}: "${String(r.content).substring(0, 100)}"`)
               .join('\n');
         }
+
+        // Identify which specific comment the player is responding to via @mention
+        const playerContent = String(playerPost.content || '');
+        const mentionMatch = playerContent.match(/^(@[\w._]+)/);
+        if (mentionMatch) {
+          const targetHandle = mentionMatch[1];
+          const targetReply = (threadReplies || [])
+            .reverse()
+            .find((r) => r.author_handle === targetHandle);
+          if (targetReply) {
+            threadContext += `\n\nThe player is SPECIFICALLY responding to ${targetHandle}'s comment: "${String(targetReply.content).substring(0, 200)}"`;
+            threadContext += `\nNPCs should respond in context of THIS specific exchange, not the general thread.`;
+          }
+        }
+
         threadContext += `\n\nThe player just replied in this thread. NPCs who are part of this conversation should respond directly to what the player said, continuing the argument/discussion.`;
       }
     }
