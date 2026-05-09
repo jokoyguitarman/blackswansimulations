@@ -366,7 +366,9 @@ export default function SocialFeedApp({
         body: JSON.stringify({
           session_id: sessionId,
           content: composeText,
-          reply_to_post_id: replyingTo?.id || undefined,
+          reply_to_post_id: replyingTo
+            ? selectedPost?.id || replyingTo.reply_to_post_id || replyingTo.id
+            : undefined,
           post_format: replyingTo ? 'text' : selectedFormat,
           ...(mediaPromptText ? { image_prompt: mediaPromptText } : {}),
           ...(mediaPreviewUrl ? { media_url: mediaPreviewUrl } : {}),
@@ -382,12 +384,17 @@ export default function SocialFeedApp({
 
       const wasReplyingTo = replyingTo;
       if (wasReplyingTo) {
-        const parentId = wasReplyingTo.id;
+        const threadRootId = selectedPost?.id || wasReplyingTo.reply_to_post_id || wasReplyingTo.id;
         setPosts((prev) =>
           prev.map((p) =>
-            p.id === parentId ? { ...p, reply_count: (p.reply_count || 0) + 1 } : p,
+            p.id === threadRootId ? { ...p, reply_count: (p.reply_count || 0) + 1 } : p,
           ),
         );
+        if (selectedPost) {
+          setSelectedPost((prev) =>
+            prev ? { ...prev, reply_count: (prev.reply_count || 0) + 1 } : prev,
+          );
+        }
       } else if (createdPost) {
         setPosts((prev) => {
           if (prev.some((p) => p.id === createdPost.id)) return prev;
@@ -471,7 +478,7 @@ export default function SocialFeedApp({
   }
 
   async function handleLike(postId: string) {
-    const post = posts.find((p) => p.id === postId);
+    const post = posts.find((p) => p.id === postId) || threadReplies.find((r) => r.id === postId);
     if (!post) return;
 
     const wasLiked = !!post.liked_by_me;
@@ -495,6 +502,7 @@ export default function SocialFeedApp({
 
     setPosts((prev) => prev.map(update));
     setSelectedPost((prev) => (prev ? update(prev) : prev));
+    setThreadReplies((prev) => prev.map(update));
 
     try {
       const headers = await getAuthHeaders();
@@ -506,6 +514,7 @@ export default function SocialFeedApp({
     } catch {
       setPosts((prev) => prev.map(rollback));
       setSelectedPost((prev) => (prev ? rollback(prev) : prev));
+      setThreadReplies((prev) => prev.map(rollback));
     }
   }
 
@@ -916,13 +925,13 @@ export default function SocialFeedApp({
                         <button
                           onClick={() => handleLike(reply.id)}
                           className="ios-btn-bounce flex items-center gap-1"
-                          style={{ color: '#71767B' }}
+                          style={{ color: reply.liked_by_me ? '#F91880' : '#71767B' }}
                         >
                           <svg
                             width="15"
                             height="15"
                             viewBox="0 0 24 24"
-                            fill="none"
+                            fill={reply.liked_by_me ? '#F91880' : 'none'}
                             stroke="currentColor"
                             strokeWidth="1.5"
                             strokeLinecap="round"
