@@ -707,20 +707,20 @@ export default function SocialFeedApp({
               {selectedPost.content}
             </p>
             {Array.isArray(selectedPost.media_urls) && selectedPost.media_urls.length > 0 && (
-              <div className="mb-3 rounded-xl overflow-hidden">
+              <div className="mb-3 rounded-xl">
                 {/\.(mp4|webm|mov)(\?|$)/i.test(selectedPost.media_urls[0]) ? (
                   <video
                     src={selectedPost.media_urls[0]}
                     controls
-                    className="w-full max-h-[300px] object-contain"
-                    style={{ borderRadius: 12, backgroundColor: '#000' }}
+                    className="w-full rounded-xl"
+                    style={{ backgroundColor: '#000' }}
                   />
                 ) : (
                   <img
                     src={selectedPost.media_urls[0]}
                     alt=""
-                    className="w-full max-h-[300px] object-contain"
-                    style={{ borderRadius: 12, backgroundColor: '#16181C' }}
+                    className="w-full rounded-xl"
+                    style={{ backgroundColor: '#16181C' }}
                   />
                 )}
               </div>
@@ -904,20 +904,20 @@ export default function SocialFeedApp({
                       </div>
                       <p className="text-[14px] mt-1 whitespace-pre-wrap">{reply.content}</p>
                       {Array.isArray(reply.media_urls) && reply.media_urls.length > 0 && (
-                        <div className="mt-2 rounded-xl overflow-hidden">
+                        <div className="mt-2 rounded-xl">
                           {/\.(mp4|webm|mov)(\?|$)/i.test(reply.media_urls[0]) ? (
                             <video
                               src={reply.media_urls[0]}
                               controls
-                              className="w-full max-h-[200px] object-contain"
-                              style={{ borderRadius: 12, backgroundColor: '#000' }}
+                              className="w-full rounded-xl"
+                              style={{ backgroundColor: '#000' }}
                             />
                           ) : (
                             <img
                               src={reply.media_urls[0]}
                               alt=""
-                              className="w-full max-h-[200px] object-contain"
-                              style={{ borderRadius: 12, backgroundColor: '#16181C' }}
+                              className="w-full rounded-xl"
+                              style={{ backgroundColor: '#16181C' }}
                             />
                           )}
                         </div>
@@ -1710,20 +1710,20 @@ export default function SocialFeedApp({
                       </p>
 
                       {Array.isArray(post.media_urls) && post.media_urls.length > 0 && (
-                        <div className="mt-2 relative rounded-xl overflow-hidden">
+                        <div className="mt-2 relative rounded-xl">
                           {/\.(mp4|webm|mov)(\?|$)/i.test(post.media_urls[0]) ? (
                             <video
                               src={post.media_urls[0]}
                               controls
-                              className="w-full max-h-[300px] object-contain"
-                              style={{ borderRadius: 12, backgroundColor: '#000' }}
+                              className="w-full rounded-xl"
+                              style={{ backgroundColor: '#000' }}
                             />
                           ) : (
                             <img
                               src={post.media_urls[0]}
                               alt=""
-                              className="w-full max-h-[300px] object-contain"
-                              style={{ borderRadius: 12, backgroundColor: '#16181C' }}
+                              className="w-full rounded-xl"
+                              style={{ backgroundColor: '#16181C' }}
                             />
                           )}
                           {post.post_format === 'video_concept' &&

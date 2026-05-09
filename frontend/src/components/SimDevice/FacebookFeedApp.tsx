@@ -1247,19 +1247,10 @@ export default function FacebookFeedApp() {
                           src={post.media_urls[0]}
                           controls
                           className="w-full"
-                          style={{ maxHeight: 400, objectFit: 'contain', backgroundColor: '#000' }}
+                          style={{ backgroundColor: '#000' }}
                         />
                       ) : (
-                        <img
-                          src={post.media_urls[0]}
-                          alt=""
-                          className="w-full"
-                          style={{
-                            maxHeight: 400,
-                            objectFit: 'contain',
-                            backgroundColor: '#F0F2F5',
-                          }}
-                        />
+                        <img src={post.media_urls[0]} alt="" className="w-full" />
                       )}
                       {post.post_format === 'video_concept' &&
                         !/\.(mp4|webm|mov)(\?|$)/i.test(post.media_urls[0] || '') && (
