@@ -1198,7 +1198,8 @@ export const SocialCrisisWizard = () => {
         Merged timeline with shared injects and convergence gates. Read-only preview.
       </p>
 
-      {step4Loading ? (
+      {step4Loading ||
+      (sharedInjects.length === 0 && convergenceGates.length === 0 && !step4Error) ? (
         <Spinner text="Generating convergence layer..." />
       ) : step4Error ? (
         <div className="text-center py-8">
