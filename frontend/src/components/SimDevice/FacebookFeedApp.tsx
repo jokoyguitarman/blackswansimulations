@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { supabase } from '../../lib/supabase';
@@ -483,19 +483,37 @@ export default function FacebookFeedApp() {
     const text = commentText[postId]?.trim();
     if (!text || !sessionId) return;
     const target = replyTarget[postId];
-    const contentToSend = target ? `${target.handle} ${text}` : text;
     try {
       const headers = await getAuthHeaders();
-      await fetch(apiUrl('/api/social/posts'), {
+      const postRes = await fetch(apiUrl('/api/social/posts'), {
         method: 'POST',
         headers,
         body: JSON.stringify({
           session_id: sessionId,
-          content: contentToSend,
+          content: target ? `${target.handle} ${text}` : text,
           reply_to_post_id: postId,
           platform: 'facebook',
+          ...(target
+            ? { reply_target_handle: target.handle, reply_target_name: target.displayName }
+            : {}),
         }),
       });
+      if (postRes.ok) {
+        const result = await postRes.json().catch(() => null);
+        const createdPost = result?.data as SocialPost | undefined;
+        if (createdPost) {
+          setPostReplies((prev) => {
+            const existing = prev[postId] || [];
+            if (existing.some((r) => r.id === createdPost.id)) return prev;
+            return { ...prev, [postId]: [...existing, createdPost] };
+          });
+          setPosts((prev) =>
+            prev.map((p) =>
+              p.id === postId ? { ...p, reply_count: (p.reply_count || 0) + 1 } : p,
+            ),
+          );
+        }
+      }
       setCommentText((prev) => ({ ...prev, [postId]: '' }));
       setReplyTarget((prev) => ({ ...prev, [postId]: null }));
     } catch {
@@ -1478,79 +1496,136 @@ export default function FacebookFeedApp() {
                                 Hide comments
                               </button>
                             )}
-                            {visibleReplies.map((reply) => (
-                              <div
-                                key={reply.id}
-                                id={`fb-reply-${reply.id}`}
-                                className="flex gap-2 mb-2.5"
-                              >
-                                <div
-                                  className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[12px] flex-shrink-0"
-                                  style={{
-                                    backgroundColor: getAvatarColor(reply.author_display_name),
-                                  }}
-                                >
-                                  {reply.author_display_name.charAt(0).toUpperCase()}
-                                </div>
-                                <div>
+                            {(() => {
+                              const handleSet = new Set(visibleReplies.map((r) => r.author_handle));
+                              const parentComments: typeof visibleReplies = [];
+                              const childMap: Record<string, typeof visibleReplies> = {};
+
+                              for (const reply of visibleReplies) {
+                                const mentionMatch = (reply.content || '').match(/^@([\w._]+) /);
+                                if (mentionMatch && handleSet.has(`@${mentionMatch[1]}`)) {
+                                  const parentHandle = `@${mentionMatch[1]}`;
+                                  const parent = parentComments.find(
+                                    (p) => p.author_handle === parentHandle,
+                                  );
+                                  if (parent) {
+                                    if (!childMap[parent.id]) childMap[parent.id] = [];
+                                    childMap[parent.id].push(reply);
+                                    continue;
+                                  }
+                                }
+                                parentComments.push(reply);
+                              }
+
+                              const renderComment = (reply: SocialPost, indented: boolean) => {
+                                const content = reply.content || '';
+                                const mentionMatch = content.match(/^@[\w._]+ /);
+                                let displayContent: React.ReactNode = content;
+                                if (mentionMatch) {
+                                  const mentionedHandle = mentionMatch[0].trim();
+                                  const restContent = content.slice(mentionMatch[0].length);
+                                  const mentionedReply = visibleReplies.find(
+                                    (r) => r.author_handle === mentionedHandle,
+                                  );
+                                  const mentionedName =
+                                    mentionedReply?.author_display_name || post.author_display_name;
+                                  displayContent = (
+                                    <>
+                                      <span style={{ color: '#1877F2', fontWeight: 600 }}>
+                                        {mentionedName}
+                                      </span>{' '}
+                                      {restContent}
+                                    </>
+                                  );
+                                }
+                                return (
                                   <div
-                                    className="rounded-2xl px-3 py-1.5"
-                                    style={{ backgroundColor: '#F0F2F5' }}
+                                    key={reply.id}
+                                    id={`fb-reply-${reply.id}`}
+                                    className={`flex gap-2 mb-2.5 ${indented ? 'ml-10' : ''}`}
                                   >
-                                    <span
-                                      className="text-[13px] font-semibold"
-                                      style={{ color: '#050505' }}
-                                    >
-                                      {reply.author_display_name}
-                                    </span>
-                                    <p className="text-[14px]" style={{ color: '#050505' }}>
-                                      {reply.content}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center gap-3 ml-3 mt-0.5">
-                                    <button
-                                      onClick={() => handleReaction(reply.id, 'like')}
-                                      className="text-[12px] font-semibold hover:underline"
-                                      style={{ color: reply.liked_by_me ? '#1877F2' : '#65676B' }}
-                                    >
-                                      Like
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        setReplyTarget((prev) => ({
-                                          ...prev,
-                                          [post.id]: {
-                                            handle: reply.author_handle,
-                                            displayName: reply.author_display_name,
-                                          },
-                                        }));
-                                        setCommentText((prev) => ({
-                                          ...prev,
-                                          [post.id]: '',
-                                        }));
-                                        setExpandedComments((prev) => new Set([...prev, post.id]));
-                                        setTimeout(
-                                          () => commentInputRefs.current[post.id]?.focus(),
-                                          100,
-                                        );
+                                    <div
+                                      className={`${indented ? 'w-7 h-7 text-[10px]' : 'w-8 h-8 text-[12px]'} rounded-full flex items-center justify-center text-white font-bold flex-shrink-0`}
+                                      style={{
+                                        backgroundColor: getAvatarColor(reply.author_display_name),
                                       }}
-                                      className="text-[12px] font-semibold hover:underline"
-                                      style={{ color: '#65676B' }}
                                     >
-                                      Reply
-                                    </button>
-                                    <span className="text-[12px]" style={{ color: '#65676B' }}>
-                                      {timeAgo(reply.created_at)}
-                                    </span>
-                                    {reply.like_count > 0 && (
-                                      <span className="text-[12px]" style={{ color: '#65676B' }}>
-                                        👍 {reply.like_count}
-                                      </span>
-                                    )}
+                                      {reply.author_display_name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div>
+                                      <div
+                                        className="rounded-2xl px-3 py-1.5"
+                                        style={{ backgroundColor: '#F0F2F5' }}
+                                      >
+                                        <span
+                                          className="text-[13px] font-semibold"
+                                          style={{ color: '#050505' }}
+                                        >
+                                          {reply.author_display_name}
+                                        </span>
+                                        <p className="text-[14px]" style={{ color: '#050505' }}>
+                                          {displayContent}
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center gap-3 ml-3 mt-0.5">
+                                        <button
+                                          onClick={() => handleReaction(reply.id, 'like')}
+                                          className="text-[12px] font-semibold hover:underline"
+                                          style={{
+                                            color: reply.liked_by_me ? '#1877F2' : '#65676B',
+                                          }}
+                                        >
+                                          Like
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            setReplyTarget((prev) => ({
+                                              ...prev,
+                                              [post.id]: {
+                                                handle: reply.author_handle,
+                                                displayName: reply.author_display_name,
+                                              },
+                                            }));
+                                            setCommentText((prev) => ({ ...prev, [post.id]: '' }));
+                                            setExpandedComments(
+                                              (prev) => new Set([...prev, post.id]),
+                                            );
+                                            setTimeout(
+                                              () => commentInputRefs.current[post.id]?.focus(),
+                                              100,
+                                            );
+                                          }}
+                                          className="text-[12px] font-semibold hover:underline"
+                                          style={{ color: '#65676B' }}
+                                        >
+                                          Reply
+                                        </button>
+                                        <span className="text-[12px]" style={{ color: '#65676B' }}>
+                                          {timeAgo(reply.created_at)}
+                                        </span>
+                                        {reply.like_count > 0 && (
+                                          <span
+                                            className="text-[12px]"
+                                            style={{ color: '#65676B' }}
+                                          >
+                                            👍 {reply.like_count}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
+                                );
+                              };
+
+                              return parentComments.map((reply) => (
+                                <div key={reply.id}>
+                                  {renderComment(reply, false)}
+                                  {(childMap[reply.id] || []).map((child) =>
+                                    renderComment(child, true),
+                                  )}
                                 </div>
-                              </div>
-                            ))}
+                              ));
+                            })()}
                           </div>
                         )}
 
