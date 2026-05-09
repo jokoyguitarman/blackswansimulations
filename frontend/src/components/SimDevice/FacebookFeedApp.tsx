@@ -125,7 +125,7 @@ export default function FacebookFeedApp() {
   const [myReactions, setMyReactions] = useState<Record<string, string>>({});
   const [commentText, setCommentText] = useState<Record<string, string>>({});
   const [replyTarget, setReplyTarget] = useState<
-    Record<string, { handle: string; displayName: string } | null>
+    Record<string, { handle: string; displayName: string; replyToId: string } | null>
   >({});
   const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
   const [showMediaPanel, setShowMediaPanel] = useState(false);
@@ -483,6 +483,7 @@ export default function FacebookFeedApp() {
     const text = commentText[postId]?.trim();
     if (!text || !sessionId) return;
     const target = replyTarget[postId];
+    const contentToSend = target ? `${target.handle}[${target.replyToId}] ${text}` : text;
     try {
       const headers = await getAuthHeaders();
       const postRes = await fetch(apiUrl('/api/social/posts'), {
@@ -490,12 +491,9 @@ export default function FacebookFeedApp() {
         headers,
         body: JSON.stringify({
           session_id: sessionId,
-          content: target ? `${target.handle} ${text}` : text,
+          content: contentToSend,
           reply_to_post_id: postId,
           platform: 'facebook',
-          ...(target
-            ? { reply_target_handle: target.handle, reply_target_name: target.displayName }
-            : {}),
         }),
       });
       if (postRes.ok) {
@@ -1497,17 +1495,26 @@ export default function FacebookFeedApp() {
                               </button>
                             )}
                             {(() => {
-                              const handleSet = new Set(visibleReplies.map((r) => r.author_handle));
+                              const replyIdSet = new Set(visibleReplies.map((r) => r.id));
                               const parentComments: typeof visibleReplies = [];
                               const childMap: Record<string, typeof visibleReplies> = {};
 
                               for (const reply of visibleReplies) {
-                                const mentionMatch = (reply.content || '').match(/^@([\w._]+) /);
-                                if (mentionMatch && handleSet.has(`@${mentionMatch[1]}`)) {
-                                  const parentHandle = `@${mentionMatch[1]}`;
-                                  const parent = parentComments.find(
+                                const content = reply.content || '';
+                                const targetIdMatch = content.match(/^@[\w._]+\[([^\]]+)\] /);
+                                if (targetIdMatch && replyIdSet.has(targetIdMatch[1])) {
+                                  const targetId = targetIdMatch[1];
+                                  if (!childMap[targetId]) childMap[targetId] = [];
+                                  childMap[targetId].push(reply);
+                                  continue;
+                                }
+                                const handleMatch = content.match(/^@([\w._]+) /);
+                                if (handleMatch) {
+                                  const parentHandle = `@${handleMatch[1]}`;
+                                  const matchingParents = parentComments.filter(
                                     (p) => p.author_handle === parentHandle,
                                   );
+                                  const parent = matchingParents[matchingParents.length - 1];
                                   if (parent) {
                                     if (!childMap[parent.id]) childMap[parent.id] = [];
                                     childMap[parent.id].push(reply);
@@ -1519,9 +1526,26 @@ export default function FacebookFeedApp() {
 
                               const renderComment = (reply: SocialPost, indented: boolean) => {
                                 const content = reply.content || '';
+                                const targetIdMatch = content.match(/^@([\w._]+)\[([^\]]+)\] /);
                                 const mentionMatch = content.match(/^@[\w._]+ /);
                                 let displayContent: React.ReactNode = content;
-                                if (mentionMatch) {
+                                if (targetIdMatch) {
+                                  const mentionedHandle = `@${targetIdMatch[1]}`;
+                                  const restContent = content.slice(targetIdMatch[0].length);
+                                  const mentionedReply = visibleReplies.find(
+                                    (r) => r.author_handle === mentionedHandle,
+                                  );
+                                  const mentionedName =
+                                    mentionedReply?.author_display_name || post.author_display_name;
+                                  displayContent = (
+                                    <>
+                                      <span style={{ color: '#1877F2', fontWeight: 600 }}>
+                                        {mentionedName}
+                                      </span>{' '}
+                                      {restContent}
+                                    </>
+                                  );
+                                } else if (mentionMatch) {
                                   const mentionedHandle = mentionMatch[0].trim();
                                   const restContent = content.slice(mentionMatch[0].length);
                                   const mentionedReply = visibleReplies.find(
@@ -1584,6 +1608,7 @@ export default function FacebookFeedApp() {
                                               [post.id]: {
                                                 handle: reply.author_handle,
                                                 displayName: reply.author_display_name,
+                                                replyToId: reply.id,
                                               },
                                             }));
                                             setCommentText((prev) => ({ ...prev, [post.id]: '' }));
