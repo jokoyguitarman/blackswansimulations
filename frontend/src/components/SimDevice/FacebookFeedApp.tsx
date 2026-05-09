@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { supabase } from '../../lib/supabase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -107,6 +108,7 @@ export default function FacebookFeedApp() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { isTrainer } = useRoleVisibility();
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [postReplies, setPostReplies] = useState<Record<string, SocialPost[]>>({});
   const [loading, setLoading] = useState(true);
@@ -1126,31 +1128,32 @@ export default function FacebookFeedApp() {
                     </button>
                   </div>
 
-                  {/* Content Flags */}
-                  {!!(
-                    post.content_flags?.is_hate_speech || post.content_flags?.is_misinformation
-                  ) && (
-                    <div className="px-3 pb-1 flex gap-1.5">
-                      {!!post.content_flags.is_hate_speech && (
-                        <span
-                          className="text-[11px] px-2 py-0.5 rounded font-semibold"
-                          style={{ backgroundColor: '#FDECEA', color: '#D32F2F' }}
-                        >
-                          Hate Speech
-                        </span>
-                      )}
-                      {!!post.content_flags.is_misinformation && (
-                        <span
-                          className="text-[11px] px-2 py-0.5 rounded font-semibold"
-                          style={{ backgroundColor: '#FFF3E0', color: '#E65100' }}
-                        >
-                          Misinformation
-                        </span>
-                      )}
-                    </div>
-                  )}
+                  {/* Content Flags (trainer only) */}
+                  {isTrainer &&
+                    !!(
+                      post.content_flags?.is_hate_speech || post.content_flags?.is_misinformation
+                    ) && (
+                      <div className="px-3 pb-1 flex gap-1.5">
+                        {!!post.content_flags.is_hate_speech && (
+                          <span
+                            className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                            style={{ backgroundColor: '#FDECEA', color: '#D32F2F' }}
+                          >
+                            Hate Speech
+                          </span>
+                        )}
+                        {!!post.content_flags.is_misinformation && (
+                          <span
+                            className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                            style={{ backgroundColor: '#FFF3E0', color: '#E65100' }}
+                          >
+                            Misinformation
+                          </span>
+                        )}
+                      </div>
+                    )}
 
-                  {post.requires_response && !post.responded_at && (
+                  {isTrainer && post.requires_response && !post.responded_at && (
                     <div className="px-3 pb-1">
                       <span
                         className="text-[11px] font-bold px-2 py-0.5 rounded"

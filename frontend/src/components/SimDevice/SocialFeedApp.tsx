@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { supabase } from '../../lib/supabase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -113,6 +114,7 @@ export default function SocialFeedApp({
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { isTrainer } = useRoleVisibility();
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const prevExternalFilter = useRef(externalFilter);
@@ -1590,11 +1592,11 @@ export default function SocialFeedApp({
                   className="px-4 py-3 transition-colors cursor-pointer hover:bg-white/[0.03]"
                   style={{
                     borderBottom: '1px solid #2F3336',
-                    borderLeft: getSentimentBorder(post.sentiment),
+                    borderLeft: isTrainer ? getSentimentBorder(post.sentiment) : undefined,
                   }}
                   onClick={() => openThread(post)}
                 >
-                  {post.requires_response && !post.responded_at && (
+                  {isTrainer && post.requires_response && !post.responded_at && (
                     <div className="flex items-center gap-1.5 mb-2 ml-[52px]">
                       <span className="relative flex h-2 w-2">
                         <span
@@ -1742,37 +1744,48 @@ export default function SocialFeedApp({
                         </div>
                       )}
 
-                      {!!(
-                        post.content_flags &&
-                        (post.content_flags.is_hate_speech || post.content_flags.is_misinformation)
-                      ) && (
-                        <div className="flex gap-1.5 mt-2 flex-wrap">
-                          {!!post.content_flags.is_hate_speech && (
-                            <span
-                              className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
-                              style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#F87171' }}
-                            >
-                              Hate Speech
-                            </span>
-                          )}
-                          {!!post.content_flags.is_misinformation && (
-                            <span
-                              className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
-                              style={{ backgroundColor: 'rgba(249,115,22,0.15)', color: '#FB923C' }}
-                            >
-                              Misinformation
-                            </span>
-                          )}
-                          {!!post.content_flags.is_racist && (
-                            <span
-                              className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
-                              style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#F87171' }}
-                            >
-                              Racist Content
-                            </span>
-                          )}
-                        </div>
-                      )}
+                      {isTrainer &&
+                        !!(
+                          post.content_flags &&
+                          (post.content_flags.is_hate_speech ||
+                            post.content_flags.is_misinformation)
+                        ) && (
+                          <div className="flex gap-1.5 mt-2 flex-wrap">
+                            {!!post.content_flags.is_hate_speech && (
+                              <span
+                                className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
+                                style={{
+                                  backgroundColor: 'rgba(239,68,68,0.15)',
+                                  color: '#F87171',
+                                }}
+                              >
+                                Hate Speech
+                              </span>
+                            )}
+                            {!!post.content_flags.is_misinformation && (
+                              <span
+                                className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
+                                style={{
+                                  backgroundColor: 'rgba(249,115,22,0.15)',
+                                  color: '#FB923C',
+                                }}
+                              >
+                                Misinformation
+                              </span>
+                            )}
+                            {!!post.content_flags.is_racist && (
+                              <span
+                                className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
+                                style={{
+                                  backgroundColor: 'rgba(239,68,68,0.15)',
+                                  color: '#F87171',
+                                }}
+                              >
+                                Racist Content
+                              </span>
+                            )}
+                          </div>
+                        )}
                     </div>
                   </div>
 
