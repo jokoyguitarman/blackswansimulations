@@ -25,6 +25,7 @@ const APP_REGISTRY: Record<
   {
     title: string;
     icon: string;
+    iconImg?: string;
     component: React.FC;
     defaultWidth?: number;
     defaultHeight?: number;
@@ -32,17 +33,60 @@ const APP_REGISTRY: Record<
 > = {
   social: {
     title: 'Z',
-    icon: 'ℤ',
+    icon: 'Z',
+    iconImg: '/icons/icon-social.png',
     component: ZDesktopLayout,
-    defaultWidth: 1100,
-    defaultHeight: 700,
+    defaultWidth: 900,
+    defaultHeight: 600,
   },
-  facebook: { title: 'Fakebook', icon: '📘', component: FacebookFeedApp },
-  email: { title: 'Email', icon: '✉️', component: EmailApp },
-  news: { title: 'News', icon: '📰', component: NewsApp },
-  chat: { title: 'TeamChat', icon: '💬', component: GroupChatApp },
-  browser: { title: 'FactCheck', icon: '🔍', component: FactCheckBrowser },
-  drafts: { title: 'DraftPad', icon: '📝', component: DraftPadApp },
+  facebook: {
+    title: 'Fakebook',
+    icon: 'fk',
+    iconImg: '/icons/icon-facebook.png',
+    component: FacebookFeedApp,
+    defaultWidth: 900,
+    defaultHeight: 600,
+  },
+  email: {
+    title: 'Mail',
+    icon: '✉',
+    iconImg: '/icons/icon-mail.png',
+    component: EmailApp,
+    defaultWidth: 500,
+    defaultHeight: 550,
+  },
+  news: {
+    title: 'News',
+    icon: '📰',
+    iconImg: '/icons/icon-news.png',
+    component: NewsApp,
+    defaultWidth: 480,
+    defaultHeight: 580,
+  },
+  chat: {
+    title: 'TeamChat',
+    icon: '💬',
+    iconImg: '/icons/icon-chat.png',
+    component: GroupChatApp,
+    defaultWidth: 420,
+    defaultHeight: 550,
+  },
+  browser: {
+    title: 'FactCheck',
+    icon: '🔍',
+    iconImg: '/icons/icon-factcheck.png',
+    component: FactCheckBrowser,
+    defaultWidth: 600,
+    defaultHeight: 550,
+  },
+  drafts: {
+    title: 'DraftPad',
+    icon: '📝',
+    iconImg: '/icons/icon-drafts.png',
+    component: DraftPadApp,
+    defaultWidth: 480,
+    defaultHeight: 500,
+  },
 };
 
 export default function DesktopShell() {
@@ -50,7 +94,7 @@ export default function DesktopShell() {
   const navigate = useNavigate();
   const [windows, setWindows] = useState<WindowState[]>([]);
   const [time, setTime] = useState(new Date());
-  const [nextZ, setNextZ] = useState(10);
+  const [nextZ, setNextZ] = useState(100);
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 60000);
     return () => clearInterval(timer);
@@ -74,14 +118,18 @@ export default function DesktopShell() {
 
     const offset = windows.length * 30;
     const appDef = APP_REGISTRY[appId];
+    const w = appDef?.defaultWidth || 480;
+    const h = appDef?.defaultHeight || 600;
+    const maxX = Math.max(0, window.innerWidth - w - 20);
+    const maxY = Math.max(0, window.innerHeight - h - 60);
     const newWindow: WindowState = {
       id: crypto.randomUUID(),
       app: appId,
       title: appDef?.title || appId,
-      x: 80 + offset,
-      y: 40 + offset,
-      width: appDef?.defaultWidth || 480,
-      height: appDef?.defaultHeight || 640,
+      x: Math.min(120 + offset, maxX),
+      y: Math.min(30 + offset, maxY),
+      width: Math.min(w, window.innerWidth - 40),
+      height: Math.min(h, window.innerHeight - 80),
       zIndex: nextZ,
       minimized: false,
     };
@@ -188,21 +236,47 @@ export default function DesktopShell() {
   }
 
   return (
-    <div className="h-screen w-screen bg-gradient-to-br from-gray-900 via-blue-950 to-gray-900 flex flex-col overflow-hidden">
+    <div
+      className="h-screen w-screen flex flex-col overflow-hidden"
+      style={{
+        backgroundImage: 'url(/icons/wallpaper.png)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }}
+    >
       {/* Desktop Area */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative overflow-hidden">
         {/* Desktop Icons */}
-        <div className="absolute top-4 left-4 grid grid-cols-1 gap-4">
+        <div
+          className="absolute top-6 left-6 grid grid-cols-2 gap-x-6 gap-y-4"
+          style={{ zIndex: 1 }}
+        >
           {Object.entries(APP_REGISTRY).map(([id, app]) => (
             <button
               key={id}
               onDoubleClick={() => openApp(id)}
-              className="flex flex-col items-center gap-1 w-20 p-2 rounded-lg hover:bg-white/10 transition-colors group"
+              className="flex flex-col items-center gap-1.5 w-20 p-2 rounded-xl hover:bg-white/15 transition-colors group"
             >
-              <div className="w-12 h-12 bg-gray-800 rounded-xl flex items-center justify-center text-xl shadow-lg group-hover:scale-110 transition-transform">
-                {app.icon}
+              <div
+                className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform overflow-hidden"
+                style={{ backgroundColor: 'rgba(30,30,30,0.6)', backdropFilter: 'blur(8px)' }}
+              >
+                {app.iconImg ? (
+                  <img
+                    src={app.iconImg}
+                    alt={app.title}
+                    className="w-full h-full object-cover rounded-2xl"
+                  />
+                ) : (
+                  <span className="text-xl">{app.icon}</span>
+                )}
               </div>
-              <span className="text-xs text-white/80 text-center">{app.title}</span>
+              <span
+                className="text-[11px] font-medium text-center leading-tight"
+                style={{ color: '#fff', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}
+              >
+                {app.title}
+              </span>
             </button>
           ))}
         </div>
@@ -224,31 +298,45 @@ export default function DesktopShell() {
                   width: win.width,
                   height: win.height,
                   zIndex: win.zIndex,
+                  backgroundColor: '#1C1C1E',
+                  border: '1px solid rgba(255,255,255,0.1)',
                 }}
-                className="bg-gray-900 rounded-lg shadow-2xl border border-gray-700 flex flex-col overflow-hidden"
+                className="rounded-xl shadow-2xl flex flex-col overflow-hidden"
                 onMouseDown={() => bringToFront(win.id)}
               >
                 {/* Title Bar (draggable) */}
                 <div
-                  className="h-8 bg-gray-800 flex items-center justify-between px-3 flex-shrink-0 cursor-grab active:cursor-grabbing select-none"
+                  className="h-9 flex items-center justify-between px-3 flex-shrink-0 cursor-grab active:cursor-grabbing select-none"
+                  style={{
+                    backgroundColor: '#1C1C1E',
+                    borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  }}
                   onMouseDown={(e) => startDrag(e, win.id)}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs">{APP_REGISTRY[win.app]?.icon}</span>
-                    <span className="text-xs text-gray-300 font-medium">{win.title}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => minimizeWindow(win.id)}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      className="w-3 h-3 rounded-full bg-yellow-500 hover:bg-yellow-400"
-                    />
+                  <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => closeWindow(win.id)}
                       onMouseDown={(e) => e.stopPropagation()}
-                      className="w-3 h-3 rounded-full bg-red-500 hover:bg-red-400"
+                      className="w-3 h-3 rounded-full hover:brightness-110 transition"
+                      style={{ backgroundColor: '#FF5F57' }}
                     />
+                    <button
+                      onClick={() => minimizeWindow(win.id)}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      className="w-3 h-3 rounded-full hover:brightness-110 transition"
+                      style={{ backgroundColor: '#FEBC2E' }}
+                    />
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#28C840' }} />
                   </div>
+                  <div className="flex items-center gap-2">
+                    {APP_REGISTRY[win.app]?.iconImg ? (
+                      <img src={APP_REGISTRY[win.app].iconImg} alt="" className="w-4 h-4 rounded" />
+                    ) : (
+                      <span className="text-xs">{APP_REGISTRY[win.app]?.icon}</span>
+                    )}
+                    <span className="text-xs text-gray-300 font-medium">{win.title}</span>
+                  </div>
+                  <div className="w-[52px]" />
                 </div>
 
                 {/* Window Content */}
@@ -256,17 +344,38 @@ export default function DesktopShell() {
                   <AppComponent />
                 </div>
 
-                {/* Resize Handle */}
+                {/* Resize Handle - bottom edge */}
                 <div
-                  className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize"
-                  onMouseDown={(e) => startResize(e, win.id)}
+                  className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    startResize(e, win.id);
+                  }}
                   style={{ zIndex: 10 }}
+                />
+                {/* Resize Handle - right edge */}
+                <div
+                  className="absolute top-0 right-0 bottom-0 w-2 cursor-ew-resize"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    startResize(e, win.id);
+                  }}
+                  style={{ zIndex: 10 }}
+                />
+                {/* Resize Handle - corner */}
+                <div
+                  className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    startResize(e, win.id);
+                  }}
+                  style={{ zIndex: 11 }}
                 >
                   <svg
-                    width="12"
-                    height="12"
+                    width="10"
+                    height="10"
                     viewBox="0 0 12 12"
-                    className="absolute bottom-0.5 right-0.5 opacity-40"
+                    className="absolute bottom-1 right-1 opacity-60"
                   >
                     <path
                       d="M11 1L1 11M11 5L5 11M11 9L9 11"
@@ -282,29 +391,44 @@ export default function DesktopShell() {
       </div>
 
       {/* Taskbar */}
-      <div className="h-12 bg-gray-900/95 border-t border-gray-700 flex items-center px-4 gap-2">
+      <div
+        className="h-12 flex items-center px-3 gap-1"
+        style={{
+          backgroundColor: 'rgba(28,28,30,0.85)',
+          backdropFilter: 'blur(20px)',
+          borderTop: '1px solid rgba(255,255,255,0.08)',
+        }}
+      >
         <button
           onClick={() => navigate(`/sim/${sessionId}/device/home`)}
-          className="px-3 py-1 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
+          className="px-3 py-1.5 text-[11px] text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors font-medium"
         >
-          Phone Mode
+          📱 Phone
         </button>
-        <div className="w-px h-6 bg-gray-700" />
+        <div className="w-px h-6 mx-1" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }} />
         {Object.entries(APP_REGISTRY).map(([id, app]) => (
           <button
             key={id}
             onClick={() => openApp(id)}
-            className={`px-3 py-1 text-xs rounded transition-colors flex items-center gap-1 ${
+            className={`px-2.5 py-1.5 text-[11px] rounded-lg transition-colors flex items-center gap-1.5 font-medium ${
               windows.some((w) => w.app === id)
-                ? 'bg-gray-700 text-white'
-                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                ? 'text-white'
+                : 'text-gray-400 hover:text-white hover:bg-white/10'
             }`}
+            style={
+              windows.some((w) => w.app === id) ? { backgroundColor: 'rgba(255,255,255,0.12)' } : {}
+            }
           >
-            {app.icon} {app.title}
+            {app.iconImg ? (
+              <img src={app.iconImg} alt="" className="w-4 h-4 rounded" />
+            ) : (
+              <span>{app.icon}</span>
+            )}
+            {app.title}
           </button>
         ))}
         <div className="flex-1" />
-        <span className="text-xs text-gray-500">
+        <span className="text-[11px] font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>
           {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
       </div>

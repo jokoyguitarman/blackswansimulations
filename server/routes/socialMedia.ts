@@ -188,7 +188,8 @@ router.post(
         .insert({
           session_id,
           platform,
-          author_handle: `@${(user.email || user.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`,
+          user_id: user.id,
+          author_handle: `@${((user.metadata?.full_name as string) || user.email || user.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`,
           author_display_name: (user.metadata?.full_name as string) || user.email || 'Player',
           author_type: 'player',
           content,
@@ -597,7 +598,7 @@ router.post('/posts/:postId/repost', requireAuth, async (req: AuthenticatedReque
       .insert({
         session_id: session_id || original.session_id,
         platform: original.platform,
-        author_handle: `@${(user.email || user.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`,
+        author_handle: `@${((user.metadata?.full_name as string) || user.email || user.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`,
         author_display_name: (user.metadata?.full_name as string) || user.email || 'Player',
         author_type: 'player',
         content: original.content,
@@ -1039,45 +1040,29 @@ router.get('/trending/session/:sessionId', requireAuth, async (req: Authenticate
       .slice(0, 8)
       .map(([tag, count]) => ({ tag, count }));
 
-    // Hot topics from content flags
-    const topics: Array<{ label: string; count: number; trend: string }> = [];
-    let hateCount = 0,
-      misinfoCount = 0,
-      supportCount = 0;
-    for (const post of posts) {
-      const flags = (post.content_flags || {}) as Record<string, unknown>;
-      if (flags.is_hate_speech || flags.hate_speech) hateCount++;
-      if (flags.is_misinformation || flags.misinformation) misinfoCount++;
-      if (flags.is_supportive || flags.supportive) supportCount++;
-    }
-    if (hateCount > 0)
-      topics.push({ label: 'Hate speech incidents', count: hateCount, trend: 'rising' });
-    if (misinfoCount > 0)
-      topics.push({ label: 'Misinformation alerts', count: misinfoCount, trend: 'rising' });
-    if (supportCount > 0)
-      topics.push({ label: 'Community support', count: supportCount, trend: 'steady' });
+    // Most engaged posts as "hot" topics (with post_id for click-through)
+    const { data: postsWithId } = await supabaseAdmin
+      .from('social_posts')
+      .select('id, content, like_count, repost_count, view_count')
+      .eq('session_id', sessionId)
+      .eq('platform', 'x_twitter')
+      .eq('platform_removed', false)
+      .order('like_count', { ascending: false })
+      .limit(5);
 
-    // Most engaged posts as "hot" topics
-    const hotPosts = [...posts]
-      .sort(
-        (a, b) =>
-          (b.like_count || 0) +
-          (b.repost_count || 0) -
-          ((a.like_count || 0) + (a.repost_count || 0)),
-      )
-      .slice(0, 3)
-      .map((p) => ({
-        label:
-          ((p.content as string) || '').substring(0, 60) +
-          (((p.content as string) || '').length > 60 ? '...' : ''),
-        count: (p.view_count || 0) as number,
-        trend: 'hot',
-      }));
+    const hotPosts = (postsWithId || []).slice(0, 5).map((p) => ({
+      label:
+        ((p.content as string) || '').substring(0, 60) +
+        (((p.content as string) || '').length > 60 ? '...' : ''),
+      count: (p.view_count || 0) as number,
+      trend: 'hot',
+      post_id: p.id,
+    }));
 
     return res.json({
       data: {
         hashtags: sortedTags,
-        topics: [...topics, ...hotPosts].slice(0, 5),
+        topics: hotPosts,
         total_posts: posts.length,
       },
     });

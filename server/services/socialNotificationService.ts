@@ -3,27 +3,33 @@ import { getWebSocketService } from './websocketService.js';
 import { logger } from '../lib/logger.js';
 
 async function findPlayerUserIdByHandle(sessionId: string, handle: string): Promise<string | null> {
-  const { data: allPlayers } = await supabaseAdmin
-    .from('player_actions')
-    .select('player_id')
+  // Look up the player's user_id directly from their posts in this session
+  const { data: playerPost } = await supabaseAdmin
+    .from('social_posts')
+    .select('user_id')
     .eq('session_id', sessionId)
-    .limit(50);
+    .eq('author_handle', handle)
+    .eq('author_type', 'player')
+    .not('user_id', 'is', null)
+    .limit(1)
+    .single();
 
-  if (!allPlayers) return null;
+  if (playerPost?.user_id) return playerPost.user_id as string;
 
-  const uniqueIds = [...new Set(allPlayers.map((p) => p.player_id))];
+  // Fallback: check session_participants
+  const { data: participants } = await supabaseAdmin
+    .from('session_participants')
+    .select('user_id')
+    .eq('session_id', sessionId);
 
-  for (const playerId of uniqueIds) {
-    const { data: profile } = await supabaseAdmin
-      .from('user_profiles')
-      .select('id, username')
-      .eq('id', playerId)
-      .single();
+  if (!participants) return null;
 
-    if (!profile) continue;
-
-    const playerHandle = `@${(profile.username || profile.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`;
-    if (playerHandle === handle) return profile.id;
+  for (const p of participants) {
+    const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(p.user_id);
+    if (!authUser?.user) continue;
+    const email = authUser.user.email || '';
+    const constructedHandle = `@${(email || p.user_id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`;
+    if (constructedHandle === handle) return p.user_id;
   }
 
   return null;

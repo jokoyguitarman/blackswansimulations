@@ -112,6 +112,7 @@ export default function FacebookFeedApp() {
   const [loading, setLoading] = useState(true);
   const [composing, setComposing] = useState(false);
   const [composeText, setComposeText] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedFormat, setSelectedFormat] = useState<PostFormat>('text');
   const [showReactions, setShowReactions] = useState<string | null>(null);
   const [myReactions, setMyReactions] = useState<Record<string, string>>({});
@@ -124,6 +125,19 @@ export default function FacebookFeedApp() {
   const [mediaGenerating, setMediaGenerating] = useState(false);
   const [videoDuration, setVideoDuration] = useState(10);
   const [videoOrientation, setVideoOrientation] = useState<'16:9' | '9:16' | '1:1'>('16:9');
+  const [notifCount, setNotifCount] = useState(0);
+  const [notifications, setNotifications] = useState<
+    Array<{
+      id: string;
+      type: string;
+      title: string;
+      message: string;
+      read: boolean;
+      created_at: string;
+      metadata?: Record<string, unknown>;
+    }>
+  >([]);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set());
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   const [knownHandles, setKnownHandles] = useState<Array<{ handle: string; display_name: string }>>(
@@ -188,12 +202,77 @@ export default function FacebookFeedApp() {
     if (location.pathname.includes('/facebook')) loadPosts();
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Poll notification count
+  // Poll notification count (Facebook platform only)
+  useEffect(() => {
+    if (!sessionId) return;
+    const fetchCount = async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(
+          apiUrl(`/api/notifications?session_id=${sessionId}&read=false&limit=100`),
+          { headers },
+        );
+        if (res.ok) {
+          const json = await res.json();
+          const all = json.data || [];
+          const socialTypes = ['social_like', 'social_reply', 'social_mention', 'social_repost'];
+          const fbCount = all.filter(
+            (n: { type: string; metadata?: Record<string, unknown> }) =>
+              socialTypes.includes(n.type) && n.metadata?.platform === 'facebook',
+          ).length;
+          setNotifCount(fbCount);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 15000);
+    return () => clearInterval(interval);
+  }, [sessionId]);
+
+  async function fetchNotifications() {
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/notifications?session_id=${sessionId}&limit=50`), {
+        headers,
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const all = json.data || [];
+        setNotifications(all);
+        const socialTypes = ['social_like', 'social_reply', 'social_mention', 'social_repost'];
+        const unreadSocial = all.filter(
+          (n: { type: string; read: boolean; metadata?: Record<string, unknown> }) =>
+            socialTypes.includes(n.type) && n.metadata?.platform === 'facebook' && !n.read,
+        ).length;
+        setNotifCount(unreadSocial);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function markNotifRead(notifId: string) {
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(apiUrl(`/api/notifications/${notifId}/read`), { method: 'PUT', headers });
+      setNotifications((prev) => prev.map((n) => (n.id === notifId ? { ...n, read: true } : n)));
+      setNotifCount((c) => Math.max(0, c - 1));
+    } catch {
+      /* ignore */
+    }
+  }
+
   useWebSocket({
     sessionId: sessionId || '',
     eventTypes: [
       'social_post.created',
       'social_posts.engagement_update',
       'social_post.media_updated',
+      'notification.created',
     ],
     onEvent: (event) => {
       if (event.type === 'social_posts.engagement_update') {
@@ -247,6 +326,8 @@ export default function FacebookFeedApp() {
             return [newPost, ...prev];
           });
         }
+      } else if (event.type === 'notification.created') {
+        setNotifCount((c) => c + 1);
       }
     },
   });
@@ -425,7 +506,7 @@ export default function FacebookFeedApp() {
 
   return (
     <div
-      className="h-full flex flex-col"
+      className="h-full flex flex-col relative"
       style={{ backgroundColor: '#F0F2F5', colorScheme: 'light' as const }}
     >
       {/* ── Facebook Header ── */}
@@ -440,41 +521,16 @@ export default function FacebookFeedApp() {
           >
             fakebook
           </span>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => navigate(`/sim/${sessionId}/device/social`)}
-              className="w-9 h-9 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: '#000' }}
-              title="Switch to Z"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M4 4H20L4 20H20"
-                  stroke="#FFF"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-            <button
-              onClick={() => navigate(`/sim/${sessionId}/device/home`)}
-              className="w-9 h-9 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: '#E4E6EB' }}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#050505"
-                strokeWidth="2"
-              >
-                <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-                <polyline points="9 22 9 12 15 12 15 22" />
-              </svg>
-            </button>
-          </div>
+          <button
+            onClick={() => navigate(`/sim/${sessionId}/device/social`)}
+            className="w-9 h-9 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: '#000' }}
+            title="Switch to Z"
+          >
+            <span className="text-[16px] font-bold" style={{ color: '#FFFFFF' }}>
+              Z
+            </span>
+          </button>
         </div>
 
         {/* Nav Icons */}
@@ -529,14 +585,19 @@ export default function FacebookFeedApp() {
             },
             {
               label: 'Notif',
-              active: false,
+              active: showNotifPanel,
+              onClick: () => {
+                setShowNotifPanel(!showNotifPanel);
+                if (!showNotifPanel) fetchNotifications();
+              },
+              badge: notifCount,
               icon: (
                 <svg
                   width="22"
                   height="22"
                   viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#65676B"
+                  fill={showNotifPanel ? '#1877F2' : 'none'}
+                  stroke={showNotifPanel ? '#1877F2' : '#65676B'}
                   strokeWidth="2"
                 >
                   <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
@@ -564,8 +625,24 @@ export default function FacebookFeedApp() {
               ),
             },
           ].map((tab) => (
-            <div key={tab.label} className="flex flex-col items-center py-2 px-3 relative">
-              {tab.icon}
+            <div
+              key={tab.label}
+              className="flex flex-col items-center py-2 px-3 relative cursor-pointer"
+              onClick={'onClick' in tab && tab.onClick ? (tab.onClick as () => void) : undefined}
+            >
+              <div className="relative">
+                {tab.icon}
+                {'badge' in tab && (tab as { badge?: number }).badge! > 0 && (
+                  <span
+                    className="absolute -top-1 -right-2 min-w-[16px] h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white px-1"
+                    style={{ backgroundColor: '#F02849' }}
+                  >
+                    {(tab as { badge?: number }).badge! > 99
+                      ? '99+'
+                      : (tab as { badge?: number }).badge}
+                  </span>
+                )}
+              </div>
               {tab.active && (
                 <div
                   className="absolute bottom-0 left-0 right-0 h-[2px]"
@@ -575,6 +652,259 @@ export default function FacebookFeedApp() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Notification Panel Overlay */}
+      {showNotifPanel && (
+        <>
+          <div
+            className="absolute inset-0"
+            style={{ zIndex: 40 }}
+            onClick={() => setShowNotifPanel(false)}
+          />
+          <div
+            className="absolute left-0 right-0 overflow-y-auto"
+            style={{
+              top: 96,
+              zIndex: 45,
+              maxHeight: '65%',
+              backgroundColor: '#FFFFFF',
+              borderBottom: '2px solid #DADDE1',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+            }}
+          >
+            <div
+              className="flex items-center justify-between px-4 py-2.5"
+              style={{ borderBottom: '1px solid #DADDE1' }}
+            >
+              <span className="text-[17px] font-bold" style={{ color: '#050505' }}>
+                Notifications
+              </span>
+              {notifCount > 0 && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const headers = await getAuthHeaders();
+                      await fetch(apiUrl(`/api/notifications/read-all`), {
+                        method: 'PUT',
+                        headers,
+                        body: JSON.stringify({ session_id: sessionId }),
+                      });
+                      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+                      setNotifCount(0);
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                  className="text-[14px] font-semibold"
+                  style={{ color: '#1877F2' }}
+                >
+                  Mark all read
+                </button>
+              )}
+            </div>
+            {(() => {
+              const socialTypes = [
+                'social_like',
+                'social_reply',
+                'social_mention',
+                'social_repost',
+              ];
+              const fbNotifs = notifications.filter(
+                (n) => socialTypes.includes(n.type) && n.metadata?.platform === 'facebook',
+              );
+              return fbNotifs.length === 0 ? (
+                <div className="flex items-center justify-center py-8">
+                  <span className="text-[14px]" style={{ color: '#65676B' }}>
+                    No notifications yet
+                  </span>
+                </div>
+              ) : (
+                fbNotifs.map((notif) => (
+                  <button
+                    key={notif.id}
+                    onClick={() => {
+                      if (!notif.read) markNotifRead(notif.id);
+                      setShowNotifPanel(false);
+                    }}
+                    className="flex items-start gap-3 w-full text-left px-4 py-3 hover:bg-[#F2F3F5] transition-colors"
+                    style={{
+                      borderBottom: '1px solid #F0F2F5',
+                      backgroundColor: notif.read ? '#FFFFFF' : '#E7F3FF',
+                    }}
+                  >
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: '#E4E6EB' }}
+                    >
+                      {notif.type === 'social_like' ? (
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="#F02849"
+                          stroke="none"
+                        >
+                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                        </svg>
+                      ) : notif.type === 'social_reply' ? (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                          <path
+                            d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"
+                            stroke="#1877F2"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      ) : notif.type === 'social_mention' ? (
+                        <span className="text-[16px] font-bold" style={{ color: '#1877F2' }}>
+                          @
+                        </span>
+                      ) : (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                          <path
+                            d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"
+                            stroke="#45BD62"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[14px]" style={{ color: '#050505' }}>
+                        {notif.title}
+                      </p>
+                      {notif.message && (
+                        <p className="text-[13px] mt-0.5 truncate" style={{ color: '#65676B' }}>
+                          {notif.message}
+                        </p>
+                      )}
+                      <span
+                        className="text-[12px] mt-0.5 block"
+                        style={{ color: notif.read ? '#65676B' : '#1877F2' }}
+                      >
+                        {timeAgo(notif.created_at)}
+                      </span>
+                    </div>
+                    {!notif.read && (
+                      <div
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-2"
+                        style={{ backgroundColor: '#1877F2' }}
+                      />
+                    )}
+                  </button>
+                ))
+              );
+            })()}
+          </div>
+        </>
+      )}
+
+      {/* Search Bar */}
+      <div
+        className="flex-shrink-0 px-3 py-2 relative"
+        style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid #DADDE1', zIndex: 30 }}
+      >
+        <div
+          className="flex items-center rounded-full px-3 py-1.5"
+          style={{ backgroundColor: '#F0F2F5' }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="8" stroke="#65676B" strokeWidth="2" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" stroke="#65676B" strokeWidth="2" />
+          </svg>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search posts, #hashtags, @users..."
+            className="flex-1 bg-transparent outline-none text-[13px] ml-2"
+            style={{ color: '#050505' }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="text-[14px] ml-1"
+              style={{ color: '#65676B' }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        {/* Search suggestions */}
+        {searchQuery.length >= 1 &&
+          (() => {
+            const q = searchQuery.toLowerCase();
+            const allTags = [
+              ...new Set(
+                posts.flatMap((p) => (p.hashtags || []).map((t: string) => t.toLowerCase())),
+              ),
+            ];
+            const allHandles = [...new Set(posts.map((p) => p.author_handle))];
+            const allNames = [...new Set(posts.map((p) => p.author_display_name))];
+            const tagMatches = allTags.filter((t) => t.includes(q)).slice(0, 4);
+            const handleMatches = allHandles.filter((h) => h.toLowerCase().includes(q)).slice(0, 3);
+            const nameMatches = allNames
+              .filter(
+                (n) =>
+                  n.toLowerCase().includes(q) &&
+                  !handleMatches.some((h) =>
+                    posts.some((p) => p.author_handle === h && p.author_display_name === n),
+                  ),
+              )
+              .slice(0, 3);
+            const suggestions = [
+              ...tagMatches.map((t) => ({ type: 'hashtag' as const, value: t })),
+              ...handleMatches.map((h) => ({
+                type: 'user' as const,
+                value: h,
+                name: posts.find((p) => p.author_handle === h)?.author_display_name,
+              })),
+              ...nameMatches.map((n) => ({ type: 'name' as const, value: n })),
+            ];
+            if (suggestions.length === 0) return null;
+            return (
+              <div
+                className="absolute left-3 right-3 top-full mt-1 rounded-lg overflow-hidden z-50"
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
+                  border: '1px solid #DADDE1',
+                  maxHeight: 200,
+                  overflowY: 'auto',
+                }}
+              >
+                {suggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSearchQuery(s.value)}
+                    className="flex items-center gap-2 w-full text-left px-3 py-2 hover:bg-[#F2F3F5] transition-colors"
+                  >
+                    {s.type === 'hashtag' ? (
+                      <span className="text-[13px] font-bold" style={{ color: '#1877F2' }}>
+                        #
+                      </span>
+                    ) : (
+                      <span className="text-[13px] font-bold" style={{ color: '#1877F2' }}>
+                        @
+                      </span>
+                    )}
+                    <span className="text-[13px]" style={{ color: '#050505' }}>
+                      {s.value}
+                    </span>
+                    {s.type === 'user' && s.name && (
+                      <span className="text-[12px] ml-1" style={{ color: '#65676B' }}>
+                        {s.name}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
       </div>
 
       {/* ── Create Post Bar ── */}
@@ -635,250 +965,338 @@ export default function FacebookFeedApp() {
             </p>
           </div>
         ) : (
-          posts.map((post) => {
-            const badge = getBadge(post.author_type);
-            const reactionEmojis = getReactionEmojis(post.like_count);
-            const replies = postReplies[post.id] || [];
-            const isExpanded = expandedPosts.has(post.id);
-            const isLong = post.content.length > 200;
+          posts
+            .filter((p) => {
+              if (p.reply_to_post_id) return false;
+              const q = searchQuery.toLowerCase().trim();
+              if (!q) return true;
+              const content = (p.content || '').toLowerCase();
+              const handle = (p.author_handle || '').toLowerCase();
+              const name = (p.author_display_name || '').toLowerCase();
+              const tags = (p.hashtags || []).map((t: string) => t.toLowerCase());
+              return (
+                content.includes(q) ||
+                handle.includes(q) ||
+                name.includes(q) ||
+                tags.some((t: string) => t.includes(q))
+              );
+            })
+            .map((post) => {
+              const badge = getBadge(post.author_type);
+              const reactionEmojis = getReactionEmojis(post.like_count);
+              const replies = postReplies[post.id] || [];
+              const isExpanded = expandedPosts.has(post.id);
+              const isLong = post.content.length > 200;
 
-            return (
-              <div
-                key={post.id}
-                className="mt-2"
-                style={{
-                  backgroundColor: '#FFFFFF',
-                  borderTop: '1px solid #CED0D4',
-                  borderBottom: '1px solid #CED0D4',
-                }}
-              >
-                {/* Author Row */}
-                <div className="flex items-center gap-2.5 px-3 pt-3 pb-1.5">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[15px] flex-shrink-0"
-                    style={{ backgroundColor: getAvatarColor(post.author_display_name) }}
-                  >
-                    {post.author_display_name.charAt(0).toUpperCase()}
+              return (
+                <div
+                  key={post.id}
+                  className="mt-2"
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderTop: '1px solid #CED0D4',
+                    borderBottom: '1px solid #CED0D4',
+                  }}
+                >
+                  {/* Author Row */}
+                  <div className="flex items-center gap-2.5 px-3 pt-3 pb-1.5">
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[15px] flex-shrink-0"
+                      style={{ backgroundColor: getAvatarColor(post.author_display_name) }}
+                    >
+                      {post.author_display_name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1">
+                        <span className="font-semibold text-[15px]" style={{ color: '#050505' }}>
+                          {post.author_display_name}
+                        </span>
+                        {badge && (
+                          <span className="text-[13px]" style={{ color: '#1877F2' }}>
+                            {badge}
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        className="flex items-center gap-1 text-[13px]"
+                        style={{ color: '#65676B' }}
+                      >
+                        <span>{timeAgo(post.created_at)}</span>
+                        <span>·</span>
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="#65676B">
+                          <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm0 14.5a6.5 6.5 0 110-13 6.5 6.5 0 010 13z" />
+                        </svg>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleFlag(post.id)}
+                      className="p-1.5 rounded-full hover:bg-[#F2F3F5]"
+                    >
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill={post.flagged_by_me ? '#F59E0B' : '#65676B'}
+                      >
+                        <circle cx="12" cy="5" r="2" />
+                        <circle cx="12" cy="12" r="2" />
+                        <circle cx="12" cy="19" r="2" />
+                      </svg>
+                    </button>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1">
-                      <span className="font-semibold text-[15px]" style={{ color: '#050505' }}>
-                        {post.author_display_name}
+
+                  {/* Content Flags */}
+                  {!!(
+                    post.content_flags?.is_hate_speech || post.content_flags?.is_misinformation
+                  ) && (
+                    <div className="px-3 pb-1 flex gap-1.5">
+                      {!!post.content_flags.is_hate_speech && (
+                        <span
+                          className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                          style={{ backgroundColor: '#FDECEA', color: '#D32F2F' }}
+                        >
+                          Hate Speech
+                        </span>
+                      )}
+                      {!!post.content_flags.is_misinformation && (
+                        <span
+                          className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                          style={{ backgroundColor: '#FFF3E0', color: '#E65100' }}
+                        >
+                          Misinformation
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {post.requires_response && !post.responded_at && (
+                    <div className="px-3 pb-1">
+                      <span
+                        className="text-[11px] font-bold px-2 py-0.5 rounded"
+                        style={{ backgroundColor: '#FFF3CD', color: '#856404' }}
+                      >
+                        REQUIRES RESPONSE
                       </span>
-                      {badge && (
-                        <span className="text-[13px]" style={{ color: '#1877F2' }}>
-                          {badge}
+                    </div>
+                  )}
+
+                  {post.post_format && FORMAT_BADGE[post.post_format] && (
+                    <div className="px-3 pb-1">
+                      <span
+                        className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                        style={{
+                          backgroundColor: FORMAT_BADGE[post.post_format].bg,
+                          color: FORMAT_BADGE[post.post_format].fg,
+                        }}
+                      >
+                        {FORMAT_BADGE[post.post_format].label}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Content Text */}
+                  <div className="px-3 pb-2">
+                    <p
+                      className="text-[15px] leading-[20px] whitespace-pre-wrap"
+                      style={{ color: '#050505' }}
+                    >
+                      {(() => {
+                        const text =
+                          isLong && !isExpanded
+                            ? post.content.substring(0, 200) + '...'
+                            : post.content;
+                        const rendered = String(text)
+                          .split(/(#\w+)/g)
+                          .map((part: string, i: number) =>
+                            part.startsWith('#') ? (
+                              <span
+                                key={i}
+                                onClick={() => setSearchQuery(part)}
+                                className="cursor-pointer hover:underline"
+                                style={{ color: '#1877F2' }}
+                              >
+                                {part}
+                              </span>
+                            ) : (
+                              <span key={i}>{part}</span>
+                            ),
+                          );
+                        return isLong && !isExpanded ? (
+                          <>
+                            {rendered}
+                            <button
+                              onClick={() =>
+                                setExpandedPosts((prev) => new Set([...prev, post.id]))
+                              }
+                              className="font-semibold ml-1"
+                              style={{ color: '#65676B' }}
+                            >
+                              See more
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {rendered}
+                            {isLong && (
+                              <button
+                                onClick={() =>
+                                  setExpandedPosts((prev) => {
+                                    const n = new Set(prev);
+                                    n.delete(post.id);
+                                    return n;
+                                  })
+                                }
+                                className="font-semibold ml-1"
+                                style={{ color: '#65676B' }}
+                              >
+                                See less
+                              </button>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </p>
+                  </div>
+
+                  {/* Media (full width, no padding) */}
+                  {Array.isArray(post.media_urls) && post.media_urls.length > 0 && (
+                    <div className="relative">
+                      {/\.(mp4|webm|mov)(\?|$)/i.test(post.media_urls[0]) ? (
+                        <video
+                          src={post.media_urls[0]}
+                          controls
+                          className="w-full"
+                          style={{ maxHeight: 400, objectFit: 'contain', backgroundColor: '#000' }}
+                        />
+                      ) : (
+                        <img
+                          src={post.media_urls[0]}
+                          alt=""
+                          className="w-full"
+                          style={{ maxHeight: 400, objectFit: 'cover' }}
+                        />
+                      )}
+                      {post.post_format === 'video_concept' &&
+                        !/\.(mp4|webm|mov)(\?|$)/i.test(post.media_urls[0] || '') && (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div
+                              className="w-16 h-16 rounded-full flex items-center justify-center"
+                              style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+                            >
+                              <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
+                                <polygon points="8,5 19,12 8,19" />
+                              </svg>
+                            </div>
+                          </div>
+                        )}
+                    </div>
+                  )}
+
+                  {/* Reaction + Comment Counts */}
+                  <div
+                    className="flex items-center justify-between px-3 py-2"
+                    style={{ borderBottom: '1px solid #CED0D4' }}
+                  >
+                    <div className="flex items-center gap-1">
+                      {reactionEmojis.length > 0 && (
+                        <div className="flex -space-x-0.5">
+                          {reactionEmojis.map((emoji, i) => (
+                            <span key={i} className="text-[14px]">
+                              {emoji}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {post.like_count > 0 && (
+                        <span className="text-[14px] ml-1" style={{ color: '#65676B' }}>
+                          {formatCount(post.like_count)}
                         </span>
                       )}
                     </div>
                     <div
-                      className="flex items-center gap-1 text-[13px]"
+                      className="flex items-center gap-3 text-[14px]"
                       style={{ color: '#65676B' }}
                     >
-                      <span>{timeAgo(post.created_at)}</span>
-                      <span>·</span>
-                      <svg width="12" height="12" viewBox="0 0 16 16" fill="#65676B">
-                        <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm0 14.5a6.5 6.5 0 110-13 6.5 6.5 0 010 13z" />
-                      </svg>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleFlag(post.id)}
-                    className="p-1.5 rounded-full hover:bg-[#F2F3F5]"
-                  >
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill={post.flagged_by_me ? '#F59E0B' : '#65676B'}
-                    >
-                      <circle cx="12" cy="5" r="2" />
-                      <circle cx="12" cy="12" r="2" />
-                      <circle cx="12" cy="19" r="2" />
-                    </svg>
-                  </button>
-                </div>
-
-                {/* Content Flags */}
-                {!!(
-                  post.content_flags?.is_hate_speech || post.content_flags?.is_misinformation
-                ) && (
-                  <div className="px-3 pb-1 flex gap-1.5">
-                    {!!post.content_flags.is_hate_speech && (
-                      <span
-                        className="text-[11px] px-2 py-0.5 rounded font-semibold"
-                        style={{ backgroundColor: '#FDECEA', color: '#D32F2F' }}
-                      >
-                        Hate Speech
-                      </span>
-                    )}
-                    {!!post.content_flags.is_misinformation && (
-                      <span
-                        className="text-[11px] px-2 py-0.5 rounded font-semibold"
-                        style={{ backgroundColor: '#FFF3E0', color: '#E65100' }}
-                      >
-                        Misinformation
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {post.requires_response && !post.responded_at && (
-                  <div className="px-3 pb-1">
-                    <span
-                      className="text-[11px] font-bold px-2 py-0.5 rounded"
-                      style={{ backgroundColor: '#FFF3CD', color: '#856404' }}
-                    >
-                      REQUIRES RESPONSE
-                    </span>
-                  </div>
-                )}
-
-                {post.post_format && FORMAT_BADGE[post.post_format] && (
-                  <div className="px-3 pb-1">
-                    <span
-                      className="text-[11px] px-2 py-0.5 rounded font-semibold"
-                      style={{
-                        backgroundColor: FORMAT_BADGE[post.post_format].bg,
-                        color: FORMAT_BADGE[post.post_format].fg,
-                      }}
-                    >
-                      {FORMAT_BADGE[post.post_format].label}
-                    </span>
-                  </div>
-                )}
-
-                {/* Content Text */}
-                <div className="px-3 pb-2">
-                  <p
-                    className="text-[15px] leading-[20px] whitespace-pre-wrap"
-                    style={{ color: '#050505' }}
-                  >
-                    {isLong && !isExpanded ? (
-                      <>
-                        {post.content.substring(0, 200)}...
+                      {post.reply_count > 0 && (
                         <button
-                          onClick={() => setExpandedPosts((prev) => new Set([...prev, post.id]))}
-                          className="font-semibold ml-1"
+                          onClick={() => setExpandedComments((prev) => new Set([...prev, post.id]))}
+                          className="hover:underline"
                           style={{ color: '#65676B' }}
                         >
-                          See more
+                          {formatCount(post.reply_count)} comments
                         </button>
-                      </>
-                    ) : (
-                      <>
-                        {post.content}
-                        {isLong && (
-                          <button
-                            onClick={() =>
-                              setExpandedPosts((prev) => {
-                                const n = new Set(prev);
-                                n.delete(post.id);
-                                return n;
-                              })
-                            }
-                            className="font-semibold ml-1"
-                            style={{ color: '#65676B' }}
-                          >
-                            See less
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </p>
-                </div>
-
-                {/* Media (full width, no padding) */}
-                {Array.isArray(post.media_urls) && post.media_urls.length > 0 && (
-                  <div className="relative">
-                    {/\.(mp4|webm|mov)(\?|$)/i.test(post.media_urls[0]) ? (
-                      <video
-                        src={post.media_urls[0]}
-                        controls
-                        className="w-full"
-                        style={{ maxHeight: 400, objectFit: 'contain', backgroundColor: '#000' }}
-                      />
-                    ) : (
-                      <img
-                        src={post.media_urls[0]}
-                        alt=""
-                        className="w-full"
-                        style={{ maxHeight: 400, objectFit: 'cover' }}
-                      />
-                    )}
-                    {post.post_format === 'video_concept' &&
-                      !/\.(mp4|webm|mov)(\?|$)/i.test(post.media_urls[0] || '') && (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div
-                            className="w-16 h-16 rounded-full flex items-center justify-center"
-                            style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
-                          >
-                            <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
-                              <polygon points="8,5 19,12 8,19" />
-                            </svg>
-                          </div>
-                        </div>
                       )}
+                      {post.repost_count > 0 && (
+                        <span>{formatCount(post.repost_count)} shares</span>
+                      )}
+                    </div>
                   </div>
-                )}
 
-                {/* Reaction + Comment Counts */}
-                <div
-                  className="flex items-center justify-between px-3 py-2"
-                  style={{ borderBottom: '1px solid #CED0D4' }}
-                >
-                  <div className="flex items-center gap-1">
-                    {reactionEmojis.length > 0 && (
-                      <div className="flex -space-x-0.5">
-                        {reactionEmojis.map((emoji, i) => (
-                          <span key={i} className="text-[14px]">
-                            {emoji}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {post.like_count > 0 && (
-                      <span className="text-[14px] ml-1" style={{ color: '#65676B' }}>
-                        {formatCount(post.like_count)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 text-[14px]" style={{ color: '#65676B' }}>
-                    {post.reply_count > 0 && (
-                      <button
-                        onClick={() => setExpandedComments((prev) => new Set([...prev, post.id]))}
-                        className="hover:underline"
-                        style={{ color: '#65676B' }}
-                      >
-                        {formatCount(post.reply_count)} comments
-                      </button>
-                    )}
-                    {post.repost_count > 0 && <span>{formatCount(post.repost_count)} shares</span>}
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div
-                  className="flex items-center justify-around px-1 py-0.5"
-                  style={{ borderBottom: '1px solid #CED0D4', backgroundColor: '#FFFFFF' }}
-                >
-                  <div className="relative flex-1">
-                    {(() => {
-                      const myRx = myReactions[post.id];
-                      const rxInfo = myRx ? REACTIONS.find((r) => r.type === myRx) : null;
-                      const rxColor =
-                        myRx === 'like'
-                          ? '#1877F2'
-                          : myRx === 'love'
-                            ? '#F33E58'
-                            : myRx === 'angry'
-                              ? '#E9710F'
-                              : myRx
-                                ? '#F7B928'
-                                : '#65676B';
-                      return (
-                        <button
-                          onClick={() => handleReaction(post.id, 'like')}
+                  {/* Action Buttons */}
+                  <div
+                    className="flex items-center justify-around px-1 py-0.5"
+                    style={{ borderBottom: '1px solid #CED0D4', backgroundColor: '#FFFFFF' }}
+                  >
+                    <div className="relative flex-1">
+                      {(() => {
+                        const myRx = myReactions[post.id];
+                        const rxInfo = myRx ? REACTIONS.find((r) => r.type === myRx) : null;
+                        const rxColor =
+                          myRx === 'like'
+                            ? '#1877F2'
+                            : myRx === 'love'
+                              ? '#F33E58'
+                              : myRx === 'angry'
+                                ? '#E9710F'
+                                : myRx
+                                  ? '#F7B928'
+                                  : '#65676B';
+                        return (
+                          <button
+                            onClick={() => handleReaction(post.id, 'like')}
+                            onMouseEnter={() => {
+                              if (reactionTimeoutRef.current)
+                                clearTimeout(reactionTimeoutRef.current);
+                              setShowReactions(post.id);
+                            }}
+                            onMouseLeave={() => {
+                              reactionTimeoutRef.current = setTimeout(
+                                () => setShowReactions(null),
+                                600,
+                              );
+                            }}
+                            className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
+                            style={{ color: post.liked_by_me ? rxColor : '#65676B' }}
+                          >
+                            {rxInfo ? (
+                              <span className="text-[18px] leading-none">{rxInfo.emoji}</span>
+                            ) : (
+                              <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                              >
+                                <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" />
+                              </svg>
+                            )}
+                            <span className="text-[14px] font-semibold">
+                              {rxInfo
+                                ? rxInfo.type.charAt(0).toUpperCase() + rxInfo.type.slice(1)
+                                : 'Like'}
+                            </span>
+                          </button>
+                        );
+                      })()}
+                      {showReactions === post.id && (
+                        <div
+                          className="absolute bottom-full left-0 mb-1 flex gap-1 px-2.5 py-2 rounded-full z-50"
+                          style={{
+                            backgroundColor: '#FFFFFF',
+                            boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
+                          }}
                           onMouseEnter={() => {
                             if (reactionTimeoutRef.current)
                               clearTimeout(reactionTimeoutRef.current);
@@ -887,105 +1305,32 @@ export default function FacebookFeedApp() {
                           onMouseLeave={() => {
                             reactionTimeoutRef.current = setTimeout(
                               () => setShowReactions(null),
-                              600,
+                              300,
                             );
                           }}
-                          className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
-                          style={{ color: post.liked_by_me ? rxColor : '#65676B' }}
                         >
-                          {rxInfo ? (
-                            <span className="text-[18px] leading-none">{rxInfo.emoji}</span>
-                          ) : (
-                            <svg
-                              width="18"
-                              height="18"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
+                          {REACTIONS.map((r) => (
+                            <button
+                              key={r.type}
+                              onClick={() => handleReaction(post.id, r.type)}
+                              className="hover:scale-125 transition-transform leading-none bg-transparent border-0 p-0 cursor-pointer"
+                              style={{ fontSize: 28, lineHeight: 1 }}
+                              title={r.type}
                             >
-                              <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" />
-                            </svg>
-                          )}
-                          <span className="text-[14px] font-semibold">
-                            {rxInfo
-                              ? rxInfo.type.charAt(0).toUpperCase() + rxInfo.type.slice(1)
-                              : 'Like'}
-                          </span>
-                        </button>
-                      );
-                    })()}
-                    {showReactions === post.id && (
-                      <div
-                        className="absolute bottom-full left-0 mb-1 flex gap-1 px-2.5 py-2 rounded-full z-50"
-                        style={{
-                          backgroundColor: '#FFFFFF',
-                          boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
-                        }}
-                        onMouseEnter={() => {
-                          if (reactionTimeoutRef.current) clearTimeout(reactionTimeoutRef.current);
-                          setShowReactions(post.id);
-                        }}
-                        onMouseLeave={() => {
-                          reactionTimeoutRef.current = setTimeout(
-                            () => setShowReactions(null),
-                            300,
-                          );
-                        }}
-                      >
-                        {REACTIONS.map((r) => (
-                          <button
-                            key={r.type}
-                            onClick={() => handleReaction(post.id, r.type)}
-                            className="hover:scale-125 transition-transform leading-none bg-transparent border-0 p-0 cursor-pointer"
-                            style={{ fontSize: 28, lineHeight: 1 }}
-                            title={r.type}
-                          >
-                            {r.emoji}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => {
-                      setExpandedComments((prev) => new Set([...prev, post.id]));
-                      setTimeout(() => commentInputRefs.current[post.id]?.focus(), 100);
-                    }}
-                    className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
-                    style={{ color: '#65676B' }}
-                  >
-                    <svg
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
+                              {r.emoji}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => {
+                        setExpandedComments((prev) => new Set([...prev, post.id]));
+                        setTimeout(() => commentInputRefs.current[post.id]?.focus(), 100);
+                      }}
+                      className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
+                      style={{ color: '#65676B' }}
                     >
-                      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-                    </svg>
-                    <span className="text-[14px] font-semibold">Comment</span>
-                  </button>
-                  <button
-                    onClick={() => handleShare(post.id, post.author_handle)}
-                    className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
-                    style={{ color: copiedPostId === post.id ? '#22c55e' : '#65676B' }}
-                  >
-                    {copiedPostId === post.id ? (
-                      <svg
-                        width="18"
-                        height="18"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="#22c55e"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    ) : (
                       <svg
                         width="18"
                         height="18"
@@ -994,220 +1339,271 @@ export default function FacebookFeedApp() {
                         stroke="currentColor"
                         strokeWidth="2"
                       >
-                        <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" />
+                        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
                       </svg>
-                    )}
-                    <span className="text-[14px] font-semibold">
-                      {copiedPostId === post.id ? 'Copied!' : 'Share'}
-                    </span>
-                  </button>
-                </div>
-
-                {/* Inline Comments */}
-                {(() => {
-                  const commentsExpanded = expandedComments.has(post.id);
-                  const visibleReplies = commentsExpanded ? replies : replies.slice(-2);
-                  return (
-                    <>
-                      {replies.length > 0 && (
-                        <div className="px-3 pt-2 pb-1" style={{ backgroundColor: '#FFFFFF' }}>
-                          {replies.length > 2 && !commentsExpanded && (
-                            <button
-                              onClick={() =>
-                                setExpandedComments((prev) => new Set([...prev, post.id]))
-                              }
-                              className="text-[14px] font-semibold mb-2"
-                              style={{ color: '#65676B' }}
-                            >
-                              View all {replies.length} comments
-                            </button>
-                          )}
-                          {commentsExpanded && replies.length > 2 && (
-                            <button
-                              onClick={() =>
-                                setExpandedComments((prev) => {
-                                  const n = new Set(prev);
-                                  n.delete(post.id);
-                                  return n;
-                                })
-                              }
-                              className="text-[14px] font-semibold mb-2"
-                              style={{ color: '#65676B' }}
-                            >
-                              Hide comments
-                            </button>
-                          )}
-                          {visibleReplies.map((reply) => (
-                            <div key={reply.id} className="flex gap-2 mb-2.5">
-                              <div
-                                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[12px] flex-shrink-0"
-                                style={{
-                                  backgroundColor: getAvatarColor(reply.author_display_name),
-                                }}
-                              >
-                                {reply.author_display_name.charAt(0).toUpperCase()}
-                              </div>
-                              <div>
-                                <div
-                                  className="rounded-2xl px-3 py-1.5"
-                                  style={{ backgroundColor: '#F0F2F5' }}
-                                >
-                                  <span
-                                    className="text-[13px] font-semibold"
-                                    style={{ color: '#050505' }}
-                                  >
-                                    {reply.author_display_name}
-                                  </span>
-                                  <p className="text-[14px]" style={{ color: '#050505' }}>
-                                    {reply.content}
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-3 ml-3 mt-0.5">
-                                  <button
-                                    onClick={() => handleReaction(reply.id, 'like')}
-                                    className="text-[12px] font-semibold hover:underline"
-                                    style={{ color: reply.liked_by_me ? '#1877F2' : '#65676B' }}
-                                  >
-                                    Like
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      setCommentText((prev) => ({
-                                        ...prev,
-                                        [post.id]: `${reply.author_handle} `,
-                                      }));
-                                      setExpandedComments((prev) => new Set([...prev, post.id]));
-                                      setTimeout(
-                                        () => commentInputRefs.current[post.id]?.focus(),
-                                        100,
-                                      );
-                                    }}
-                                    className="text-[12px] font-semibold hover:underline"
-                                    style={{ color: '#65676B' }}
-                                  >
-                                    Reply
-                                  </button>
-                                  <span className="text-[12px]" style={{ color: '#65676B' }}>
-                                    {timeAgo(reply.created_at)}
-                                  </span>
-                                  {reply.like_count > 0 && (
-                                    <span className="text-[12px]" style={{ color: '#65676B' }}>
-                                      👍 {reply.like_count}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                      <span className="text-[14px] font-semibold">Comment</span>
+                    </button>
+                    <button
+                      onClick={() => handleShare(post.id, post.author_handle)}
+                      className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
+                      style={{ color: copiedPostId === post.id ? '#22c55e' : '#65676B' }}
+                    >
+                      {copiedPostId === post.id ? (
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="#22c55e"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      ) : (
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" />
+                        </svg>
                       )}
+                      <span className="text-[14px] font-semibold">
+                        {copiedPostId === post.id ? 'Copied!' : 'Share'}
+                      </span>
+                    </button>
+                  </div>
 
-                      {/* Comment Input */}
-                      <div
-                        className="flex items-center gap-2 px-3 py-1.5 relative"
-                        style={{ backgroundColor: '#FFFFFF' }}
-                      >
-                        <div
-                          className="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-[10px] flex-shrink-0"
-                          style={{ backgroundColor: '#1877F2' }}
-                        >
-                          Y
-                        </div>
-                        <div
-                          className="flex-1 flex items-center rounded-full px-3 py-1 relative"
-                          style={{ backgroundColor: '#F0F2F5' }}
-                        >
-                          <input
-                            ref={(el) => {
-                              commentInputRefs.current[post.id] = el;
-                            }}
-                            type="text"
-                            value={commentText[post.id] || ''}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setCommentText((prev) => ({ ...prev, [post.id]: val }));
-                              const match = val.match(/@(\w*)$/);
-                              if (match) {
-                                setMentionQuery(match[1].toLowerCase());
-                                setShowMentions(true);
-                              } else {
-                                setShowMentions(false);
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                handleComment(post.id);
-                                setShowMentions(false);
-                              }
-                            }}
-                            placeholder="Write a comment..."
-                            className="flex-1 bg-transparent text-[13px] outline-none"
-                            style={{ color: '#050505' }}
-                          />
-                          {commentText[post.id]?.trim() && (
-                            <button
-                              onClick={() => {
-                                handleComment(post.id);
-                                setShowMentions(false);
-                              }}
-                              className="ml-1"
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877F2">
-                                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                              </svg>
-                            </button>
-                          )}
-                          {showMentions &&
-                            document.activeElement === commentInputRefs.current[post.id] && (
-                              <div
-                                className="absolute left-0 right-0 bottom-full mb-1 rounded-lg overflow-hidden z-50"
-                                style={{
-                                  backgroundColor: '#FFFFFF',
-                                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                                  maxHeight: 120,
-                                  overflowY: 'auto',
-                                }}
+                  {/* Inline Comments */}
+                  {(() => {
+                    const commentsExpanded = expandedComments.has(post.id);
+                    const visibleReplies = commentsExpanded ? replies : replies.slice(-2);
+                    return (
+                      <>
+                        {replies.length > 0 && (
+                          <div className="px-3 pt-2 pb-1" style={{ backgroundColor: '#FFFFFF' }}>
+                            {replies.length > 2 && !commentsExpanded && (
+                              <button
+                                onClick={() =>
+                                  setExpandedComments((prev) => new Set([...prev, post.id]))
+                                }
+                                className="text-[14px] font-semibold mb-2"
+                                style={{ color: '#65676B' }}
                               >
-                                {knownHandles
-                                  .filter((h) => h.handle.toLowerCase().includes(mentionQuery))
-                                  .slice(0, 5)
-                                  .map((h) => (
-                                    <button
-                                      key={h.handle}
-                                      onMouseDown={(e) => {
-                                        e.preventDefault();
-                                        setCommentText((prev) => ({
-                                          ...prev,
-                                          [post.id]: (prev[post.id] || '').replace(
-                                            /@\w*$/,
-                                            h.handle + ' ',
-                                          ),
-                                        }));
-                                        setShowMentions(false);
-                                        commentInputRefs.current[post.id]?.focus();
-                                      }}
-                                      className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-[#F2F3F5]"
+                                View all {replies.length} comments
+                              </button>
+                            )}
+                            {commentsExpanded && replies.length > 2 && (
+                              <button
+                                onClick={() =>
+                                  setExpandedComments((prev) => {
+                                    const n = new Set(prev);
+                                    n.delete(post.id);
+                                    return n;
+                                  })
+                                }
+                                className="text-[14px] font-semibold mb-2"
+                                style={{ color: '#65676B' }}
+                              >
+                                Hide comments
+                              </button>
+                            )}
+                            {visibleReplies.map((reply) => (
+                              <div key={reply.id} className="flex gap-2 mb-2.5">
+                                <div
+                                  className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[12px] flex-shrink-0"
+                                  style={{
+                                    backgroundColor: getAvatarColor(reply.author_display_name),
+                                  }}
+                                >
+                                  {reply.author_display_name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div
+                                    className="rounded-2xl px-3 py-1.5"
+                                    style={{ backgroundColor: '#F0F2F5' }}
+                                  >
+                                    <span
+                                      className="text-[13px] font-semibold"
                                       style={{ color: '#050505' }}
                                     >
-                                      <span style={{ color: '#1877F2' }}>{h.handle}</span>
-                                      <span
-                                        className="ml-1 text-[11px]"
-                                        style={{ color: '#65676B' }}
-                                      >
-                                        {h.display_name}
-                                      </span>
+                                      {reply.author_display_name}
+                                    </span>
+                                    <p className="text-[14px]" style={{ color: '#050505' }}>
+                                      {reply.content}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-3 ml-3 mt-0.5">
+                                    <button
+                                      onClick={() => handleReaction(reply.id, 'like')}
+                                      className="text-[12px] font-semibold hover:underline"
+                                      style={{ color: reply.liked_by_me ? '#1877F2' : '#65676B' }}
+                                    >
+                                      Like
                                     </button>
-                                  ))}
+                                    <button
+                                      onClick={() => {
+                                        setCommentText((prev) => ({
+                                          ...prev,
+                                          [post.id]: `${reply.author_handle} `,
+                                        }));
+                                        setExpandedComments((prev) => new Set([...prev, post.id]));
+                                        setTimeout(
+                                          () => commentInputRefs.current[post.id]?.focus(),
+                                          100,
+                                        );
+                                      }}
+                                      className="text-[12px] font-semibold hover:underline"
+                                      style={{ color: '#65676B' }}
+                                    >
+                                      Reply
+                                    </button>
+                                    <span className="text-[12px]" style={{ color: '#65676B' }}>
+                                      {timeAgo(reply.created_at)}
+                                    </span>
+                                    {reply.like_count > 0 && (
+                                      <span className="text-[12px]" style={{ color: '#65676B' }}>
+                                        👍 {reply.like_count}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Comment Input */}
+                        {(commentText[post.id] || '').startsWith('@') && (
+                          <div
+                            className="flex items-center justify-between px-3 pt-1"
+                            style={{ backgroundColor: '#FFFFFF' }}
+                          >
+                            <span className="text-[12px]" style={{ color: '#65676B' }}>
+                              Replying to{' '}
+                              <span style={{ color: '#1877F2' }}>
+                                {(commentText[post.id] || '').split(' ')[0]}
+                              </span>
+                            </span>
+                            <button
+                              onClick={() => setCommentText((prev) => ({ ...prev, [post.id]: '' }))}
+                              className="text-[11px]"
+                              style={{ color: '#65676B' }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+                        <div
+                          className="flex items-center gap-2 px-3 py-1.5 relative"
+                          style={{ backgroundColor: '#FFFFFF' }}
+                        >
+                          <div
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-[10px] flex-shrink-0"
+                            style={{ backgroundColor: '#1877F2' }}
+                          >
+                            Y
+                          </div>
+                          <div
+                            className="flex-1 flex items-center rounded-full px-3 py-1 relative"
+                            style={{ backgroundColor: '#F0F2F5' }}
+                          >
+                            <input
+                              ref={(el) => {
+                                commentInputRefs.current[post.id] = el;
+                              }}
+                              type="text"
+                              value={commentText[post.id] || ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setCommentText((prev) => ({ ...prev, [post.id]: val }));
+                                const match = val.match(/@(\w*)$/);
+                                if (match) {
+                                  setMentionQuery(match[1].toLowerCase());
+                                  setShowMentions(true);
+                                } else {
+                                  setShowMentions(false);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleComment(post.id);
+                                  setShowMentions(false);
+                                }
+                              }}
+                              placeholder="Write a comment..."
+                              className="flex-1 bg-transparent text-[13px] outline-none"
+                              style={{ color: '#050505' }}
+                            />
+                            {commentText[post.id]?.trim() && (
+                              <button
+                                onClick={() => {
+                                  handleComment(post.id);
+                                  setShowMentions(false);
+                                }}
+                                className="ml-1"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="#1877F2">
+                                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                                </svg>
+                              </button>
                             )}
+                            {showMentions &&
+                              document.activeElement === commentInputRefs.current[post.id] && (
+                                <div
+                                  className="absolute left-0 right-0 bottom-full mb-1 rounded-lg overflow-hidden z-50"
+                                  style={{
+                                    backgroundColor: '#FFFFFF',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                                    maxHeight: 120,
+                                    overflowY: 'auto',
+                                  }}
+                                >
+                                  {knownHandles
+                                    .filter((h) => h.handle.toLowerCase().includes(mentionQuery))
+                                    .slice(0, 5)
+                                    .map((h) => (
+                                      <button
+                                        key={h.handle}
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          setCommentText((prev) => ({
+                                            ...prev,
+                                            [post.id]: (prev[post.id] || '').replace(
+                                              /@\w*$/,
+                                              h.handle + ' ',
+                                            ),
+                                          }));
+                                          setShowMentions(false);
+                                          commentInputRefs.current[post.id]?.focus();
+                                        }}
+                                        className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-[#F2F3F5]"
+                                        style={{ color: '#050505' }}
+                                      >
+                                        <span style={{ color: '#1877F2' }}>{h.handle}</span>
+                                        <span
+                                          className="ml-1 text-[11px]"
+                                          style={{ color: '#65676B' }}
+                                        >
+                                          {h.display_name}
+                                        </span>
+                                      </button>
+                                    ))}
+                                </div>
+                              )}
+                          </div>
                         </div>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-            );
-          })
+                      </>
+                    );
+                  })()}
+                </div>
+              );
+            })
         )}
         <div style={{ height: 16 }} />
       </div>
@@ -1308,8 +1704,9 @@ export default function FacebookFeedApp() {
                   />
                   {showMentions && (
                     <div
-                      className="absolute left-0 right-0 top-full mt-1 rounded-lg overflow-hidden z-50"
+                      className="absolute left-0 right-0 rounded-lg overflow-hidden z-50"
                       style={{
+                        top: 40,
                         backgroundColor: '#FFFFFF',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
                         maxHeight: 150,

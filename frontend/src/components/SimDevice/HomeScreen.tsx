@@ -153,21 +153,38 @@ export default function HomeScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  // Poll notification badge counts
+  // Poll notification badge counts (platform-specific)
   useEffect(() => {
     if (!sessionId) return;
     const fetchBadges = async () => {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(apiUrl(`/api/notifications/unread/count?session_id=${sessionId}`), {
-          headers,
-        });
+        const res = await fetch(
+          apiUrl(`/api/notifications?session_id=${sessionId}&read=false&limit=100`),
+          {
+            headers,
+          },
+        );
         if (res.ok) {
           const json = await res.json();
-          const total = Number(json.count) || 0;
-          if (total > 0) {
-            const half = Math.ceil(total / 2);
-            setBadges({ social: half, facebook: total - half });
+          const all = (json.data || []) as Array<{
+            type: string;
+            metadata?: Record<string, unknown>;
+          }>;
+          const socialTypes = ['social_like', 'social_reply', 'social_mention', 'social_repost'];
+          const zCount = all.filter(
+            (n) =>
+              socialTypes.includes(n.type) &&
+              (!n.metadata?.platform || n.metadata.platform === 'x_twitter'),
+          ).length;
+          const fbCount = all.filter(
+            (n) => socialTypes.includes(n.type) && n.metadata?.platform === 'facebook',
+          ).length;
+          if (zCount > 0 || fbCount > 0) {
+            setBadges({ social: zCount || undefined, facebook: fbCount || undefined } as Record<
+              string,
+              number
+            >);
           } else {
             setBadges({});
           }

@@ -105,11 +105,24 @@ function formatCount(n: number): string {
   return String(n);
 }
 
-export default function SocialFeedApp() {
+export default function SocialFeedApp({
+  externalFilter,
+  openPostId,
+  triggerCompose,
+}: { externalFilter?: string; openPostId?: string; triggerCompose?: number } = {}) {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const [posts, setPosts] = useState<SocialPost[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const prevExternalFilter = useRef(externalFilter);
+
+  useEffect(() => {
+    if (externalFilter && externalFilter !== prevExternalFilter.current) {
+      setSearchQuery(externalFilter);
+    }
+    prevExternalFilter.current = externalFilter;
+  }, [externalFilter]);
   const [loading, setLoading] = useState(true);
   const [composing, setComposing] = useState(false);
   const [composeText, setComposeText] = useState('');
@@ -133,6 +146,19 @@ export default function SocialFeedApp() {
   const [videoOrientation, setVideoOrientation] = useState<'16:9' | '9:16' | '1:1'>('16:9');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
+  const [notifCount, setNotifCount] = useState(0);
+  const [notifications, setNotifications] = useState<
+    Array<{
+      id: string;
+      type: string;
+      title: string;
+      message: string;
+      read: boolean;
+      created_at: string;
+      metadata?: Record<string, unknown>;
+    }>
+  >([]);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
   const composeRef = useRef<HTMLTextAreaElement>(null);
 
   const loadPosts = useCallback(async () => {
@@ -172,6 +198,77 @@ export default function SocialFeedApp() {
     if (location.pathname.includes('/social')) loadPosts();
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Poll notification count (Z platform only)
+  useEffect(() => {
+    if (!sessionId) return;
+    const fetchCount = async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(
+          apiUrl(`/api/notifications?session_id=${sessionId}&read=false&limit=100`),
+          { headers },
+        );
+        if (res.ok) {
+          const json = await res.json();
+          const all = json.data || [];
+          const socialTypes = ['social_like', 'social_reply', 'social_mention', 'social_repost'];
+          const zCount = all.filter(
+            (n: { type: string; metadata?: Record<string, unknown> }) =>
+              socialTypes.includes(n.type) &&
+              (!n.metadata?.platform || n.metadata.platform === 'x_twitter'),
+          ).length;
+          setNotifCount(zCount);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 15000);
+    return () => clearInterval(interval);
+  }, [sessionId]);
+
+  async function fetchNotifications() {
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/notifications?session_id=${sessionId}&limit=50`), {
+        headers,
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const all = json.data || [];
+        setNotifications(all);
+        const socialTypes = ['social_like', 'social_reply', 'social_mention', 'social_repost'];
+        const isZNotif = (n: {
+          type: string;
+          read?: boolean;
+          metadata?: Record<string, unknown>;
+        }) =>
+          socialTypes.includes(n.type) &&
+          (!n.metadata?.platform || n.metadata.platform === 'x_twitter');
+        const unreadSocial = all.filter(
+          (n: { type: string; read: boolean; metadata?: Record<string, unknown> }) =>
+            isZNotif(n) && !n.read,
+        ).length;
+        setNotifCount(unreadSocial);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function markNotifRead(notifId: string) {
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(apiUrl(`/api/notifications/${notifId}/read`), { method: 'PUT', headers });
+      setNotifications((prev) => prev.map((n) => (n.id === notifId ? { ...n, read: true } : n)));
+      setNotifCount((c) => Math.max(0, c - 1));
+    } catch {
+      /* ignore */
+    }
+  }
+
   useWebSocket({
     sessionId: sessionId || '',
     eventTypes: [
@@ -179,6 +276,7 @@ export default function SocialFeedApp() {
       'social_post.flagged',
       'social_posts.engagement_update',
       'social_post.media_updated',
+      'notification.created',
     ],
     onEvent: (event) => {
       if (event.type === 'social_posts.engagement_update') {
@@ -242,6 +340,8 @@ export default function SocialFeedApp() {
             return [newPost, ...prev];
           });
         }
+      } else if (event.type === 'notification.created') {
+        setNotifCount((c) => c + 1);
       }
     },
   });
@@ -357,17 +457,25 @@ export default function SocialFeedApp() {
 
     const wasLiked = !!post.liked_by_me;
 
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === postId
-          ? {
-              ...p,
-              like_count: wasLiked ? Math.max(0, p.like_count - 1) : p.like_count + 1,
-              liked_by_me: !wasLiked,
-            }
-          : p,
-      ),
-    );
+    const update = (p: SocialPost) =>
+      p.id === postId
+        ? {
+            ...p,
+            like_count: wasLiked ? Math.max(0, p.like_count - 1) : p.like_count + 1,
+            liked_by_me: !wasLiked,
+          }
+        : p;
+    const rollback = (p: SocialPost) =>
+      p.id === postId
+        ? {
+            ...p,
+            like_count: wasLiked ? p.like_count + 1 : Math.max(0, p.like_count - 1),
+            liked_by_me: wasLiked,
+          }
+        : p;
+
+    setPosts((prev) => prev.map(update));
+    setSelectedPost((prev) => (prev ? update(prev) : prev));
 
     try {
       const headers = await getAuthHeaders();
@@ -377,17 +485,8 @@ export default function SocialFeedApp() {
         body: wasLiked ? undefined : JSON.stringify({ session_id: sessionId }),
       });
     } catch {
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId
-            ? {
-                ...p,
-                like_count: wasLiked ? p.like_count + 1 : Math.max(0, p.like_count - 1),
-                liked_by_me: wasLiked,
-              }
-            : p,
-        ),
-      );
+      setPosts((prev) => prev.map(rollback));
+      setSelectedPost((prev) => (prev ? rollback(prev) : prev));
     }
   }
 
@@ -407,15 +506,32 @@ export default function SocialFeedApp() {
     }
   }
 
+  // Open thread when openPostId prop is set
+  useEffect(() => {
+    if (!openPostId || posts.length === 0) return;
+    const post = posts.find((p) => p.id === openPostId);
+    if (post) openThread(post);
+  }, [openPostId, posts.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Open compose when triggered externally
+  useEffect(() => {
+    if (triggerCompose && triggerCompose > 0) {
+      setSelectedPost(null);
+      setReplyingTo(null);
+      setComposing(true);
+    }
+  }, [triggerCompose]);
+
   async function handleFlag(postId: string) {
     const post = posts.find((p) => p.id === postId);
     if (post?.flagged_by_me) return;
 
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === postId ? { ...p, flagged_by_me: true, is_flagged_by_player: true } : p,
-      ),
-    );
+    const flagOn = (p: SocialPost) =>
+      p.id === postId ? { ...p, flagged_by_me: true, is_flagged_by_player: true } : p;
+    const flagOff = (p: SocialPost) => (p.id === postId ? { ...p, flagged_by_me: false } : p);
+
+    setPosts((prev) => prev.map(flagOn));
+    setSelectedPost((prev) => (prev ? flagOn(prev) : prev));
 
     try {
       const headers = await getAuthHeaders();
@@ -424,7 +540,8 @@ export default function SocialFeedApp() {
         headers,
       });
     } catch {
-      setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, flagged_by_me: false } : p)));
+      setPosts((prev) => prev.map(flagOff));
+      setSelectedPost((prev) => (prev ? flagOff(prev) : prev));
     }
   }
 
@@ -597,60 +714,102 @@ export default function SocialFeedApp() {
               className="flex items-center justify-around py-2"
               style={{ borderTop: '1px solid #2F3336' }}
             >
+              {/* Reply */}
               <button
                 onClick={() => {
                   setReplyingTo(selectedPost);
                   setComposing(true);
                 }}
-                className="ios-btn-bounce p-2"
+                className="ios-btn-bounce p-2 group hover:text-[#1D9BF0] transition-colors"
+                style={{ color: '#71767B' }}
               >
                 <svg
                   width="20"
                   height="20"
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke="#71767B"
+                  stroke="currentColor"
                   strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 >
-                  <path
-                    d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
+                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
                 </svg>
               </button>
-              <button onClick={() => handleLike(selectedPost.id)} className="ios-btn-bounce p-2">
+              {/* Like */}
+              <button
+                onClick={() => handleLike(selectedPost.id)}
+                className="ios-btn-bounce p-2 transition-colors"
+                style={{ color: selectedPost.liked_by_me ? '#F91880' : '#71767B' }}
+              >
                 <svg
                   width="20"
                   height="20"
                   viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#71767B"
+                  fill={selectedPost.liked_by_me ? '#F91880' : 'none'}
+                  stroke="currentColor"
                   strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 >
-                  <path
-                    d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
+                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
                 </svg>
               </button>
-              <button onClick={() => handleFlag(selectedPost.id)} className="ios-btn-bounce p-2">
+              {/* Flag */}
+              <button
+                onClick={() => handleFlag(selectedPost.id)}
+                className="ios-btn-bounce p-2 transition-colors"
+                style={{ color: selectedPost.is_flagged_by_player ? '#F59E0B' : '#71767B' }}
+              >
                 <svg
                   width="20"
                   height="20"
                   viewBox="0 0 24 24"
                   fill={selectedPost.is_flagged_by_player ? '#F59E0B' : 'none'}
-                  stroke={selectedPost.is_flagged_by_player ? '#F59E0B' : '#71767B'}
+                  stroke="currentColor"
                   strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 >
-                  <path
-                    d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
+                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
                   <line x1="4" y1="22" x2="4" y2="15" />
                 </svg>
+              </button>
+              {/* Share */}
+              <button
+                onClick={() => handleCopyLink(selectedPost.id, selectedPost.author_handle)}
+                className="ios-btn-bounce p-2 transition-colors hover:text-[#1D9BF0]"
+                style={{ color: copiedPostId === selectedPost.id ? '#22c55e' : '#71767B' }}
+              >
+                {copiedPostId === selectedPost.id ? (
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : (
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
+                    <polyline points="16 6 12 2 8 6" />
+                    <line x1="12" y1="2" x2="12" y2="15" />
+                  </svg>
+                )}
               </button>
             </div>
           </div>
@@ -715,22 +874,44 @@ export default function SocialFeedApp() {
                       )}
                       <div className="flex items-center gap-5 mt-2">
                         <button
-                          onClick={() => handleLike(reply.id)}
-                          className="ios-btn-bounce flex items-center gap-1"
+                          onClick={() => {
+                            setReplyingTo(reply);
+                            setComposing(true);
+                          }}
+                          className="ios-btn-bounce flex items-center gap-1 hover:text-[#1D9BF0] transition-colors"
+                          style={{ color: '#71767B' }}
                         >
                           <svg
                             width="15"
                             height="15"
                             viewBox="0 0 24 24"
                             fill="none"
-                            stroke="#71767B"
+                            stroke="currentColor"
                             strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleLike(reply.id)}
+                          className="ios-btn-bounce flex items-center gap-1"
+                          style={{ color: '#71767B' }}
+                        >
+                          <svg
+                            width="15"
+                            height="15"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
                           >
                             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
                           </svg>
-                          <span className="text-[12px]" style={{ color: '#71767B' }}>
-                            {formatCount(reply.like_count)}
-                          </span>
+                          <span className="text-[12px]">{formatCount(reply.like_count)}</span>
                         </button>
                       </div>
                     </div>
@@ -740,13 +921,355 @@ export default function SocialFeedApp() {
             })
           )}
         </div>
+
+        {/* Compose Modal (thread view) */}
+        {composing && (
+          <div className="absolute inset-0 flex flex-col" style={{ zIndex: 60 }}>
+            <div
+              className="flex-1"
+              style={{ backgroundColor: 'rgba(91, 112, 131, 0.4)' }}
+              onClick={() => {
+                setComposing(false);
+                setReplyingTo(null);
+              }}
+            />
+            <div
+              className="flex flex-col"
+              style={{
+                backgroundColor: '#000000',
+                borderTop: '1px solid #2F3336',
+                borderRadius: '16px 16px 0 0',
+                maxHeight: '70%',
+              }}
+            >
+              <div
+                className="flex items-center justify-between px-4 py-3"
+                style={{ borderBottom: '1px solid #2F3336' }}
+              >
+                <button
+                  onClick={() => {
+                    setComposing(false);
+                    setReplyingTo(null);
+                  }}
+                  className="text-[15px]"
+                  style={{ color: '#71767B' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handlePost}
+                  disabled={!composeText.trim()}
+                  className="px-4 py-1.5 rounded-full text-[15px] font-bold text-white disabled:opacity-40"
+                  style={{ backgroundColor: '#1D9BF0' }}
+                >
+                  Reply
+                </button>
+              </div>
+              {replyingTo && (
+                <div className="px-4 pb-2 pt-3">
+                  <span className="text-[14px]" style={{ color: '#71767B' }}>
+                    Replying to <span style={{ color: '#1D9BF0' }}>{replyingTo.author_handle}</span>
+                  </span>
+                </div>
+              )}
+              <div className="flex-1 px-4 pb-2 overflow-y-auto">
+                <div className="flex gap-3 pt-3">
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
+                    style={{ backgroundColor: '#1D9BF0' }}
+                  >
+                    Y
+                  </div>
+                  <div className="flex-1 relative">
+                    <textarea
+                      value={composeText}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setComposeText(val);
+                        const match = val.match(/@(\w*)$/);
+                        if (match) {
+                          setMentionQuery(match[1].toLowerCase());
+                          setShowMentions(true);
+                        } else {
+                          setShowMentions(false);
+                        }
+                      }}
+                      placeholder="Post your reply..."
+                      className="w-full bg-transparent text-[18px] resize-none outline-none min-h-[100px] placeholder:text-[#71767B]"
+                      style={{ color: '#E7E9EA', lineHeight: '1.4' }}
+                      maxLength={500}
+                      autoFocus
+                    />
+                    {showMentions && (
+                      <div
+                        className="absolute left-0 right-0 rounded-lg overflow-hidden z-50"
+                        style={{
+                          backgroundColor: '#2F3336',
+                          maxHeight: 150,
+                          overflowY: 'auto',
+                          top: 40,
+                        }}
+                      >
+                        {knownHandles
+                          .filter((h) => h.handle.toLowerCase().includes(mentionQuery))
+                          .slice(0, 6)
+                          .map((h) => (
+                            <button
+                              key={h.handle}
+                              onClick={() => {
+                                setComposeText((prev) => prev.replace(/@\w*$/, h.handle + ' '));
+                                setShowMentions(false);
+                              }}
+                              className="w-full text-left px-3 py-2 text-[14px] hover:bg-[#1D9BF0]/20"
+                              style={{ color: '#E7E9EA' }}
+                            >
+                              <span style={{ color: '#1D9BF0' }}>{h.handle}</span>
+                              <span className="ml-2 text-[12px]" style={{ color: '#71767B' }}>
+                                {h.display_name}
+                              </span>
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Media preview */}
+              {mediaPreviewUrl && !showMediaPanel && (
+                <div
+                  className="mx-4 mb-2 rounded-xl overflow-hidden relative"
+                  style={{ border: '1px solid #2F3336' }}
+                >
+                  {mediaPreviewUrl.endsWith('.mp4') ? (
+                    <video
+                      src={mediaPreviewUrl}
+                      controls
+                      className="w-full max-h-[160px] object-contain"
+                      style={{ backgroundColor: '#000' }}
+                    />
+                  ) : (
+                    <img
+                      src={mediaPreviewUrl}
+                      alt="Media preview"
+                      className="w-full max-h-[160px] object-contain"
+                      style={{ backgroundColor: '#000' }}
+                    />
+                  )}
+                  <div className="absolute top-2 right-2 flex gap-1">
+                    <button
+                      onClick={() => setShowMediaPanel(true)}
+                      className="px-2 py-1 rounded text-[11px] font-semibold"
+                      style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#1D9BF0' }}
+                    >
+                      Change
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMediaPreviewUrl(null);
+                        setMediaPromptText('');
+                      }}
+                      className="px-2 py-1 rounded text-[11px] font-semibold"
+                      style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#ef4444' }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Media panel */}
+              {showMediaPanel && (
+                <div
+                  className="mx-4 mb-2 rounded-xl p-3"
+                  style={{ backgroundColor: '#16181C', border: '1px solid #2F3336' }}
+                >
+                  <div
+                    className="flex items-center gap-1 mb-2 rounded-lg overflow-hidden"
+                    style={{ backgroundColor: '#000' }}
+                  >
+                    <button
+                      onClick={() => setMediaType('image')}
+                      className="flex-1 py-1.5 text-[12px] font-semibold text-center"
+                      style={{
+                        backgroundColor: mediaType === 'image' ? '#1D9BF0' : 'transparent',
+                        color: mediaType === 'image' ? '#fff' : '#71767B',
+                      }}
+                    >
+                      Image
+                    </button>
+                    <button
+                      onClick={() => setMediaType('video')}
+                      className="flex-1 py-1.5 text-[12px] font-semibold text-center"
+                      style={{
+                        backgroundColor: mediaType === 'video' ? '#1D9BF0' : 'transparent',
+                        color: mediaType === 'video' ? '#fff' : '#71767B',
+                      }}
+                    >
+                      Video
+                    </button>
+                  </div>
+                  <textarea
+                    value={mediaPromptText}
+                    onChange={(e) => setMediaPromptText(e.target.value)}
+                    placeholder={
+                      mediaType === 'video' ? 'Describe your video...' : 'Describe the image...'
+                    }
+                    className="w-full rounded-lg px-3 py-2 text-[13px] outline-none resize-none"
+                    style={{
+                      backgroundColor: '#000',
+                      color: '#E7E9EA',
+                      border: '1px solid #2F3336',
+                      minHeight: 40,
+                    }}
+                    rows={2}
+                    maxLength={500}
+                  />
+                  {mediaGenerating && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <div
+                        className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
+                        style={{ borderColor: '#1D9BF0', borderTopColor: 'transparent' }}
+                      />
+                      <span className="text-[11px]" style={{ color: '#71767B' }}>
+                        Generating...
+                      </span>
+                    </div>
+                  )}
+                  {mediaPreviewUrl && (
+                    <div
+                      className="mt-2 rounded-lg overflow-hidden"
+                      style={{ border: '1px solid #2F3336' }}
+                    >
+                      {mediaPreviewUrl.endsWith('.mp4') ? (
+                        <video
+                          src={mediaPreviewUrl}
+                          controls
+                          className="w-full max-h-[140px] object-contain"
+                          style={{ backgroundColor: '#000' }}
+                        />
+                      ) : (
+                        <img
+                          src={mediaPreviewUrl}
+                          alt="Preview"
+                          className="w-full max-h-[140px] object-contain"
+                          style={{ backgroundColor: '#000' }}
+                        />
+                      )}
+                    </div>
+                  )}
+                  <div className="flex items-center justify-end gap-2 mt-2">
+                    <button
+                      onClick={() => setShowMediaPanel(false)}
+                      className="text-[11px] font-semibold px-3 py-1 rounded-full"
+                      style={{ backgroundColor: '#2F3336', color: '#E7E9EA' }}
+                    >
+                      Done
+                    </button>
+                    {!mediaPreviewUrl && !mediaGenerating && (
+                      <button
+                        disabled={!mediaPromptText.trim()}
+                        onClick={handleGeneratePreview}
+                        className="text-[11px] font-semibold px-3 py-1 rounded-full disabled:opacity-40"
+                        style={{ backgroundColor: '#1D9BF0', color: '#fff' }}
+                      >
+                        Generate
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Toolbar */}
+              <div
+                className="flex items-center justify-between px-4 py-2"
+                style={{ borderTop: '1px solid #2F3336' }}
+              >
+                <div className="flex items-center gap-4" style={{ color: '#1D9BF0' }}>
+                  <button
+                    onClick={() => {
+                      setShowMediaPanel(!showMediaPanel);
+                      setMediaType('image');
+                    }}
+                    className="outline-none focus:outline-none hover:opacity-80"
+                    title="Attach image"
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <polyline points="21 15 16 10 5 21" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowMediaPanel(!showMediaPanel);
+                      setMediaType('video');
+                    }}
+                    className="outline-none focus:outline-none hover:opacity-80"
+                    title="Attach video"
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect x="2" y="4" width="20" height="16" rx="2" ry="2" />
+                      <polygon points="10 9 15 12 10 15" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowEmojiPicker(!showEmojiPicker);
+                      setShowMediaPanel(false);
+                    }}
+                    className="outline-none focus:outline-none hover:opacity-80"
+                    title="Add emoji"
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                      <line x1="9" y1="9" x2="9.01" y2="9" />
+                      <line x1="15" y1="9" x2="15.01" y2="9" />
+                    </svg>
+                  </button>
+                </div>
+                <span className="text-[13px]" style={{ color: '#71767B' }}>
+                  {composeText.length}/500
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
   return (
     <div
-      className="h-full flex flex-col overflow-hidden"
+      className="h-full flex flex-col overflow-hidden relative"
       style={{ backgroundColor: '#000000', color: '#E7E9EA', maxWidth: '100%' }}
     >
       {/* Header */}
@@ -771,6 +1294,25 @@ export default function SocialFeedApp() {
               />
             </svg>
           </div>
+          <button
+            onClick={() => {
+              setShowNotifPanel(!showNotifPanel);
+              if (!showNotifPanel) fetchNotifications();
+            }}
+            className="ios-btn-bounce w-8 h-8 flex items-center justify-center flex-shrink-0 relative"
+          >
+            <span className="text-[20px] leading-none" style={{ color: '#FFFFFF' }}>
+              &#x1F514;
+            </span>
+            {notifCount > 0 && (
+              <span
+                className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white px-1"
+                style={{ backgroundColor: '#1D9BF0' }}
+              >
+                {notifCount > 99 ? '99+' : notifCount}
+              </span>
+            )}
+          </button>
           <button
             onClick={() => navigate(`/sim/${sessionId}/device/facebook`)}
             className="ios-btn-bounce w-8 h-8 flex items-center justify-center rounded-full flex-shrink-0"
@@ -812,6 +1354,111 @@ export default function SocialFeedApp() {
         </div>
       </div>
 
+      {/* Search Bar */}
+      <div
+        className="flex-shrink-0 px-4 py-2 relative"
+        style={{ borderBottom: '1px solid #2F3336', zIndex: 30 }}
+      >
+        <div
+          className="flex items-center rounded-full px-3 py-1.5"
+          style={{ backgroundColor: '#16181C', border: '1px solid #2F3336' }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="8" stroke="#71767B" strokeWidth="2" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" stroke="#71767B" strokeWidth="2" />
+          </svg>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search posts, #hashtags, @users..."
+            className="flex-1 bg-transparent outline-none text-[13px] ml-2"
+            style={{ color: '#E7E9EA' }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="text-[14px] ml-1"
+              style={{ color: '#71767B' }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        {/* Search suggestions */}
+        {(searchQuery || '').length >= 1 &&
+          (() => {
+            const q = searchQuery.toLowerCase();
+            const allTags = [
+              ...new Set(
+                posts.flatMap((p) => (p.hashtags || []).map((t: string) => t.toLowerCase())),
+              ),
+            ];
+            const allHandles = [...new Set(posts.map((p) => p.author_handle))];
+            const allNames = [...new Set(posts.map((p) => p.author_display_name))];
+            const tagMatches = allTags.filter((t) => t.includes(q)).slice(0, 4);
+            const handleMatches = allHandles.filter((h) => h.toLowerCase().includes(q)).slice(0, 3);
+            const nameMatches = allNames
+              .filter(
+                (n) =>
+                  n.toLowerCase().includes(q) &&
+                  !handleMatches.some((h) =>
+                    posts.some((p) => p.author_handle === h && p.author_display_name === n),
+                  ),
+              )
+              .slice(0, 3);
+            const suggestions = [
+              ...tagMatches.map((t) => ({ type: 'hashtag' as const, value: t })),
+              ...handleMatches.map((h) => ({
+                type: 'user' as const,
+                value: h,
+                name: posts.find((p) => p.author_handle === h)?.author_display_name,
+              })),
+              ...nameMatches.map((n) => ({ type: 'name' as const, value: n })),
+            ];
+            if (suggestions.length === 0) return null;
+            return (
+              <div
+                className="absolute left-4 right-4 top-full mt-1 rounded-lg overflow-hidden z-50"
+                style={{
+                  backgroundColor: '#16181C',
+                  border: '1px solid #2F3336',
+                  maxHeight: 200,
+                  overflowY: 'auto',
+                }}
+              >
+                {suggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setSearchQuery(s.value);
+                    }}
+                    className="flex items-center gap-2 w-full text-left px-3 py-2 hover:bg-white/[0.05] transition-colors"
+                  >
+                    {s.type === 'hashtag' ? (
+                      <span className="text-[13px] font-bold" style={{ color: '#1D9BF0' }}>
+                        #
+                      </span>
+                    ) : (
+                      <span className="text-[13px] font-bold" style={{ color: '#1D9BF0' }}>
+                        @
+                      </span>
+                    )}
+                    <span className="text-[13px]" style={{ color: '#E7E9EA' }}>
+                      {s.value}
+                    </span>
+                    {s.type === 'user' && s.name && (
+                      <span className="text-[12px] ml-1" style={{ color: '#71767B' }}>
+                        {s.name}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+      </div>
+
       {/* Feed */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
         {loading ? (
@@ -846,7 +1493,21 @@ export default function SocialFeedApp() {
           </div>
         ) : (
           posts
-            .filter((p) => !p.reply_to_post_id)
+            .filter((p) => {
+              if (p.reply_to_post_id) return false;
+              const q = searchQuery.toLowerCase().trim();
+              if (!q) return true;
+              const content = (p.content || '').toLowerCase();
+              const handle = (p.author_handle || '').toLowerCase();
+              const name = (p.author_display_name || '').toLowerCase();
+              const tags = (p.hashtags || []).map((t: string) => t.toLowerCase());
+              return (
+                content.includes(q) ||
+                handle.includes(q) ||
+                name.includes(q) ||
+                tags.some((t: string) => t.includes(q))
+              );
+            })
             .sort((a, b) => {
               if (activeTab === 'latest') {
                 return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
@@ -973,7 +1634,15 @@ export default function SocialFeedApp() {
                           .split(/(#\w+)/g)
                           .map((part: string, i: number) =>
                             part.startsWith('#') ? (
-                              <span key={i} style={{ color: '#1D9BF0' }}>
+                              <span
+                                key={i}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSearchQuery(part);
+                                }}
+                                className="cursor-pointer hover:underline"
+                                style={{ color: '#1D9BF0' }}
+                              >
                                 {part}
                               </span>
                             ) : (
@@ -1218,6 +1887,175 @@ export default function SocialFeedApp() {
         )}
       </div>
 
+      {/* Notification Panel Overlay */}
+      {showNotifPanel && (
+        <>
+          <div
+            className="absolute inset-0"
+            style={{ zIndex: 40 }}
+            onClick={() => setShowNotifPanel(false)}
+          />
+          <div
+            className="absolute left-0 right-0 overflow-y-auto"
+            style={{
+              top: 53,
+              zIndex: 45,
+              maxHeight: '70%',
+              backgroundColor: '#000',
+              borderBottom: '2px solid #2F3336',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+            }}
+          >
+            <div
+              className="flex items-center justify-between px-4 py-2.5"
+              style={{ borderBottom: '1px solid #2F3336' }}
+            >
+              <span className="text-[16px] font-bold" style={{ color: '#E7E9EA' }}>
+                Notifications
+              </span>
+              {notifCount > 0 && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const headers = await getAuthHeaders();
+                      await fetch(apiUrl(`/api/notifications/read-all`), {
+                        method: 'PUT',
+                        headers,
+                        body: JSON.stringify({ session_id: sessionId }),
+                      });
+                      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+                      setNotifCount(0);
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                  className="text-[13px] font-semibold"
+                  style={{ color: '#1D9BF0' }}
+                >
+                  Mark all read
+                </button>
+              )}
+            </div>
+            {(() => {
+              const socialTypes = [
+                'social_like',
+                'social_reply',
+                'social_mention',
+                'social_repost',
+              ];
+              const socialNotifs = notifications.filter(
+                (n) =>
+                  socialTypes.includes(n.type) &&
+                  (!n.metadata?.platform || n.metadata.platform === 'x_twitter'),
+              );
+              return socialNotifs.length === 0 ? (
+                <div className="flex items-center justify-center py-8">
+                  <span className="text-[14px]" style={{ color: '#71767B' }}>
+                    No notifications yet
+                  </span>
+                </div>
+              ) : (
+                socialNotifs.map((notif) => (
+                  <button
+                    key={notif.id}
+                    onClick={() => {
+                      if (!notif.read) markNotifRead(notif.id);
+                      setShowNotifPanel(false);
+                    }}
+                    className="flex items-start gap-3 w-full text-left px-4 py-3 hover:bg-white/[0.03] transition-colors"
+                    style={{
+                      borderBottom: '1px solid #2F3336',
+                      backgroundColor: notif.read ? 'transparent' : 'rgba(29,155,240,0.05)',
+                    }}
+                  >
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+                      style={{ backgroundColor: '#16181C' }}
+                    >
+                      {notif.type === 'social_like' ? (
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="#F91880"
+                          stroke="none"
+                        >
+                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                        </svg>
+                      ) : notif.type === 'social_reply' ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                          <path
+                            d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+                            stroke="#1D9BF0"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      ) : notif.type === 'social_mention' ? (
+                        <span className="text-[14px] font-bold" style={{ color: '#1D9BF0' }}>
+                          @
+                        </span>
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                          <path
+                            d="M17 1l4 4-4 4"
+                            stroke="#00BA7C"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="M3 11V9a4 4 0 0 1 4-4h14"
+                            stroke="#00BA7C"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="M7 23l-4-4 4-4"
+                            stroke="#00BA7C"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="M21 13v2a4 4 0 0 1-4 4H3"
+                            stroke="#00BA7C"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[14px]" style={{ color: '#E7E9EA' }}>
+                        {notif.title}
+                      </p>
+                      {notif.message && (
+                        <p className="text-[13px] mt-0.5 truncate" style={{ color: '#71767B' }}>
+                          {notif.message}
+                        </p>
+                      )}
+                      <span className="text-[12px] mt-0.5 block" style={{ color: '#71767B' }}>
+                        {timeAgo(notif.created_at)}
+                      </span>
+                    </div>
+                    {!notif.read && (
+                      <div
+                        className="w-2 h-2 rounded-full flex-shrink-0 mt-2"
+                        style={{ backgroundColor: '#1D9BF0' }}
+                      />
+                    )}
+                  </button>
+                ))
+              );
+            })()}
+          </div>
+        </>
+      )}
+
       {/* Compose FAB */}
       {!composing && (
         <button
@@ -1355,8 +2193,13 @@ export default function SocialFeedApp() {
                   />
                   {showMentions && (
                     <div
-                      className="absolute left-0 right-0 top-full mt-1 rounded-lg overflow-hidden z-50"
-                      style={{ backgroundColor: '#2F3336', maxHeight: 150, overflowY: 'auto' }}
+                      className="absolute left-0 right-0 rounded-lg overflow-hidden z-50"
+                      style={{
+                        backgroundColor: '#2F3336',
+                        maxHeight: 150,
+                        overflowY: 'auto',
+                        top: 40,
+                      }}
                     >
                       {knownHandles
                         .filter((h) => h.handle.toLowerCase().includes(mentionQuery))
