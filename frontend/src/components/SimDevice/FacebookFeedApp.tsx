@@ -124,6 +124,9 @@ export default function FacebookFeedApp() {
   const [showReactions, setShowReactions] = useState<string | null>(null);
   const [myReactions, setMyReactions] = useState<Record<string, string>>({});
   const [commentText, setCommentText] = useState<Record<string, string>>({});
+  const [replyTarget, setReplyTarget] = useState<
+    Record<string, { handle: string; displayName: string } | null>
+  >({});
   const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
   const [showMediaPanel, setShowMediaPanel] = useState(false);
   const [mediaType, setMediaType] = useState<'image' | 'video'>('image');
@@ -479,6 +482,8 @@ export default function FacebookFeedApp() {
   async function handleComment(postId: string) {
     const text = commentText[postId]?.trim();
     if (!text || !sessionId) return;
+    const target = replyTarget[postId];
+    const contentToSend = target ? `${target.handle} ${text}` : text;
     try {
       const headers = await getAuthHeaders();
       await fetch(apiUrl('/api/social/posts'), {
@@ -486,12 +491,13 @@ export default function FacebookFeedApp() {
         headers,
         body: JSON.stringify({
           session_id: sessionId,
-          content: text,
+          content: contentToSend,
           reply_to_post_id: postId,
           platform: 'facebook',
         }),
       });
       setCommentText((prev) => ({ ...prev, [postId]: '' }));
+      setReplyTarget((prev) => ({ ...prev, [postId]: null }));
     } catch {
       /* ignore */
     }
@@ -751,13 +757,28 @@ export default function FacebookFeedApp() {
                       if (!notif.read) markNotifRead(notif.id);
                       setShowNotifPanel(false);
                       const postId = notif.metadata?.post_id as string | undefined;
+                      const highlightId = notif.metadata?.highlight_post_id as string | undefined;
                       if (postId) {
                         setExpandedComments((prev) => new Set([...prev, postId]));
                         setTimeout(() => {
-                          document
-                            .getElementById(`fb-post-${postId}`)
-                            ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        }, 100);
+                          const targetEl = highlightId
+                            ? document.getElementById(`fb-reply-${highlightId}`)
+                            : document.getElementById(`fb-post-${postId}`);
+                          if (targetEl) {
+                            targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            if (highlightId) {
+                              targetEl.style.transition = 'background-color 0.3s';
+                              targetEl.style.backgroundColor = 'rgba(24,119,242,0.12)';
+                              setTimeout(() => {
+                                targetEl.style.backgroundColor = '';
+                              }, 2500);
+                            }
+                          } else {
+                            document
+                              .getElementById(`fb-post-${postId}`)
+                              ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }
+                        }, 200);
                       }
                     }}
                     className="flex items-start gap-3 w-full text-left px-4 py-3 hover:bg-[#F2F3F5] transition-colors"
@@ -1458,7 +1479,11 @@ export default function FacebookFeedApp() {
                               </button>
                             )}
                             {visibleReplies.map((reply) => (
-                              <div key={reply.id} className="flex gap-2 mb-2.5">
+                              <div
+                                key={reply.id}
+                                id={`fb-reply-${reply.id}`}
+                                className="flex gap-2 mb-2.5"
+                              >
                                 <div
                                   className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[12px] flex-shrink-0"
                                   style={{
@@ -1492,9 +1517,16 @@ export default function FacebookFeedApp() {
                                     </button>
                                     <button
                                       onClick={() => {
+                                        setReplyTarget((prev) => ({
+                                          ...prev,
+                                          [post.id]: {
+                                            handle: reply.author_handle,
+                                            displayName: reply.author_display_name,
+                                          },
+                                        }));
                                         setCommentText((prev) => ({
                                           ...prev,
-                                          [post.id]: `${reply.author_handle} `,
+                                          [post.id]: '',
                                         }));
                                         setExpandedComments((prev) => new Set([...prev, post.id]));
                                         setTimeout(
@@ -1523,7 +1555,7 @@ export default function FacebookFeedApp() {
                         )}
 
                         {/* Comment Input */}
-                        {(commentText[post.id] || '').startsWith('@') && (
+                        {replyTarget[post.id] && (
                           <div
                             className="flex items-center justify-between px-3 pt-1"
                             style={{ backgroundColor: '#FFFFFF' }}
@@ -1531,11 +1563,13 @@ export default function FacebookFeedApp() {
                             <span className="text-[12px]" style={{ color: '#65676B' }}>
                               Replying to{' '}
                               <span style={{ color: '#1877F2' }}>
-                                {(commentText[post.id] || '').split(' ')[0]}
+                                {replyTarget[post.id]!.displayName}
                               </span>
                             </span>
                             <button
-                              onClick={() => setCommentText((prev) => ({ ...prev, [post.id]: '' }))}
+                              onClick={() =>
+                                setReplyTarget((prev) => ({ ...prev, [post.id]: null }))
+                              }
                               className="text-[11px]"
                               style={{ color: '#65676B' }}
                             >

@@ -298,14 +298,15 @@ Return ONLY valid JSON:
                   .eq('id', parentId);
               }
 
-              // Notify player about the NPC reply
+              // Notify player about the NPC reply (use thread root as post_id, NPC reply as highlight)
               void notifyPostReply(
                 sessionId,
                 npcName,
                 playerHandle,
-                String(playerPost.id),
+                String(playerPost.reply_to_post_id || playerPost.id),
                 replyContent,
                 postPlatform,
+                inserted.id,
               );
             }
 

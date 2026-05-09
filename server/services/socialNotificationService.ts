@@ -42,6 +42,7 @@ export async function notifyPostReply(
   parentPostId: string,
   replyContent: string,
   platform: string = 'x_twitter',
+  highlightPostId?: string,
 ): Promise<void> {
   try {
     const userId = await findPlayerUserIdByHandle(sessionId, parentAuthorHandle);
@@ -54,7 +55,12 @@ export async function notifyPostReply(
       title: `${replyAuthorName} replied to your post`,
       message: replyContent.substring(0, 200),
       priority: 'medium',
-      metadata: { post_id: parentPostId, platform, replier: replyAuthorName },
+      metadata: {
+        post_id: parentPostId,
+        highlight_post_id: highlightPostId || null,
+        platform,
+        replier: replyAuthorName,
+      },
     });
 
     if (error) {

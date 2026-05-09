@@ -139,6 +139,7 @@ export default function SocialFeedApp({
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
   const selectedPostRef = useRef<SocialPost | null>(null);
   const [threadReplies, setThreadReplies] = useState<SocialPost[]>([]);
+  const [highlightReplyId, setHighlightReplyId] = useState<string | null>(null);
   const [knownHandles, setKnownHandles] = useState<Array<{ handle: string; display_name: string }>>(
     [],
   );
@@ -518,10 +519,11 @@ export default function SocialFeedApp({
     }
   }
 
-  async function openThread(post: SocialPost) {
+  async function openThread(post: SocialPost, highlightId?: string) {
     setSelectedPost(post);
     selectedPostRef.current = post;
     setThreadReplies([]);
+    setHighlightReplyId(highlightId || null);
     try {
       const headers = await getAuthHeaders();
       const res = await fetch(apiUrl(`/api/social/posts/${post.id}`), { headers });
@@ -533,6 +535,24 @@ export default function SocialFeedApp({
       /* ignore */
     }
   }
+
+  // Auto-scroll and highlight a specific reply in the thread
+  useEffect(() => {
+    if (highlightReplyId && threadReplies.length > 0) {
+      setTimeout(() => {
+        const el = document.getElementById(`thread-reply-${highlightReplyId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.style.transition = 'background-color 0.3s';
+          el.style.backgroundColor = 'rgba(29,155,240,0.15)';
+          setTimeout(() => {
+            el.style.backgroundColor = '';
+          }, 2500);
+        }
+        setHighlightReplyId(null);
+      }, 200);
+    }
+  }, [threadReplies, highlightReplyId]);
 
   // Open thread when openPostId prop is set
   useEffect(() => {
@@ -856,6 +876,7 @@ export default function SocialFeedApp({
               return (
                 <div
                   key={reply.id}
+                  id={`thread-reply-${reply.id}`}
                   className="px-4 py-3"
                   style={{ borderBottom: '1px solid #2F3336' }}
                 >
@@ -1995,14 +2016,28 @@ export default function SocialFeedApp({
                 socialNotifs.map((notif) => (
                   <button
                     key={notif.id}
-                    onClick={() => {
+                    onClick={async () => {
                       if (!notif.read) markNotifRead(notif.id);
                       setShowNotifPanel(false);
                       const postId = notif.metadata?.post_id as string | undefined;
+                      const highlightId = notif.metadata?.highlight_post_id as string | undefined;
                       if (postId) {
                         const targetPost = posts.find((p) => p.id === postId);
                         if (targetPost) {
-                          openThread(targetPost);
+                          openThread(targetPost, highlightId);
+                        } else {
+                          try {
+                            const headers = await getAuthHeaders();
+                            const res = await fetch(apiUrl(`/api/social/posts/${postId}`), {
+                              headers,
+                            });
+                            const result = await res.json();
+                            if (result.data) {
+                              openThread(result.data as SocialPost, highlightId);
+                            }
+                          } catch {
+                            /* ignore */
+                          }
                         }
                       }
                     }}
