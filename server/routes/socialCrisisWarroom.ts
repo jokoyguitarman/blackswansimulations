@@ -27,8 +27,8 @@ import { generatePostImage } from '../services/mediaGenerationService.js';
 
 const router = Router();
 
-// In-memory job store for async NPC generation
-const npcJobs = new Map<
+// In-memory job store for async AI generation tasks
+const aiJobs = new Map<
   string,
   {
     status: 'generating' | 'completed' | 'failed';
@@ -40,8 +40,8 @@ const npcJobs = new Map<
 setInterval(
   () => {
     const cutoff = Date.now() - 30 * 60 * 1000;
-    for (const [key, job] of npcJobs) {
-      if (job.startedAt < cutoff) npcJobs.delete(key);
+    for (const [key, job] of aiJobs) {
+      if (job.startedAt < cutoff) aiJobs.delete(key);
     }
   },
   5 * 60 * 1000,
@@ -65,17 +65,17 @@ router.post(
     const { crisis_type, context, country, location } = req.body;
     const jobId = `npc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    npcJobs.set(jobId, { status: 'generating', startedAt: Date.now() });
+    aiJobs.set(jobId, { status: 'generating', startedAt: Date.now() });
     res.json({ job_id: jobId, status: 'generating' });
 
     void (async () => {
       try {
         const result = await generateNPCsAndFactSheet(crisis_type, context, country, location);
-        npcJobs.set(jobId, { status: 'completed', data: result, startedAt: Date.now() });
+        aiJobs.set(jobId, { status: 'completed', data: result, startedAt: Date.now() });
         logger.info({ jobId }, 'NPC generation completed');
       } catch (err) {
         logger.error({ err, jobId }, 'NPC generation failed');
-        npcJobs.set(jobId, {
+        aiJobs.set(jobId, {
           status: 'failed',
           error: 'Failed to generate NPCs and fact sheet',
           startedAt: Date.now(),
@@ -85,10 +85,10 @@ router.post(
   },
 );
 
-// Poll for NPC generation job status
-router.get('/generate-npcs/status/:jobId', requireAuth, async (req: AuthenticatedRequest, res) => {
+// Poll for any async AI job status
+router.get('/job-status/:jobId', requireAuth, async (req: AuthenticatedRequest, res) => {
   const { jobId } = req.params;
-  const job = npcJobs.get(jobId);
+  const job = aiJobs.get(jobId);
   if (!job) {
     return res.status(404).json({ error: 'Job not found' });
   }
@@ -98,6 +98,16 @@ router.get('/generate-npcs/status/:jobId', requireAuth, async (req: Authenticate
   if (job.status === 'failed') {
     return res.json({ status: 'failed', error: job.error });
   }
+  return res.json({ status: 'generating' });
+});
+
+// Keep old NPC-specific status path for compatibility
+router.get('/generate-npcs/status/:jobId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { jobId } = req.params;
+  const job = aiJobs.get(jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  if (job.status === 'completed') return res.json({ status: 'completed', data: job.data });
+  if (job.status === 'failed') return res.json({ status: 'failed', error: job.error });
   return res.json({ status: 'generating' });
 });
 
@@ -282,7 +292,7 @@ router.post(
   },
 );
 
-// Step 5: Generate convergence layer
+// Step 5: Generate convergence layer (async)
 router.post(
   '/generate-convergence',
   requireAuth,
@@ -304,31 +314,41 @@ router.post(
     }),
   ),
   async (req: AuthenticatedRequest, res) => {
-    try {
-      const {
-        crisis_type,
-        location,
-        country,
-        context,
-        duration,
-        team_storylines,
-        personas,
-        fact_sheet,
-      } = req.body;
-      const crisisContext = { crisisType: crisis_type, location, country, context, duration };
+    const {
+      crisis_type,
+      location,
+      country,
+      context,
+      duration,
+      team_storylines,
+      personas,
+      fact_sheet,
+    } = req.body;
+    const jobId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-      const result = await generateConvergenceLayer(
-        team_storylines as Record<string, SocialInject[]>,
-        personas as NPCPersona[],
-        fact_sheet as FactSheet,
-        crisisContext,
-      );
+    aiJobs.set(jobId, { status: 'generating', startedAt: Date.now() });
+    res.json({ job_id: jobId, status: 'generating' });
 
-      res.json({ data: result });
-    } catch (err) {
-      logger.error({ err }, 'Failed to generate convergence');
-      res.status(500).json({ error: 'Failed to generate convergence layer' });
-    }
+    void (async () => {
+      try {
+        const crisisContext = { crisisType: crisis_type, location, country, context, duration };
+        const result = await generateConvergenceLayer(
+          team_storylines as Record<string, SocialInject[]>,
+          personas as NPCPersona[],
+          fact_sheet as FactSheet,
+          crisisContext,
+        );
+        aiJobs.set(jobId, { status: 'completed', data: result, startedAt: Date.now() });
+        logger.info({ jobId }, 'Convergence generation completed');
+      } catch (err) {
+        logger.error({ err, jobId }, 'Convergence generation failed');
+        aiJobs.set(jobId, {
+          status: 'failed',
+          error: 'Failed to generate convergence layer',
+          startedAt: Date.now(),
+        });
+      }
+    })();
   },
 );
 
@@ -431,138 +451,137 @@ router.post(
     }),
   ),
   async (req: AuthenticatedRequest, res) => {
-    try {
-      const user = req.user!;
-      if (user.role !== 'trainer' && user.role !== 'admin') {
-        return res.status(403).json({ error: 'Only trainers can compile scenarios' });
-      }
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only trainers can compile scenarios' });
+    }
 
-      const body = req.body;
-      const sop = buildSOPFromResearch(body.research as ResearchGuidelines);
+    const jobId = `compile_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    aiJobs.set(jobId, { status: 'generating', startedAt: Date.now() });
+    res.json({ job_id: jobId, status: 'generating' });
 
-      // Generate strategy windows (success/backlash branches for player tactics)
-      let strategyWindows;
+    const body = req.body;
+
+    void (async () => {
       try {
-        strategyWindows = await generateStrategyWindows(
-          {
-            crisisType: body.crisis_type || '',
-            location: '',
-            country: body.country || 'Singapore',
-            context: '',
-            duration: body.duration,
-          },
+        const sop = buildSOPFromResearch(body.research as ResearchGuidelines);
+
+        let strategyWindows;
+        try {
+          strategyWindows = await generateStrategyWindows(
+            {
+              crisisType: body.crisis_type || '',
+              location: '',
+              country: body.country || 'Singapore',
+              context: '',
+              duration: body.duration,
+            },
+            body.personas as NPCPersona[],
+            body.fact_sheet as FactSheet,
+          );
+          logger.info({ windowCount: strategyWindows?.length || 0 }, 'Strategy windows generated');
+        } catch (swErr) {
+          logger.warn({ swErr }, 'Strategy windows generation failed (non-critical)');
+        }
+
+        const payload = assemblePayload(
+          body.narrative,
+          (body.teams || []) as TeamDef[],
+          body.objectives as Array<{
+            objective_id: string;
+            objective_name: string;
+            description: string;
+            weight: number;
+          }>,
           body.personas as NPCPersona[],
           body.fact_sheet as FactSheet,
+          body.communities,
+          (body.team_storylines || {}) as Record<string, SocialInject[]>,
+          body.shared_injects as SocialInject[],
+          body.convergence_gates as SocialInject[],
+          body.research as ResearchGuidelines,
+          sop,
+          body.duration,
+          strategyWindows,
+          body.storyline_injects as SocialInject[] | undefined,
         );
-        logger.info({ windowCount: strategyWindows?.length || 0 }, 'Strategy windows generated');
-      } catch (swErr) {
-        logger.warn({ swErr }, 'Strategy windows generation failed (non-critical)');
-      }
 
-      const payload = assemblePayload(
-        body.narrative,
-        (body.teams || []) as TeamDef[],
-        body.objectives as Array<{
-          objective_id: string;
-          objective_name: string;
-          description: string;
-          weight: number;
-        }>,
-        body.personas as NPCPersona[],
-        body.fact_sheet as FactSheet,
-        body.communities,
-        (body.team_storylines || {}) as Record<string, SocialInject[]>,
-        body.shared_injects as SocialInject[],
-        body.convergence_gates as SocialInject[],
-        body.research as ResearchGuidelines,
-        sop,
-        body.duration,
-        strategyWindows,
-        body.storyline_injects as SocialInject[] | undefined,
-      );
+        if (body.country) {
+          (payload.scenario.initial_state as Record<string, unknown>).country = body.country;
+        }
 
-      // Persist the country in initial_state for demographics lookup
-      if (body.country) {
-        (payload.scenario.initial_state as Record<string, unknown>).country = body.country;
-      }
+        const scenarioId = await persistSocialCrisisScenario(payload, user.id);
 
-      const scenarioId = await persistSocialCrisisScenario(payload, user.id);
-
-      // Pre-generate images from NPC persona image_prompts and attach to matching injects
-      const personas = body.personas as NPCPersona[];
-      void (async () => {
-        try {
-          const allPrompts: Array<{ handle: string; prompt: string; style: string }> = [];
-          for (const p of personas) {
-            for (const ip of p.image_prompts || []) {
-              if (ip) {
-                const style = p.bias && p.bias !== 'none' ? 'evidence_photo' : 'news_photo';
-                allPrompts.push({ handle: p.handle, prompt: ip, style });
-              }
-            }
-          }
-          const limited = allPrompts.slice(0, 10);
-          const imagesByHandle = new Map<string, string[]>();
-
-          for (const item of limited) {
-            const url = await generatePostImage(
-              item.prompt,
-              item.style as 'evidence_photo' | 'news_photo' | 'meme',
-            );
-            if (url) {
-              if (!imagesByHandle.has(item.handle)) imagesByHandle.set(item.handle, []);
-              imagesByHandle.get(item.handle)!.push(url);
-              logger.info({ scenarioId, handle: item.handle }, 'Pre-generated NPC image');
-            }
-          }
-
-          // Attach images to scenario injects that match the NPC handle
-          if (imagesByHandle.size > 0) {
-            const { data: injects } = await supabaseAdmin
-              .from('scenario_injects')
-              .select('id, delivery_config')
-              .eq('scenario_id', scenarioId)
-              .not('delivery_config', 'is', null);
-
-            for (const inject of injects || []) {
-              const dc = (inject.delivery_config || {}) as Record<string, unknown>;
-              const handle = String(dc.author_handle || '');
-              const urls = imagesByHandle.get(handle);
-              if (urls && urls.length > 0) {
-                const imageUrl = urls.shift();
-                if (imageUrl) {
-                  dc.media_urls = [imageUrl];
-                  await supabaseAdmin
-                    .from('scenario_injects')
-                    .update({ delivery_config: dc })
-                    .eq('id', inject.id);
+        // Pre-generate images in background (doesn't block compile result)
+        const personas = body.personas as NPCPersona[];
+        void (async () => {
+          try {
+            const allPrompts: Array<{ handle: string; prompt: string; style: string }> = [];
+            for (const p of personas) {
+              for (const ip of p.image_prompts || []) {
+                if (ip) {
+                  const style = p.bias && p.bias !== 'none' ? 'evidence_photo' : 'news_photo';
+                  allPrompts.push({ handle: p.handle, prompt: ip, style });
                 }
               }
             }
-            logger.info(
-              { scenarioId, imagesAttached: imagesByHandle.size },
-              'Images attached to injects',
-            );
+            const limited = allPrompts.slice(0, 10);
+            const imagesByHandle = new Map<string, string[]>();
+            for (const item of limited) {
+              const url = await generatePostImage(
+                item.prompt,
+                item.style as 'evidence_photo' | 'news_photo' | 'meme',
+              );
+              if (url) {
+                if (!imagesByHandle.has(item.handle)) imagesByHandle.set(item.handle, []);
+                imagesByHandle.get(item.handle)!.push(url);
+              }
+            }
+            if (imagesByHandle.size > 0) {
+              const { data: injects } = await supabaseAdmin
+                .from('scenario_injects')
+                .select('id, delivery_config')
+                .eq('scenario_id', scenarioId)
+                .not('delivery_config', 'is', null);
+              for (const inject of injects || []) {
+                const dc = (inject.delivery_config || {}) as Record<string, unknown>;
+                const handle = String(dc.author_handle || '');
+                const urls = imagesByHandle.get(handle);
+                if (urls && urls.length > 0) {
+                  const imageUrl = urls.shift();
+                  if (imageUrl) {
+                    dc.media_urls = [imageUrl];
+                    await supabaseAdmin
+                      .from('scenario_injects')
+                      .update({ delivery_config: dc })
+                      .eq('id', inject.id);
+                  }
+                }
+              }
+            }
+          } catch (imgErr) {
+            logger.warn({ imgErr, scenarioId }, 'NPC image pre-generation failed (non-critical)');
           }
-        } catch (imgErr) {
-          logger.warn({ imgErr, scenarioId }, 'NPC image pre-generation failed (non-critical)');
-        }
-      })();
+        })();
 
-      res.json({
-        data: {
-          scenario_id: scenarioId,
-          title: payload.scenario.title,
-          inject_count:
-            payload.time_injects.length +
-            payload.condition_injects.length +
-            payload.decision_injects.length,
-        },
-      });
-    } catch (err) {
-      logger.error({ err }, 'Social crisis compile failed');
-      res.status(500).json({ error: 'Compilation failed' });
-    }
+        aiJobs.set(jobId, {
+          status: 'completed',
+          data: {
+            scenario_id: scenarioId,
+            title: payload.scenario.title,
+            inject_count:
+              payload.time_injects.length +
+              payload.condition_injects.length +
+              payload.decision_injects.length,
+          },
+          startedAt: Date.now(),
+        });
+        logger.info({ jobId, scenarioId }, 'Compile completed');
+      } catch (err) {
+        logger.error({ err, jobId }, 'Social crisis compile failed');
+        aiJobs.set(jobId, { status: 'failed', error: 'Compilation failed', startedAt: Date.now() });
+      }
+    })();
   },
 );
 

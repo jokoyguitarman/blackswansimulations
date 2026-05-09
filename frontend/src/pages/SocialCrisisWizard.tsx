@@ -546,18 +546,65 @@ export const SocialCrisisWizard = () => {
         }),
       });
 
-      if (res.ok) {
-        const json = await res.json();
-        const d = json.data || json;
+      if (!res.ok) {
+        setStep4Error('Failed to start convergence generation. Try again.');
+        setStep4Loading(false);
+        return;
+      }
+
+      const json = await res.json();
+
+      // Legacy sync response
+      if (json.data && !json.job_id) {
+        const d = json.data;
         const si = d.sharedInjects || d.shared_injects;
         if (Array.isArray(si)) setSharedInjects(si);
         const cg = d.convergenceGates || d.convergence_gates;
         if (Array.isArray(cg)) setConvergenceGates(cg);
         if (d.narrative && typeof d.narrative === 'object') setNarrative(d.narrative);
         if (Array.isArray(d.objectives)) setObjectives(d.objectives);
-      } else {
-        setStep4Error('Failed to generate convergence. Try again.');
+        setStep4Loading(false);
+        return;
       }
+
+      // Async polling
+      const jobId = json.job_id;
+      if (!jobId) {
+        setStep4Error('Unexpected server response.');
+        setStep4Loading(false);
+        return;
+      }
+
+      for (let i = 0; i < 180; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        try {
+          const pollRes = await fetchJSON(
+            apiUrl(`/api/warroom/social-crisis/job-status/${jobId}`),
+            { headers },
+          );
+          if (!pollRes.ok) continue;
+          const pollJson = await pollRes.json();
+          if (pollJson.status === 'completed' && pollJson.data) {
+            const d = pollJson.data;
+            const si = d.sharedInjects || d.shared_injects;
+            if (Array.isArray(si)) setSharedInjects(si);
+            const cg = d.convergenceGates || d.convergence_gates;
+            if (Array.isArray(cg)) setConvergenceGates(cg);
+            if (d.narrative && typeof d.narrative === 'object') setNarrative(d.narrative);
+            if (Array.isArray(d.objectives)) setObjectives(d.objectives);
+            setStep4Loading(false);
+            return;
+          }
+          if (pollJson.status === 'failed') {
+            setStep4Error(pollJson.error || 'Convergence generation failed. Try again.');
+            setStep4Loading(false);
+            return;
+          }
+        } catch {
+          /* continue polling */
+        }
+      }
+      setStep4Error('Convergence generation timed out. Try again.');
     } catch {
       setStep4Error('Network error generating convergence.');
     }
@@ -648,21 +695,64 @@ export const SocialCrisisWizard = () => {
         }),
       });
 
-      if (res.ok) {
-        const json = await res.json();
-        const d = json.data;
-        if (d) {
-          setScenarioId(String(d.scenario_id));
-          if (d.title) setScenarioTitle(String(d.title));
-          addProgress(`Scenario created successfully! ID: ${String(d.scenario_id).slice(0, 8)}`);
-          if (d.inject_count != null) {
-            addProgress(`Total injects: ${Number(d.inject_count)}`);
-          }
-        }
-      } else {
+      if (!res.ok) {
         const errJson = await res.json().catch(() => null);
         addProgress(`Error: ${errJson?.error || 'Failed to compile scenario.'}`);
+        setCompiling(false);
+        return;
       }
+
+      const json = await res.json();
+
+      // Legacy sync response
+      if (json.data && !json.job_id) {
+        const d = json.data;
+        setScenarioId(String(d.scenario_id));
+        if (d.title) setScenarioTitle(String(d.title));
+        addProgress(`Scenario created successfully! ID: ${String(d.scenario_id).slice(0, 8)}`);
+        if (d.inject_count != null) addProgress(`Total injects: ${Number(d.inject_count)}`);
+        setCompiling(false);
+        return;
+      }
+
+      // Async polling
+      const jobId = json.job_id;
+      if (!jobId) {
+        addProgress('Error: Unexpected server response.');
+        setCompiling(false);
+        return;
+      }
+
+      addProgress('Generating strategy windows and compiling scenario...');
+
+      for (let i = 0; i < 180; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        try {
+          const pollRes = await fetchJSON(
+            apiUrl(`/api/warroom/social-crisis/job-status/${jobId}`),
+            { headers },
+          );
+          if (!pollRes.ok) continue;
+          const pollJson = await pollRes.json();
+          if (pollJson.status === 'completed' && pollJson.data) {
+            const d = pollJson.data;
+            setScenarioId(String(d.scenario_id));
+            if (d.title) setScenarioTitle(String(d.title));
+            addProgress(`Scenario created successfully! ID: ${String(d.scenario_id).slice(0, 8)}`);
+            if (d.inject_count != null) addProgress(`Total injects: ${Number(d.inject_count)}`);
+            setCompiling(false);
+            return;
+          }
+          if (pollJson.status === 'failed') {
+            addProgress(`Error: ${pollJson.error || 'Compilation failed.'}`);
+            setCompiling(false);
+            return;
+          }
+        } catch {
+          /* continue polling */
+        }
+      }
+      addProgress('Error: Compilation timed out. Try again.');
     } catch {
       addProgress('Error: Network error during compilation.');
     }
@@ -870,7 +960,7 @@ export const SocialCrisisWizard = () => {
         AI-generated NPC personas, fact sheet, and inferred affected communities. Read-only preview.
       </p>
 
-      {step2Loading ? (
+      {step2Loading || (personas.length === 0 && !step2Error) ? (
         <Spinner text="Generating NPC personas, fact sheet & communities..." />
       ) : step2Error ? (
         <div className="text-center py-8">
