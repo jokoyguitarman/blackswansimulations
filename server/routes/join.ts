@@ -167,6 +167,10 @@ router.post(
           .update({ full_name: display_name })
           .eq('id', user.id);
 
+        await supabaseAdmin.auth.admin.updateUserById(user.id, {
+          user_metadata: { full_name: display_name },
+        });
+
         logger.info(
           { sessionId: session.id, userId: user.id },
           'Existing participant re-joined via link',
@@ -209,6 +213,11 @@ router.post(
           .update({ full_name: display_name })
           .eq('id', user.id);
       }
+
+      // Persist display name to Supabase Auth metadata for use in social feeds
+      await supabaseAdmin.auth.admin.updateUserById(user.id, {
+        user_metadata: { full_name: display_name },
+      });
 
       // 8. Insert into session_participants
       const { error: participantError } = await supabaseAdmin.from('session_participants').upsert(

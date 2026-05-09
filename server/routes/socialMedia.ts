@@ -183,6 +183,19 @@ router.post(
 
       const hashtags = content.match(/#\w+/g) || [];
 
+      // Resolve player display name: auth metadata > user_profiles > email > fallback
+      let playerName = user.metadata?.full_name as string | undefined;
+      if (!playerName) {
+        const { data: profile } = await supabaseAdmin
+          .from('user_profiles')
+          .select('full_name')
+          .eq('id', user.id)
+          .single();
+        playerName = profile?.full_name || undefined;
+      }
+      const displayName = playerName || user.email || 'Player';
+      const handle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`;
+
       const initialViralityScore = reply_to_post_id ? 0 : 35 + Math.floor(Math.random() * 15);
 
       const { data: post, error } = await supabaseAdmin
@@ -191,8 +204,8 @@ router.post(
           session_id,
           platform,
           user_id: user.id,
-          author_handle: `@${((user.metadata?.full_name as string) || user.email || user.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`,
-          author_display_name: (user.metadata?.full_name as string) || user.email || 'Player',
+          author_handle: handle,
+          author_display_name: displayName,
           author_type: 'player',
           content,
           hashtags,
