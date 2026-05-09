@@ -1254,7 +1254,11 @@ export default function FacebookFeedApp() {
                           src={post.media_urls[0]}
                           alt=""
                           className="w-full"
-                          style={{ maxHeight: 400, objectFit: 'cover' }}
+                          style={{
+                            maxHeight: 400,
+                            objectFit: 'contain',
+                            backgroundColor: '#F0F2F5',
+                          }}
                         />
                       )}
                       {post.post_format === 'video_concept' &&

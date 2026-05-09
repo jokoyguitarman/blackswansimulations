@@ -719,8 +719,8 @@ export default function SocialFeedApp({
                   <img
                     src={selectedPost.media_urls[0]}
                     alt=""
-                    className="w-full max-h-[300px] object-cover"
-                    style={{ borderRadius: 12 }}
+                    className="w-full max-h-[300px] object-contain"
+                    style={{ borderRadius: 12, backgroundColor: '#16181C' }}
                   />
                 )}
               </div>
@@ -916,8 +916,8 @@ export default function SocialFeedApp({
                             <img
                               src={reply.media_urls[0]}
                               alt=""
-                              className="w-full max-h-[200px] object-cover"
-                              style={{ borderRadius: 12 }}
+                              className="w-full max-h-[200px] object-contain"
+                              style={{ borderRadius: 12, backgroundColor: '#16181C' }}
                             />
                           )}
                         </div>
@@ -1722,8 +1722,8 @@ export default function SocialFeedApp({
                             <img
                               src={post.media_urls[0]}
                               alt=""
-                              className="w-full max-h-[300px] object-cover"
-                              style={{ borderRadius: 12 }}
+                              className="w-full max-h-[300px] object-contain"
+                              style={{ borderRadius: 12, backgroundColor: '#16181C' }}
                             />
                           )}
                           {post.post_format === 'video_concept' &&
