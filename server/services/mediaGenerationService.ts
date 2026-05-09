@@ -73,6 +73,7 @@ async function uploadToStorage(
 export async function generatePostImage(
   prompt: string,
   style: ImageStyle | string = 'meme',
+  scenarioContext?: string,
 ): Promise<string | null> {
   if (!env.xaiApiKey) {
     logger.warn('No XAI_API_KEY for Grok image generation');
@@ -81,7 +82,10 @@ export async function generatePostImage(
 
   try {
     const stylePrompt = STYLE_PROMPTS[style as ImageStyle] || STYLE_PROMPTS.social_media_photo;
-    const fullPrompt = `${stylePrompt}\n\nSubject: ${prompt}\n\nIMPORTANT: This is for a crisis simulation training exercise. Do NOT include real people, real logos, or real brand names.`;
+    const contextClause = scenarioContext
+      ? `\n\nSETTING & CONTEXT: ${scenarioContext}\nEnsure people, locations, signage, and environment reflect this setting realistically.`
+      : '';
+    const fullPrompt = `${stylePrompt}\n\nSubject: ${prompt}${contextClause}\n\nIMPORTANT: This is for a crisis simulation training exercise. Do NOT include real people, real logos, or real brand names.`;
 
     const response = await fetch(`${XAI_BASE}/images/generations`, {
       method: 'POST',
@@ -154,6 +158,7 @@ export async function generateVideo(
   prompt: string,
   durationSeconds: number = 10,
   aspectRatio: string = '16:9',
+  scenarioContext?: string,
 ): Promise<string | null> {
   if (!env.xaiApiKey) {
     logger.warn('No XAI_API_KEY for Grok video generation');
@@ -161,7 +166,10 @@ export async function generateVideo(
   }
 
   try {
-    const fullPrompt = `${prompt}\n\nIMPORTANT: This is for a crisis simulation training exercise. Do NOT include real people, real logos, or real brand names.`;
+    const contextClause = scenarioContext
+      ? `\n\nSETTING & CONTEXT: ${scenarioContext}\nEnsure people, locations, signage, and environment reflect this setting realistically.`
+      : '';
+    const fullPrompt = `${prompt}${contextClause}\n\nIMPORTANT: This is for a crisis simulation training exercise. Do NOT include real people, real logos, or real brand names.`;
 
     // 1. Start video generation
     const startResponse = await fetch(`${XAI_BASE}/videos/generations`, {

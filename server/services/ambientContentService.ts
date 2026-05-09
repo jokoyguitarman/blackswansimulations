@@ -86,6 +86,7 @@ async function insertPost(
   post: Record<string, unknown>,
   replyToId?: string,
   platform: string = 'x_twitter',
+  scenarioContext?: string,
 ): Promise<Record<string, unknown> | null> {
   const handle = String(post.author_handle || '@anon');
   const displayName = String(post.author_display_name || 'User');
@@ -156,11 +157,10 @@ async function insertPost(
         let url: string | null = null;
 
         if (isVideo) {
-          // Try generating actual video; fall back to thumbnail if it fails
-          url = await generateVideo(imagePrompt, 10, '16:9');
+          url = await generateVideo(imagePrompt, 10, '16:9', scenarioContext);
           if (!url) url = await generateVideoThumbnail(imagePrompt);
         } else {
-          url = await generatePostImage(imagePrompt, 'evidence_photo');
+          url = await generatePostImage(imagePrompt, 'evidence_photo', scenarioContext);
         }
 
         if (url) {
@@ -288,9 +288,16 @@ Return ONLY valid JSON:
       : ((result as Record<string, unknown>)?.posts as unknown[]);
     if (!Array.isArray(postsArray)) return;
 
+    const mediaContext = String(scenario.description || '').substring(0, 200);
     for (let i = 0; i < postsArray.length; i++) {
       if (i > 0) await new Promise((r) => setTimeout(r, 2000 + Math.floor(Math.random() * 6000)));
-      await insertPost(sessionId, postsArray[i] as Record<string, unknown>);
+      await insertPost(
+        sessionId,
+        postsArray[i] as Record<string, unknown>,
+        undefined,
+        'x_twitter',
+        mediaContext,
+      );
     }
 
     logger.info({ sessionId, count: postsArray.length, elapsedMinutes }, 'Ambient posts generated');
@@ -377,7 +384,13 @@ Return ONLY valid JSON:
       if (i > 0) await new Promise((r) => setTimeout(r, 2000 + Math.floor(Math.random() * 4000)));
       const fbPost = postsArray[i] as Record<string, unknown>;
       fbPost.platform = 'facebook';
-      await insertPost(sessionId, fbPost, undefined, 'facebook');
+      await insertPost(
+        sessionId,
+        fbPost,
+        undefined,
+        'facebook',
+        crisisDescription.substring(0, 200),
+      );
     }
 
     if (postsArray.length > 0) {
@@ -590,7 +603,13 @@ Return ONLY valid JSON:
   for (let i = 0; i < replies.length; i++) {
     if (i > 0) await new Promise((r) => setTimeout(r, 1000 + Math.floor(Math.random() * 3000)));
     const reply = replies[i];
-    await insertPost(sessionId, reply, targetPost.id as string, platform);
+    await insertPost(
+      sessionId,
+      reply,
+      targetPost.id as string,
+      platform,
+      crisisDescription.substring(0, 200),
+    );
   }
 
   if (replies.length > 0) {

@@ -411,14 +411,28 @@ router.post(
             const isVideo = post_format === 'video_concept';
             let mediaUrl: string | null = null;
 
+            // Fetch scenario context for realistic media generation
+            let mediaScenarioContext: string | undefined;
+            const { data: mediaSession } = await supabaseAdmin
+              .from('sessions')
+              .select('scenario_id')
+              .eq('id', session_id)
+              .single();
+            if (mediaSession?.scenario_id) {
+              const { data: mediaScenario } = await supabaseAdmin
+                .from('scenarios')
+                .select('description')
+                .eq('id', mediaSession.scenario_id)
+                .single();
+              mediaScenarioContext = mediaScenario?.description?.substring(0, 200) || undefined;
+            }
+
             if (isVideo) {
-              // Generate actual video (10s for UGC-style)
-              mediaUrl = await generateVideo(promptText, 10, '16:9');
-              // Fall back to thumbnail if video gen fails
+              mediaUrl = await generateVideo(promptText, 10, '16:9', mediaScenarioContext);
               if (!mediaUrl) mediaUrl = await generateVideoThumbnail(promptText);
             } else {
               const style = imageStyle || 'social_media_photo';
-              mediaUrl = await generatePostImage(promptText, style);
+              mediaUrl = await generatePostImage(promptText, style, mediaScenarioContext);
             }
 
             if (mediaUrl) {
