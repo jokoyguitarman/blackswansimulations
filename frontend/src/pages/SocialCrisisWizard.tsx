@@ -405,15 +405,59 @@ export const SocialCrisisWizard = () => {
           context: effectiveContext,
         }),
       });
-      if (res.ok) {
-        const json = await res.json();
-        const d = json.data || json;
+      if (!res.ok) {
+        setStep2Error('Failed to start NPC generation. Try again.');
+        setStep2Loading(false);
+        return;
+      }
+      const json = await res.json();
+
+      // If server returned data directly (legacy sync response)
+      if (json.data) {
+        const d = json.data;
         if (Array.isArray(d.personas)) setPersonas(d.personas);
         if (d.factSheet || d.fact_sheet) setFactSheet((d.factSheet || d.fact_sheet) as FactSheet);
         if (Array.isArray(d.communities)) setCommunities(d.communities);
-      } else {
-        setStep2Error('Failed to generate NPCs. Try again.');
+        setStep2Loading(false);
+        return;
       }
+
+      // Async polling
+      const jobId = json.job_id;
+      if (!jobId) {
+        setStep2Error('Unexpected server response.');
+        setStep2Loading(false);
+        return;
+      }
+
+      for (let i = 0; i < 120; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        try {
+          const pollRes = await fetchJSON(
+            apiUrl(`/api/warroom/social-crisis/generate-npcs/status/${jobId}`),
+            { headers },
+          );
+          if (!pollRes.ok) continue;
+          const pollJson = await pollRes.json();
+          if (pollJson.status === 'completed' && pollJson.data) {
+            const d = pollJson.data;
+            if (Array.isArray(d.personas)) setPersonas(d.personas);
+            if (d.factSheet || d.fact_sheet)
+              setFactSheet((d.factSheet || d.fact_sheet) as FactSheet);
+            if (Array.isArray(d.communities)) setCommunities(d.communities);
+            setStep2Loading(false);
+            return;
+          }
+          if (pollJson.status === 'failed') {
+            setStep2Error(pollJson.error || 'NPC generation failed. Try again.');
+            setStep2Loading(false);
+            return;
+          }
+        } catch {
+          /* continue polling */
+        }
+      }
+      setStep2Error('NPC generation timed out. Try again.');
     } catch {
       setStep2Error('Network error generating NPCs.');
     }

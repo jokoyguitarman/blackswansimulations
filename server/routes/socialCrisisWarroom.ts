@@ -27,7 +27,27 @@ import { generatePostImage } from '../services/mediaGenerationService.js';
 
 const router = Router();
 
-// Step 2: Generate NPCs + Fact Sheet + Communities
+// In-memory job store for async NPC generation
+const npcJobs = new Map<
+  string,
+  {
+    status: 'generating' | 'completed' | 'failed';
+    data?: unknown;
+    error?: string;
+    startedAt: number;
+  }
+>();
+setInterval(
+  () => {
+    const cutoff = Date.now() - 30 * 60 * 1000;
+    for (const [key, job] of npcJobs) {
+      if (job.startedAt < cutoff) npcJobs.delete(key);
+    }
+  },
+  5 * 60 * 1000,
+);
+
+// Step 2: Generate NPCs + Fact Sheet + Communities (async)
 router.post(
   '/generate-npcs',
   requireAuth,
@@ -42,16 +62,44 @@ router.post(
     }),
   ),
   async (req: AuthenticatedRequest, res) => {
-    try {
-      const { crisis_type, context, country, location } = req.body;
-      const result = await generateNPCsAndFactSheet(crisis_type, context, country, location);
-      res.json({ data: result });
-    } catch (err) {
-      logger.error({ err }, 'Failed to generate NPCs');
-      res.status(500).json({ error: 'Failed to generate NPCs and fact sheet' });
-    }
+    const { crisis_type, context, country, location } = req.body;
+    const jobId = `npc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    npcJobs.set(jobId, { status: 'generating', startedAt: Date.now() });
+    res.json({ job_id: jobId, status: 'generating' });
+
+    void (async () => {
+      try {
+        const result = await generateNPCsAndFactSheet(crisis_type, context, country, location);
+        npcJobs.set(jobId, { status: 'completed', data: result, startedAt: Date.now() });
+        logger.info({ jobId }, 'NPC generation completed');
+      } catch (err) {
+        logger.error({ err, jobId }, 'NPC generation failed');
+        npcJobs.set(jobId, {
+          status: 'failed',
+          error: 'Failed to generate NPCs and fact sheet',
+          startedAt: Date.now(),
+        });
+      }
+    })();
   },
 );
+
+// Poll for NPC generation job status
+router.get('/generate-npcs/status/:jobId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { jobId } = req.params;
+  const job = npcJobs.get(jobId);
+  if (!job) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+  if (job.status === 'completed') {
+    return res.json({ status: 'completed', data: job.data });
+  }
+  if (job.status === 'failed') {
+    return res.json({ status: 'failed', error: job.error });
+  }
+  return res.json({ status: 'generating' });
+});
 
 // Step 3: Suggest teams (kept for compatibility)
 router.post(

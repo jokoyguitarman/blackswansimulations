@@ -523,6 +523,7 @@ export default function TrainerSimDashboard() {
   const [socialState, setSocialState] = useState<SocialState | null>(null);
   const [gradedReplies, setGradedReplies] = useState<GradedReply[]>([]);
   const [consequences, setConsequences] = useState<ConsequenceEvent[]>([]);
+  const [showExplainer, setShowExplainer] = useState(false);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [orchestration, setOrchestration] = useState<OrchestrationInject[]>([]);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
@@ -839,6 +840,13 @@ export default function TrainerSimDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowExplainer(true)}
+            className="text-[11px] font-semibold px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity"
+            style={{ backgroundColor: '#1e293b', color: '#94a3b8', border: '1px solid #334155' }}
+          >
+            How It Works
+          </button>
           <span
             className="text-[11px] px-2 py-1 rounded font-semibold"
             style={{
@@ -1307,6 +1315,283 @@ export default function TrainerSimDashboard() {
           </Card>
         </div>
       </div>
+
+      {/* How It Works Explainer Modal */}
+      {showExplainer && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}
+          onClick={() => setShowExplainer(false)}
+        >
+          <div
+            className="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl mx-4"
+            style={{ backgroundColor: '#111', border: '1px solid #2a2a2a' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="sticky top-0 flex items-center justify-between px-6 py-4 z-10"
+              style={{ backgroundColor: '#111', borderBottom: '1px solid #2a2a2a' }}
+            >
+              <h2 className="text-lg font-bold" style={{ color: '#fff' }}>
+                How the Dashboard Works
+              </h2>
+              <button
+                onClick={() => setShowExplainer(false)}
+                className="text-[18px]"
+                style={{ color: '#64748b' }}
+              >
+                ✕
+              </button>
+            </div>
+            <div
+              className="px-6 py-4 space-y-6 text-[13px] leading-relaxed"
+              style={{ color: '#cbd5e1' }}
+            >
+              <section>
+                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#3b82f6' }}>
+                  Sentiment Gauges
+                </h3>
+                <p>
+                  Four real-time metrics computed from all posts in the simulation every tick
+                  (approximately every 30 seconds):
+                </p>
+                <ul className="list-disc ml-5 mt-2 space-y-1.5">
+                  <li>
+                    <strong style={{ color: '#e5e5e5' }}>Overall Sentiment (0-100)</strong> —
+                    Weighted average of all post sentiments. Posts by designed NPCs and
+                    high-virality posts carry more weight. Drops when hostile/inflammatory posts
+                    dominate the feed.
+                  </li>
+                  <li>
+                    <strong style={{ color: '#e5e5e5' }}>Public Trust (0-100)</strong> — Measures
+                    whether the public perceives the response team as competent. Increases when
+                    players publish official statements and respond to harmful content quickly.
+                    Decreases when hate speech goes unaddressed or the team is silent.
+                  </li>
+                  <li>
+                    <strong style={{ color: '#e5e5e5' }}>Community Safety (0-100)</strong> — Tracks
+                    perceived safety in the community. Drops when racist content, violence
+                    incitement, or targeted harassment appears and remains unaddressed. Recovers
+                    when counter-narratives are published.
+                  </li>
+                  <li>
+                    <strong style={{ color: '#e5e5e5' }}>Narrative Control (0-100)</strong> — Ratio
+                    of player-created impressions vs. hostile content impressions. High narrative
+                    control means the player's content is getting more engagement than the hostile
+                    posts. Penalized by unaddressed harmful posts (weighted by age).
+                  </li>
+                  <li>
+                    <strong style={{ color: '#e5e5e5' }}>Escalation Risk (0-100, inverted)</strong>{' '}
+                    — Higher is worse. Increases when hate speech, violence, and misinformation
+                    accumulate without response. Decreases when players flag misinfo, publish
+                    statements, and contact community leaders.
+                  </li>
+                </ul>
+              </section>
+
+              <section>
+                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#ef4444' }}>
+                  Unattended Harmful Posts
+                </h3>
+                <p>
+                  Lists NPC posts flagged with hate speech, misinformation, racist content, or
+                  violence incitement that the player has not yet responded to or flagged.
+                </p>
+                <ul className="list-disc ml-5 mt-2 space-y-1">
+                  <li>
+                    Age timer shows how long each post has been unaddressed — turns from green to
+                    amber to red as time passes.
+                  </li>
+                  <li>
+                    The system penalizes the player's score progressively: 0-2min = no penalty,
+                    2-5min = low, 5-10min = medium, 10-15min = high, 15+ min = severe.
+                  </li>
+                  <li>
+                    After 10+ minutes unaddressed, automated consequence injects fire (e.g.,
+                    "community feels abandoned").
+                  </li>
+                </ul>
+              </section>
+
+              <section>
+                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#8b5cf6' }}>
+                  Strategic Actions
+                </h3>
+                <p>Categorizes every player action into three tiers:</p>
+                <ul className="list-disc ml-5 mt-2 space-y-1.5">
+                  <li>
+                    <strong style={{ color: '#64748b' }}>Tier 1 — Reactive</strong> — Basic actions:
+                    liking posts, simple text replies, flagging content. Necessary but does not
+                    demonstrate strategic thinking.
+                  </li>
+                  <li>
+                    <strong style={{ color: '#3b82f6' }}>Tier 2 — Strategic</strong> — Publishing
+                    official statements, creating infographics, posting counter-narratives,
+                    contacting community leaders. Shows deliberate communication strategy.
+                  </li>
+                  <li>
+                    <strong style={{ color: '#8b5cf6' }}>Tier 3 — Advanced</strong> — Multi-platform
+                    coordination, video concepts, rally calls, creative/humor formats deployed at
+                    the right timing. Demonstrates mastery.
+                  </li>
+                </ul>
+                <p className="mt-2">
+                  <strong style={{ color: '#e5e5e5' }}>Strategic Ratio</strong> — Percentage of Tier
+                  2+3 actions out of total. Above 50% is considered good (green). Below 50% means
+                  the player is mostly reactive (amber).
+                </p>
+                <p className="mt-1">
+                  <strong style={{ color: '#e5e5e5' }}>Checklist items</strong> track whether the
+                  player has completed key crisis communication actions (official statement,
+                  community outreach, counter-narratives, misinfo flagging, rally calls). Click to
+                  expand and see the actual posts.
+                </p>
+              </section>
+
+              <section>
+                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#22c55e' }}>
+                  Player Response Grading
+                </h3>
+                <p>
+                  Every player post (replies and top-level) is auto-graded by AI against crisis
+                  communication best practices. Four dimensions:
+                </p>
+                <ul className="list-disc ml-5 mt-2 space-y-1">
+                  <li>
+                    <strong style={{ color: '#e5e5e5' }}>Accuracy (ACC)</strong> — Does the response
+                    align with confirmed facts from the fact sheet? Does it avoid speculation?
+                  </li>
+                  <li>
+                    <strong style={{ color: '#e5e5e5' }}>Tone (TONE)</strong> — Is the language
+                    appropriate, empathetic, and professional? Does it avoid escalatory rhetoric?
+                  </li>
+                  <li>
+                    <strong style={{ color: '#e5e5e5' }}>Cultural Sensitivity (CULT)</strong> — Does
+                    the response show awareness of the affected communities? Does it avoid
+                    stereotyping?
+                  </li>
+                  <li>
+                    <strong style={{ color: '#e5e5e5' }}>Persuasiveness (PERS)</strong> — Would this
+                    response effectively counter the harmful narrative? Does it provide actionable
+                    information?
+                  </li>
+                </ul>
+                <p className="mt-2">
+                  Scores above 70 trigger positive consequence injects (community support). Scores
+                  below 40 trigger negative consequences (skeptical media reactions).
+                </p>
+              </section>
+
+              <section>
+                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#f59e0b' }}>
+                  Consequence Log
+                </h3>
+                <p>Tracks automated system reactions to player behavior:</p>
+                <ul className="list-disc ml-5 mt-2 space-y-1">
+                  <li>
+                    <strong style={{ color: '#22c55e' }}>Positive</strong> — Triggered when players
+                    post high-quality responses, publish official statements on time, or
+                    successfully counter misinformation. The system generates supportive NPC
+                    reactions.
+                  </li>
+                  <li>
+                    <strong style={{ color: '#ef4444' }}>Negative</strong> — Triggered when harmful
+                    posts go unaddressed too long, players post poor-quality responses, or the team
+                    stays silent. The system generates critical NPC reactions.
+                  </li>
+                </ul>
+              </section>
+
+              <section>
+                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#1d9bf0' }}>
+                  Strategy Window Orchestration
+                </h3>
+                <p>
+                  Shows conditional content injects that fire based on player behavior patterns.
+                  Each inject has conditions (e.g., "player posted official statement" + "fact check
+                  completed") and triggers success or backlash branches.
+                </p>
+                <p className="mt-1">
+                  These represent the simulation's branching narrative — different player strategies
+                  unlock different NPC reactions and storyline developments.
+                </p>
+              </section>
+
+              <section>
+                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#e5e5e5' }}>
+                  Live Feed
+                </h3>
+                <p>Real-time stream of all posts in the simulation. Color-coded borders:</p>
+                <ul className="list-disc ml-5 mt-2 space-y-1">
+                  <li>
+                    <span style={{ color: '#3b82f6' }}>Blue border</span> — Player posts
+                  </li>
+                  <li>
+                    <span style={{ color: '#f59e0b' }}>Amber border</span> — NPC posts (both ambient
+                    and designed NPCs)
+                  </li>
+                  <li>
+                    <span style={{ color: '#ef4444' }}>Red pulsing border</span> — Harmful posts
+                    that have not been addressed yet
+                  </li>
+                </ul>
+              </section>
+
+              <section className="pb-2">
+                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#a855f7' }}>
+                  SOP Timeline
+                </h3>
+                <p>
+                  Tracks the player's progress through the Standard Operating Procedure for social
+                  media crisis response:
+                </p>
+                <ol className="list-decimal ml-5 mt-2 space-y-1">
+                  <li>
+                    <strong style={{ color: '#e5e5e5' }}>Monitor</strong> — Player is actively
+                    viewing and tracking the feed
+                  </li>
+                  <li>
+                    <strong style={{ color: '#e5e5e5' }}>Assess</strong> — Player has identified the
+                    nature and severity of the crisis
+                  </li>
+                  <li>
+                    <strong style={{ color: '#e5e5e5' }}>Fact-Check</strong> — Player has verified
+                    claims against the fact sheet before responding
+                  </li>
+                  <li>
+                    <strong style={{ color: '#e5e5e5' }}>Escalate</strong> — Player has flagged
+                    content or contacted authorities/community leaders
+                  </li>
+                  <li>
+                    <strong style={{ color: '#e5e5e5' }}>Draft</strong> — Player has composed a
+                    strategic response
+                  </li>
+                  <li>
+                    <strong style={{ color: '#e5e5e5' }}>Publish</strong> — Player has posted the
+                    response publicly
+                  </li>
+                </ol>
+                <p className="mt-2">
+                  Steps turn green when completed, red when overdue (past the recommended response
+                  window for that stage).
+                </p>
+              </section>
+
+              <section className="pb-4">
+                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#64748b' }}>
+                  Data Sources
+                </h3>
+                <p>
+                  All metrics update in real-time via WebSocket. The social state is recomputed
+                  every engine tick (~30s). Post grading happens asynchronously after each player
+                  post is submitted. Consequence triggers evaluate continuously against threshold
+                  conditions.
+                </p>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
