@@ -197,6 +197,21 @@ export default function FacebookFeedApp() {
   const [showMentions, setShowMentions] = useState(false);
   const reactionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const commentInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isDesktopWidth, setIsDesktopWidth] = useState(false);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setIsDesktopWidth(entry.contentRect.width >= 700);
+      }
+    });
+    observer.observe(el);
+    setIsDesktopWidth(el.offsetWidth >= 700);
+    return () => observer.disconnect();
+  }, []);
 
   const loadPosts = useCallback(async () => {
     if (!sessionId) return;
@@ -683,6 +698,7 @@ export default function FacebookFeedApp() {
 
   return (
     <div
+      ref={containerRef}
       className="h-full flex flex-col relative"
       style={{ backgroundColor: '#F0F2F5', colorScheme: 'light' as const }}
     >
@@ -1308,190 +1324,192 @@ export default function FacebookFeedApp() {
       {activeView === 'feed' && (
         <div className="flex flex-1 overflow-hidden">
           {/* Left Sidebar */}
-          <div
-            className="hidden md:flex flex-col flex-shrink-0 overflow-y-auto py-3 px-2"
-            style={{ width: 220, backgroundColor: '#F0F2F5' }}
-          >
-            {[
-              {
-                label: 'News Feed',
-                icon: (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="#1877F2">
-                    <path d="M3 9.5L12 2l9 7.5V22H15v-6H9v6H3V9.5z" />
-                  </svg>
-                ),
-                onClick: () => {},
-              },
-              {
-                label: 'Groups',
-                icon: (
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#65676B"
-                    strokeWidth="2"
-                  >
-                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-                    <circle cx="9" cy="7" r="4" />
-                    <path d="M23 21v-2a4 4 0 00-3-3.87" />
-                  </svg>
-                ),
-                onClick: () => {
-                  setActiveView('groups');
+          {isDesktopWidth && (
+            <div
+              className="flex flex-col flex-shrink-0 overflow-y-auto py-3 px-2"
+              style={{ width: 220, backgroundColor: '#F0F2F5' }}
+            >
+              {[
+                {
+                  label: 'News Feed',
+                  icon: (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#1877F2">
+                      <path d="M3 9.5L12 2l9 7.5V22H15v-6H9v6H3V9.5z" />
+                    </svg>
+                  ),
+                  onClick: () => {},
                 },
-              },
-              {
-                label: 'Events',
-                icon: (
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#65676B"
-                    strokeWidth="2"
-                  >
-                    <rect x="3" y="4" width="18" height="18" rx="2" />
-                    <line x1="16" y1="2" x2="16" y2="6" />
-                    <line x1="8" y1="2" x2="8" y2="6" />
-                    <line x1="3" y1="10" x2="21" y2="10" />
-                  </svg>
-                ),
-                onClick: () => {
-                  setActiveView('events');
+                {
+                  label: 'Groups',
+                  icon: (
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#65676B"
+                      strokeWidth="2"
+                    >
+                      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M23 21v-2a4 4 0 00-3-3.87" />
+                    </svg>
+                  ),
+                  onClick: () => {
+                    setActiveView('groups');
+                  },
                 },
-              },
-              {
-                label: 'Messenger',
-                icon: (
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#65676B"
-                    strokeWidth="2"
-                  >
-                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                  </svg>
-                ),
-                onClick: () => {
-                  setActiveView('messenger');
+                {
+                  label: 'Events',
+                  icon: (
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#65676B"
+                      strokeWidth="2"
+                    >
+                      <rect x="3" y="4" width="18" height="18" rx="2" />
+                      <line x1="16" y1="2" x2="16" y2="6" />
+                      <line x1="8" y1="2" x2="8" y2="6" />
+                      <line x1="3" y1="10" x2="21" y2="10" />
+                    </svg>
+                  ),
+                  onClick: () => {
+                    setActiveView('events');
+                  },
                 },
-              },
-              {
-                label: 'News',
-                icon: (
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#65676B"
-                    strokeWidth="2"
+                {
+                  label: 'Messenger',
+                  icon: (
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#65676B"
+                      strokeWidth="2"
+                    >
+                      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                    </svg>
+                  ),
+                  onClick: () => {
+                    setActiveView('messenger');
+                  },
+                },
+                {
+                  label: 'News',
+                  icon: (
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#65676B"
+                      strokeWidth="2"
+                    >
+                      <path d="M4 4h16v16H4z" />
+                      <line x1="4" y1="10" x2="20" y2="10" />
+                      <line x1="10" y1="4" x2="10" y2="10" />
+                    </svg>
+                  ),
+                  onClick: () => navigate(`/sim/${sessionId}/device/news`),
+                },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  onClick={item.onClick}
+                  className="flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg hover:bg-[#E4E6EB] transition-colors"
+                >
+                  {item.icon}
+                  <span className="text-[14px] font-medium" style={{ color: '#050505' }}>
+                    {item.label}
+                  </span>
+                </button>
+              ))}
+
+              {/* Your Groups */}
+              <div className="mt-4 px-3">
+                <span className="text-[13px] font-semibold" style={{ color: '#65676B' }}>
+                  Your Groups
+                </span>
+              </div>
+              {(posts.length > 0
+                ? Array.from(
+                    new Set(
+                      posts.flatMap((p) => {
+                        const groups: string[] = [];
+                        if (p.author_type !== 'player') groups.push(p.author_display_name);
+                        return groups;
+                      }),
+                    ),
+                  ).slice(0, 5)
+                : []
+              ).map((name) => (
+                <button
+                  key={name}
+                  onClick={() => setActiveView('groups')}
+                  className="flex items-center gap-2 w-full text-left px-3 py-1.5 rounded-lg hover:bg-[#E4E6EB] transition-colors"
+                >
+                  <div
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-[11px] font-bold"
+                    style={{ backgroundColor: getAvatarColor(name) }}
                   >
-                    <path d="M4 4h16v16H4z" />
-                    <line x1="4" y1="10" x2="20" y2="10" />
-                    <line x1="10" y1="4" x2="10" y2="10" />
-                  </svg>
-                ),
-                onClick: () => navigate(`/sim/${sessionId}/device/news`),
-              },
-            ].map((item) => (
+                    {name.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-[13px] truncate" style={{ color: '#050505' }}>
+                    {name}
+                  </span>
+                </button>
+              ))}
+
+              {/* Shortcuts */}
+              <div className="mt-4 px-3">
+                <span className="text-[13px] font-semibold" style={{ color: '#65676B' }}>
+                  Shortcuts
+                </span>
+              </div>
               <button
-                key={item.label}
-                onClick={item.onClick}
+                onClick={() => navigate(`/sim/${sessionId}/device/email`)}
                 className="flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg hover:bg-[#E4E6EB] transition-colors"
               >
-                {item.icon}
-                <span className="text-[14px] font-medium" style={{ color: '#050505' }}>
-                  {item.label}
-                </span>
-              </button>
-            ))}
-
-            {/* Your Groups */}
-            <div className="mt-4 px-3">
-              <span className="text-[13px] font-semibold" style={{ color: '#65676B' }}>
-                Your Groups
-              </span>
-            </div>
-            {(posts.length > 0
-              ? Array.from(
-                  new Set(
-                    posts.flatMap((p) => {
-                      const groups: string[] = [];
-                      if (p.author_type !== 'player') groups.push(p.author_display_name);
-                      return groups;
-                    }),
-                  ),
-                ).slice(0, 5)
-              : []
-            ).map((name) => (
-              <button
-                key={name}
-                onClick={() => setActiveView('groups')}
-                className="flex items-center gap-2 w-full text-left px-3 py-1.5 rounded-lg hover:bg-[#E4E6EB] transition-colors"
-              >
-                <div
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-[11px] font-bold"
-                  style={{ backgroundColor: getAvatarColor(name) }}
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#65676B"
+                  strokeWidth="2"
                 >
-                  {name.charAt(0).toUpperCase()}
-                </div>
-                <span className="text-[13px] truncate" style={{ color: '#050505' }}>
-                  {name}
+                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                  <polyline points="22,6 12,13 2,6" />
+                </svg>
+                <span className="text-[14px] font-medium" style={{ color: '#050505' }}>
+                  Email
                 </span>
               </button>
-            ))}
-
-            {/* Shortcuts */}
-            <div className="mt-4 px-3">
-              <span className="text-[13px] font-semibold" style={{ color: '#65676B' }}>
-                Shortcuts
-              </span>
+              <button
+                onClick={() => navigate(`/sim/${sessionId}/device/drafts`)}
+                className="flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg hover:bg-[#E4E6EB] transition-colors"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#65676B"
+                  strokeWidth="2"
+                >
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+                </svg>
+                <span className="text-[14px] font-medium" style={{ color: '#050505' }}>
+                  Draft Pad
+                </span>
+              </button>
             </div>
-            <button
-              onClick={() => navigate(`/sim/${sessionId}/device/email`)}
-              className="flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg hover:bg-[#E4E6EB] transition-colors"
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#65676B"
-                strokeWidth="2"
-              >
-                <rect x="2" y="4" width="20" height="16" rx="2" />
-                <polyline points="22,6 12,13 2,6" />
-              </svg>
-              <span className="text-[14px] font-medium" style={{ color: '#050505' }}>
-                Email
-              </span>
-            </button>
-            <button
-              onClick={() => navigate(`/sim/${sessionId}/device/drafts`)}
-              className="flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg hover:bg-[#E4E6EB] transition-colors"
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#65676B"
-                strokeWidth="2"
-              >
-                <path d="M12 20h9" />
-                <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
-              </svg>
-              <span className="text-[14px] font-medium" style={{ color: '#050505' }}>
-                Draft Pad
-              </span>
-            </button>
-          </div>
+          )}
 
           {/* Main Feed Column */}
           <div className="flex-1 flex flex-col overflow-hidden">
@@ -2873,138 +2891,239 @@ export default function FacebookFeedApp() {
         </div>
       )}
 
-      {/* ── Chat Boxes (anchored bottom-right) ── */}
-      <div className="absolute bottom-0 right-3 flex items-end gap-2 z-50 pointer-events-none">
-        {openChats.map((chat) => {
-          const messages = chatMessages[chat.threadId] || [];
-          return (
-            <div
-              key={chat.threadId}
-              className="pointer-events-auto flex flex-col rounded-t-lg overflow-hidden"
-              style={{
-                width: 328,
-                height: 420,
-                backgroundColor: '#FFFFFF',
-                boxShadow: '0 -2px 12px rgba(0,0,0,0.15)',
-              }}
-            >
-              {/* Chat Header */}
-              <div
-                className="flex items-center justify-between px-3 py-2"
-                style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid #E4E6EB' }}
-              >
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[12px]"
-                    style={{ backgroundColor: getAvatarColor(chat.displayName) }}
-                  >
-                    {chat.displayName.charAt(0).toUpperCase()}
-                  </div>
-                  <span className="text-[14px] font-semibold" style={{ color: '#050505' }}>
-                    {chat.displayName}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => {
-                      setActiveView('messenger');
-                      setOpenChats((prev) => prev.filter((c) => c.threadId !== chat.threadId));
-                    }}
-                    className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[#F0F2F5]"
-                    title="Open full screen"
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#65676B"
-                      strokeWidth="2"
-                    >
-                      <polyline points="15 3 21 3 21 9" />
-                      <polyline points="9 21 3 21 3 15" />
-                      <line x1="21" y1="3" x2="14" y2="10" />
-                      <line x1="3" y1="21" x2="10" y2="14" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() =>
-                      setOpenChats((prev) => prev.filter((c) => c.threadId !== chat.threadId))
-                    }
-                    className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[#F0F2F5]"
-                    title="Close"
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#65676B"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    >
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              {/* Messages */}
-              <div
-                className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-1"
-                style={{ backgroundColor: '#FFFFFF' }}
-              >
-                {messages.map((msg) => {
-                  const isMe = msg.sender_handle !== chat.handle;
-                  return (
-                    <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                      <div
-                        className="max-w-[75%] px-3 py-1.5 rounded-2xl text-[14px]"
-                        style={{
-                          backgroundColor: isMe ? '#1877F2' : '#F0F2F5',
-                          color: isMe ? '#FFFFFF' : '#050505',
-                        }}
-                      >
-                        {msg.content}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Input */}
-              <div
-                className="flex items-center gap-2 px-3 py-2"
-                style={{ borderTop: '1px solid #E4E6EB' }}
-              >
-                <input
-                  type="text"
-                  value={chatInputs[chat.threadId] || ''}
-                  onChange={(e) =>
-                    setChatInputs((prev) => ({ ...prev, [chat.threadId]: e.target.value }))
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') sendChatMessage(chat.threadId, chat.handle);
-                  }}
-                  placeholder="Aa"
-                  className="flex-1 px-3 py-1.5 rounded-full text-[14px] outline-none"
-                  style={{ backgroundColor: '#F0F2F5', color: '#050505' }}
-                />
-                <button
-                  onClick={() => sendChatMessage(chat.threadId, chat.handle)}
-                  className="w-8 h-8 rounded-full flex items-center justify-center"
-                  style={{ color: '#1877F2' }}
+      {/* ── Mobile Bottom Nav (phone mode only) ── */}
+      {!isDesktopWidth && (
+        <div
+          className="flex-shrink-0 flex items-center justify-around py-2 px-1"
+          style={{ backgroundColor: '#FFFFFF', borderTop: '1px solid #DADDE1' }}
+        >
+          {[
+            {
+              label: 'Home',
+              view: 'feed' as const,
+              icon: (
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill={activeView === 'feed' ? '#1877F2' : 'none'}
+                  stroke={activeView === 'feed' ? '#1877F2' : '#65676B'}
+                  strokeWidth="2"
                 >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="#1877F2">
-                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                  </svg>
-                </button>
+                  <path d="M3 9.5L12 2l9 7.5V22H15v-6H9v6H3V9.5z" />
+                </svg>
+              ),
+            },
+            {
+              label: 'Groups',
+              view: 'groups' as const,
+              icon: (
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke={activeView === 'groups' ? '#1877F2' : '#65676B'}
+                  strokeWidth="2"
+                >
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                </svg>
+              ),
+            },
+            {
+              label: 'Events',
+              view: 'events' as const,
+              icon: (
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke={activeView === 'events' ? '#1877F2' : '#65676B'}
+                  strokeWidth="2"
+                >
+                  <rect x="3" y="4" width="18" height="18" rx="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+              ),
+            },
+            {
+              label: 'Chat',
+              view: 'messenger' as const,
+              icon: (
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke={activeView === 'messenger' ? '#1877F2' : '#65676B'}
+                  strokeWidth="2"
+                >
+                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                </svg>
+              ),
+            },
+          ].map((tab) => (
+            <button
+              key={tab.label}
+              onClick={() => {
+                setActiveView(tab.view);
+                setShowNotifPanel(false);
+              }}
+              className="flex flex-col items-center py-1 px-3"
+            >
+              {tab.icon}
+              <span
+                className="text-[10px] mt-0.5"
+                style={{ color: activeView === tab.view ? '#1877F2' : '#65676B' }}
+              >
+                {tab.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Chat Boxes (anchored bottom-right, desktop only) ── */}
+      {isDesktopWidth && (
+        <div className="absolute bottom-0 right-3 flex items-end gap-2 z-50 pointer-events-none">
+          {openChats.map((chat) => {
+            const messages = chatMessages[chat.threadId] || [];
+            return (
+              <div
+                key={chat.threadId}
+                className="pointer-events-auto flex flex-col rounded-t-lg overflow-hidden"
+                style={{
+                  width: 328,
+                  height: 420,
+                  backgroundColor: '#FFFFFF',
+                  boxShadow: '0 -2px 12px rgba(0,0,0,0.15)',
+                }}
+              >
+                {/* Chat Header */}
+                <div
+                  className="flex items-center justify-between px-3 py-2"
+                  style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid #E4E6EB' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[12px]"
+                      style={{ backgroundColor: getAvatarColor(chat.displayName) }}
+                    >
+                      {chat.displayName.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="text-[14px] font-semibold" style={{ color: '#050505' }}>
+                      {chat.displayName}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => {
+                        setActiveView('messenger');
+                        setOpenChats((prev) => prev.filter((c) => c.threadId !== chat.threadId));
+                      }}
+                      className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[#F0F2F5]"
+                      title="Open full screen"
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#65676B"
+                        strokeWidth="2"
+                      >
+                        <polyline points="15 3 21 3 21 9" />
+                        <polyline points="9 21 3 21 3 15" />
+                        <line x1="21" y1="3" x2="14" y2="10" />
+                        <line x1="3" y1="21" x2="10" y2="14" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() =>
+                        setOpenChats((prev) => prev.filter((c) => c.threadId !== chat.threadId))
+                      }
+                      className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[#F0F2F5]"
+                      title="Close"
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#65676B"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      >
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Messages */}
+                <div
+                  className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-1"
+                  style={{ backgroundColor: '#FFFFFF' }}
+                >
+                  {messages.map((msg) => {
+                    const isMe = msg.sender_handle !== chat.handle;
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div
+                          className="max-w-[75%] px-3 py-1.5 rounded-2xl text-[14px]"
+                          style={{
+                            backgroundColor: isMe ? '#1877F2' : '#F0F2F5',
+                            color: isMe ? '#FFFFFF' : '#050505',
+                          }}
+                        >
+                          {msg.content}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Input */}
+                <div
+                  className="flex items-center gap-2 px-3 py-2"
+                  style={{ borderTop: '1px solid #E4E6EB' }}
+                >
+                  <input
+                    type="text"
+                    value={chatInputs[chat.threadId] || ''}
+                    onChange={(e) =>
+                      setChatInputs((prev) => ({ ...prev, [chat.threadId]: e.target.value }))
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') sendChatMessage(chat.threadId, chat.handle);
+                    }}
+                    placeholder="Aa"
+                    className="flex-1 px-3 py-1.5 rounded-full text-[14px] outline-none"
+                    style={{ backgroundColor: '#F0F2F5', color: '#050505' }}
+                  />
+                  <button
+                    onClick={() => sendChatMessage(chat.threadId, chat.handle)}
+                    className="w-8 h-8 rounded-full flex items-center justify-center"
+                    style={{ color: '#1877F2' }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="#1877F2">
+                      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
