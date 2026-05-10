@@ -155,6 +155,13 @@ export default function FacebookFeedApp() {
   const [activeView, setActiveView] = useState<'feed' | 'messenger' | 'groups' | 'events'>('feed');
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [showMessengerDropdown, setShowMessengerDropdown] = useState(false);
+  const [showNewMessageModal, setShowNewMessageModal] = useState(false);
+  const [newMsgRecipient, setNewMsgRecipient] = useState<{
+    handle: string;
+    displayName: string;
+  } | null>(null);
+  const [newMsgText, setNewMsgText] = useState('');
+  const [recipientSearch, setRecipientSearch] = useState('');
   const [openChats, setOpenChats] = useState<
     Array<{ threadId: string; handle: string; displayName: string }>
   >([]);
@@ -354,6 +361,36 @@ export default function FacebookFeedApp() {
       });
       setChatInputs((prev) => ({ ...prev, [threadId]: '' }));
       loadChatMessages(threadId);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function sendNewMessage() {
+    if (!newMsgRecipient || !newMsgText.trim() || !sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl('/api/social/messenger/send'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          session_id: sessionId,
+          recipient_handle: newMsgRecipient.handle,
+          content: newMsgText.trim(),
+          platform: 'facebook',
+        }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const threadId = json.data?.thread_id;
+        if (threadId) {
+          openChatBox(threadId, newMsgRecipient.handle, newMsgRecipient.displayName);
+        }
+      }
+      setNewMsgText('');
+      setNewMsgRecipient(null);
+      setRecipientSearch('');
+      setShowNewMessageModal(false);
     } catch {
       /* ignore */
     }
@@ -760,9 +797,13 @@ export default function FacebookFeedApp() {
                 width="20"
                 height="20"
                 viewBox="0 0 24 24"
-                fill={showMessengerDropdown ? '#1877F2' : '#050505'}
+                fill="none"
+                stroke={showMessengerDropdown ? '#1877F2' : '#050505'}
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                <path d="M12 2C6.477 2 2 6.145 2 11.243c0 2.936 1.444 5.544 3.706 7.243V22l3.407-1.87c.91.252 1.873.387 2.887.387 5.523 0 10-4.145 10-9.257C22 6.145 17.523 2 12 2zm1.063 12.478L10.5 11.85 5.5 14.478l5.5-5.956 2.563 2.628 5-2.628-5.5 5.956z" />
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
               </svg>
             </button>
 
@@ -781,9 +822,14 @@ export default function FacebookFeedApp() {
                 width="20"
                 height="20"
                 viewBox="0 0 24 24"
-                fill={showNotifPanel ? '#1877F2' : '#050505'}
+                fill="none"
+                stroke={showNotifPanel ? '#1877F2' : '#050505'}
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
               </svg>
               {notifCount > 0 && (
                 <span
@@ -827,16 +873,39 @@ export default function FacebookFeedApp() {
               <span className="text-[20px] font-bold" style={{ color: '#050505' }}>
                 Chats
               </span>
-              <button
-                onClick={() => {
-                  setActiveView('messenger');
-                  setShowMessengerDropdown(false);
-                }}
-                className="text-[13px] font-semibold px-3 py-1 rounded-md hover:bg-[#F0F2F5]"
-                style={{ color: '#1877F2' }}
-              >
-                Open Messenger
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setShowNewMessageModal(true);
+                    setShowMessengerDropdown(false);
+                  }}
+                  className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[#F0F2F5]"
+                  title="New message"
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#050505"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  >
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => {
+                    setActiveView('messenger');
+                    setShowMessengerDropdown(false);
+                  }}
+                  className="text-[13px] font-semibold px-3 py-1 rounded-md hover:bg-[#F0F2F5]"
+                  style={{ color: '#1877F2' }}
+                >
+                  See all
+                </button>
+              </div>
             </div>
             <div className="overflow-y-auto" style={{ maxHeight: 400 }}>
               {messengerThreads.length === 0 ? (
@@ -885,6 +954,174 @@ export default function FacebookFeedApp() {
                 ))
               )}
             </div>
+          </div>
+        </>
+      )}
+
+      {/* New Message Modal */}
+      {showNewMessageModal && (
+        <>
+          <div
+            className="fixed inset-0 z-50"
+            style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+            onClick={() => setShowNewMessageModal(false)}
+          />
+          <div
+            className="absolute inset-x-0 top-[60px] mx-auto z-50 rounded-lg overflow-hidden"
+            style={{
+              width: 400,
+              maxHeight: '80%',
+              backgroundColor: '#FFFFFF',
+              boxShadow: '0 12px 28px rgba(0,0,0,0.3)',
+            }}
+          >
+            <div
+              className="flex items-center justify-between px-4 py-3"
+              style={{ borderBottom: '1px solid #E4E6EB' }}
+            >
+              <span className="text-[17px] font-bold" style={{ color: '#050505' }}>
+                New Message
+              </span>
+              <button
+                onClick={() => {
+                  setShowNewMessageModal(false);
+                  setNewMsgRecipient(null);
+                  setRecipientSearch('');
+                }}
+                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[#F0F2F5]"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#65676B"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            {!newMsgRecipient ? (
+              <div className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[14px] font-semibold" style={{ color: '#050505' }}>
+                    To:
+                  </span>
+                  <input
+                    type="text"
+                    value={recipientSearch}
+                    onChange={(e) => setRecipientSearch(e.target.value)}
+                    placeholder="Search for a person..."
+                    className="flex-1 px-3 py-1.5 rounded-full text-[14px] outline-none"
+                    style={{ backgroundColor: '#F0F2F5', color: '#050505' }}
+                    autoFocus
+                  />
+                </div>
+                <div className="max-h-[250px] overflow-y-auto">
+                  {knownHandles
+                    .filter(
+                      (h) =>
+                        h.display_name.toLowerCase().includes(recipientSearch.toLowerCase()) ||
+                        h.handle.toLowerCase().includes(recipientSearch.toLowerCase()),
+                    )
+                    .slice(0, 10)
+                    .map((h) => (
+                      <button
+                        key={h.handle}
+                        onClick={() =>
+                          setNewMsgRecipient({ handle: h.handle, displayName: h.display_name })
+                        }
+                        className="flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg hover:bg-[#F0F2F5] transition-colors"
+                      >
+                        <div
+                          className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[14px]"
+                          style={{ backgroundColor: getAvatarColor(h.display_name) }}
+                        >
+                          {h.display_name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <span
+                            className="text-[14px] font-semibold block"
+                            style={{ color: '#050505' }}
+                          >
+                            {h.display_name}
+                          </span>
+                          <span className="text-[12px]" style={{ color: '#65676B' }}>
+                            {h.handle}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  {knownHandles.filter((h) =>
+                    h.display_name.toLowerCase().includes(recipientSearch.toLowerCase()),
+                  ).length === 0 && (
+                    <p className="text-[13px] text-center py-4" style={{ color: '#65676B' }}>
+                      No contacts found
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col" style={{ height: 300 }}>
+                <div
+                  className="px-4 py-2 flex items-center gap-2"
+                  style={{ borderBottom: '1px solid #E4E6EB' }}
+                >
+                  <span className="text-[14px]" style={{ color: '#65676B' }}>
+                    To:
+                  </span>
+                  <span
+                    className="text-[14px] font-semibold px-2 py-0.5 rounded-md"
+                    style={{ backgroundColor: '#E7F3FF', color: '#1877F2' }}
+                  >
+                    {newMsgRecipient.displayName}
+                  </span>
+                  <button
+                    onClick={() => setNewMsgRecipient(null)}
+                    className="text-[12px]"
+                    style={{ color: '#65676B' }}
+                  >
+                    Change
+                  </button>
+                </div>
+                <div className="flex-1 flex items-center justify-center">
+                  <p className="text-[13px]" style={{ color: '#65676B' }}>
+                    Start a conversation with {newMsgRecipient.displayName}
+                  </p>
+                </div>
+                <div
+                  className="flex items-center gap-2 px-4 py-3"
+                  style={{ borderTop: '1px solid #E4E6EB' }}
+                >
+                  <input
+                    type="text"
+                    value={newMsgText}
+                    onChange={(e) => setNewMsgText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') sendNewMessage();
+                    }}
+                    placeholder="Type a message..."
+                    className="flex-1 px-3 py-2 rounded-full text-[14px] outline-none"
+                    style={{ backgroundColor: '#F0F2F5', color: '#050505' }}
+                    autoFocus
+                  />
+                  <button
+                    onClick={sendNewMessage}
+                    disabled={!newMsgText.trim()}
+                    className="w-9 h-9 rounded-full flex items-center justify-center disabled:opacity-30"
+                    style={{ color: '#1877F2' }}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#1877F2">
+                      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}
