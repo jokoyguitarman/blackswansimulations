@@ -154,6 +154,33 @@ export default function FacebookFeedApp() {
   >([]);
   const [activeView, setActiveView] = useState<'feed' | 'messenger' | 'groups' | 'events'>('feed');
   const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [showMessengerDropdown, setShowMessengerDropdown] = useState(false);
+  const [openChats, setOpenChats] = useState<
+    Array<{ threadId: string; handle: string; displayName: string }>
+  >([]);
+  const [messengerThreads, setMessengerThreads] = useState<
+    Array<{
+      thread_id: string;
+      other_handle: string;
+      other_display_name: string;
+      last_message: string;
+      last_time: string;
+      unread_count: number;
+    }>
+  >([]);
+  const [chatMessages, setChatMessages] = useState<
+    Record<
+      string,
+      Array<{
+        id: string;
+        sender_handle: string;
+        sender_display_name: string;
+        content: string;
+        created_at: string;
+      }>
+    >
+  >({});
+  const [chatInputs, setChatInputs] = useState<Record<string, string>>({});
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set());
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   const [knownHandles, setKnownHandles] = useState<Array<{ handle: string; display_name: string }>>(
@@ -266,6 +293,67 @@ export default function FacebookFeedApp() {
         ).length;
         setNotifCount(unreadSocial);
       }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function loadMessengerThreads() {
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        apiUrl(`/api/social/messenger/threads/${sessionId}?platform=facebook`),
+        { headers },
+      );
+      if (res.ok) {
+        const json = await res.json();
+        setMessengerThreads(json.data || []);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function openChatBox(threadId: string, handle: string, displayName: string) {
+    setOpenChats((prev) => {
+      if (prev.some((c) => c.threadId === threadId)) return prev;
+      const updated = [...prev, { threadId, handle, displayName }];
+      return updated.slice(-3);
+    });
+    loadChatMessages(threadId);
+  }
+
+  async function loadChatMessages(threadId: string) {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/social/messenger/thread/${threadId}`), { headers });
+      if (res.ok) {
+        const json = await res.json();
+        setChatMessages((prev) => ({ ...prev, [threadId]: json.data || [] }));
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function sendChatMessage(threadId: string, recipientHandle: string) {
+    const text = chatInputs[threadId]?.trim();
+    if (!text || !sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(apiUrl('/api/social/messenger/send'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          session_id: sessionId,
+          recipient_handle: recipientHandle,
+          content: text,
+          platform: 'facebook',
+        }),
+      });
+      setChatInputs((prev) => ({ ...prev, [threadId]: '' }));
+      loadChatMessages(threadId);
     } catch {
       /* ignore */
     }
@@ -561,172 +649,245 @@ export default function FacebookFeedApp() {
       className="h-full flex flex-col relative"
       style={{ backgroundColor: '#F0F2F5', colorScheme: 'light' as const }}
     >
-      {/* ── Facebook Header ── */}
+      {/* ── Facebook Desktop Header ── */}
       <div
-        style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid #DADDE1' }}
+        style={{ backgroundColor: '#FFFFFF', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
         className="flex-shrink-0"
       >
-        <div className="flex items-center justify-between px-3" style={{ height: 48 }}>
-          <span
-            className="text-[22px] font-extrabold italic"
-            style={{ color: '#2563EB', fontFamily: 'Georgia, serif', letterSpacing: '-0.5px' }}
-          >
-            fakebook
-          </span>
-          <button
-            onClick={() => navigate(`/sim/${sessionId}/device/social`)}
-            className="w-9 h-9 rounded-full flex items-center justify-center"
-            style={{ backgroundColor: '#000' }}
-            title="Switch to Z"
-          >
-            <span className="text-[16px] font-bold" style={{ color: '#FFFFFF' }}>
-              Z
-            </span>
-          </button>
-        </div>
-
-        {/* Nav Icons */}
-        <div
-          className="flex items-center justify-around px-2 pb-1"
-          style={{ borderBottom: '2px solid transparent' }}
-        >
-          {[
-            {
-              label: 'Home',
-              active: activeView === 'feed' && !showNotifPanel,
-              onClick: () => {
-                setActiveView('feed');
-                setShowNotifPanel(false);
-              },
-              icon: (
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill={activeView === 'feed' && !showNotifPanel ? '#1877F2' : 'none'}
-                  stroke={activeView === 'feed' && !showNotifPanel ? '#1877F2' : '#65676B'}
-                  strokeWidth="2"
-                >
-                  <path d="M3 9.5L12 2l9 7.5V22H15v-6H9v6H3V9.5z" />
-                </svg>
-              ),
-            },
-            {
-              label: 'Messenger',
-              active: activeView === 'messenger',
-              onClick: () => {
-                setActiveView('messenger');
-                setShowNotifPanel(false);
-              },
-              icon: (
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill={activeView === 'messenger' ? '#1877F2' : 'none'}
-                  stroke={activeView === 'messenger' ? '#1877F2' : '#65676B'}
-                  strokeWidth="2"
-                >
-                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                </svg>
-              ),
-            },
-            {
-              label: 'Groups',
-              active: activeView === 'groups',
-              onClick: () => {
-                setActiveView('groups');
-                setShowNotifPanel(false);
-              },
-              icon: (
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill={activeView === 'groups' ? '#1877F2' : 'none'}
-                  stroke={activeView === 'groups' ? '#1877F2' : '#65676B'}
-                  strokeWidth="2"
-                >
-                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
-                </svg>
-              ),
-            },
-            {
-              label: 'Events',
-              active: activeView === 'events',
-              onClick: () => {
-                setActiveView('events');
-                setShowNotifPanel(false);
-              },
-              icon: (
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill={activeView === 'events' ? '#1877F2' : 'none'}
-                  stroke={activeView === 'events' ? '#1877F2' : '#65676B'}
-                  strokeWidth="2"
-                >
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                  <line x1="16" y1="2" x2="16" y2="6" />
-                  <line x1="8" y1="2" x2="8" y2="6" />
-                  <line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
-              ),
-            },
-            {
-              label: 'Notif',
-              active: showNotifPanel,
-              onClick: () => {
-                setShowNotifPanel(!showNotifPanel);
-                if (!showNotifPanel) fetchNotifications();
-              },
-              badge: notifCount,
-              icon: (
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill={showNotifPanel ? '#1877F2' : 'none'}
-                  stroke={showNotifPanel ? '#1877F2' : '#65676B'}
-                  strokeWidth="2"
-                >
-                  <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 01-3.46 0" />
-                </svg>
-              ),
-            },
-          ].map((tab) => (
-            <div
-              key={tab.label}
-              className="flex flex-col items-center py-2 px-3 relative cursor-pointer"
-              onClick={'onClick' in tab && tab.onClick ? (tab.onClick as () => void) : undefined}
+        <div className="flex items-center px-3" style={{ height: 56 }}>
+          {/* Left: Logo */}
+          <div className="flex items-center gap-2 flex-shrink-0" style={{ minWidth: 100 }}>
+            <span
+              className="text-[24px] font-extrabold italic"
+              style={{ color: '#1877F2', fontFamily: 'Georgia, serif', letterSpacing: '-0.5px' }}
             >
-              <div className="relative">
-                {tab.icon}
-                {'badge' in tab && (tab as { badge?: number }).badge! > 0 && (
-                  <span
-                    className="absolute -top-1 -right-2 min-w-[16px] h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white px-1"
-                    style={{ backgroundColor: '#F02849' }}
+              fakebook
+            </span>
+          </div>
+
+          {/* Center: Nav Tabs */}
+          <div className="flex-1 flex items-center justify-center gap-1">
+            {[
+              {
+                label: 'Home',
+                view: 'feed' as const,
+                icon: (
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill={activeView === 'feed' ? '#1877F2' : 'none'}
+                    stroke={activeView === 'feed' ? '#1877F2' : '#65676B'}
+                    strokeWidth="2"
                   >
-                    {(tab as { badge?: number }).badge! > 99
-                      ? '99+'
-                      : (tab as { badge?: number }).badge}
-                  </span>
+                    <path d="M3 9.5L12 2l9 7.5V22H15v-6H9v6H3V9.5z" />
+                  </svg>
+                ),
+              },
+              {
+                label: 'Groups',
+                view: 'groups' as const,
+                icon: (
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill={activeView === 'groups' ? '#1877F2' : 'none'}
+                    stroke={activeView === 'groups' ? '#1877F2' : '#65676B'}
+                    strokeWidth="2"
+                  >
+                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+                  </svg>
+                ),
+              },
+              {
+                label: 'Events',
+                view: 'events' as const,
+                icon: (
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill={activeView === 'events' ? '#1877F2' : 'none'}
+                    stroke={activeView === 'events' ? '#1877F2' : '#65676B'}
+                    strokeWidth="2"
+                  >
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                    <line x1="16" y1="2" x2="16" y2="6" />
+                    <line x1="8" y1="2" x2="8" y2="6" />
+                    <line x1="3" y1="10" x2="21" y2="10" />
+                  </svg>
+                ),
+              },
+            ].map((tab) => (
+              <button
+                key={tab.label}
+                onClick={() => {
+                  setActiveView(tab.view);
+                  setShowNotifPanel(false);
+                  setShowMessengerDropdown(false);
+                }}
+                className="relative px-6 py-3 rounded-lg hover:bg-[#F0F2F5] transition-colors"
+                title={tab.label}
+              >
+                {tab.icon}
+                {activeView === tab.view && (
+                  <div
+                    className="absolute bottom-0 left-2 right-2 h-[3px] rounded-full"
+                    style={{ backgroundColor: '#1877F2' }}
+                  />
                 )}
-              </div>
-              {tab.active && (
-                <div
-                  className="absolute bottom-0 left-0 right-0 h-[2px]"
-                  style={{ backgroundColor: '#1877F2' }}
-                />
+              </button>
+            ))}
+          </div>
+
+          {/* Right: Messenger, Notifications, Profile */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Messenger Icon */}
+            <button
+              onClick={() => {
+                setShowMessengerDropdown(!showMessengerDropdown);
+                setShowNotifPanel(false);
+                loadMessengerThreads();
+              }}
+              className="w-10 h-10 rounded-full flex items-center justify-center relative"
+              style={{ backgroundColor: showMessengerDropdown ? '#E7F3FF' : '#E4E6EB' }}
+              title="Messenger"
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill={showMessengerDropdown ? '#1877F2' : '#050505'}
+              >
+                <path d="M12 2C6.477 2 2 6.145 2 11.243c0 2.936 1.444 5.544 3.706 7.243V22l3.407-1.87c.91.252 1.873.387 2.887.387 5.523 0 10-4.145 10-9.257C22 6.145 17.523 2 12 2zm1.063 12.478L10.5 11.85 5.5 14.478l5.5-5.956 2.563 2.628 5-2.628-5.5 5.956z" />
+              </svg>
+            </button>
+
+            {/* Notifications Icon */}
+            <button
+              onClick={() => {
+                setShowNotifPanel(!showNotifPanel);
+                setShowMessengerDropdown(false);
+                if (!showNotifPanel) fetchNotifications();
+              }}
+              className="w-10 h-10 rounded-full flex items-center justify-center relative"
+              style={{ backgroundColor: showNotifPanel ? '#E7F3FF' : '#E4E6EB' }}
+              title="Notifications"
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill={showNotifPanel ? '#1877F2' : '#050505'}
+              >
+                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />
+              </svg>
+              {notifCount > 0 && (
+                <span
+                  className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[11px] font-bold text-white"
+                  style={{ backgroundColor: '#F02849' }}
+                >
+                  {notifCount > 99 ? '99+' : notifCount}
+                </span>
               )}
-            </div>
-          ))}
+            </button>
+
+            {/* Switch to Z */}
+            <button
+              onClick={() => navigate(`/sim/${sessionId}/device/social`)}
+              className="w-10 h-10 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: '#000' }}
+              title="Switch to Z"
+            >
+              <span className="text-[14px] font-bold" style={{ color: '#FFFFFF' }}>
+                Z
+              </span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* ── Messenger Dropdown ── */}
+      {showMessengerDropdown && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setShowMessengerDropdown(false)} />
+          <div
+            className="absolute right-3 top-[58px] z-50 rounded-lg overflow-hidden"
+            style={{
+              width: 360,
+              maxHeight: '70%',
+              backgroundColor: '#FFFFFF',
+              boxShadow: '0 12px 28px rgba(0,0,0,0.2)',
+            }}
+          >
+            <div className="flex items-center justify-between px-4 py-3">
+              <span className="text-[20px] font-bold" style={{ color: '#050505' }}>
+                Chats
+              </span>
+              <button
+                onClick={() => {
+                  setActiveView('messenger');
+                  setShowMessengerDropdown(false);
+                }}
+                className="text-[13px] font-semibold px-3 py-1 rounded-md hover:bg-[#F0F2F5]"
+                style={{ color: '#1877F2' }}
+              >
+                Open Messenger
+              </button>
+            </div>
+            <div className="overflow-y-auto" style={{ maxHeight: 400 }}>
+              {messengerThreads.length === 0 ? (
+                <div className="flex items-center justify-center py-8">
+                  <span className="text-[14px]" style={{ color: '#65676B' }}>
+                    No messages yet
+                  </span>
+                </div>
+              ) : (
+                messengerThreads.map((thread) => (
+                  <button
+                    key={thread.thread_id}
+                    onClick={() => {
+                      openChatBox(thread.thread_id, thread.other_handle, thread.other_display_name);
+                      setShowMessengerDropdown(false);
+                    }}
+                    className="flex items-center gap-3 w-full text-left px-4 py-2.5 hover:bg-[#F0F2F5] transition-colors"
+                  >
+                    <div
+                      className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
+                      style={{ backgroundColor: getAvatarColor(thread.other_display_name) }}
+                    >
+                      {thread.other_display_name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span
+                        className={`text-[15px] block truncate ${thread.unread_count > 0 ? 'font-bold' : ''}`}
+                        style={{ color: '#050505' }}
+                      >
+                        {thread.other_display_name}
+                      </span>
+                      <span
+                        className={`text-[13px] block truncate ${thread.unread_count > 0 ? 'font-semibold' : ''}`}
+                        style={{ color: thread.unread_count > 0 ? '#050505' : '#65676B' }}
+                      >
+                        {thread.last_message?.substring(0, 40) || 'Start a conversation'}
+                      </span>
+                    </div>
+                    {thread.unread_count > 0 && (
+                      <div
+                        className="w-3 h-3 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: '#1877F2' }}
+                      />
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Notification Panel Overlay */}
       {showNotifPanel && (
@@ -2265,6 +2426,139 @@ export default function FacebookFeedApp() {
           )}
         </>
       )}
+
+      {/* ── Chat Boxes (anchored bottom-right) ── */}
+      <div className="absolute bottom-0 right-3 flex items-end gap-2 z-50 pointer-events-none">
+        {openChats.map((chat) => {
+          const messages = chatMessages[chat.threadId] || [];
+          return (
+            <div
+              key={chat.threadId}
+              className="pointer-events-auto flex flex-col rounded-t-lg overflow-hidden"
+              style={{
+                width: 328,
+                height: 420,
+                backgroundColor: '#FFFFFF',
+                boxShadow: '0 -2px 12px rgba(0,0,0,0.15)',
+              }}
+            >
+              {/* Chat Header */}
+              <div
+                className="flex items-center justify-between px-3 py-2"
+                style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid #E4E6EB' }}
+              >
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[12px]"
+                    style={{ backgroundColor: getAvatarColor(chat.displayName) }}
+                  >
+                    {chat.displayName.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-[14px] font-semibold" style={{ color: '#050505' }}>
+                    {chat.displayName}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      setActiveView('messenger');
+                      setOpenChats((prev) => prev.filter((c) => c.threadId !== chat.threadId));
+                    }}
+                    className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[#F0F2F5]"
+                    title="Open full screen"
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#65676B"
+                      strokeWidth="2"
+                    >
+                      <polyline points="15 3 21 3 21 9" />
+                      <polyline points="9 21 3 21 3 15" />
+                      <line x1="21" y1="3" x2="14" y2="10" />
+                      <line x1="3" y1="21" x2="10" y2="14" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() =>
+                      setOpenChats((prev) => prev.filter((c) => c.threadId !== chat.threadId))
+                    }
+                    className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[#F0F2F5]"
+                    title="Close"
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#65676B"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    >
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Messages */}
+              <div
+                className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-1"
+                style={{ backgroundColor: '#FFFFFF' }}
+              >
+                {messages.map((msg) => {
+                  const isMe = msg.sender_handle !== chat.handle;
+                  return (
+                    <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                      <div
+                        className="max-w-[75%] px-3 py-1.5 rounded-2xl text-[14px]"
+                        style={{
+                          backgroundColor: isMe ? '#1877F2' : '#F0F2F5',
+                          color: isMe ? '#FFFFFF' : '#050505',
+                        }}
+                      >
+                        {msg.content}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Input */}
+              <div
+                className="flex items-center gap-2 px-3 py-2"
+                style={{ borderTop: '1px solid #E4E6EB' }}
+              >
+                <input
+                  type="text"
+                  value={chatInputs[chat.threadId] || ''}
+                  onChange={(e) =>
+                    setChatInputs((prev) => ({ ...prev, [chat.threadId]: e.target.value }))
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') sendChatMessage(chat.threadId, chat.handle);
+                  }}
+                  placeholder="Aa"
+                  className="flex-1 px-3 py-1.5 rounded-full text-[14px] outline-none"
+                  style={{ backgroundColor: '#F0F2F5', color: '#050505' }}
+                />
+                <button
+                  onClick={() => sendChatMessage(chat.threadId, chat.handle)}
+                  className="w-8 h-8 rounded-full flex items-center justify-center"
+                  style={{ color: '#1877F2' }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="#1877F2">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
