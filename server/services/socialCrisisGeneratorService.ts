@@ -1079,6 +1079,21 @@ export function assemblePayload(
         },
         affected_communities: communities,
         research_guidelines: research,
+        facebook_groups: communities.slice(0, 3).map((c, i) => ({
+          name: `${c} Community`,
+          group_type: i === 0 ? 'community' : i === 1 ? 'religious' : 'neighborhood',
+          member_count: 200 + Math.floor(Math.random() * 2000),
+        })),
+        dm_scenarios: [
+          { trigger: 'session_start', delay_minutes: 2, type: 'journalist_inquiry' },
+          { trigger: 'escalation_high', delay_minutes: 0, type: 'community_leader_plea' },
+          { trigger: 'player_good_response', delay_minutes: 1, type: 'supportive_dm' },
+        ],
+        event_triggers: [
+          { condition: 'escalation_risk > 60', event_type: 'protest' },
+          { condition: 'narrative_control > 60', event_type: 'solidarity' },
+          { condition: 'elapsed_minutes > 15', event_type: 'vigil' },
+        ],
       },
     },
     teams,

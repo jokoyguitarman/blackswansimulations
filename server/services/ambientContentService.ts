@@ -8,6 +8,7 @@ import {
   generateVideo,
   generateVideoThumbnail,
 } from './mediaGenerationService.js';
+import { triggerNPCMessages } from './npcMessengerService.js';
 
 interface RegisteredNPC {
   handle: string;
@@ -323,6 +324,27 @@ Return ONLY valid JSON:
     if (Math.random() < 0.5) {
       await simulateThreadActivity(sessionId, String(scenario.description || ''), 'facebook');
     }
+
+    // Generate group activity and events
+    await generateGroupActivity(
+      sessionId,
+      String(scenario.description || ''),
+      knownNPCs,
+      socialState,
+    ).catch((err) =>
+      logger.warn({ err, sessionId }, 'Group activity generation failed (non-critical)'),
+    );
+
+    if (Math.random() < 0.3 || Number(socialState?.escalation_risk ?? 20) > 50) {
+      await generateEventIfNeeded(sessionId, String(scenario.description || ''), socialState).catch(
+        (err) => logger.warn({ err, sessionId }, 'Event generation failed (non-critical)'),
+      );
+    }
+
+    // Trigger NPC DMs to players
+    void triggerNPCMessages(sessionId).catch((err) =>
+      logger.warn({ err, sessionId }, 'NPC DM generation failed (non-critical)'),
+    );
   } catch (err) {
     logger.error({ err, sessionId }, 'Ambient content generation failed');
   }
@@ -734,5 +756,218 @@ Return ONLY valid JSON: { "author_handle": "@handle", "author_display_name": "Na
     }
   } catch (err) {
     logger.warn({ err, sessionId, triggerId }, 'Consequence inject generation failed');
+  }
+}
+
+// ─── Group Activity Generation ───────────────────────────────────────────────
+
+async function generateGroupActivity(
+  sessionId: string,
+  crisisDescription: string,
+  knownNPCs: RegisteredNPC[],
+  socialState: Record<string, unknown> | undefined,
+): Promise<void> {
+  if (!env.openAiApiKey) return;
+
+  const { data: groups } = await supabaseAdmin
+    .from('sim_groups')
+    .select('id, name, group_type, member_count')
+    .eq('session_id', sessionId);
+
+  if (!groups || groups.length === 0) {
+    await initializeGroups(sessionId, crisisDescription);
+    return;
+  }
+
+  const targetGroup = groups[Math.floor(Math.random() * groups.length)];
+
+  const { data: recentPosts } = await supabaseAdmin
+    .from('sim_group_posts')
+    .select('content, author_handle')
+    .eq('group_id', targetGroup.id)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  const recentContext = (recentPosts || [])
+    .map((p) => `${p.author_handle}: "${String(p.content).substring(0, 80)}"`)
+    .join('\n');
+
+  const npcList = knownNPCs
+    .slice(0, 8)
+    .map((n) => `${n.handle} (${n.display_name}): ${n.personality}`)
+    .join('\n');
+
+  const result = await callAI(
+    `You generate posts for a Facebook GROUP during a crisis simulation.
+
+GROUP: "${targetGroup.name}" (${targetGroup.group_type}, ${targetGroup.member_count} members)
+CRISIS: ${crisisDescription.substring(0, 200)}
+Escalation risk: ${Number(socialState?.escalation_risk ?? 20)}/100
+Narrative control: ${Number(socialState?.narrative_control ?? 30)}/100
+
+KNOWN NPCs:\n${npcList}
+
+${recentContext ? `RECENT POSTS IN GROUP:\n${recentContext}\n` : 'This group has no posts yet. Start the conversation.'}
+
+Generate 1-2 posts that members would write in this group. Make them feel authentic to the group type:
+- community: concerned residents, sharing info, asking questions
+- religious: prayer requests, community support, interfaith dialogue
+- neighborhood: safety concerns, patrol coordination, local updates
+- activism: calls to action, organizing, sharing evidence
+- official: announcements, verified information
+
+Return ONLY valid JSON:
+{ "posts": [{ "author_handle": "@handle", "author_display_name": "Name", "author_type": "npc_public", "content": "post text" }] }`,
+    'Generate group posts.',
+    800,
+  );
+
+  const posts = (result?.posts as Array<Record<string, unknown>>) || [];
+
+  for (const post of posts.slice(0, 2)) {
+    const { error } = await supabaseAdmin.from('sim_group_posts').insert({
+      group_id: targetGroup.id,
+      session_id: sessionId,
+      author_handle: String(post.author_handle || '@group_member'),
+      author_display_name: String(post.author_display_name || 'Group Member'),
+      author_type: String(post.author_type || 'npc_public'),
+      content: String(post.content || ''),
+      media_urls: [],
+      like_count: Math.floor(Math.random() * 5),
+      reply_count: 0,
+    });
+
+    if (error) {
+      logger.warn({ error }, 'Failed to insert group post');
+    }
+  }
+
+  if (posts.length > 0) {
+    getWebSocketService().broadcastToSession(sessionId, {
+      type: 'group_post.created',
+      data: { group_id: targetGroup.id, count: posts.length },
+      timestamp: new Date().toISOString(),
+    });
+    logger.info(
+      { sessionId, groupId: targetGroup.id, count: posts.length },
+      'Group activity generated',
+    );
+  }
+}
+
+async function initializeGroups(sessionId: string, crisisDescription: string): Promise<void> {
+  if (!env.openAiApiKey) return;
+
+  const result = await callAI(
+    `Create 3-4 Facebook groups that would exist in a community experiencing this crisis:
+
+CRISIS: ${crisisDescription.substring(0, 300)}
+
+Generate community groups relevant to this scenario. Each group should serve a different purpose.
+
+Return ONLY valid JSON:
+{ "groups": [{ "name": "Group Name", "description": "Brief description", "group_type": "community|religious|neighborhood|activism|official", "member_count": 500 }] }`,
+    'Create initial Facebook groups for the simulation.',
+    600,
+  );
+
+  const groups = (result?.groups as Array<Record<string, unknown>>) || [];
+
+  for (const group of groups.slice(0, 4)) {
+    await supabaseAdmin.from('sim_groups').insert({
+      session_id: sessionId,
+      name: String(group.name || 'Community Group'),
+      description: String(group.description || ''),
+      group_type: String(group.group_type || 'community'),
+      member_count: Number(group.member_count) || 200 + Math.floor(Math.random() * 1000),
+      is_private: false,
+      admin_handles: [],
+      platform: 'facebook',
+    });
+  }
+
+  if (groups.length > 0) {
+    logger.info({ sessionId, count: groups.length }, 'Initialized Facebook groups');
+  }
+}
+
+// ─── Event Generation ────────────────────────────────────────────────────────
+
+async function generateEventIfNeeded(
+  sessionId: string,
+  crisisDescription: string,
+  socialState: Record<string, unknown> | undefined,
+): Promise<void> {
+  if (!env.openAiApiKey) return;
+
+  const { data: existingEvents } = await supabaseAdmin
+    .from('sim_events')
+    .select('id')
+    .eq('session_id', sessionId);
+
+  if ((existingEvents || []).length >= 5) return;
+
+  const escalation = Number(socialState?.escalation_risk ?? 20);
+  const narrative = Number(socialState?.narrative_control ?? 30);
+
+  let eventContext = '';
+  if (escalation > 60) {
+    eventContext = 'The community is highly agitated. Generate a protest or safety patrol event.';
+  } else if (narrative > 60) {
+    eventContext =
+      'The situation is stabilizing. Generate a solidarity or community meeting event.';
+  } else {
+    eventContext =
+      'Generate an appropriate community event (vigil, meeting, or solidarity gathering).';
+  }
+
+  const result = await callAI(
+    `Create a Facebook Event for a community during this crisis:
+
+CRISIS: ${crisisDescription.substring(0, 200)}
+${eventContext}
+
+Event types: protest, vigil, community_meeting, safety_patrol, solidarity
+
+Return ONLY valid JSON:
+{ "event": { "title": "Event Title", "description": "What this event is about", "event_type": "protest|vigil|community_meeting|safety_patrol|solidarity", "location": "Location name", "event_date": "Tonight 8pm or Tomorrow 2pm etc", "organizer_handle": "@handle", "organizer_display_name": "Name", "organizer_type": "npc_public" } }`,
+    'Create a Facebook event.',
+    500,
+  );
+
+  const event = result?.event as Record<string, unknown> | undefined;
+  if (!event) return;
+
+  const { data: inserted, error } = await supabaseAdmin
+    .from('sim_events')
+    .insert({
+      session_id: sessionId,
+      title: String(event.title || 'Community Event'),
+      description: String(event.description || ''),
+      event_type: String(event.event_type || 'community_meeting'),
+      location: String(event.location || 'TBD'),
+      event_date: String(event.event_date || 'Soon'),
+      organizer_handle: String(event.organizer_handle || '@organizer'),
+      organizer_display_name: String(event.organizer_display_name || 'Community Organizer'),
+      organizer_type: String(event.organizer_type || 'npc_public'),
+      interested_count: Math.floor(Math.random() * 50) + 10,
+      going_count: Math.floor(Math.random() * 20) + 5,
+      platform: 'facebook',
+    })
+    .select()
+    .single();
+
+  if (error) {
+    logger.warn({ error }, 'Failed to create event');
+    return;
+  }
+
+  if (inserted) {
+    getWebSocketService().broadcastToSession(sessionId, {
+      type: 'event.created',
+      data: { event: inserted },
+      timestamp: new Date().toISOString(),
+    });
+    logger.info({ sessionId, eventId: inserted.id, type: event.event_type }, 'Event created');
   }
 }
