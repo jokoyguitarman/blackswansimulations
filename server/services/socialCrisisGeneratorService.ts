@@ -165,6 +165,9 @@ export interface SocialCrisisPayload {
       affected_communities: string[];
       research_guidelines: ResearchGuidelines;
       strategic_benchmarks?: StrategicActionBenchmark[];
+      facebook_groups?: Array<{ name: string; group_type: string; member_count: number }>;
+      dm_scenarios?: Array<{ trigger: string; delay_minutes: number; type: string }>;
+      event_triggers?: Array<{ condition: string; event_type: string }>;
     };
   };
   teams: TeamDef[];
