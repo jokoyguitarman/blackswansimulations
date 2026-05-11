@@ -680,8 +680,9 @@ router.post(
       const MAX_CHARS = 50000;
 
       if (ext === 'pdf' || file.mimetype === 'application/pdf') {
-        const pdfParse = (await import('pdf-parse')).default;
-        const parsed = await pdfParse(file.buffer);
+        const pdfParseModule = await import('pdf-parse');
+        const pdfParse = (pdfParseModule as Record<string, unknown>).default || pdfParseModule;
+        const parsed = await (pdfParse as (buf: Buffer) => Promise<{ text: string }>)(file.buffer);
         text = parsed.text;
       } else if (
         ext === 'docx' ||
